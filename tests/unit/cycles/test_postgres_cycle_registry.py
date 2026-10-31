@@ -137,6 +137,9 @@ def _cycle_row(**overrides):
         "deploy_id": None,  # #1720, migration 1051
         "campaign_id": None,  # SIP-0109 #1799, migration 1610
         "kind": None,
+        "increment_id": None,  # #2578, migration 1699
+        # SIP-0112 contract 1: a sample application's cycle pins no source.
+        "source_context": None,
         "notes": None,
         "cancelled": False,
     }
@@ -741,6 +744,8 @@ class TestPostgresCycleRegistry:
                     "notes": None,
                 }
             ],
+            [],  # their binding holds (#2178)
+            [],  # their emergency halts (#2178, T13)
         ]
 
         runs = await registry.list_runs_for_cycles(["cyc_a", "cyc_b", "cyc_c"], limit_per_cycle=2)
@@ -779,9 +784,33 @@ class TestPostgresCycleRegistry:
             "notes": None,
         }
 
+        hold_row = {
+            "run_id": "run_002",
+            "hold_id": "hold_1",
+            "task_id": "t_design",
+            "task_type": "development.design_plan",
+            "unresolved": [["mrec_1@2", "over budget", "input"]],
+            "held_at": NOW,
+            "released_at": None,
+            "cause": None,
+            "sections": ["task_instructions"],
+        }
+
+        halt_row = {
+            "run_id": "run_001",
+            "record_id": "mrec_1",
+            "requested_by": "ada",
+            "why": "it named the wrong table",
+            "requested_at": NOW,
+            "restart_from_task_id": "task-run_001-002-development.design_plan",
+            "restart_run_id": None,
+        }
+
         conn.fetch.side_effect = [
             [run_row_1, run_row_2],  # run rows
             [gate_row],  # gate decisions batch query
+            [hold_row],  # binding holds batch query (#2178)
+            [halt_row],  # emergency halts batch query (#2178, T13)
         ]
 
         runs = await registry.list_runs("cyc_001")
@@ -803,6 +832,19 @@ class TestPostgresCycleRegistry:
         assert len(runs[0].gate_decisions) == 1
         assert runs[0].gate_decisions[0].gate_name == "qa_gate"
         assert len(runs[1].gate_decisions) == 0
+
+        # #2178: each hold reaches its own run, as the run's open hold
+        hold_sql, hold_ids = conn.fetch.call_args_list[2][0]
+        assert ("run_binding_holds" in hold_sql, hold_ids) == (True, ["run_001", "run_002"])
+        assert (runs[0].binding_holds, runs[0].open_hold) == ((), None)
+        assert runs[1].open_hold.unresolved == (("mrec_1@2", "over budget", "input"),)
+        assert runs[1].open_hold.sections == ("task_instructions",)
+        # T13: each run's halt reaches it, and only it
+        assert (runs[0].halt.record_id, runs[0].halt.restart_from_task_id, runs[1].halt) == (
+            "mrec_1",
+            "task-run_001-002-development.design_plan",
+            None,
+        )
 
 
 class TestRecordRunVerificationSummary:

@@ -88,6 +88,56 @@ def test_the_request_carries_the_source_block_and_seeds_outside_any_campaign():
     assert "cyc_inc" in body["notes"]
 
 
+@pytest.mark.parametrize(
+    "row, stack",
+    [
+        (
+            {
+                "applied_defaults": {"build_profile": "fullstack_fastapi_react"},
+                "execution_overrides": {
+                    "build_profile": "nextjs_ts",
+                    "development_profile": "nextjs_ts",
+                },
+            },
+            "nextjs_ts",
+        ),
+        (
+            {
+                "applied_defaults": {
+                    "build_profile": "fullstack_fastapi_react",
+                    "development_profile": "fullstack_fastapi_react",
+                },
+                "execution_overrides": {},
+            },
+            "fullstack_fastapi_react",
+        ),
+    ],
+    ids=["a-campaign-stack-override", "the-profiles-own-stack"],
+)
+def test_the_replay_runs_on_the_stack_its_source_ran_on(row, stack):
+    """Bug caught (#1966's second reader): the request carried only the increment's block and
+    seeds, so a Next.js increment replayed on ``campaign-reference``'s default stack, FastAPI +
+    React, building its change on the wrong scaffold."""
+    block = {"proposal_id": "prop_1", "accepted_cycle_id": "cyc_accepted"}
+    seeds = {"interface_manifest": "m", "change_request": "c", "verification_contract": "k"}
+
+    body = replay.replay_request(
+        "cyc_inc",
+        block,
+        seeds,
+        squad_profile_id="full-38-tf",
+        campaign="cmp_1",
+        stack=replay.source_stack(row),
+    )
+
+    resolved = {**body["applied_defaults"], **body["execution_overrides"]}
+    assert (resolved["build_profile"], resolved["development_profile"]) == (stack, stack)
+
+
+def test_a_source_with_no_stack_keys_carries_none():
+    assert replay.source_stack({"applied_defaults": {}, "execution_overrides": None}) == {}
+
+
 def test_a_cycle_that_is_not_an_increment_is_refused():
     with pytest.raises(SystemExit, match="not an increment"):
         replay.replay_request(

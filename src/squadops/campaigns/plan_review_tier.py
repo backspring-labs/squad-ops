@@ -23,7 +23,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from squadops.campaigns.change_request import outside_allowed_scope
+from squadops.campaigns.change_request import outside_allowed_scope, qa_namespace_paths
 from squadops.campaigns.models import CycleKind
 from squadops.cycles.implementation_plan import ImplementationPlan
 
@@ -93,8 +93,10 @@ def plan_review_tier(
     open_questions: Sequence[str] | None,
     footprint: Sequence[str],
     allowed_scope: Sequence[str],
+    stack: str,
     refused_framing_runs: Sequence[str],
     answered_on_record: Mapping[str, str],
+    placed: Sequence[str] = (),
 ) -> TierVerdict:
     """The tier's verdict on one plan gate.
 
@@ -103,7 +105,10 @@ def plan_review_tier(
     names each decision the plan carries a late answer for, with the escalation it was recorded
     against (§24bm): carried into the manifest at the proposal launch, and still its choice.
     ``refused_framing_runs`` are this cycle's earlier framing runs that plan validation refused,
-    each one a re-roll."""
+    each one a re-roll. ``stack`` is the manifest's: the files the plan names in its qa test
+    namespace are the framework's, and the scope does not read them (#2743). On a
+    repository-backed increment, ``placed`` are its criterion test files the framework placed,
+    the only ones of a product's tests that are the framework's (SIP-0109 §24cj)."""
     if open_questions is None:
         questions = TierCheck(
             TierCondition.NO_OPEN_QUESTION,
@@ -139,14 +144,29 @@ def plan_review_tier(
             "the plan names no file, so it has no footprint to read",
         )
     else:
-        outside = outside_allowed_scope(footprint, allowed_scope)
+        outside = outside_allowed_scope(footprint, allowed_scope, stack=stack, placed=placed)
+        tests = (
+            *qa_namespace_paths(footprint, stack),
+            *(p for p in footprint if p in set(placed)),
+        )
+        product = len(footprint) - len(tests)
         scope = TierCheck(
             TierCondition.INSIDE_SCOPE,
             not outside,
             (
                 f"outside ({', '.join(allowed_scope)}): {', '.join(outside)}"
                 if outside
-                else f"all {len(footprint)} files inside ({', '.join(allowed_scope)})"
+                else (
+                    f"the {product} product file{'' if product == 1 else 's'} inside "
+                    f"({', '.join(allowed_scope)})"
+                    if tests
+                    else f"all {len(footprint)} files inside ({', '.join(allowed_scope)})"
+                )
+            )
+            + (
+                f"; {len(tests)} in the qa test namespace, the framework's: {', '.join(tests)}"
+                if tests
+                else ""
             ),
         )
 

@@ -51,7 +51,7 @@ def _runner(persona: dict, role: str, monkeypatch):
     runner._config = MagicMock()
     ports = {
         name: MagicMock()
-        for name in ("llm", "memory", "prompt_service", "queue", "metrics", "events", "filesystem")
+        for name in ("llm", "prompt_service", "queue", "metrics", "events", "filesystem")
     }
 
     async def _create_ports(config):

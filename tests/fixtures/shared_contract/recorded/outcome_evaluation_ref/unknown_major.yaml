@@ -1,0 +1,16 @@
+# The unknown_major form: the schema is outcome-evaluation-ref/v2, which a v1 reader refuses with a typed error, reading none of it. Otherwise identical to valid.yaml.
+# Contract 5 (SIP-0112 §8.2.1): the reference to one evaluation run, Cycle cyc_2407a0000001 evaluated
+# against one suite. Produced by Outcome Evaluation (the Spark lane, SIP-0113 §4.1); stored and read
+# back by the MacBook lane in Project history. It names trees only by SIP-0109's FileTree.identity,
+# never by Git commit or sandbox revision: a commit is reached through the workspace-to-commit
+# mapping (contract 4). campaign_id may be null outside a campaign, but is never absent.
+# evaluation_id is opaque to every reader. suite_digest is the sha256 of a placeholder line: the
+# fixture names no scenario suite, since scenarios are never kept beside a product (SIP-0113 §4.1).
+schema: outcome-evaluation-ref/v2
+evaluation_id: evl_2407a0000001
+suite_digest: 8417da7e4fd4c6ce316e9a0030f37a968f91195216209b77b16b9bb317b8e1dd
+project_id: prj-tally
+campaign_id: cmp_2407a0000001
+cycle_id: cyc_2407a0000001
+evaluated_tree_identity: 41e6cc797da0ddc58a4456e8ff1e6fce0c9ebedc9d0638bff5f69c630cff67ce
+previous_accepted_tree_identity: 1c985890772dbda5b07d438658a78f6ab70fafd06e6914c111368dd7e503157a

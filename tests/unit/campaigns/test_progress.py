@@ -18,11 +18,13 @@ import yaml
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
+from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.continuation import CycleEnding
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.launch_requests import start_transition
 from squadops.campaigns.models import (
+    AcceptedTree,
     CampaignOutcome,
     CampaignState,
     ControlOperation,
@@ -119,12 +121,14 @@ class _Vault:
 
 
 class _World:
-    def __init__(self, verdict: RunVerdict | None) -> None:
+    def __init__(self, verdict: RunVerdict | None, evaluator=None, branch=None) -> None:
         from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         self.campaigns = MemoryCampaignRegistry()
         self.cycles = MemoryCycleRegistry()
         self.launches = AsyncMock()
+        # SIP-0113 (#2414): the outcome evaluator, built on this world's registries when given.
+        self.evaluations = evaluator(self).cycle_ended if evaluator else AsyncMock()
         self.verdict = verdict
         self.now = NOW + timedelta(hours=1)
         self.progress = CampaignProgress(
@@ -133,6 +137,11 @@ class _World:
             vault=_Vault(),
             assess=self._assess,
             launch=self.launches,
+            evaluate_outcome=self.evaluations,
+            evaluate_baseline=None,
+            outcome_section=None,
+            intervention_section=None,
+            campaign_branch=branch,
             clock=lambda: self.now,
         )
         self.executor = DispatchedFlowExecutor(
@@ -146,6 +155,7 @@ class _World:
             project_registry=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
         self.executor._cycle_event_bus = MagicMock()
 
@@ -153,7 +163,13 @@ class _World:
         return _assessment(cycle_id, self.verdict)
 
     async def launched_cycle(
-        self, kind: str, cycle_id: str, workload: str, status: str, overrides: dict | None = None
+        self,
+        kind: str,
+        cycle_id: str,
+        workload: str,
+        status: str,
+        overrides: dict | None = None,
+        intent_kind: str | None = None,
     ) -> Run:
         await self.cycles.create_cycle(
             Cycle(
@@ -183,7 +199,9 @@ class _World:
         )
         await self.cycles.create_run(run)
         [intent] = [
-            i for i in await self.campaigns.pending_launch_intents() if i.cycle_kind.value == kind
+            i
+            for i in await self.campaigns.pending_launch_intents()
+            if i.cycle_kind.value == (intent_kind or kind)
         ]
         await self.campaigns.mark_launch_intent_launched(intent.launch_id, cycle_id, actor="l")
         return run
@@ -194,8 +212,16 @@ class _World:
 
 @pytest.fixture
 async def calibrating() -> _World:
-    async def make(verdict, objective=None, **policy_overrides):
-        w = _World(verdict)
+    async def make(
+        verdict,
+        objective=None,
+        evaluator=None,
+        overrides=None,
+        workload="implementation",
+        branch=None,
+        **policy_overrides,
+    ):
+        w = _World(verdict, evaluator, branch)
         draft = campaign(
             CID,
             policy=policy(
@@ -213,7 +239,7 @@ async def calibrating() -> _World:
                 draft, actor="owner", actor_role="admin", reason="go", idempotency_key="start"
             ),
         )
-        return w, await w.launched_cycle("calibration", "cyc_cal", "implementation", "completed")
+        return w, await w.launched_cycle("calibration", "cyc_cal", workload, "completed", overrides)
 
     return make
 
@@ -420,6 +446,63 @@ async def test_the_decision_is_made_once_per_cycle(calibrating):
     w.launches.assert_awaited_once()
 
 
+async def test_a_pause_while_a_sample_applications_tree_is_stored_holds_and_the_resume_decides(
+    calibrating,
+):
+    """#2789 and the review of #2792 (P2), on a sample application's promotion, entered at the
+    completion boundary. Its tree is composed and stored in the vault before the promotion's row
+    is written. Bug caught: a pause applied meanwhile overwritten by the promotion
+    (``paused → calibrating``) and the proposal launched over it. The row carries the state the
+    hearing read, so it is refused as stale; the resumed campaign is promoted and decided once."""
+    from squadops.campaigns.models import CampaignTransition, RefusalReason
+
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    storing = w.progress._store_accepted_tree
+    pause = CampaignTransition(
+        operation=ControlOperation.PAUSE,
+        actor="owner",
+        actor_role="admin",
+        reason="hold on",
+        idempotency_key="pause-store",
+        next_state=CampaignState.PAUSED,
+    )
+
+    async def pause_then_store(*args, **kwargs):
+        await w.campaigns.transition(CID, pause)
+        return await storing(*args, **kwargs)
+
+    w.progress._store_accepted_tree = pause_then_store
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    log = await w.campaigns.control_log(CID)
+    refused = [
+        e.refusal
+        for e in log
+        if e.operation is ControlOperation.PROMOTE and e.outcome is ControlOutcome.REFUSED
+    ]
+    applied = [e.operation for e in log[-2:] if e.outcome is ControlOutcome.APPLIED]
+    assert (refused, applied) == ([RefusalReason.STALE_STATE], [ControlOperation.PAUSE])
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
+    w.launches.assert_not_awaited()
+
+    w.progress._store_accepted_tree = storing
+    await w.campaigns.transition(
+        CID,
+        CampaignTransition(
+            operation=ControlOperation.RESUME,
+            actor="owner",
+            actor_role="admin",
+            reason="go on",
+            idempotency_key="resume-store",
+            next_state=CampaignState.CALIBRATING,
+        ),
+    )
+    assert await w.progress.rehear_ended(["cyc_cal"]) == ["cyc_cal"]
+    log = await w.campaigns.control_log(CID)
+    assert [e.operation for e in log[-2:]] == [ControlOperation.PROMOTE, ControlOperation.DECIDE]
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.AT_PROPOSAL
+
+
 async def test_a_rejected_calibration_stops_the_campaign_and_promotes_nothing(calibrating):
     """§10 row 2, §19 criterion 2. Bug caught: a rejected calibration's tree becoming the
     baseline every increment is proposed against."""
@@ -435,6 +518,75 @@ async def test_a_rejected_calibration_stops_the_campaign_and_promotes_nothing(ca
     )
     assert len(await w.campaigns.launch_intents(CID)) == 1
     w.launches.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "stopped",
+    [CycleStopReason.PLAN_REJECTED, CycleStopReason.GATE_REJECTED, CycleStopReason.GATE_FAILED],
+)
+async def test_a_calibration_stopped_at_its_plan_gate_fails_the_campaign_and_promotes_nothing(
+    calibrating, stopped
+):
+    """§10 row 2, §24cb (#2704, live: ``cmp_889af0a98b6d``). The calibration's plan was rejected
+    three times, so it built nothing, and its framing run's summary reads ``accepted`` with nothing
+    executed. Bugs caught: that summary read as the calibration's verdict, so the empty tree was
+    promoted as the campaign's baseline and an increment launched on it; and the outcome
+    evaluation, which only a build has, run on one that never happened."""
+    w, run = await calibrating(RunVerdict.ACCEPTED, workload="framing")
+
+    await w.end("cyc_cal", run, stopped)
+
+    stored = await w.campaigns.get_campaign(CID)
+    log = await w.campaigns.control_log(CID)
+    assert (stored.state, stored.outcome, stored.accepted) == (
+        CampaignState.COMPLETED,
+        CampaignOutcome.FAILURE,
+        None,
+    )
+    assert [e for e in log if e.operation is ControlOperation.PROMOTE] == []
+    assert {k: log[-1].binding[k] for k in ("row", "ending", "verdict", "cause")} == {
+        "row": 2,
+        "ending": "stopped_at_plan_gate",
+        "verdict": None,
+        "cause": "calibration",
+    }
+    w.evaluations.assert_not_awaited()
+    w.launches.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("limit", "expected"),
+    [
+        (2, {"row": 18, "action": "abandon_and_propose", "guard": "proceed"}),
+        (1, {"row": 4, "outcome": "failure", "cause": "unaccepted_increments"}),
+    ],
+    ids=["abandoned-for-a-new-proposal", "counted-to-the-no-progress-limit"],
+)
+async def test_an_increment_stopped_at_its_plan_gate_is_abandoned_and_counted_never_repaired(
+    calibrating, limit, expected
+):
+    """§10 rows 18 and 4, §24cb (#2704), entered at the completion hook as the increment's framing
+    run stops at its plan gate. Bugs caught: its framing summary's ``accepted`` with no increment
+    evaluation read as ``blocked_unverified``, so row 8 launched a repair of a candidate that was
+    never built and spent the increment's repair; and the abandonment not counted as unaccepted,
+    so increments whose plans keep failing never reach the no-progress limit."""
+    w, run = await calibrating(RunVerdict.ACCEPTED, max_unaccepted_increments=limit)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    framing = await w.launched_cycle("increment", "cyc_inc", "framing", "completed")
+
+    await w.end("cyc_inc", framing, CycleStopReason.PLAN_REJECTED)
+
+    log = await w.campaigns.control_log(CID)
+    decision = log[-1].binding
+    assert {k: decision.get(k) for k in expected} == expected
+    assert (decision["ending"], decision["verdict"]) == ("stopped_at_plan_gate", None)
+    assert [e.target for e in log if e.operation is ControlOperation.PROMOTE] == ["cyc_cal"]
+    assert [i.cycle_kind for i in await w.campaigns.launch_intents(CID)] == [
+        CycleKind.CALIBRATION,
+        CycleKind.INCREMENT,
+        *([CycleKind.INCREMENT] if limit == 2 else []),
+    ]
+    assert [c.args[0].cycle_id for c in w.evaluations.await_args_list] == ["cyc_cal"]
 
 
 async def test_a_cycle_ending_after_an_abort_decides_and_launches_nothing(calibrating):
@@ -494,10 +646,29 @@ async def test_a_cycle_that_can_still_continue_is_not_decided(calibrating, stopp
         ("proposal", "failed", CycleStopReason.RUN_FAILED, CycleEnding.PROPOSAL_FAILED, False),
         # #2213: the increment gate failed to submit the proposal; never read as reaching a build.
         ("proposal", "completed", CycleStopReason.GATE_FAILED, CycleEnding.PROPOSAL_FAILED, False),
-        # A plan gate that failed after framing ends the cycle unbuilt, read like a rejected plan.
-        ("framing", "completed", CycleStopReason.GATE_FAILED, CycleEnding.ASSESSED, False),
+        # #2704: a decision the increment gate doesn't know is never read as reaching a build.
+        (
+            "proposal",
+            "completed",
+            CycleStopReason.GATE_DECISION_UNRECOGNIZED,
+            CycleEnding.PROPOSAL_FAILED,
+            False,
+        ),
+        # §24cb (#2704): a framing run stopped at its plan gate ended the cycle unbuilt, however
+        # the gate stopped it. Read as assessed, its framing summary's ``accepted`` promoted it.
+        *[
+            ("framing", "completed", stop, CycleEnding.STOPPED_AT_PLAN_GATE, False)
+            for stop in (
+                CycleStopReason.PLAN_REJECTED,
+                CycleStopReason.GATE_REJECTED,
+                CycleStopReason.REVISION_UNAVAILABLE,
+                CycleStopReason.GATE_DECISION_UNRECOGNIZED,
+                CycleStopReason.GATE_FAILED,
+            )
+        ],
         ("implementation", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
-        ("framing", "completed", CycleStopReason.GATE_REJECTED, CycleEnding.ASSESSED, False),
+        # A framing run that failed stopped on its own run, not its gate: its summary judges it.
+        ("framing", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
         # §24bj: the expired escalation's run, cancelled for it.
         ("framing", "cancelled", CycleStopReason.RUN_CANCELLED, CycleEnding.PARKED, True),
         # An expiry a person's decision beat: the run went on, so the cycle was not parked.
@@ -645,6 +816,41 @@ def test_the_increment_launch_reads_its_profile_from_the_policy():
     )
 
 
+@pytest.mark.parametrize(
+    ("stack", "built_on"),
+    [("nextjs_ts", "nextjs_ts"), (None, None)],
+    ids=["declared", "the-profiles-own"],
+)
+def test_every_launch_kind_carries_the_campaigns_stack(stack, built_on):
+    """§24bs (#2443). Bug caught: a Next.js campaign whose calibration, increments or bound
+    cycles build on FastAPI, because one launch kind dropped the stack the others carry; or a
+    campaign that declares none overriding its profiles' own stack."""
+    from squadops.campaigns.launch_requests import (
+        bound_launch,
+        calibration_launch,
+        increment_launch,
+    )
+    from squadops.campaigns.models import AcceptedTree
+
+    c = campaign(
+        CID,
+        policy=policy(proposal_profile="campaign-increment", stack=stack),
+        accepted=AcceptedTree("sha-1", "cyc_cal"),
+    )
+    bodies = {
+        "calibration": calibration_launch(c).cycle_request["body"],
+        "increment": increment_launch(c, MANIFEST).cycle_request["body"],
+        "repair": bound_launch(
+            c, CycleKind.REPAIR, {"proposal_id": "p"}, ["art_1"], None
+        ).cycle_request["body"],
+    }
+
+    for kind, body in bodies.items():
+        overrides = body["execution_overrides"]
+        carried = (overrides.get("build_profile"), overrides.get("development_profile"))
+        assert carried == (built_on, built_on), kind
+
+
 async def test_a_proposal_only_increment_escalates_to_the_owner(calibrating):
     """§24f: until delta framing exists, an increment cycle runs its proposal alone and ends
     with no verdict. Bug caught: that cycle read as accepted (a propose loop that never builds)
@@ -685,6 +891,33 @@ def _evaluation(verdict: str) -> bytes:
             },
         }
     ).encode()
+
+
+def _capacity_request(prd_id: str = "capacity-limit") -> bytes:
+    """The reference increment's change request (C1, ``POST /runs``), stored as the gate stores
+    an approved one; its PRD section renamed when a second, different document is wanted."""
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    authored = yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text())
+    authored["prd_delta"][0]["id"] = prd_id
+    request = validate_proposal(
+        authored,
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            (),
+        ),
+    ).change_request
+    return stored_change_request(request).encode()
 
 
 @pytest.fixture(autouse=True)
@@ -747,6 +980,50 @@ async def test_an_accepted_increment_is_promoted_and_its_criteria_frozen_for_the
     assert proposal["prior_criteria"] == ["C1"]
     assert proposal["frozen_criteria"][0]["bundle_ref"] == frozen["bundle_ref"]
     assert proposal["accepted_cycle_id"] == "cyc_inc"
+
+
+class _NoClone:
+    """A sample application has no managed clone and no source mappings: any read or move of one
+    by its promotion is the bug."""
+
+    def __getattr__(self, name):
+        async def reached(*args, **kwargs):
+            raise AssertionError(f"a sample application's promotion reached {name}")
+
+        return reached
+
+
+async def test_a_sample_applications_promotions_stay_the_vaults_with_a_branch_wired(
+    calibrating, stored
+):
+    """§24bv's "What stays": the runtime always wires the campaign branch (§24bv point 2), so this
+    world does too, over a clone and mappings that fail on any touch. Bugs caught: a sample
+    application's calibration or increment routed onto the branch's path, where it is refused (or
+    fails), so the campaign never accepts an increment; or its tree given a commit, which every
+    reader then takes for a repository-backed Project's."""
+    w, run = await calibrating(
+        RunVerdict.ACCEPTED, branch=CampaignBranch(projects=_NoClone(), repository=_NoClone())
+    )
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        _evaluation("accepted"),
+    )
+    increment_run = await w.launched_cycle("increment", "cyc_inc", "implementation", "completed")
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    log = await w.campaigns.control_log(CID)
+    promotions = [e for e in log if e.operation is ControlOperation.PROMOTE]
+    stored_campaign = await w.campaigns.get_campaign(CID)
+    assert [p.target for p in promotions] == ["cyc_cal", "cyc_inc"]
+    assert [("tree_ref" in p.binding, "commit" in p.binding) for p in promotions] == [
+        (True, False),
+        (True, False),
+    ]
+    assert stored_campaign.accepted == AcceptedTree(promotions[-1].binding["identity"], "cyc_inc")
+    assert (log[-1].binding["row"], log[-1].binding["action"]) == (7, "propose")
+    assert "promotion_refused" not in log[-1].binding
 
 
 async def test_a_frozen_criterion_carries_what_it_asserts_to_the_next_proposal(calibrating, stored):
@@ -1036,6 +1313,9 @@ async def _increment_failed_by_the_environment(
     assessed=RunVerdict.REJECTED,
     frozen=(),
     evaluation=None,
+    repair_of=None,
+    extra_block=None,
+    revised=False,
     **policy,
 ):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
@@ -1044,12 +1324,17 @@ async def _increment_failed_by_the_environment(
 
     ``assessed`` is the cycle's own verdict when the cause is the work, ``frozen`` the criteria
     earlier promotions froze (carried on its bound proposal), and ``evaluation`` the increment
-    evaluation its run stored, if any (#2318)."""
+    evaluation its run stored, if any (#2318). With ``repair_of``, the failed cycle is a repair
+    of that cycle, bound as a repair's launch binds it: it continues that cycle, and carries its
+    brief."""
     stored["art_candidate"] = (
         _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
         MANIFEST.encode(),
     )
-    stored["art_cr"] = (_ref("art_cr", "change_request.yaml", "change_request", -1), b"cr")
+    stored["art_cr"] = (
+        _ref("art_cr", "change_request.yaml", "change_request", -1),
+        _capacity_request(),
+    )
     from squadops.campaigns.gate import RETURNING_DECISIONS, ruling_transition, submission
     from squadops.campaigns.models import ProposalBinding, SubmittedProposal
     from squadops.cycles.models import GateDecisionValue
@@ -1064,6 +1349,16 @@ async def _increment_failed_by_the_environment(
         "accepted_cycle_id": "cyc_cal",
         "baseline_manifest": MANIFEST,
         **({"frozen_criteria": list(frozen)} if frozen else {}),
+        **(
+            {
+                "repair_of": repair_of,
+                "continues": repair_of,
+                "prior_cycle": {"cycle_id": repair_of, "verdict": "rejected"},
+            }
+            if repair_of
+            else {}
+        ),
+        **(extra_block or {}),
     }
     if evaluation is not None:
         stored["art_eval"] = (
@@ -1071,7 +1366,7 @@ async def _increment_failed_by_the_environment(
             evaluation,
         )
     increment_run = await w.launched_cycle(
-        "increment",
+        "repair" if repair_of else "increment",
         "cyc_inc",
         "implementation",
         "completed",
@@ -1080,6 +1375,7 @@ async def _increment_failed_by_the_environment(
             "plan_artifact_refs": ["art_candidate", "art_cr"],
             "contract_ref": "art_contract",
         },
+        intent_kind="increment",
     )
     if reasons:
         from squadops.cycles.verification_integrity import RunVerificationSummary
@@ -1119,6 +1415,27 @@ async def _increment_failed_by_the_environment(
             ),
         ),
     )
+    if revised:
+        # #2824: returned at version 1, then version 2 submitted and approved in the same cycle,
+        # while the cycle's launch block still says version 1.
+        revision = ProposalBinding("prop_cap", 2, "hash-2", accepted)
+        state = (await w.campaigns.get_campaign(CID)).state
+        await w.campaigns.transition(
+            CID, submission(state, SubmittedProposal(revision, "cyc_inc", "run_prop_v2"))
+        )
+        await w.campaigns.transition(
+            CID,
+            ruling_transition(
+                GateDecisionValue.APPROVED,
+                revision,
+                run_id="run_prop_v2",
+                actor="supervisor",
+                actor_role="campaign_supervisor",
+                reason="r",
+                idempotency_key="rule-2",
+                classification=None,
+            ),
+        )
     w._assess = lambda cycle_id: _async(
         _environment_failure(cycle_id) if environment else _assessment(cycle_id, assessed)
     )
@@ -1204,6 +1521,9 @@ async def test_an_owners_retry_carries_the_brief_and_is_never_blocked_by_it(
 
     block = transition.launch.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
     assert transition.launch.cycle_kind is CycleKind.RETRY
+    # SIP-0110 §3.7 (#2178): the owner's word's row names no cycle, so the request does, read
+    # or not, for the carried task instructions.
+    assert block["continues"] == "cyc_inc"
     expected = "cyc_inc" if records == "read" else None
     assert (block.get("prior_cycle") or {}).get("cycle_id") == expected
 
@@ -1235,6 +1555,216 @@ async def test_an_abandoned_increments_record_reaches_the_next_proposal_and_no_o
     assert "prior_cycle" not in block
 
 
+_PRIORITY = "Priority order: an Expansion Tier 2 change while Tier 1 is incomplete."
+
+
+async def _rejected_at_the_gate(calibrating, stored):
+    """An accepted calibration, then an increment whose proposal run (``run_prop``, its own
+    change request among its artifacts) is rejected at the gate. A newer change request stored
+    under the cycle's other run is the decoy a lookup by cycle, or by type alone, would read.
+    Returns the world and the proposal run, before the cycle ends."""
+    import dataclasses as _dc
+
+    from squadops.campaigns.gate import ruling_transition, submission
+    from squadops.campaigns.models import ProposalBinding, SubmittedProposal
+    from squadops.cycles.models import GateDecisionValue
+
+    stored["art_cr"] = (
+        _dc.replace(
+            _ref("art_cr", "change_request.yaml", "change_request", 30),
+            cycle_id="cyc_inc",
+            run_id="run_prop",
+        ),
+        _capacity_request(),
+    )
+    stored["art_decoy"] = (
+        _dc.replace(
+            _ref("art_decoy", "change_request.yaml", "change_request", 40), cycle_id="cyc_inc"
+        ),
+        _capacity_request("not-the-ruled-request"),
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    accepted = (await w.campaigns.get_campaign(CID)).accepted.identity
+    await w.launched_cycle("increment", "cyc_inc", "proposal", "completed")
+    proposal_run = Run(
+        run_id="run_prop",
+        cycle_id="cyc_inc",
+        run_number=2,
+        status="completed",
+        initiated_by="system",
+        resolved_config_hash="cfg",
+        workload_type="proposal",
+        artifact_refs=("art_cr",),
+    )
+    await w.cycles.create_run(proposal_run)
+    binding = ProposalBinding("prop_cap", 1, "hash-1", accepted)
+    state = (await w.campaigns.get_campaign(CID)).state
+    await w.campaigns.transition(
+        CID, submission(state, SubmittedProposal(binding, "cyc_inc", "run_prop"))
+    )
+    await w.campaigns.transition(
+        CID,
+        ruling_transition(
+            GateDecisionValue.REJECTED,
+            binding,
+            run_id="run_prop",
+            actor="supervisor",
+            actor_role="campaign_supervisor",
+            reason=_PRIORITY,
+            idempotency_key="rule-1",
+            classification="unclassified",
+            classification_rationale="Priority order is none of the classes.",
+        ),
+    )
+    return w, proposal_run
+
+
+async def test_a_rejected_proposals_reason_reaches_the_fresh_proposal_after_it(calibrating, stored):
+    """#2593, the 2.4 window's campaign 4, entered at the completion hook as the rejected
+    proposal's cycle ends; row 6 launches a fresh proposal. Bugs caught: the fresh proposal told
+    nothing of the rejection (campaign 4 proposed one rejected change in four of its five
+    proposals); told the ruling without what was rejected; or shown another run's request (the
+    decoy), not the document the ruling bound to."""
+    w, proposal_run = await _rejected_at_the_gate(calibrating, stored)
+
+    await w.end("cyc_inc", proposal_run, CycleStopReason.GATE_REJECTED)
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, fresh = await w.campaigns.launch_intents(CID)
+    block = fresh.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (decision.binding["row"], decision.binding["action"]) == (6, "propose")
+    [shown] = block["unapproved_proposals"]
+    assert {k: v for k, v in shown.items() if k not in ("prd_delta", "criteria")} == {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "decision": "rejected",
+        "reason": _PRIORITY,
+        "ruled_on_current_application": True,
+        "classification": "unclassified",
+        "classification_rationale": "Priority order is none of the classes.",
+    }
+    assert [(s["id"], s["op"]) for s in shown["prd_delta"]] == [("capacity-limit", "add")]
+    assert [c["id"] for c in shown["criteria"]] == ["C1", "C2", "C3"]
+
+
+async def test_a_ruled_request_whose_read_fails_launches_nothing_and_the_rehearing_shows_it(
+    calibrating, stored, monkeypatch
+):
+    """#2593, the launch's rule for its inputs (the 2.1 plan, ``_propose_launch``): a vault read
+    that fails raises, and the re-hearing retries. Bug caught: a proposal launched without what
+    the ruling rejected because one read failed, which no later launch would ever restore."""
+    w, proposal_run = await _rejected_at_the_gate(calibrating, stored)
+    reads = {"art_cr": 0}
+    real_retrieve = _Vault.retrieve
+
+    async def flaky(self, artifact_id):
+        if artifact_id == "art_cr":
+            reads["art_cr"] += 1
+            if reads["art_cr"] == 1:
+                raise OSError("the vault read failed once")
+        return await real_retrieve(self, artifact_id)
+
+    monkeypatch.setattr(_Vault, "retrieve", flaky)
+    launched_before = len(await w.campaigns.launch_intents(CID))
+
+    await w.end("cyc_inc", proposal_run, CycleStopReason.GATE_REJECTED)
+    after_failure = len(await w.campaigns.launch_intents(CID))
+    await w.progress.rehear_ended(["cyc_inc"])
+
+    *_, fresh = await w.campaigns.launch_intents(CID)
+    block = fresh.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert after_failure == launched_before
+    assert [s["id"] for s in block["unapproved_proposals"][0]["prd_delta"]] == ["capacity-limit"]
+
+
+async def test_a_retry_of_a_repair_starts_from_the_accepted_tree(calibrating, stored, monkeypatch):
+    """§10a, #2558, entered at the continuation decision. Bug caught: a retry of a repair that
+    failed for a cause outside the work keeping the repair's ``repair_of``, so it starts from the
+    original increment's failed candidate rather than a fresh one on the accepted tree."""
+    from types import SimpleNamespace
+
+    from squadops.campaigns import increment_tree
+
+    w = await _increment_failed_by_the_environment(calibrating, stored, repair_of="cyc_first")
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, retry = await w.campaigns.launch_intents(CID)
+    overrides = retry.cycle_request["body"]["execution_overrides"]
+    assert (decision.binding["row"], decision.binding["action"]) == (10, "retry")
+    assert retry.cycle_kind is CycleKind.RETRY
+    assert "repair_of" not in overrides["campaign_proposal"]
+    assert overrides["campaign_proposal"]["continues"] == "cyc_inc"
+    assert overrides["campaign_proposal"]["prior_cycle"]["cycle_id"] == "cyc_inc"
+
+    async def accepted(_vault, _cycle, _frozen):
+        return ["art_accepted_routes"]
+
+    async def delivered(_vault, cycle_id):
+        return {"backend/routes.py": f"art_{cycle_id}_routes"}
+
+    monkeypatch.setattr(increment_tree, "accepted_tree_refs", accepted)
+    monkeypatch.setattr(increment_tree, "_delivered", delivered)
+    retry_cycle = SimpleNamespace(resolved_config=lambda: overrides)
+    assert await increment_tree.starting_tree_refs(None, retry_cycle) == ["art_accepted_routes"]
+
+
+@pytest.mark.parametrize("repair_of", [None, "cyc_first"], ids=["of-an-increment", "of-a-repair"])
+async def test_a_continuation_carries_the_increments_keys_and_its_own_lineage_and_nothing_else(
+    calibrating, stored, repair_of
+):
+    """#2578, entered at the continuation decision. Bug caught: a continuation built by copying the
+    failed cycle's block and deleting from it, so a key only a proposal reads, or a lineage key
+    added later, rides into every repair and retry by default (the class of #2558 and #2576)."""
+    w = await _increment_failed_by_the_environment(
+        calibrating,
+        stored,
+        repair_of=repair_of,
+        extra_block={
+            "abandoned_increment": {"cycle_id": "cyc_old"},
+            "qa_proposed_behaviours": [{"behaviour": "a sorted list"}],
+            "unapproved_proposals": [{"proposal_id": "prop_old"}],
+            "supervisor_note": "narrow it",
+            "a_lineage_key_added_later": "cyc_first",
+        },
+    )
+
+    *_, retry = await w.campaigns.launch_intents(CID)
+    block = retry.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert retry.cycle_kind is CycleKind.RETRY
+    assert sorted(block) == sorted(
+        ["proposal_id", "version", "baseline_tree", "accepted_cycle_id", "baseline_manifest"]
+        + ["continues", "prior_cycle"]
+    )
+    assert (block["continues"], block["prior_cycle"]["cycle_id"]) == ("cyc_inc", "cyc_inc")
+
+
+async def test_a_retry_whose_failed_cycle_cant_be_read_carries_no_brief_not_an_older_one(
+    calibrating, stored, monkeypatch
+):
+    """§24u, #2576. Bug caught: a retry of a repair whose records can't be read keeping the
+    repair's own brief, of the increment it repaired, so the retry's authors are shown that
+    cycle's failures as the one they recover from."""
+    from squadops.campaigns import progress
+
+    async def unreadable(*args, **kwargs):
+        raise TimeoutError("the cycle registry did not answer")
+
+    original = progress.CampaignProgress._prior_cycle_brief
+
+    async def brief_unreadable(self, cycle, latest):
+        self._cycles.list_run_verification_summaries = unreadable
+        return await original(self, cycle, latest)
+
+    monkeypatch.setattr(progress.CampaignProgress, "_prior_cycle_brief", brief_unreadable)
+    w = await _increment_failed_by_the_environment(calibrating, stored, repair_of="cyc_first")
+
+    *_, retry = await w.campaigns.launch_intents(CID)
+    block = retry.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert retry.cycle_kind is CycleKind.RETRY
+    assert "prior_cycle" not in block
+
+
 @pytest.mark.parametrize(
     ("kwargs", "reason"),
     [
@@ -1254,6 +1784,34 @@ async def test_a_retry_whose_binding_no_longer_holds_escalates_instead(
     decision = (await w.campaigns.control_log(CID))[-1]
     assert stored.state is CampaignState.ESCALATED
     assert reason in decision.binding["unbuilt"]
+
+
+async def test_an_increment_whose_approved_proposal_is_a_revision_is_repaired_under_that_version(
+    calibrating, stored
+):
+    """#2824, entered at the decision that chooses row 12, as the 2.5 cut's ``z_continuum`` repeat
+    reached it. Bug caught: the repair reads the launch block's first version, finds no approval
+    for it, and escalates "unbuilt", so an increment whose proposal was returned once can never be
+    repaired or retried."""
+    import dataclasses as _dc
+
+    stored["art_plan"] = (
+        _dc.replace(
+            _ref("art_plan", "implementation_plan.yaml", "control_implementation_plan", 5),
+            promotion_status="promoted",
+        ),
+        b"version: 1",
+    )
+    w = await _increment_failed_by_the_environment(
+        calibrating, stored, ruled="returned_for_revision", environment=False, revised=True
+    )
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, repair = await w.campaigns.launch_intents(CID)
+    block = repair.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (decision.binding["row"], decision.binding["action"]) == (12, "repair")
+    assert "unbuilt" not in decision.binding
+    assert (block["proposal_id"], block["version"]) == ("prop_cap", 2)
 
 
 async def test_a_rejected_increment_is_repaired_from_its_own_candidate_under_its_plan(
@@ -1280,6 +1838,7 @@ async def test_a_rejected_increment_is_repaired_from_its_own_candidate_under_its
     assert (await w.campaigns.get_campaign(CID)).state is CampaignState.REPAIRING
     assert repair.cycle_kind is CycleKind.REPAIR
     assert overrides["campaign_proposal"]["repair_of"] == "cyc_inc"
+    assert overrides["campaign_proposal"]["continues"] == "cyc_inc"  # SIP-0110 §3.7's carry
     assert overrides["campaign_proposal"]["prior_cycle"]["cycle_id"] == "cyc_inc"
     assert overrides["plan_artifact_refs"] == ["art_candidate", "art_cr", "art_plan"]
     assert [w["type"] for w in overrides["workload_sequence"]] == ["implementation"]
@@ -1470,6 +2029,7 @@ async def _a_late_answer_on_record(
         open_questions=(question,),
         footprint=("backend/main.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -1669,6 +2229,71 @@ async def test_an_accepted_repair_proposes_from_the_manifest_it_ran_against(
     assert decision["warrant"].startswith("answered at cyc_inc's plan gate by agent:005159fd")
 
 
+@pytest.mark.parametrize("kind", ["repair", "retry"])
+async def test_an_accepted_repair_or_retry_freezes_its_criteria_with_what_they_assert(
+    calibrating, stored, monkeypatch, kind
+):
+    """#2595, the 2.4 window's campaign 3, entered at ``CycleCompletion.end`` for the successor
+    over a vault that answers by cycle. A repair or a retry runs no proposal: its launch carries
+    the increment's approved seeds, as the live repair row did (``plan_artifact_refs``: the
+    manifest, the change request and, for a repair, the plan). Bug caught: the promotion read
+    each criterion's statement through the proposal only, froze the successor's criterion with
+    none, and the evidence digest's ``KeyError`` on it meant the campaign's package was never
+    stored."""
+    import dataclasses as _dc
+
+    stored["art_plan"] = (
+        _dc.replace(
+            _ref("art_plan", "implementation_plan.yaml", "control_implementation_plan", 5),
+            promotion_status="promoted",
+        ),
+        b"version: 1",
+    )
+    # The environment failing is a retry's cause (row 10); the work failing, a repair's (row 12).
+    w = await _increment_failed_by_the_environment(calibrating, stored, environment=kind == "retry")
+    *_, successor = await w.campaigns.launch_intents(CID)
+    assert successor.cycle_kind is CycleKind(kind)
+    stored["art_eval"] = (
+        _dc.replace(
+            _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 30),
+            cycle_id="cyc_next",
+        ),
+        _evaluation("accepted"),
+    )
+
+    async def by_cycle(self, *, cycle_id=None, run_id=None, **_):
+        return [
+            ref
+            for ref, _content in _STORED.values()
+            if cycle_id in (None, ref.cycle_id) and run_id in (None, ref.run_id)
+        ]
+
+    monkeypatch.setattr(_Vault, "list_artifacts", by_cycle)
+    run = await w.launched_cycle(
+        kind,
+        "cyc_next",
+        "implementation",
+        "completed",
+        overrides=successor.cycle_request["body"]["execution_overrides"],
+    )
+    w._assess = lambda cycle_id: _async(_assessment(cycle_id, RunVerdict.ACCEPTED))
+    w.progress._assess = w._assess
+
+    await w.end("cyc_next", run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    [promote] = [
+        e
+        for e in await w.campaigns.control_log(CID)
+        if e.operation is ControlOperation.PROMOTE and e.target == "cyc_next"
+    ]
+    [frozen] = promote.binding["frozen_criteria"]
+    assert (frozen["criterion_id"], frozen.get("statement"), frozen.get("surface")) == (
+        "C1",
+        "A run created with capacity 2 is returned with capacity 2",
+        "POST /runs",
+    )
+
+
 @pytest.mark.parametrize(
     ("target", "row", "state"),
     [(1, 3, CampaignState.COMPLETED), (2, 7, CampaignState.AT_PROPOSAL)],
@@ -1689,6 +2314,7 @@ async def test_an_accepted_increment_that_meets_the_target_ends_the_campaign_in_
         allowed_scope=("backend", "frontend"),
         measurement=f"{target} accepted increment(s)",
         target_accepted_increments=target,
+        work_class=None,
     )
     w, run = await calibrating(RunVerdict.ACCEPTED, objective=objective)
     await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
@@ -2115,3 +2741,98 @@ def test_a_rejection_is_already_met_only_when_nothing_else_stands_in_it(evaluati
     from squadops.campaigns.progress import rejected_only_as_already_met
 
     assert rejected_only_as_already_met(evaluation) is only
+
+
+# --------------------------------------------------------------------------------------------
+# SIP-0113 §4.1 (#2414): each ending that reached its build evaluated against the pinned suite
+# --------------------------------------------------------------------------------------------
+
+
+class _ScenarioRunner:
+    """Runs every scenario to ``passed``, noting the tree and which cycles were decided then."""
+
+    def __init__(self, world_of):
+        self._world_of = world_of
+        self.calls: list[tuple[str, list]] = []
+
+    async def evaluate_tree(self, **kw):
+        from squadops.scenarios.runner import TreeEvaluation
+        from squadops.scenarios.steps import ScenarioRun
+
+        log = await self._world_of().campaigns.control_log(CID)
+        decided = [e.target for e in log if e.operation is ControlOperation.DECIDE]
+        self.calls.append((kw["tree_identity"], decided))
+        runs = tuple(
+            ScenarioRun(s["scenario_id"], "passed", steps_taken=1) for s in kw["scenarios"]
+        )
+        return TreeEvaluation(kw["tree_identity"], started=True, runs=runs)
+
+
+async def _pinned_store():
+    from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
+    from squadops.scenarios.models import CampaignSuitePin, parse_suite
+    from squadops.scenarios.suites import approve_suite, draft_suite
+
+    suite = parse_suite(
+        {
+            "name": "group_run",
+            "scenarios": [
+                {
+                    "scenario_id": "runs-list",
+                    "goal": "The runs are listed.",
+                    "surfaces": [{"kind": "http_endpoint", "method": "GET", "path": "/runs"}],
+                    "steps": [{"action": "http", "method": "GET", "path": "/runs"}],
+                    "checks": [{"check": "status", "step": 1, "equals": 200}],
+                }
+            ],
+        }
+    )
+    store = MemoryScenarioStore()
+    await draft_suite(store, suite, actor="supervisor", at=NOW)
+    await approve_suite(store, suite.digest, actor="owner", at=NOW)
+    await store.save_pin(CampaignSuitePin(CID, suite.digest, pinned_by="owner", pinned_at=NOW))
+    return store
+
+
+async def test_each_built_ending_is_evaluated_before_its_decision_against_the_tree_it_built_on(
+    calibrating, stored
+):
+    """#2414's wiring, entered at the completion hook with the real evaluator and a pinned suite.
+    Bugs caught: no evaluation at a cycle's end, so the window has no records; one run after the
+    decision, beside the next cycle on the box; an increment's record naming no previous tree, so
+    its contribution can't be read; or a re-heard cycle evaluated twice."""
+    from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
+
+    store, worlds = await _pinned_store(), []
+    runner = _ScenarioRunner(lambda: worlds[0])
+
+    def evaluator(world):
+        worlds.append(world)
+        return CampaignCycleEvaluator(
+            store=store, runner=runner, vault=_Vault(), campaigns=world.campaigns,
+            clock=lambda: NOW, projects=None, repository=None,
+        )  # fmt: skip
+
+    stack = {"build_profile": "fullstack_fastapi_react"}
+    w, run = await calibrating(RunVerdict.ACCEPTED, evaluator=evaluator, overrides=stack)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    increment_run = await w.launched_cycle(
+        "increment",
+        "cyc_inc",
+        "implementation",
+        "completed",
+        {**stack, "campaign_proposal": {"accepted_cycle_id": "cyc_cal"}},
+    )
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+    await _resume(w, ["cyc_cal", "cyc_inc"])
+
+    log = await w.campaigns.control_log(CID)
+    promoted = {
+        e.target: e.binding["identity"] for e in log if e.operation is ControlOperation.PROMOTE
+    }
+    [cal] = await store.evaluations_for_cycle("cyc_cal")
+    [inc] = await store.evaluations_for_cycle("cyc_inc")
+    assert (cal.campaign_id, cal.previous_accepted_tree_identity) == (CID, None)
+    assert cal.evaluated_tree_identity == promoted["cyc_cal"]
+    assert inc.previous_accepted_tree_identity == promoted["cyc_cal"]
+    assert [decided for _, decided in runner.calls] == [[], ["cyc_cal"]]

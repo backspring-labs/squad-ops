@@ -1,0 +1,29 @@
+# The missing_field form: commit is absent. Otherwise identical to valid.yaml.
+# FR-20's inherited baseline: the agreed checks, run on the pinned, unmodified source (SIP-0112 §8.3.1's
+# vocabulary). parse fails before any change (IR-9); notify never ran, for want of its environment.
+schema: inherited-baseline/v1
+project_id: prj-tally
+development_configuration_revision: 1
+environment:
+  image: python:3.12-slim
+  toolchain: python3
+checks:
+  - id: build
+    result: PASS
+    attribution: inherited
+  - id: parse
+    result: FAIL
+    attribution: inherited
+  - id: ledger
+    result: PASS
+    attribution: inherited
+  - id: server
+    result: PASS
+    attribution: inherited
+  - id: report
+    result: PASS
+    attribution: inherited
+  - id: notify
+    result: UNVERIFIED
+    attribution: inherited
+    reason: "environment gap: TALLY_SMTP_HOST is not set"

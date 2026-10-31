@@ -26,27 +26,65 @@ from session_store import MemorySessionStore, RedisSessionStore
 
 logger = logging.getLogger("squadops.console")
 
+
+class HealthProbeSuccessFilter(logging.Filter):
+    """Drops uvicorn's access line for ``GET /health`` answered 2xx (#2425).
+
+    The container's health check sends one every 30 s, and Docker keeps its own history of them,
+    so the line has no reader. A failed probe and every other request are still logged. The
+    runtime API drops the same routine successes (``squadops.api.runtime.logging_setup``); this
+    image does not carry that package, hence its own copy. uvicorn's access record carries
+    ``(client, method, path, http_version, status)``; a record of any other shape passes.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) < 5:
+            return True
+        method, path, status = args[1], args[2], args[4]
+        probe = method == "GET" and path == "/health"
+        return not (probe and isinstance(status, int) and 200 <= status < 300)
+
+
+# On the logger, not a handler: uvicorn's startup dictConfig replaces its handlers.
+logging.getLogger("uvicorn.access").addFilter(HealthProbeSuccessFilter())
+
 # ── Environment ──────────────────────────────────────────────────────────────
 
-SQUADOPS_API_URL = os.environ.get("SQUADOPS_API_URL", "http://runtime-api:8001")
-SQUADOPS_API_PUBLIC_URL = os.environ.get("SQUADOPS_API_PUBLIC_URL", "http://localhost:8001")
-PREFECT_API_URL = os.environ.get("PREFECT_API_URL", "http://prefect-server:4200")
-PREFECT_API_PUBLIC_URL = os.environ.get("PREFECT_API_PUBLIC_URL", "http://localhost:4200")
-LANGFUSE_API_URL = os.environ.get("LANGFUSE_API_URL", "http://squadops-langfuse:3000")
-LANGFUSE_API_PUBLIC_URL = os.environ.get("LANGFUSE_API_PUBLIC_URL", "http://localhost:3001")
-_REALM = os.environ.get("SQUADOPS_REALM", "squadops-dev")
+#: #2431: every setting is required. Compose sets each for squadops-console (docker-compose.yml);
+#: a default here took effect only when one was missing, and then hid it (the realm never
+#: reached the console, so every deploy's tab read "(dev)").
+REQUIRED_SETTINGS: list[str] = []
+
+
+def _setting(name: str, *, may_be_empty: bool = False) -> str:
+    """The setting's value; a missing one stops the console at startup, named."""
+    REQUIRED_SETTINGS.append(name)
+    value = os.environ.get(name)
+    if value is None or (not value and not may_be_empty):
+        raise RuntimeError(
+            f"console: {name} is required, and docker-compose.yml sets it for squadops-console "
+            "(#2431)"
+        )
+    return value
+
+
+SQUADOPS_API_URL = _setting("SQUADOPS_API_URL")
+SQUADOPS_API_PUBLIC_URL = _setting("SQUADOPS_API_PUBLIC_URL")
+PREFECT_API_URL = _setting("PREFECT_API_URL")
+PREFECT_API_PUBLIC_URL = _setting("PREFECT_API_PUBLIC_URL")
+LANGFUSE_API_URL = _setting("LANGFUSE_API_URL")
+LANGFUSE_API_PUBLIC_URL = _setting("LANGFUSE_API_PUBLIC_URL")
+_REALM = _setting("SQUADOPS_REALM")
 # Derive browser tab title from realm: "squadops-dev" → "squad_ops (dev)"
 _env = _REALM.replace("squadops-", "")
 _CONSOLE_TITLE = f"squad_ops ({_env})"
-KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", f"http://squadops-keycloak:8080/realms/{_REALM}")
-KEYCLOAK_PUBLIC_URL = os.environ.get(
-    "KEYCLOAK_PUBLIC_URL", f"http://localhost:8180/realms/{_REALM}"
-)
-# Legacy — kept for backward compat but no longer used in config.js
-HEALTH_CHECK_PUBLIC_URL = os.environ.get("HEALTH_CHECK_PUBLIC_URL", "http://localhost:8000")
-CONSOLE_CLIENT_ID = os.environ.get("CONSOLE_CLIENT_ID", "squadops-console")
-CONSOLE_REDIRECT_URI = os.environ.get("CONSOLE_REDIRECT_URI", "http://localhost:4040/auth/callback")
-REDIS_URL = os.environ.get("REDIS_URL", "")
+KEYCLOAK_URL = _setting("KEYCLOAK_URL")
+KEYCLOAK_PUBLIC_URL = _setting("KEYCLOAK_PUBLIC_URL")
+CONSOLE_CLIENT_ID = _setting("CONSOLE_CLIENT_ID")
+CONSOLE_REDIRECT_URI = _setting("CONSOLE_REDIRECT_URI")
+# Empty selects in-memory sessions: named, never reached by leaving it out.
+REDIS_URL = _setting("REDIS_URL", may_be_empty=True)
 
 # ── The caller's authorization (#2068) ─────────────────────────────────────
 
@@ -263,6 +301,24 @@ COMMAND_HANDLERS = {
 _runtime: ContinuumRuntime | None = None
 
 
+#: The perspectives the shell ships (Continuum v1.0.2): a plugin's panel or nav target names one of
+#: these, or one this console adds below.
+BUILTIN_PERSPECTIVES = ("signal", "research", "time", "discovery", "systems")
+
+#: The perspectives this console adds to the shell's, registered at boot: ``(id, label, route
+#: prefix, description)``. A plugin's nav entry opening a perspective listed nowhere opens nothing.
+CUSTOM_PERSPECTIVES = (
+    ("cycles", "Cycles", "/cycles", "Cycle lifecycle management and run monitoring"),
+    ("squad", "Squad", "/squad", "Squad configuration, agent health, and model management"),
+    (
+        "memory",
+        "Memory",
+        "/memory",
+        "Memory records: their sources, revisions, uses and, apart, their effect (SIP-0110 §A.3.11)",
+    ),
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _runtime, _api_client
@@ -318,23 +374,12 @@ async def lifespan(app: FastAPI):
     # Register custom perspectives not built into the Continuum shell
     from continuum.domain.perspectives import PerspectiveSpec
 
-    _runtime._registry.perspectives.append(
-        PerspectiveSpec(
-            id="cycles",
-            label="Cycles",
-            route_prefix="/cycles",
-            description="Cycle lifecycle management and run monitoring",
+    for perspective_id, label, route_prefix, description in CUSTOM_PERSPECTIVES:
+        _runtime._registry.perspectives.append(
+            PerspectiveSpec(
+                id=perspective_id, label=label, route_prefix=route_prefix, description=description
+            )
         )
-    )
-
-    _runtime._registry.perspectives.append(
-        PerspectiveSpec(
-            id="squad",
-            label="Squad",
-            route_prefix="/squad",
-            description="Squad configuration, agent health, and model management",
-        )
-    )
 
     # Attach runtime to app state so Continuum API routes can access it
     app.state.runtime = _runtime
@@ -464,8 +509,11 @@ async def proxy_chat_stream(path: str, request: Request):
         stream=True,
     )
 
-    # Error responses are JSON, not SSE — drain and return buffered
-    if upstream.status_code >= 400:
+    # Error responses are JSON, not SSE — drain and return buffered. So is a chat POST that answers
+    # no stream, such as a capture's confirmation (#2180): only a turn's reply is SSE.
+    if upstream.status_code >= 400 or not upstream.headers.get("content-type", "").startswith(
+        "text/event-stream"
+    ):
         from fastapi.responses import Response as FastAPIResponse
 
         body_bytes = await upstream.aread()

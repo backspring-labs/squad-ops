@@ -11,11 +11,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from adapters.sandbox.container_backend import ContainerBackend
+from adapters.sandbox.scenario_runner import ContainerScenarioRunner
 from adapters.tools.docker import DockerAdapter
-from squadops.config.schema import SandboxConfig
+from squadops.config.schema import SandboxClientConfig, SandboxConfig
 from squadops.core.secrets import SecretManager
 from squadops.ports.sandbox import ExecutionSandboxPort
-from squadops.sandbox.environment import get_environment_contract
+from squadops.ports.scenarios import ScenarioRunnerPort
+from squadops.sandbox.environment import EVALUATOR_IMAGE, get_environment_contract
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.noop import NoOpExecutionSandbox
 from squadops.sandbox.service import SandboxService
@@ -38,8 +40,9 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
         backend: ExecutionSandboxPort | None = None
     elif config.provider == "docker":
         contract = get_environment_contract(config.environment)
+        container = DockerAdapter()
         backend = ContainerBackend(
-            container=DockerAdapter(),
+            container=container,
             store=store,
             image=config.image or contract.image,
             operation_commands=contract.commands(),
@@ -48,12 +51,24 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
             environment_contract_id=contract.contract_id(),
             build_mutates_source=contract.build_mutates_source,
             cache_root=Path(config.cache_root) if config.cache_root else None,
+            app_network=config.app_network,
+        )
+        # SIP-0113 §4.1, A3 (#2414): the scenario runner, beside the cycle's execution, on the same
+        # image and posture. Each stack's environment contract starts a blueprint tree.
+        runner = ContainerScenarioRunner(
+            container=container,
+            root=root,
+            image=config.image or contract.image,
+            install_network=contract.install_network,
+            app_network=config.app_network,
+            evaluator_image=EVALUATOR_IMAGE,
         )
         return SandboxService(
             store=store,
             journal=journal,
             backend=backend,
             environment_report=backend.environment_report,
+            scenario_runner=runner,
         )
     else:
         raise ValueError(f"Unknown sandbox provider: {config.provider}")
@@ -66,6 +81,39 @@ def create_execution_sandbox(config: SandboxConfig) -> ExecutionSandboxPort:
     if config.provider == "noop":
         return NoOpExecutionSandbox()
     return create_sandbox_service(config)
+
+
+def create_sandbox_client(config: SandboxClientConfig | None) -> ExecutionSandboxPort | None:
+    """The runtime API's client of the sandbox service (#2451, the owner's ruling of 2026-10-18):
+    one binding for every caller in the runtime API, SIP-0112's seeding and SIP-0113's runner
+    alike. ``none`` is no client: each caller reads the sandbox as unavailable. An absent section
+    is refused, since the selector is required where it is read (#1568)."""
+    if config is None:
+        raise ValueError(
+            "the runtime API needs SQUADOPS__SANDBOX_CLIENT__PROVIDER (none | http): it is required "
+            "where it is read (#1568, #2451)"
+        )
+    if config.provider == "none":
+        return None
+    from adapters.sandbox.http_client import HttpExecutionSandbox
+
+    return HttpExecutionSandbox(
+        base_url=config.service_url,
+        service_token=config.service_token,
+        command_timeout_seconds=config.command_timeout_seconds,
+    )
+
+
+def create_scenario_runner(config: SandboxClientConfig | None) -> ScenarioRunnerPort | None:
+    """SIP-0113's runner in the runtime API (#2414), on the binding ``create_sandbox_client``
+    reads: ``none`` is no runner, so each evaluation records ``no_runner``, and an absent section
+    is refused the same way. Its own client only for the timeout an evaluation needs."""
+    # ``config is None`` never reaches the second test: the first refuses it. It narrows the type.
+    if create_sandbox_client(config) is None or config is None:
+        return None
+    from adapters.sandbox.http_client import HttpScenarioRunner
+
+    return HttpScenarioRunner(base_url=config.service_url, service_token=config.service_token)
 
 
 def resolve_service_token(config: SandboxConfig, secret_manager: SecretManager | None) -> str:

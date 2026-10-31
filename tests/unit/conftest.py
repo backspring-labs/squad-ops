@@ -146,7 +146,6 @@ def mock_ports():
     """Create mock ports bundle for BaseAgent testing."""
     return {
         "llm": MagicMock(),
-        "memory": MagicMock(),
         "prompt_service": MagicMock(),
         "queue": MagicMock(),
         "metrics": MagicMock(),

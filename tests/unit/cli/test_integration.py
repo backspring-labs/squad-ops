@@ -51,7 +51,11 @@ def _test_config():
         {
             "auth": {"enabled": False, "provider": "disabled"},
             # #1568: every selector named.
-            "cycles": {"registry_provider": "memory", "squad_profile_provider": "config"},
+            "cycles": {
+                "registry_provider": "memory",
+                "squad_profile_provider": "config",
+                "project_registry_provider": "config",
+            },
             "prompts": {"asset_source_provider": "filesystem"},
             "telemetry": {"backend": "null"},
             "sandbox": {"provider": "noop"},

@@ -96,7 +96,7 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09, before this draft was recorde
 
 The same findings are in the portfolio's queue and intake log.
 
-## Delivery ledger (current as of 2026-10-16)
+## Delivery ledger (current as of 2026-10-30)
 
 Proposed placements only. Nothing is placed until the owner rules on acceptance and Q25.
 

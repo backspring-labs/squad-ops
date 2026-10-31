@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -23,8 +24,9 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
+from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.cycles.task_outcome import TaskOutcome
-from squadops.tasks.models import TaskResult
+from squadops.tasks.models import INPUT_REFUSAL_EVIDENCE, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
@@ -190,6 +192,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, r
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
 
 
@@ -465,6 +468,82 @@ class TestFallbackTable:
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.FAILED in terminal_statuses
+
+
+class TestInputRefusal:
+    """#2553: a handler that refused its inputs refuses the same envelope again, so the run fails
+    at once, naming why. ``cyc_50354cfc8dbb`` retried it, then ran two correction rounds and failed
+    "Max correction attempts (2) exhausted", with the reason in no log or record."""
+
+    async def test_a_refused_envelope_fails_the_run_with_no_retry_or_correction(
+        self, executor, mock_queue, mock_registry
+    ):
+        refusal = "'artifact_contents' or 'artifact_vault' is required for build tasks"
+        refused_ids: list[str] = []
+
+        def responder(env):
+            refused_ids.append(env["task_id"])
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED",
+                error=f"Validation failed: {refusal}",
+                execution_evidence={INPUT_REFUSAL_EVIDENCE: [refusal]},
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # one dispatch: no retry of the same envelope, and no analysis or repair after it
+        assert mock_queue.publish.call_count == 1
+        [failed] = [
+            c for c in mock_registry.update_run_status.call_args_list
+            if c.args[1] == RunStatus.FAILED
+        ]  # fmt: skip
+        assert "refused its inputs" in failed.kwargs["failure_reason"]
+        assert refusal in failed.kwargs["failure_reason"]
+        # #2553's remainder: the run's recorded ending names the refusal, so its attribution
+        # reads input_contract_failure rather than an unknown ending.
+        _, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert summary.terminal == RunTerminalDecision(
+            kind=TerminalKind.INPUT_REFUSED, task_id=refused_ids[0]
+        )
+
+    async def test_a_failure_without_a_refusal_still_retries(
+        self, executor, mock_queue, mock_registry
+    ):
+        """The fast path reads only the refusal's evidence: other evidence keeps D5's retry."""
+        call = {"n": 0}
+
+        def responder(env):
+            call["n"] += 1
+            if call["n"] == 1:
+                return TaskResult(
+                    task_id=env["task_id"], status="FAILED", error="transient",
+                    execution_evidence={"stderr": "connection reset"},
+                )  # fmt: skip
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={"summary": "ok", "role": "strat"},
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert mock_queue.publish.call_count == 6
+        assert RunStatus.COMPLETED in [
+            c.args[1] for c in mock_registry.update_run_status.call_args_list
+        ]
 
 
 class TestNeedsRepairOutcome:
@@ -1146,16 +1225,16 @@ class TestAcceptPatchRetest:
         return result
 
     @pytest.mark.parametrize(
-        "declared, changed_row, kept",
+        "declared, changed_row, kept, why",
         [
-            (True, "probe", True),
-            (False, "probe", False),
-            (True, "typed", False),
+            (True, "probe", True, ""),
+            (False, "probe", False, "added=vc-probe-api-runs-ordered"),
+            (True, "typed", False, "added=acceptance:endpoint_defined"),
         ],
         ids=["declared-probe-kept", "undeclared-probe-discarded", "typed-check-discarded"],
     )
     async def test_a_check_still_failing_for_a_new_reason_is_progress_only_for_a_probe(
-        self, executor, cycle, caplog, declared, changed_row, kept
+        self, executor, cycle, caplog, declared, changed_row, kept, why
     ):
         """Bug caught (#2340, R5's Next.js `cyc_8174805a98ca`): the repair added the run's id and
         cleared six of seven failures, but the ordering probe it half-fixed then failed for its
@@ -1201,7 +1280,198 @@ class TestAcceptPatchRetest:
             [refused] = [
                 r.getMessage() for r in caplog.records if "progress_not_kept" in r.getMessage()
             ]
-            assert refused.startswith("progress_not_kept task=task_9 why=movement=shifted round=[")
+            # #2306: the refusal names the check that changed.
+            assert refused.startswith(f"progress_not_kept task=task_9 why={why} round=[")
+
+    @staticmethod
+    def _rows_result(*rows: dict, retest: bool) -> TaskResult:
+        """A qa result whose ``validation_result`` carries exactly ``rows``."""
+        return TaskResult(
+            task_id="retest-run_001-00-qa.test" if retest else "task_9",
+            status="FAILED",
+            outputs={
+                "artifacts": []
+                if retest
+                else [
+                    {
+                        "name": "tests/test_api.py",
+                        "content": "def test_x():\n    assert 0\n",
+                        "type": "test",
+                    },
+                ],
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "validation_result": {"passed": False, "checks": list(rows)},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="tests failed",
+        )
+
+    @staticmethod
+    def _suite(*titles: str, broken: bool = False, traceback: str = "") -> dict:
+        row = {
+            "check": "tests_pass",
+            "passed": False,
+            "executed": True,
+            "exit_code": 2 if broken else 1,
+            "runner": "pytest",
+            "suite_broken": broken,
+            "failing_tests": [
+                f"tests/test_api.py::{t}" if t else "tests/test_api.py" for t in titles
+            ],
+        }
+        if traceback:
+            row["app_traceback"] = traceback
+        return row
+
+    #: The envelope's own criterion, failing, as ``acceptance_evaluation`` writes its row.
+    _TYPED_ROW = {
+        "check": "acceptance:regex_match",
+        "status": "failed",
+        "passed": False,
+        "reason": "match_count=0",
+        "params": {"file": "tests/test_api.py", "pattern": "def test_"},
+    }
+
+    @pytest.mark.parametrize(
+        "shape, retest_titles, said",
+        [
+            # be3caea2's shape: the app errored on every test, and the repair fixed that.
+            (
+                "app-error",
+                ("a", "b"),
+                "cleared 0 of 2 failure(s) and added none "
+                "(category:app_error->executed_and_failed got better)",
+            ),
+            # 56d6ead9's shape: the suite never loaded, and a typed check failed beside it.
+            (
+                "unloaded",
+                ("a", "b", "c"),
+                "cleared 2 of 2 failure(s) and added none, and ran 3 failing test(s) the round "
+                "never reached (suite:tests_pass got better)",
+            ),
+        ],
+        ids=["the-app-stopped-erroring", "the-suite-loads-and-a-typed-check-passed-verification"],
+    )
+    async def test_progress_the_row_facts_hid_is_kept_at_the_acceptance_entry(
+        self, executor, cycle, shape, retest_titles, said
+    ):
+        """Bug caught (#2306): the round's category rode every test's element and a test the
+        round never ran read as one the repair added, so a repair that cleared an app error, or
+        made a suite load, was discarded and the task re-rolled. The typed check is the
+        envelope's own criterion: patch verification passed it before the retest ran, so the
+        retest, which runs only the suite, still counts it as evaluated."""
+        from squadops.execution.patch_acceptance import KEEP_PROGRESS
+
+        if shape == "app-error":
+            round_rows = [self._suite("a", "b", traceback="Traceback: AttributeError")]
+        else:
+            round_rows = [self._suite("", broken=True), self._TYPED_ROW]
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._rows_result(self._suite(*retest_titles), retest=True)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(),
+            self._rows_result(*round_rows, retest=False),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert action == KEEP_PROGRESS
+        [entry] = carry["task_9"]
+        assert entry.startswith(f"correction attempt 0: repaired suite retest {said} — the repair")
+
+    def test_only_a_criterion_verification_ran_and_passed_counts_as_evaluated(self):
+        """Bug caught (#2306): a typed criterion counts as evaluated by the retest when the
+        patch's verification passed it. A row verification skipped (a file the patch doesn't
+        carry, or a check the runtime API can't execute) or failed at warning severity is no
+        evidence it now holds, and two criteria of one check on two files are two criteria."""
+        from squadops.cycles.correction_signature import criterion_identity
+        from squadops.cycles.patch_verification import PatchCheckRecord, PatchVerification
+        from squadops.execution.patch_acceptance import _verified_criteria
+
+        on = {"file": "app/a.py", "pattern": "x"}
+        verification = PatchVerification(
+            status="passed",
+            checks=(
+                PatchCheckRecord(check="regex_match", severity="error", status="passed", params=on),
+                PatchCheckRecord(
+                    check="regex_match",
+                    severity="error",
+                    status="skipped",
+                    params={"file": "app/b.py", "pattern": "x"},
+                ),
+                PatchCheckRecord(check="frontend_compiles", severity="error", status="skipped"),
+                PatchCheckRecord(check="import_present", severity="warning", status="failed"),
+            ),
+        )
+        assert _verified_criteria(verification) == {
+            criterion_identity("acceptance:regex_match", on)
+        }
+        assert _verified_criteria(None) == frozenset()
+
+    async def test_a_criterion_verification_skipped_is_not_read_as_cleared(self, executor, cycle):
+        """Bug caught (#2306's second reader): the round failed one check's criterion on a file
+        the patch doesn't carry, so verification skipped it, and passed the same check's
+        criterion on a file it does carry. Keyed by the check alone, the skipped failure read as
+        evaluated, its absence from the suite-only retest read as cleared, and a repair that left
+        it failing was kept as accepted state. The carry shows the retest ran: the refusal is the
+        comparison's, not verification's."""
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        envelope = self._qa_envelope()
+        absent = {"file": "app/b.py", "pattern": "def handler"}
+        envelope.inputs["acceptance_criteria"].append(
+            TypedCheck(check="regex_match", params=absent, severity="error", description="b")
+        )
+        failing_b = {**self._TYPED_ROW, "reason": "file_not_found", "params": absent}
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._rows_result(self._suite("a"), retest=True)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            self._rows_result(self._suite("a", "b"), failing_b, retest=False),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert (action, holder) == ("continue", {})
+        [entry] = carry["task_9"]
+        assert "repaired suite retest FAILED" in entry
+
+    async def test_a_probe_the_retest_skipped_is_not_read_as_cleared(self, executor, cycle):
+        """Bug caught (#2306's second reader, on main as well): a retest row that skipped counted
+        as its check evaluated. A probe skipped because its subject never launched looked at
+        nothing, but it read as cleared, and a repair that left it failing was kept."""
+        probe = "vc-probe-api-runs"
+        envelope = self._qa_envelope()
+        envelope.inputs["contract_probes"] = [{"id": probe}]
+        failed = {"check": probe, "status": "failed", "reason": "500", "criterion_id": probe}
+        skipped = {**failed, "status": "skipped", "reason": "could not launch subject"}
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._rows_result(self._suite("a"), skipped, retest=True)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            self._rows_result(self._suite("a", "b"), failed, retest=False),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert (action, holder) == ("continue", {})
+        [entry] = carry["task_9"]
+        assert "repaired suite retest FAILED" in entry
 
     async def test_the_retest_line_names_a_failed_probe(self, executor, cycle, caplog):
         """Bug caught (#2341): the retest's verdict text listed only rows carrying

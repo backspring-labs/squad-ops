@@ -16,26 +16,32 @@ execute it (§4.4).
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 
 from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.ports.scenarios import ScenarioRunnerPort
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.models import (
     BuildResult,
+    CommandResult,
     DiagnosticsResult,
+    FileContent,
     InstallResult,
     OperationName,
     OperationResult,
     OperationStatus,
     PatchResult,
     ProbeResult,
+    RevisionContent,
     RevisionOrigin,
     StartResult,
     StopResult,
     TestRunResult,
     WorkspaceRevision,
+    declared_argv,
+    declared_reader,
 )
-from squadops.sandbox.workspace import WorkspaceStore
+from squadops.sandbox.workspace import WorkspaceStore, working_directory
 
 _NO_BACKEND = "no execution backend configured"
 
@@ -50,11 +56,18 @@ class SandboxService(ExecutionSandboxPort):
         journal: OperationEvidenceJournal,
         backend: ExecutionSandboxPort | None = None,
         environment_report: Callable[[], Awaitable[dict | None]] | None = None,
+        scenario_runner: ScenarioRunnerPort | None = None,
     ) -> None:
         self._store = store
         self._journal = journal
         self._backend = backend
         self._environment_report = environment_report
+        self._scenario_runner = scenario_runner
+
+    @property
+    def scenario_runner(self) -> ScenarioRunnerPort | None:
+        """SIP-0113's runner (A3, #2414), or None where the deploy runs none."""
+        return self._scenario_runner
 
     async def environment_report(self) -> dict | None:
         """The backend's environment facts (contract id, image presence) for
@@ -63,22 +76,37 @@ class SandboxService(ExecutionSandboxPort):
             return None
         return await self._environment_report()
 
-    # -- workspace lifecycle (service-level, not port operations) ------------
+    # -- workspace lifecycle -------------------------------------------------
 
-    def seed_workspace(
+    async def seed_workspace(
         self,
         cycle_id: str,
-        files: Mapping[str, str],
+        files: Mapping[str, FileContent],
         *,
         origin: str = RevisionOrigin.SCAFFOLD_SEED,
+        executable: Collection[str] = (),
         created_at: str | None = None,
     ) -> WorkspaceRevision:
         """Provision and seed the cycle workspace, cutting revision one. The
         persisted revision is the seeding's durable record."""
-        return self._store.seed(cycle_id, files, origin=origin, created_at=created_at)
+        return self._store.seed(
+            cycle_id, files, origin=origin, executable=executable, created_at=created_at
+        )
+
+    async def release_workspace(self, cycle_id: str) -> None:
+        """Remove the cycle's workspace and its revisions (#2473); its journal stays."""
+        self._store.cleanup(cycle_id)
 
     def verify_pinned(self, cycle_id: str, revision_id: str) -> bool:
         return self._store.verify_pinned(cycle_id, revision_id)
+
+    def get_revision(self, cycle_id: str, revision_id: str) -> WorkspaceRevision | None:
+        return self._store.get_revision(cycle_id, revision_id)
+
+    async def read_workspace_revision(self, revision: WorkspaceRevision) -> RevisionContent:
+        files, executable = self._store.read_pinned(revision.cycle_id, revision.revision_id)
+        stored = self._store.get_revision(revision.cycle_id, revision.revision_id) or revision
+        return RevisionContent(revision=stored, files=files, executable=executable)
 
     # -- delegated execution operations --------------------------------------
 
@@ -179,13 +207,50 @@ class SandboxService(ExecutionSandboxPort):
             lambda: self._backend.read_build_diagnostics(revision=revision),
         )
 
+    async def run_declared_command(
+        self,
+        *,
+        revision: WorkspaceRevision,
+        command: tuple[str, ...],
+        working_dir: str = ".",
+        setup: tuple[tuple[str, ...], ...] = (),
+        timeout_seconds: float | None = None,
+        findings_reader: str | None = None,
+    ) -> CommandResult:
+        # Refused here, whether or not a backend runs it: a malformed declaration is the
+        # caller's error, never an environment that could not run it.
+        command = declared_argv(command)
+        setup = tuple(declared_argv(step) for step in setup)
+        working_directory(working_dir)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError(f"timeout_seconds must be positive, got {timeout_seconds}")
+        declared_reader(findings_reader)
+        backend = self._backend
+
+        async def call() -> CommandResult:
+            assert backend is not None  # _delegate answers not_run without calling, when None
+            return await backend.run_declared_command(
+                revision=revision,
+                command=command,
+                working_dir=working_dir,
+                setup=setup,
+                timeout_seconds=timeout_seconds,
+                findings_reader=findings_reader,
+            )
+
+        result = await self._delegate(
+            OperationName.RUN_DECLARED_COMMAND, CommandResult, revision, call, command=command
+        )
+        assert isinstance(result, CommandResult)
+        return result
+
     # -- workspace mutation (never delegated) --------------------------------
 
     async def apply_workspace_patch(
         self,
         *,
         base: WorkspaceRevision,
-        files: Mapping[str, str | None],
+        files: Mapping[str, FileContent | None],
         origin: str = RevisionOrigin.AGENT_PATCH,
     ) -> PatchResult:
         """Apply the patch through the store (stale-base guarded, §4.6

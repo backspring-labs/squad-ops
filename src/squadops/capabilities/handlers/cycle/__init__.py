@@ -30,9 +30,9 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_expected_layers,
     _detect_stubs,
     _estimate_min_artifacts,
-    _is_test_file,
     _rewrite_manifest_identifiers,
 )
+from squadops.capabilities.qa_prompt_contents import is_test_file as _is_test_file
 
 __all__ = [
     "_DEFAULT_TYPE",

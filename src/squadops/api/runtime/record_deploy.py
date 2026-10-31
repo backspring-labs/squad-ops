@@ -12,8 +12,10 @@ over the one pool (#577).
     {"recorded_by": "rebuild_and_deploy.sh all", "source_revision": "7acc2bc1",
      "services": [{"service": "neo", "image_id": "sha256:…", "revision": "7acc2bc1"}, …]}
 
-To them it adds the digest of every model an enabled agent of any squad profile names, as the
-LLM provider reports it, and writes one record. A provider that cannot be listed leaves every
+To them it adds the digest of every model the deploy serves, as the LLM provider reports it, and
+writes one record. Those are the models an enabled agent of any squad profile names, and the model
+of each enabled agent instance whose service the deploy runs (#2676), read from the configured
+agent instances file. A provider that cannot be listed leaves every
 digest ``None`` and says so on stderr; it does not stop the record, whose images are still true.
 
 Its check, which writes nothing, is ``deploy_check`` (#2193).
@@ -26,9 +28,12 @@ import json
 import logging
 import sys
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import load_config
@@ -36,6 +41,7 @@ from squadops.cycles.deploy_record import (
     DeployFactsError,
     DeployRecord,
     ServiceImage,
+    instance_models,
     model_weights,
     services_from_facts,
 )
@@ -58,10 +64,11 @@ async def record_deploy(
     registry: DeployRegistryPort,
     profiles: SquadProfilePort,
     llm: LLMPort,
+    instances: Sequence[Mapping[str, Any]],
     now: datetime | None = None,
 ) -> DeployRecord:
-    """Build the record from the deploy step's facts, the profiles' models and their digests,
-    and write it.
+    """Build the record from the deploy step's facts, the models the deploy serves (the profiles'
+    and its agent instances') and their digests, and write it.
 
     Raises:
         DeployFactsError: the facts name no services, a service without its image, or no writer.
@@ -75,14 +82,16 @@ async def record_deploy(
         for profile in await profiles.list_profiles()
         for agent in profile.agents
         if agent.enabled and agent.model
-    }
+    } | instance_models(instances, services)
+    digests: dict[str, str | None] | None
     try:
         available: list[ModelInfo] = await llm.list_available_models()
+        digests = {m.name: m.digest for m in available}
     except Exception as exc:  # the provider is down or unreachable: the images are still true
         print(
             f"record_deploy: model digests unavailable ({exc}); recorded as None", file=sys.stderr
         )
-        available = []
+        digests = None
     source = (facts.get("source_revision") or "").strip()
     record = DeployRecord(
         deploy_id=f"dep_{uuid.uuid4().hex[:12]}",
@@ -90,7 +99,7 @@ async def record_deploy(
         recorded_by=recorded_by,
         source_revision=source if source and source != "unknown" else None,
         services=services,
-        models=model_weights(named, {m.name: m.digest for m in available}),
+        models=model_weights(named, digests),
     )
     await registry.record(record)
     return record
@@ -144,7 +153,7 @@ async def _deploy_config_and_pool() -> tuple[AppConfig, asyncpg.Pool]:
     from adapters.persistence.pool import create_pool
 
     config = load_config(secret_provider_factory=secret_provider_for)
-    return config, await create_pool(config.db.url, min_size=1, max_size=2)
+    return config, await create_pool(config.database().url, min_size=1, max_size=2)
 
 
 def _deploy_registry(config: AppConfig, pool: asyncpg.Pool) -> DeployRegistryPort:
@@ -160,6 +169,19 @@ async def compose_and_check(facts: Mapping[str, Any]) -> tuple[DeployRecord | No
         return await check_deploy(facts, registry=_deploy_registry(config, pool))
     finally:
         await pool.close()
+
+
+def _agent_instances(path: Path) -> list[dict[str, Any]]:
+    """The agent instances the runtime reads its chat agents from. Required: without them the
+    record would leave each agent's own model undeclared, and the box would read it as foreign
+    (#2676).
+
+    Raises:
+        DeployFactsError: the file is missing.
+    """
+    if not path.exists():
+        raise DeployFactsError(f"the agent instances file {path} is missing")
+    return (yaml.safe_load(path.read_text()) or {}).get("instances") or []
 
 
 async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
@@ -180,7 +202,13 @@ async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
             api_key=config.llm.api_key,
             **({"default_model": config.llm.model} if config.llm.model else {}),
         )
-        return await record_deploy(facts, registry=registry, profiles=profiles, llm=llm)
+        return await record_deploy(
+            facts,
+            registry=registry,
+            profiles=profiles,
+            llm=llm,
+            instances=_agent_instances(config.agent.instances_file),
+        )
     finally:
         await pool.close()
 
@@ -194,10 +222,12 @@ def main() -> int:
         return 2
     unrevisioned = [s.service for s in record.services if s.revision is None]
     undigested = [m.model for m in record.models if m.digest is None]
+    unserved = [m.model for m in record.models if m.served is False]
     print(
         f"deploy record {record.deploy_id}: {len(record.services)} services "
         f"({len(unrevisioned)} without a revision label), {len(record.models)} models "
-        f"({len(undigested)} without a digest{': ' + ', '.join(undigested) if undigested else ''})"
+        f"({len(undigested)} without a digest{': ' + ', '.join(undigested) if undigested else ''}"
+        f"{f'; {len(unserved)} of them not served by the provider' if unserved else ''})"
     )
     return 0
 

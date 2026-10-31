@@ -5,6 +5,7 @@ Unit tests for cycle commands (SIP-0065 §6.3).
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from squadops.cli import exit_codes
@@ -27,10 +28,11 @@ def _mock_client(get_val=None, post_val=None):
 class TestCyclesCreate:
     @patch("squadops.cli.commands.cycles._get_client")
     def test_default_profile(self, mock_get_client):
-        """cycles create sends correct request body with default CRP profile."""
+        """cycles create with no --request-profile sends the operator's minimal one, ``smoke``
+        (#316: ``default`` stays, frozen, and is no longer the CLI's choice)."""
         from squadops.contracts.cycle_request_profiles import load_profile
 
-        crp = load_profile("default")
+        crp = load_profile("smoke")
         expected_hash = compute_config_hash(crp.defaults, {})
 
         mock_get_client.return_value = _mock_client(
@@ -85,6 +87,57 @@ class TestCyclesCreate:
         ) or mock_get_client.return_value.post.call_args[1].get("json")
         assert body["experiment_context"].get("benchmark") is True
 
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ('["art_d4b1402e61a1"]', ["art_d4b1402e61a1"]),
+            ('{"a": 1}', {"a": 1}),
+            ("art_plain", "art_plain"),
+        ],
+        ids=["list", "mapping", "string-unchanged"],
+    )
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_a_list_or_mapping_value_reaches_the_overrides_as_data(
+        self, mock_get_client, value, expected
+    ):
+        """#2496: a list kept as its string made the plan loader iterate characters, so an
+        operator-supplied plan was never found."""
+        mock_get_client.return_value = _mock_client(
+            post_val={
+                "cycle_id": "c",
+                "run_id": "r",
+                "status": "queued",
+                "resolved_config_hash": "x",
+            }
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "cycles",
+                "create",
+                "proj1",
+                "--squad-profile",
+                "sp1",
+                "--set",
+                f"plan_artifact_refs={value}",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        body = mock_get_client.return_value.post.call_args.kwargs["json"]
+        assert body["execution_overrides"]["plan_artifact_refs"] == expected
+
+    def test_a_value_that_looks_structured_but_isnt_json_is_refused(self):
+        result = runner.invoke(
+            app,
+            ["cycles", "create", "proj1", "--squad-profile", "sp1", "--set", "refs=[art_1"],
+            env={"COLUMNS": "200"},  # Rich wraps the error box at the console's width (#2491)
+        )
+
+        assert result.exit_code != 0
+        assert "isn't valid JSON" in result.output
+
     @patch("squadops.cli.commands.cycles._get_client")
     def test_set_override(self, mock_get_client):
         """--set puts value in execution_overrides when it differs from default."""
@@ -126,7 +179,7 @@ class TestCyclesCreate:
             merge_config,
         )
 
-        crp = load_profile("default")
+        crp = load_profile("smoke")
         user_vals = {"build_strategy": "incremental"}
         merged = merge_config(crp.defaults, user_vals)
         overrides = compute_overrides(crp.defaults, merged)
@@ -156,6 +209,36 @@ class TestCyclesCreate:
         assert result.exit_code == 0
         # No hash mismatch warning in output
         assert "mismatch" not in result.output
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_a_stacks_defaults_are_in_the_local_hash(self, mock_get_client):
+        """#316 (R2.3): ``validate`` on a stack sends the stack's request defaults in its applied
+        defaults. Bug caught: the CLI hashing the profile's defaults alone, so every create on a
+        stack warns of a hash mismatch the server never had."""
+        from squadops.contracts.cycle_request_profiles import cycle_request_body
+
+        stack = {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"}
+        sent = cycle_request_body("validate", squad_profile_id="sp1", user_values=stack)
+        server_hash = compute_config_hash(sent["applied_defaults"], sent["execution_overrides"])
+        mock_get_client.return_value = _mock_client(
+            post_val={
+                "cycle_id": "cyc_1",
+                "run_id": "run_1",
+                "status": "queued",
+                "resolved_config_hash": server_hash,
+            }
+        )
+
+        result = runner.invoke(
+            app,
+            ["cycles", "create", "proj1", "--squad-profile", "sp1", "--request-profile",
+             "validate", "--set", "build_profile=nextjs_ts", "--set", "development_profile=nextjs_ts"],
+        )  # fmt: skip
+
+        assert result.exit_code == 0
+        assert "mismatch" not in result.output
+        body = mock_get_client.return_value.post.call_args.kwargs["json"]
+        assert body["applied_defaults"]["time_budget_seconds"] == 10800
 
     @patch("squadops.cli.commands.cycles._get_client")
     def test_not_found(self, mock_get_client):

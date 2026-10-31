@@ -8,9 +8,8 @@ The qa image carries every toolchain a round's checks need: pytest, vitest, Node
 one-off of the service has the agent's own configuration and network but not its command, so
 nothing here consumes from the queue.
 
-**The ports mirror ``AgentRunner._create_ports``**, with four exceptions, each named where it is
+**The ports mirror ``AgentRunner._create_ports``**, with three exceptions, each named where it is
 built:
-- the memory port is a null store, because the one-off shares the qa agent's memory volume;
 - the queue refuses every call;
 - telemetry is ``null``, and LLM observability is the no-op;
 - request templates come from a filesystem source for the arm. The scoped arm reads today's
@@ -31,7 +30,6 @@ from typing import Any
 from uuid import uuid4
 
 from squadops.ports.comms.queue import QueuePort
-from squadops.ports.memory.store import MemoryPort
 
 #: The admission verdicts. A round is replayable only when its recorded failure reproduces.
 ADMITTED = "admitted"
@@ -41,22 +39,6 @@ UNRUNNABLE = "unrunnable"
 #: A recorded check the verifier returns no row for: a framework-owed row (a build step's
 #: ``acceptance:frontend_compiles``) that the producing handler writes, not a typed criterion.
 UNEVALUATED = "recorded_check_not_evaluated_here"
-
-
-class NullMemory(MemoryPort):
-    """Stores nothing and finds nothing: the one-off shares the qa agent's memory volume."""
-
-    async def store(self, entry: Any) -> str:
-        return "null"
-
-    async def search(self, query: Any) -> list[Any]:
-        return []
-
-    async def get(self, memory_id: str) -> Any:
-        return None
-
-    async def delete(self, memory_id: str) -> bool:
-        return False
 
 
 class RefusingQueuePort(QueuePort):
@@ -114,7 +96,6 @@ async def compose_system(
     metrics, events = create_telemetry_provider("null")
     return create_system(
         llm=llm,
-        memory=NullMemory(),
         prompt_service=PromptAssembler(create_prompt_repository("filesystem")),
         queue=RefusingQueuePort(),
         metrics=metrics,
@@ -381,9 +362,11 @@ def use_arm(arm: str) -> None:
     no file offered the edit form, the repair is asked "exactly as before" 1.8 — the output
     section, the closing line and the absent edit-form appendix all follow the one decision."""
     if arm == WHOLE_FILE:
-        from squadops.capabilities.handlers.impl import repair_handlers
+        # #2810: the decision is ``repair_prompt_contents.anchorable_files``, which the handler,
+        # its current files and its edit form all read through the module.
+        from squadops.capabilities import repair_prompt_contents
 
-        repair_handlers._RepairPromptMixin._anchorable_files = lambda self, inputs: []
+        repair_prompt_contents.anchorable_files = lambda inputs: []
 
 
 def failed_result(bundle: dict[str, Any], retest: Any) -> Any:
@@ -591,13 +574,12 @@ async def replay_sample(
     async def dispatch_step(
         step_envelope: Any, run_id: str, cycle: Any, flow_run_id: Any, **_: Any
     ) -> Any:
-        from squadops.capabilities.handlers.impl import repair_handlers
+        from squadops.capabilities import repair_prompt_contents
 
         role = (step_envelope.metadata or {}).get("role") or "qa"
         # What the arm offered this repair: the files it may revise by anchored edit. Read
         # through the handler's own decision (after the arm's override), not inferred.
-        probe = type("_Probe", (repair_handlers._RepairPromptMixin,), {})()
-        offered = probe._anchorable_files(step_envelope.inputs or {})
+        offered = repair_prompt_contents.anchorable_files(step_envelope.inputs or {})
         recorder = systems[role].ports.llm
         recorder.drain()  # only this step's generations are its responses
         step = await systems[role].orchestrator.submit_task(step_envelope, timeout_seconds=1800)

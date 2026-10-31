@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from squadops.ports.comms.messaging import MessagingPort
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
-    from squadops.ports.memory.store import MemoryPort
     from squadops.ports.prompts.service import PromptService
     from squadops.ports.telemetry.events import EventPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
@@ -130,7 +129,6 @@ def create_orchestrator(
 def create_system(
     *,
     llm: LLMPort,
-    memory: MemoryPort,
     prompt_service: PromptService,
     queue: QueuePort,
     metrics: MetricsPort,
@@ -149,7 +147,6 @@ def create_system(
 
     Args:
         llm: LLM provider port
-        memory: Memory storage port
         prompt_service: Prompt assembly service
         queue: Message queue port
         metrics: Metrics collection port
@@ -163,7 +160,6 @@ def create_system(
     Example:
         system = create_system(
             llm=llm_adapter,
-            memory=memory_adapter,
             prompt_service=prompt_service,
             queue=queue_adapter,
             metrics=metrics_adapter,
@@ -178,7 +174,6 @@ def create_system(
     # Create ports bundle
     ports = PortsBundle(
         llm=llm,
-        memory=memory,
         prompt_service=prompt_service,
         queue=queue,
         metrics=metrics,

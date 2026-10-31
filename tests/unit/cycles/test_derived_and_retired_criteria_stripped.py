@@ -159,3 +159,114 @@ def test_a_derived_check_over_a_file_the_framework_would_not_inject_it_on_is_sti
         ],
     )
     assert _applicable_acceptance(task) == []
+
+
+# ---------------------------------------------------------------------------
+# #2572: an authored import of the app entry module, where the boundary is bound
+# ---------------------------------------------------------------------------
+
+#: The 2.4 window's campaign 1, increment 2 (cyc_898dc802e89b): its approved plan, and the
+#: contract and manifest its implementation run loaded. Task 1's qa suite authored
+#: `import_present: backend.main`, which the bound boundary forbids; the run ended
+#: `contested_check`.
+_WINDOW = "2-4-0-window-c1-increment-2-{}.yaml"
+_T6 = "backend/tests/criteria/test_T6.py"
+_ENTRY = ["backend.main", "app.main", "main"]
+
+
+def _window_qa_criteria(caplog) -> list:
+    """Entered where the live cycle is: ``generate_task_plan`` on the implementation run, with
+    what that run loaded. Returns the acceptance criteria dispatched with the T6 suite."""
+    from squadops.cycles.models import Run
+    from squadops.cycles.task_plan import generate_task_plan
+    from squadops.cycles.verification_contract import VerificationContract
+    from squadops.stacks.scaffold import InterfaceManifest
+    from tests.unit.cycles.test_increment_evaluation_wiring import PROFILE, _cycle
+
+    def read(kind: str) -> str:
+        return (_REPLAYS / _WINDOW.format(kind)).read_text(encoding="utf-8")
+
+    run = Run("run_i", "cyc_inc", 3, "running", "system", "cfg", workload_type="implementation")
+    with caplog.at_level(logging.WARNING, logger="squadops.cycles.task_plan"):
+        envelopes = generate_task_plan(
+            _cycle(False),
+            run,
+            PROFILE,
+            plan=ImplementationPlan.from_yaml(read("implementation_plan")),
+            contract=VerificationContract.from_yaml(read("verification_contract")),
+            interface_manifest=InterfaceManifest.from_yaml(read("interface_manifest")),
+        )
+    [qa] = [e for e in envelopes if _T6 in e.inputs.get("expected_artifacts", [])]
+    return qa.inputs["acceptance_criteria"]
+
+
+def test_the_window_suites_entry_module_import_is_dropped_and_its_boundary_kept(caplog):
+    """Bug caught: the two rows dispatched together again, so no suite can pass both and the
+    increment's run ends `contested_check`, as cyc_898dc802e89b's did. Dropping the boundary
+    instead would let a suite build its own app, so this asserts which row survives, and that
+    the author's other rows all do."""
+    plan = ImplementationPlan.from_yaml(
+        (_REPLAYS / _WINDOW.format("implementation_plan")).read_text(encoding="utf-8")
+    )
+    [authored] = [t for t in plan.tasks if _T6 in t.expected_artifacts]
+    assert ("import_present", "backend.main") in {
+        (c.check, c.params.get("module")) for c in _typed(authored)
+    }, "the fixture is not the plan that authored the import"
+
+    dispatched = _window_qa_criteria(caplog)
+
+    typed = [(c.check, c.params.get("file")) for c in dispatched if isinstance(c, TypedCheck)]
+    assert ("harness_boundary", _T6) in typed
+    assert ("import_present", _T6) not in typed
+    assert ("function_defined", _T6) in typed
+    assert [c for c in dispatched if isinstance(c, str)] == [
+        c for c in authored.acceptance_criteria if isinstance(c, str)
+    ]
+    assert any(
+        "entry_module_import_stripped" in r.message and "backend.main" in r.message
+        for r in caplog.records
+    )
+
+
+def _boundary(file: str = _T6) -> TypedCheck:
+    return TypedCheck(
+        check="harness_boundary",
+        params={"file": file, "entry_modules": _ENTRY},
+        id=f"scaffold-harness:{file}",
+    )
+
+
+@pytest.mark.parametrize(
+    ("params", "harness", "dropped"),
+    [
+        ({"file": _T6, "module": "backend.main"}, [_boundary()], True),
+        ({"file": _T6, "module": "backend.main", "symbol": "app"}, [_boundary()], True),
+        # The boundary reads `from .main import x` as module `main`, and #441 reads a dotless
+        # spec as relative: each asks for an import the boundary refuses.
+        ({"file": _T6, "module": ".main", "symbol": "app"}, [_boundary()], True),
+        ({"file": _T6, "module": "main"}, [_boundary()], True),
+        ({"file": _T6, "module": ".backend.main"}, [_boundary()], True),
+        # `from . import main` satisfies a one-segment relative spec, and the boundary reads no
+        # module from it, so the row can pass beside the boundary.
+        ({"file": _T6, "module": ".main"}, [_boundary()], False),
+        ({"file": _T6, "module": "..main"}, [_boundary()], False),
+        ({"file": _T6, "module": "backend.main.routes"}, [_boundary()], True),
+        ({"file": f"./{_T6}", "module": "backend.main"}, [_boundary()], True),
+        # A module whose name only starts like an entry module is not inside one.
+        ({"file": _T6, "module": "backend.mainframe"}, [_boundary()], False),
+        ({"file": _T6, "module": "backend.store"}, [_boundary()], False),
+        # No boundary on this file, or none at all (author mode): nothing contradicts the row.
+        ({"file": _T6, "module": "backend.main"}, [_boundary("backend/tests/other.py")], False),
+        ({"file": _T6, "module": "backend.main"}, [], False),
+    ],
+)
+def test_an_import_is_dropped_only_where_the_bound_boundary_refuses_it(params, harness, dropped):
+    """Bug caught: a strip too wide (a module merely prefixed like an entry module, a relative spec
+    `from . import main` satisfies, a file the boundary isn't bound on, an author-mode suite)
+    deletes a check nothing contradicts; one too narrow (a relative or dotless spec, a submodule,
+    a path spelled `./`) leaves the pair."""
+    from squadops.cycles.task_plan import _without_entry_module_imports
+
+    authored = TypedCheck(check="import_present", params=params, severity="error")
+    kept = _without_entry_module_imports([authored, "prose stays"], harness)
+    assert kept == (["prose stays"] if dropped else [authored, "prose stays"])

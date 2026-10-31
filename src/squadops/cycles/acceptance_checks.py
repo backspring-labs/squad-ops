@@ -63,7 +63,7 @@ from squadops.cycles.source_termination import (
     check_termination,
 )
 from squadops.stacks.client_surface import ClientSurface
-from squadops.stacks.scaffold import app_invocation_for
+from squadops.stacks.scaffold import app_invocation_for, names_entry_module
 
 logger = logging.getLogger(__name__)
 
@@ -896,11 +896,15 @@ class DeclaredImportsCheck(BaseCheck):
         return CheckOutcome.passed(file=str(params["file"]))
 
 
-def _client_http_call(expr: ast.expr) -> tuple[str, str] | None:
+def _client_http_call(expr: ast.expr, *, templates: bool = False) -> tuple[str, str] | None:
     """``(METHOD, path)`` when ``expr`` is a client-style HTTP call with a string-
     literal path — ``client.post("/runs", ...)``, any receiver, ``await`` unwrapped —
     else ``None``. Style-immune by construction: the receiver is whatever name the
-    suite uses (``harness_boundary`` guarantees it is the scaffold client)."""
+    suite uses (``harness_boundary`` guarantees it is the scaffold client).
+
+    ``templates`` also reads a path written as an f-string, as its template
+    (``_fstring_template``). Only the declared-route rule asks for it (#2297): the
+    pinned-status rule compares concrete paths, and reads only literals."""
     if isinstance(expr, ast.Await):
         expr = expr.value
     if not (isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute)):
@@ -910,11 +914,32 @@ def _client_http_call(expr: ast.expr) -> tuple[str, str] | None:
     arg0 = expr.args[0]
     if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
         return expr.func.attr.upper(), arg0.value
+    if templates and isinstance(arg0, ast.JoinedStr):
+        return expr.func.attr.upper(), _fstring_template(arg0)
     return None
 
 
+def _fstring_template(node: ast.JoinedStr) -> str:
+    """An f-string path as its template: the literal text, and each interpolation as
+    ``{<its expression>}`` — ``f"/runs/{run_id}/participants/"`` reads as
+    ``/runs/{run_id}/participants/``. An interpolation is read as one non-empty value: an
+    expression whose text holds a ``/``, ``?`` or ``#`` is written ``{…}`` so that it cannot
+    split a segment or end the path."""
+    parts: list[str] = []
+    for value in node.values:
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            parts.append(value.value)
+        elif isinstance(value, ast.FormattedValue):
+            text = ast.unparse(value.value)
+            parts.append("{" + ("…" if any(c in text for c in "/?#") else text) + "}")
+    return "".join(parts)
+
+
 def _assert_status_triples(
-    node: ast.Assert, bindings: list[tuple[str, int, tuple[str, str] | None]]
+    node: ast.Assert,
+    bindings: list[tuple[str, int, tuple[str, str] | None]],
+    *,
+    templates: bool = False,
 ) -> list[tuple[str, str, int, int]]:
     """``(METHOD, path, asserted_status, lineno)`` rows an assert deterministically
     pins: ``assert <resp>.status_code == <int>`` (either operand order, ``Eq`` only),
@@ -936,7 +961,7 @@ def _assert_status_triples(
     if not (isinstance(attr, ast.Attribute) and attr.attr == "status_code"):
         return []
     base = attr.value
-    call = _client_http_call(base)
+    call = _client_http_call(base, templates=templates)
     if call is None and isinstance(base, ast.Name):
         # latest binding of this name before the assert (source order, not walk order). A
         # rebinding the check cannot read is ``None`` and wins too: the name no longer means
@@ -948,9 +973,12 @@ def _assert_status_triples(
     return [(call[0], call[1], status, node.lineno)]
 
 
-def _extract_status_assertions(tree: ast.AST) -> list[tuple[str, str, int, int]]:
+def _extract_status_assertions(
+    tree: ast.AST, *, templates: bool = False
+) -> list[tuple[str, str, int, int]]:
     """Every deterministically-extractable ``(METHOD, path, status, lineno)`` a
-    suite asserts, per function (response bindings do not leak across tests)."""
+    suite asserts, per function (response bindings do not leak across tests).
+    ``templates`` reads f-string paths too, as templates (``_client_http_call``)."""
     out: list[tuple[str, str, int, int]] = []
     for func in (
         n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
@@ -968,10 +996,14 @@ def _extract_status_assertions(tree: ast.AST) -> list[tuple[str, str, int, int]]
                     # meaning the earlier one. Recording only readable calls left
                     # ``resp = client.post(f"/runs/{run_id}/join")`` bound to the create.
                     bindings.append(
-                        (node.targets[0].id, node.lineno, _client_http_call(node.value))
+                        (
+                            node.targets[0].id,
+                            node.lineno,
+                            _client_http_call(node.value, templates=templates),
+                        )
                     )
             else:
-                out.extend(_assert_status_triples(node, bindings))
+                out.extend(_assert_status_triples(node, bindings, templates=templates))
     return out
 
 
@@ -989,6 +1021,126 @@ def _prefixed_pinned_path(
         if m == method and path != p and path.endswith(p):
             return p
     return None
+
+
+#: A route segment that is one path parameter, ``{name}`` or ``{name:convertor}``.
+_ROUTE_PARAM = re.compile(r"\{(\w+)(?::(\w+))?\}")
+#: Starlette's ``path`` convertor matches any remainder, the empty one included, so a
+#: segment declared with it is never a *required* one.
+_PATH_CONVERTOR = "path"
+
+
+def _route_pattern(route: str) -> re.Pattern[str]:
+    """A route as the router matches a request path: a ``{param}`` is one non-empty
+    segment, a ``{param:path}`` any remainder."""
+    out: list[str] = []
+    pos = 0
+    for m in _ROUTE_PARAM.finditer(route):
+        out.append(re.escape(route[pos : m.start()]))
+        out.append(".*" if m.group(2) == _PATH_CONVERTOR else "[^/]+")
+        pos = m.end()
+    out.append(re.escape(route[pos:]))
+    return re.compile("".join(out))
+
+
+def _emptied_route_segments(request: str, route: str) -> list[str]:
+    """The required ``{param}`` segments of ``route`` that ``request`` leaves empty, when
+    ``request`` is ``route`` with only those segments emptied; otherwise ``[]``.
+
+    Segment by segment: a literal segment must be equal, a parameter segment is filled by
+    any non-empty text (a literal or an interpolation). Against
+    ``/runs/{run_id}/participants/{name}``, ``/runs/{run_id}/participants/`` empties
+    ``{name}`` and ``/runs//participants/{name}`` empties ``{run_id}``. A route with a
+    ``{param:path}`` segment has no fixed shape and empties nothing."""
+    got, want = request.split("/"), route.split("/")
+    if len(got) != len(want):
+        return []
+    emptied: list[str] = []
+    for value, segment in zip(got, want, strict=True):
+        param = _ROUTE_PARAM.fullmatch(segment)
+        if param is None:
+            if value != segment:
+                return []
+        elif param.group(2) == _PATH_CONVERTOR:
+            return []
+        elif not value:
+            emptied.append(segment)
+    return emptied
+
+
+#: What the router answers a request no route of its method serves, before any handler runs.
+_ROUTER_METHOD_NOT_ALLOWED = 405
+_ROUTER_NOT_FOUND = 404
+
+
+def _router_answer(
+    method: str, request: str, served: list[tuple[str, re.Pattern[str]]]
+) -> int | None:
+    """The status Starlette's router gives ``request`` before any handler runs, or ``None``
+    when a route of its method serves it. This is FastAPI's routing, which is what the
+    check's ``.py`` scope covers.
+
+    In Starlette's order: the path as requested, then (``redirect_slashes``, on by default)
+    the path with its trailing slash removed, or one added, which the router redirects to
+    and ``TestClient`` follows with the method kept. A path that a route of the request's
+    method matches is served; one that only a route of another method matches answers 405;
+    a path no route matches either way answers 404. The routes are the declared and the
+    pinned ones, the only ones the check knows."""
+    candidates = [request]
+    if request != "/":
+        candidates.append(request.rstrip("/") if request.endswith("/") else request + "/")
+    for path in candidates:
+        methods = {m for m, pattern in served if pattern.fullmatch(path)}
+        if method in methods:
+            return None
+        if methods:
+            return _ROUTER_METHOD_NOT_ALLOWED
+    return _ROUTER_NOT_FOUND
+
+
+def _empty_segment_violations(
+    tree: ast.AST,
+    declared: list[tuple[str, str]],
+    pinned: dict[tuple[str, str], set[int]],
+) -> list[str]:
+    """#2297: a status assertion on a request that reaches a declared route only with a
+    required path segment left empty, asserting anything but the router's own answer.
+
+    Every failing test of ``cyc_af79e6520ae6`` and ``cyc_935ec2afb53f`` asserted 404 or 422
+    on a leave whose name, a path segment, was empty: the request ended at the parent with
+    a trailing slash. A name in the path can't be empty. The router redirects the trailing
+    slash to the parent, the join route's path, which serves only ``POST``, so the answer
+    is 405 whatever the handler does, and no repair of the application can satisfy the
+    assertion. Leave had no probe, so the pinned-status rule never read it.
+
+    Narrow by construction: the request has the declared route's method and its every
+    literal segment, it differs only by an empty segment where the route requires one,
+    and no route of its method serves it (``_router_answer``). An assertion of exactly the
+    router's answer is not refused. The router gives that answer whatever the application
+    does, so the assertion is winnable, and refusing it would be the false positive the
+    class docstring warns of; both cycles' repairs asserted 405 and were accepted. Paths
+    are read as literals and as f-string templates; anything else is out of scope, as for
+    the pinned rule."""
+    served = [(method, _route_pattern(path)) for method, path in {*declared, *pinned}]
+    violations: list[str] = []
+    for method, raw_path, status, lineno in _extract_status_assertions(tree, templates=True):
+        request = raw_path.split("?", 1)[0].split("#", 1)[0]
+        answer = _router_answer(method, request, served)
+        if answer is None or status == answer:
+            continue  # a route of its method serves it, or it asserts the router's answer
+        for m, route in declared:
+            if m != method:
+                continue
+            emptied = _emptied_route_segments(request, route)
+            if emptied:
+                noun = "segment" if len(emptied) == 1 else "segments"
+                violations.append(
+                    f"line {lineno}: {method} {request} requests declared route "
+                    f"{method} {route} with its required {noun} {', '.join(emptied)} "
+                    f"empty; the router answers {answer} before any handler runs"
+                )
+                break
+    return violations
 
 
 # --- assertion_kinds_match (#1153) ----------------------------------------------------
@@ -1298,6 +1450,12 @@ class ContractAssertionsMatchCheck(BaseCheck):
     undeclared prefix. Unextractable assertions and non-contract paths are out of
     scope by design: a false positive in a BLOCKING check recreates the unwinnable
     loop this kills.
+
+    #2297 adds one rule, over the manifest's declared routes (``declared_routes``,
+    ``METHOD /path`` tokens): a status assertion on a request that is a declared route
+    with a required path segment left empty, unless it asserts the router's own answer
+    (``_empty_segment_violations``). Without the param the check reads exactly what it
+    read before.
     """
 
     async def evaluate(
@@ -1355,6 +1513,13 @@ class ContractAssertionsMatchCheck(BaseCheck):
                         f"line {lineno}: {method} {path} requests pinned path "
                         f"{hit} through an undeclared prefix"
                     )
+        declared = [
+            route
+            for token in params.get("declared_routes") or []
+            if (route := parse_method_path(str(token))) is not None
+        ]
+        if declared:
+            violations.extend(_empty_segment_violations(tree, declared, pinned))
         if violations:
             shown = violations[:5]
             if len(violations) > len(shown):
@@ -1651,7 +1816,7 @@ def _harness_boundary_violations(
     ``importlib.import_module``), or directly constructing the app test client."""
 
     def _is_entry(mod: str) -> bool:
-        return any(mod == m or mod.startswith(m + ".") for m in entry_modules)
+        return names_entry_module(mod, entry_modules)
 
     viols: set[str] = set()
     for node in ast.walk(tree):

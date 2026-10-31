@@ -1,0 +1,52 @@
+{
+  "_about": "The seeded quality reading's seed (SIP-0113 §10j, §10n): written through each delivery's own API by campaigns.seed_plan, before Lighthouse and axe measure every declared page. Its own file, apart from the release screenshots' seed: its sha256 is part of the measure's version. Public, and written without reading any held-out suite.",
+  "create": ["POST /runs"],
+  "field_aliases": {
+    "location": ["meeting_location"],
+    "capacity": ["max_participants"]
+  },
+  "member_action": ["POST /runs/{id}/join", "POST /runs/{id}/participants"],
+  "records": [
+    {
+      "label": "partial",
+      "values": {
+        "title": "Lantern Lane Shakeout",
+        "datetime": "2026-11-04T06:15",
+        "location": "Harbor footbridge, north end",
+        "distance": "5 km",
+        "pace_target": "6:00 /km",
+        "route_notes": "Flat out-and-back along the harbor wall.",
+        "capacity": "6"
+      },
+      "members": [{"name": "Odalys"}, {"name": "Tobiah"}]
+    },
+    {
+      "label": "at_capacity",
+      "values": {
+        "title": "Quarry Ridge Intervals",
+        "datetime": "2026-11-06T17:40",
+        "location": "Quarry Ridge trailhead",
+        "distance": "7 km",
+        "pace_target": "threshold",
+        "route_notes": "Four ridge-path kilometres hard, an easy jog between each.",
+        "capacity": "3"
+      },
+      "members": [{"name": "Wrenna"}, {"name": "Calloway"}, {"name": "Ines"}]
+    },
+    {
+      "label": "unjoined",
+      "values": {
+        "title": "Mill Pond Recovery Jog",
+        "datetime": "2026-11-08T09:30",
+        "location": "Mill pond boathouse",
+        "distance": "4 km",
+        "pace_target": "conversational",
+        "route_notes": "One lap of the pond path, walking breaks welcome.",
+        "capacity": "10"
+      }
+    }
+  ],
+  "routes": {
+    "/runs/{id}": ["partial", "at_capacity"]
+  }
+}

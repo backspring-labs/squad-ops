@@ -212,7 +212,8 @@ class A2AConfig(BaseModel):
 
 class ChatConfig(BaseModel):
     """Console chat's tunables (SIP-0085; #2175): how much of a session's history a turn carries
-    to its agent. The oldest turns are dropped first, and the request counts what it dropped."""
+    to its agent. The oldest turns are dropped first, and the request counts what it dropped. Then
+    its memory records, under their own caps (SIP-0110 §A.3.6's chat budget, #2180)."""
 
     history_max_turns: int = Field(
         default=20, ge=0, description="Earlier messages a chat turn carries at most"
@@ -221,6 +222,19 @@ class ChatConfig(BaseModel):
         default=8000,
         ge=0,
         description="Estimated tokens of history a chat turn carries at most (4 chars a token)",
+    )
+    memory_max_notes: int = Field(
+        default=8,
+        ge=0,
+        description="Notes a chat turn's memory context carries at most (SIP-0110 §A.3.10, #2180)",
+    )
+    memory_max_tokens: int = Field(
+        default=1500,
+        ge=0,
+        description=(
+            "Estimated tokens of memory records (instructions, preferences, notes) a chat turn "
+            "carries at most; a record that doesn't fit is left out whole and listed"
+        ),
     )
 
 
@@ -391,6 +405,14 @@ class SandboxConfig(BaseModel):
     app_port: int = Field(
         default=8000, description="Container port the application runtime listens on"
     )
+    app_network: str | None = Field(
+        default=None,
+        description=(
+            "The internal network the sandbox service starts apps on, by container name with no "
+            "host port (#2451 part 4). Required by the service's root when it runs docker; absent, "
+            "as on a host run (the audit scripts), apps publish to loopback."
+        ),
+    )
     service_url: str = Field(
         default="http://127.0.0.1:8002",
         description="Sandbox service base URL (loopback per the SIP-0102 transport decision)",
@@ -403,6 +425,41 @@ class SandboxConfig(BaseModel):
             "(#326) upgrade rides SIP-0102 phase 102.3 when runtime-api becomes the caller."
         ),
     )
+
+
+class SandboxClientConfig(BaseModel):
+    """How the runtime API calls the sandbox service (#2451, ruled by the owner 2026-10-18).
+
+    Its own section, apart from ``SandboxConfig``: that one is the service's (and the
+    cycle-create preflight's, which reads it unchanged), and its env reader refuses fields it
+    doesn't know. The runtime API requires this section at startup; no other process reads it.
+    """
+
+    provider: Literal["none", "http"] = Field(
+        description="The runtime API's sandbox client (required where read, #1568): http calls "
+        "the sandbox service; none calls nothing, and every caller reads it as unavailable"
+    )
+    service_url: str = Field(default="", description="The sandbox service's base URL")
+    service_token: str = Field(
+        default="", description="The sandbox service's bearer token (supports secret://)"
+    )
+    #: #2586: a declared run's setup steps and its command are each bounded by this on the
+    #: service, and the client waits for all of them. 600 s is the container backend's own.
+    command_timeout_seconds: float = Field(
+        default=600.0,
+        gt=0,
+        description="The longest one declared step (a product's install or check) may run in "
+        "the sandbox; the client waits for every step of a run (#2586)",
+    )
+
+    @model_validator(mode="after")
+    def _http_names_its_service(self) -> "SandboxClientConfig":
+        if self.provider == "http" and not (self.service_url and self.service_token):
+            raise ValueError(
+                "sandbox_client.provider 'http' names its service: set "
+                "SQUADOPS__SANDBOX_CLIENT__SERVICE_URL and SQUADOPS__SANDBOX_CLIENT__SERVICE_TOKEN"
+            )
+        return self
 
 
 class KeycloakTokenPolicyConfig(BaseModel):
@@ -452,7 +509,9 @@ class KeycloakAdminConfig(BaseModel):
     """Keycloak admin account configuration (SIP-0063)."""
 
     username: str = "admin"
-    password: str  # Supports secret:// references
+    #: #2498: the identity provider's own, which its container reads from .env. No service reads it,
+    #: so a profile carries none, and no service mounts it.
+    password: str | None = None
     allowed_networks: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -575,6 +634,13 @@ class CyclesConfig(BaseModel):
     squad_profile_provider: Literal["config", "postgres"] = Field(
         description="Squad profile provider (SIP-0075; required, #1568)",
     )
+    #: SIP-0112 FR-03 (#2408): ``config`` reads config/projects.yaml, the only authority before
+    #: the cutover; ``postgres`` is the writable registry, the only one after it;
+    #: ``postgres_read_only`` is that registry with its writes gated off, the rollback (R3).
+    #: Required, so a deploy names which is authoritative rather than inheriting it.
+    project_registry_provider: Literal["config", "postgres", "postgres_read_only"] = Field(
+        description="Project registry provider (SIP-0112 FR-03; required, #1568)",
+    )
     inert_cycle_threshold: int = Field(
         default=3,
         ge=1,
@@ -582,6 +648,61 @@ class CyclesConfig(BaseModel):
             "SIP-0096 §9 N: consecutive not-executed cycles before a stable "
             "framework check is surfaced as inert (#684)"
         ),
+    )
+
+
+class ProjectsConfig(BaseModel):
+    """What a Project registration may name as its repository (SIP-0112, the owner's R5).
+
+    Empty is the safe default for both: any ``https``/``ssh`` host, and no local path at all,
+    since a path on a caller's machine authorizes nothing on the server's.
+    """
+
+    locator_allowed_hosts: list[str] = Field(
+        default_factory=list,
+        description="Hosts a registration's repository may live on; empty allows any (R5)",
+    )
+    locator_local_roots: list[str] = Field(
+        default_factory=list,
+        description="Absolute directories under which a local repository path is allowed (R5)",
+    )
+    #: E.4.2: the managed clones' cache. The external repository stays authoritative, and a lost
+    #: clone is fetched again (§B.3), but a run's captured change and a private product's clone
+    #: can't be: compose mounts the default path from ./data/repo_cache, so a redeploy keeps them
+    #: (#2588).
+    clone_cache_root: Path = Field(
+        default=Path("cycle_data/repo_cache"),
+        description="Where the managed clones of registered products are kept (SIP-0112 FR-05)",
+    )
+    git_timeout_seconds: float = Field(
+        default=300.0, gt=0, description="The longest one clone, fetch or read may take"
+    )
+    #: #2575: a reference resolver's ``bind`` runs under the campaign launcher's single lock, so
+    #: one family that hangs would stall every campaign. The repository family's slowest call is a
+    #: ``git cat-file`` in the managed clone, which never clones or fetches (#2565).
+    reference_resolver_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "The longest one reference resolver call (a bind, a read, or whether a project binds "
+            "nothing) may take before it is a fault (#2575)"
+        ),
+    )
+    #: E.4.3: who a captured candidate's commit names. The .invalid address is no one's mailbox,
+    #: so a deploy that contributes under its own identity says so here.
+    committer_name: str = Field(
+        default="SquadOps", description="The name a squad's captured commit is made under"
+    )
+    committer_email: str = Field(
+        default="squadops@squadops.invalid",
+        description="The email a squad's captured commit is made under",
+    )
+    #: E.4.3's review_request contributions: each Project's token, scoped by its owner to that
+    #: one repository (contents and pull requests). Written as secret:// references, which the
+    #: loader resolves; a Project with none contributes nothing by review request.
+    review_request_tokens: dict[str, str] = Field(
+        default_factory=dict,
+        description="Project ID to its review-request token, each a secret:// reference",
     )
 
 
@@ -877,8 +998,11 @@ class DeploymentConfig(BaseModel):
 class AppConfig(BaseModel):
     """Main application configuration model."""
 
-    # Core infrastructure
-    db: DBConfig = Field(..., description="Database configuration")
+    # Core infrastructure. The database is the runtime API's: an agent never connects to it, so it
+    # declares none and holds no credential that reaches it (#2457). ``database()`` requires it.
+    db: DBConfig | None = Field(
+        default=None, description="Database configuration: the runtime API's, absent in an agent"
+    )
     comms: CommsConfig = Field(..., description="Communication services configuration")
 
     # Runtime API
@@ -896,6 +1020,11 @@ class AppConfig(BaseModel):
     # Cycles
     cycles: CyclesConfig = Field(
         ..., description="Cycle registry configuration (carries a required selector, #1568)"
+    )
+
+    # Projects (SIP-0112: what a registration may name as its repository)
+    projects: ProjectsConfig = Field(
+        default_factory=ProjectsConfig, description="Project registration rules (SIP-0112 R5)"
     )
 
     # Runtime (SIP-0089: agent runtime state, duty scheduler)
@@ -926,6 +1055,17 @@ class AppConfig(BaseModel):
                 "(1.8.2 plan §3.2 item 15)."
             )
         return float(self.dispatch.task_timeout)
+
+    def database(self) -> DBConfig:
+        """The database, required at the places a pool is made: the runtime API and its scripts.
+        An agent declares none, so it holds no credential that reaches the held-out scenarios'
+        tables, or any other (#2457, IR-4)."""
+        if self.db is None:
+            raise ValueError(
+                "this process connects to Postgres and has no database configured: set "
+                "SQUADOPS__DB__URL. Only the runtime API and its scripts declare one (#2457)."
+            )
+        return self.db
 
     # Prompts (SIP-0084)
     prompts: PromptsConfig = Field(
@@ -964,6 +1104,11 @@ class AppConfig(BaseModel):
     sandbox: SandboxConfig = Field(
         ...,
         description="Ephemeral Application Sandbox configuration (SIP-0102; required selector, #1568)",
+    )
+    # The runtime API's client of the sandbox service (#2451). Optional here because only the
+    # runtime API reads it, and it refuses to start without it (``create_sandbox_client``).
+    sandbox_client: SandboxClientConfig | None = Field(
+        default=None, description="The runtime API's sandbox client (#2451)"
     )
 
     # Private attributes for runtime state (not part of config validation)

@@ -1,0 +1,58 @@
+# The stale_commit form: derived at the first commit, not the current baseline. Otherwise identical to valid.yaml.
+# Contract 8 (SIP-0112 H.6): the derived development profile, recorded with a Development
+# Configuration revision once its inherited baseline is captured there. SIP-0109 §24bv reads it for a
+# Campaign's calibration record, an increment's acceptance and the proposal's input, and SIP-0113 §10l
+# reads whether the product can be started. Tally has no package manager and tests with unittest,
+# which no findings reader names test by test, and notify can't run without its environment: two
+# disclosed gaps, and none blocking.
+schema: derived-profile/v1
+project_id: prj-tally
+commit: 15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1
+development_configuration_revision: 1
+environment:
+  image: python:3.12-slim
+languages:
+  - name: python
+    package_manager: null
+    manifests: []
+test_runners:
+  - runner: unittest
+    checks: [parse, ledger, server, report, notify]
+    covers: ["tally/**"]
+    roots: [checks]
+    file_pattern: check_*.py
+    suite_argv: [python3, -m, unittest, discover, -s, checks, -p, check_*.py]
+    single_file_argv: [python3, -m, unittest, discover, -s, checks, -p, "{name}"]
+    test_ids: null
+    support_files: []
+lint: []
+toolchains:
+  - name: python3
+    required_by: [build, parse, ledger, server, report, notify]
+    available: true
+start_declared: true
+public_surfaces:
+  - kind: http_base
+    url: http://127.0.0.1:18407/
+  - kind: command
+    argv: [python3, -m, tally]
+  - kind: package
+    name: tally
+blueprint: null
+client_routes: null
+files:
+  test: ["checks/check_*.py"]
+  test_support: []
+gaps:
+  - id: missing_environment
+    kind: disclosed
+    subject: notify
+    paths: ["**"]
+    reason: "check notify needs TALLY_SMTP_HOST, which the checks' environment doesn't provide, so it reads UNVERIFIED"
+    closes_by: "TALLY_SMTP_HOST provided to the checks' environment"
+  - id: no_test_id_reader
+    kind: disclosed
+    subject: unittest
+    paths: ["**"]
+    reason: "no findings reader names unittest's tests one by one, so a criterion's discrimination is unread and it isn't accepted as discriminating (SIP-0109 §24ci (a))"
+    closes_by: "a unittest reader in squadops.sandbox.findings"

@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
-from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
-from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
+from squadops.capabilities.handlers.context_sections import context_sections
+from squadops.capabilities.handlers.increment_test_scope import increment_views_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.capabilities.handlers.source_repository import product_conventions_template
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 from squadops.stacks.development_profiles import (
@@ -24,7 +25,11 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import (
+    SelfEvalFollowup,
+    _CycleTaskHandler,
+    build_context_errors,
+)
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _classify_file,
@@ -63,9 +68,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
-        # Build handlers require artifact_contents or artifact_vault for plan data
-        if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
-            errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
+        errors.extend(build_context_errors(inputs, "build tasks"))
         return errors
 
     async def _validate_output(
@@ -350,6 +353,11 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         fill_only = await self._fill_only_section(renderer, inputs)
         if fill_only:
             variables["fill_only_section"] = fill_only
+        # SIP-0109 §24cp: the pages a repository-backed change adds, and the anchor each view
+        # renders on its root element, which acceptance reads the page for.
+        views = await increment_views_section(renderer, inputs.get("increment_views"))
+        if views:
+            variables["increment_views_section"] = views
         if typed_lines:
             expectations = await renderer.render(
                 "request.cycle_repair_contract_expectations_appendix",
@@ -374,14 +382,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
         if disputes:
             variables["disputed_checks_section"] = disputes
-        # #1692: a repair's build is shown the failed cycle it continues.
-        prior = await prior_cycle_section(renderer, inputs)
-        if prior:
-            variables["prior_cycle_section"] = prior
-        # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
-        lessons = await cross_cycle_lessons_section(renderer, inputs)
-        if lessons:
-            variables["cross_cycle_lessons_section"] = lessons
+        # The shared context slots: the prior cycle, the product, the instructions and the
+        # lessons (context_sections).
+        variables.update(await context_sections(renderer, inputs))
         rendered = await renderer.render(
             "request.development_develop.focused_build_task", variables
         )
@@ -486,7 +489,15 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # resolved by the entrypoint), not the handler's step role. On a squad container the
         # two coincide for every registered handler; on a generalist process they do not.
         assembled = context.ports.prompt_service.get_system_prompt(context.role_id)
-        system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
+        # SIP-0112 H.13: a product made from a blueprint is shown that blueprint's conventions in
+        # its repository view, and not the profile's prose for the skeleton, which lays files out
+        # by the skeleton ("All backend files go under backend/"). A profile that declares no
+        # product conventions keeps its supplement, as a product with no blueprint does.
+        system_prompt = (
+            assembled.content
+            if product_conventions_template(inputs)
+            else assembled.content + "\n\n" + capability.system_prompt_supplement
+        )
 
         # Resolve model, token budget, and prompt guard
         model_name, max_tokens, context_window = self._resolve_model_budget(
@@ -669,6 +680,15 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             fill_only = await self._fill_only_section(renderer, inputs)
             if fill_only:
                 variables["fill_only_section"] = fill_only
+            # SIP-0109 §24cp: the pages the change adds, with each view's anchor.
+            views = await increment_views_section(renderer, (inputs or {}).get("increment_views"))
+            if views:
+                variables["increment_views_section"] = views
+            # #2682: the context slots the focused path shows, on this path too: the product a
+            # source-backed run changes, the failed cycle a retry continues, this task's
+            # instructions and its project's, then the lessons. None handed renders the prompt
+            # unchanged.
+            variables.update(await context_sections(renderer, inputs or {}))
             rendered = await renderer.render(
                 "request.development_develop.code_generate",
                 variables,

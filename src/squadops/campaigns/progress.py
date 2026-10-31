@@ -25,8 +25,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 from squadops.auth.models import Role
+from squadops.campaigns import binding_hold
 from squadops.campaigns.acceptance import DiscriminationReason, Held
-from squadops.campaigns.change_request import load_stored_change_request
+from squadops.campaigns.calibration_record import (
+    RECORDED_ENDING,
+    CalibrationRecord,
+    recorded_calibration,
+)
+from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused
+from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
 from squadops.campaigns.continuation import (
     CampaignCounters,
     ContinuationDecision,
@@ -34,11 +41,13 @@ from squadops.campaigns.continuation import (
     EndedCycle,
     Guard,
     PendingAction,
+    calibration_record_decision,
     campaign_continuation_decision,
     cycle_verdict,
 )
 from squadops.campaigns.escalation import (
     PARK_REASON,
+    EscalationKind,
     EscalationState,
     RunAtGate,
     closing_transitions,
@@ -59,13 +68,16 @@ from squadops.campaigns.increment_tree import (
     INCREMENT_EVALUATION_ARTIFACT_TYPE,
     VERIFIER_BUNDLE_ARTIFACT_TYPE,
     accepted_cycle_of,
+    built_change_request,
     compose_accepted_tree,
     increment_seed,
+    proposal_change_request,
 )
-from squadops.campaigns.launch_requests import bound_launch, increment_launch
+from squadops.campaigns.launch_requests import CONTINUED_KEYS, bound_launch, increment_launch
 from squadops.campaigns.models import (
     AcceptedTree,
     Campaign,
+    CampaignOutcome,
     CampaignState,
     CampaignTransition,
     ControlLogEntry,
@@ -76,12 +88,14 @@ from squadops.campaigns.models import (
     LaunchIntentState,
     LaunchRequest,
     PlanGate,
+    TransitionResult,
 )
 from squadops.campaigns.prior_cycle import evaluation_findings, prior_cycle_brief
 from squadops.campaigns.proposed_behaviours import (
     QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
     merged_entries,
 )
+from squadops.campaigns.unapproved_proposals import unapproved_proposal, unapproved_rulings
 from squadops.capabilities.handlers.fault_injection import seed as fault_seed
 from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.contract_derivation import (
@@ -134,29 +148,58 @@ _REPAIR_CHAIN_LIMIT = 8
 #: queued or running was not an ending at all (#1754).
 _NOT_ENDED = frozenset({CycleStopReason.RUN_PAUSED, CycleStopReason.RUN_NOT_TERMINAL})
 
+#: Stops at an inter-workload gate. After a framing run, each one stops the cycle before its build
+#: (§24cb, #2704).
+_GATE_STOPS = frozenset(
+    {
+        CycleStopReason.PLAN_REJECTED,
+        CycleStopReason.GATE_REJECTED,
+        CycleStopReason.REVISION_UNAVAILABLE,
+        CycleStopReason.GATE_DECISION_UNRECOGNIZED,
+        CycleStopReason.GATE_FAILED,
+    }
+)
+
 #: The states a launched cycle runs in; its end moves the campaign to evaluating first (§17).
 _RUNNING_STATES = frozenset(
     {CampaignState.BUILDING, CampaignState.REPAIRING, CampaignState.RETRYING}
 )
 
 
-def cycle_ending(stopped_because: CycleStopReason, last_run: Run, *, parked: bool) -> CycleEnding:
+def cycle_ending(
+    stopped_because: CycleStopReason,
+    last_run: Run,
+    *,
+    parked: bool,
+    held: binding_hold.HoldClass | None = None,
+) -> CycleEnding:
     """How the cycle ended, for the decision. The increment gate's rejection — and a proposal
     whose revisions were spent, which §9.5 counts as rejected — is ``rejected_at_gate``; a
-    proposal run that failed, or whose proposal the increment gate failed to submit (#2213), is
-    ``proposal_failed``; a plan gate whose escalation expired, its run cancelled for it, is
-    ``parked`` (§24bj; ``parked`` is read from the control log by ``escalation.parked_run``);
-    everything else reached its assessment."""
+    proposal run that failed, whose proposal the increment gate failed to submit (#2213), or whose
+    gate returned a decision it doesn't know (#2704), is ``proposal_failed``; a plan gate whose
+    escalation expired, its run cancelled for it, is ``parked`` (§24bj; ``parked`` is read from
+    the control log by ``escalation.parked_run``); a run whose binding hold expired, cancelled for
+    it, is ``held_store`` or ``held_input`` by the hold's cause class (§24bw;
+    ``binding_hold.held_expiry``); a framing run stopped at its plan gate is
+    ``stopped_at_plan_gate`` (§24cb, #2704); everything else reached its assessment."""
     if parked and last_run.status == RunStatus.CANCELLED.value:
         return CycleEnding.PARKED
+    if held is not None and last_run.status == RunStatus.CANCELLED.value:
+        return (
+            CycleEnding.HELD_STORE
+            if held is binding_hold.HoldClass.STORE
+            else CycleEnding.HELD_INPUT
+        )
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE
-        if (
-            last_run.status == RunStatus.FAILED.value
-            or stopped_because is CycleStopReason.GATE_FAILED
+        if last_run.status == RunStatus.FAILED.value or stopped_because in (
+            CycleStopReason.GATE_FAILED,
+            CycleStopReason.GATE_DECISION_UNRECOGNIZED,
         ):
             return CycleEnding.PROPOSAL_FAILED
+    if last_run.workload_type == WorkloadType.FRAMING and stopped_because in _GATE_STOPS:
+        return CycleEnding.STOPPED_AT_PLAN_GATE
     return CycleEnding.ASSESSED
 
 
@@ -181,6 +224,7 @@ def decision_transition(
     verdict: RunVerdict | None,
     launch: LaunchRequest | None,
     unbuilt: str | None = None,
+    promotion_refused: str | None = None,
 ) -> CampaignTransition:
     """The decision's one control-log row (§10). Its binding records the decision whole — the
     row, the ending and verdict it read, and the outcome or the action with its guard — so the
@@ -193,6 +237,9 @@ def decision_transition(
     - a launch action under ``proceed`` writes its intent (``launch``). ``unbuilt`` names an
       action whose cycle cannot be launched yet; the campaign escalates with that reason rather
       than pretend to launch it.
+
+    ``promotion_refused`` names why an accepted cycle's tree wasn't promoted (§24ce), whatever
+    the decision. Only a row that has one carries the key, so every other row hashes as before.
     """
     binding: dict = {
         "cycle_id": decision.cycle_id,
@@ -200,25 +247,9 @@ def decision_transition(
         "ending": ending.value,
         "verdict": verdict.value if verdict else None,
     }
-    if decision.terminal:
-        binding |= {"outcome": decision.outcome.value, "cause": decision.cause.value}
-        next_state, outcome = CampaignState.COMPLETED, decision.outcome
-    else:
-        binding |= {
-            "action": decision.action.value,
-            "guard": decision.guard.value if decision.guard else None,
-            "paused_by": decision.paused_by.value if decision.paused_by else None,
-        }
-        outcome = None
-        if decision.action is PendingAction.ESCALATE:
-            next_state = CampaignState.ESCALATED
-        elif decision.guard is Guard.PAUSED:
-            next_state = CampaignState.PAUSED
-        elif unbuilt is not None:
-            binding["unbuilt"] = unbuilt
-            next_state = CampaignState.ESCALATED
-        else:
-            next_state = _LAUNCH_STATES[decision.action]
+    if promotion_refused is not None:
+        binding["promotion_refused"] = promotion_refused
+    decided, next_state, outcome = _decided(decision, unbuilt)
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
         actor="squadops",
@@ -228,9 +259,67 @@ def decision_transition(
         next_state=next_state,
         outcome=outcome,
         target=decision.cycle_id,
-        binding=binding,
+        binding=binding | decided,
         launch=launch if next_state in _LAUNCH_STATES.values() else None,
     )
+
+
+def record_decision_transition(
+    record: CalibrationRecord,
+    decision: ContinuationDecision,
+    *,
+    launch: LaunchRequest | None,
+    unbuilt: str | None = None,
+) -> CampaignTransition:
+    """A calibration record's decision row (§24bv point 1, §24cc): as a cycle's, keyed by the
+    record's id and naming it, never a cycle. Its ending is ``calibration_recorded``, and its
+    verdict ``accepted``: row 5 read the record as an accepted calibration."""
+    decided, next_state, outcome = _decided(decision, unbuilt)
+    return CampaignTransition(
+        operation=ControlOperation.DECIDE,
+        actor="squadops",
+        actor_role=COMPLETION_ROLE,
+        reason=f"calibration record {record.record_id} at {record.commit[:12]}; "
+        f"§10 row {decision.row}",
+        idempotency_key=decision_key(record.record_id),
+        next_state=next_state,
+        outcome=outcome,
+        target=record.record_id,
+        binding={
+            "calibration_record_id": record.record_id,
+            "row": decision.row,
+            "ending": RECORDED_ENDING,
+            "verdict": RunVerdict.ACCEPTED.value,
+        }
+        | decided,
+        launch=launch if next_state in _LAUNCH_STATES.values() else None,
+    )
+
+
+def _decided(
+    decision: ContinuationDecision, unbuilt: str | None
+) -> tuple[dict, CampaignState, CampaignOutcome | None]:
+    """What a decision row records of the decision, and the state and outcome it moves to."""
+    if decision.terminal:
+        assert decision.outcome is not None and decision.cause is not None
+        return (
+            {"outcome": decision.outcome.value, "cause": decision.cause.value},
+            CampaignState.COMPLETED,
+            decision.outcome,
+        )
+    assert decision.action is not None
+    binding: dict = {
+        "action": decision.action.value,
+        "guard": decision.guard.value if decision.guard else None,
+        "paused_by": decision.paused_by.value if decision.paused_by else None,
+    }
+    if decision.action is PendingAction.ESCALATE:
+        return binding, CampaignState.ESCALATED, None
+    if decision.guard is Guard.PAUSED:
+        return binding, CampaignState.PAUSED, None
+    if unbuilt is not None:
+        return binding | {"unbuilt": unbuilt}, CampaignState.ESCALATED, None
+    return binding, _LAUNCH_STATES[decision.action], None
 
 
 class CannotLaunch(ValueError):
@@ -247,6 +336,21 @@ OWNER_ACTIONS = frozenset(
         PendingAction.RETRY,
     }
 )
+
+
+def _heard_now(campaign: Campaign, cycle: Cycle) -> bool:
+    """Whether ``campaign``'s cycle's ending is decided now. A completed campaign has nothing to
+    decide. A paused one holds what its ending would decide until it is resumed (§17, #2789): the
+    re-hearing decides it then."""
+    if campaign.state is CampaignState.COMPLETED:
+        return False
+    if campaign.state is CampaignState.PAUSED:
+        logger.info(
+            "campaign_cycle_ending_held_by_pause",
+            extra={"cycle_id": cycle.cycle_id, "campaign_id": campaign.campaign_id},
+        )
+        return False
+    return True
 
 
 def _pausing_row(log: list) -> ControlLogEntry | None:
@@ -375,16 +479,21 @@ def frozen_criteria(log: list) -> tuple[dict, ...]:
     return tuple(frozen.values())
 
 
-def _approved(log: list, block: Mapping) -> bool:
-    """Whether an applied ruling approved this proposal version (§9.2)."""
-    return any(
-        entry.operation is ControlOperation.RULE
+def _approved_version(log: list, block: Mapping) -> Any:
+    """The proposal version the latest applied approving ruling of ``block``'s proposal names
+    (§9.2), or ``None`` when no version of it was approved. #2824: the launch block is written once,
+    at the launch, so a proposal returned at version 1 and approved at version 2 inside the same
+    cycle still reads 1 there. A proposal id is one increment's (#2578 part 2), and a re-proposal
+    takes a new one, so the latest approval of this id is the version the cycle was built under."""
+    approved = [
+        entry.binding.get("version")
+        for entry in log
+        if entry.operation is ControlOperation.RULE
         and entry.outcome is ControlOutcome.APPLIED
         and entry.binding.get("decision") == GateDecisionValue.APPROVED.value
         and entry.binding.get("proposal_id") == block.get("proposal_id")
-        and entry.binding.get("version") == block.get("version")
-        for entry in log
-    )
+    ]
+    return approved[-1] if approved else None
 
 
 def decision_key(cycle_id: str) -> str:
@@ -415,9 +524,7 @@ def derive_counters(
     last. Repair and retry cycles count since the increment cycle they serve; the rejected
     proposals in a row and the unaccepted increments are read from the earlier decisions' rows.
     """
-    started = next(
-        (e.committed_at for e in log if e.operation == ControlOperation.START), campaign.created_at
-    )
+    started = started_at(campaign, log)
     since_increment = []
     for record in launched:
         if record.kind in (CycleKind.INCREMENT, CycleKind.CALIBRATION):
@@ -445,6 +552,14 @@ def derive_counters(
             and (e.operation != ControlOperation.DECIDE or e.binding.get("guard") == Guard.PROCEED)
         ),
         objective_met=objective_met,
+    )
+
+
+def started_at(campaign: Campaign, log: list) -> datetime:
+    """When the campaign started: its elapsed time runs from here (§9.5), whether its calibration
+    was a cycle or a record (§24bv point 1)."""
+    return next(
+        (e.committed_at for e in log if e.operation == ControlOperation.START), campaign.created_at
     )
 
 
@@ -494,6 +609,18 @@ class CampaignProgress:
         vault,
         assess: Assess,
         launch: Callable[[], Awaitable[object]],
+        evaluate_outcome: Callable[[Cycle], Awaitable[object]] | None,
+        #: SIP-0113 §10l: ``(campaign_id, record)``, a repository-backed campaign's baseline
+        #: reading, its calibration record's commit evaluated when the record is heard.
+        evaluate_baseline: Callable[[str, CalibrationRecord], Awaitable[object]] | None,
+        #: ``(campaign_id, cycle_ids, *, named_goals, calibration_record_id)``: SIP-0113's section
+        #: (``campaign_outcomes``).
+        outcome_section: Callable[..., Awaitable[dict | None]] | None,
+        intervention_section: Callable[[str, list[ControlLogEntry]], Awaitable[dict]] | None,
+        #: §24bv point 2: a repository-backed Campaign's branch in the managed clone. ``None``
+        #: where no project registry and managed clone are wired: a repository-backed increment's
+        #: promotion is then refused, and the campaign escalates naming it.
+        campaign_branch: CampaignBranch | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -501,6 +628,18 @@ class CampaignProgress:
         self._vault = vault
         self._assess = assess
         self._launch = launch
+        # SIP-0113 §4.1 (#2414): each ending that reached its build is evaluated against the
+        # campaign's pinned suite, reporting-only. ``None`` where no evaluator is wired.
+        self._evaluate_outcome = evaluate_outcome
+        # SIP-0113 §10l: a repository-backed campaign's calibration record is evaluated when it is
+        # heard, before its promotion, reporting-only. ``None`` where no evaluator is wired.
+        self._evaluate_baseline = evaluate_baseline
+        # SIP-0113 §4.4 (#2418): what the evidence package carries of the campaign's outcome
+        # evaluations. ``None`` where nothing is wired: the package then has no such section.
+        self._outcome_section = outcome_section
+        # SIP-0113 §4.3, §4.6 (#2418): the package's intervention ledger, which AOR reads.
+        self._intervention_section = intervention_section
+        self._campaign_branch = campaign_branch
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -524,15 +663,36 @@ class CampaignProgress:
     async def _hear(
         self, cycle: Cycle, last_run: Run, stopped_because: CycleStopReason
     ) -> ContinuationDecision | None:
+        """The hearing (§10). #2789: an owner's pause or abort holds across it.
+
+        - **A paused campaign's ending isn't decided while it is paused.** §17: a paused campaign
+          holds its pending action until its resume. The decision has no way to be recorded as
+          held under a pause it didn't make (``held_action`` reads only a limit's), so the
+          ending waits. The re-hearing (``rehear_ended``, at startup and on the sweep's
+          interval) decides it once the campaign is resumed.
+        - **The campaign is read again before each write.** The assessment and the outcome
+          evaluation can take minutes (SIP-0113 §4.1). A campaign that moved meanwhile (paused,
+          aborted, anything) isn't promoted from the state read before them, nor decided from
+          the state its promotion left. The re-hearing decides it as it then is, and its
+          evaluation isn't taken twice.
+        - **A refusal is logged, never raised,** for a move in the instant between a read and a
+          write."""
         campaign = await self._campaigns.get_campaign(cycle.campaign_id)
-        if campaign.state is CampaignState.COMPLETED:
+        if not _heard_now(campaign, cycle):
             return None
         log = await self._campaigns.control_log(campaign.campaign_id)
         if any(e.idempotency_key == decision_key(cycle.cycle_id) for e in log):
             return None
 
         latest = await self._assess(cycle.cycle_id)
-        ending = cycle_ending(stopped_because, last_run, parked=parked_run(log, last_run.run_id))
+        ending = cycle_ending(
+            stopped_because,
+            last_run,
+            parked=parked_run(log, last_run.run_id),
+            held=binding_hold.held_expiry(log, last_run.run_id),
+        )
+        if ending is CycleEnding.ASSESSED:
+            await self._outcome_evaluated(cycle)
         kind = CycleKind(cycle.kind)
         evaluation = None
         if kind in _INCREMENT_KINDS and ending is CycleEnding.ASSESSED:
@@ -546,11 +706,22 @@ class CampaignProgress:
         )
         verdict = cycle_verdict(latest, ended)
 
+        # #2789: the assessment and the evaluation took minutes. Promote and decide from the
+        # campaign as it is now, never from the state read before them.
+        campaign, moved = await self._still(campaign, cycle.cycle_id)
+        if moved:
+            return None
         # §12a: a calibration's tree, and an increment's when its own acceptance holds too (§8.4).
-        if kind in _PROMOTED_KINDS and verdict is RunVerdict.ACCEPTED:
-            campaign = await self._promote(campaign, cycle, last_run, evaluation)
-        if campaign.state in _RUNNING_STATES:
-            campaign = await self._evaluating(campaign, cycle)
+        promoted = await self._promoted_and_evaluating(
+            campaign,
+            cycle,
+            last_run,
+            evaluation,
+            promote=kind in _PROMOTED_KINDS and verdict is RunVerdict.ACCEPTED,
+        )
+        if promoted is None:
+            return None
+        campaign, not_promoted = promoted
 
         launched = await self._launched_cycles(campaign)
         decision = campaign_continuation_decision(
@@ -568,8 +739,14 @@ class CampaignProgress:
         )
         launch, unbuilt = None, None
         if not decision.terminal and decision.guard is Guard.PROCEED:
-            built = await self._launch_for(campaign, decision.action, cycle, latest)
-            launch, unbuilt = (built, None) if isinstance(built, LaunchRequest) else (None, built)
+            launch, unbuilt = await self._decided_launch(
+                campaign, decision.action, cycle, latest, not_promoted
+            )
+        # #2789: the promotion and the reads that build the decision and its launch come between
+        # that read and this write. A campaign that moved meanwhile isn't decided over.
+        campaign, moved = await self._still(campaign, cycle.cycle_id)
+        if moved:
+            return None
         try:
             result = await self._campaigns.transition(
                 campaign.campaign_id,
@@ -580,6 +757,7 @@ class CampaignProgress:
                     verdict=verdict,
                     launch=launch,
                     unbuilt=unbuilt,
+                    promotion_refused=not_promoted,
                 ),
             )
         except ControlOperationRefused as refused:
@@ -594,13 +772,125 @@ class CampaignProgress:
             await self.materialize_package(campaign.campaign_id)
         return decision
 
+    async def _promoted_and_evaluating(
+        self,
+        campaign: Campaign,
+        cycle: Cycle,
+        last_run: Run,
+        evaluation: dict | None,
+        *,
+        promote: bool,
+    ) -> tuple[Campaign, str | None] | None:
+        """The accepted cycle promoted (§12a) and a running campaign moved to evaluating (§17):
+        the campaign after both, and why an increment wasn't promoted (§24ce). ``None`` when a
+        move made in the instant since the hearing's last read refused either write (#2789): the
+        refusal is logged, never raised, and the re-hearing decides the campaign as it then is.
+
+        A promotion already applied for the cycle is taken as written, not replayed. Its row was
+        written with the state the campaign had then, and a re-hearing after the campaign moved
+        (to ``evaluating``, or out of a pause and back) would send another state under the same
+        key: a conflict the registry refuses (§12a). The branch's ref follows its row by the
+        startup's and the sweep's re-sync (§24cd point 2)."""
+        not_promoted = None
+        try:
+            if promote and not await self._promoted_already(campaign, cycle):
+                campaign, not_promoted = await self._promoted(campaign, cycle, last_run, evaluation)
+            if campaign.state in _RUNNING_STATES:
+                campaign = await self._evaluating(campaign, cycle)
+        except ControlOperationRefused as refused:
+            logger.error(
+                "campaign_cycle_promotion_refused",
+                extra={"cycle_id": cycle.cycle_id, "refusal": str(refused.entry.refusal)},
+            )
+            return None
+        return campaign, not_promoted
+
+    async def _promoted_already(self, campaign: Campaign, cycle: Cycle) -> bool:
+        """Whether the campaign's control log holds an applied promotion of ``cycle``'s tree."""
+        return any(
+            e.operation is ControlOperation.PROMOTE
+            and e.outcome is ControlOutcome.APPLIED
+            and e.target == cycle.cycle_id
+            for e in await self._campaigns.control_log(campaign.campaign_id)
+        )
+
+    async def _still(self, campaign: Campaign, unit: str) -> tuple[Campaign, bool]:
+        """#2789: the campaign read again, and whether it has moved from ``campaign``'s state, the
+        one the hearing read before its long step. A moved campaign is logged, naming the ``unit``
+        heard (a cycle or a calibration record), and left to the re-hearing, which reads it as it
+        then is."""
+        current = await self._campaigns.get_campaign(campaign.campaign_id)
+        if current.state is campaign.state:
+            return current, False
+        logger.warning(
+            "campaign_not_decided_campaign_moved",
+            extra={"unit": unit, "from": campaign.state.value, "to": current.state.value},
+        )
+        return current, True
+
+    async def _promoted(
+        self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None
+    ) -> tuple[Campaign, str | None]:
+        """The campaign after the accepted cycle's promotion, and ``None``; or, for an increment
+        its campaign branch can't take (§24ce), the campaign unchanged and why. Nothing moved
+        then: the decision names the refusal, and nothing launches on the tree the increment
+        would have replaced."""
+        try:
+            return await self._promote(campaign, cycle, last_run, evaluation), None
+        except PromotionRefused as e:
+            logger.error(
+                "campaign_promotion_refused", extra={"cycle_id": cycle.cycle_id, "refusal": str(e)}
+            )
+            return campaign, str(e)
+
+    async def _decided_launch(
+        self,
+        campaign: Campaign,
+        action: PendingAction | None,
+        cycle: Cycle,
+        latest: CycleAssessment,
+        not_promoted: str | None,
+    ) -> tuple[LaunchRequest | None, str | None]:
+        """The launch a decision under ``proceed`` writes, or why it can't (``unbuilt``). An
+        accepted cycle that wasn't promoted launches nothing (§24ce): the campaign escalates."""
+        if not_promoted is not None:
+            return None, f"cycle {cycle.cycle_id} was accepted and not promoted: {not_promoted}"
+        assert action is not None
+        built = await self._launch_for(campaign, action, cycle, latest)
+        return (built, None) if isinstance(built, LaunchRequest) else (None, built)
+
+    async def _outcome_evaluated(self, cycle: Cycle) -> None:
+        """SIP-0113 §4.1 (#2414): the cycle evaluated against its campaign's pinned suite, before
+        its decision, so the evaluation has the box between cycles rather than beside the next one.
+        Reporting-only: nothing here reads the record, and a failure is logged and never stops the
+        decision. Only an ending that reached its build: one rejected at its gate built nothing,
+        and would re-read the tree it was built on."""
+        if self._evaluate_outcome is None:
+            return
+        try:
+            await self._evaluate_outcome(cycle)
+        except Exception:
+            logger.exception(
+                "outcome_evaluation_failed",
+                extra={"cycle_id": cycle.cycle_id, "campaign_id": cycle.campaign_id},
+            )
+
     async def _promote(
         self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None = None
     ) -> Campaign:
         """§12a: the accepted tree is the files the cycle delivered, identified by their hash,
         in a transition of its own keyed by the cycle and that identity. An increment's new
         criteria are frozen with it (§8.1): each bundle stored, and named on the row, so every
-        later increment is launched with it."""
+        later increment is launched with it.
+
+        A repository-backed increment's is the commit its run captured, on the campaign branch
+        (``_promote_onto_branch``)."""
+        if (
+            cycle.source_context is not None
+            and cycle.kind is not None
+            and CycleKind(cycle.kind) in _INCREMENT_KINDS
+        ):
+            return await self._promote_onto_branch(campaign, cycle, last_run, evaluation)
         refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=last_run.run_id)
         # #1887: an increment delivered its change, not the app — the whole tree is the one it
         # was built on, overlaid with what it delivered.
@@ -621,6 +911,8 @@ class CampaignProgress:
                 reason=f"cycle {cycle.cycle_id} accepted: its {len(files)} delivered files",
                 idempotency_key=f"promote:{cycle.cycle_id}:{identity}",
                 next_state=campaign.state,
+                # #2789: refused, never written over an owner's move during the I/O before it.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={
                     "cycle_id": cycle.cycle_id,
@@ -633,6 +925,59 @@ class CampaignProgress:
                 accepted=AcceptedTree(identity, cycle.cycle_id),
             ),
         )
+        return result.campaign
+
+    async def _promote_onto_branch(
+        self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None
+    ) -> Campaign:
+        """§24bv point 2 (§24cd point 2): a repository-backed increment's accepted tree is the
+        commit its run captured (contract 3), taken only when it was built on the branch's head.
+        The row commits first, naming the commit beside the identity, and the branch's ref then
+        follows it. Nothing is composed from the vault or stored there: the tree is the managed
+        clone's. The increment's new criteria are frozen as any increment's are (§8.1).
+
+        Raises:
+            PromotionRefused: Nothing was written (``CampaignBranch.promotion``).
+        """
+        if self._campaign_branch is None:
+            raise PromotionRefused(
+                "this runtime reads no managed clone, so a repository-backed increment can't be "
+                "promoted onto its campaign branch"
+            )
+        refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=last_run.run_id)
+        promotion = await self._campaign_branch.promotion(
+            campaign, cycle.cycle_id, last_run.run_id, refs
+        )
+        accepted = promotion.accepted
+        assert accepted.commit is not None
+        frozen = await self._freeze_bundles(cycle, last_run, evaluation)
+        result = await self._campaigns.transition(
+            campaign.campaign_id,
+            CampaignTransition(
+                operation=ControlOperation.PROMOTE,
+                actor="squadops",
+                actor_role=COMPLETION_ROLE,
+                reason=f"cycle {cycle.cycle_id} accepted: its capture {accepted.commit[:12]}, on "
+                "the campaign branch",
+                idempotency_key=f"promote:{cycle.cycle_id}:{accepted.identity}",
+                next_state=campaign.state,
+                # #2789: refused, never written over an owner's move during the branch's reads and
+                # the bundles' freezing before it.
+                expected_state=campaign.state,
+                target=cycle.cycle_id,
+                binding={
+                    "cycle_id": cycle.cycle_id,
+                    "identity": accepted.identity,
+                    "commit": accepted.commit,
+                    "parent_commit": promotion.parent,
+                    "verification_ref": promotion.verification_ref,
+                    "frozen_criteria": frozen,
+                    "retired_criteria": list((evaluation or {}).get("retired") or ()),
+                },
+                accepted=accepted,
+            ),
+        )
+        await self._campaign_branch.follow(result.campaign, previous=promotion.parent)
         return result.campaign
 
     async def rehear_ended(self, cycle_ids: Iterable[str]) -> list[str]:
@@ -655,6 +1000,168 @@ class CampaignProgress:
                     decided.append(cycle_id)
             except Exception:
                 logger.exception("campaign_rehear_failed", extra={"cycle_id": cycle_id})
+        return decided
+
+    async def calibration_recorded(self, campaign_id: str) -> TransitionResult | None:
+        """§24bv point 1 (§24cc): a repository-backed campaign's start wrote a calibration record
+        in place of launching a calibration cycle, so no cycle will end and ``cycle_ended`` will
+        never hear it. The record goes through its own path, in the cycle's order (§10: promotion
+        comes first): its tree is promoted, then row 5 decides, keyed by the record.
+
+        SIP-0113 §10l: the record's commit is evaluated first, its baseline reading, which can take
+        minutes. The campaign is read again after it: a pause or an abort applied meanwhile holds,
+        and nothing is promoted or decided over it. A paused campaign is heard again once it is
+        resumed into ``calibrating`` (``rehear_calibration_records``), its reading not taken twice.
+
+        Returns the decision's row, or ``None`` when there is nothing to decide: the campaign isn't
+        calibrating (completed, paused, or moved during the reading), its start recorded no record
+        (it launched a calibration cycle), the record is decided already, or it is being heard
+        already. A promotion refused by a move made in the instant between that read and the write
+        is logged and returns ``None`` too, never raised over a start that was applied. Both writes
+        are keyed, so hearing a record again after a restart between them replays the promotion
+        and writes the decision once."""
+        campaign = await self._campaigns.get_campaign(campaign_id)
+        if campaign.state is not CampaignState.CALIBRATING:
+            return None
+        log = await self._campaigns.control_log(campaign_id)
+        record = recorded_calibration(log)
+        if record is None or record.record_id in self._hearing:
+            return None
+        if any(e.idempotency_key == decision_key(record.record_id) for e in log):
+            return None
+        self._hearing.add(record.record_id)
+        try:
+            # SIP-0113 §10l: the baseline reading, before the promotion, as a cycle's evaluation
+            # comes before its own (§10: the box is between cycles). Reporting-only.
+            await self._baseline_evaluated(campaign_id, record)
+            # The second review of #2788 (P2-A): the reading took minutes, and the owner may have
+            # paused or aborted meanwhile. Promote and decide from the campaign as it is now.
+            campaign = await self._campaigns.get_campaign(campaign_id)
+            if campaign.state is not CampaignState.CALIBRATING:
+                logger.warning(
+                    "campaign_record_not_decided_campaign_moved",
+                    extra={"record_id": record.record_id, "state": campaign.state.value},
+                )
+                return None
+            try:
+                campaign = await self._promote_record(campaign, record)
+            except ControlOperationRefused as refused:
+                logger.error(
+                    "campaign_record_promotion_refused",
+                    extra={"record_id": record.record_id, "refusal": str(refused.entry.refusal)},
+                )
+                return None
+            decision = calibration_record_decision(
+                campaign,
+                record.record_id,
+                elapsed_s=int((self._clock() - started_at(campaign, log)).total_seconds()),
+            )
+            launch, unbuilt = None, None
+            if not decision.terminal and decision.guard is Guard.PROCEED:
+                assert decision.action is not None
+                built = await self._launch_for(campaign, decision.action, None)
+                launch, unbuilt = (
+                    (built, None) if isinstance(built, LaunchRequest) else (None, built)
+                )
+            # The review of #2792 (P2): the branch's follow and the reads that build the launch come
+            # between the promotion and this write. A campaign that moved meanwhile isn't decided
+            # over; the re-hearing decides it once it is calibrating again.
+            campaign, moved = await self._still(campaign, record.record_id)
+            if moved:
+                return None
+            try:
+                result = await self._campaigns.transition(
+                    campaign_id,
+                    record_decision_transition(record, decision, launch=launch, unbuilt=unbuilt),
+                )
+            except ControlOperationRefused as refused:
+                logger.error(
+                    "campaign_record_decision_refused",
+                    extra={"record_id": record.record_id, "refusal": str(refused.entry.refusal)},
+                )
+                return None
+            if result.intent is not None:
+                await self._launch()
+            if decision.terminal:
+                await self.materialize_package(campaign_id)
+            return result
+        finally:
+            self._hearing.discard(record.record_id)
+
+    async def _baseline_evaluated(self, campaign_id: str, record: CalibrationRecord) -> None:
+        """SIP-0113 §10l: the record's commit evaluated against the campaign's pinned suite, its
+        baseline reading. Reporting-only, as ``_outcome_evaluated`` is: nothing here reads the
+        reading, and a failure (the registry, the configuration, the clone) is logged and leaves
+        it absent, never stopping the record's promotion or its decision. A record heard again
+        after a restart is read once: the evaluator skips a reading already written."""
+        if self._evaluate_baseline is None:
+            return
+        try:
+            await self._evaluate_baseline(campaign_id, record)
+        except Exception:
+            logger.exception(
+                "baseline_evaluation_failed",
+                extra={"campaign_id": campaign_id, "record_id": record.record_id},
+            )
+
+    async def _promote_record(self, campaign: Campaign, record: CalibrationRecord) -> Campaign:
+        """§12a for a calibration record: the accepted tree is the record's commit, by its tree
+        identity, naming the record (§24cc). Nothing is stored in the vault: the tree is the
+        managed clone's at that commit, and nothing is frozen, since no criterion was judged.
+
+        The campaign's branch starts there (§24bv point 2): its ref is created once the row has
+        committed. A replayed promotion finds it made."""
+        accepted = record.accepted_tree
+        result = await self._campaigns.transition(
+            campaign.campaign_id,
+            CampaignTransition(
+                operation=ControlOperation.PROMOTE,
+                actor="squadops",
+                actor_role=COMPLETION_ROLE,
+                reason=f"calibration record {record.record_id}: the tree at {record.commit[:12]}",
+                idempotency_key=f"promote:{record.record_id}:{accepted.identity}",
+                next_state=campaign.state,
+                target=record.record_id,
+                binding={
+                    "calibration_record_id": record.record_id,
+                    "identity": accepted.identity,
+                    "commit": record.commit,
+                    "development_configuration_revision": (
+                        record.development_configuration_revision
+                    ),
+                    "frozen_criteria": [],
+                    "retired_criteria": [],
+                },
+                accepted=accepted,
+            ),
+        )
+        if self._campaign_branch is not None:
+            await self._campaign_branch.follow(result.campaign, previous=None)
+        return result.campaign
+
+    async def resync_campaign_branches(self) -> list[str]:
+        """§24cd point 2: every campaign branch whose ref disagrees with its row (a stop between
+        a promotion's row and its ref, or a follow that failed) is moved to the row, at startup
+        and on the sweep's interval. Returns the campaigns whose ref moved."""
+        if self._campaign_branch is None:
+            return []
+        return await self._campaign_branch.resync(self._campaigns)
+
+    async def rehear_calibration_records(self) -> list[str]:
+        """§12a for a calibration record (§24cc): each calibrating campaign whose start wrote a
+        record that was never decided (the process stopped between the start and the decision, or
+        the start's own hearing failed) is heard now, at startup and on the sweep's interval, as
+        ``rehear_ended`` hears a cycle. One campaign that cannot be heard is logged and does not
+        stop the rest. Returns the campaigns decided now."""
+        decided = []
+        for campaign in await self._campaigns.campaigns_in_state(CampaignState.CALIBRATING):
+            try:
+                if await self.calibration_recorded(campaign.campaign_id) is not None:
+                    decided.append(campaign.campaign_id)
+            except Exception:
+                logger.exception(
+                    "campaign_record_rehear_failed", extra={"campaign_id": campaign.campaign_id}
+                )
         return decided
 
     async def sweep_ruling_bounds(self) -> list[ControlLogEntry]:
@@ -740,11 +1247,14 @@ class CampaignProgress:
 
     async def _end_escalations(self, campaign: Campaign) -> list[ControlLogEntry]:
         log = await self._campaigns.control_log(campaign.campaign_id)
-        pending = [
-            e for e in escalations(log, campaign.state) if e.state is EscalationState.PENDING
-        ]
+        open_ = [e for e in escalations(log, campaign.state) if e.state is EscalationState.PENDING]
+        written = await self._end_binding_holds(
+            campaign, log, [e for e in open_ if e.kind is EscalationKind.BINDING_HOLD]
+        )
+        await self._finish_expired_holds(campaign, log)
+        pending = [e for e in open_ if e.kind is EscalationKind.PLAN_REVIEW]
         if not pending:
-            return []
+            return written
         waiting = await self._waiting_gate(campaign)
         runs = {}
         for esc in pending:
@@ -754,7 +1264,6 @@ class CampaignProgress:
                 and (waiting.run_id, waiting.gate_name) == (esc.run_id, esc.gate_name),
                 decided_by=_person_decision(run, esc.gate_name),
             )
-        written = []
         for transition in closing_transitions(campaign, log, runs, self._clock()):
             try:
                 result = await self._campaigns.transition(campaign.campaign_id, transition)
@@ -770,6 +1279,90 @@ class CampaignProgress:
             if transition.binding["state"] == EscalationState.EXPIRED:
                 await self._park(transition.target)
         return written
+
+    async def _end_binding_holds(
+        self, campaign: Campaign, log: list[ControlLogEntry], pending: list
+    ) -> list[ControlLogEntry]:
+        """§24bw: each pending binding hold of the campaign, read against its run's hold record
+        (SIP-0110 §A.3.6, ``Run.binding_holds``): resolved when re-supply released it, superseded
+        when the run stopped being held without it, expired when the ruling bound passed. An
+        expiry cancels the run and records the release, so the cycle ends by the hold's cause,
+        never parked."""
+        if not pending:
+            return []
+        holds = {}
+        for esc in pending:
+            run = await self._cycles.get_run(esc.run_id)
+            hold = next((h for h in run.binding_holds if h.hold_id == esc.hold_id), None)
+            if hold is None:
+                continue
+            holds[esc.hold_id] = binding_hold.HoldAtRun(
+                held=run.status == RunStatus.PAUSED.value and hold.released_at is None,
+                released_cause=hold.cause,
+            )
+        written = []
+        for transition in binding_hold.closing_transitions(campaign, log, holds, self._clock()):
+            try:
+                result = await self._campaigns.transition(campaign.campaign_id, transition)
+            except ControlOperationRefused as refused:
+                logger.info(
+                    "campaign_binding_hold_close_refused",
+                    extra={"campaign_id": campaign.campaign_id, "refusal": refused.entry.refusal},
+                )
+                continue
+            if result.replayed:
+                continue
+            written.append(result.entry)
+            if transition.binding["state"] == EscalationState.EXPIRED:
+                await self._end_held(transition.target, next(
+                    e.hold_id for e in pending
+                    if e.escalation_id == transition.binding["escalation_id"]
+                ))  # fmt: skip
+        return written
+
+    async def _end_held(self, run_id: str | None, hold_id: str | None) -> None:
+        """Record the expired hold's release, then cancel its run with the reason: the executor's
+        poll sees the cancellation, and the cycle ends by the hold's cause class. The release is
+        the registry's compare-and-set, so a re-supply that landed since the sweep read the run
+        wins: the run goes on, and the expiry stands in the record beside it, as a plan gate's
+        late decision does (§24bk)."""
+        assert run_id is not None and hold_id is not None
+        landed = await self._cycles.release_binding_hold(
+            run_id, hold_id, released_at=self._clock(), cause=binding_hold.EXPIRED_CAUSE
+        )
+        if not landed:
+            logger.info("campaign_binding_hold_released_first", extra={"run_id": run_id})
+            return
+        await self._cancel_expired(run_id)
+
+    async def _finish_expired_holds(self, campaign: Campaign, log: list[ControlLogEntry]) -> None:
+        """#2642: an expired hold's run that is still paused on the release the sweep recorded,
+        cancelled now. An expiry is three writes (the escalation's close, the release, the
+        cancel), and the close takes it out of the pending ones, so a cancel that raised is retried
+        here on the next sweep, or the run would stay paused for good with the executor waiting on
+        a cancellation nothing sends."""
+        for esc in escalations(log, campaign.state):
+            if (
+                esc.kind is not EscalationKind.BINDING_HOLD
+                or esc.state is not EscalationState.EXPIRED
+            ):
+                continue
+            run = await self._cycles.get_run(esc.run_id)
+            hold = next((h for h in run.binding_holds if h.hold_id == esc.hold_id), None)
+            if (
+                run.status == RunStatus.PAUSED.value
+                and hold is not None
+                and hold.cause == binding_hold.EXPIRED_CAUSE
+            ):
+                await self._cancel_expired(esc.run_id)
+
+    async def _cancel_expired(self, run_id: str) -> None:
+        try:
+            await self._cycles.update_run_status(
+                run_id, RunStatus.CANCELLED, failure_reason=binding_hold.HOLD_EXPIRED_REASON
+            )
+        except IllegalStateTransitionError:
+            logger.info("campaign_binding_hold_run_already_ended", extra={"run_id": run_id})
 
     async def _park(self, run_id: str | None) -> None:
         """Cancel the expired escalation's run, so its gate's poll ends and the cycle ends parked.
@@ -882,7 +1475,14 @@ class CampaignProgress:
                     lint_findings=lint_findings,
                 )
             )
-        doc = package(campaign, log, launches, records)
+        doc = package(
+            campaign,
+            log,
+            launches,
+            records,
+            outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records], log),
+            interventions=await self._interventions(campaign_id, log),
+        )
         for ref in await self._vault.list_artifacts(
             project_id=campaign.project_id, artifact_type=EVIDENCE_ARTIFACT_TYPE
         ):
@@ -912,6 +1512,56 @@ class CampaignProgress:
             {"digest_artifact_id": digest_ref.artifact_id},
         )
         return doc["identity"], package_ref.artifact_id, digest_ref.artifact_id
+
+    async def _outcomes(
+        self, campaign_id: str, cycle_ids: list[str], log: list[ControlLogEntry]
+    ) -> dict | None:
+        """SIP-0113 §4.4 (#2418): the package's outcome section. A failure to read it is in the
+        package with the reason, never a package that isn't written. A repository-backed
+        campaign's baseline is its calibration record's reading (§10l), named by the record its
+        start wrote."""
+        if self._outcome_section is None:
+            return None
+        try:
+            named = await self._named_goals(cycle_ids)
+            record = recorded_calibration(log)
+            return await self._outcome_section(
+                campaign_id,
+                cycle_ids,
+                named_goals=named,
+                calibration_record_id=record.record_id if record is not None else None,
+            )
+        except Exception as e:  # noqa: BLE001 — the package says what it could not read
+            logger.exception("campaign_outcomes_unreadable", extra={"campaign_id": campaign_id})
+            return {"unreadable": f"{type(e).__name__}: {e}"}
+
+    async def _named_goals(self, cycle_ids: list[str]) -> dict[str, tuple[str, ...]]:
+        """SIP-0113 §4.5: each increment's ``moves_goals``, read from the approved change request it
+        built, by the lookup its promotion reads (``built_change_request``). A cycle that named none
+        is left out."""
+        named: dict[str, tuple[str, ...]] = {}
+        for cycle_id in cycle_ids:
+            runs = await self._cycles.list_runs(cycle_id)
+            if not runs:
+                continue
+            cycle = await self._cycles.get_cycle(cycle_id)
+            last = max(runs, key=lambda r: r.run_number)
+            document = await built_change_request(self._vault, self._cycles, cycle, last)
+            if document is not None and (goals := load_stored_change_request(document).moves_goals):
+                named[cycle_id] = goals
+        return named
+
+    async def _interventions(self, campaign_id: str, log: list) -> dict | None:
+        """SIP-0113 §4.3 (#2418): the package's intervention section, as ``_outcomes`` is read."""
+        if self._intervention_section is None:
+            return None
+        try:
+            return await self._intervention_section(campaign_id, log)
+        except Exception as e:  # noqa: BLE001 — the package says what it could not read
+            logger.exception(
+                "campaign_interventions_unreadable", extra={"campaign_id": campaign_id}
+            )
+            return {"unreadable": f"{type(e).__name__}: {e}"}
 
     async def _store_evidence(
         self,
@@ -1033,7 +1683,8 @@ class CampaignProgress:
         what the application already does, not only the ids it may not reuse (a proposal told
         "do not break T3" re-proposed T3's feature). Found through the increment's seed, as every
         later workload finds it: the cycle row carries no plan refs, which ride each run's
-        forwarding.
+        forwarding. A repair or a retry, which reuses the seed and runs no proposal, finds it in
+        its own launch's plan refs.
 
         **A function of stored data alone (#1943).** The binding it feeds is part of the PROMOTE
         transition's replay identity, so a replay after a restart must compute the same binding.
@@ -1042,11 +1693,10 @@ class CampaignProgress:
         re-hearing retries it. It never degrades to ids only: a degraded first attempt and a
         complete replay were one key with two bindings, refused, and the campaign never decided."""
 
-        seed = await increment_seed(self._vault, self._cycles, cycle, run)
-        if seed is None or seed.change_request_ref is None:
+        document = await built_change_request(self._vault, self._cycles, cycle, run)
+        if document is None:
             return {}
-        _ref, content = await self._vault.retrieve(seed.change_request_ref)
-        request = load_stored_change_request(content.decode("utf-8"))
+        request = load_stored_change_request(document)
         return {c.id: {"statement": c.statement, "surface": c.surface} for c in request.criteria}
 
     async def _store_bundle(self, cycle: Cycle, run: Run, criterion_id: str, bundle: dict) -> str:
@@ -1099,6 +1749,24 @@ class CampaignProgress:
             return f"no decided cycle to {action}"
         return await self._bound_launch(campaign, cycle, kind, latest)
 
+    async def proposal_after_rebase(
+        self, campaign: Campaign, continued_cycle_id: str | None
+    ) -> LaunchRequest | str:
+        """§24cd point 2: row 6's fresh proposal, on the head a rebase left ``campaign`` at, when
+        the rebase superseded a repair or retry of ``continued_cycle_id``'s increment. The
+        proposal is shown that increment's brief as row 13's is, marked ``upstream_moved``: the
+        squad's work didn't fail, the tree under it moved. Or why it can't be launched."""
+        abandoned: dict[str, Any] | None = None
+        if continued_cycle_id is not None:
+            cycle = await self._cycles.get_cycle(continued_cycle_id)
+            abandoned = {
+                **(await self._prior_cycle_brief(cycle, None) or {"cycle_id": continued_cycle_id}),
+                "abandoned_as": "upstream_moved",
+            }
+        return await self._propose_launch(
+            campaign, abandoned, abandoned_cycle_id=continued_cycle_id
+        )
+
     async def _bound_launch(
         self,
         campaign: Campaign,
@@ -1122,15 +1790,22 @@ class CampaignProgress:
                 f"{str(block.get('baseline_tree'))[:12]} is not the accepted tree"
             )
         log = await self._campaigns.control_log(campaign.campaign_id)
-        if not _approved(log, block):
-            return (
-                f"no approving ruling is on record for {block['proposal_id']} "
-                f"version {block.get('version')}"
-            )
+        version = _approved_version(log, block)
+        if version is None:
+            return f"no approving ruling is on record for {block['proposal_id']}"
+        # #2824: the repair or retry reuses the version that was approved, not the launch's first.
+        block = {**block, "version": version}
         seeds = await self._bound_seeds(cycle)
         if seeds is None:
             return f"cycle {cycle.cycle_id}'s approved seed cannot be found"
         plan_refs, contract_ref = seeds
+        # #2578: the increment's own keys, and this launch's lineage below, nothing else of the
+        # failed cycle's block (``CONTINUED_KEYS``).
+        block = {k: block[k] for k in CONTINUED_KEYS if k in block}
+        # SIP-0110 §3.7 (#2178): the cycle it continues, which carries into it each task
+        # instruction given to carry. Named here, whichever row decided the launch: a decision's
+        # names it, and the owner's word's (a ``resume``) doesn't.
+        block = {**block, "continues": cycle.cycle_id}
         if kind is CycleKind.REPAIR:
             plan = await self._approved_plan(cycle)
             if plan is None:
@@ -1138,8 +1813,11 @@ class CampaignProgress:
             # The failed cycle's candidate is the repair's starting tree (``starting_tree_refs``).
             block = {**block, "repair_of": cycle.cycle_id}
             plan_refs = [*plan_refs, *([plan] if plan not in plan_refs else [])]
+        # A retry starts a fresh candidate on the accepted tree, so it carries no ``repair_of``
+        # (#2558), and its plan is left out (``_bound_seeds``).
         # #1692: the failed cycle's record, from its typed assessment and its runs' stored
-        # verification summaries, for its successor.
+        # verification summaries, for its successor: of ``cycle``, or none when its records can't
+        # be read (§24u), never the older one the failed cycle carried (#2576).
         brief = await self._prior_cycle_brief(cycle, latest)
         if brief is not None:
             block = {**block, "prior_cycle": brief}
@@ -1271,10 +1949,12 @@ class CampaignProgress:
 
     async def _last_decided_cycle(self, campaign: Campaign) -> Cycle | None:
         """The cycle the campaign's latest decision was made for: the one a held action, or an
-        escalation ruling's named action, continues."""
+        escalation ruling's named action, continues. ``None`` when that decision was a calibration
+        record's (§24cc): it decided no cycle, and only ``propose`` follows a record (row 5), which
+        continues none. Its target is the record's id, never looked up as a cycle's."""
         log = await self._campaigns.control_log(campaign.campaign_id)
         decided = [e for e in log if e.operation is ControlOperation.DECIDE and e.target]
-        if not decided:
+        if not decided or decided[-1].binding.get("calibration_record_id"):
             return None
         return await self._cycles.get_cycle(decided[-1].target)
 
@@ -1289,14 +1969,19 @@ class CampaignProgress:
         whose cycle ``abandoned_cycle_id`` is."""
         if campaign.accepted is None:
             return "the campaign has no accepted tree to propose against"
-        baseline = await self._accepted_manifest(campaign.accepted.cycle_id)
+        accepted_cycle = campaign.accepted.cycle_id
+        if campaign.accepted.commit is not None:
+            return await self._propose_on_branch(campaign, abandoned, abandoned_cycle_id)
+        if accepted_cycle is None:
+            return "the accepted tree names no cycle, and no commit on a campaign branch"
+        baseline = await self._accepted_manifest(accepted_cycle)
         if baseline is None:
             return (
-                f"the accepted cycle {campaign.accepted.cycle_id} ran against no interface "
+                f"the accepted cycle {accepted_cycle} ran against no interface "
                 f"manifest it stored or was seeded with"
             )
         # §24ad (#1885): a question the accepted cycle's gate answered is not asked again.
-        answered = await self._question_answer(campaign.accepted.cycle_id)
+        answered = await self._question_answer(accepted_cycle)
         if answered is not None:
             answer, where = answered
             baseline = resolve_answered_questions(
@@ -1325,16 +2010,70 @@ class CampaignProgress:
                 ]
             )
             baseline = resolve_late_answers(baseline, on_record)
-        frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        frozen = frozen_criteria(log)
         # #1884: what the qa authors proposed instead of testing, in the accepted increment and
         # the one this proposal replaces.
         proposed = await self._qa_proposed_behaviours(
-            [campaign.accepted.cycle_id, *([abandoned_cycle_id] if abandoned_cycle_id else [])]
+            [accepted_cycle, *([abandoned_cycle_id] if abandoned_cycle_id else [])]
         )
+        # #2593: each proposal the campaign never approved, with the ruling's reason. As with
+        # every input above, a read that fails raises and the re-hearing retries the launch: a
+        # proposal is never launched without them.
+        unapproved = [
+            unapproved_proposal(
+                entry,
+                await self._ruled_change_request(entry.target),
+                current_tree=campaign.accepted.identity,
+            )
+            for entry in unapproved_rulings(log)
+        ]
         try:
-            return increment_launch(campaign, baseline, frozen, abandoned, proposed)
+            return increment_launch(campaign, baseline, frozen, abandoned, proposed, unapproved)
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
+
+    async def _propose_on_branch(
+        self,
+        campaign: Campaign,
+        abandoned: dict[str, Any] | None,
+        abandoned_cycle_id: str | None,
+    ) -> LaunchRequest | str:
+        """§24bv point 5: a repository-backed Campaign's increment, proposed on its campaign
+        branch: after its calibration record (§24cc) or an increment promoted onto the branch
+        (§24ce). Its accepted tree has no interface manifest, so none of a sample application's
+        manifest inputs is read: no answered question (§24ad), no seed fault, no late answer
+        carried (§24bm). What its proposal reads of the product (the head's tree view, its derived
+        profile and gaps, the previous verification, the requirements source) is composed at its
+        run, at the head its cycle pins (``execution.product_proposal``). Rows 6, 7, 13 and 16's
+        inputs are the sample application's: the frozen criteria, the abandoned increment's
+        brief, what qa proposed, and each proposal never approved (§24w, §24br, §24bu)."""
+        accepted = campaign.accepted
+        assert accepted is not None  # ``_propose_launch`` reads it first
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        frozen = frozen_criteria(log)
+        built = [c for c in (accepted.cycle_id, abandoned_cycle_id) if c is not None]
+        proposed = await self._qa_proposed_behaviours(built)
+        unapproved = [
+            unapproved_proposal(
+                entry,
+                await self._ruled_change_request(entry.target),
+                current_tree=accepted.identity,
+            )
+            for entry in unapproved_rulings(log)
+        ]
+        try:
+            return increment_launch(campaign, None, frozen, abandoned, proposed, unapproved)
+        except FileNotFoundError as e:
+            return f"the policy's proposal profile cannot be loaded: {e}"
+
+    async def _ruled_change_request(self, run_id: str | None) -> ChangeRequest | None:
+        """The change request a ruled proposal run stored (#2593), from the run's own artifacts:
+        the document the ruling bound to. ``None`` when the run stored none."""
+        if not run_id:
+            return None
+        document = await proposal_change_request(self._vault, await self._cycles.get_run(run_id))
+        return load_stored_change_request(document) if document is not None else None
 
     async def _accepted_manifest(self, cycle_id: str) -> str | None:
         """The interface manifest the accepted cycle ran against (#1902): one it stored (a
@@ -1393,6 +2132,8 @@ class CampaignProgress:
                 reason=f"cycle {cycle.cycle_id} ended: evaluating",
                 idempotency_key=f"evaluate:{cycle.cycle_id}",
                 next_state=CampaignState.EVALUATING,
+                # #2789: refused over an owner's move during the promotion's branch follow.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={"cycle_id": cycle.cycle_id},
             ),

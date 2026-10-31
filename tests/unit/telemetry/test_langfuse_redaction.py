@@ -6,6 +6,7 @@ import pytest
 
 from adapters.telemetry.langfuse.redaction import (
     _API_KEY_PATTERNS,
+    _GENERIC_KEY,
     _PASSWORD_PATTERNS,
     _PII_PATTERNS,
     StandardRedaction,
@@ -23,7 +24,7 @@ class TestPatternHygiene:
 
     @pytest.mark.parametrize(
         "pattern",
-        [*_API_KEY_PATTERNS, *_PASSWORD_PATTERNS, *_PII_PATTERNS],
+        [*_API_KEY_PATTERNS, _GENERIC_KEY, *_PASSWORD_PATTERNS, *_PII_PATTERNS],
         ids=lambda p: p.pattern[:40],
     )
     def test_no_literal_pipe_inside_a_character_class(self, pattern):
@@ -185,3 +186,77 @@ class TestGetRedactionStrategy:
     def test_unknown_mode_raises(self):
         with pytest.raises(ValueError, match="Unknown redaction mode"):
             get_redaction_strategy("ultra")
+
+
+@pytest.mark.parametrize("mode", ["standard", "strict"])
+def test_a_url_and_a_later_decorator_keep_everything_between_them(mode):
+    """#1756. Bug caught: the connection-string pattern's classes crossing lines, so a prompt
+    naming ``http://localhost:8000/api`` and later any ``@`` (a FastAPI decorator) lost all the
+    text between: a constructed prompt kept 76 of its 5,820 characters."""
+    text = (
+        "The API runs at http://localhost:8000/api.\n"
+        + "design detail line\n" * 300
+        + "Decorators like @app.get('/runs') define routes.\n"
+    )
+
+    assert get_redaction_strategy(mode).redact(text) == text
+
+
+@pytest.mark.parametrize(
+    ("url", "redacted"),
+    [
+        (
+            "postgresql://squadops:s3cr3t@postgres:5432/db",
+            "postgresql://squadops:[REDACTED]@postgres:5432/db",
+        ),
+        ("redis://:abc/def@redis:6379/0", "redis://:[REDACTED]@redis:6379/0"),
+        ("amqp://u:p%40ss@rabbit/", "amqp://u:[REDACTED]@rabbit/"),
+    ],
+    ids=["user-and-password", "an-empty-user", "an-encoded-password"],
+)
+def test_a_urls_password_is_still_redacted(url, redacted):
+    """The other direction of #1756's narrowing. Bug caught: a password left in a connection
+    string, including one with ``/`` or with no user before it."""
+    assert get_redaction_strategy("standard").redact(url) == redacted
+
+
+@pytest.mark.parametrize("mode", ["standard", "strict"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "slot-vc-probe-api-runs-join-duplicate — POST /api/runs/{run_id}/join duplicate -> 409",
+        "`__tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts`",
+        "the key-results-summary-table component",
+        "vc-probe-api-runs-list-ordered-0001",
+    ],
+    ids=["probe-slot", "scaffold-path", "component-name", "id-with-a-short-number"],
+)
+def test_the_frameworks_own_ids_survive(text, mode):
+    """#2462. Bug caught: the generic ``api-``/``key-`` pattern reading a probe id or a component
+    name as an API key, so the text a model was sent is not what LangFuse shows (63 of 5,874
+    stored generations, 30 days to 2026-10-18)."""
+    assert get_redaction_strategy(mode).redact(text) == text
+
+
+@pytest.mark.parametrize("mode", ["standard", "strict"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "api-9f8a7b6c5d4e3f2a1b0c9d8e",
+        "key_AbC123dEf456GhI789jKl",
+        "api_key_live_51HxYzAbCdEf1234",
+        "key-abcdefghijklmnopqrstuv",
+        "api-key-9f8a7b6c5d4e3f2a1b0c",
+        "sk-ant-api03-AbC123dEf456GhI789",
+        "sk-lf-1234567890abcdef1234",
+    ],
+    ids=["hex", "mixed-case", "word-prefixed", "one-lowercase-run", "api-key-prefixed",
+         "anthropic", "langfuse"],
+)  # fmt: skip
+def test_a_real_format_key_is_still_redacted(key, mode):
+    """The other direction of #2462's narrowing. Bug caught: a key let through because it
+    starts with a word, or because it is one unbroken lowercase run, which no framework id is."""
+    result = get_redaction_strategy(mode).redact(f"configured with {key} for the run")
+
+    assert key not in result
+    assert "[REDACTED]" in result

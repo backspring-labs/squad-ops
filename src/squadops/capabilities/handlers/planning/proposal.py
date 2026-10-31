@@ -25,18 +25,36 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from squadops.campaigns.change_request import (
+    PRODUCT_PROPOSAL_INPUT,
+    IncrementBasis,
+    ProductContext,
     ProposalContext,
     ProposalVerdict,
     stored_change_request,
     validate_proposal,
 )
+from squadops.campaigns.criterion_placement import RunnerPlacement
 from squadops.campaigns.prior_cycle import brief_lines
 from squadops.campaigns.proposed_behaviours import proposal_lines
+from squadops.campaigns.unapproved_proposals import unapproved_lines
 from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
-from squadops.stacks.scaffold import frozen_conventions_for
+from squadops.capabilities.handlers.task_instructions import (
+    project_instructions_section,
+    task_instructions_section,
+)
+from squadops.outcomes.proposal_evidence import (
+    PROPOSAL_EVIDENCE_INPUT,
+    accepted_prd_lines,
+    goal_lines,
+    quality_lines,
+    shown_goal_ids,
+    shown_goal_statements,
+)
+from squadops.projects.derived_profile import SURFACES
+from squadops.stacks.scaffold import InterfaceManifest, frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -56,18 +74,40 @@ class ProposalContextMissing(ValueError):
     """The cycle's configuration does not carry the campaign's proposal context."""
 
 
-def proposal_context_from(resolved_config: dict, baseline_manifest: str) -> ProposalContext:
-    """The rails' context from the cycle's ``campaign_proposal`` block and the fetched manifest."""
+def proposal_context_from(
+    resolved_config: dict,
+    baseline_manifest: str,
+    *,
+    shown_goals: tuple[str, ...],
+    shown_goal_statements: tuple[tuple[str, str], ...],
+    product: dict | None = None,
+) -> ProposalContext:
+    """The rails' context from the cycle's ``campaign_proposal`` block and the fetched manifest,
+    and the goals the task's evidence showed it (SIP-0113 §4.5), which its ``moves_goals`` may
+    name.
+
+    On a campaign branch (§24bv point 5) there is no manifest: the rails read the product's
+    surfaces and runners from ``product``, the ``product_proposal`` input its run composed. A
+    branch proposal without it is refused, never read as a sample application's."""
     block = resolved_config.get("campaign_proposal")
     if not isinstance(block, dict):
         raise ProposalContextMissing(
             "the cycle carries no campaign_proposal block: a proposal run is launched by a "
             "campaign, which names the accepted tree and the objective it proposes against"
         )
-    if not baseline_manifest.strip():
+    try:
+        basis = IncrementBasis(str(block.get("basis") or IncrementBasis.MANIFEST))
+    except ValueError as e:
+        raise ProposalContextMissing(f"campaign_proposal names an unknown basis: {e}") from e
+    if basis.has_manifest and not baseline_manifest.strip():
         raise ProposalContextMissing(
             "campaign_proposal carries no baseline_manifest: the accepted manifest is the run's "
             "input (§9.1), persisted with it, not fetched"
+        )
+    if not basis.has_manifest and not isinstance(product, dict):
+        raise ProposalContextMissing(
+            f"the proposal is on a campaign branch and was given no {PRODUCT_PROPOSAL_INPUT}: "
+            "the product's head, profile and requirements are the run's input (§24bv point 5)"
         )
     try:
         objective = block["objective"]
@@ -79,9 +119,79 @@ def proposal_context_from(resolved_config: dict, baseline_manifest: str) -> Prop
             expected_stack=str(resolved_config.get("build_profile") or ""),
             allowed_scope=tuple(str(s) for s in objective["allowed_scope"]),
             prior_criteria=tuple(str(c) for c in block.get("prior_criteria") or ()),
+            shown_goals=shown_goals,
+            shown_goal_statements=shown_goal_statements,
+            product=None if basis.has_manifest else product_context(product or {}),
         )
     except (KeyError, TypeError, ValueError) as e:
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
+
+
+def product_context(product: dict) -> ProductContext:
+    """The rails' reading of a ``product_proposal`` input: each public surface as ``(kind,
+    value)``, each runner's placement, and the client routes acceptance already judges (§24cp).
+    An input composed before §24cp names no routes, so every page criterion reads as adding one,
+    and must name its anchor: stricter, never looser."""
+    profile = product["profile"]
+    return ProductContext(
+        surfaces=tuple(
+            (str(s["kind"]), _surface_value(s)) for s in profile.get("public_surfaces") or ()
+        ),
+        placements=tuple(RunnerPlacement.from_dict(p) for p in profile.get("placements") or ()),
+        test_files=tuple(str(g) for g in profile.get("test_files") or ()),
+        judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
+        route_anchors=_route_anchors(product.get("approved_manifest")),
+    )
+
+
+def _route_anchors(approved: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """§24cp: each route of the approved manifest the product was initialized from, with the test
+    ids its view carries, as acceptance reads them (``increment_tree.declared_routes``). A product
+    initialized from none has none. Nor does one whose manifest acceptance can't read: acceptance
+    then blocks every pinned route, naming it (``product_routes.NO_MANIFEST``), and reads no
+    anchor of it, so there's none to hold an added page against beyond the request's own."""
+    if not isinstance(approved, dict):
+        return ()
+    # deferred (cycle): campaigns.increment_tree imports this module at load
+    from squadops.campaigns.increment_tree import declared_routes
+
+    try:
+        manifest = InterfaceManifest.from_yaml(str(approved.get("content") or ""))
+    except (ValueError, TypeError, KeyError, yaml.YAMLError):
+        return ()
+    return tuple(declared_routes(manifest).items())
+
+
+#: SIP-0113 §4.5 (§10t step 4): what the proposal is shown of its accepted tree's outcomes, each
+#: part in its own asset, by the request template's variable. A part with nothing in it renders none.
+_EVIDENCE_SECTIONS = (
+    ("goals", "request.proposal_outcome_goals", "goal_lines", goal_lines, "outcome_goals_section"),
+    (
+        "quality",
+        "request.proposal_quality_moves",
+        "quality_lines",
+        quality_lines,
+        "quality_moves_section",
+    ),
+    (
+        "accepted_prd",
+        "request.proposal_accepted_prd",
+        "accepted_prd_lines",
+        accepted_prd_lines,
+        "accepted_prd_section",
+    ),
+)
+
+
+async def _evidence_sections(renderer: Any, evidence: dict[str, Any]) -> dict[str, str]:
+    """Each part's section, set apart as the template's other spliced sections are: the renderer
+    strips an asset's edges, and the template places these side by side."""
+    out: dict[str, str] = {}
+    for key, template_id, variable, lines, section in _EVIDENCE_SECTIONS:
+        if evidence.get(key):
+            rendered = await renderer.render(template_id, {variable: lines(evidence)})
+            out[section] = "\n\n" + rendered.content.strip("\n") + "\n"
+    return out
 
 
 async def _context_sections(
@@ -112,6 +222,7 @@ async def _context_sections(
         # the model is shown them rather than asked to recall them.
         section = await renderer.render("request.proposal_prd_section", {"prd": prd})
         out["prd_section"] = section.content
+    out.update(await _evidence_sections(renderer, inputs.get(PROPOSAL_EVIDENCE_INPUT) or {}))
     note = str(block.get("supervisor_note") or "").strip()
     if note:
         # SIP-0109 §9.2: a revision run is shown the note and the version it revises.
@@ -124,6 +235,15 @@ async def _context_sections(
             },
         )
         out["supervisor_note_section"] = section.content
+    unapproved = block.get("unapproved_proposals") or []
+    if unapproved:
+        # #2593: a fresh proposal is shown each proposal the campaign never approved, with the
+        # ruling's reason, as a revision is shown its note.
+        section = await renderer.render(
+            "request.proposal_unapproved_proposals",
+            {"unapproved_lines": unapproved_lines(unapproved)},
+        )
+        out["unapproved_proposals_section"] = section.content
     proposed = block.get("qa_proposed_behaviours") or []
     if proposed:
         # #1884: what the last increment's qa author proposed instead of testing.
@@ -163,21 +283,41 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             )
         resolved_config = inputs.get("resolved_config") or {}
         block = resolved_config.get("campaign_proposal") or {}
+        product = inputs.get(PRODUCT_PROPOSAL_INPUT)
         try:
             proposal_context = proposal_context_from(
-                resolved_config, str(block.get("baseline_manifest") or "")
+                resolved_config,
+                str(block.get("baseline_manifest") or ""),
+                shown_goals=shown_goal_ids(inputs.get(PROPOSAL_EVIDENCE_INPUT)),
+                shown_goal_statements=shown_goal_statements(inputs.get(PROPOSAL_EVIDENCE_INPUT)),
+                product=product if isinstance(product, dict) else None,
             )
         except ProposalContextMissing as e:
             return self._failure(start_time, inputs, str(e))
 
         variables = _render_variables(block, proposal_context)
         variables.update(await _context_sections(renderer, inputs, block, proposal_context))
+        template_id = self._request_template_id
+        if proposal_context.product is not None:
+            # §24bv point 5: the product's head, tree, profile, verification and requirements,
+            # in place of the accepted manifest.
+            assert isinstance(product, dict)
+            variables.pop("baseline_manifest")
+            variables.update(await product_sections(renderer, inputs, product))
+            template_id = PRODUCT_REQUEST_TEMPLATE
         # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own, apart from a
         # revision's note (SIP-0109 §9.2).
+        # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
+        instructions = await task_instructions_section(renderer, inputs)
+        if instructions:
+            variables["task_instructions_section"] = instructions
+        project = await project_instructions_section(renderer, inputs)
+        if project:
+            variables["project_instructions_section"] = project
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:
             variables["cross_cycle_lessons_section"] = lessons
-        rendered = await renderer.render(self._request_template_id, variables)
+        rendered = await renderer.render(template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
             hook="agent_start",
@@ -291,6 +431,142 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             ),
             error=error,
         )
+
+
+#: §24bv point 5: the request a repository-backed Project's proposal is sent, in place of
+#: ``request.strategy_propose_increment``'s manifest.
+PRODUCT_REQUEST_TEMPLATE = "request.strategy_propose_product_increment"
+
+
+async def product_sections(
+    renderer: Any, inputs: dict[str, Any], product: dict[str, Any]
+) -> dict[str, str]:
+    """The product's parts of the request (§24bv point 5), each through its own managed asset
+    (#448), keyed by the product template's variables. The lines are data; the prose is the
+    assets'."""
+    profile = product["profile"]
+    verification = product["previous_verification"]
+    requirements = product["requirements"]
+    profile_variables = {
+        "surface_lines": "\n".join(_surface_line(s) for s in profile.get("public_surfaces") or ())
+        or "- none: the product declares no start, command or package",
+        "placement_lines": "\n".join(_placement_line(p) for p in profile.get("placements") or ())
+        or "- none: the product declares no test runner",
+    }
+    judged = profile.get("client_routes") or []
+    if judged:
+        # SIP-0109 §24cp: a page criterion on one of these names no anchor; on any other, one.
+        rendered = await renderer.render(
+            "request.proposal_judged_routes",
+            {"route_lines": "\n".join(f"- `{r}`" for r in judged)},
+        )
+        profile_variables["judged_routes_section"] = rendered.content
+    gaps = profile.get("gaps") or []
+    if gaps:
+        lines = "\n".join(
+            f"- {g['id']}"
+            + (f" ({g['subject']})" if g.get("subject") else "")
+            + f", on `{', '.join(g['paths'])}`: {g['reason']}"
+            for g in gaps
+        )
+        rendered = await renderer.render("request.proposal_product_gaps", {"gap_lines": lines})
+        profile_variables["gaps_section"] = rendered.content
+    head = str(product["head"]["commit"])
+    approved = product.get("approved_manifest")
+    sections: dict[str, str] = {}
+    if approved:
+        # §24bv point 5: a greenfield product's approved manifest (SIP-0112 H.1), beside the rest.
+        rendered = await renderer.render(
+            "request.proposal_approved_manifest",
+            {
+                "stack": str(approved["stack"]),
+                "commit": str(approved["commit"]),
+                "manifest": str(approved["content"]).strip(),
+            },
+        )
+        sections["approved_manifest_section"] = rendered.content
+    return {
+        **sections,
+        "head_commit": head,
+        "product_tree_section": await _tree_section(renderer, inputs, head),
+        "product_profile_section": (
+            await renderer.render("request.proposal_product_profile", profile_variables)
+        ).content,
+        "previous_verification_section": (
+            await renderer.render(
+                "request.proposal_previous_verification",
+                {
+                    "verification_source": str(verification["source"]),
+                    "verification_commit": str(verification["commit"]),
+                    "check_lines": "\n".join(
+                        _check_line(c) for c in verification.get("checks") or ()
+                    )
+                    or "- no check ran",
+                },
+            )
+        ).content,
+        "requirements_section": (
+            await renderer.render(
+                "request.proposal_requirements_source",
+                {
+                    "requirements_ref": str(requirements["ref"]),
+                    "requirements": str(requirements["content"]).strip(),
+                },
+            )
+        ).content,
+    }
+
+
+async def _tree_section(renderer: Any, inputs: dict[str, Any], head: str) -> str:
+    """The head's tree, from the task's bounded ``source_repository`` view (SIP-0112 E.4.3): its
+    map and the product's own instruction files. Not the view's whole appendix, which tells a
+    build task how to emit files: the proposal emits none. ``""`` for a task given no view."""
+    repository = inputs.get("source_repository")
+    if not isinstance(repository, dict):
+        return ""
+    variables = {"head_commit": head, "repository_map": str(repository["map"])}
+    instructions = repository.get("instructions") or {}
+    if instructions:
+        files = "\n\n".join(f"**{p}:**\n```\n{c}\n```" for p, c in instructions.items())
+        block = await renderer.render(
+            "request.source_repository_instructions_block", {"files": files}
+        )
+        variables["instructions"] = block.content
+    return (await renderer.render("request.proposal_product_tree", variables)).content
+
+
+def _surface_value(surface: dict) -> str:
+    """A contract 8 surface's one value (``SURFACES``): its URL, its argv joined, or its name."""
+    value = surface.get(SURFACES.get(str(surface["kind"]), "url"))
+    return " ".join(str(a) for a in value) if isinstance(value, list) else str(value)
+
+
+def _surface_line(surface: dict) -> str:
+    return f"- {surface['kind']}: `{_surface_value(surface)}`"
+
+
+def _placement_line(placement: dict) -> str:
+    covers = ", ".join(f"`{c}`" for c in placement.get("covers") or ())
+    if placement.get("template"):
+        return (
+            f"- `{placement['runner']}` tests {covers}: a criterion's test is placed at "
+            f"`{placement['template']}`"
+        )
+    return f"- `{placement['runner']}` tests {covers}: hosts no criterion ({placement['refused']})"
+
+
+def _check_line(check: dict) -> str:
+    line = f"- `{check['id']}`: {check['result']}"
+    if check.get("reason"):
+        line += f" ({check['reason']})"
+    findings = check.get("findings")
+    if findings:
+        keys = ", ".join(f"`{k}`" for k in findings["keys"])
+        more = findings["count"] - len(findings["keys"])
+        line += f"; {findings['count']} finding keys: {keys}" + (
+            f" and {more} more" if more else ""
+        )
+    return line
 
 
 def _render_variables(block: dict, context: ProposalContext) -> dict[str, str]:

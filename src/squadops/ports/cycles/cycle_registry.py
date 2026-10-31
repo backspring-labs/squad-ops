@@ -13,10 +13,12 @@ from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.cycle_end import RecordedEnd
 from squadops.cycles.failure_records import FailureRecord
 from squadops.cycles.models import (
+    BindingHold,
     Cycle,
     CycleStatus,
     GateDecision,
     Run,
+    RunHalt,
     RunStatus,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -161,6 +163,29 @@ class CycleRegistryPort(ABC):
         Raises:
             RunNotFoundError: If the run_id is not found.
         """
+
+    @abstractmethod
+    async def record_binding_hold(self, run_id: str, hold: BindingHold) -> None:
+        """Record that ``run_id`` is held on ``hold``'s task's bindings (SIP-0110 §A.3.6, #2178),
+        once per ``hold_id``: recording it again changes nothing."""
+
+    @abstractmethod
+    async def release_binding_hold(
+        self, run_id: str, hold_id: str, *, released_at: datetime, cause: str
+    ) -> bool:
+        """Release the hold, once: whether this release landed. A hold already released (by a
+        re-supply, a cancel, or the Campaign's ruling bound) is left as it was, and ``False``
+        tells the caller another release won."""
+
+    @abstractmethod
+    async def record_run_halt(self, run_id: str, halt: RunHalt) -> bool:
+        """Record that ``run_id`` is halted by an emergency withdrawal (SIP-0110 §A.3.8, #2178),
+        once: whether this one landed. A run halted already keeps its first halt."""
+
+    @abstractmethod
+    async def record_restart(self, run_id: str, restart_run_id: str) -> bool:
+        """Record the run a halted run was restarted as, once: whether this one landed, so a
+        halted run is restarted at most once."""
 
     @abstractmethod
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:

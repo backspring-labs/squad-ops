@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "8"
+version: "9"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -57,7 +57,10 @@ assertion kinds from the bound contract, the anchor and containment gates from t
 the required-files floor from the build profile. Authoring one adds a second row with the
 same name over the same file — the evidence double-counts, and your row's parameters are a
 guess at a fact the framework holds exactly. They are withheld from the vocabulary above
-for that reason, and any that reach dispatch are dropped with the rule named. Author what
+for that reason, and any that reach dispatch are dropped with the rule named. The same holds
+for an `import_present` in a qa suite that names the app's entry module, wherever the harness
+boundary is bound: the boundary forbids that import, because the suite reaches the app through
+the scaffold's own test fixture. No suite can pass both rows, so yours is dropped. Author what
 only you can decide: prose intent, and the coverage floors the vocabulary offers.
 
 **commands-must-run-here** — An error-severity `command_exit_zero` uses one of the

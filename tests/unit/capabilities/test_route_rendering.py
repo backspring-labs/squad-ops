@@ -8,6 +8,7 @@ import pytest
 from squadops.capabilities.handlers.probe_runner import DEFAULT_PROFILE, profile_for_stack
 from squadops.capabilities.handlers.route_rendering import (
     RenderSteps,
+    catch_all_path,
     render_profile_for,
     render_routes,
 )
@@ -170,3 +171,147 @@ def test_a_page_written_with_a_braced_parameter_is_read_at_its_created_id():
 
     assert seen["read"] == ["/runs/r-7"]
     assert rendered == {"/runs/{run_id}": frozenset({"run-detail-view", "capacity-status"})}
+
+
+def test_a_catch_all_route_is_read_where_no_declared_route_is_served():
+    """#2754, entered where the increment's evaluation enters: a manifest that declares the
+    router's catch-all (``*`` → its not-found view) is read at a path nothing else serves, and its
+    anchors come back. Bug caught: ``*`` requested as written, which is no URL, so the page read
+    as never rendered and every increment on that manifest ended ``blocked_unverified``
+    (``cmp_9c9df268084a``, 2026-10-28)."""
+    pages = {
+        **PAGES,
+        "/__squadops_unmatched__": (
+            '<main data-testid="not-found-view"><p data-testid="not-found-message">gone</p></main>'
+        ),
+    }
+    read: list[str] = []
+
+    def dump_dom(url):
+        path = "/" + url.split("/", 3)[3] if url.count("/") >= 3 else "/"
+        read.append(path)
+        return pages.get(path)
+
+    steps, _ = _steps(dump_dom=dump_dom)
+
+    rendered = _render(steps, routes={**ROUTES, "*": ("not-found-view", "not-found-message")})
+
+    assert rendered["*"] == frozenset({"not-found-view", "not-found-message"})
+    assert read == ["/", "/runs/r-7", "/__squadops_unmatched__"]
+
+
+@pytest.mark.parametrize(
+    ("route", "path"),
+    [
+        ("*", "/__squadops_unmatched__"),
+        ("/docs/*", "/docs/__squadops_unmatched__"),
+        ("/runs/:run_id", None),
+        ("/", None),
+        ("/runs/*/edit", None),
+    ],
+)
+def test_only_a_catch_all_route_is_read_at_the_unmatched_path(route, path):
+    """Bug caught: an ordinary route, or a ``*`` inside a path, read at the unmatched path, so a
+    real page is judged by the not-found view."""
+    assert catch_all_path(route) == path
+
+
+@pytest.mark.parametrize(
+    ("dom", "anchors"),
+    [
+        (
+            '<main data-testid="runs-list"><a data-testid="run-item">x</a></main>',
+            {"runs-list", "run-item"},
+        ),
+        ('<div id="root"></div><script>h = \'<p data-testid="ghost">\'</script>', set()),
+        ('<p>data-testid="in-the-text"</p>', set()),
+        ('<div data-testid="">', set()),
+        (
+            '<p data-testid="not-found"></p><template><section data-testid="totals-view">'
+            '<template><b data-testid="deeper"></b></template><i data-testid="still-inert"></i>'
+            '</section></template><footer data-testid="after"></footer>',
+            {"not-found", "after"},
+        ),
+        ('<noscript><section data-testid="totals-view"></section></noscript>', set()),
+        ('<template/><p data-testid="after-a-self-closed-template"></p>', set()),
+        ('<template><p data-testid="never-closed">', set()),
+        ('<br data-testid="void"/><p data-testid="p"></p>', {"void", "p"}),
+        ('<form data-testid="add-view" hidden=""></form><p data-testid="shown"></p>', {"shown"}),
+        ('<div hidden="until-found"><form data-testid="add-view"></form></div>', set()),
+        ('<div aria-hidden="TRUE "><form data-testid="add-view"></form></div>', set()),
+        ('<div aria-hidden="false"><form data-testid="add-view"></form></div>', {"add-view"}),
+        ('<section style="color: red;display: none"><b data-testid="a"></b></section>', set()),
+        ('<section style="DISPLAY:None !important"><b data-testid="a"></b></section>', set()),
+        ('<section style="visibility: hidden"><b data-testid="a"></b></section>', set()),
+        ('<section style="visibility:collapse"><b data-testid="a"></b></section>', set()),
+        ('<section style="content-visibility: hidden"><b data-testid="a"></b></section>', set()),
+        ('<section style="display: flex"><b data-testid="a"></b></section>', {"a"}),
+        ('<img hidden data-testid="img"><p data-testid="after-img"></p>', {"after-img"}),
+        (
+            '<div hidden></span><p data-testid="in"></p></div><p data-testid="out"></p>',
+            {"out"},
+        ),
+        ('<div hidden><p data-testid="never-closed">', set()),
+    ],
+    ids=[
+        "elements",
+        "a-scripts-text",
+        "a-text-node",
+        "an-empty-id",
+        "inside-a-template-nested",
+        "inside-a-noscript",
+        "a-self-closed-template",
+        "a-template-never-closed",
+        "a-void-element",
+        "the-hidden-attribute",
+        "hidden-until-found",
+        "an-aria-hidden-ancestor",
+        "aria-hidden-false",
+        "an-inline-display-none-ancestor",
+        "display-none-shouted-and-important",
+        "visibility-hidden",
+        "visibility-collapse",
+        "content-visibility-hidden",
+        "a-style-that-hides-nothing",
+        "a-hidden-void-element",
+        "a-stray-end-tag-inside-a-hidden-one",
+        "a-hidden-element-never-closed",
+    ],
+)
+def test_a_products_page_counts_only_the_ids_its_elements_carry(dom, anchors):
+    """SIP-0109 §24co's reading of a product's page (items 5 and 12). Bugs caught: a test id in a
+    script's source or a page's text counted as rendered (the qa reading's pattern counts both);
+    one inside an inert ``<template>`` or a ``<noscript>``, which Chromium's dump carries though
+    the page never rendered it (both read live on the evaluator image, 2026-10-28); and the
+    elements after an inert one lost, or an unclosed one read as anything but inert; and (item 13)
+    an anchor its own or an ancestor's markup hides counted, a stray end tag ending a hidden region
+    early, or a style that hides nothing read as hiding."""
+    from squadops.capabilities.handlers.route_rendering import view_anchors
+
+    assert view_anchors(dom) == anchors
+
+
+def test_the_qa_reading_and_a_products_read_a_page_with_one_set_of_flags(monkeypatch):
+    """Bug caught: the qa role's flags edited apart from the sandbox's, so a sample application's
+    route and a product's are read differently and a verdict changes with where it was read."""
+    from squadops.capabilities.handlers import route_rendering
+
+    argvs = []
+
+    class _Done:
+        timed_out, returncode, stdout = False, 0, b"<html></html>"
+
+    def run(argv, cwd, timeout):
+        argvs.append((argv, timeout))
+        return _Done()
+
+    monkeypatch.setattr(route_rendering, "run_bounded_sync", run)
+
+    route_rendering._dump_dom("http://127.0.0.1:5173/runs")
+
+    assert argvs == [
+        (
+            ["chromium", *route_rendering.DUMP_DOM_FLAGS, "http://127.0.0.1:5173/runs"],
+            route_rendering.DUMP_DOM_TIMEOUT_S,
+        )
+    ]

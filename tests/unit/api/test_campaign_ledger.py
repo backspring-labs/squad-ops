@@ -176,3 +176,80 @@ async def test_a_proposal_is_classified_after_the_campaign_has_ended(world):
         client.get(f"/api/v1/campaigns/{CID}/ledger").json()[1]["classification"]["classification"]
         == "sound_proposal_built_badly"
     )
+
+
+async def test_a_versions_repair_is_listed_under_it_and_its_end_is_the_versions_outcome(world):
+    """#2578 part 4, entered at ``GET …/ledger`` after the owner's resume launched a repair of v2
+    (``bound_launch``, the builder the live resume calls) and the repair's own end was decided.
+    Bug caught: the 2.4 window's campaign 1 shape, where the ledger showed the repaired version
+    with the row that decided its first cycle and never attached the repair's own end."""
+    from squadops.campaigns.launch_requests import bound_launch
+    from squadops.campaigns.models import CycleKind
+
+    client, campaigns, _role = world
+    stored = await campaigns.get_campaign(CID)
+    repair = bound_launch(
+        stored,
+        CycleKind.REPAIR,
+        {"proposal_id": "prop_cap", "version": 2, "continues": "cyc_1", "repair_of": "cyc_1"},
+        plan_artifact_refs=[],
+        contract_ref=None,
+    )
+    result = await campaigns.transition(
+        CID,
+        move(CampaignState.REPAIRING, "resume-r", operation=ControlOperation.RESUME, launch=repair),
+    )
+    await campaigns.mark_launch_intent_launched(result.intent.launch_id, "cyc_2", actor="launcher")
+
+    before = {e["version"]: e for e in client.get(f"/api/v1/campaigns/{CID}/ledger").json()}
+    # Launched and not yet decided: listed, with no row.
+    assert [c["cycle_id"] for c in before[2]["cycles"]] == ["cyc_1", "cyc_2"]
+    assert "row" not in before[2]["cycles"][1]
+
+    stored = await campaigns.get_campaign(CID)
+    await campaigns.transition(
+        CID,
+        decision_transition(
+            stored,
+            ContinuationDecision("cyc_2", 18, action=PendingAction.ESCALATE),
+            ending=CycleEnding.ASSESSED,
+            verdict=None,
+            launch=None,
+        ),
+    )
+    v1, v2 = client.get(f"/api/v1/campaigns/{CID}/ledger").json()
+
+    assert v1["cycles"] == []  # its cycle carried v2 too, and decided for v2
+    assert v2["cycles"] == [
+        {"cycle_id": "cyc_1", "kind": "increment", "row": 14, "ending": "assessed",
+         "action": "escalate"},
+        {"cycle_id": "cyc_2", "kind": "repair", "row": 18, "ending": "assessed",
+         "action": "escalate"},
+    ]  # fmt: skip
+    assert v2["outcome"] == {"row": 18, "ending": "assessed", "action": "escalate"}
+
+
+async def test_a_continuation_of_another_proposal_is_not_listed_under_this_one(world):
+    """The edge: a repair whose binding names a proposal the ledger never saw submitted. Bug
+    caught: a continuation attached by cycle order, under whichever version came last."""
+    from squadops.campaigns.launch_requests import bound_launch
+    from squadops.campaigns.models import CycleKind
+
+    client, campaigns, _role = world
+    stored = await campaigns.get_campaign(CID)
+    stray = bound_launch(
+        stored,
+        CycleKind.RETRY,
+        {"proposal_id": "prop_other", "version": 1, "continues": "cyc_9"},
+        plan_artifact_refs=[],
+        contract_ref=None,
+    )
+    result = await campaigns.transition(
+        CID,
+        move(CampaignState.RETRYING, "resume-s", operation=ControlOperation.RESUME, launch=stray),
+    )
+    await campaigns.mark_launch_intent_launched(result.intent.launch_id, "cyc_9", actor="launcher")
+
+    entries = client.get(f"/api/v1/campaigns/{CID}/ledger").json()
+
+    assert [c["cycle_id"] for e in entries for c in e["cycles"]] == ["cyc_1"]

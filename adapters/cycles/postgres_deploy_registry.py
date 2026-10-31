@@ -26,7 +26,7 @@ class PostgresDeployRegistry(DeployRegistryPort):
                     {"service": s.service, "image_id": s.image_id, "revision": s.revision}
                     for s in record.services
                 ],
-                [{"model": m.model, "digest": m.digest} for m in record.models],
+                [{"model": m.model, "digest": m.digest, "served": m.served} for m in record.models],
             )
 
     async def latest(self) -> DeployRecord | None:

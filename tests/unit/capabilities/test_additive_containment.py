@@ -15,6 +15,7 @@ import pytest
 from squadops.capabilities.additive_containment import (
     RULE_LIVE_SERVER_FETCH,
     RULE_NO_APPLICATION_INVOCATION,
+    RULE_SUBJECT_MOCKED,
     assess_additive_suite,
     containment_findings,
 )
@@ -145,10 +146,121 @@ async def test_the_qa_handlers_containment_row_passes_a_dynamically_loaded_route
     ]
 
 
+async def test_the_route_caller_idiom_the_appendix_teaches_passes_the_qa_handlers_containment():
+    """#2577, wiring (anti-pattern 6a): an increment's criterion test on Next.js calls its route
+    through the frozen `callRoute`, as `request.increment_route_harness_appendix_nextjs_ts`
+    teaches. Bug caught: the taught idiom refused as `no_application_invocation` at the qa
+    handler's typed-acceptance seam, whose finding tells the author to import the route module:
+    the import #2577 exists to replace. The test reads the asset's own example."""
+    import re
+    from pathlib import Path
+
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+    from squadops.stacks.scaffold import route_caller_import_for
+
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates"
+        / "request.increment_route_harness_appendix_nextjs_ts.md"
+    ).read_text()
+    [example] = re.findall(r"```ts\n(.*?)```", asset, re.S)
+    suite = example.replace("{{route_caller_import}}", route_caller_import_for("nextjs_ts"))
+    checks: list[dict] = []
+    await QATestHandler()._evaluate_typed_acceptance(
+        {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+        [{"name": "__tests__/criteria/T9.test.ts", "type": "test", "content": suite}],
+        checks,
+        [],
+        {},
+    )
+    rows = [c for c in checks if c["check"] == "acceptance:additive_containment"]
+    assert [(r["params"]["file"], r["status"]) for r in rows] == [
+        ("__tests__/criteria/T9.test.ts", "passed")
+    ]
+
+
+def _fenced(source: str, lang: str) -> str:
+    """The one ``lang`` fence in a prompt's text: the example its author is shown."""
+    import re
+
+    [example] = re.findall(rf"```{lang}\n(.*?)```", source, re.S)
+    return example
+
+
+def _page_appendix_example() -> str:
+    from pathlib import Path
+
+    from squadops.stacks.scaffold import page_loader_import_for, route_caller_import_for
+
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates"
+        / "request.increment_page_harness_appendix_nextjs_ts.md"
+    ).read_text()
+    return (
+        _fenced(asset, "tsx")
+        .replace("{{page_loader_import}}", page_loader_import_for("nextjs_ts"))
+        .replace("{{route_caller_import}}", route_caller_import_for("nextjs_ts"))
+    )
+
+
+def _supplement_page_example() -> str:
+    from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+
+    return _fenced(DEVELOPMENT_PROFILES["nextjs_ts"].test_prompt_supplement, "tsx")
+
+
+#: A page criterion about structure (#2547) fetches nothing worth answering, so its test stubs
+#: ``fetch`` with data of its own beneath the page it loads: legitimate, as beneath a page it
+#: imports, because the page rendered is the application's.
+_STRUCTURAL_PAGE_TEST = """import { expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { loadPage } from '@/vitest.pages'
+
+vi.stubGlobal('fetch', async () => Response.json({ titles: [] }))
+
+it('shows the archive heading', async () => {
+  const Page = await loadPage('/archive')
+  render(<Page />)
+  expect(await screen.findByTestId('archive-heading')).toBeInTheDocument()
+})
+"""
+
+
+@pytest.mark.parametrize(
+    "suite",
+    [_STRUCTURAL_PAGE_TEST, _page_appendix_example(), _supplement_page_example()],
+    ids=["structural-page-through-the-loader", "page-appendix-example", "supplement-page-example"],
+)
+async def test_the_page_idioms_2602_teaches_pass_the_qa_handlers_containment(suite):
+    """#2602, wiring (anti-pattern 6a), entered at the qa handler's typed-acceptance seam. A page
+    criterion's test loads its page through the frozen `loadPage`, and the appendix and the
+    stack's supplement both route a page's fetch stub through `callRoute`. Bugs caught: a page
+    loaded through the loader read as invoking nothing, so a test that stubs `fetch` beneath it
+    is refused as self-mocking (`no_application_invocation`) and its finding tells the author to
+    import the page module, the import #2602 replaces; or either taught example refused."""
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+    checks: list[dict] = []
+    await QATestHandler()._evaluate_typed_acceptance(
+        {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+        [{"name": "__tests__/criteria/T7.test.tsx", "type": "test", "content": suite}],
+        checks,
+        [],
+        {},
+    )
+    rows = [c for c in checks if c["check"] == "acceptance:additive_containment"]
+    assert [(r["params"]["file"], r["status"]) for r in rows] == [
+        ("__tests__/criteria/T7.test.tsx", "passed")
+    ]
+
+
 @pytest.mark.parametrize(
     "not_a_load",
     [
         "vi.mock('@/app/api/runs/route')",
+        "vi.mock('@/vitest.routes')",
+        "vi.mock('@/vitest.pages')",
         "const actual = await vi.importActual('@/app/api/runs/route')",
         "vi.mock('@/app/api/runs/route', () => import('./fake-route'))",
     ],
@@ -245,3 +357,85 @@ class TestReplays:
     def test_the_accepted_rolls_suites_pass(self, name, invocation):
         content = (_REPLAYS / name).read_text(encoding="utf-8")
         assert _rules(name, content, invocation) == []
+
+
+#: The first T4 suite of the 2.4 Next.js shakeout's round 8 (cyc_dfab1ca2b0b8, 12:29Z), as the qa
+#: author wrote it: a page criterion about the create form's inputs, rendered and asserted.
+_PAGE_SUITE = """import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen } from '@testing-library/react'
+
+import CreateRunView from '@/app/runs/new/page'
+
+const fetchSpy = vi.fn()
+beforeEach(() => { fetchSpy.mockReset(); vi.stubGlobal('fetch', fetchSpy) })
+afterEach(() => { vi.unstubAllGlobals() })
+
+describe('T4: CreateRunView capacity input', () => {
+  it('renders an optional numeric capacity input with min=1', async () => {
+    render(<CreateRunView />)
+    const capacityInput = await screen.findByTestId('create-run-capacity')
+    expect(capacityInput).toHaveAttribute('type', 'number')
+  })
+})
+"""
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        _PAGE_SUITE,
+        "vi.mock('@/lib/api', () => ({ api: vi.fn() }))\n"
+        "import CreateRunView from '@/app/runs/new/page'\nit('x', () => {})\n",
+        "import Home from '@/app/page'\nit('x', () => {})\n",
+        "import { RunCard } from '@/components/RunCard'\nit('x', () => {})\n",
+    ],
+    ids=["round-8-T4", "client-mocked-beneath-a-page", "root-page", "component"],
+)
+def test_a_page_suite_rendering_a_real_page_invokes_the_application(content):
+    """#2547: the 2.4 Next.js shakeout's round 8. T4's first suite rendered the real create page
+    and asserted its capacity input, a correct page test; the rule counted only an `app/api/`
+    import, so it was refused twice and the run spent its correction rounds bending the test.
+    Stack #1 already counts rendering `App` or a view; a fetch stub or a mock of the frozen client
+    beneath a rendered page is the network seam, not the subject."""
+    assert _rules("__tests__/criteria/T4.test.tsx", content) == []
+
+
+@pytest.mark.parametrize(
+    ("content", "rules"),
+    [
+        (
+            "vi.mock('@/app/runs/new/page', () => ({ default: () => null }))\n"
+            "import CreateRunView from '@/app/runs/new/page'\nit('x', () => {})\n",
+            [RULE_SUBJECT_MOCKED],
+        ),
+        (
+            "vi.mock('@/lib/api', () => ({ api: vi.fn() }))\nimport { api } from '@/lib/api'\n"
+            "it('x', () => {})\n",
+            [RULE_NO_APPLICATION_INVOCATION],
+        ),
+    ],
+    ids=["the-page-mocked", "the-client-mocked-with-nothing-rendered"],
+)
+def test_widening_to_pages_still_refuses_a_mocked_page_and_a_bare_client(content, rules):
+    """The over-acceptance guard for #2547: mocking the page under test is mocking the subject,
+    and a mock of the browser client with nothing rendered asserts only against itself."""
+    assert _rules("__tests__/criteria/T4.test.tsx", content) == rules
+
+
+async def test_the_qa_handlers_containment_row_passes_round_8s_page_suite():
+    """Wiring (#2547, anti-pattern 6a): the refusal came from the qa handler's typed-acceptance
+    seam, with the stack from the cycle's config, so the test enters there."""
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+    checks: list[dict] = []
+    await QATestHandler()._evaluate_typed_acceptance(
+        {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+        [{"name": "__tests__/criteria/T4.test.tsx", "type": "test", "content": _PAGE_SUITE}],
+        checks,
+        [],
+        {},
+    )
+    rows = [c for c in checks if c["check"] == "acceptance:additive_containment"]
+    assert [(r["params"]["file"], r["status"]) for r in rows] == [
+        ("__tests__/criteria/T4.test.tsx", "passed")
+    ]

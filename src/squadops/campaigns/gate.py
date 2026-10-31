@@ -180,6 +180,7 @@ def ruling_transition(
     idempotency_key: str,
     classification: str | None = None,
     classification_rationale: str | None = None,
+    instruction_ids: tuple[str, ...] = (),
 ) -> CampaignTransition:
     """The ``rule`` row. A decision the gate does not take still becomes a row, refused as
     ``illegal_ruling`` and recorded; it moves nothing. A return's classification rides the row
@@ -200,6 +201,9 @@ def ruling_transition(
             "content_hash": binding.content_hash,
             "baseline_tree": binding.baseline_tree,
             **classified,
+            # SIP-0110 §3.5 (#2178): the task instructions the approval gave, by record id. Only
+            # when it gave any, so every other ruling's row is what it was.
+            **({"task_instructions": list(instruction_ids)} if instruction_ids else {}),
         },
         ruling=IncrementRuling(decision, binding, run_id),
     )

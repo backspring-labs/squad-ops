@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-30)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -114,20 +114,25 @@ numbered), *unplaced* (said deliberately), *dropped* (by the numbered amendment 
 feature on the MacBook lane, beside Outcome Evaluation's feature half on the Spark; the rows were placed at
 acceptance (2026-10-17), each with its issue labelled `sip:0112`. Greenfield (E.4.6) ships in 2.4: the cut requires it (G6, the owner's
 ruling of 2026-10-17). 2.4 carries E.4.1–E.4.4 and E.4.6, the two demonstrations; E.4.5 is required
-before the SIP closes and need not ship in 2.4 (the owner, the same day). Dependencies are in E.4. Game-specific adapters have no row here: they are their own SIPs' (Q34).
+before the SIP closes and need not ship in 2.4 (the owner, the same day). On 2026-10-23 the owner placed it in 2.6
+and the SIP's close with it ("move E.4.5 to 2.6 and close 0112 in 2.6"): 2.5 is a stabilization release, and E.4.5's
+update history and archive/restore are features. Dependencies are in E.4. Game-specific adapters have no row here: they are their own SIPs' (Q34).
 
 | part | status | where |
 |---|---|---|
-| §8.2.3 the shared fixture product and contract tests, landing before either lane's first shared-contract PR (the MacBook lane writes it; the Spark lane adds its recorded reference, the 2.4 plan's D12) | **placed** | 2.4.0, #2407 |
-| E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **placed** | 2.4.0, #2408 |
-| E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **placed** | 2.4.0, #2409 |
-| E.4.3 the first scoped feature through the shared cycle path | **placed** | 2.4.0, #2410 |
-| E.4.4 the second feature after an outside contribution | **placed** | 2.4.0, #2411 |
-| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced**, deliberately: placed by a later plan, before the SIP closes | — |
-| E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **placed** | 2.4.0, #2412 |
-| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional | — |
+| §8.2.3 the shared fixture product and contract tests, landing before either lane's first shared-contract PR (the MacBook lane writes it; the Spark lane adds its recorded reference, the 2.4 plan's D12) | **shipped**: Tally, with each lane's recorded outputs in four forms and the fixture's own checks (`tests/fixtures/shared_contract/`). Each contract test lands with the PR that builds its seam (agreed on #2407) | 2.4.0, PR #2440, issue #2407 |
+| E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **shipped**: the writable registry with its cutover from `config/projects.yaml` and guarded rollback (#2444), and registration through `POST /api/v1/projects` and `squadops projects import` behind the locator rules and the write gate (#2452). The owner's R1–R6 are on #2408. Owner decisions take the event table's `owner_decision` operation, written from E.4.4 (#2411) | 2.4.0, PRs #2444 and #2452, issue #2408 |
+| E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **shipped**: the managed clone and validation; the versioned Development Configuration with contract 7's start declaration and the repository's instruction sources; seeding with the commit-to-revision mapping (contract 3's seeding half); the inherited baseline through X-3a. Capture back to Git is E.4.3's (#2410) | 2.4.0, PR #2468, issue #2409 |
+| E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
+| E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
+| H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **shipped**: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), a blueprint's conventions without its test placement (H.13), a product's qa suite run on the product's tree (H.15, #2815), with SIP-0109 §24bv point 5's proposal input and point 6's `qa.evaluate_increment` drop shipped there; read live on the 2.5 cut's final deploy on `z_shelfnote` and `z_continuum` (the cut's pre-registration §14b). Narrowed by the owner (2026-10-29): no product increment was accepted, and H.13's two unbuilt items remain, so the row below carries them | 2.5.0, closes #2619 with the release PR |
+| H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), waiting on #2818 and #2799; and H.13's two items not built (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing) | 2.6.0, #2827 |
+| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.6.0, #2709 |
+| E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
+| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional. The 2.6 plan ships it or drops it by a numbered amendment, since the SIP closes in 2.6 (the owner, 2026-10-23) | — |
 
-**What closes this SIP:** the shared fixture and E.4.1–E.4.6 shipped, and E.4.7 shipped or dropped. Greenfield creation (E.4.6)
+**What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It closes in 2.6
+(the owner, 2026-10-23). Greenfield creation (E.4.6)
 is in the completion scope by the owner's ruling of 2026-10-17 (Q34), and leaves it only by a numbered
 amendment the owner rules. The 2.4 cut requires it shipped (G6, ruled the same day).
 
@@ -251,6 +256,7 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 | 5. Evaluation references | Outcome Evaluation's evaluation records (to be built): one per evaluation run, a cycle against one suite | references to them in Project history (FR-09) | produces them: the evaluation ID and suite digest, with the Project ID, the campaign and cycle IDs, and the evaluated and previous accepted tree identities | this SIP stores the reference in Project history. It never stores steps and never recomputes a reading. No scenario result reaches a squad role's inputs through the Project Context or the handoff until Outcome Evaluation's phase 2 is ruled, and after it only the proposal run's (its §4.5) |
 | 6. Project instructions and snapshot binding | SIP-0110 §0.7, §A.3.6–§A.3.8; #2179 (2.4.0) | repository instruction discovery; drift findings; the resolver for a repository reference at the unit's pinned commit (§B.5.1) | compared increments read the instruction sets their units pinned; a set that differs between them is a changed listed input (SIP-0110 §0.12) | one store, SIP-0110's; an admitted snapshot changes only by SIP-0110's re-binding |
 | 7. Starting the product for evaluation (added by the Spark lane's review; approved by the owner as written, 2026-10-17) | the Development Configuration's `technical.commands_ref` (§B.5); for a blueprint Project, the stack's probe and render profiles (`profile_for_stack`, `src/squadops/capabilities/handlers/probe_runner.py:133`; `render_profile_for`, `src/squadops/capabilities/handlers/route_rendering.py:77`) | the commands to install, build and start the product at a given tree, its readiness check, and the base URLs or entry points it serves, versioned with the Development Configuration | reads those commands at the Development Configuration revision the unit pinned | Outcome Evaluation never infers how to start a product from a sample application; a Project with no declaration reports every scenario `blocked_unverified`, with that reason |
+| 8. The derived development profile (added for 2.5 by H.6; H.4) | the Development Configuration (§B.5) and the inherited baseline (FR-20), both this SIP's | a profile recorded with each configuration revision once its inherited baseline is captured there: what the squad's roles depend on in the product, and each gap (`squadops.projects.derived_profile`) | SIP-0109 §24bv reads it for a Campaign's calibration record (point 1), an increment's acceptance on the product's own runner (point 3) and the proposal's input (point 5); SIP-0113 §10l reads whether a start is declared | one profile per configuration revision and baseline capture, never edited; read at the commit and revision the unit pinned; what a gap stops follows from its id and kind (H.6), never from a reader's judgement |
 
 **Every change to a shared contract** names the contract in its PR body, carries the other lane's review, adds a wiring test that enters at the caller the live cycle uses (`docs/TEST_QUALITY_STANDARD.md`, anti-pattern 6a), and is additive: no field is repurposed or removed.
 
@@ -259,7 +265,8 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 The table above gives each contract's owner, producer and consumer. This one gives what an
 implementation needs to build against it alone. Fields live with the contract's owner: contracts 3, 4
 and 6 use SIP-0102's, SIP-0109's and SIP-0110's as those SIPs define them, and only the three contracts
-whose data this SIP or Outcome Evaluation creates get a schema here.
+whose data this SIP or Outcome Evaluation creates get a schema here. Contract 8, added for 2.5, has its
+schema in H.6.
 
 | contract | available | absent, stale or unavailable | versioning | minimum contract test |
 |---|---|---|---|---|
@@ -270,6 +277,7 @@ whose data this SIP or Outcome Evaluation creates get a schema here.
 | 5 | when Outcome Evaluation writes an evaluation record | Project history shows *not evaluated*, never an inferred result; a reference whose record cannot be read is kept and marked unresolved | `OutcomeEvaluationRef` carries a schema version; it keeps its name while Outcome Evaluation keeps its own (that SIP's A1) | write the fixture's recorded reference into Project history; read it back; refuse an unknown major version |
 | 6 | when SIP-0110 pins the unit's snapshot | as SIP-0110 rules: a binding instruction that cannot be resolved holds dispatch | SIP-0110's | IR-3 |
 | 7 | when a Development Configuration revision is confirmed (E.4.2) | no declaration: every scenario is `blocked_unverified`, reason "no start declaration"; a start or readiness failure: `blocked_unverified`, reason "start failed"; a secret the Project has not declared for evaluation, or the owner has not approved: `blocked_unverified`, reason "secret not available" (Q40); a newer revision never applies to a unit already pinned | part of the Development Configuration's schema version | start the fixture from its declaration; a missing declaration; a readiness timeout |
+| 8 | when the inherited baseline is captured at a Development Configuration revision (H.4) | no profile at the pinned commit and revision: a Campaign's start is refused, naming it (SIP-0109 §24bv point 1), and a standalone Cycle runs as it did in 2.4, with the absence recorded; a profile at another commit or revision is refused as stale, never read in its place; a blocking gap refuses a Campaign's start, and one that stops `work` refuses a Cycle whose footprint meets its paths, before dispatch | `derived-profile/v1`; fields are only added, and a reader leaves a field it doesn't know unread | read the fixture's recorded profile back as recorded; refuse an unknown major version, a missing field and a stale commit |
 
 **Identifiers never substitute for one another.** A Project ID, a Git commit (40 hexadecimal
 characters), a sandbox revision ID (`compute_revision_id`), a Campaign tree identity
@@ -291,6 +299,9 @@ ProjectSourceContext:
   repo_uri: str                            # the authoritative external locator
   development_baseline_commit: str         # Git commit, 40 hex characters
   integrated_upstream_commit: str | null   # last confirmed integrated revision
+  pinned_commit: str                       # what the unit's tree is seeded from (H.9)
+  pinned_from: project_baseline | campaign_branch
+  previous_verification_ref: str | null    # a campaign_branch pin's regression baseline (H.9)
 
 # Contract 5: produced by Outcome Evaluation, stored by this SIP in Project history
 OutcomeEvaluationRef:
@@ -351,12 +362,14 @@ start:
   machine runs it alone.
 - **Each lane's outputs, recorded beside it:** a `ProjectSourceContext`, a Development Configuration with
   its start declaration, a workspace-to-commit mapping and an inherited baseline (the MacBook lane's), and
-  an `OutcomeEvaluationRef` (the Spark lane's). Each comes valid, with a required field missing, with an
-  unknown schema major version and with a stale commit.
+  an `OutcomeEvaluationRef` (the Spark lane's). 2.5 adds the MacBook lane's derived profile (contract 8,
+  H.6). Each comes valid, with a required field missing, with an unknown schema major version and with a
+  stale commit.
 - **Contract tests enter at the production seams:** `prepare_cycle()` and the Campaign launcher
   (contracts 1 and 2), `WorkspaceStore.seed()` (contract 3), the Project history write (contract 5) and
-  the evaluation runner's start (contract 7). Contracts 4 and 6 keep SIP-0109's and SIP-0110's tests,
-  with IR-5 and IR-3.
+  the evaluation runner's start (contract 7). Contract 8's reader is held to the fixture first, and its
+  seams' tests land with the PRs that build them (H.6). Contracts 4 and 6 keep SIP-0109's and SIP-0110's
+  tests, with IR-5 and IR-3.
 - **It lands first,** as one PR both lanes review, before either lane's first contract PR. The MacBook
   lane writes it, and the Spark lane adds its recorded `OutcomeEvaluationRef` in the same PR (the 2.4
   plan's D12). A change to it is a shared-contract change (G4).
@@ -395,7 +408,7 @@ Each enters at the seam the live cycle uses and asserts what reaches the other l
 |---|---|---|---|
 | IR-1 | After the registry cutover, `group_run`, `hello_squad`, `run_crysis`, `play_game` and `agent_chess` create Cycles through `cycles create` and `POST /api/v1/projects/{project_id}/cycles` | the same IDs, PRD resolution, cycle and run IDs and artifact paths; `projects list/show` changed only by added fields | MacBook |
 | IR-2 | One Project at one pinned revision, launched standalone and through the Campaign launcher | both reach `prepare_cycle()` with the same typed source context and Development Configuration revision, and each pins a SIP-0110 snapshot under its own snapshot owner | MacBook, with SIP-0110's #2179 |
-| IR-3 | A Campaign is admitted; an outside commit then changes a repository instruction source | the Campaign's later Cycles keep the admission binding and carry a drift finding; a standalone Cycle created afterwards binds the new content; a re-binding changes the Campaign only as a recorded intervention | MacBook, with SIP-0110's #2179 |
+| IR-3 | A Campaign is admitted; an outside commit then changes a repository instruction source | the Campaign's later Cycles keep the admission binding and carry a drift finding; a standalone Cycle created afterwards binds the new content; a re-binding changes the Campaign only as a recorded intervention (restated by H.3, after SIP-0110 §5ad and H.2) | MacBook, with SIP-0110's #2179 |
 | IR-4 | An increment of an external Project runs with a scenario suite | no scenario step in any rendered prompt (Outcome Evaluation §7, prediction 2), any stored squad task envelope, any squad agent's container, the Project Context, handoff metadata, a project instruction, the managed clone, a workspace or the product repository; no scenario result in the Project Context or the handoff before phase 2 | both |
 | IR-5 | An accepted increment of an external Project | sandbox revision, Git commit, Campaign accepted tree and Outcome Evaluation result resolve to one another through this SIP's mappings, and none is stored in another's field | both |
 | IR-6 | An external Project with its own layout and no SquadOps interface manifest runs through Outcome Evaluation, started by contract 7's commands | scenarios run on the surfaces their authors declare or report `blocked_unverified`; a surface kind the product lacks is recorded not applicable; nothing falls back to a sample application | Spark |
@@ -755,6 +768,18 @@ The external product owner/maintainer owns product intent, priorities, scope, co
 | a drift finding that needs an owner decision | the affected operation waits for the decision | the affected operation is held | the affected operation is held and escalated through SIP-0109's queue |
 
 **Changed upstream instructions never modify an admitted snapshot.** A running unit changes what it bound only by SIP-0110's re-binding (§A.3.7): an authorized, recorded intervention, forward when no dispatched task used the old binding and a restart otherwise, with the unit's measurements set apart from the first affected task. Routine upstream edits need no re-confirmation, because a confirmed instruction that cites a repository source binds that source's content afresh at each admission.
+
+**A Campaign's repository references are bound per Cycle, against the Campaign's snapshot (the owner, 2026-10-20: "Approve your recommendations"; SIP-0110 §5ad, which resolves §5z).**
+- **The conflict.** The binding bullet above bound a Campaign's repository references when it's admitted, at the commit its source context pins. But a Campaign has no source context of its own. Each of its Cycles pins one when it's prepared (contract 1, FR-04, #2410), after the Campaign's snapshot.
+- **Neither way out named before the ruling was taken:**
+  - a source pin at the Campaign's admission would bind every Cycle's instructions to the starting commit while each increment's code moves on;
+  - plain per-Cycle binding would give up the Campaign's one shared snapshot.
+- **The ruling.**
+  - The Campaign's snapshot still fixes which instruction revisions are in force, for every Cycle.
+  - Each Cycle binds those instructions' `@current` repository references at its own pinned source commit when the Campaign launches it. The binding is recorded with the Cycle, and every dispatch reads it; nothing is bound at dispatch.
+  - A reference a Cycle can't bind is handled as at admission: a required one holds the tasks it applies to.
+  - A standalone Cycle is unchanged: it pins its source context and its snapshot together.
+- **Who builds it.** The launcher's per-Cycle binding and its record are SIP-0110's, on #2179. The repository family's resolver (contract 6, #2411) is unchanged: it binds at whatever commit its `BindingContext` carries, which for a Campaign's Cycle is that Cycle's own.
 
 ## B.6 Project lifecycle state model
 
@@ -1605,3 +1630,1071 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 7 | 2026-10-17 | The tightening review: each contract's availability, absent or stale behavior, versioning and minimum test, with schemas for contracts 1, 5 and 7 (§8.2.1); the sandbox boundary and the cross-lane tasks X-1 to X-3 (§8.1, §8.2.2); the shared fixture (§8.2.3); status vocabularies (§8.3.1); evidence tiers and the *not run* record (§8.5, the owner's clarification); the 2.4 plan cross-reference; FR-02's required and optional levels; E.4's dependencies, rollback moved into E.4.1, and E.4.5 required before close but not in 2.4 (the owner's ruling); F.4 classified. Then the Spark lane's review of revision 7: X-3 runs in a disposable copy, `campaign_id` nullable, and Q40 opened for the owner (how secrets reach an evaluation). |
 | 8 | 2026-10-17 | Aligned with Outcome Evaluation's revision 2 (PR #2406) and the adopted 2.4 plan: its renamed terms (*scenario evidence*, *scenario result*, *contribution*, the *scenario measure*); contract 2's phase-1 and phase-2 fields as its §4.7 states them; contract 5 renamed *evaluation references*; Q40 named as its A4; the plan's D12 rulings on X-1 to X-3 and the shared fixture. No boundary changes. Q40 ruled the same day: evaluation-scoped, owner-approved test credentials only (§8.2.1). |
 | — | 2026-10-17 | **Accepted by the owner as SIP-0112** (PR #2401), titled *Project Lifecycle Management*. The shared fixture (#2407) and E.4.1–E.4.4 and E.4.6 (#2408–#2412) placed in 2.4.0, labelled `sip:0112`; E.4.5 and E.4.7 unplaced, deliberately. |
+
+# Appendix H — Post-acceptance amendments
+
+## H.1 A greenfield Project is registered against an empty repository its owner made, and initialized from an approved manifest (2026-10-20; E.4.6, #2412)
+
+**What changed.** FR-01 step 4 allowed either provisioning source at an approved destination or binding a pre-provisioned repository. §D.2 and §D.5 proposed `projects create --brief` with `origin.mode: new`. The built path is narrower:
+1. **The owner makes the repository and leaves it empty.** SquadOps binds it and never creates a repository.
+2. **It's registered as any external product is,** with `projects import` (`POST /api/v1/projects`), against that repository and branch.
+3. **`projects initialize <project> --manifest <file> [--token-from-gh]`** (`POST /api/v1/projects/{id}/initializations`) makes the branch's first commit:
+   - the SIP-0105 blueprint's layout, rendered from the approved interface manifest exactly as the scaffold renders it for a sample application's run (`scaffold.expand`), and nothing else;
+   - pushed with the owner's token for that one act, never forced, and refused when the branch already has a commit;
+   - recorded once per Project (`project_initializations`, migration 1807), with the manifest as submitted.
+
+   The commit has no parent and is dated at the registration, so a retry after a push that landed makes the same commit and is recorded, not refused.
+4. **From there, the lifecycle is an existing product's:** `validate`, `configure`, `baseline --capture`, then Cycles and contributions by review request. The Development Configuration names the blueprint it was initialized on (§B.4.1); `configure` refuses any other, and refuses a `stack` that isn't a blueprint.
+
+**Not built in 2.4:** `projects create --brief` and `origin.mode: new`. A brief's role is taken by the approved interface manifest, which is the input the blueprint's layout is rendered from. Authoring that manifest from a brief is framing's work (SIP-0103), and a framing Cycle is prepared only for a READY Project (contract 1). A greenfield Project isn't READY until it's initialized and validated.
+
+**The evidence:**
+- FR-01 says registration "does not authorize remote repository creation or publication beyond the caller's configured permissions".
+- The scaffold renders from a manifest, not from a brief (`src/squadops/stacks/scaffold.py`, `expand`).
+- `tests/unit/projects/test_initialization.py` runs the path through the real managed clone into an empty repository, then on through validation and configuration.
+
+**Who ruled:**
+- The owner chose the destination on 2026-10-20: an empty private repository in backspring-labs, made with the owner's GitHub access (`backspring-labs/shelfnote`, recorded on #2412).
+- The owner chose the product the same day: a small FastAPI and React application on `fullstack_fastapi_react`.
+- The API and CLI shape is the MacBook lane's, under the owner's delegation of 2026-10-18.
+
+## H.2 A sync names what SquadOps's own contributions account for apart from outside change, and its drift holds new Cycles until reconciled (2026-10-21; E.4.4, #2606, #2608)
+
+**What changed.** FR-21 says drift "invalidates affected Development Configuration and baseline evidence until reconciled and revalidated". The brownfield demonstration's stages 4 and 5 showed two ways the built sync fell short of that:
+1. **Who changed what.** A sync compared the baseline's tree with upstream's before reading contributions, so a merged contribution's own files read as outside source drift (#2606). The drift document is now `source-drift/v2`:
+   - `changed` holds what changed outside SquadOps;
+   - `integrated` lists each integrated contribution with the paths it accounts for. A path counts as the contribution's when it changed the path and upstream's content is still what it wrote. A path an outside developer changed again since is outside drift.
+   - `relevant` reads both, since a contribution that changed an instruction source invalidates the configuration as an outside edit does.
+2. **What holds a Cycle.** Nothing on the Cycle path read a recorded sync, so a Cycle at a baseline a sync had already found upstream past was accepted (#2608), though the drift module's own docstring said `prepare_cycle` refuses. Now, while the Project's latest sync read upstream past its current baseline with `relevant` drift, `prepare_cycle` refuses (409 `STALE_SOURCE_PRECONDITION`, naming the upstream commit and the categories), on the standalone and the Campaign path alike (IR-2's shared path).
+   - Once `validate` advances the baseline, that sync describes a replaced baseline and holds nothing. The configuration and the inherited baseline are then each required at the new commit on their own, as before.
+
+**Where it narrows FR-21:** **source drift alone holds nothing.** A Cycle pinned at the older commit develops the tree its evidence describes, and its contribution is offered on that commit, through the product's own process. Only the categories that invalidate evidence (`relevant`) hold Cycles.
+
+**The evidence:**
+- The Spark lane's stage 4 sync of `prj-z-continuum` (`demo-a-sync-1`, #2410) listed z_continuum#1's two files under `source`, beside the outside commit's.
+- Its stage 5 probe created `cyc_001b267cac63` at `43369054` after that sync, and it was accepted.
+- **The wiring tests:**
+  - `tests/unit/projects/test_sync.py` replays stage 4 through the real managed clone, for a merge commit and a squash merge, plus a path changed again outside;
+  - `tests/unit/shared_contract/test_contract1_source_context.py` enters at the create route and at the Campaign launcher's `prepare_cycle`.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The gate is the stated design of #2565's drift module. The narrowing to `relevant` drift follows that module's own definition of what invalidates evidence.
+
+## H.3 IR-3 restated under SIP-0110 §5ad and H.2 (2026-10-21; E.4.4, #2411)
+
+**What changed.** IR-3 was written before two later decisions:
+- **§5ad (the owner, 2026-10-20):** a Campaign's snapshot fixes which instruction revisions are in force, and each of
+  its Cycles binds their `@current` repository references at its own pinned commit when the Campaign launches it.
+- **H.2:** a sync's relevant drift holds new Cycles until the Project is reconciled.
+
+So "the Campaign's later Cycles keep the admission binding" reads, after both, as follows. A Campaign is admitted with
+a project instruction citing a repository instruction source at `@current`, and an outside commit then changes the
+source:
+1. **The Campaign's snapshot is unchanged.** It pins the same instruction revision. A Cycle already launched keeps the
+   content it bound at its own commit.
+2. **The drift is found and holds new work.** A sync records it (`relevant: instructions`). Until the Project is
+   reconciled, the Campaign's next launch is refused, so the Campaign escalates (§B.5.1's "held and escalated"), and a
+   standalone Cycle is refused too.
+3. **After reconciliation** (validate, configure, baseline at the new commit):
+   - **the Campaign:** its refused launch left it escalated, with the launch intent pending. Once the owner resumes it,
+     its next Cycle binds the reference at its own pinned commit, the new content;
+   - **a standalone Cycle** created afterwards binds the new content at its admission.
+4. **A re-binding** changes the Campaign's instruction revision only as a recorded intervention, unchanged from the
+   IR as written.
+
+**What became of "carry a drift finding":** after §5ad, no drift finding is recorded per Cycle. The finding is two
+records:
+- the later Cycle's own binding, whose reference revision and digest differ from the first Cycle's;
+- the sync's drift document, which names the changed source as `instructions`.
+
+**The evidence:**
+- `tests/unit/projects/test_ir3_campaign_instruction_drift.py` enters at the Campaign launcher's `_build_cycle`, at
+  `prepare_cycle` and `pin_standalone_cycle` for the standalone Cycle, and at `sync_project`. It enters below the
+  drain, so it shows what each launch binds, not the escalation and the owner's resume between them. It runs over the shared
+  fixture's Tally through the real managed clone, with the repository family's own resolver. A mutant without H.2's
+  gate fails it.
+- Point 4 is the re-binding route's: `tests/unit/api/test_rebinding.py` and
+  `tests/unit/memory/test_campaign_cycle_bindings.py`.
+- Live: H.2's hold was shown on the Spark's brownfield re-run and on the Mac (#2611).
+- **Not run live yet:** a Campaign's later Cycle binding a reference after reconciliation. It needs a Campaign past its
+  calibration on an external Project, which is the Spark's full squad. The Spark lane runs it before 2.4's cut, on
+  `z_continuum`, tracked on #2179 (the binding side's issue).
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The restatement follows the owner's
+ruling of §5ad and H.2; it decides nothing new.
+
+## H.4 A repository-backed Project's development profile is derived, its gaps are named, and Campaigns run on it (2026-10-21; #2619; placed in 2.5)
+
+**What was found.** A Campaign on a repository-backed Project can run its calibration cycle but can never launch an
+increment (#2619, the Spark lane, 2026-10-21). That holds for an external product and for a greenfield one alike: once
+created, a greenfield product is a repository registered like any other, and its cycles are source-backed. There are
+three causes:
+1. **The template stack.** The Campaign's increment request profiles (`campaign-increment`, `campaign-increment-asks`)
+   pin the `fullstack_fastapi_react` template stack, and a source-backed cycle refuses a stack (E.4.3's
+   `source_backed_stack_decision`).
+2. **The proposal's input.** A proposal reads the accepted cycle's interface manifest from the artifact vault. A
+   source-backed cycle carries none forward, not even for a greenfield product whose approved manifest made its first
+   commit.
+3. **The calibration's input.** The calibration launch carries no PRD or plan, so its cycle fails at provisioning
+   ("implementation plan required but absent", IR-2's live run).
+
+A Campaign on a sample application, which lives only in SquadOps's vault, is unaffected: the 2.4 window ran four.
+
+**The owner's direction, 2026-10-21:** "it seems we need a way to derive the stack and recipe and call out any gaps
+preventing squad ops from working on it", and then "go with 2.5, write up the amendment".
+
+**The design:**
+1. **A derived development profile.** E.4.2's discovery is extended. When a Development Configuration revision is
+   recorded, SquadOps reads the pinned tree and the configuration, and records with the revision what its roles
+   depend on:
+   - the languages and their package managers;
+   - the test runners and the test command;
+   - the lint and type tools, and the findings reader each takes (#2609);
+   - the start declaration;
+   - the blueprint the tree follows, if any. A greenfield product names its blueprint in its configuration, and the
+     tree and the approved manifest are checked against it;
+   - the toolchains the declared commands need. These are read from the baseline capture's own evidence, never from a
+     stack's environment contract, which fits no arbitrary product. A check UNVERIFIED as `command_not_found` or
+     `command_not_executable` names a missing toolchain, recorded with the image it ran on.
+2. **Capability gaps, named.** Each fact the squad can't serve is a gap, with what it blocks and what would close it.
+   Examples:
+   - a frontend whose test framework QA doesn't author: the squad's changes there go unverified by its own tests;
+   - a toolchain the sandbox image lacks: those checks are UNVERIFIED;
+   - a lint without a findings reader: it is compared only whole;
+   - no start declaration: Outcome Evaluation is blocked.
+
+   The gaps are recorded with the revision, and `projects configure` and `projects show` report them. Each gap is one
+   of two kinds:
+   - **blocking:** the gap leaves no check that the work's footprint touches able to run. A Cycle or a Campaign whose
+     work would meet one is refused before dispatch, naming it.
+   - **disclosed:** reported, and recorded with each run it applies to, but not refused. For one, a missing start
+     declaration blocks only Outcome Evaluation, which reports, and never the Cycle.
+
+   This is the existing rule that an unsupported layout or toolchain surfaces a capability gap, never an automatic
+   restructuring (E.7), given a record.
+3. **The recipe is derived, not pinned.** Request profiles carry no stack.
+   - A sample application's stack comes from its Project and the Campaign's policy, as today (#2443).
+   - A repository-backed Project's cycles take the derived profile:
+     - nothing is seeded, and the squad starts from the product's own tree;
+     - the checks are the configuration's;
+     - QA writes tests for the product's own runner;
+     - a greenfield product that follows a blueprint gets that blueprint's QA and check conventions, without its
+       template laid down.
+   - E.4.3's guard narrows from "a stack is named" to "a skeleton would be seeded", which is what it protects against.
+   - Removing the stack from the profiles comes with a resolution-parity test. Every sample application's Campaign
+     definition (`examples/03_group_run/campaigns/*.yaml`, the window's four included) must resolve to the same cycle
+     requests as before, with `policy.stack` set and with it unset.
+4. **Campaigns on a repository-backed Project.** SIP-0109's calibration and proposal, as they read such a Project:
+   - **Calibration is the inherited baseline.** The first accepted tree is the pinned commit, already checked by the
+     product's own checks (FR-20). Nothing is built, so the calibration needs no PRD or plan.
+   - **A proposal reads the product's tree** (the bounded view) and its derived profile, where a sample application's
+     proposal reads its interface manifest. A greenfield product's approved manifest, recorded at its
+     initialization (H.1), is read beside them.
+   - **Increments stack on a campaign branch** in the managed clone. A standalone source-backed cycle seeds from the
+     Project's development baseline and captures one commit on it. A Campaign's increments would then each restart
+     from upstream, without the one before, unless that one had been merged and reconciled first. So:
+     - each accepted increment's captured commit is the next increment's pinned commit;
+     - its regression baseline is the previous increment's verification, at that commit;
+     - the per-cycle binding (H.3, SIP-0110 §5ad) reads instruction sources as the previous increment left them;
+     - contract 4's mapping holds per increment.
+   - **One review request per Campaign** is the contribution: its branch, holding the accepted increments in order,
+     updated as each is accepted. The owner can merge it at any time. A later process per increment can be added
+     beside it, but this is the default.
+   - **When upstream moves** (H.2), the campaign branch is rebased onto it before the next increment launches. A
+     rebase that conflicts escalates the Campaign, never resolving by itself. Merged increments then read as
+     integrated (H.2's attribution).
+   - **Serial contribution was rejected:** each increment merged upstream before the next could start. It would stall
+     an unattended Campaign on the product owner's review.
+   - **Each increment is a source-backed cycle,** verified by the product's checks and contributed through the
+     campaign branch, as above.
+   - **Contract 1's pin, for an increment.** `prepare_cycle` pins a repository-backed Campaign increment's source
+     context at the campaign branch's head (SIP-0109 §24bv point 3), never the Project's
+     `development_baseline_commit`. Its inherited-baseline check reads the previous accepted increment's verification
+     there, or the calibration record's baseline for the first. H.2's gate keeps reading the Project's baseline,
+     since a sync's drift is upstream's against the Project, and §24bv point 4 reconciles it before the branch
+     rebases.
+
+**What stays:**
+- A sample application's Campaigns are unchanged, and the counted pair holds (IR-10).
+- Standalone cycles on repository-backed Projects are unchanged: both 2.4 demonstrations ran on them.
+- A drift's hold (H.2) and the per-cycle binding (H.3) apply to every increment as to any cycle.
+
+**Boundaries:**
+- **SIP-0109** owns the calibration and proposal mechanics. This amendment states what they read for a
+  repository-backed Project, and SIP-0109 records the counterpart (the Spark lane's). There, the calibration is a
+  calibration record, not a cycle, and counts toward no cycle limit. The proposal reads the tree view, the derived
+  profile and the previous increment's verification, and its criteria freeze as typed checks on the product's runner.
+- **SIP-0113** records its own counterpart (the Spark lane's): Outcome Evaluation's Campaign baseline is an evaluation
+  of the pinned commit, read against the calibration record.
+- **SIP-0105** owns the blueprints. The derived profile recognises one, and never generates one.
+
+**In 2.4:** the shared demonstration (the 2.4 plan's D13: one Campaign on an external Project across two features)
+can't run its feature cycles. It reports *not run*, naming #2619 as its prerequisite, as the plan provides (G5).
+- IR-3's live half ran through calibration launches instead (#2179).
+- IR-2 and both demonstrations are unaffected.
+
+**The evidence:**
+- #2619's three refusals, at the lines it cites.
+- IR-2's calibration cycle failing at provisioning for lack of a plan (`cyc_95c8659ae6c5`, #2611).
+- The Spark lane's IR-3 run on `z_continuum`, which reached a Campaign's calibration and no further.
+
+**Who ruled:** the owner, 2026-10-21: the direction, and placement in 2.5. The MacBook lane wrote this. The Spark
+lane's G4 (on #2624) added:
+- the campaign branch (the stacking gap);
+- blocking against disclosed gaps;
+- toolchain gaps read from the baseline's evidence;
+- the resolution-parity test.
+
+## H.5 A check failing on both sides is compared finding by finding when it declares a reader (2026-10-21; #2609)
+
+**What was found.** In the brownfield demonstration's stage 6 (#2611), the candidate added three ruff findings to
+`lint`, which already failed at the baseline: 59 findings before, 62 after. The acceptance policy reads a check only
+by its result, so the change read FAIL on both sides, `inherited`, and was accepted (#2609). On an unfamiliar product,
+an already-failing lint or type check is the common case. A contribution could make one worse, change by change, with
+every record saying `inherited`.
+
+**What changed:**
+1. **A check may declare a findings reader** in the Development Configuration (`findings: <reader>`), from a closed
+   set (`squadops.sandbox.findings.READERS`), each reader versioned. `configure` refuses an unknown reader, naming the
+   field.
+
+   | reader | a finding's key | readable when |
+   |---|---|---|
+   | `ruff` | `"<code> <path>"`, never the line, in either output format, with syntax errors keyed `invalid-syntax` | exit 0 (none), or exit 1 with its rows adding up to its own "Found N errors." |
+   | `pytest` | `"FAILED <node>"` or `"ERROR <node>"` | exit 0 or 1, with its rows adding up to its summary, which also gives the tests it ran |
+   | `lines` | each non-empty output line, digits replaced | exit 0 (none), or any other exit with a line to read |
+
+   Anything else is unreadable, with its reason: a tool error, a collection error, rows short of a summary, or more
+   than 10,000 distinct keys. An unreadable run is never read as clean, since a run that broke would otherwise erase
+   the baseline's failures as an improvement.
+2. **The sandbox applies the reader** to the check's whole stdout and stderr, before their tails are cut (X-3a, #2623;
+   the tail was 4,000 characters, and continuum's ruff output alone was 35,921). A named reader always answers: a
+   command that never ran to an exit (a setup step stopped it, a timeout, not found, no daemon) reads as unreadable,
+   with why. Each tail now says whether it was cut (#2622).
+3. **The inherited baseline stores each check's reading,** additive in `inherited-baseline/v1`'s check rows. Baseline
+   and candidate are read by one reader at one version, through the same `run_checks`.
+4. **The acceptance policy is `no-introduced-regression/v2`.** For a FAIL on both sides, when the check declares a
+   reader and both runs were read:
+   - **a finding key whose count grew** makes the check `introduced/regressed`. It blocks, and the verification names
+     the keys;
+   - **readings that can't be compared** (another reader or version, an unreadable side, or a pytest run that ran fewer
+     tests than its baseline) make it `unverified attribution`, which blocks;
+   - **otherwise** it is `inherited`.
+
+   A check with no reader, or a baseline captured before v2 (`baseline has no findings`), is read whole, as v1 read
+   it. Its row says so (`read: whole`, with the reason). A v1 verification stays readable as it was.
+5. **§8.3.1's rule** "an inherited `FAIL` is never an introduced regression" now reads: "…unless its check declares a
+   findings reader and a finding key's count grew".
+
+**IR-9, restated for both cases:**
+- **A check with no reader:** as written. The shared fixture's inherited failure stays reader-less, and stays `FAIL`,
+  `inherited`.
+- **A check with a reader:**
+  - a key grew: `introduced/regressed`;
+  - none grew: `inherited`;
+  - a run that broke: `unverified attribution`.
+
+**Blind spots, named:**
+- a file renamed or moved makes its findings new keys, so the check blocks (conservative);
+- a finding swapped for another of the same key, in the same file, is masked;
+- a failure newly skipped or xfailed reads as removed: "no longer failing", not an improvement;
+- deleted tests leave pytest's readings incomparable (fewer ran), so the check blocks.
+
+**The evidence:**
+- **The readers, on real output** (`tests/unit/sandbox/test_findings_readers.py`, #2620):
+  - continuum's 59 findings at `ba8fa68b` read the same in both ruff formats;
+  - stage 6's candidate `0c814a7c` grows exactly `I001 src/continuum/cli.py`, `E501` and `F401` in the new test;
+  - stage 3's `2f6b3baa` grows none;
+  - a collection error and a ruff tool error read unreadable.
+- **The sandbox** (#2623) reads the whole output past the tail, on the same continuum output.
+- **The attribution table** (`tests/unit/projects/test_baseline.py`) runs on those readings, and stage 6's
+  verification is `regressed: lint gained findings…`.
+- **The wiring test** (`tests/unit/projects/test_workspaces.py`) enters at `capture_inherited_baseline`, then
+  `run_checks` and `attributed`. The shared fixture's `parse` is read by `lines`, and a candidate that adds a second
+  failure inside it is `introduced/regressed`, while the reader-less checks are untouched.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The Spark lane's G4 is on #2609 (the
+design, issuecomment-6326651632), on X-3a's shape (a), on #2620 and on #2623.
+
+## H.6 Contract 8: the derived development profile, which both lanes build H.4 against (2026-10-24; #2619; the MacBook lane, for the Spark lane's G4)
+
+**Why it's a contract.** H.4's profile is written by this SIP and read by two others:
+- SIP-0109 §24bv, for a Campaign's calibration record (point 1), an increment's acceptance on the product's own
+  runner (point 3) and the proposal's input (point 5);
+- SIP-0113 §10l, for whether the product can be started for evaluation.
+
+The 2.5 plan has both lanes review it before either builds against it (`docs/plans/2-5-0-plan.md` §5). §8.2 and §8.2.1
+carry its row as contract 8.
+
+**When it's written.** When the inherited baseline is captured at a Development Configuration revision, SquadOps
+derives the profile from three things and records it beside them: the tree at the revision's `validated_at_commit`,
+the revision itself, and that capture.
+- It's never edited. A new revision or a new capture derives a new profile.
+- A unit reads the profile at the commit and revision it pinned. A profile at another commit or revision is refused
+  as stale (`StaleProfile`), never read in its place.
+
+**What it holds** (`squadops.projects.derived_profile`, schema `derived-profile/v1`):
+
+| field | what it is | read by |
+|---|---|---|
+| `commit`, `development_configuration_revision` | the commit and revision it was derived at | every reader, to refuse a stale profile |
+| `environment.image` | the image the baseline's checks ran on | its toolchains and their gaps |
+| `languages[]` | each language, its package manager (or null) and the manifests that name it | the proposal's input |
+| `test_runners[]` | each runner (`pytest`, `unittest`, `vitest`, `jest` or `other`): the checks that run it, the paths its tests cover, its roots (where it discovers tests; `.` is the whole tree), its `file_pattern` (an `fnmatch` glob on a file's name, refused if it holds a `/`), its whole-suite argv, its one-file argv (naming the file as `{path}` or `{name}`, or null), the findings reader that names its tests one by one (or null), and its support files | §24bv point 3: where a criterion's test file goes, what it's frozen with, how it runs alone and in the suite, and how each criterion is read |
+| `lint[]` | each lint check, its tool and its findings reader (or null) | H.5's comparison |
+| `toolchains[]` | each toolchain, the checks that need it, and whether the image had it | its gaps |
+| `start_declared` | whether contract 7's start is declared | SIP-0113 §10l |
+| `public_surfaces[]` | a base URL the start declaration serves (`http_base`, `ui_base`, copied from contract 7's entry points and never authored apart from them, so the proposal's view and the evaluation's can't disagree), a command-line entry point (`command`), or a package (`package`) | §24bv point 5: the surfaces a criterion may assert on |
+| `blueprint`, `client_routes` | the SIP-0105 blueprint the configuration names, and its approved manifest's client routes; both null without one | §24bv point 3's route rendering; SIP-0113 §10l's lint rule set |
+| `files.test`, `files.test_support` | repository-relative globs, matched on the whole path, classing the tree's test files and their support files. Every other tracked file is the product's | §24bv point 3's baseline-evaluator overlay |
+| `gaps[]` | each gap's id, kind and subject (the check, runner or tool it is about, or null), the paths whose work it applies to (`**` when it isn't confined), why it was named, and what would close it | every reader: below |
+
+**How a runner's tests are found and run** (the Spark lane's G4 asked for each rule to be stated):
+- **Which runner owns a test file:** the first runner in list order whose roots hold the file and whose `file_pattern`
+  matches its name (`DerivedProfile.runner_for`). Two runners' roots can overlap, as a monorepo's `tests/` and
+  `web/tests/` do, and list order decides between them.
+- **Where its argvs run:** `suite_argv` and `single_file_argv` run as a check does, in the configuration's
+  `commands.working_directory`, after its `install` and `build` steps, in the checks' environment.
+- **What the placeholders mean:** `{path}` is the file's repository-relative path, and `{name}` is its name.
+- **Duplicate names:** a `{name}` argv runs every file of that name under the runner's roots. So the derivation uses
+  `{path}` wherever the runner takes it. Where the runner can only take `{name}` and two of its files share a name, the
+  derivation names a `runner_not_scopable` gap.
+
+**The gaps.** A gap's id is one of ten, and its kind is one its id allows. What it stops follows from the two
+(`Gap.stops`). No record stores what a gap stops, so no record can contradict this table:
+
+| gap | kind | named when | stops |
+|---|---|---|---|
+| `no_check_ran` | blocking | the baseline ran no check: none is declared, or every one is UNVERIFIED | `work` |
+| `missing_toolchain` | blocking | a check is UNVERIFIED as `command_not_found` or `command_not_executable` on the baseline's image, and no other check on its paths runs | `work` |
+| `missing_toolchain` | disclosed | as above, while another check on its paths runs | `verification` |
+| `test_files_unclassed` | blocking | the tree's test files can't be told from its product files, or a file `files.test` classes as a test belongs to no runner | `campaigns` |
+| `missing_environment` | disclosed | a check needs an environment variable the checks' environment doesn't provide | `verification` |
+| `no_start_declaration` | disclosed | no start is declared (contract 7) | `outcome_evaluation` |
+| `no_test_runner` | disclosed | a part of the tree that no runner's tests cover | `squad_tests` |
+| `runner_not_authored` | disclosed | a runner QA doesn't write tests for | `squad_tests` |
+| `runner_not_scopable` | disclosed | a runner with no one-file argv, or one whose `{name}` argv would run two files of the same name | `criterion_scoping` |
+| `no_test_id_reader` | disclosed | no findings reader names the runner's tests one by one | `per_test_reading` |
+| `lint_without_reader` | disclosed | a lint check with no findings reader | `per_finding_comparison` |
+
+**What each one stops:**
+- **`work`:** a Cycle or a Campaign increment whose footprint meets the gap's paths is refused before dispatch,
+  naming it, and so is a Campaign's start.
+- **`campaigns`:** a Campaign's start is refused. A standalone Cycle runs, since only §24bv point 3's overlay needs
+  the classes.
+- **`verification`:** the checks on its paths read UNVERIFIED, as the baseline already records.
+- **`outcome_evaluation`:** every scenario and quality measure reads `blocked_unverified` (SIP-0113 §10l). The Cycle
+  runs.
+- **`squad_tests`:** the squad's own tests don't reach its paths, so a change there is verified by the product's checks
+  alone.
+- **`criterion_scoping`:** a frozen criterion runs only as part of the whole suite.
+- **`per_test_reading`:** each criterion is read by its own test file's result.
+- **`per_finding_comparison`:** a lint check failing on both sides is compared whole (H.5).
+
+`projects baseline` and `projects show` report every gap (H.7). Each run records the disclosed gaps that apply to
+its work, and the proposal is given them (§24bv point 5).
+
+**When it's absent.** A unit that pinned a revision with no profile reads none:
+- a Campaign's start is refused, naming it (§24bv point 1);
+- a standalone Cycle runs as it did in 2.4, with the absence recorded;
+- a profile is never derived on the fly for a unit already admitted.
+
+**Versioning.** `derived-profile/v1`. Fields are only added, and a reader leaves a field it doesn't know unread. An
+unknown major version is refused before anything else is read (§8.2.1). The reader refuses a gap, kind, runner or
+surface it doesn't know, so adding one changes `GAPS`, `RUNNERS` or `SURFACES` and this section in the same PR, under
+both lanes' review.
+
+**The fixture.** Tally's profile is recorded beside the other outputs
+(`tests/fixtures/shared_contract/recorded/derived_profile/`), in the four forms:
+- with `development_configuration_revision` missing;
+- under `derived-profile/v2`;
+- derived at the first commit, for the stale form.
+
+Tally has no package manager and tests with unittest. It carries two gaps, both disclosed:
+- `missing_environment`, for `notify`;
+- `no_test_id_reader`, since no findings reader names unittest's tests one by one.
+
+**The contract tests:**
+- **`tests/unit/shared_contract/test_derived_profile_contract.py`** holds the one reader both lanes call.
+  - The recording reads back as recorded.
+  - An unknown major version, a missing field and a stale commit are each refused, naming the field.
+  - A value outside the contract is refused, naming its field: an unknown gap or kind, a kind its gap can't take, a
+    path leaving the repository, a one-file argv naming no file, a file pattern naming a path, an argv given as one
+    string, or an unknown surface.
+  - A test file is the first runner's whose roots hold it and whose pattern matches its name, and list order decides
+    between overlapping roots.
+  - A field the reader doesn't know is left unread.
+  - What a gap stops follows from its id and kind.
+- **`test_shared_fixture.py`** holds the recording to the fixture.
+  - Its commit and revision are the configuration's.
+  - Its runner's checks and its toolchains' checks are the configuration's.
+  - Its test-file glob matches exactly the `checks/` files.
+  - Its one-file argv runs one file alone: ledger passes, while parse, the inherited failure, fails with its own three
+    tests.
+- **Each seam's wiring test lands with the PR that builds it.** The derivation, this lane's next 2.5 PR, enters at the
+  baseline capture. §24bv's enter at a Campaign's start and an increment's acceptance.
+
+**What stays:** contracts 1–7 and every recorded output, unchanged, and the fixture's product untouched.
+
+**Who ruled.** The owner placed H.4 in 2.5 on 2026-10-21. On 2026-10-24 the owner adopted the 2.5 plan, which has this
+contract written first and reviewed by both lanes. The MacBook lane wrote it, under the owner's delegation of
+2026-10-18. The Spark lane's G4 approved it on its PR (#2716), as §24bv's and §10l's builder. The G4 asked for three
+rules stated (the file pattern, where a runner's argvs run, and which runner owns a test file), and noted duplicate
+names and the base URLs' source, all of which are above.
+
+## H.7 The profile as derived (2026-10-24; #2619; the MacBook lane, under the owner's delegation of 2026-10-18)
+
+**What shipped:**
+- **`squadops.projects.profile_derivation.derive_profile`:** `capture_inherited_baseline` runs it at every capture,
+  on the tree the checks ran on, and records the profile beside the capture
+  (`project_inherited_baselines.derived_profile`, migration 1808).
+- **The read route:** `GET /api/v1/projects/{id}/profile` reads the latest capture's profile, and the baseline's read
+  and capture carry it.
+- **The CLI:** `projects baseline` and `projects show` print its gaps.
+
+**Where it departs from H.4's text: the gaps are reported by `projects baseline` and `projects show`, not
+`projects configure`.** H.4 records the gaps when a configuration revision is recorded, and has configure report them.
+But they're read from the baseline's evidence (which toolchain the image lacked, which environment it didn't give),
+and the baseline is captured after the revision. So the profile is derived at the capture (H.6), and configure has
+nothing to report yet.
+
+**How each field is read.** Only from the tree, the configuration and the capture:
+- **Languages:**
+  - Python, from its manifests (`pyproject.toml`, `setup.py`, `setup.cfg`, `Pipfile`, `requirements*.txt`) or any
+    `.py` file. Its manager comes from a lock (uv, poetry, pipenv), else is pip when there's a manifest, else none.
+  - JavaScript, or TypeScript with a `tsconfig.json` or a `.ts` file, from `package.json`. Its manager comes from a
+    lock, else is npm.
+  - Go and Rust, from `go.mod` and `Cargo.toml`.
+- **Runners,** from the configuration's checks alone:
+  - **unittest** (`-m unittest`): its `-s` root and `-p` pattern. Checks that name their files one by one form one
+    runner, whose pattern is the names' common prefix and suffix around a `*`. Its one-file argv names the file as
+    `{name}`.
+  - **pytest:** its roots are its positional paths, else `testpaths`, else the working directory. Its patterns are
+    `python_files`, else `test_*.py` and, where files are so named, `*_test.py`. Its one-file argv drops the
+    positional paths and takes `{path}`, and is null for a working directory other than the root. #2609's pytest
+    reader names its tests.
+  - **vitest and jest,** run directly or through an npm, pnpm or yarn script (`--prefix`, `-C`, `--dir` or `--cwd`
+    naming the package). Their patterns are `*.test.*` and `*.spec.*`. Their filters match a test file's path relative
+    to its package, so the one-file argv is `-- {path}` only for a package at the repository's root, and `-- {name}`
+    under a package. On shelfnote's clone, `npm --prefix frontend test -- frontend/src/__tests__/harness.test.jsx`
+    found no test files, and `-- harness.test.jsx` ran exactly that one.
+  - **Lint:** a check running ruff, flake8, pylint, mypy, eslint, tsc, svelte-check or biome is a lint check.
+  - Any other check stays a check: it's run and read, and it isn't a runner.
+- **Covers:** a JavaScript runner covers its package. A Python runner covers its packages (a top-level or `src/`
+  directory with an `__init__.py`), else the top-level directories that hold Python outside its tests.
+- **Support files:** each `conftest.py` under a pytest root or at the root. Under a JavaScript root, each file whose
+  name starts `setupTests.`, `vitest.setup.`, `jest.setup.` or `test-setup.`.
+- **Toolchains:** each check's command. It's unavailable where a check needing it is UNVERIFIED as
+  `command_not_found` or `command_not_executable`, read from the check's evidence, or from its recorded reason when a
+  stored baseline has no evidence.
+- **Public surfaces:**
+  - contract 7's base URLs;
+  - `[project.scripts]`;
+  - a package's `__main__.py`, run by the checks' own Python;
+  - `package.json`'s `bin`;
+  - the Python packages, and a `package.json` `name` that isn't private.
+- **Client routes:** the frontend routes of the manifest the Project was initialized from, when the configuration names
+  a blueprint.
+
+**The gaps as derived:**
+- **`missing_toolchain`** is blocking when the runners that need it cover paths that no other runner whose check ran
+  covers. Otherwise it's disclosed.
+- **`runner_not_scopable`** is named for a runner with no one-file argv, for a `{name}` argv over two files of one
+  name, and for a vitest or jest `{name}` argv where one test file's name lies inside another's path, since their
+  filter would select both.
+- **`test_files_unclassed`** names files named as tests (`test_*.py`, `*_test.py`, `*.test.*`, `*.spec.*`) that no
+  runner holds. Its paths are their directories.
+- **`no_test_runner`** names each directory with a manifest of its own (`package.json`, or a Python, Go or Rust
+  manifest) that no runner covers, and the whole product when it has no runner.
+- **`runner_not_authored` isn't derived in 2.5.** Every runner this reads (pytest, unittest, vitest, jest) is one QA
+  can write for. A check that names another runner isn't read as a runner, so the part of the tree it tests reads
+  `no_test_runner`. The vocabulary keeps the gap for a runner read as `other`.
+
+**The evidence:**
+- **`tests/unit/projects/test_profile_derivation.py`:**
+  - Tally's recorded profile is exactly what the derivation reads from the shared fixture.
+  - continuum and shelfnote read as their configurations on the Mac declare them. Continuum is pytest over a `src`
+    layout, ruff with its reader, and `web/` and a plugin UI with no tests. Shelfnote is pytest at the root and
+    vitest through its frontend's npm script, on a blueprint with the manifest's routes.
+  - Each gap is read with its kind and paths.
+  - A vitest name filter that would select another file reads `runner_not_scopable`.
+  - Six mutants are each caught: the group pattern not unified, a positional root kept in the one-file argv, a
+    toolchain gap never blocking, untested directories not named, the baseline's image ignored, and owned files
+    counted unowned.
+- **The wiring test** (`test_workspaces.py`) enters at `capture_inherited_baseline`, on the fixture's real clone and
+  checks. The profile it records equals the recorded one.
+- **The Postgres integration test:** a capture without a profile reads absent, never empty, and the latest capture's
+  profile reads back.
+- **The route and CLI tests:** a capture from before profiles answers 404 at `/profile` and `null` beside the
+  baseline, and a sample application is never asked for one.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18, within H.4 and H.6 as ruled.
+
+## H.8 A blocking gap refuses the Cycle work it meets (2026-10-24; #2619; the MacBook lane, under the owner's delegation of 2026-10-18)
+
+**What shipped:**
+- **H.6's rule, in one place:** `DerivedProfile.blocking_work(paths)` returns the blocking gaps that stop `work` and
+  that a footprint meets.
+  - An unconfined gap meets any work.
+  - A confined gap meets a path its globs match.
+  - Paths that aren't known yet meet only an unconfined gap.
+- **At create:** `prepare_cycle` serves both the create route and the Campaign launcher. A source-backed Cycle reads the
+  profile at its pin, `get_derived_profile(project_id, at=(commit, revision))`.
+  - **An unconfined blocking gap refuses it** before anything is persisted, with 409 `PROJECT_STATE_CONFLICT`
+    naming the gap and what closes it.
+  - **An operator's plan** (`plan_artifact_refs`) whose expected artifacts meet a confined gap is refused the same
+    way.
+  - **A pin with no profile runs as it did in 2.4,** with a `derived_profile_absent` warning on the create response.
+- **At both plan gates,** a plan validator, `validate_blocking_gaps`, refuses a plan whose tasks' expected artifacts
+  meet a blocking gap.
+  - At the promotion seam, the framing re-rolls and is told where (#669).
+  - At the in-run seam, the run fails at the gate. Like every plan validator (`PLAN_VALIDATORS`), it's attributed
+    `plan_gate_failure`.
+  - Both seams are pinned by `test_plan_gate_seams.py` (the #718/#719 rule).
+- **Taught before it's enforced (#686):** every plan author of a source-backed cycle is shown each confined gap: its
+  paths, why it exists, and what closes it. The plan authors are the dev and qa proposers and the merger
+  (`TaskType.authors_plan`).
+  - It's composed with the run's plan in `RunProvisioning.prepare` (`with_blocked_paths`), as SIP-0113's proposal
+    evidence is.
+  - It's rendered by the managed asset `request.plan_blocking_gaps_appendix`, on the proposers' path and on the
+    merger's.
+  - `plan_authoring_rules` lists the validator as taught there.
+
+**Where it narrows H.4:**
+- **A standalone Cycle's footprint is its plan's expected artifacts.** Those are the only paths it declares before its
+  build.
+- **A Campaign increment meets the same validators at its framing gate.** Its own footprint isn't read here, and
+  refusing a Campaign's start is SIP-0109 §24bv point 1's, which is the Spark lane's.
+
+**The evidence:**
+- **`tests/unit/cycles/test_blocking_gaps.py`** (23 tests):
+  - the rule on the record;
+  - the refusals at `prepare_cycle`: an unconfined gap, and an operator's plan meeting or clearing a confined one;
+  - the absence warning;
+  - the promotion seam rejecting a plan, naming the gap and what closes it;
+  - the in-run seam failing the run under `validate_blocking_gaps`;
+  - the profile read at the cycle's own pin, and never for a sample application;
+  - the plan authors given the index, and no other task;
+  - both authoring paths rendering the asset;
+  - the wiring, entered at `RunProvisioning.prepare` with the real plan generation for the `validate` profile's
+    framing: the merger, the plan's sole author there, carries the index.
+- **Five mutants, each caught:**
+  - a confined gap meeting any work;
+  - unconfined gaps listed for the authors;
+  - the operator's plan not read;
+  - the promotion seam reading no profile;
+  - the plan step dropped from `RunProvisioning.prepare`.
+- **Live on the Mac** (2026-10-24), on `prj-shelfnote` (`z_shelfnote`, a test product), with this change's runtime:
+  - **Revision 5, every check's command missing:** the capture's profile reads `no_check_ran` and a blocking
+    `missing_toolchain` on each side, and `cycles create` was refused with 409, naming `no_check_ran`.
+  - **Revision 6, only npm missing:** the profile reads `missing_toolchain (npm)`, blocking `frontend/**`. A framing
+    cycle (`cyc_0661f9d38394`) was accepted at create. Its plan gate rejected two framings in turn under
+    `blocking_gap`, for `frontend/src/components/BooksList.jsx` and then for `Pagination.jsx` and `BooksListView.jsx`.
+    The PRD asks for frontend work, so no plan could go around the gap. The cycle was cancelled.
+  - **Revision 7** restored revision 4's configuration, and its capture reads the original two disclosed gaps.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18, within H.4 and H.6 as ruled.
+
+## H.9 Contract 1's pin for an increment: a repository-backed Campaign's cycle is pinned at its campaign branch's head (2026-10-28; #2619; the MacBook lane, for the Spark lane's G4)
+
+**Why.** H.4's "Contract 1's pin, for an increment" and SIP-0109 §24cd point 1 have a repository-backed Campaign's
+increment pinned at its campaign branch's head, never at the Project's baseline. The Spark lane's G4 on #2733 agreed
+the shape. `development_baseline_commit` keeps meaning the Project's baseline, because H.2's gate
+(`require_reconciled_upstream`) keys a sync's findings on it. Reusing it for the head would let every increment
+through the drift gate.
+
+**What's added to `ProjectSourceContext`** (schema `project-source-context/v1`, additive):
+- **`pinned_commit`:** the commit the unit's tree is seeded from, verified against and captured on.
+- **`pinned_from`:** `project_baseline`, or `campaign_branch`.
+- **`previous_verification_ref`:** a `campaign_branch` pin's regression baseline. That's the source verification
+  (`source_verification` in the vault) of the increment whose promotion made the head. It's null at the Project's
+  baseline, and at the calibration record's commit, whose baseline is its inherited one (SIP-0109 §24bv point 1).
+
+**How it's pinned.** The Campaign launcher reads the head at drain and hands `prepare_cycle` a `CampaignHead(commit,
+tree_identity, previous_verification_ref)` (SIP-0109 §24cd point 1). For a repository-backed Campaign's cycle of any
+kind but the calibration:
+- **with no head, it's refused** with 409 `PROJECT_STATE_CONFLICT`, never pinned at the Project's baseline by default.
+  The launcher escalates on it, with the intent pending;
+- **a head with no verification** must be the Project's baseline commit, where the calibration record leaves the
+  branch;
+- **a head with a verification** must name an accepted source verification of the head's own tree. Otherwise the
+  increment has no regression baseline, and it's refused.
+
+**What reads it:**
+- **The seed** (`seed_checkout_artifacts`) reads the tree, its manifest and its provenance at `pinned_commit`.
+- **Delivery** (`deliver_source_change`) verifies on, and captures onto, `pinned_commit`. A `campaign_branch` pin
+  is refused at delivery for now, naming SIP-0109 §24bv point 3. Its comparison with the previous verification is
+  the Spark lane's to build, and until then no candidate built on a head is judged against a baseline it wasn't
+  built on.
+- **H.2's gate, the inherited-baseline check and the derived profile** (H.8) keep reading the Project's baseline:
+  `development_baseline_commit` and its revision.
+
+**A context stored before 2.5** has none of the three fields. Every unit that stored one was pinned at its Project's
+baseline, so that's how it reads. A stored context with only some of the three is refused, as is a `project_baseline`
+pin that names another commit.
+
+**The shared fixture** records the three fields in all four of `project_source_context`'s forms. The stale form names
+the first commit in every commit field.
+
+**The evidence:**
+- **`tests/unit/shared_contract/test_contract1_source_context.py`**, entered at `prepare_cycle`: an increment with no
+  head; a head past the baseline with no verification; a verification the vault doesn't hold, one that regressed, and
+  one of another tree; and the accepted verification of the head's tree, which pins at the head with the Project's
+  baseline intact and round-trips as stored. Also the reader: a context from before the pin, and three malformed
+  pins. The first increment after the calibration pins the same tree as a standalone create, from the campaign
+  branch.
+- **`tests/unit/cycles/test_source_backed_run.py`**, entered at `RunProvisioning.seed` on the fixture's real clone:
+  an increment pinned at the first commit is seeded there, without the second commit's `tally/report.py`. Delivery
+  refuses a `campaign_branch` pin before reading any baseline.
+- **Four mutants, each caught:**
+  - the seed reading the Project's baseline;
+  - an increment with no head let through;
+  - the verification's tree not compared;
+  - a context from before the pin refused.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The shape is the one the Spark lane's G4
+on #2733 agreed. The Spark lane's G4 on this contract change is on its PR.
+
+## H.10 A vitest test-id reader, and each failing test's exception class (2026-10-28; #2757, #2619; the Spark lane, for the MacBook lane's G4)
+
+**Why.** SIP-0109 §24ci (a), the owner's ruling of 2026-10-28, keeps §8.2's "for the intended reason" on a product's
+own runner. A criterion that fails on the baseline only by an import or setup failure isn't discriminating. On a
+runner with no test-id reader, a criterion's discrimination is unread. That needs two things H.5 and H.7 don't
+have: each failure's class, and a vitest reader. #2757 placed the reader before `z_shelfnote`'s demonstration.
+
+**What changed:**
+1. **A fourth findings reader, `vitest` (v1),** in H.5's closed set (`squadops.sandbox.findings.READERS`):
+
+   | reader | a finding's key | readable when |
+   |---|---|---|
+   | `vitest` | `"FAILED <file> > <name path>"` for a test, `"ERROR <file>"` for a suite that never loaded (or `"ERROR <file> > <suite>"` for a failed hook), the file relative to its package | exit 0 or 1, with its `Tests` summary, no unhandled error, and the rows of its `Failed Tests` and `Failed Suites` sections adding up to their counts and to the summary's |
+
+   It reads vitest 2's default reporter, as a product's own command prints it with no TTY, with its colour codes
+   taken out. The product's command is the product's own (`npm --prefix frontend test --silent` on `z_shelfnote`),
+   so the reader takes the output it already prints. It doesn't add `--reporter=json`, as #2757's text assumed.
+2. **pytest's and vitest's readings carry each failing key's exception class** (`classes`), where the output prints
+   it.
+   - pytest's comes from its long report: the line ending a failure's traceback (`<path>:<line>: <Class>`), or,
+     under `--tb=short`, its first `E   <Class>:` line. It never comes from the short summary, which pytest cuts at
+     80 columns ("Module…", or nothing after a long node id).
+   - vitest's comes from the error line under each failure.
+   - A class is extra, not a key or a readable rule, so no reader's version changes. A reading with no classes is
+     stored as before.
+3. **H.7's derivation:** a vitest runner's `test_ids` is `vitest`, so it no longer carries `no_test_id_reader`.
+   - A jest or unittest runner still carries it.
+   - A profile is never edited (H.6), so one recorded before this keeps its gap until the next capture.
+   - `z_shelfnote`'s next capture reads one disclosed gap, `no_start_declaration`.
+
+**How a class is read** (SIP-0109 §24ci (a), `squadops.campaigns.acceptance.discrimination_on_runner`):
+- A test fails for the intended reason when its key is `FAILED` and its class was read and isn't a setup class.
+- Every `ERROR` key is setup: pytest's setup, teardown and collection errors, and vitest's suites that never
+  loaded.
+- The setup classes are the import family and what the sample applications' stacks read as a suite's own defect
+  (`test_runner._OWN_FRAME_SHAPES`):
+  - pytest: `ImportError`, `ModuleNotFoundError`, `SyntaxError`, `NameError`;
+  - vitest: `SyntaxError`, `ReferenceError`.
+- A failure whose class wasn't read is never read as the test's own.
+
+**Blind spots, named:**
+- **pytest under `--tb=no`, `line` or `native`** prints no class, so every failure reads as unread. A
+  configuration that wants its criteria read keeps pytest's default traceback. A bare `assert` under `--tb=short`
+  is unread too.
+- **One test name in two files** leaves both classes unread, since pytest's section head names the test without
+  its file.
+- **vitest gives a `beforeEach` failure to its test,** so it reads with the test's own class.
+- **The sample stacks' message-specific `TypeError` shapes** need the application's source, which a class doesn't
+  carry. So a `TypeError` or `AttributeError` reads as the test's own, as it does on those stacks when the
+  application defines the name.
+- **vitest's reader is validated on 2.1.9,** the blueprint's pin. Output from another major that doesn't add up
+  reads unreadable, never clean.
+- **The derivation names vitest's reader from the runner's kind, not from its output** (the MacBook lane's G4,
+  2026-10-28). On a product with another vitest major, a configured reporter, or stderr merged into stdout, nothing
+  shows at capture, and every criterion reads `blocked_unverified` at the first increment. **Closed 2026-10-28**
+  (the Spark lane, after the MacBook lane's handoff). The derivation gives vitest's reader only where all of these hold:
+  - the runner's package, or else the repository root's, declares a vitest spec that allows vitest 2 and nothing else (an exact version, `^2`, `~2` or `2.x`). A bound, an alternative major, a hyphen range or an alias is refused;
+  - the command as run (the package script, and what the configured argv forwards to it through npm, pnpm or yarn) names no reporter and doesn't merge stderr into stdout;
+  - the config it runs under names no `reporters`: the file `--config` names, which must be in the tree, or else the conventional `vitest.config.*` and `vite.config.*`;
+  - no `vitest.workspace.*` sits under its root.
+
+  Anywhere else the runner gets no reader, and a `no_test_id_reader` gap, confined to that runner's root, names why at capture. One gap is written per refused runner, so two packages keep their own reasons. A runner kind with no reader at all keeps one unconfined gap. The rule's second review (the owner's outside reviewer, through H.12) asked for the spec, forwarded-argument, `--config` and per-runner cases, and they are built and tested. That gap's reason now says what §24ci (a) rules: an
+  unread runner's criterion isn't accepted as discriminating. The old text said each criterion is read by its
+  test file's result, which §24ci (a) rejected; the shared fixture's four recorded profiles carry the new wording.
+
+**Evidence:**
+- **Real output:** pytest 9.0.2 under `--tb`'s default, `short` and `no`, and vitest 2.1.9 run by the product's
+  own command shape, with and without `CI` (which colours it), whole and one file at a time. All over invented
+  tests (`tests/fixtures/findings/pytest-classes*.txt`, `vitest-2.1.9-*.txt`), read by
+  `tests/unit/sandbox/test_findings_readers.py`.
+- **The decisions on those readings:** `tests/unit/campaigns/test_runner_acceptance.py`.
+- **The derivation:** `test_profile_derivation.py`, where `z_shelfnote`'s vitest runner now names its tests.
+- **Mutants, each caught:** pytest's crash line ignored, a shared head given a class, vitest's rows not held to
+  its summary, its unhandled errors read as true, its classes not read, and its runner given no reader.
+
+**Who ruled.** The owner (SIP-0109 §24ci (a), 2026-10-28) placed the reader and the classes with #2619. The Spark
+lane built them. Item 3 changes contract 8's derivation, so it needs the MacBook lane's G4.
+
+## H.11 H.4's recipe, as built: a product's cycle seeds no skeleton, and is shown its own test runners (2026-10-28; #2619; the MacBook lane, for the Spark lane's G4)
+
+**What's narrowed.** H.4 point 3 removes the stack from the request profiles, with a resolution-parity test over every
+sample application's Campaign definition. Built that way, it would change the profiles that every pinned definition and
+verification set resolves through:
+- under SIP-0109 §24bs, an undeclared `policy.stack` is "the campaign profiles' own stack";
+- the request-profile taxonomy (#316, R2.4) freezes every released profile byte for byte, so a pinned config resolves
+  to what it ran.
+
+So the sample applications' profiles keep their stack. A repository-backed Project's increments get a profile of their
+own with none, `campaign-increment-source`. The parity test guarded a removal that isn't made. The taxonomy's own pins
+(`test_a_pinned_config_resolves_as_it_did`, `test_every_released_profile_is_frozen_byte_for_byte`) hold every definition
+and profile as they were, and pass unchanged. The Spark lane agreed the narrowing on 2026-10-28, and the 2.5 plan's
+row for the recipe points at this PR.
+
+**What's built:**
+1. **`seeds_skeleton(config)`** (`squadops.cycles.preflight`): true for a `build_profile` (a skeleton and its
+   authored manifest) or a `contract_ref` (a seeded contract), and never for `development_profile` alone.
+   - E.4.3's guard calls it. Its check was already this narrow in effect; now it's one rule, by the name point 3 gives
+     it.
+   - SIP-0109 §24bv point 1's creation rule calls the same rule on the resolved `proposal_profile`, so any profile
+     that seeds nothing passes it, whatever its name.
+2. **`campaign-increment-source`**, a campaign profile: `campaign-increment` without the stack.
+   - **No `build_profile` or `development_profile`.**
+   - **No `manifest_max_attempts`:** framing authors no manifest without a `build_profile`.
+   - **No `build_tasks`:** a legacy flag that the workload sequence replaces.
+   - **No `required_checks`.** `frontend_build` and `required_files` are a stack's checks over its skeleton. `tests_pass`
+     is the qa container's suite, which runs one framework, not the product's runners. The product's own checks verify
+     the change at delivery (FR-20), as they do for every standalone source-backed cycle.
+
+   Campaign creation accepts it (`_require_profiles`), and a bound retry or repair runs from it. The taxonomy lists it
+   with the campaign's profiles, as the one added since the taxonomy froze them.
+3. **A product's cycle that seeds a manifest is refused** (422, `source_backed_seeded_manifest`), before a contract is
+   derived or stored. #779 derives a verification contract from any manifest seeded in `plan_artifact_refs`. That was
+   the way around E.4.3's `contract_ref` refusal. A sample application's seeded manifest still derives its contract.
+4. **QA writes for the product's runner.** The run's checkout manifest records each runner of the derived profile
+   (`runners`, additive). The profile is read at the Project's pin, as SIP-0109 §24cd point 3 rules, so a Campaign's
+   increments are shown the same runners between reconciliations.
+   - Every authoring task's repository view shows them in its checks block: the checks that run each runner, the file
+     names it takes, its roots, and the paths it tests (`request.source_repository_runners_block`).
+   - A pin with no derived profile is shown its checks alone, as in 2.4. Create has already warned
+     (`derived_profile_absent`).
+   - A checkout manifest stored before this reads with no runners.
+
+**Not built here:**
+- **A blueprint's conventions without its template.** Point 3 gives a greenfield product that follows a blueprint that
+  blueprint's QA and check conventions.
+  - A stack's conventions live in its development profile, and that profile's QA text places tests by the stack's
+    layout. `fullstack_fastapi_react`'s says "Place tests in backend/tests/".
+  - `z_shelfnote`, made from that blueprint, keeps its backend tests in `tests/` (H.7: pytest at `.`).
+  - Taking the blueprint's development profile whole would show QA two places for one test.
+
+  So a repository-backed cycle runs under the default development profile, as every 2.4 standalone source-backed
+  cycle did, and its tests are placed by the runners above. A blueprint's conventions without their test placement
+  remain on #2619.
+- **The `qa.evaluate_increment` drop** stays held until the Spark lane's acceptance on the product's runner (SIP-0109
+  §24cd point 6) is on main.
+- **Where a criterion's test file goes** on the product's runner is SIP-0109 §24bv point 5's: the change request names
+  each criterion's surface, and the file follows from the runner that tests it.
+- **A repository-backed increment's bound retry or repair** carries its change request without a candidate manifest,
+  since its change request has no `manifest_delta` (§24bv point 5). `increment_seed` reads a seed only where a manifest
+  was promoted. That's point 5's to settle with the Spark lane's launches.
+
+**The evidence:**
+- **`tests/unit/cycles/test_source_backed_recipe.py`**, entered at `prepare_cycle` (the create route's and the
+  launcher's one path) with the shared fixture's Project:
+  - a product's cycle on `campaign-increment-source` is prepared and pinned;
+  - one on `campaign-increment` is refused, naming `build_profile`;
+  - a seeded manifest is refused before any contract is stored, while a sample application's still derives one;
+  - `seeds_skeleton`'s table;
+  - Campaign creation and a bound retry and repair on the new profile.
+- **`tests/unit/cycles/test_source_backed_run.py`**, entered at `RunProvisioning.seed` and the envelope a live task is
+  dispatched with, on the fixture's real clone:
+  - an increment pinned at the first commit is shown Tally's unittest runner, read at the Project's pin;
+  - the rendered section names it;
+  - a pin with no profile is shown its checks alone.
+- **`test_source_repository_section.py`** renders the block with the real renderer and the shipped assets.
+  **`test_checkout.py`** round-trips the runners and reads a manifest stored before them.
+- **Nine mutants, each caught:**
+  - `development_profile` counted as seeding;
+  - the manifest refusal dropped, or applied to every cycle;
+  - the runners read at the increment's own commit, never seeded, dropped from the view, or never rendered;
+  - the new profile pinning a stack, or losing its ruling gate.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The owner confirmed the work on
+2026-10-28. The narrowing was agreed with the Spark lane, whose G4 is on the PR.
+
+## H.12 The second review after the MacBook lane's handoff: an outside reviewer, through the owner (2026-10-28; §8.2, §8.5 G4; the owner's ruling)
+
+**What changed.** §8.5's G4 ("the contract named, the other lane's review, a wiring test, additive only") assumed two
+lanes. On 2026-10-28 the owner moved the MacBook lane's remaining 2.5 work to the Spark lane, so no other lane is
+left to review.
+
+**The ruling** (the owner, 2026-10-28): "for a second review when needed, just give me the details and I will use
+ChatGPT".
+- **"The other lane's review" becomes an outside reviewer's,** which the owner runs.
+- **The supervisor writes a self-contained review packet** for each PR that changes a shared contract:
+  - the PR and its head sha;
+  - what the contract was and what it becomes, with the diff of the contract change;
+  - every reader of it;
+  - what could break;
+  - the questions for the reviewer.
+- **The PR doesn't merge until the review is relayed.** Its outcome is recorded on the PR as the outside reviewer's,
+  never as the owner's own view.
+- **The rest of G4 stands:** the contract named, a wiring test, additive only.
+
+**Who ruled.** The owner. The supervisor (the Spark lane) recorded it.
+
+## H.13 A product made from a blueprint runs under its development profile, and is shown its conventions without its test placement (2026-10-28; #2619; the Spark lane, from the MacBook lane's handoff)
+
+**What was found**, read in the code before building:
+- **A product's cycle runs under `python_cli`.** A source-backed cycle runs under the default development profile
+  unless its request names one, and none of the profiles a product's cycle runs on does (`campaign-increment-source`,
+  `implement`, `validate`). So a frontend change on `z_shelfnote` got:
+  - the developer's system supplement for a Python package ("Use relative imports within the package");
+  - a completion ceiling of 4,000 tokens, where the blueprint's profile has 12,000;
+  - a `.py`-only source filter for the test author's own run, with pytest as its only framework;
+  - a collected-test vocabulary with no vitest names in it, for a repaired suite (`_repaired_suite_files`).
+- **Which of the blueprint's prose would place a test.** Taken whole, the blueprint's profile places files and tests by
+  the skeleton's layout. On the plan's tasks, which take the focused prompts, just one piece of its prose reaches the
+  model: the developer's system supplement ("All backend files go under backend/, all frontend files under
+  frontend/").
+  - "Place tests in backend/tests/" reaches only the plan-less test author's prompt, which isn't shown the product.
+  - Framing's stack narrative ("Tests are pytest for the backend under `backend/tests/`") is keyed on
+    `build_profile`, which a product's cycle never has.
+
+**The choice: the handoff's shape, with the profile's skeleton prose withheld and a product's conventions in its
+place.**
+1. **The development profile is pinned at `prepare_cycle`.** When the derived profile at the pin names a blueprint,
+   that blueprint's development profile goes into `execution_overrides`, as `_seed_derived_contract` pins a
+   `contract_ref`. Pinning beats deriving it at each consumer:
+   - it's one value on the cycle record;
+   - every reader of `effective_development_profile` reads it, without change: the developer and the test author,
+     patch acceptance, plan validation, the correction loop's ownership veto, fault injection, and create's own
+     preflight, which runs after it;
+   - a retry or repair is prepared the same way, so it reads the same value.
+2. **Test placement comes from the runners, as H.11 shows them.** The profile's prose for the skeleton is withheld
+   wherever the product's repository view is shown. In its place, the view shows the blueprint's conventions for a
+   product: a managed asset per stack that the profile names (`product_conventions_template`, beside
+   `fill_only_template`). It says what the stack's languages, frameworks and tests expect of a change, and never
+   where a file or a test goes.
+   - **Why a second asset, not an edit to the profile's prose.** The two are for different readers: the skeleton a
+     sample application fills, and a product's tree, whose layout is its own from its first commit. That's the
+     split `stack_narratives/` and `profile_narratives/` already make.
+   - **Why the profile's prose is left as it is.** The verification sets measure the sample applications under it.
+3. **No pin for a plan-less cycle.** Only the plan's tasks are shown the product, with its runners. A plan-less test
+   author would be given the blueprint's own placement, so such a cycle keeps the default.
+
+**What's built:**
+- **The pin:** `_pin_blueprint_conventions` (`api/routes/cycles/cycles.py:322`), called in `prepare_cycle` (`:741`)
+  before the effective config is read. It reads the derived profile once, through `derived_profile_at_pin` (`:630`),
+  and the blocking-gap check takes the same read. Nothing is pinned in any of these cases:
+  - no profile at the pin;
+  - no blueprint, or a blueprint whose profile declares no product conventions;
+  - a `development_profile` the request already names, since the operator's choice stands;
+  - no implementation plan.
+- **`blueprint_development_profile(stack)`** (`stacks/development_profiles.py:604`): the scaffold stack's bound
+  profile (#832), when it declares product conventions, or `""`.
+- **`DevelopmentProfile.product_conventions_template`** (`:110`), set for `fullstack_fastapi_react` and `nextjs_ts`.
+  Its two assets are `request.source_repository_conventions_fullstack_fastapi_react` and
+  `request.source_repository_conventions_nextjs_ts`.
+- **The repository view** (`capabilities/handlers/source_repository.py:31`, `:64`):
+  - `product_conventions_template(inputs)` is the source-backed run's asset, or `""`;
+  - `request.source_repository_appendix` (version 3) shows it between the map and the checks, so the runners, which
+    place tests, come after it.
+- **The developer's system prompt** (`capabilities/handlers/cycle/develop.py:492`) leaves out the profile's
+  supplement where the view shows product conventions.
+- **The composer's budget** counts the larger of the two assets among the shared context slots
+  (`context_assembly.py`).
+
+**What a product with no blueprint keeps** (`z_continuum`, or a baseline with no derived profile): exactly 2.4's
+behaviour.
+- `python_cli`, with its system supplement, its 4,000-token ceiling, pytest, and the `.py` filter.
+- No conventions block.
+- A repository view rendered byte for byte as before, since the appendix's new slot collapses when it's empty.
+
+A sample application is unchanged too: the conventions are keyed on the run's repository view, which only a
+source-backed run has.
+
+**What changes for a product made from a blueprint**, beyond the prompt text:
+- The test author's own run takes the blueprint's frameworks: pytest and vitest, with the frontend build check, for
+  `fullstack_fastapi_react`.
+- Its sources there are only the squad's own files, never the checkout. So a frontend with no `package.json` among
+  them skips its build, and a skip is never a failure.
+- A frontend build that fails on the squad's own files fails the task, as it does on any fullstack run.
+
+**What stays:**
+- `seeds_skeleton` is false for every pin this makes: a `development_profile` lays down nothing. E.4.3's guard still
+  refuses `build_profile` and `contract_ref`.
+- Contract 8 is unchanged. Its `blueprint` field gains one reader, the pin.
+
+**Not built here (remaining on #2619):**
+- **`nextjs_ts`'s collected-test vocabulary places tests.** It's the scaffold's `__tests__/` rule (#1534), and patch
+  acceptance reads a repaired suite by it, not by the product's runners. `fullstack_fastapi_react`'s vocabulary is
+  names alone, so `z_shelfnote` is unaffected. Reading the runners there is the follow-up.
+- **A plan-less product cycle's test author isn't shown the product.** The monolithic test prompt has no repository
+  view, with or without a blueprint. Every source-backed profile in use takes the plan, which is why such a cycle
+  isn't pinned (point 3 above).
+- **The repairs (`qa.test_repair`, `development.correction_repair`) are shown neither** the product's view nor the
+  profile's prose, as before.
+
+**The evidence** (`tests/unit/cycles/test_blueprint_conventions.py`):
+- **At `prepare_cycle`,** on `campaign-increment-source`, for five pins:
+  - a product made from `fullstack_fastapi_react` is pinned to it, and one made from `nextjs_ts` to `nextjs_ts`;
+  - a product with no blueprint runs under `python_cli`, and so does a pin with no profile;
+  - an operator's `python_api` stands;
+  - none of them seeds a skeleton.
+  A plan-less cycle isn't pinned, and a sample application's registry is never asked.
+- **At the developer's and the test author's `handle`,** with the prepared cycle's own `resolved_config()`, a
+  shelfnote-shaped repository view (pytest at `.`, vitest under `frontend`), and the shipped assets:
+  - the model is shown the conventions block and both runners;
+  - none of the skeleton's placements reaches it: `backend/tests`, `frontend/src/__tests__`, "All backend files go
+    under backend/", `__tests__/`;
+  - the developer's system prompt carries no supplement, and its ceiling is 12,000;
+  - the test author's own run is `both`.
+  The no-blueprint product's developer gets `python_cli`'s supplement byte for byte and 4,000, and its test author's
+  run is `pytest`.
+- **A sample application** under the same profile keeps its skeleton supplement.
+- **The rendered developer prompt:** 513 words over its sections, in order:
+  1. the task;
+  2. the product, with its map, the conventions, its checks and runners;
+  3. the expected files;
+  4. the PRD.
+- **Nine mutants, each caught:**
+  - the pin never made, or read from no blueprint;
+  - the pin overriding the operator, or reaching a plan-less cycle;
+  - a blueprint pinned without its product conventions;
+  - the conventions shown to a sample application, or never rendered;
+  - the skeleton supplement kept on a product's run;
+  - a test placement written into the conventions asset.
+- **Loaded checks:** `2619-blueprint-conventions` (the runtime) and `2619-blueprint-conventions-neo`, each run on the
+  source.
+
+**Who ruled.** The Spark lane built it, within H.4 point 3 as the owner ruled it (2026-10-21) and H.11's
+narrowing. The second review is an outside reviewer's, through the owner (H.12), recorded on the PR.
+
+## H.14 Contract 5 names a calibration record in place of a cycle: the baseline reading of a repository-backed Campaign (2026-10-28; §8.2 contract 5, §8.2.1; SIP-0113 §10l, §10ac; SIP-0109 §24bv point 1, §24cc; #2619; the Spark lane, for the outside review H.12 provides)
+
+**What changed.** On a repository-backed Project a Campaign's calibration is a record, not a cycle (SIP-0109 §24bv
+point 1), and SIP-0113 §10l evaluates the record's commit as the Campaign's baseline. §8.2.1's contract 5 schema has
+`cycle_id: str`, so a reading of a record had nothing true to put there. Contract 5 gains one additive field:
+- **`calibration_record_id: str | null`**, the calibration record whose commit the reading evaluated;
+- **`cycle_id` is null only on such a reading.** A reference names exactly one of the two, as the Campaign's accepted
+  tree does (SIP-0109 §24cc, `AcceptedTree`). Putting the record's id in `cycle_id` was refused by this SIP's own rule:
+  identifiers never substitute for one another (§8.2.1).
+- **A cycle's reference is unchanged, byte for byte.** `calibration_record_id` is written only when it is set, so the
+  shared fixture's recorded `valid` form is still the reference a cycle's record yields. The reader reads an absent key
+  as null, which leaves `cycle_id` to name the unit. It refuses a reference that names neither unit or both, and a
+  calibration reference that names a previous tree, as the record does (the outside review of PR #2788, P3-3).
+- **The schema stays `outcome-evaluation-ref/v1`:** the field is added, none is repurposed, and no reference is stored
+  in Project history yet, so no stored reference reads differently.
+- **The shared fixture records the new form** as `outcome_evaluation_ref/calibration_record.yaml`, a fifth form for
+  this output only (P3-4). Its tree is the second commit's, reached through the recorded mapping.
+
+**Evidence.**
+- `squadops.scenarios.reference` (`_unit`) and `squadops.scenarios.evaluation` (`EvaluationRecord`'s check).
+- Migration `1980_scenario_evaluation_calibration_record.sql`, whose CHECK holds the same rule in the table.
+- Held by `tests/unit/shared_contract/test_contract5_evaluation_reference.py`:
+  - the fixture's `valid` form unchanged;
+  - its `calibration_record` form exactly what a record's reading yields;
+  - each refusal.
+- Held by `test_outcome_evaluation_ref_recording.py` (the form's tree, through the mapping) and by the store's
+  integration test against Postgres.
+- The wiring test enters at `CampaignProgress.calibration_recorded`
+  (`tests/unit/scenarios/test_campaign_baseline_reading.py`).
+
+**Who ruled.** The owner placed SIP-0113 §10l in 2.5 (2026-10-21); its design is the supervisor's. The field's shape is
+the Spark lane's build choice (SIP-0113 §10ac), for the outside reviewer's G4 (H.12), recorded on the PR.
+
+## H.15 A product's qa suite runs on the product's tree, and the qa prompt shows what it showed (2026-10-29; E.4.3, H.4 point 3, H.11 point 4, H.13; SIP-0109 §24bv point 3, §24cl; #2815, #2619; the supervisor's ruling under the owner's 2.5 grants)
+
+**What was found** (#2815). The 2.5 main demonstration's round 3 (`cmp_ce4c95f2f307` on `prj-z-continuum`) stopped
+twice on a criterion the product meets. `z_continuum` has no blueprint, so its cycles run under `python_cli` (H.13).
+- **`cyc_60a71c2b2be2`, run `run_9520f92ee9f2`** (the first increment): the criterion's test got a 404 for the plugin
+  the increment added, and the product's diagnostics listed no entry for it. The correction protocol aborted.
+- **`cyc_7e42e45adc6d`, run `run_89b95f35891f`** (the increment after the reconciliation): "Expected exactly one entry
+  … got 0". The decision task read it as a runtime with no plugins registered.
+- **The qa task's workspace held 96 files,** every plugin manifest among them (its recorded authoring envelope). Its
+  test report counted 34 source files.
+- **The product registers its plugins from a manifest per plugin** (`plugins/<id>/plugin.toml`) when it starts. The
+  run held none, so it registered none. The product's own tests pass on its own runner, on the full checkout (its
+  inherited baseline).
+
+**The cause.** The qa task's suite ran on `qa_prompt_contents.source_files`: the stack's source files by extension (`.py`
+alone under `python_cli`) and its build-support files by basename. That function was written for a sample
+application, whose tree is all source and support files. It's also what the monolithic qa prompt shows and what the
+composer counts (#2805), so the run's tree and the prompt's files were one value. A product reads files its stack's
+filter doesn't call source: config, manifests, templates, its test fixtures. Any criterion that exercises one of them
+failed in-cycle however correct the build, and the correction loop couldn't fix it.
+
+**Two statements this corrects.**
+- **H.13** says a blueprint product's test author runs on "only the squad's own files, never the checkout". The
+  acceptance workspace's filter selects by type (`source`, `config`) whatever produced a file
+  (`DispatchedFlowExecutor._resolve_artifact_contents`), so the checkout's files are in the test author's workspace:
+  96 on `run_89b95f35891f`. It was the source filter that cut them. H.13's "the `.py` filter" for a product with no
+  blueprint now holds for its prompt only.
+- **SIP-0109 §24bv point 3** says the emission and correction seams "see the candidate on the branch head". They saw
+  it, and the qa suite ran on part of it. Now it runs on all of it but its tests, so the sentence holds as written.
+
+**What changed:**
+1. **The run tree is split from the prompt's files** (`squadops.capabilities.qa_run_tree.suite_run_tree`).
+   - **A source-backed run's** (the task carries `source_repository`, E.4.3; read through one predicate,
+     `source_repository.source_backed`, which H.13's conventions now read too): every file of the task's accepted
+     workspace (`artifact_contents`) except a test. That is the product's source, the data and config its runtime
+     reads, and its own test support (`conftest.py`, fixture files, helpers under `__tests__/`).
+   - **A test** is a file any stack's conventions name one or any stack's runner collects (`test_file_patterns`,
+     `collected_test_patterns`), or one the product's runners declare (their `file_pattern`, H.11 point 4). Every
+     stack's, because a product runs under its blueprint's profile or the default (H.13), which needn't be the stack
+     its tests are written for. So the product's own tests never run beside the suite under test: its runner judges
+     them at delivery (SIP-0109 §24cl).
+   - **A sample application's** is `source_files`, unchanged byte for byte.
+2. **Every path of the qa handler that runs a suite takes it:** the emission, the execute-only retest, the contract
+   probes (never on a product, since E.4.3 refuses a `contract_ref`) and the lint reading (#1937: "the tree the run
+   evaluated").
+3. **The prompt and the estimate don't change.** The monolithic prompt still shows `source_files` and the focused
+   prompt `qa_test_prompt_contents`, and the composer counts them as before (#2805, #2810).
+4. **A product's retest carries the marker:** `RETEST_PRESENCE_KEYS` gains `source_repository`, so a repaired suite is
+   retested on the tree its emission ran on. The retest renders no prompt, and memory never composes it.
+
+**The seams that evaluate a product's qa criteria, and the tree each one sees:**
+
+| seam | runs in | tree before | tree after |
+|---|---|---|---|
+| qa emission: `tests_pass`, the frontend build and backend import checks (`QATestHandler.handle`) | eve | the stack's source and support files of `artifact_contents` | the product's tree (point 1) plus the suite |
+| qa retest after a qa or a dev repair (`reexecute_repaired_suite` → `_handle_retest`) | runtime-api composes, eve runs | the same source files, since the retest wasn't told it was a product's | the product's tree plus the patched files |
+| the qa task's own typed checks (`_evaluate_typed_acceptance`) | eve | `acceptance_workspace_files` whole, with the task's files | unchanged |
+| a repair's typed checks (`_attach_typed_checks`, on `repair_base_files`) | eve or neo | the accepted workspace whole, with the failed task's files and the patch | unchanged |
+| the runtime's verifier and file-owned gate (`patch_verification.verify_patched_artifacts`) | runtime-api | the same, typed criteria only: it runs no suite | unchanged |
+| the dev task's own typed checks (`command_exit_zero` reaches no test runner) | neo | `acceptance_workspace_files` whole | unchanged |
+| `qa.evaluate_increment` | eve | not planned for a repository-backed increment (SIP-0109 §24cl item 2) | unchanged |
+| the increment's acceptance (SIP-0109 §24cl) | the sandbox | the product's full tree, on its own runner | unchanged |
+
+**On a tree that lacks a file.** The run tree is the workspace the task was handed, so a file the workspace doesn't
+hold is absent from the run, as it is from the product the squad delivers, and the suite fails as the product would.
+`artifact_contents`' 512 KB resolution limit (D3) bounds both. The test report counts the files the run had.
+
+**What stays, and what isn't built:**
+- **A product's pytest configuration is now in the run,** as it is under the product's own runner. One whose
+  `addopts` names a plugin the qa image lacks (it installs pytest alone, `agents/instances/qa/requirements.txt`)
+  would fail the run as a usage error. Not seen; named here, not built around.
+- **A product test whose name matches no convention and no declared runner pattern** is materialized beside the
+  suite, and runs if the product's own runner configuration collects it.
+- **The qa repairs' and dev repairs' prompts** are unchanged: they show what #2810 counts.
+
+**The evidence:**
+- **The wiring test** (`tests/unit/cycles/test_product_suite_run_tree.py`), entered where the cycle enters: an
+  invented product whose app registers its plugins from `plugins/<id>/manifest.toml` at startup, seeded by
+  `seed_checkout_artifacts`, its qa task enriched by `_enrich_envelope`, its suite run by `QATestHandler.handle` with
+  real pytest, and its retest composed by `reexecute_repaired_suite` and run by the handler. On `python_cli` and on a
+  blueprint's `fullstack_fastapi_react`. Before the change both fail as the live runs did (a 404 and a missing
+  fixture, on 4 source files; the retest without the marker). After it, both pass, the product's own test, which
+  needs a harness the qa image lacks, is never run, and the lint reading reads the run's tree.
+- **The control** (`tests/unit/capabilities/handlers/test_sample_run_tree_characterization.py`): a sample
+  application's suite tree and lint tree on all five development profiles and three paths (focused, monolithic,
+  retest), pinned to a golden captured from `origin/main` at `6b9ee472`.
+- **The prompt:** a product's focused and monolithic prompts are byte-identical to a sample application's on the same
+  workspace, and its suite runs on its tree (`test_qa_prompt_contents.py`).
+- **Thirteen mutants, each caught:** the product's run on the source files; the marker never or always read; the
+  product's own tests kept; its runners' patterns dropped; one stack's conventions only; `is_test_file`'s directory
+  clause; the retest forwarding no marker, or running on the shown files; the emission on the shown files; the
+  monolithic or the focused prompt showing the run tree; the lint on the shown files.
+- **Loaded checks:** `2815-qa-run-tree` (eve), `2815-retest` (the runtime-api) and `2815-dev-marker` (neo), each run
+  on the source.
+
+**Who ruled.** The supervisor (the Spark lane), under the owner's 2.5 grants, on #2815's proposed fix: the run tree
+split from the prompt's files, and the prompt unchanged.

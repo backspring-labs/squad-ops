@@ -196,6 +196,8 @@ App displays a list of runs showing at minimum:
 - Empty state shown when no runs exist
 - Newly created run appears in list without manual data editing
 - Basic list refresh behavior is supported (page reload okay)
+- The list shows runs in the order they were created. Sorting by date/time is Expansion Tier 1 item 2,
+  not part of the core list
 
 ---
 

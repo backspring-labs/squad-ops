@@ -50,8 +50,9 @@ _NAMESPACE_IMPORT_RE = re.compile(r"^import \* as (?P<alias>\w+) from '(?P<spec>
 _NAMED_IMPORT_RE = re.compile(r"^import \{(?P<names>[^}]*)\} from '(?P<spec>[^']+)'$")
 _STATUS_ASSERT_RE = re.compile(r"expect\(\w+\.status\)\.toBe\((?P<status>\d{3})\)")
 
-#: Where the stack's runner looks (vitest include ``**/__tests__/**/*.test.ts``). A file
-#: outside this surface collects as nothing and reads as "no test files found" (#884).
+#: Where the framework's own shells must sit to be collected: ``.test.ts`` under ``__tests__/``,
+#: within what the runner collects (``VITEST_SUITE_GLOBS``, which takes ``.test.tsx`` too, #2531).
+#: A file outside it collects as nothing and reads as "no test files found" (#884).
 _COLLECTABLE_PREFIX = "__tests__/"
 _COLLECTABLE_SUFFIX = ".test.ts"
 

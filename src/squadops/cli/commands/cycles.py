@@ -4,8 +4,10 @@ Cycle commands (SIP-0065 §6.3).
 
 from __future__ import annotations
 
+import json
 import mimetypes
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -88,13 +90,24 @@ def _assessment_cell(indicator: dict) -> str:
 
 
 def _parse_set_flags(set_flags: list[str]) -> dict:
-    """Parse --set key=value flags into a dict."""
-    result = {}
+    """Parse --set key=value flags into a dict. A value that begins with ``[`` or ``{`` is a
+    list or a mapping, read as JSON (#2496); every other value is kept as its string."""
+    result: dict[str, Any] = {}
     for item in set_flags:
         if "=" not in item:
             raise typer.BadParameter(f"Invalid --set format: {item!r}. Expected key=value.")
         key, value = item.split("=", 1)
-        result[key.strip()] = value.strip()
+        value = value.strip()
+        if value.startswith(("[", "{")):
+            try:
+                result[key.strip()] = json.loads(value)
+            except json.JSONDecodeError as e:
+                raise typer.BadParameter(
+                    f"--set {key.strip()}: {value!r} begins like a list or mapping but isn't "
+                    f"valid JSON ({e.msg})"
+                ) from e
+            continue
+        result[key.strip()] = value
     return result
 
 
@@ -102,11 +115,32 @@ def _parse_set_flags(set_flags: list[str]) -> dict:
 def create_cycle(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
-    profile: str = typer.Option("default", "--request-profile", help="Cycle request profile name"),
+    profile: str = typer.Option("smoke", "--request-profile", help="Cycle request profile name"),
     prd: str | None = typer.Option(None, "--prd", help="PRD file path or artifact ID"),
     squad_profile_id: str = typer.Option(..., "--squad-profile", help="Squad profile ID"),
     set_flags: list[str] | None = typer.Option(None, "--set", help="Override: key=value"),
     notes: str | None = typer.Option(None, "--notes", help="Experiment notes"),
+    instructions: list[str] | None = typer.Option(
+        None,
+        "--instruction",
+        help="A task instruction for this cycle (#2178): binding, for the task types --for names",
+    ),
+    instructed: list[str] | None = typer.Option(
+        None,
+        "--for",
+        help="The task types (comma-separated) the --instruction in the same position is for",
+    ),
+    expect_baseline: str | None = typer.Option(
+        None,
+        "--expect-baseline",
+        help="An external Project's development baseline commit this cycle expects; refused "
+        "if the Project has moved past it (SIP-0112 §D.3)",
+    ),
+    expect_configuration: int | None = typer.Option(
+        None,
+        "--expect-configuration",
+        help="The Development Configuration revision this cycle expects (with --expect-baseline)",
+    ),
 ):
     """Create a new experiment cycle and start its run.
 
@@ -116,9 +150,9 @@ def create_cycle(
     """
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
 
-    # 1. Load CRP profile
+    # 1. The profile exists (any name that resolves: the operator's, or a frozen old one)
     try:
-        crp = load_profile(profile)
+        load_profile(profile)
     except FileNotFoundError as e:
         print_error(str(e))
         raise typer.Exit(code=exit_codes.GENERAL_ERROR) from e
@@ -139,8 +173,32 @@ def create_cycle(
         prd_ref=prd_ref,
     )
 
+    # #2178: each --instruction pairs with the --for in its position, the tasks it binds.
+    if len(instructions or []) != len(instructed or []):
+        print_error("each --instruction needs its --for (the task types it is for), in order")
+        raise typer.Exit(code=exit_codes.GENERAL_ERROR)
+    if instructions:
+        body["task_instructions"] = [
+            {"text": text, "task_types": [t.strip() for t in types.split(",") if t.strip()]}
+            for text, types in zip(instructions, instructed or [], strict=True)
+        ]
+
+    # SIP-0112 §D.3: a typed precondition, never a --set value hidden in the overrides.
+    if expect_configuration is not None and expect_baseline is None:
+        print_error("--expect-configuration needs --expect-baseline")
+        raise typer.Exit(code=exit_codes.GENERAL_ERROR)
+    if expect_baseline is not None:
+        body["source_precondition"] = {
+            "development_baseline_commit": expect_baseline,
+            **(
+                {"development_configuration_revision": expect_configuration}
+                if expect_configuration is not None
+                else {}
+            ),
+        }
+
     # 5. Compute local hash for verification
-    local_hash = compute_config_hash(crp.defaults, body["execution_overrides"])
+    local_hash = compute_config_hash(body["applied_defaults"], body["execution_overrides"])
 
     # 7. POST to API
     try:
@@ -160,6 +218,12 @@ def create_cycle(
         print_json(data)
     else:
         print_success(f"Cycle {data['cycle_id']} created (run {data['run_id']})")
+        if data.get("source_context"):
+            context = data["source_context"]
+            print_success(
+                f"pinned {context['project_id']} at {context['development_baseline_commit'][:12]}, "
+                f"configuration revision {context['development_configuration_revision']}"
+            )
         print_detail(
             {
                 "cycle_id": data["cycle_id"],

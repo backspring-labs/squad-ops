@@ -24,7 +24,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from squadops.campaigns.increment_tree import increment_baseline
+from squadops.campaigns.increment_tree import is_increment
 from squadops.capabilities.handlers._plan_authoring import (
     authoring_rules_section,
     contract_surface_sections,
@@ -119,7 +119,7 @@ async def produce_plan(
     offer_builder = (
         has_builder
         and bool(resolved_config.get("build_profile"))
-        and increment_baseline(resolved_config) is None
+        and not is_increment(resolved_config)
     )
     allowed_task_types = sorted(planner_build_task_types(offer_builder=offer_builder))
     task_types_section = (

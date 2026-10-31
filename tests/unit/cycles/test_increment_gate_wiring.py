@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.campaigns.gate import INCREMENT_RULING_GATE
 from squadops.campaigns.models import (
     AcceptedTree,
@@ -196,6 +196,7 @@ def executor(campaigns):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     exec_._cycle_event_bus = MagicMock()
     exec_._approve_gate_without_questions = AsyncMock()

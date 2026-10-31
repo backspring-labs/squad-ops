@@ -4,9 +4,14 @@
   Sections:
   1. Project & Squad — project dropdown, squad profile dropdown, agent summary
   2. PRD — mode toggle (write / use project PRD), monospace textarea, size constraints
-  3. Profile params — dynamic fields from selected cycle request profile
-  4. Applied defaults preview — collapsible merged config
-  5. Submit — ingest PRD artifact, then create cycle via command bus
+  3. Profile params — dynamic fields from selected cycle request profile, and its stack choice
+  4. Request preview — the cycle-create body the server resolves from the profile's name
+  5. Submit — resolve the request, ingest PRD artifact, resolve it with the PRD, then create cycle
+     via command bus
+
+  The body is never built here (#2520): the runtime API resolves it with the one builder the CLI and
+  a campaign's launches share, so a profile run on a stack gets that stack's request defaults here
+  too. The preview is that resolution; the submit resolves it once more with the PRD and notes.
 
   PRD size constraints:
   - Warn at 50 KB (yellow)
@@ -51,12 +56,15 @@
   // ── Form state ──────────────────────────────────────────────────────
   let selectedProjectId = $state('');
   let selectedSquadProfileId = $state('');
-  let selectedRequestProfileName = $state('default');
+  // #316: the operator's profiles, as the CLI's default; the listing no longer carries `default`.
+  let selectedRequestProfileName = $state('smoke');
   let prdMode = $state('write');
   let prdText = $state('');
   let prdLoading = $state(false);
   let prdError = $state(null);
   let userOverrides = $state({});
+  // #2520: the stack an operator profile runs on, the CLI's `--set build_profile`. Empty is none.
+  let selectedStack = $state('');
   let notes = $state('');
   let showDefaults = $state(false);
 
@@ -84,11 +92,74 @@
     squadProfiles.find((p) => p.profile_id === selectedSquadProfileId) || null
   );
 
-  let appliedDefaults = $derived({
-    ...(selectedRequestProfile?.defaults || {}),
-    ...userOverrides,
-    project_id: selectedProjectId || undefined,
-    squad_profile_id: selectedSquadProfileId || undefined,
+  // ── The request, resolved by the server (#2520) ─────────────────────
+  let resolved = $state(null);
+  let resolveError = $state(null);
+
+  // The caller's values: the profile's prompts, and the stack when one is chosen.
+  function requestValues() {
+    const values = $state.snapshot(userOverrides);
+    return selectedStack ? { ...values, build_profile: selectedStack } : values;
+  }
+
+  async function resolveRequest(profileName, squadProfileId, values, extra = {}) {
+    const resp = await apiFetch(
+      `${apiBase}/api/v1/cycle-request-profiles/${encodeURIComponent(profileName)}/resolve`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ squad_profile_id: squadProfileId, values, ...extra }),
+      },
+    );
+    if (!resp.ok) {
+      const text = await resp.text();
+      let message = text;
+      try {
+        message = JSON.parse(text)?.detail?.error?.message || JSON.parse(text)?.error?.message || text;
+      } catch {
+        // not the error envelope: show it as it came
+      }
+      throw new Error(message || `Resolving the request failed: ${resp.status}`);
+    }
+    return resp.json();
+  }
+
+  // Resolved again whenever the profile, the squad or a value changes; a stale answer is dropped.
+  $effect(() => {
+    const profileName = selectedRequestProfile?.name;
+    const squadProfileId = selectedSquadProfileId;
+    const values = requestValues();
+    // Nothing is submittable until this resolution answers: a refused change never submits the
+    // body resolved before it.
+    resolved = null;
+    resolveError = null;
+    if (!profileName || !squadProfileId) {
+      return;
+    }
+    let current = true;
+    resolveRequest(profileName, squadProfileId, values)
+      .then((body) => {
+        if (current) {
+          resolved = body;
+          resolveError = null;
+        }
+      })
+      .catch((err) => {
+        if (current) {
+          resolved = null;
+          resolveError = err.message;
+        }
+      });
+    return () => {
+      current = false;
+    };
+  });
+
+  let offeredStacks = $derived(selectedRequestProfile?.stacks || []);
+  $effect(() => {
+    if (selectedStack && !offeredStacks.includes(selectedStack)) {
+      selectedStack = '';
+    }
   });
 
   // Check for required fields with unknown type (blocks submit)
@@ -114,6 +185,7 @@
     prdText.trim().length > 0 &&
     !prdBlocked &&
     !submitting &&
+    resolved !== null &&
     unsupportedRequiredFields.length === 0
   );
 
@@ -135,6 +207,10 @@
       projects = await projResp.json();
       squadProfiles = await squadResp.json();
       requestProfiles = await profileResp.json();
+      // A choice the listing doesn't carry would send a cycle with no profile's defaults at all.
+      if (requestProfiles.length > 0 && !requestProfiles.some((p) => p.name === selectedRequestProfileName)) {
+        selectedRequestProfileName = requestProfiles[0].name;
+      }
 
       // Auto-select first project and active squad profile
       if (projects.length > 0) {
@@ -193,10 +269,18 @@
   async function handleSubmit() {
     if (!canSubmit) return;
 
+    if (!selectedRequestProfile) {
+      submitError = 'Choose a request profile';
+      return;
+    }
     submitting = true;
     submitError = null;
 
     try {
+      // Step 0: the request must resolve before anything is stored
+      const values = requestValues();
+      await resolveRequest(selectedRequestProfile.name, selectedSquadProfileId, values);
+
       // Step 1: Ingest PRD text as artifact
       const ingestResult = await executeCommand('squadops.ingest_artifact', {
         project_id: selectedProjectId,
@@ -212,26 +296,19 @@
 
       const prdRef = ingestResult.artifact_id;
 
-      // Step 2: Build cycle creation payload
-      const profileDefaults = selectedRequestProfile?.defaults || {};
-      const merged = { ...profileDefaults, ...userOverrides };
-
-      const body = {
-        project_id: selectedProjectId,
-        squad_profile_id: selectedSquadProfileId,
-        prd_ref: prdRef,
-        applied_defaults: appliedDefaults,
-        execution_overrides: computeOverrides(profileDefaults, userOverrides),
-        build_strategy: merged.build_strategy || 'fresh',
-        task_flow_policy: merged.task_flow_policy || { mode: 'sequential', gates: [] },
-        expected_artifact_types: merged.expected_artifact_types || [],
-      };
-      if (notes.trim()) {
-        body.notes = notes.trim();
-      }
+      // Step 2: Resolve the request with its PRD and notes, as the CLI's would be built
+      const body = await resolveRequest(
+        selectedRequestProfile.name,
+        selectedSquadProfileId,
+        values,
+        { prd_ref: prdRef, ...(notes.trim() ? { notes: notes.trim() } : {}) },
+      );
 
       // Step 3: Create cycle via command bus
-      const result = await executeCommand('squadops.create_cycle', body);
+      const result = await executeCommand('squadops.create_cycle', {
+        project_id: selectedProjectId,
+        ...body,
+      });
 
       if (result.error) {
         throw new Error(result.error);
@@ -248,16 +325,6 @@
     } finally {
       submitting = false;
     }
-  }
-
-  function computeOverrides(defaults, overrides) {
-    const delta = {};
-    for (const [key, value] of Object.entries(overrides)) {
-      if (!(key in defaults) || defaults[key] !== value) {
-        delta[key] = value;
-      }
-    }
-    return delta;
   }
 
   function handleParamChange(newValues) {
@@ -394,6 +461,18 @@
               />
             </div>
           {/if}
+          {#if offeredStacks.length > 0}
+            <div class="field-group">
+              <label class="field-label" for="cycle-stack">Stack</label>
+              <select id="cycle-stack" class="field-select" bind:value={selectedStack}>
+                <option value="">none</option>
+                {#each offeredStacks as stack}
+                  <option value={stack}>{stack}</option>
+                {/each}
+              </select>
+              <span class="field-help">A squad with a builder needs one. Its request defaults sit beneath the profile's.</span>
+            </div>
+          {/if}
         </div>
 
         <!-- Section 4: Notes -->
@@ -407,15 +486,19 @@
           />
         </div>
 
-        <!-- Section 5: Applied Defaults Preview -->
+        <!-- Section 5: The request the server resolved (#2520) -->
         <div class="section">
           <button class="defaults-toggle" onclick={() => showDefaults = !showDefaults}>
-            {showDefaults ? 'Hide' : 'Show'} applied defaults
+            {showDefaults ? 'Hide' : 'Show'} the request
           </button>
-          {#if showDefaults}
-            <pre class="defaults-preview">{JSON.stringify(appliedDefaults, null, 2)}</pre>
+          {#if showDefaults && resolved}
+            <pre class="defaults-preview">{JSON.stringify(resolved, null, 2)}</pre>
           {/if}
         </div>
+
+        {#if resolveError}
+          <div class="submit-error">The request can't be resolved: {resolveError}</div>
+        {/if}
 
         <!-- Unsupported required field errors -->
         {#if unsupportedRequiredFields.length > 0}
@@ -547,6 +630,11 @@
     font-size: var(--continuum-font-size-sm, 0.875rem);
     font-weight: 600;
     color: var(--continuum-text-primary, #e2e8f0);
+  }
+
+  .field-help {
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    color: var(--continuum-text-muted, #94a3b8);
   }
 
   .field-select,

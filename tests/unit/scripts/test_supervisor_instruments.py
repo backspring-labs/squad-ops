@@ -85,6 +85,35 @@ def test_the_lease_proof_names_every_step_that_did_not_hold(change, failed_step)
         assert any(f.startswith(failed_step) for f in failures)
 
 
+@pytest.mark.parametrize(
+    ("stand_in", "refused"),
+    [("llama3.1:8b", True), ("phi3:mini", False)],
+    ids=["declared-by-the-deploy", "undeclared"],
+)
+def test_a_stand_in_the_deploy_declares_is_refused_before_the_first_step(
+    stand_in, refused, monkeypatch, tmp_path
+):
+    """#2676. Bug caught: steps 2 and 4 run with a stand-in that leaves the box quiet, so the
+    creates they expect refused go through and the proof fails for a reason it never states. The
+    2.0 proof's ``llama3.1:8b`` is declared since #2676, as Joi's own model."""
+    monkeypatch.setattr(lease, "_declared_models", lambda: {"llama3.1:8b", "qwen3.8:27b"})
+    monkeypatch.setattr(lease, "REPO_ROOT", tmp_path)  # where the proof writes its log
+    steps: list[tuple[str, ...]] = []
+
+    def first_step(*args: str) -> str:
+        steps.append(args)
+        raise SystemExit(3)  # stops the proof at its first CLI call
+
+    monkeypatch.setattr(lease, "_sq", first_step)
+    required = ["--campaign", "c", "--cycle", "y", "--proposal-run", "r", "--change-request"]
+    required += ["cr.yaml", "--idempotency-key", "k", "--notes", "n"]
+
+    with pytest.raises(SystemExit) as exit_:
+        lease.main([*required, "--stand-in-model", stand_in])
+
+    assert (exit_.value.code, bool(steps)) == ((2, False) if refused else (3, True))
+
+
 def test_the_binding_replay_reports_each_criterion_that_recomputes_differently():
     frozen = [
         {"criterion_id": "T1", "statement": "sorted by date", "surface": "GET /runs"},
@@ -167,3 +196,58 @@ def test_every_loaded_check_row_is_complete():
 
     rows = yaml.safe_load(loaded.CHECKS.read_text())["checks"]
     assert rows and all({"id", "what", "container", "code", "expect"} <= set(r) for r in rows)
+
+
+def test_every_loaded_check_has_its_own_id():
+    """Bug caught: two rows under one id (2.4 carried two `2418`s). `--only` runs a row by its
+    id, a run's lines name it, and the verification-set driver tracks checks by id, so a shared
+    id runs both under one name and credits whichever was meant."""
+    from collections import Counter
+
+    import yaml
+
+    ids = Counter(str(r["id"]) for r in yaml.safe_load(loaded.CHECKS.read_text())["checks"])
+    assert [i for i, n in ids.items() if n > 1] == []
+
+
+@pytest.mark.parametrize(
+    ("container", "exists", "exec_rc", "row_line", "summary", "expected_exit"),
+    [
+        ("squadops-sandbox-service", False, None, "skip #r1", "0 loaded, 0 not, 1 skipped", 0),
+        ("squadops-sandbox-service", True, 1, "FAIL #r1", "0 loaded, 1 not", 1),
+        ("squadops-nat", False, 1, "FAIL #r1", "0 loaded, 1 not", 1),
+    ],
+    ids=["opt-in-not-running", "opt-in-running-but-broken", "always-on-missing"],
+)
+def test_a_missing_opt_in_container_is_skipped_and_any_other_still_fails(
+    tmp_path, monkeypatch, capsys, container, exists, exec_rc, row_line, summary, expected_exit
+):
+    """Bug caught (#2426): every deploy without the opt-in sandbox read ``126 loaded, 1 not``
+    and exited 1 on row #1982 (``No such container``); and the opposite, a skip that also hides
+    a sandbox that runs and is broken, or a missing agent. Entered at ``main`` with the shipped
+    ``docker-compose.yml`` naming which containers a profile gates; nothing reaches docker."""
+    import subprocess
+
+    checks = tmp_path / "loaded_checks.yaml"
+    checks.write_text(
+        f"checks:\n  - {{id: r1, what: w, container: {container}, code: print(1), expect: '1'}}\n"
+    )
+    monkeypatch.setattr(loaded, "CHECKS", checks)
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["docker", "inspect"]:
+            return subprocess.CompletedProcess(cmd, 0 if exists else 1, "", "")
+        if cmd[:2] == ["docker", "exec"]:
+            return subprocess.CompletedProcess(
+                cmd, exec_rc, "", f"Error response from daemon: No such container: {container}"
+            )
+        return subprocess.CompletedProcess(cmd, 0, "dep_x describes what runs: 20 services", "")
+
+    monkeypatch.setattr(loaded.subprocess, "run", run)
+
+    assert loaded.main([]) == expected_exit
+    out = capsys.readouterr().out
+    assert f"{row_line} {container}" in out
+    assert summary in out.splitlines()
+    if not exists and container == "squadops-sandbox-service":
+        assert "sandbox-service does not run on this deploy" in out

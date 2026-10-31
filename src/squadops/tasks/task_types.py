@@ -96,9 +96,26 @@ class TaskType(StrEnum):
         return self is TaskType.QA_TEST
 
     @property
+    def first_call_keeps_reasoning_short(self) -> bool:
+        """The steps whose first call is told to keep its reasoning short, as the cut-off re-ask
+        is (the 2.5 plan's D12, #2253): the qa suite's author and its repair, the two whose p95
+        output was the cap. The note was measured on the first call only, so it goes there only."""
+        return self in (TaskType.QA_TEST, TaskType.QA_TEST_REPAIR)
+
+    @property
     def authors_source(self) -> bool:
         """The step whose emission is the application source under test."""
         return self is TaskType.DEVELOPMENT_DEVELOP
+
+    @property
+    def authors_plan(self) -> bool:
+        """The steps whose emission is the implementation plan, or a part of it: the dev and qa
+        proposers and the merger, which authors it alone when no proposer runs (#846)."""
+        return self in (
+            TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS,
+            TaskType.QA_PROPOSE_PLAN_TASKS,
+            TaskType.GOVERNANCE_MERGE_PLAN,
+        )
 
     @property
     def fails_without_correction(self) -> bool:
@@ -112,6 +129,21 @@ class TaskType(StrEnum):
           pauses it for the owner (SIP-0109 §24bn).
         """
         return self in (TaskType.GOVERNANCE_DEFINE_DONE, TaskType.STRATEGY_PROPOSE_INCREMENT)
+
+    @property
+    def shown_outcome_evidence(self) -> bool:
+        """The one step shown its campaign's outcome evidence: the increment's proposal, which
+        chooses the gap the next increment closes (SIP-0113 §4.5). No other role is shown a goal
+        (§10t ruling 1)."""
+        return self is TaskType.STRATEGY_PROPOSE_INCREMENT
+
+    @property
+    def authors_change_request(self) -> bool:
+        """The one step that authors a campaign increment's change request (SIP-0109 §3: only
+        the strategy role proposes). On a repository-backed Project it alone is given the
+        proposal's input: the head, the derived profile, the previous verification and the
+        requirements source (§24bv point 5)."""
+        return self is TaskType.STRATEGY_PROPOSE_INCREMENT
 
     @property
     def domain(self) -> str:
@@ -143,16 +175,40 @@ def authors_qa_suite(task_type: object) -> bool:
     return bool(member and member.authors_qa_suite)
 
 
+def first_call_keeps_reasoning_short(task_type: object) -> bool:
+    """``TaskType.first_call_keeps_reasoning_short`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.first_call_keeps_reasoning_short)
+
+
 def authors_source(task_type: object) -> bool:
     """``TaskType.authors_source`` for a value that may be a raw string."""
     member = _member_or_none(task_type)
     return bool(member and member.authors_source)
 
 
+def authors_plan(task_type: object) -> bool:
+    """``TaskType.authors_plan`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.authors_plan)
+
+
 def fails_without_correction(task_type: object) -> bool:
     """``TaskType.fails_without_correction`` for a value that may be a raw string."""
     member = _member_or_none(task_type)
     return bool(member and member.fails_without_correction)
+
+
+def shown_outcome_evidence(task_type: object) -> bool:
+    """``TaskType.shown_outcome_evidence`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.shown_outcome_evidence)
+
+
+def authors_change_request(task_type: object) -> bool:
+    """``TaskType.authors_change_request`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.authors_change_request)
 
 
 def emits_required_files(task_type: object) -> bool:

@@ -15,7 +15,7 @@ updated_at: '2026-05-07T00:00:00Z'
 
 **Relationship:** This SIP **is** the implementation path for SIP-0092 M2. The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged in PR #117 on 2026-05-05) selected the multi-role authoring path; SIP-0093 supplants M2-as-originally-written. The original single-author `_produce_plan` body is retained only as the implementation of `PlanAuthoringService` — the function the merger calls when there are no proposals to merge (either by config or by all-proposals-failed). It is not a separate runtime route. SIP-0092 M1 (typed acceptance) and M3 (plan changes) are orthogonal to plan authorship and stand unchanged.
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-30)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -25,10 +25,11 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | 93.1 proposal and merge schemas | **shipped** | v1.1.0 |
 | 93.2 role proposers | **shipped** | v1.1.0 |
 | 93.3 merger + cutover | **shipped** | v1.1.0 |
-| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **placed**: folded into #950 (§15a) | 2.5 or later, #950, the plan-gate review packet, after Outcome Evaluation: not in 2.4 (the 2.4 plan's D10, ruled 2026-10-17), re-read at its cut |
+| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **placed**: folded into #950 (§15a) | 2.6 or later, #950, the plan-gate review packet, after Outcome Evaluation: not in 2.4 (the 2.4 plan's D10, ruled 2026-10-17). Re-read at the 2.4.0 cut (2026-10-23): it changes what the plan gate shows, a feature, so it can't go in 2.5, a stabilization release; the 2.6 plan places it |
 | §5.8 merge rules 2–5 (compatible-criteria merge, strictest-wins, `rejected_tasks`, conflicts block the gate) | **dropped** (§15a) | re-proposed on evidence |
-| §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.5 or later, #950 (the 2.4 plan's D10) |
+| §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.6 or later, #950 (the 2.4 plan's D10; re-read at the 2.4.0 cut, with 93.4) |
 | §5.11 parallel fan-out | **dropped** by §15a: built sequential | `task_plan.py:147-149` |
+| §15b: an increment's criterion file that a development task and a qa task both claim is the qa task's at the merge | **shipped** | 2.5.0, PR #2802, closes #2795 |
 
 **What closes this SIP:** **Ready to promote** with §15a (ruled 2026-10-04): 93.4 and its tests go to #950, rules 2–5 are dropped, and the fan-out is sequential.
 
@@ -635,3 +636,41 @@ The SIP-0092 §6.2 spec was rewritten to describe the SIP-0093 design as the M2 
 **Evidence.** The read-only SIP-portfolio audit of 2026-10-04.
 
 **Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted". The supervisor's reading of the ruling assigns 93.4 to #950 and drops rules 2–5. The recommendation offered either path for both, and the owner was told this split when it was recorded.
+
+### 15b. An increment's criterion file that a development task and a qa task both claim is the qa task's (2026-10-29, §5.6 step 2, §5.7, §5.8 rule 1; SIP-0109 §8.1, §24m, §24cr; #2795)
+
+**What was found.** §5.8 rule 1 decides a task's owner by its type, never by the files it names, and no rule covers one file named by tasks from two proposals. An increment's framing (SIP-0109 §8.1) has such files: each new criterion's own test file, which SIP-0109 §24m gives to the qa role ("a file only a dev task names does not count"). The criterion appendix told every proposer to plan "a qa task whose `expected_artifacts` include each of these files". A development proposal can't hold a qa task, since rule 1 drops it, so the development proposer wrote the files into its develop tasks. The qa proposer wrote them into its qa tasks, the merge kept both claims, and the plan validator refused the dual claim (#673), as it should: there is no legitimate dual claim.
+
+On the 2.5 short demonstration's Campaign `cmp_73535ccef891` (increment cycle `cyc_7cbdae00b2ed`, contributors development, qa and strategy), on 2026-10-29:
+- **Framing run 2** (`run_bbd39e53bd5f`) was refused by `system:plan_validation` at 11:28Z. Two pairs of tasks both declared the increment's five criterion files.
+- **Framing run 3** (`run_ab5d242a1264`) was refused at 11:44Z for the same files, despite the re-roll's rejection appendix.
+- **Its `merge_decisions.yaml`** (`art_5ed9aed4b0e9`) recorded both pairs' tasks as "accepted via domain-owner rule". The development proposal (`art_77d5c5817c81`) wrote the files into two develop tasks, one of which named nothing else. The qa proposal (`art_f14cd9fbcd00`) wrote them into two qa tasks.
+
+The re-rolls are spent with no build, the cycle stops at its plan gate, and two such cycles fail a Campaign with `max_unaccepted_increments: 2` before its squad's build is ever judged.
+
+**What changed** (`src/squadops/capabilities/handlers/_plan_merger.py`, `_criterion_files_to_qa`):
+1. **The merge is handed the criterion files.** `governance.merge_plan` declares a new context-contract property, `increment_criterion_files`. On an increment's framing the plan composer hands it the criterion files as data (`task_plan._criterion_file_inputs`), in the rows the evaluation is handed (`increment_tree.criterion_file_rows`). A cycle that isn't an increment carries none, and an increment with no new criterion carries an empty list. The merge requires the list on an increment's multi-role merge (`merge.py`, `_increment_criterion_paths`): without it the handler fails, naming the input, and doesn't merge a dual claim the gate would refuse. `merge_proposals` takes the files as a required argument, with no default.
+2. **A criterion file a development-side task and a qa task both claim is the qa task's.** It leaves the development task's `expected_artifacts`. So do the task's typed checks that read it (`acceptance_check_spec.check_subject_paths`: a check's path params, and a safelisted command's file). The task no longer writes the file, and a check on a file the task's own tree lacks fails at its evaluation (`file_not_found`) whatever its code does. The task's provenance becomes `modified`, and its reason names each file and the qa task that writes it.
+   - **What evidence goes.** Those checks are discarded, not carried to the qa task: each was the development task's row on a criterion file (a `py_compile`, a `function_defined`, a `frontend_compiles`). Their readers were the development task's own acceptance verdict and, on a failure, its correction loop (the analyzer's evidence and the runtime's verifier). The qa task keeps the checks its own proposer wrote on the file, and the criterion tests themselves still run at the increment's evaluation (SIP-0109 §8; for a repository-backed increment, at its delivery, §24cl), which is what judges each criterion.
+   - **A known limit:** `check_subject_paths` reads paths as written, so it misses a command run from a `cwd` with a relative path and a glob over the criterion directory, and it drops a `frontend_compiles` on a criterion file, which builds the whole project (#2804).
+3. **A development task left with nothing to write is dropped.** Its whole deliverable is the qa tasks'.
+   - **Its record.** Each qa task that took its place records it as `merged`: the dropped task's key joins its `source_proposal_task_keys`, its role joins `proposed_by`, and the reason names the files. An operator note names the dropped task's focus.
+   - **What is discarded with it:** its description, its prose criteria and its `criteria_refs`. None is carried to the qa task. So if the task described product work beside its criterion files (a view, say, under a task whose `expected_artifacts` named only the view's criterion test), nothing writes that work, and the operator note says so at the gate. Before this rule that plan was refused and cheaply re-rolled; now it passes the gate and the missing work fails at the increment's evaluation.
+   - **Its edges.** A dependency on the dropped task is re-pointed to the dropped task's own dependencies (`_through_dropped`), followed through any of them the merge dropped too. The proposal's order is acyclic and authored (#578), so the dependent already came after everything the dropped task needed, and the re-pointed edge keeps both properties. A note is kept only for a dependency of the dropped task that names no task. Moving the edge onto the qa task that took the files would not work: qa tasks follow every development task, so a development dependent would come before its new dependency, which #578's order check refuses, and a qa dependent that is the taker itself would depend on itself.
+4. **A criterion file no qa task claims stays where it is,** so no criterion file is left unclaimed (the validator's `validate_increment_criterion_files` still refuses a plan that leaves one to a develop task alone).
+
+**What it doesn't change:**
+- a dual claim on any other file, or on a criterion file two qa tasks claim, which the validator still refuses: nothing establishes an owner for those;
+- a cycle that isn't an increment, and an increment with no dual claim on a criterion file, whose merge is byte for byte what it was (`test_an_increment_with_no_dual_claim_merges_byte_for_byte_as_with_no_criterion_files`; on `origin/main`'s merger and this one, the worked example and #2795's shape with no criterion files emit the same two documents);
+- the sole-author path (§5.10), whose one author writes both kinds of task and is shown the qa wording, which is right for it;
+- prose acceptance criteria and a task's description, which the merge doesn't rewrite. A development task's description may still mention a criterion file; its `expected_artifacts` no longer name it.
+
+**How this sits with §15a.** §15a dropped rules 2–5, to be re-proposed if a failure is traced to their absence. This is narrower than any of them: one file rule, on #2795's evidence, using §5.7's `modified` and `merged` actions. It doesn't bring back criteria merging, strictest-wins or `rejected_tasks`.
+
+**The prompt half** is SIP-0109 §24cr: the development proposer is told the files are the qa tasks', and not to list them.
+
+**Evidence.**
+- **The wiring:** `tests/unit/capabilities/test_criterion_file_ownership.py` enters at `generate_task_plan` (framing, on `campaign-increment-source`'s defaults), runs `GovernanceMergePlanHandler.handle` on the merge envelope's inputs and an invented pair shaped like #2795's, and puts the merged plan through the framing gate (`_reject_invalid_plan_before_workload_gate`). The canonical `expected_artifacts`, the develop task's remaining checks, every provenance entry and the dropped task's operator note are asserted exactly, and the gate refuses nothing. Its control merges the same pair with no criterion files and the gate refuses all three dual claims.
+- **The edges:** no qa proposal (the develop tasks keep every file); a qa proposal that misses one (the develop task keeps it, with its check on it); a dual claim on a product file (still refused); no dual claim (byte for byte); an edge to a dropped task, re-pointed to its own dependency (a qa task that depended on it ends depending on the backend task it depended on, and a develop task that depended on it, on nothing; a chain of dropped tasks is followed through; an edge is never re-pointed onto the task itself; the plan parses, and the only notes are the dropped tasks'); a dependency that names no task, of the dropped task or of a dropped task it depended on (noted on the task whose edge was re-pointed); an increment's merge with no list, or an unreadable one (refused), and a non-increment's or a criterion-less increment's (merged).
+
+**Who ruled.** The supervisor placed #2795's fix in 2.5 under the owner's 2.5 grants, since it refuses a running demonstration Campaign's framings. The issue proposed the rule and the drop's record. The build choices beyond it (the typed checks' drop, the emptied task's drop and its `merged` record, and requiring the list) are the implementer's, for the supervisor's review. #2802's second review, by a fresh agent, approved with notes. The supervisor sent four of them back to the PR: the dropped task's operator note, the statement of what evidence goes, edges re-pointed rather than dropped, and the numbering. The fifth, the subject paths' limits, is #2804.

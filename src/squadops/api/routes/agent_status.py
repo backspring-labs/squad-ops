@@ -24,6 +24,10 @@ from squadops.auth.models import Scope
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
+_STATUS = "/status"
+#: Where each agent posts its heartbeat, every 30 s (#326). The runtime's composition root names
+#: it to the access log's quiet list from here (#2425).
+HEARTBEAT_PATH = router.prefix + _STATUS
 
 
 class AgentStatusCreate(BaseModel):
@@ -56,7 +60,7 @@ def _get_health_checker(request: Request):
     return get_health_checker(request)
 
 
-@router.post("/status", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
+@router.post(_STATUS, dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
 async def create_or_update_agent_status(
     request: Request, agent_status: AgentStatusCreate
 ) -> AgentStatusUpdatedResponse:
@@ -92,7 +96,7 @@ async def create_or_update_agent_status(
         raise server_error(request, "Failed to update agent status", e, logger) from e
 
 
-@router.put("/status/{agent_id}", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
+@router.put(_STATUS + "/{agent_id}", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
 async def update_agent_status(
     request: Request, agent_id: str, update: AgentStatusUpdate
 ) -> AgentStatusUpdatedResponse:

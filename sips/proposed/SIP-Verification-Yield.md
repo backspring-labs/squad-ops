@@ -8,7 +8,7 @@ author: Backspring Labs / SquadOps
 
 **Status:** Proposed (the owner's draft, revision 1, under the placement note below)
 **Revision:** 1
-**Target:** re-placed 2026-10-04 (`sips/PORTFOLIO.md` §2), and read at the cut of 2026-10-07; #1960's tokens and verification share shipped in 2.1.0 (#2027); test-file churn unplaced (it needs the vault); #1965 the crew's, unplaced; #1966 in 2.4 or later, after Cross-Cycle Memory's finding
+**Target:** re-placed 2026-10-04 (`sips/PORTFOLIO.md` §2), and read at the cut of 2026-10-07; #1960's tokens and verification share shipped in 2.1.0 (#2027); test-file churn unplaced (it needs the vault); #1965 the crew's, unplaced; #1966's QA half shipped in 2.4.0 (#2700), its builder half deliberately unplaced
 **Authors:** Backspring Labs / SquadOps
 **Theme:** Verification quality, test economics, agent efficiency
 
@@ -54,7 +54,7 @@ author: Backspring Labs / SquadOps
 >
 > **Placement revised 2026-10-04, by the owner's ruling** (after reviewing the draft again during the 2.0
 > counted set). The 2026-10-01 note above stays as the record. **The delivery ledger, current as of
-> 2026-10-17** (read at the 2.1.0 cut; #1966 placed by the 2.4 plan):
+> 2026-10-23** (read at the 2.1.0 cut; #1966 placed by the 2.4 plan, and its qa half adopted on 2026-10-23):
 >
 > | part | status | where |
 > |---|---|---|
@@ -64,12 +64,13 @@ author: Backspring Labs / SquadOps
 > | verification-cost reporting (§17–§18, §23): the qa tasks' tokens and the verification share of an increment | **shipped** | 2.1.0, PR #2027 (#1960's per-increment scorecard, SIP-0109 §24bb). No separate build |
 > | verification-cost reporting: test-file churn | **unplaced** | it needs the vault's per-increment trees (SIP-0109 §24bb records why #2027 does not split it) |
 > | the framework suite's test-value audit, fault corpus, detection matrix and deletion experiment (§10–§28) | **unplaced: the crew's** (the owner's ruling, 2026-10-04). It was not run in the 2.1 window | #1965, open. Measurement only. Each deletion is an owner-approved PR. The corpus also serves `SIP-Outcome-Evaluation`'s first prediction |
-> | risk-first qa and builder instructions (§19, §35–§38) | **placed: 2.4.0**, the A/B (the 2.4 plan's D6, ruled 2026-10-17). Adopting it is a separate ruling, not before Outcome Evaluation's phase-2 decision. It was not built in 2.1 | #1966, run with #1959 (increment replay) and read with #1960. Never in the same release as memory, so each change's effect stays readable |
+> | risk-first qa instructions (§19, §35–§38: the qa half) | **shipped: 2.4.0**, PR #2700 (#1966). Adopted by the owner's ruling of 2026-10-23 (the 2.4 plan's D6), after Outcome Evaluation's phase-2 decision of 2026-10-22 | the A/B on replayed increments (#1959), read with #1960 on 2026-10-22: `docs/plans/verification-sets/2-4-0-risk-first-qa-ab-preregistration.md` (#2666), the read on #1966, the records in `var/verification_sets/2-4-0-risk-first-qa-ab/`. Nothing was lost on four increments, and QA's tests beyond the criteria fell where there were any. Its first campaign-scale run is the 2.4 cut's pre-registered set, which reverts it before the tag if it loses a held-out scenario or adds rounds from QA's own tests. Cross-Cycle Memory shipped in 2.2, so the two never shared a release |
+> | risk-first builder instructions (§19, §35–§38: the builder half) | **unplaced, deliberately** | #1966's A/B was kept to one intervention, the qa half, so the builder half was never measured. It needs its own A/B before any adoption |
 > | the stub-based red gate for greenfield cycles (§7's mechanism there) | **owned by `SIP-Test-First-Verification`** | unchanged from the 2026-10-01 note |
 > | automation of classification, mutation runs and gap detection (§45 phase 4), and the follow-ons (§56) | **unplaced, deliberately** | after #1965 reads. The SIP's own §45 orders it so |
 >
 > **What closes this SIP:** every row above shipped or dropped by an amendment. Today four rows are open:
-> test-file churn, #1965, #1966, and the unplaced automation.
+> test-file churn, #1965, the builder half of the risk-first instructions, and the unplaced automation.
 
 ---
 

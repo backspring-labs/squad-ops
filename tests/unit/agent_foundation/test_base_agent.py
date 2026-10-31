@@ -21,7 +21,6 @@ def mock_ports():
     """Create mock ports for testing."""
     return {
         "llm": MagicMock(),
-        "memory": MagicMock(),
         "prompt_service": MagicMock(),
         "queue": MagicMock(),
         "metrics": MagicMock(),
@@ -43,7 +42,6 @@ class TestPortsBundle:
         """Bundle should store all ports."""
         bundle = PortsBundle(**mock_ports)
         assert bundle.llm is mock_ports["llm"]
-        assert bundle.memory is mock_ports["memory"]
         assert bundle.prompt_service is mock_ports["prompt_service"]
         assert bundle.queue is mock_ports["queue"]
         assert bundle.metrics is mock_ports["metrics"]
@@ -58,7 +56,6 @@ class TestBaseAgent:
         """Agent should expose port accessors."""
         agent = ConcreteAgent(agent_id="agent-1", **mock_ports)
         assert agent.llm is mock_ports["llm"]
-        assert agent.memory is mock_ports["memory"]
         assert agent.prompt_service is mock_ports["prompt_service"]
         assert agent.queue is mock_ports["queue"]
         assert agent.metrics is mock_ports["metrics"]

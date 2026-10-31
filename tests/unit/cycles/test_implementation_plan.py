@@ -230,6 +230,49 @@ summary:
         with pytest.raises(ValueError, match="non-existent task_index 99"):
             ImplementationPlan.from_yaml(yaml_str)
 
+    @pytest.mark.parametrize(
+        ("index", "depends_on", "message"),
+        [
+            ("'1'", "[]", "task_index must be an integer, got '1'"),
+            ("{n: 0}", "[]", "task_index must be an integer, got {'n': 0}"),
+            (
+                "1",
+                "[{task_index: 0}]",
+                "depends_on lists task_index integers, got {'task_index': 0}",
+            ),
+            ("1", "[true]", "depends_on lists task_index integers, got True"),
+        ],
+        ids=["string-index", "mapping-index", "mapping-dependency", "bool-dependency"],
+    )
+    def test_an_index_that_is_not_an_integer_is_refused_with_its_value(
+        self, index, depends_on, message
+    ):
+        """#2488, seen live: `depends_on: [{task_index: 0}]` crashed the parser with
+        `TypeError: unhashable type: 'dict'`, so the author never learned what was wrong."""
+        yaml_str = f"""\
+version: 1
+project_id: test
+cycle_id: cyc_test
+prd_hash: abc
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: a
+    description: a
+  - task_index: {index}
+    task_type: development.develop
+    role: dev
+    focus: b
+    description: b
+    depends_on: {depends_on}
+summary:
+  total_tasks: 2
+"""
+        with pytest.raises(ValueError) as refused:
+            ImplementationPlan.from_yaml(yaml_str)
+        assert message in str(refused.value)
+
     def test_dependency_cycle_raises(self):
         yaml_str = """\
 version: 1
@@ -1651,15 +1694,17 @@ class TestValidateCheckApplicability:
         (error,) = plan.validate_check_applicability(self._NEXTJS_CONFIG)
         assert "test_*.py" not in error
         # #1534: the conventions are what the scaffold's runner COLLECTS. This asserted
-        # `*.spec.tsx` until the profile stopped declaring forms the config never collects.
-        assert "__tests__/*.test.ts" in error and ".tsx" not in error
+        # `*.spec.tsx` until the profile stopped declaring forms the config never collects,
+        # and `.tsx` absent until the runner collected `.test.tsx` (#2531).
+        assert "__tests__/*.test.ts" in error and "__tests__/*.test.tsx" in error
+        assert ".spec" not in error
 
     @pytest.mark.parametrize(
         "uncollected",
         [
-            "__tests__/runs-ui.test.tsx",  # cyc_79f70a0bbac1, cyc_d988c11c71f5
             "__tests__/runs.spec.ts",
             "tests/api.test.ts",  # cyc_d6c48bab51e9: .test.ts, but outside __tests__/
+            "app/runs/page.test.tsx",  # .tsx is collected only under __tests__/ (#2531)
         ],
     )
     def test_a_suite_the_runner_never_collects_is_rejected_beside_one_it_does(self, uncollected):
@@ -1673,6 +1718,22 @@ class TestValidateCheckApplicability:
         (error,) = plan.validate_check_applicability(self._NEXTJS_CONFIG)
         assert f"['{uncollected}']" in error
         assert "never collects" in error
+
+    @pytest.mark.parametrize(
+        "artifacts_yaml",
+        [
+            '\n      - "__tests__/run-detail-capacity.test.tsx"',
+            '\n      - "__tests__/runs-api.test.ts"\n      - "__tests__/runs-ui.test.tsx"',
+        ],
+        ids=["the-shakeouts-page-suite", "a-page-suite-beside-an-api-suite"],
+    )
+    def test_a_page_suite_written_with_jsx_is_accepted(self, artifacts_yaml):
+        """#2531, the refusal the 2.4 Next.js shakeout met twice in round 3 (`cyc_c97a1ab0cdbb`'s
+        first framing, and its calibration's): a qa task testing a page names its suite `.tsx`,
+        because the suite renders the page with JSX. Bug caught: that plan refused, costing a
+        framing re-roll each time, and a run of them exhausting a campaign's retries."""
+        plan = self._plan_with_qa_artifacts(artifacts_yaml)
+        assert plan.validate_check_applicability(self._NEXTJS_CONFIG) == []
 
     def test_a_helper_beside_a_collected_suite_is_not_a_suite(self):
         """The over-rejection guard: the stack's own suite vocabulary decides what is a

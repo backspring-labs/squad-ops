@@ -62,7 +62,10 @@ def test_a_control_command_sends_its_reason_key_and_expected_state(get_client):
 @patch("squadops.cli.commands.campaigns._get_client")
 def test_start_names_the_cycle_it_launched(get_client):
     """Bug caught: a start that reports the campaign moved but not which cycle it launched —
-    the one thing the owner next watches."""
+    the one thing the owner next watches. And (SIP-0113 §10l) a start sent with the short
+    timeout: a repository-backed start evaluates its record's commit before it answers, so the CLI
+    would report a timeout for a start that is still running. Only the start waits long: the pause
+    above is sent without one."""
     client = _client(
         post={
             **_RESULT,
@@ -71,6 +74,7 @@ def test_start_names_the_cycle_it_launched(get_client):
             "launched_cycles": ["cyc_cal000000001"],
         }
     )
+    client.long_timeout = 1800
     get_client.return_value = client
 
     result = runner.invoke(
@@ -79,9 +83,33 @@ def test_start_names_the_cycle_it_launched(get_client):
 
     assert result.exit_code == 0, result.output
     client.post.assert_called_once_with(
-        "/api/v1/campaigns/cmp_1/start", json={"reason": "go", "idempotency_key": "k-1"}
+        "/api/v1/campaigns/cmp_1/start",
+        json={"reason": "go", "idempotency_key": "k-1"},
+        timeout=1800,
     )
     assert "launched cycles: cyc_cal000000001" in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_a_start_whose_launch_was_refused_says_the_campaign_is_escalated_and_why(get_client):
+    """#2621. Bug caught: a start that printed only its own row (`draft → calibrating`) while the
+    launch it wrote was refused and the campaign escalated, so the operator walks away from a
+    campaign waiting on the owner."""
+    client = _client(
+        post={
+            **_RESULT,
+            "campaign": {"campaign_id": "cmp_1", "state": "escalated"},
+            "entry": {"operation": "start", "prior_state": "draft", "next_state": "calibrating"},
+            "launched_cycles": [],
+            "refused_launch": {"reason": "STALE_SOURCE_PRECONDITION: reconcile it first"},
+        }
+    )
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "start", "cmp_1", "--reason", "go"])
+
+    assert result.exit_code == 0, result.output
+    assert "launch refused, cmp_1 is escalated: STALE_SOURCE_PRECONDITION" in result.output
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
@@ -391,11 +419,20 @@ def test_escalations_lists_each_ones_state_failed_conditions_and_late_answer(get
 
     assert result.exit_code == 0, result.output
     headers, rows = table.call_args.args
-    assert headers == ["Escalation", "State", "Run", "Failed", "Questions", "Late answer"]
+    assert headers == ["Escalation", "Kind", "State", "Run", "Failed", "Questions", "Late answer"]
     assert rows == [
-        ["esc_0123456789ab", "expired", "run_f", "no_open_question", "which order?", "—"],
+        [
+            "esc_0123456789ab",
+            "plan_review",
+            "expired",
+            "run_f",
+            "no_open_question",
+            "which order?",
+            "—",
+        ],
         [
             "esc_ba9876543210",
+            "plan_review",
             "expired",
             "run_g",
             "no_open_question",
@@ -403,3 +440,47 @@ def test_escalations_lists_each_ones_state_failed_conditions_and_late_answer(get
             "list-ordering: insertion order",
         ],
     ]
+
+
+_PUSHED = {
+    "campaign_id": "cmp_1",
+    "branch": "squadops/cmp_1",
+    "commit": "b" * 40,
+    "lease": "a" * 40,
+    "forced": True,
+    "review_url": "https://forge.example.invalid/pull/7",
+    "entry_id": "ctl_1",
+    "replayed": False,
+}
+
+
+@patch("squadops.cli.commands.campaigns.gh_token", return_value="tok_invented_cli")
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_push_review_sends_the_callers_own_token_and_says_how_it_pushed(get_client, _token):
+    """SIP-0109 §24ci (b). Bugs caught: the token left off, so the deploy would need one stored;
+    the token printed; the force and its lease not said, so a supervisor can't tell a rewrite."""
+    client = _client(post=_PUSHED)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app, ["campaigns", "push-review", "cmp_1", "--token-from-gh", "--idempotency-key", "k-1"]
+    )
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/review-pushes",
+        json={"idempotency_key": "k-1", "token": "tok_invented_cli"},
+    )
+    assert f"forced with a lease on {'a' * 12}" in result.output
+    assert "tok_invented_cli" not in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_push_review_without_its_own_token_sends_nothing(get_client):
+    """The edge: no --token-from-gh. Bug caught: a request with no token, whose only way to
+    succeed would be a token stored in the deploy, which nothing stores for this push."""
+    result = runner.invoke(app, ["campaigns", "push-review", "cmp_1"])
+
+    assert result.exit_code == 2
+    assert "--token-from-gh" in result.output
+    get_client.assert_not_called()

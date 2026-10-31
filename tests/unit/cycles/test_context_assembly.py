@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities import context_assembly as ca
 from squadops.cycles.models import ArtifactRef
 from squadops.tasks.models import TaskEnvelope
@@ -69,6 +69,7 @@ async def test_new_enrichment_is_a_registry_edit_only(reply_router, monkeypatch)
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     envelope = TaskEnvelope(
         task_id="t1",
@@ -180,6 +181,28 @@ def test_retest_forwarding_is_presence_keyed():
     }
 
 
+@pytest.mark.parametrize(
+    "repository",
+    [{"commit": "c" * 40, "map": "harbor/app.py", "runners": []}, None, {}],
+    ids=["a-products-run", "a-sample-applications-run", "an-empty-repository"],
+)
+def test_a_retest_carries_the_products_repository_exactly_when_its_failed_task_did(repository):
+    """#2815: the retest runs the repaired suite on the tree the failed task's ran on, a product's
+    whole tree where the task carried its repository (``qa_run_tree``). Bug caught: the retest
+    forwarded without it, so a suite that passed at emission fails its retest on the source files
+    alone; or a sample application's retest given an empty key that reads as a product's."""
+    failed = {"artifact_contents": {"harbor/app.py": "x"}}
+    if repository is not None:
+        failed["source_repository"] = repository
+
+    forwarded = ca.retest_forwarded_inputs(failed)
+
+    if repository:
+        assert forwarded["source_repository"] == repository
+    else:
+        assert "source_repository" not in forwarded
+
+
 def _source_ref(artifact_id, filename):
     ref = _ref(artifact_id, filename, "development.develop")
     return dataclasses.replace(ref, artifact_type="source", metadata=dict(ref.metadata))
@@ -207,6 +230,7 @@ def _executor_with(reply_router, universe):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
 
 

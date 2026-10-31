@@ -309,6 +309,7 @@ class TestRedactionPreservesEveryOtherField:
             tokens_per_second=10.6,
             prompt_name="request.development_develop",
             prompt_version=7,
+            full_prompt_text="the whole prompt, with no secrets",
         )
         adapter.record_generation(_make_ctx(), record, _make_layers())
         buffered = adapter._buffer.get_nowait().payload[0]
@@ -352,12 +353,14 @@ class TestRedactionPreservesEveryOtherField:
             _make_record(
                 prompt_text="Use Bearer abc123456789012345678901 token",
                 response_text="key is sk-secret1234567890123456",
+                full_prompt_text="the whole of it: Bearer abc123456789012345678901",
             ),
             _make_layers(),
         )
         buffered = adapter._buffer.get_nowait().payload[0]
         assert "abc123456789012345678901" not in buffered.prompt_text
         assert "sk-secret1234567890123456" not in buffered.response_text
+        assert "abc123456789012345678901" not in buffered.full_prompt_text  # #1756
 
     def test_tokens_per_second_reaches_the_langfuse_generation_call(self, adapter):
         """The second hop. Surviving redaction is necessary but not sufficient —

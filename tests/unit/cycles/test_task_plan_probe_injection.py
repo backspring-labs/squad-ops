@@ -329,6 +329,25 @@ def test_bind_mode_injects_dom_testid_surface_into_qa_test_only():
             assert "dom_testid_surface" not in env.inputs
 
 
+def test_a_nextjs_qa_task_is_shown_the_frozen_client_its_page_suites_mock():
+    """Entered at ``generate_task_plan``, as an implementation run's plan is composed (#2534's page
+    suites; the 2.4 Next.js shakeout's round 6). Bug caught: the Next.js qa author never shown the
+    client, so a page suite mocked ``@/lib/api`` with React's prefix-less paths and every page
+    call missed it; or the client's lines reaching a role that writes no suite."""
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle, run, profile, plan=None, contract=_contract(),
+        interface_manifest=manifest_for_stack("nextjs_ts"),
+    )  # fmt: skip
+
+    qa_envs = [e for e in envs if e.task_type == "qa.test"]
+    (line,) = qa_envs[0].inputs["frozen_client_surface"]
+    assert "`lib/api.ts`" in line and "no prefix" in line and "`/api/runs`" in line
+    assert all("frozen_client_surface" not in e.inputs for e in envs if e.task_type != "qa.test")
+
+
 def test_manifest_without_testids_injects_no_dom_key():
     """The handler keys on presence — an empty inventory must not render an
     authoritative header over nothing."""

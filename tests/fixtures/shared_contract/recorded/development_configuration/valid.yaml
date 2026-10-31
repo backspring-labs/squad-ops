@@ -1,0 +1,52 @@
+# The Project Development Configuration (SIP-0112 §B.5), with its commands resolved as a reader
+# receives them. technical.commands.start is contract 7's start declaration (§8.2.1), read by
+# Outcome Evaluation's runner. The rest is the MacBook lane's own, recorded for E.4.2 and IR-9.
+api_version: squadops.project-development-configuration/v1
+configuration:
+  project_id: prj-tally
+  revision: 1
+  validated_at_commit: 962858eb0e321ed084463637c9faf661c179a41e
+  technical:
+    project_type: service
+    target: python
+    stack: null
+    commands:
+      working_directory: .
+      checks:
+        - id: build
+          argv: [python3, tools/build.py]
+        - id: parse
+          argv: [python3, -m, unittest, discover, -s, checks, -p, check_parse.py]
+        - id: ledger
+          argv: [python3, -m, unittest, discover, -s, checks, -p, check_ledger.py]
+        - id: server
+          argv: [python3, -m, unittest, discover, -s, checks, -p, check_server.py]
+        - id: report
+          argv: [python3, -m, unittest, discover, -s, checks, -p, check_report.py]
+        - id: notify
+          argv: [python3, -m, unittest, discover, -s, checks, -p, check_notify.py]
+          requires_environment: [TALLY_SMTP_HOST]
+      start:
+        working_directory: .
+        build:
+          - [python3, tools/build.py]
+        start: [python3, -m, tally, serve, --host, 0.0.0.0, --port, "18407"]
+        readiness:
+          kind: http
+          target: http://127.0.0.1:18407/healthz
+          timeout_seconds: 20
+        entry_points:
+          - kind: http_base
+            url: http://127.0.0.1:18407/
+        evaluation_environment:
+          TALLY_ADMIN_TOKEN: secret://tally_evaluation_admin_token
+  workspace:
+    mode: managed_clone
+    preserve_repository_layout: true
+  instruction_sources:
+    - path: CONTRIBUTING.md
+      digest: sha256:2a53e2e5c50feb4507e569985f0062943467c3efa25033a0f69cf270e62d5fed
+      at_commit: 962858eb0e321ed084463637c9faf661c179a41e
+  quality:
+    contract_ref: null
+  benchmark_profile_ref: null

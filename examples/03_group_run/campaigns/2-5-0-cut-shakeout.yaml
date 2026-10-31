@@ -1,0 +1,36 @@
+# The 2.5 cut's shakeout campaign (docs/plans/2-5-0-cut-preregistration.md §2, §3, §5): the exit rule's shakeout,
+# which must end with no new seam finding before the set registers. The 2.4 cut's shakeout (2-4-0-cut-shakeout.yaml),
+# carried, with one change: the held-out suite's revision 6 is pinned, so each cycle is evaluated at its end on the
+# yardstick the cut reads (Outcome Evaluation's phase 1, reporting only) and each proposal is shown its accepted tree's
+# goals (SIP-0113 §4.5). Field for field it is 2-5-0-track-d-uncounted.yaml. Plan gates stay `tier`; each proposal is
+# approved as it stands unless the rails refuse it. Its calibration reads D3 (#2557). Uncounted.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "two accepted increments"
+  target_accepted_increments: 2
+  work_class:
+    prd_tier: tier-1
+    attendance: unattended
+policy:
+  # 1 calibration + 2 increments + one repair or retry each (2) + 2 replacements for abandoned ones.
+  max_cycles: 7
+  max_elapsed_s: 43200
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38-tf
+  plan_gate: tier
+  stack: fullstack_fastapi_react
+scenario_suite: 89bffc198c99b6fd347ef51d6263f6e2360a680a42bb4f01138750e44809854a

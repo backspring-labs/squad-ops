@@ -74,6 +74,13 @@ SHOWCASE_SINCE = (1, 7, 5)
 #: The first release whose cut records its housekeeping (step 8, #1957). Earlier cuts ran it, or
 #: did not, with nothing written down; they are not re-litigated.
 HOUSEKEEPING_SINCE = (2, 1, 0)
+#: The first release whose housekeeping also purges the line's page evidence (SIP-0113 §10p ruling
+#: 8): held out, kept for the line, gone at its cut, with the count on the record.
+EVIDENCE_PURGE_SINCE = (2, 4, 0)
+EVIDENCE_PURGE_COMMAND = (
+    "squadops scenarios purge-evidence --before <the tag's time>, then pass its count to "
+    "worktree_hygiene.py with --evidence-purged N"
+)
 HOUSEKEEPING_COMMAND = (
     "python scripts/dev/worktree_hygiene.py --apply --archive-root <dir outside every checkout> "
     "--record-release {tag}   # preview without --apply first"
@@ -148,7 +155,7 @@ def package_problems(tag: str, releases: Path = RELEASES) -> list[str]:
     if version >= SHOWCASE_SINCE and not problems:
         problems.extend(_screenshot_problems(tag, rel, version_text, target, package))
     if version >= HOUSEKEEPING_SINCE and not problems:
-        problems.extend(_housekeeping_problems(tag, rel, target))
+        problems.extend(_housekeeping_problems(tag, rel, target, version))
     return problems
 
 
@@ -166,7 +173,9 @@ def roadmap_problems(tag: str, roadmap: Path = ROADMAP) -> list[str]:
     return [f"{tag}: docs/ROADMAP.md has no '### {tag} (…)' timeline entry — cut step 4"]
 
 
-def _housekeeping_problems(tag: str, rel: str, target: Path) -> list[str]:
+def _housekeeping_problems(
+    tag: str, rel: str, target: Path, version: tuple[int, ...] = HOUSEKEEPING_SINCE
+) -> list[str]:
     """Rule 5 (cut step 8): the hygiene run recorded beside the package, clean."""
     record = target / "housekeeping.yaml"
     command = HOUSEKEEPING_COMMAND.format(tag=tag)
@@ -181,6 +190,14 @@ def _housekeeping_problems(tag: str, rel: str, target: Path) -> list[str]:
         problems.append(f"{tag}: {rel}/housekeeping.yaml names tag {data.get('tag')!r}")
     for problem in data.get("problems") or []:
         problems.append(f"{tag}: housekeeping left a problem: {problem}")
+    purged = data.get("scenario_evidence_purged")
+    if version >= EVIDENCE_PURGE_SINCE and (
+        isinstance(purged, bool) or not isinstance(purged, int) or purged < 0
+    ):
+        problems.append(
+            f"{tag}: {rel}/housekeeping.yaml records no page-evidence purge (cut step 8, "
+            f"SIP-0113 §10p ruling 8):\n    {EVIDENCE_PURGE_COMMAND}"
+        )
     return problems
 
 

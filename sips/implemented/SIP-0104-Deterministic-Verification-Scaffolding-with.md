@@ -14,7 +14,7 @@ Implemented: promoted at the v2.0.0 cut's SIP sweep (2026-10-04), by §13c's rea
 **Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-30)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -29,9 +29,11 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §10.3 economics metric | *unverified* | — |
 | stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
 | §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded** (§13c) | SIP-0107 §46d |
-| a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **placed** | 2.4.0, #2153: built after Outcome Evaluation's measurement window and measured on its yardstick (the 2.4 plan's D8, ruled 2026-10-17). SIP-0110's window, which held it, closed at the 2.2 cut |
+| a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **dropped** (§13e, 2026-10-22): the shell's construction already routes it, and 37 days of runs show no route it would change | — |
+| §13d's ambiguous case, the guard: no revision resolving it by dropping the failing assertion's subject (§13f) | **shipped** | 2.5: §13f, PR #2746 |
+| §13d's ambiguous case, the record: both readings beside the failure. §13f records the failing subject and what the declarations say of it, not the reading that the app is wrong | *unplaced* | — |
 
-**What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion. §13d's routing (#2153) is a follow-on to an implemented SIP, recorded so it does not read as shipped.
+**What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion. §13d's routing (#2153) was a follow-on to an implemented SIP; §13e drops it. §13f builds §13d's guard against weakening (#2664). §13d's other ask, both readings recorded beside the failure, is unplaced, recorded so it does not read as shipped.
 
 ## 1. Abstract
 
@@ -127,7 +129,7 @@ The author may add whole new test files beside the scaffold. Normative bounds: d
 |---|---|---|
 | Scaffold import unresolvable, invocation underivable, scaffold won't collect | **scaffold-invalid** | generator defect; fails run setup (§4.4), never an LLM round |
 | Frozen shell executes; app violates the declared contract | **app-contract** | dev repair — and a shell status failure and its bound probe's failure are **the same defect observed twice**: the correction router deduplicates on the shared criterion id rather than burning a round on each |
-| Authored slot assertion wrong or failing | **fill failure** | qa repair, slot-scoped. **Amended by §13d (2026-10-09):** a failing assertion's location says who wrote it, not what is wrong. It is routed by demonstrated defect ownership |
+| Authored slot assertion wrong or failing | **fill failure** | qa repair, slot-scoped. **Amended by §13d (2026-10-09):** a failing assertion's location says who wrote it, not what is wrong. It is routed by demonstrated defect ownership. **§13e (2026-10-22):** the frozen spine asserts the contract before the slot runs, so a failing slot assertion always has an app that met the contract, and qa is §13d's route for it |
 | Harness/runtime cannot execute | **test-infrastructure** | environment triage, not a work-product round |
 | Wrong import / invocation signature / status assertion in a *frozen* region | scaffold-generation defect (impossible unless enforcement failed — a §4.3 violation) |
 | Live-server assumption or undeclared dependency in a fill or additive test | prohibited-fill violation — qa repair with the violation named |
@@ -302,3 +304,149 @@ decides the route.
 **Who ruled it.** The owner's review of the 2.2 shakeout (2026-10-09, point 8): "Assertion location identifies who wrote
 the assertion, not whether the assertion or the application is wrong … Route based on demonstrated defect ownership,
 and preserve legitimate requirements during test repairs. Amend the location-implies-QA design wording."
+
+### 13e. §13d's routing is met by the shell's construction; its build is dropped, and its ambiguous-case guard is unplaced (2026-10-22)
+
+**What §13d said.** Today's vitest classifier can't place a slot assertion, because it reads the declaration line, which
+vitest doesn't report. So every vitest slot failure routes as `app-contract`, to dev. Routing by demonstrated defect
+ownership was to be #2153's build, placed in 2.4 by the plan's D8.
+
+**What the evidence says.** This is #2153's read of every qa run's stored report from 2026-09-15 to 10-22: the vault's
+`test_report.md` files, the merged shells, the scaffold manifests, and the probe and routing lines in the runtime's log.
+- **Only the Next.js stack emits shells** (`src/squadops/stacks/verification_scaffold_emission.py:77`).
+  - It pins vitest 1.6.0 (`stack_nextjs_ts.py`), and its report places a failure at the line that failed. The 2.4
+    window's `cyc_83412d24d2ba` recorded its ten in-slot failures as `fill`, as did four August cycles. All 21 stored
+    observation lines equal the first frame in their report.
+  - #2153's fixture came from the React stack, which emits no shells.
+  - So §13d's "every vitest slot failure is routed to dev" described no stored run. An in-slot failure has routed to qa.
+- **The frozen spine asserts the contract before the slot runs** (`stack_nextjs_ts_tests.py`, the shell body): the
+  declared status, the error code, the response shape and the declared order.
+  - An application that breaks the contract therefore fails the spine, routes to dev, and its slot never runs. That is
+    §13d's first case (a correct assertion, a broken application), met by construction.
+  - In the 37 days, 22 shell assertions failed in the spine. Each one's own probe failed, and each routed to dev.
+- **An in-slot failure always has an application that met the contract** for that request.
+  - In the 37 days, 19 failed in a slot: 9 assertions qa wrote, and 10 missing-fill placeholders. Each one's own probe
+    passed, and each was classed `fill`.
+  - That is §13d's second case (a wrong assertion, which goes to qa) or its ambiguous one (today's route, qa).
+  - Routing by demonstrated ownership would have changed no route.
+
+**What changes.** The routing build is dropped. #2153 closes with this amendment. §5's table reads as §13d and this section
+amend it.
+
+**What stays unbuilt.** §13d's ambiguous case asks for two things:
+- both readings recorded beside the failure;
+- a repair never allowed to resolve the failure by deleting or weakening the assertion.
+
+Neither is built. `measure_assertion_strength` (#980) records how much the fills assert; it refuses nothing. Every in-slot
+failure is the second or the ambiguous case, so this guard is the one place §13d still acts. It is #2664, **unplaced**.
+Whether any of the 9 qa-written failures was repaired by weakening isn't read yet; the slot bodies before and after are
+in the vault.
+
+**Who ruled it.** The supervisor, 2026-10-22, under the owner's grant of 2026-10-19 ("autonomy to use good judgement to
+approve cycles, PRs, issue choices etc." on the 2.4 feature set). D8 placed the build. This drops it on the evidence above,
+and it is reported to the owner, whose ruling can restore it.
+
+### 13f. A slot revision that drops its failing assertion's subject is refused (2026-10-27)
+
+**What changed.** §13d says a repair "is never allowed to resolve [an ambiguous failure] by deleting or weakening the
+assertion". §13e found that guard unbuilt, and every in-slot failure is §13d's second or ambiguous case, so the guard is
+where §13d still acts. It is built now, as a gate on the slot-region revision (#2664).
+
+**The rule.** When a slot with an open failure is revised, the revision keeps an assertion on the failing assertion's
+*subject*: the same field on the same surface, which is the response, the frozen error envelope, or a store table.
+Any matcher counts. A revision that keeps none is refused as `slot_subject_dropped`, unless the scaffold's
+declarations show that field absent on that surface. Counting assertions was rejected: #2664's read found the weakening
+kept or raised its count, while the correct reductions lowered theirs.
+
+**What is built: the MacBook lane's five points.**
+1. **The subject** is read from the merged slot body at the failure's line. That is the line `classify_shell_failures`
+   already records on each fill observation.
+   - Each stack registers a reader for its fill language (`verification_scaffold_emission.slot_assertion_reader`). The
+     TypeScript one is `stacks/stack_nextjs_ts_subjects.py`.
+   - It maps `body.<f>` to the response, `body.error.<f>` to the error envelope, and `TABLES.<T>` or
+     `all(TABLES.<T>)[i].<f>` to store table `T`.
+   - Before mapping, it normalises optional chaining, casts, quoted bracket access, `typeof`, `Array.isArray` and the
+     body's own aliases (`const rows = all(TABLES.Run)`). The repair this section exists for wrote through such an
+     alias.
+   - Any other target reads `subject_unreadable`. That is recorded and never refused, and so is a revision whose only
+     assertion naming the field cannot be read.
+2. **The gate sits in `merge_fills`.** Every write to a slot body is one of its region revisions, and
+   `apply_followup_fills` folds into it. For each slot with an open failure, it compares the new body with the body
+   that failure was observed on. That covers three paths:
+   - the slot-scoped `qa.test_repair`: `_merge_repair_fills` is handed `repair_slots`, now carrying each failure's
+     line, and `current_files`;
+   - a re-dispatched `qa.test`: the executor carries `prior_slot_failures` onto the re-dispatch, and the qa handler
+     builds the same guard;
+   - a repair sent for another file that refills every slot: the guard holds every open in-slot failure, not only the
+     slots the repair was aimed at.
+   A not-applicable disposition on a failing slot asserts nothing, so it is judged like a drop.
+3. **The same surface and field, with any matcher, passes.** Two softer signals are recorded and refuse nothing:
+   - `matcher_loosened`: the subject is kept only by existence or shape matchers, where the failing assertion pinned a
+     value;
+   - `lost_subjects`: passing checks the revision dropped beside the failing one.
+4. **A refused repair is spent, not refunded**, as #2727 does for a dropped patch.
+   - The qa repair handler hands back nothing, and stamps `slot_subject_dropped` on its outputs.
+   - `CorrectionRepair` collects the stamp, and `judge_emission` no longer reads the round as empty.
+   - The protocol result and the `CORRECTION_COMPLETED` event carry `repair_subject_dropped`.
+   - The executor routes the round to `continue` without reaching patch acceptance. Its carry entry, under
+     `REPAIR_SUBJECT_DROPPED_MARKER`, names each slot, the subject, and that the declarations show the field there.
+   - `repair_not_applied_in_round` reads the marker, so the signature rule doesn't count the round as a repeat.
+   - **On a re-dispatched qa.test** there is no patch to spend. The refused slot keeps its accepted body, the rest of
+     the emission merges, and the next correction round's carry is told which subject that emission tried to drop.
+5. **"Absent there" is read from the scaffold record the task is bound to**, never from the app's code. The source is
+   `verification_scaffold.subject_surfaces`, derived from the interface manifest beside `store_tables`:
+   - a 2xx shell's response: its entity's declared fields. A collection body declares none;
+   - an error shell's response: the frozen envelope, whose only key is `error`, holding `code` and `message`
+     (the stack's `ErrorSeam`);
+   - each store table: its entity's declared fields.
+   - A product with no scaffold has no slots, so nothing changes off the scaffold stacks.
+
+**The registry.** `slot_subject_dropped` is a new `FailureClassification` value, set by the framework, as
+`contract_compliance` is. It is declared under `work_product`'s disposition (`producer_output_failure`,
+primary-eligible), and the drift test enumerates it. **`ATTRIBUTION_REGISTRY_VERSION` stays 2.** A new value in an
+existing vocabulary, declared under an existing disposition, changes no attribution of an existing record. Nor does any
+composition rule read `FailureClassification`.
+
+**Evidence: the read before merging.** A read-only replay ran the real gate over the 9 in-slot qa-written failures of
+2026-09-15 to 10-22, from the vault's stored shells. A repair revision went through the handler's own merge; a
+re-dispatched qa.test's went through `merge_fills` with the guard its handler builds. Each run's stored interface
+manifest hashes to its scaffold record's `interface_manifest_hash`, and today's generator reproduces every stored
+spine, so the declarations are the ones each run bound.
+
+| # | run, report | failing shell : line, subject | next revision | verdict |
+|---|---|---|---|---|
+| 1 | `cyc_bb493eb4725b`/`run_642c6086b601`, `art_a3cbfdc754aa` | join `art_1145586f92bf`:44, `participant_count` on store `RunDetail` | the qa repair `art_a05e5962383f`; then the re-dispatch `art_6a558b8bc5ec` | the repair **refused**; the re-dispatch kept the subject |
+| 2 | same | join-duplicate `art_3fd5f7eb329c`:44, the same subject | the repair `art_2f83e019d088`; the re-dispatch `art_bdf66cf55b3b` | **refused**; kept |
+| 3 | same | leave `art_b19dbf0a0051`:52, the same subject | the repair `art_76feb064177b`; the re-dispatch `art_97105dd0ae52` | **refused**; kept |
+| 4–6 | same, `art_c01cc97cda51` | the re-dispatch's join :48, join-duplicate :45 and leave :55, the same subject | none: the run ended `correction_terminated_plan_defect` | nothing to gate |
+| 7 | `cyc_b6a4ba977d5e`/`run_f75fd232235d`, `art_cb97ab842e38` | join-duplicate `art_7e5cc1371562`:43, `participants` on the response of a 409 | the re-dispatch `art_573e226b8998`, which moved the check to the store row and added `body.error` checks | passes: `absent_there` (the frozen envelope) |
+| 8 | same, `art_490610fa0037`: the retest after a dev repair that revised no slot | the same shell and line | the same re-dispatch | passes: `absent_there` |
+| 9 | `cyc_311e2117c21d`/`run_bffc5ecf5b6d`, `art_50efe3cc7568` | `vc-probe-api-runs` `art_e4438d18dc68`:38, `participants` on store `Run` | the re-dispatch `art_bda2682d33ac`, nine expectations down to four | passes: `absent_there` (`Run` declares no `participants`) |
+
+- **So the weakening in `cyc_bb493eb4725b` is refused** on all three slots.
+- **The strengthening (7) and both correct reductions pass:** `cyc_b6a4ba977d5e`'s, on the frozen envelope, and
+  `cyc_311e2117c21d`'s, on an undeclared entity field.
+- **The softer signal** records, on slots 1 and 3, the passing `participant_count` on the response that the repair
+  dropped beside the failing check, as #2664's read found.
+- **Case 9 has a caveat.** Its failing shell was a qa repair's candidate whose retest failed, so it was never accepted.
+  Live, the re-dispatch is gated against the accepted shell (`art_b267e7b4dd0f`), whose report (`art_c518a5ba975c`) has
+  no in-slot failure. So the gate has nothing to judge there, and the drop passes either way.
+
+**What is not built.** §13d also asks for "both readings recorded beside the failure". The gate records the failing
+subject and what the declarations say of it. That is the assertion-side reading's evidence, but not the reading that
+the app is wrong. It stays unplaced; the ledger row says so.
+
+**What the gate does not see, by design or for now:**
+- **A matcher loosened on the same subject passes.** That is G4 point 3's blind spot, kept as placed. It is recorded
+  (`matcher_loosened`), not refused.
+- **A target the reader cannot place is never refused.** Examples are `all(TABLES.T).find(…)?.f` and a helper call.
+  When the revision's only assertion naming the field is such a target, the verdict is `subject_unreadable`. So the
+  gate refuses less than §13d forbids, never more.
+- **One reader exists: TypeScript.** Next.js is the only stack that emits shells today. A test requires every
+  shell-emitting stack to register a reader and its declarations, so a new one cannot ship with the gate silently off.
+
+**Who ruled.**
+- **The design:** the MacBook lane's G4 of 2026-10-24 on #2664, approved with the five points above.
+- **The placement:** the owner, 2026-10-23, in 2.5 ("1 yes, 2 keep, 3–5 yes, 6 delegate"; this was the fourth).
+- **The build:** the supervisor (Spark lane).
+- **The registry version:** the supervisor, as the registry's owner, which G4 point 4 left to it: no bump.

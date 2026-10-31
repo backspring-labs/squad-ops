@@ -1,0 +1,1027 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/continuum/adapters/web/api.py:5:1
+   |
+ 3 |   """
+ 4 |
+ 5 | / from pathlib import Path
+ 6 | | from typing import Any
+ 7 | |
+ 8 | | from fastapi import APIRouter, Request, HTTPException, Depends
+ 9 | | from fastapi.responses import FileResponse
+10 | | from pydantic import BaseModel, Field
+11 | |
+12 | | from continuum.domain.lifecycle import LifecycleState
+13 | | from continuum.domain.auth import UserContext
+14 | | from continuum.domain.commands import CommandExecuteRequest
+   | |___________________________________________________________^
+help: Organize imports
+   |
+7  |
+   - from fastapi import APIRouter, Request, HTTPException, Depends
+8  + from fastapi import APIRouter, Depends, HTTPException, Request
+9  | from fastapi.responses import FileResponse
+10 | from pydantic import BaseModel, Field
+11 |
+   - from continuum.domain.lifecycle import LifecycleState
+12 | from continuum.domain.auth import UserContext
+13 | from continuum.domain.commands import CommandExecuteRequest
+   -
+14 + from continuum.domain.lifecycle import LifecycleState
+15 |
+   |
+
+F401 [*] `subprocess` imported but unused
+  --> src/continuum/app/adapters.py:9:8
+   |
+ 8 | import asyncio
+ 9 | import subprocess
+   |        ^^^^^^^^^^
+10 | from abc import ABC, abstractmethod
+11 | from dataclasses import dataclass, field
+   |
+help: Remove unused import: `subprocess`
+  |
+8 | import asyncio
+  - import subprocess
+9 | from abc import ABC, abstractmethod
+  |
+
+UP041 [*] Replace aliased errors with `TimeoutError`
+   --> src/continuum/app/adapters.py:333:20
+    |
+331 |                     process.communicate(), timeout=timeout
+332 |                 )
+333 |             except asyncio.TimeoutError:
+    |                    ^^^^^^^^^^^^^^^^^^^^
+334 |                 process.kill()
+335 |                 await process.wait()
+    |
+help: Replace `asyncio.TimeoutError` with builtin `TimeoutError`
+    |
+332 |                 )
+    -             except asyncio.TimeoutError:
+333 +             except TimeoutError:
+334 |                 process.kill()
+    |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+  --> src/continuum/app/command_bus.py:15:1
+   |
+13 | import time
+14 | from dataclasses import dataclass, field
+15 | from typing import Any, Callable, Protocol
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |
+17 | import jsonschema
+   |
+help: Import from `collections.abc`
+   |
+14 | from dataclasses import dataclass, field
+   - from typing import Any, Callable, Protocol
+15 + from typing import Any, Protocol
+16 + from collections.abc import Callable
+17 |
+   |
+
+F401 [*] `typing.Callable` imported but unused
+  --> src/continuum/app/command_bus.py:15:25
+   |
+13 | import time
+14 | from dataclasses import dataclass, field
+15 | from typing import Any, Callable, Protocol
+   |                         ^^^^^^^^
+16 |
+17 | import jsonschema
+   |
+help: Remove unused import: `typing.Callable`
+   |
+14 | from dataclasses import dataclass, field
+   - from typing import Any, Callable, Protocol
+15 + from typing import Any, Protocol
+16 |
+   |
+
+F401 [*] `continuum.domain.auth.PolicyDecision` imported but unused
+  --> src/continuum/app/command_bus.py:20:35
+   |
+18 | from jsonschema import ValidationError as JsonSchemaValidationError
+19 |
+20 | from continuum.domain.auth import PolicyDecision, PolicyEngine, UserContext
+   |                                   ^^^^^^^^^^^^^^
+21 | from continuum.domain.commands import (
+22 |     AuditEntry,
+   |
+help: Remove unused import: `continuum.domain.auth.PolicyDecision`
+   |
+19 |
+   - from continuum.domain.auth import PolicyDecision, PolicyEngine, UserContext
+20 + from continuum.domain.auth import PolicyEngine, UserContext
+21 | from continuum.domain.commands import (
+   |
+
+E501 Line too long (118 > 100)
+   --> src/continuum/app/command_bus.py:301:101
+    |
+299 |                     danger_level=command.danger_level.value,
+300 |                     result={
+301 |                         "message": f"This command requires confirmation (danger level: {command.danger_level.value})",
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^
+302 |                     },
+303 |                 )
+    |
+
+UP041 [*] Replace aliased errors with `TimeoutError`
+   --> src/continuum/app/command_bus.py:360:20
+    |
+358 |                     timeout=timeout_seconds,
+359 |                 )
+360 |             except asyncio.TimeoutError:
+    |                    ^^^^^^^^^^^^^^^^^^^^
+361 |                 duration_ms = (time.perf_counter() - start_time) * 1000
+362 |                 error_msg = f"Command execution timed out after {command.timeout_ms}ms"
+    |
+help: Replace `asyncio.TimeoutError` with builtin `TimeoutError`
+    |
+359 |                 )
+    -             except asyncio.TimeoutError:
+360 +             except TimeoutError:
+361 |                 duration_ms = (time.perf_counter() - start_time) * 1000
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/continuum/app/discovery.py:5:1
+   |
+ 3 |   """
+ 4 |
+ 5 | / import os
+ 6 | | from dataclasses import dataclass, field
+ 7 | | from pathlib import Path
+ 8 | |
+ 9 | | from continuum.domain.manifest import (
+10 | |     PluginManifest,
+11 | |     ManifestValidationResult,
+12 | |     load_manifest_from_toml,
+13 | | )
+   | |_^
+help: Organize imports
+   |
+9  | from continuum.domain.manifest import (
+10 +     ManifestValidationResult,
+11 |     PluginManifest,
+   -     ManifestValidationResult,
+12 |     load_manifest_from_toml,
+   |
+
+F401 [*] `os` imported but unused
+ --> src/continuum/app/discovery.py:5:8
+  |
+3 | """
+4 |
+5 | import os
+  |        ^^
+6 | from dataclasses import dataclass, field
+7 | from pathlib import Path
+  |
+help: Remove unused import: `os`
+  |
+4 |
+  - import os
+5 | from dataclasses import dataclass, field
+  |
+
+F401 [*] `continuum.domain.manifest.ManifestValidationResult` imported but unused
+  --> src/continuum/app/discovery.py:11:5
+   |
+ 9 | from continuum.domain.manifest import (
+10 |     PluginManifest,
+11 |     ManifestValidationResult,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+12 |     load_manifest_from_toml,
+13 | )
+   |
+help: Remove unused import: `continuum.domain.manifest.ManifestValidationResult`
+   |
+10 |     PluginManifest,
+   -     ManifestValidationResult,
+11 |     load_manifest_from_toml,
+   |
+
+F401 [*] `pathlib.Path` imported but unused
+  --> src/continuum/app/loader.py:9:21
+   |
+ 7 | import time
+ 8 | from dataclasses import dataclass, field
+ 9 | from pathlib import Path
+   |                     ^^^^
+10 | from typing import Any, Callable
+   |
+help: Remove unused import: `pathlib.Path`
+  |
+8 | from dataclasses import dataclass, field
+  - from pathlib import Path
+9 | from typing import Any, Callable
+  |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+  --> src/continuum/app/loader.py:10:1
+   |
+ 8 | from dataclasses import dataclass, field
+ 9 | from pathlib import Path
+10 | from typing import Any, Callable
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |
+12 | from continuum.app.discovery import DiscoveredPlugin
+   |
+help: Import from `collections.abc`
+   |
+9  | from pathlib import Path
+   - from typing import Any, Callable
+10 + from typing import Any
+11 + from collections.abc import Callable
+12 |
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/continuum/app/registry.py:5:1
+   |
+ 3 |   """
+ 4 |
+ 5 | / import hashlib
+ 6 | | from dataclasses import dataclass, field
+ 7 | | from typing import Any
+ 8 | |
+ 9 | | from continuum.domain.regions import get_all_regions, get_region, Cardinality
+10 | | from continuum.domain.themes import BUILTIN_THEMES, validate_theme
+   | |__________________________________________________________________^
+help: Organize imports
+   |
+8  |
+   - from continuum.domain.regions import get_all_regions, get_region, Cardinality
+9  + from continuum.domain.regions import Cardinality, get_all_regions, get_region
+10 | from continuum.domain.themes import BUILTIN_THEMES, validate_theme
+   |
+
+E501 Line too long (107 > 100)
+   --> src/continuum/app/registry.py:122:101
+    |
+120 |                     report.warnings.append(
+121 |                         f"Slot '{slot_id}' conflict: {winner.get('plugin_id')} "
+122 |                         f"(priority={winner.get('priority', 100)}, index={winner.get('discovery_index')}) "
+    |                                                                                                     ^^^^^^^
+123 |                         f"wins over {len(losers)} other(s)"
+124 |                     )
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/continuum/app/runtime.py:5:1
+   |
+ 3 |   """
+ 4 |
+ 5 | / from dataclasses import dataclass, field
+ 6 | | from typing import Any
+ 7 | |
+ 8 | | from continuum.domain.lifecycle import LifecycleManager, LifecycleState
+ 9 | | from continuum.domain.perspectives import get_all_perspectives, PerspectiveSpec
+10 | | from continuum.domain.regions import get_all_regions, RegionSpec
+11 | | from continuum.domain.auth import UserContext
+12 | | from continuum.domain.commands import CommandExecuteRequest, CommandExecuteResult
+13 | | from continuum.app.discovery import discover_plugins, DiscoveredPlugin
+14 | | from continuum.app.loader import load_plugins, LoadedPlugin
+15 | | from continuum.app.registry import build_registry, ResolvedRegistry
+16 | | from continuum.app.command_bus import CommandBus
+   | |________________________________________________^
+help: Organize imports
+   |
+7  |
+   - from continuum.domain.lifecycle import LifecycleManager, LifecycleState
+   - from continuum.domain.perspectives import get_all_perspectives, PerspectiveSpec
+   - from continuum.domain.regions import get_all_regions, RegionSpec
+8  + from continuum.app.command_bus import CommandBus
+9  + from continuum.app.discovery import DiscoveredPlugin, discover_plugins
+10 + from continuum.app.loader import LoadedPlugin, load_plugins
+11 + from continuum.app.registry import ResolvedRegistry, build_registry
+12 | from continuum.domain.auth import UserContext
+13 | from continuum.domain.commands import CommandExecuteRequest, CommandExecuteResult
+   - from continuum.app.discovery import discover_plugins, DiscoveredPlugin
+   - from continuum.app.loader import load_plugins, LoadedPlugin
+   - from continuum.app.registry import build_registry, ResolvedRegistry
+   - from continuum.app.command_bus import CommandBus
+14 + from continuum.domain.lifecycle import LifecycleManager, LifecycleState
+15 + from continuum.domain.perspectives import PerspectiveSpec, get_all_perspectives
+16 + from continuum.domain.regions import RegionSpec, get_all_regions
+17 |
+   |
+
+F401 [*] `continuum.domain.regions.RegionSpec` imported but unused
+  --> src/continuum/app/runtime.py:10:55
+   |
+ 8 | from continuum.domain.lifecycle import LifecycleManager, LifecycleState
+ 9 | from continuum.domain.perspectives import get_all_perspectives, PerspectiveSpec
+10 | from continuum.domain.regions import get_all_regions, RegionSpec
+   |                                                       ^^^^^^^^^^
+11 | from continuum.domain.auth import UserContext
+12 | from continuum.domain.commands import CommandExecuteRequest, CommandExecuteResult
+   |
+help: Remove unused import: `continuum.domain.regions.RegionSpec`
+   |
+9  | from continuum.domain.perspectives import get_all_perspectives, PerspectiveSpec
+   - from continuum.domain.regions import get_all_regions, RegionSpec
+10 + from continuum.domain.regions import get_all_regions
+11 | from continuum.domain.auth import UserContext
+   |
+
+E741 Ambiguous variable name: `l`
+   --> src/continuum/app/runtime.py:203:25
+    |
+201 |                         "discovery_index": l.get("discovery_index"),
+202 |                     }
+203 |                     for l in conflict.losers
+    |                         ^
+204 |                 ],
+205 |             })
+    |
+
+E501 Line too long (102 > 100)
+   --> src/continuum/app/runtime.py:260:101
+    |
+258 |             bundle = discovered.manifest.plugin.ui.bundle
+259 |             if bundle:
+260 |                 bundle_urls[discovered.plugin_id] = f"/plugins/{discovered.plugin_id}/assets/{bundle}"
+    |                                                                                                     ^^
+261 |             else:
+262 |                 bundle_urls[discovered.plugin_id] = None
+    |
+
+F401 [*] `asyncio` imported but unused
+  --> src/continuum/cli.py:93:12
+   |
+91 | def run_inspect(plugins_dir: str, as_json: bool = False) -> None:
+92 |     """Inspect plugins and registry without starting the server."""
+93 |     import asyncio
+   |            ^^^^^^^
+94 |     import json
+   |
+help: Remove unused import: `asyncio`
+   |
+92 |     """Inspect plugins and registry without starting the server."""
+   -     import asyncio
+93 |     import json
+   |
+
+E741 Ambiguous variable name: `l`
+   --> src/continuum/cli.py:136:55
+    |
+134 |                     "slot_id": c.slot_id,
+135 |                     "winner": c.winner.get("plugin_id"),
+136 |                     "losers": [l.get("plugin_id") for l in c.losers],
+    |                                                       ^
+137 |                 }
+138 |                 for c in registry.report.conflicts
+    |
+
+E501 Line too long (102 > 100)
+   --> src/continuum/cli.py:180:101
+    |
+178 |         if registry.commands:
+179 |             for cmd in registry.commands:
+180 |                 print(f"  {cmd.get('id')}: {cmd.get('label')} [{cmd.get('shortcut', 'no shortcut')}]")
+    |                                                                                                     ^^
+181 |         else:
+182 |             print("  (no commands)")
+    |
+
+E741 Ambiguous variable name: `l`
+   --> src/continuum/cli.py:192:65
+    |
+190 |                 print(f"  {c.slot_id}:")
+191 |                 print(f"       winner: {c.winner.get('plugin_id')}")
+192 |                 print(f"       losers: {[l.get('plugin_id') for l in c.losers]}")
+    |                                                                 ^
+193 |             print()
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/continuum/domain/__init__.py:5:1
+   |
+ 3 |   """
+ 4 |
+ 5 | / from continuum.domain.lifecycle import LifecycleManager, LifecycleState, LifecycleEvent
+ 6 | | from continuum.domain.perspectives import PerspectiveSpec, get_all_perspectives, get_perspective
+ 7 | | from continuum.domain.regions import RegionSpec, Cardinality, get_all_regions, get_region
+ 8 | | from continuum.domain.contributions import (
+ 9 | |     PanelContribution,
+10 | |     NavContribution,
+11 | |     DrawerContribution,
+12 | |     CommandContribution,
+13 | |     DiagnosticContribution,
+14 | |     ThemeContribution,
+15 | |     DangerLevel,
+16 | |     NavTarget,
+17 | |     NavTargetType,
+18 | | )
+19 | | from continuum.domain.manifest import (
+20 | |     PluginManifest,
+21 | |     ManifestValidationResult,
+22 | |     validate_manifest,
+23 | |     load_manifest_from_toml,
+24 | | )
+25 | | from continuum.domain.themes import (
+26 | |     REQUIRED_THEME_TOKENS,
+27 | |     BUILTIN_THEME_IDS,
+28 | |     BUILTIN_THEMES,
+29 | |     validate_theme,
+30 | | )
+   | |_^
+31 |
+32 |   __all__ = [
+   |
+help: Organize imports
+   |
+4  |
+   - from continuum.domain.lifecycle import LifecycleManager, LifecycleState, LifecycleEvent
+   - from continuum.domain.perspectives import PerspectiveSpec, get_all_perspectives, get_perspective
+   - from continuum.domain.regions import RegionSpec, Cardinality, get_all_regions, get_region
+5  | from continuum.domain.contributions import (
+   -     PanelContribution,
+   -     NavContribution,
+   -     DrawerContribution,
+6  |     CommandContribution,
+   -     DiagnosticContribution,
+   -     ThemeContribution,
+7  |     DangerLevel,
+8  +     DiagnosticContribution,
+9  +     DrawerContribution,
+10 +     NavContribution,
+11 |     NavTarget,
+12 |     NavTargetType,
+13 +     PanelContribution,
+14 +     ThemeContribution,
+15 | )
+16 + from continuum.domain.lifecycle import LifecycleEvent, LifecycleManager, LifecycleState
+17 | from continuum.domain.manifest import (
+   -     PluginManifest,
+18 |     ManifestValidationResult,
+   -     validate_manifest,
+19 +     PluginManifest,
+20 |     load_manifest_from_toml,
+21 +     validate_manifest,
+22 | )
+23 + from continuum.domain.perspectives import PerspectiveSpec, get_all_perspectives, get_perspective
+24 + from continuum.domain.regions import Cardinality, RegionSpec, get_all_regions, get_region
+25 | from continuum.domain.themes import (
+   -     REQUIRED_THEME_TOKENS,
+26 |     BUILTIN_THEME_IDS,
+27 |     BUILTIN_THEMES,
+28 +     REQUIRED_THEME_TOKENS,
+29 |     validate_theme,
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/continuum/domain/commands.py:8:1
+   |
+ 6 |   """
+ 7 |
+ 8 | / from dataclasses import dataclass, field
+ 9 | | from datetime import datetime
+10 | | from enum import Enum
+11 | | from typing import Any
+12 | | import uuid
+   | |___________^
+help: Organize imports
+   |
+7  |
+8  + import uuid
+9  | from dataclasses import dataclass, field
+10 | from datetime import datetime
+11 | from enum import Enum
+12 | from typing import Any
+   - import uuid
+13 |
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+ --> src/continuum/domain/events.py:9:1
+  |
+7 | from dataclasses import dataclass, field
+8 | from datetime import datetime, timezone
+9 | from typing import Any, Callable
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Import from `collections.abc`
+   |
+8  | from datetime import datetime, timezone
+   - from typing import Any, Callable
+9  + from typing import Any
+10 + from collections.abc import Callable
+11 |
+   |
+
+UP017 [*] Use `datetime.UTC` alias
+  --> src/continuum/domain/events.py:25:36
+   |
+23 |         return cls(
+24 |             event_type=event_type,
+25 |             timestamp=datetime.now(timezone.utc),
+   |                                    ^^^^^^^^^^^^
+26 |             data=data or {},
+27 |         )
+   |
+help: Convert to `datetime.UTC` alias
+   |
+7  | from dataclasses import dataclass, field
+   - from datetime import datetime, timezone
+8  + from datetime import datetime, timezone, UTC
+9  | from typing import Any, Callable
+--------------------------------------------------------------------------------
+24 |             event_type=event_type,
+   -             timestamp=datetime.now(timezone.utc),
+25 +             timestamp=datetime.now(UTC),
+26 |             data=data or {},
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+ --> src/continuum/domain/lifecycle.py:8:1
+  |
+6 | from datetime import datetime, timezone
+7 | from enum import Enum
+8 | from typing import Callable
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Import from `collections.abc`
+  |
+7 | from enum import Enum
+  - from typing import Callable
+8 + from collections.abc import Callable
+9 |
+  |
+
+E501 Line too long (102 > 100)
+  --> src/continuum/domain/lifecycle.py:77:101
+   |
+75 |         self._listeners.append(listener)
+76 |
+77 |     def transition_to(self, new_state: LifecycleState, context: dict[str, str] | None = None) -> None:
+   |                                                                                                     ^^
+78 |         """
+79 |         Transition to a new state.
+   |
+
+UP017 [*] Use `datetime.UTC` alias
+   --> src/continuum/domain/lifecycle.py:103:36
+    |
+101 |             from_state=from_state,
+102 |             to_state=to_state,
+103 |             timestamp=datetime.now(timezone.utc),
+    |                                    ^^^^^^^^^^^^
+104 |             context=context or {},
+105 |         )
+    |
+help: Convert to `datetime.UTC` alias
+    |
+5   | from dataclasses import dataclass, field
+    - from datetime import datetime, timezone
+6   + from datetime import datetime, timezone, UTC
+7   | from enum import Enum
+--------------------------------------------------------------------------------
+102 |             to_state=to_state,
+    -             timestamp=datetime.now(timezone.utc),
+103 +             timestamp=datetime.now(UTC),
+104 |             context=context or {},
+    |
+
+E402 Module level import not at top of file
+   --> src/continuum/domain/themes.py:106:1
+    |
+106 | import re
+    | ^^^^^^^^^
+107 |
+108 | _HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+    |
+help: Move module level imports to top of file
+
+E501 Line too long (106 > 100)
+   --> src/continuum/domain/themes.py:140:101
+    |
+138 |     category = theme.get("category", "")
+139 |     if category not in ("dark", "light"):
+140 |         errors.append(f"Theme '{theme_id}' has invalid category '{category}' (must be 'dark' or 'light')")
+    |                                                                                                     ^^^^^^
+141 |
+142 |     # Validate preview_colors: 3-5 hex color strings
+    |
+
+E501 Line too long (116 > 100)
+   --> src/continuum/domain/themes.py:146:101
+    |
+144 |     if not isinstance(colors, list) or not (3 <= len(colors) <= 5):
+145 |         errors.append(
+146 |             f"Theme '{theme_id}' must have 3-5 preview_colors, got {len(colors) if isinstance(colors, list) else 0}"
+    |                                                                                                     ^^^^^^^^^^^^^^^^
+147 |         )
+148 |     else:
+    |
+
+E501 Line too long (103 > 100)
+   --> src/continuum/domain/themes.py:152:101
+    |
+150 |             if not isinstance(color, str) or not _HEX_COLOR_RE.match(color):
+151 |                 errors.append(
+152 |                     f"Theme '{theme_id}' has invalid preview_color '{color}' (must be #rgb or #rrggbb)"
+    |                                                                                                     ^^^
+153 |                 )
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/continuum/main.py:7:1
+   |
+ 5 |   """
+ 6 |
+ 7 | / from contextlib import asynccontextmanager
+ 8 | | from typing import AsyncGenerator
+ 9 | |
+10 | | from fastapi import FastAPI
+11 | | from fastapi.middleware.cors import CORSMiddleware
+12 | |
+13 | | from continuum import __version__
+14 | | from continuum.app.runtime import ContinuumRuntime
+15 | | from continuum.adapters.web.api import router as api_router
+   | |___________________________________________________________^
+help: Organize imports
+   |
+13 | from continuum import __version__
+14 + from continuum.adapters.web.api import router as api_router
+15 | from continuum.app.runtime import ContinuumRuntime
+   - from continuum.adapters.web.api import router as api_router
+16 |
+   |
+
+UP035 [*] Import from `collections.abc` instead: `AsyncGenerator`
+  --> src/continuum/main.py:8:1
+   |
+ 7 | from contextlib import asynccontextmanager
+ 8 | from typing import AsyncGenerator
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |
+10 | from fastapi import FastAPI
+   |
+help: Import from `collections.abc`
+  |
+7 | from contextlib import asynccontextmanager
+  - from typing import AsyncGenerator
+8 + from collections.abc import AsyncGenerator
+9 |
+  |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/conftest.py:5:1
+   |
+ 3 |   """
+ 4 |
+ 5 | / import pytest
+ 6 | | from fastapi.testclient import TestClient
+ 7 | |
+ 8 | | from continuum.main import app
+ 9 | | from continuum.domain.auth import UserContext
+10 | | from continuum.adapters.web import api
+   | |______________________________________^
+help: Organize imports
+   |
+7  |
+8  + from continuum.adapters.web import api
+9  + from continuum.domain.auth import UserContext
+10 | from continuum.main import app
+   - from continuum.domain.auth import UserContext
+   - from continuum.adapters.web import api
+11 |
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_acceptance.py:12:1
+   |
+10 |   """
+11 |
+12 | / import tempfile
+13 | | from pathlib import Path
+14 | | from unittest.mock import patch
+15 | |
+16 | | import pytest
+17 | |
+18 | | from continuum.app.discovery import discover_plugins
+19 | | from continuum.app.loader import load_plugins
+20 | | from continuum.app.registry import build_registry
+21 | | from continuum.app.runtime import ContinuumRuntime, PluginStatus
+22 | | from continuum.domain.lifecycle import LifecycleState
+23 | | from continuum.domain.regions import RegionSpec, Cardinality, REGIONS
+   | |_____________________________________________________________________^
+help: Organize imports
+   |
+22 | from continuum.domain.lifecycle import LifecycleState
+   - from continuum.domain.regions import RegionSpec, Cardinality, REGIONS
+23 + from continuum.domain.regions import REGIONS, Cardinality, RegionSpec
+24 |
+   |
+
+F401 [*] `continuum.app.discovery.discover_plugins` imported but unused
+  --> tests/test_acceptance.py:18:37
+   |
+16 | import pytest
+17 |
+18 | from continuum.app.discovery import discover_plugins
+   |                                     ^^^^^^^^^^^^^^^^
+19 | from continuum.app.loader import load_plugins
+20 | from continuum.app.registry import build_registry
+   |
+help: Remove unused import: `continuum.app.discovery.discover_plugins`
+   |
+17 |
+   - from continuum.app.discovery import discover_plugins
+18 | from continuum.app.loader import load_plugins
+   |
+
+F401 [*] `continuum.app.loader.load_plugins` imported but unused
+  --> tests/test_acceptance.py:19:34
+   |
+18 | from continuum.app.discovery import discover_plugins
+19 | from continuum.app.loader import load_plugins
+   |                                  ^^^^^^^^^^^^
+20 | from continuum.app.registry import build_registry
+21 | from continuum.app.runtime import ContinuumRuntime, PluginStatus
+   |
+help: Remove unused import: `continuum.app.loader.load_plugins`
+   |
+18 | from continuum.app.discovery import discover_plugins
+   - from continuum.app.loader import load_plugins
+19 | from continuum.app.registry import build_registry
+   |
+
+F401 [*] `continuum.app.runtime.PluginStatus` imported but unused
+  --> tests/test_acceptance.py:21:53
+   |
+19 | from continuum.app.loader import load_plugins
+20 | from continuum.app.registry import build_registry
+21 | from continuum.app.runtime import ContinuumRuntime, PluginStatus
+   |                                                     ^^^^^^^^^^^^
+22 | from continuum.domain.lifecycle import LifecycleState
+23 | from continuum.domain.regions import RegionSpec, Cardinality, REGIONS
+   |
+help: Remove unused import: `continuum.app.runtime.PluginStatus`
+   |
+20 | from continuum.app.registry import build_registry
+   - from continuum.app.runtime import ContinuumRuntime, PluginStatus
+21 + from continuum.app.runtime import ContinuumRuntime
+22 | from continuum.domain.lifecycle import LifecycleState
+   |
+
+F401 [*] `pytest` imported but unused
+  --> tests/test_commands.py:11:8
+   |
+ 9 | """
+10 |
+11 | import pytest
+   |        ^^^^^^
+help: Remove unused import: `pytest`
+   |
+10 |
+   - import pytest
+11 |
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+   --> tests/test_plugin_loading.py:133:5
+    |
+131 |   def _servers_running():
+132 |       """Check if both backend and frontend servers are running."""
+133 | /     import urllib.request
+134 | |     import urllib.error
+    | |_______________________^
+135 |       urls = ["http://localhost:4041/health", "http://localhost:5173"]
+136 |       for url in urls:
+    |
+help: Organize imports
+    |
+132 |     """Check if both backend and frontend servers are running."""
+133 +     import urllib.error
+134 |     import urllib.request
+    -     import urllib.error
+135 |     urls = ["http://localhost:4041/health", "http://localhost:5173"]
+    |
+
+E501 Line too long (113 > 100)
+   --> tests/test_plugin_loading.py:146:101
+    |
+146 | @pytest.mark.skipif(not _servers_running(), reason="Requires backend (4041) and frontend (5173) servers running")
+    |                                                                                                     ^^^^^^^^^^^^^
+147 | class TestE2ECustomElements:
+148 |     """E2E tests for custom element rendering in the browser."""
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_plugin_system.py:5:1
+   |
+ 3 |   """
+ 4 |
+ 5 | / import tempfile
+ 6 | | import os
+ 7 | | from pathlib import Path
+ 8 | |
+ 9 | | import pytest
+10 | |
+11 | | from continuum.app.discovery import discover_plugins, DiscoveredPlugin
+12 | | from continuum.app.loader import load_plugins, PluginContext
+13 | | from continuum.app.registry import build_registry
+   | |_________________________________________________^
+help: Organize imports
+   |
+4  |
+5  + import os
+6  | import tempfile
+   - import os
+7  | from pathlib import Path
+8  |
+9  | import pytest
+10 |
+   - from continuum.app.discovery import discover_plugins, DiscoveredPlugin
+   - from continuum.app.loader import load_plugins, PluginContext
+11 + from continuum.app.discovery import DiscoveredPlugin, discover_plugins
+12 + from continuum.app.loader import PluginContext, load_plugins
+13 | from continuum.app.registry import build_registry
+   |
+
+F401 [*] `os` imported but unused
+ --> tests/test_plugin_system.py:6:8
+  |
+5 | import tempfile
+6 | import os
+  |        ^^
+7 | from pathlib import Path
+  |
+help: Remove unused import: `os`
+  |
+5 | import tempfile
+  - import os
+6 | from pathlib import Path
+  |
+
+F401 [*] `pytest` imported but unused
+  --> tests/test_plugin_system.py:9:8
+   |
+ 7 | from pathlib import Path
+ 8 |
+ 9 | import pytest
+   |        ^^^^^^
+10 |
+11 | from continuum.app.discovery import discover_plugins, DiscoveredPlugin
+   |
+help: Remove unused import: `pytest`
+  |
+8 |
+  - import pytest
+9 |
+  |
+
+F401 [*] `continuum.app.discovery.DiscoveredPlugin` imported but unused
+  --> tests/test_plugin_system.py:11:55
+   |
+ 9 | import pytest
+10 |
+11 | from continuum.app.discovery import discover_plugins, DiscoveredPlugin
+   |                                                       ^^^^^^^^^^^^^^^^
+12 | from continuum.app.loader import load_plugins, PluginContext
+13 | from continuum.app.registry import build_registry
+   |
+help: Remove unused import: `continuum.app.discovery.DiscoveredPlugin`
+   |
+10 |
+   - from continuum.app.discovery import discover_plugins, DiscoveredPlugin
+11 + from continuum.app.discovery import discover_plugins
+12 | from continuum.app.loader import load_plugins, PluginContext
+   |
+
+E501 Line too long (110 > 100)
+   --> tests/test_plugin_system.py:128:101
+    |
+126 |         """Contributions should be sorted by priority (highest first)."""
+127 |         contributions = [
+128 |             {"type": "panel", "slot": "ui.slot.main", "priority": 50, "plugin_id": "a", "discovery_index": 0},
+    |                                                                                                     ^^^^^^^^^^
+129 |             {"type": "panel", "slot": "ui.slot.main", "priority": 200, "plugin_id": "b", "discovery_index": 1},
+130 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "c", "discovery_index": 2},
+    |
+
+E501 Line too long (111 > 100)
+   --> tests/test_plugin_system.py:129:101
+    |
+127 |         contributions = [
+128 |             {"type": "panel", "slot": "ui.slot.main", "priority": 50, "plugin_id": "a", "discovery_index": 0},
+129 |             {"type": "panel", "slot": "ui.slot.main", "priority": 200, "plugin_id": "b", "discovery_index": 1},
+    |                                                                                                     ^^^^^^^^^^^
+130 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "c", "discovery_index": 2},
+131 |         ]
+    |
+
+E501 Line too long (111 > 100)
+   --> tests/test_plugin_system.py:130:101
+    |
+128 |             {"type": "panel", "slot": "ui.slot.main", "priority": 50, "plugin_id": "a", "discovery_index": 0},
+129 |             {"type": "panel", "slot": "ui.slot.main", "priority": 200, "plugin_id": "b", "discovery_index": 1},
+130 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "c", "discovery_index": 2},
+    |                                                                                                     ^^^^^^^^^^^
+131 |         ]
+    |
+
+E501 Line too long (116 > 100)
+   --> tests/test_plugin_system.py:143:101
+    |
+141 |         """Discovery index should break ties when priorities are equal."""
+142 |         contributions = [
+143 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "second", "discovery_index": 5},
+    |                                                                                                     ^^^^^^^^^^^^^^^^
+144 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "first", "discovery_index": 2},
+145 |         ]
+    |
+
+E501 Line too long (115 > 100)
+   --> tests/test_plugin_system.py:144:101
+    |
+142 |         contributions = [
+143 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "second", "discovery_index": 5},
+144 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "first", "discovery_index": 2},
+    |                                                                                                     ^^^^^^^^^^^^^^^
+145 |         ]
+    |
+
+E501 Line too long (111 > 100)
+   --> tests/test_plugin_system.py:157:101
+    |
+155 |         """Registry fingerprint should be deterministic."""
+156 |         contributions = [
+157 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "a", "discovery_index": 0},
+    |                                                                                                     ^^^^^^^^^^^
+158 |             {"type": "panel", "slot": "ui.slot.main", "priority": 200, "plugin_id": "b", "discovery_index": 1},
+159 |         ]
+    |
+
+E501 Line too long (111 > 100)
+   --> tests/test_plugin_system.py:158:101
+    |
+156 |         contributions = [
+157 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "a", "discovery_index": 0},
+158 |             {"type": "panel", "slot": "ui.slot.main", "priority": 200, "plugin_id": "b", "discovery_index": 1},
+    |                                                                                                     ^^^^^^^^^^^
+159 |         ]
+    |
+
+E501 Line too long (111 > 100)
+   --> tests/test_plugin_system.py:169:101
+    |
+167 |         """Registry fingerprint should change when contributions change."""
+168 |         contrib1 = [
+169 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "a", "discovery_index": 0},
+    |                                                                                                     ^^^^^^^^^^^
+170 |         ]
+171 |         contrib2 = [
+    |
+
+E501 Line too long (111 > 100)
+   --> tests/test_plugin_system.py:172:101
+    |
+170 |         ]
+171 |         contrib2 = [
+172 |             {"type": "panel", "slot": "ui.slot.main", "priority": 100, "plugin_id": "b", "discovery_index": 0},
+    |                                                                                                     ^^^^^^^^^^^
+173 |         ]
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> tests/test_smoke.py:5:1
+  |
+3 |   """
+4 |
+5 | / import pytest
+6 | | from fastapi.testclient import TestClient
+7 | |
+8 | | from continuum.main import app
+9 | | from continuum.domain import LifecycleState
+  | |___________________________________________^
+help: Organize imports
+   |
+7  |
+8  + from continuum.domain import LifecycleState
+9  | from continuum.main import app
+   - from continuum.domain import LifecycleState
+10 |
+   |
+
+F401 [*] `continuum.domain.LifecycleState` imported but unused
+ --> tests/test_smoke.py:9:30
+  |
+8 | from continuum.main import app
+9 | from continuum.domain import LifecycleState
+  |                              ^^^^^^^^^^^^^^
+help: Remove unused import: `continuum.domain.LifecycleState`
+  |
+8 | from continuum.main import app
+  - from continuum.domain import LifecycleState
+9 |
+  |
+
+Found 59 errors.
+[*] 37 fixable with the `--fix` option.

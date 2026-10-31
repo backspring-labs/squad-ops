@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+from adapters.noop.ports import NoOpProposalEvidence
 from squadops.cycles.models import Run, RunNotFoundError
 from squadops.memory.authoring_envelope import AuthoringSeam, capture_envelope
 from squadops.tasks.models import TaskResult
@@ -144,6 +145,7 @@ async def test_the_executors_dispatcher_records_into_its_cycle_registry(reply_ro
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     captured = _captured()
     reply_router.results["t-1"] = TaskResult(

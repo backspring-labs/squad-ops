@@ -173,6 +173,12 @@ class GenerationRecord:
     # no telemetry at all and the spend was undiagnosable without cross-referencing
     # eval_count against stored output length. Capped like the other text fields.
     reasoning_text: str | None = None
+    # #1756: the whole rendered request, when it is longer than ``prompt_text``'s cap, and
+    # ``None`` when ``prompt_text`` already holds all of it. Two investigations (#1723, deploy B's
+    # repair) could not read what the model was sent, because the cap cut it off before the part
+    # in question. The adapter redacts it like the other text fields and stores it compressed
+    # (``squadops.telemetry.full_text``).
+    full_prompt_text: str | None = None
 
 
 def _capped(text: str | None) -> str | None:
@@ -230,4 +236,5 @@ def build_generation_record(
         reasoning=reasoning,
         attempt=attempt,
         outcome=outcome,
+        full_prompt_text=prompt_text if len(prompt_text) > MAX_OBSERVABILITY_TEXT_LENGTH else None,
     )

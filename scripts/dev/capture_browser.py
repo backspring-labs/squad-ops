@@ -1,7 +1,7 @@
 """The headless browser the release-package captures drive, in one place (#1793).
 
 ``capture_delivered_app.py`` and ``capture_prefect_run.py`` both photograph a page with headless
-Chromium, and share two facts learned at the 1.9.0 cut:
+Chromium, and share two facts learned at the 1.9.0 cut and one at the 2.4.0 cut:
 
 * **The browser is a setting.** The snap's confined ``chromium`` launcher (revision 3535,
   refreshed 2026-09-29) fails every navigation with ``ERR_ACCESS_DENIED``, while the snap's own
@@ -12,6 +12,12 @@ Chromium, and share two facts learned at the 1.9.0 cut:
   reported as "a blank or error page" of the app's; read as Prefect, it would have been written
   as the release's timeline screenshot. ``browser_error`` names it, and the captures refuse it
   as the browser's failure.
+* **A page the browser could not load may leave nothing but a line on its stderr** (#2713). At the
+  2.4.0 cut the snap's Chromium (155.0.8059.84) answered every local page with
+  ``Page load failed: net::ERR_ACCESS_DENIED`` on stderr: ``--dump-dom`` printed no error page and
+  ``--screenshot`` wrote no file, and the capture blamed snap confinement three times before the
+  browser's own error was read by hand. ``load_failure`` reads that line, and both calls refuse
+  with it; confinement is named only when the browser reported no load failure.
 
 **Every browser call is bounded in wall-clock time** (#2234). ``--virtual-time-budget`` bounds the
 page's own clock, not the process: at the 2.2.1 cut the Prefect capture of a failed flow run ran
@@ -31,6 +37,8 @@ DEFAULT_BROWSER = "chromium"
 #: about a second (a Prefect flow-run page took 1-3 s on 2026-10-12); the margin covers a cold start.
 WALL_MARGIN_S = 60
 _ERROR_CODE = re.compile(r'"errorCode":"(ERR_[A-Z0-9_]+)"')
+#: The line Chromium's headless mode writes to stderr when the page itself did not load.
+_LOAD_FAILED = re.compile(r"Page load failed: ((?:net::)?ERR_[A-Z0-9_]+)")
 
 
 def add_browser_argument(parser: argparse.ArgumentParser) -> None:
@@ -48,6 +56,22 @@ def browser_error(dom: str) -> str | None:
         return None
     found = _ERROR_CODE.search(dom)
     return found.group(1) if found else "an unnamed network error"
+
+
+def load_failure(stderr: str) -> str | None:
+    """The error Chromium names on ``stderr`` when the page did not load
+    (``net::ERR_ACCESS_DENIED``), else ``None``."""
+    found = _LOAD_FAILED.search(stderr or "")
+    return found.group(1) if found else None
+
+
+def _browsers_failure(browser: str, url: str, code: str) -> SystemExit:
+    return SystemExit(
+        f"{browser} could not load {url}: {code}. That is the browser's failure, not the app's: "
+        "the page never loaded, so nothing was photographed or read from it. Check that "
+        "something answers there, then the browser (--browser points the capture at another "
+        "binary, #1793)"
+    )
 
 
 def _headless(browser: str, budget_ms: int, *flags: str) -> list[str]:
@@ -77,21 +101,27 @@ def _run(command: list[str], budget_ms: int, url: str) -> subprocess.CompletedPr
 def loaded_dom(browser: str, url: str, budget_ms: int) -> str:
     """The DOM the page at ``url`` rendered. Refused when the browser could not load it: that
     page is the browser's, and nothing on it says anything about the page asked for."""
-    dom = _run(_headless(browser, budget_ms, "--dump-dom", url), budget_ms, url).stdout
-    code = browser_error(dom)
+    done = _run(_headless(browser, budget_ms, "--dump-dom", url), budget_ms, url)
+    code = browser_error(done.stdout)
     if code is not None:
         raise SystemExit(
             f"the browser could not load {url}: {code}. That is {browser}'s own error page, not "
             "the page: check the browser before reading this as the page's fault (--browser "
             "points the capture at another binary, #1793)"
         )
-    return dom
+    failed = load_failure(done.stderr)
+    if failed is not None:
+        raise _browsers_failure(browser, url, failed)
+    return done.stdout
 
 
 def screenshot(
     browser: str, url: str, target: Path, width: int, height: int, budget_ms: int
 ) -> None:
-    _run(
+    """Photograph the page at ``url`` into ``target``. Refused when no file is written: as the
+    browser's failure when it says the page did not load, and otherwise as a browser that loaded
+    the page and could not write ``target`` (a confined snap writes only where it may)."""
+    done = _run(
         _headless(
             browser,
             budget_ms,
@@ -102,4 +132,14 @@ def screenshot(
         ),
         budget_ms,
         url,
+    )
+    if target.exists() and target.stat().st_size > 0:
+        return
+    failed = load_failure(done.stderr)
+    if failed is not None:
+        raise _browsers_failure(browser, url, failed)
+    raise SystemExit(
+        f"{browser} reported no load failure for {url} and wrote no file at {target}: it "
+        "could not write there. Is it snap-confined? (--browser points the capture at another "
+        "binary, #1793)"
     )

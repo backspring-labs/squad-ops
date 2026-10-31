@@ -30,6 +30,7 @@ from squadops.cycles.lifecycle import (
     validate_run_transition,
 )
 from squadops.cycles.models import (
+    BindingHold,
     Cycle,
     CycleNotFoundError,
     CycleStatus,
@@ -38,6 +39,7 @@ from squadops.cycles.models import (
     GateDecision,
     IllegalStateTransitionError,
     Run,
+    RunHalt,
     RunNotFoundError,
     RunStatus,
     RunTerminalError,
@@ -56,6 +58,7 @@ from squadops.cycles.verification_integrity import (
 )
 from squadops.memory.authoring_envelope import envelope_id
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+from squadops.projects.source_context import parse_source_context
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +73,8 @@ _CYCLE_INSERT_COLUMNS = (
     "squad_profile_id, squad_profile_snapshot_ref, task_flow_policy, "
     "build_strategy, applied_defaults, execution_overrides, "
     "expected_artifact_types, experiment_context, notes, request_profile, "
-    "framework_version, framework_git_sha, deploy_id, campaign_id, kind"
+    "framework_version, framework_git_sha, deploy_id, campaign_id, kind, source_context, "
+    "increment_id"
 )
 _CYCLE_INSERT_COLUMN_COUNT = len(_CYCLE_INSERT_COLUMNS.split(","))
 
@@ -101,6 +105,8 @@ def _cycle_insert_args(cycle: Cycle) -> tuple:
         cycle.deploy_id,
         cycle.campaign_id,
         cycle.kind,
+        cycle.source_context.to_document() if cycle.source_context is not None else None,
+        cycle.increment_id,
     )
 
 
@@ -305,7 +311,9 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 "FROM cycle_gate_decisions WHERE run_id = $1 ORDER BY id",
                 run_id,
             )
-        return self._assemble_run(row, gate_rows)
+            holds = await self._holds_by_run(conn, [run_id])
+            halts = await self._halts_by_run(conn, [run_id])
+        return self._assemble_run(row, gate_rows, holds.get(run_id, []), halts.get(run_id))
 
     async def list_runs(
         self,
@@ -343,12 +351,22 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 "FROM cycle_gate_decisions WHERE run_id = ANY($1) ORDER BY id",
                 run_ids,
             )
+            holds = await self._holds_by_run(conn, run_ids)
+            halts = await self._halts_by_run(conn, run_ids)
 
         gates_by_run: dict[str, list] = {}
         for g in gate_rows:
             gates_by_run.setdefault(g["run_id"], []).append(g)
 
-        return [self._assemble_run(r, gates_by_run.get(r["run_id"], [])) for r in run_rows]
+        return [
+            self._assemble_run(
+                r,
+                gates_by_run.get(r["run_id"], []),
+                holds.get(r["run_id"], []),
+                halts.get(r["run_id"]),
+            )
+            for r in run_rows
+        ]
 
     async def list_runs_for_cycles(
         self, cycle_ids: Sequence[str], *, limit_per_cycle: int = 50
@@ -368,9 +386,15 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 limit_per_cycle,
             )
             gates_by_run = await self._gates_by_run(conn, [r["run_id"] for r in run_rows])
+            holds = await self._holds_by_run(conn, [r["run_id"] for r in run_rows])
+            halts = await self._halts_by_run(conn, [r["run_id"] for r in run_rows])
         for row in run_rows:
             gates = gates_by_run.get(row["run_id"], [])
-            runs[row["cycle_id"]].append(self._assemble_run(row, gates))
+            runs[row["cycle_id"]].append(
+                self._assemble_run(
+                    row, gates, holds.get(row["run_id"], []), halts.get(row["run_id"])
+                )
+            )
         return runs
 
     async def _gates_by_run(self, conn: Any, run_ids: list[str]) -> dict[str, list]:
@@ -387,6 +411,85 @@ class PostgresCycleRegistry(CycleRegistryPort):
         for g in gate_rows:
             gates_by_run.setdefault(g["run_id"], []).append(g)
         return gates_by_run
+
+    async def _holds_by_run(self, conn: Any, run_ids: list[str]) -> dict[str, list]:
+        """The binding holds of ``run_ids`` (#2178), by run, oldest first."""
+        if not run_ids:
+            return {}
+        rows = await conn.fetch(
+            "SELECT run_id, hold_id, task_id, task_type, unresolved, held_at, released_at, cause, "
+            "sections FROM run_binding_holds WHERE run_id = ANY($1) ORDER BY held_at, hold_id",
+            run_ids,
+        )
+        holds: dict[str, list] = {}
+        for h in rows:
+            holds.setdefault(h["run_id"], []).append(h)
+        return holds
+
+    async def _halts_by_run(self, conn: Any, run_ids: list[str]) -> dict[str, Any]:
+        """The emergency halt of each of ``run_ids`` that has one (#2178, T13)."""
+        if not run_ids:
+            return {}
+        rows = await conn.fetch(
+            "SELECT run_id, record_id, requested_by, why, requested_at, restart_from_task_id, "
+            "restart_run_id FROM run_halts WHERE run_id = ANY($1)",
+            run_ids,
+        )
+        return {h["run_id"]: h for h in rows}
+
+    async def record_run_halt(self, run_id: str, halt: RunHalt) -> bool:
+        async with self._retry.acquire(self._pool) as conn:
+            status = await conn.execute(
+                "INSERT INTO run_halts (run_id, record_id, requested_by, why, requested_at, "
+                "restart_from_task_id) VALUES ($1, $2, $3, $4, $5, $6) "
+                "ON CONFLICT (run_id) DO NOTHING",
+                run_id,
+                halt.record_id,
+                halt.requested_by,
+                halt.why,
+                halt.requested_at,
+                halt.restart_from_task_id,
+            )
+        return status.endswith(" 1")
+
+    async def record_restart(self, run_id: str, restart_run_id: str) -> bool:
+        async with self._retry.acquire(self._pool) as conn:
+            status = await conn.execute(
+                "UPDATE run_halts SET restart_run_id = $2 "
+                "WHERE run_id = $1 AND restart_run_id IS NULL",
+                run_id,
+                restart_run_id,
+            )
+        return status.endswith(" 1")
+
+    async def record_binding_hold(self, run_id: str, hold: BindingHold) -> None:
+        async with self._retry.acquire(self._pool) as conn:
+            await conn.execute(
+                "INSERT INTO run_binding_holds "
+                "(run_id, hold_id, task_id, task_type, unresolved, held_at, sections) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (run_id, hold_id) DO NOTHING",
+                run_id,
+                hold.hold_id,
+                hold.task_id,
+                hold.task_type,
+                [list(u) for u in hold.unresolved],
+                hold.held_at,
+                list(hold.sections),
+            )
+
+    async def release_binding_hold(
+        self, run_id: str, hold_id: str, *, released_at: datetime, cause: str
+    ) -> bool:
+        async with self._retry.acquire(self._pool) as conn:
+            status = await conn.execute(
+                "UPDATE run_binding_holds SET released_at = $3, cause = $4 "
+                "WHERE run_id = $1 AND hold_id = $2 AND released_at IS NULL",
+                run_id,
+                hold_id,
+                released_at,
+                cause,
+            )
+        return status.endswith(" 1")
 
     async def update_run_status(
         self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
@@ -854,11 +957,23 @@ class PostgresCycleRegistry(CycleRegistryPort):
             deploy_id=row["deploy_id"],
             campaign_id=row["campaign_id"],
             kind=row["kind"],
+            increment_id=row["increment_id"],
+            source_context=(
+                parse_source_context(row["source_context"])
+                if row["source_context"] is not None
+                else None
+            ),
             notes=row["notes"],
             cancelled=row["cancelled"],
         )
 
-    def _assemble_run(self, row: asyncpg.Record, gate_rows: list) -> Run:
+    def _assemble_run(
+        self,
+        row: asyncpg.Record,
+        gate_rows: list,
+        hold_rows: Sequence[Any] = (),
+        halt_row: Any = None,
+    ) -> Run:
         """Reconstruct frozen Run from row + gate decision rows."""
         gate_decisions = tuple(
             GateDecision(
@@ -888,6 +1003,31 @@ class PostgresCycleRegistry(CycleRegistryPort):
             artifact_refs=tuple(row["artifact_refs"] or []),
             workload_type=row.get("workload_type"),
             failure_reason=row.get("failure_reason"),
+            binding_holds=tuple(
+                BindingHold(
+                    hold_id=h["hold_id"],
+                    task_id=h["task_id"],
+                    task_type=h["task_type"],
+                    unresolved=tuple(tuple(u) for u in h["unresolved"]),
+                    held_at=h["held_at"],
+                    released_at=h["released_at"],
+                    cause=h["cause"],
+                    sections=tuple(h["sections"]),
+                )
+                for h in hold_rows
+            ),
+            halt=(
+                RunHalt(
+                    record_id=halt_row["record_id"],
+                    requested_by=halt_row["requested_by"],
+                    why=halt_row["why"],
+                    requested_at=halt_row["requested_at"],
+                    restart_from_task_id=halt_row["restart_from_task_id"],
+                    restart_run_id=halt_row["restart_run_id"],
+                )
+                if halt_row is not None
+                else None
+            ),
         )
 
     def _row_to_checkpoint(self, row: asyncpg.Record) -> RunCheckpoint:

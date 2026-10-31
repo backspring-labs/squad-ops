@@ -25,7 +25,8 @@ from uuid import uuid4
 
 from squadops.campaigns.increment_tree import (
     approved_change_request,
-    increment_baseline,
+    approved_footprint,
+    increment_basis,
     increment_criterion_files,
     increment_footprint,
     increment_frozen_files,
@@ -57,11 +58,14 @@ class FramingGateCheck:
         is_bind_mode: Callable[..., bool],
         load_seeded_manifest_content: Callable[..., Any],
         load_contract_for_run: Callable[..., Any],
+        derived_profile: Callable[..., Any] | None = None,
     ) -> None:
         self._vault = artifact_vault
         self._is_bind_mode = is_bind_mode
         self._load_seeded_manifest_content = load_seeded_manifest_content
         self._load_contract_for_run = load_contract_for_run
+        #: SIP-0112 H.4: the derived profile at the cycle's pinned source, or ``None``.
+        self._derived_profile = derived_profile
 
     @property
     def _artifact_vault(self) -> Any:
@@ -289,7 +293,8 @@ class FramingGateCheck:
                     "validate_increment_footprint",
                     parsed_plan.validate_increment_footprint(
                         await self._increment_footprint(cycle, interface_content)
-                    ),
+                    )
+                    + await self._unreadable_branch_request(cycle),
                 )
             )
             # SIP-0109 §8.1, §19 item 12e: no task writes an earlier criterion's frozen file.
@@ -308,6 +313,14 @@ class FramingGateCheck:
                     parsed_plan.validate_increment_criterion_files(
                         await self._increment_criterion_files(cycle)
                     ),
+                )
+            )
+            # SIP-0112 H.4 (H.8): no task writes where a blocking gap stops the work. A re-roll
+            # is told where, so a plan can go around it.
+            profile = await self._derived_profile(cycle) if self._derived_profile else None
+            errors.extend(
+                classifier.collect(
+                    "validate_blocking_gaps", parsed_plan.validate_blocking_gaps(profile)
                 )
             )
 
@@ -577,12 +590,45 @@ class FramingGateCheck:
             )
             return ()
 
+    async def _unreadable_branch_request(self, cycle: Cycle) -> list[str]:
+        """SIP-0109 §24cj: a repository-backed increment's plan is held to its stored change
+        request's footprint and placement, which nothing at the gate can derive again. One that
+        can't be read, or whose placement is refused (``placement_inconsistency``), refuses the
+        plan, named: never skipped, as a sample application's rule may be, since nothing else
+        holds a product's plan to its change. Returned, not raised (#473)."""
+        basis = increment_basis(cycle.resolved_config())
+        if basis is None or basis.has_manifest:
+            return []
+        try:
+            document = await approved_change_request(self._artifact_vault, cycle)
+        except Exception as e:  # noqa: BLE001 — refused by name, never a crash (#473)
+            return [
+                f"the approved change request can't be read, so this plan can't be held to its "
+                f"footprint and criterion files: {e}"
+            ]
+        return [] if document is not None else ["the increment's approved change request is absent"]
+
     async def _increment_footprint(self, cycle: Cycle, run_manifest: str | None) -> Any:
         """The increment's footprint, or ``None`` for a cycle that is not an increment (or
-        whose candidate manifest cannot be read, which the manifest's own nets report)."""
+        whose candidate manifest cannot be read, which the manifest's own nets report). A
+        repository-backed increment's is its approved change request's own (§24bv point 5)."""
 
-        if increment_baseline(cycle.resolved_config()) is None:
+        basis = increment_basis(cycle.resolved_config())
+        if basis is None:
             return None
+        if not basis.has_manifest:
+            try:
+                document = await approved_change_request(self._artifact_vault, cycle)
+                return approved_footprint(document) if document is not None else None
+            except Exception:
+                # The gate never raises (#473): a framing run without its change request could
+                # not have been provisioned.
+                logger.warning(
+                    "increment footprint unreadable for cycle %s; the footprint rule is skipped",
+                    cycle.cycle_id,
+                    exc_info=True,
+                )
+                return None
         content = run_manifest or await self._load_seeded_manifest_content(cycle)
         if not content:
             return None

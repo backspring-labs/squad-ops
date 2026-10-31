@@ -30,20 +30,24 @@ from squadops.campaigns.increment_tree import (
     frozen_bundle_contents,
     increment_seed,
 )
+from squadops.campaigns.runner_acceptance import CandidateNotDelivered
 from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     INCREMENT_CANDIDATE_FILTER,
     LANDING_PRIOR_OUTPUTS,
+    PRIOR_SLOT_FAILURES_KEY,
     RETAKE_CURRENT_FILES_KEY,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
+    prior_slot_failures,
     retake_suite_files,
     wrapup_evidence_applies,
 )
 from squadops.capabilities.handlers.build_profiles import get_profile
-from squadops.capabilities.lesson_supply import supply_the_redispatch
+from squadops.capabilities.lesson_supply import supply_the_dispatch
+from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
@@ -54,7 +58,11 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
     load_seeded_manifest_content,
 )
-from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
+from squadops.cycles.correction_signature import (
+    REPAIR_DROPPED_MARKER,
+    REPAIR_EMPTY_MARKER,
+    REPAIR_SUBJECT_DROPPED_MARKER,
+)
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
@@ -73,9 +81,12 @@ from squadops.cycles.models import (
     APPROVING_DECISIONS,
     ArtifactRef,
     Cycle,
+    DerivedProfileNotFoundError,
     FlowMode,
     GateDecision,
     GateDecisionValue,
+    IllegalStateTransitionError,
+    InheritedBaselineNotFoundError,
     Run,
     RunStatus,
     WorkloadType,
@@ -118,6 +129,7 @@ from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.cycles.wrapup_models import verification_evidence_summary
 from squadops.events.types import EventType
+from squadops.execution.binding_holds import BindingFill, BindingHolds
 from squadops.execution.correction_repair import CorrectionRepair
 from squadops.execution.correction_runner import CorrectionRunner
 from squadops.execution.cycle_completion import CycleCompletion
@@ -135,16 +147,28 @@ from squadops.execution.patch_acceptance import (
     PatchAcceptance,
     _record_repair_rejection,
 )
+from squadops.execution.product_acceptance import (
+    ProductAcceptanceRefused,
+    evaluate_product_increment,
+    evaluated_at_delivery,
+)
+from squadops.execution.product_suite import judge_on_product_runner
 from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
+from squadops.execution.source_checkout import seed_checkout_artifacts, task_source_repository
+from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_source_change
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
+from squadops.memory.emergency import EMERGENCY_RESTART_OVERRIDE, restart_checkpoint
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
+from squadops.projects.models import SourceUnavailable
+from squadops.projects.source_context import ProjectSourceContext
+from squadops.projects.workspaces import SandboxUnavailable
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 from squadops.stacks.scaffold import (
     InterfaceManifest,
@@ -158,10 +182,16 @@ from squadops.stacks.verification_scaffold_emission import (
     emit_verification_scaffold,
 )
 from squadops.stacks.verification_scaffold_gate import validate_execution_readiness
-from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
+from squadops.tasks.models import (
+    INPUT_REFUSAL_EVIDENCE,
+    TaskEnvelope,
+    TaskResult,
+    TaskResultStatus,
+)
 from squadops.tasks.task_types import (
     TaskType,
     authors_qa_suite,
+    authors_source,
     fails_without_correction,
 )
 from squadops.telemetry.context import use_correlation_context
@@ -169,6 +199,7 @@ from squadops.telemetry.models import CorrelationContext, StructuredEvent
 
 if TYPE_CHECKING:
     from squadops.campaigns.launcher import BoxVerdict
+    from squadops.campaigns.product_routes import RouteRenderer
     from squadops.campaigns.progress import CampaignProgress
     from squadops.cycles.models import SquadProfile
     from squadops.execution.reply_router import ReplyRouter
@@ -181,9 +212,12 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
+    from squadops.ports.outcomes import ProposalEvidencePort
+    from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
+    from squadops.ports.sandbox import ExecutionSandboxPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
@@ -258,6 +292,40 @@ def _carry_retake_suite(
         envelope.task_id,
         ", ".join(sorted(suite)),
     )
+
+
+def _subject_dropped_summary(entries: Any) -> str:
+    """``slot_subject_dropped: <slot>: <subject>; …`` — the refused slots a carry entry names
+    (#2664). Each entry is a ``SlotSubjectVerdict.to_dict()`` the qa merge stamped."""
+    return "slot_subject_dropped: " + "; ".join(
+        f"{e.get('slot_id')}: {e.get('described') or e.get('failing_target')}"
+        for e in entries or ()
+        if isinstance(e, dict)
+    )
+
+
+def _carry_prior_slot_failures(
+    result: TaskResult, envelope: TaskEnvelope, enriched_envelope: TaskEnvelope | None
+) -> None:
+    """SIP-0104 §13f (#2664): a fill-mode qa.test that failed in a slot is re-dispatched to
+    re-fill that slot, which is a slot revision like a repair's. Its in-slot failures and the
+    shells they were observed on ride the re-dispatch, so its merge is gated too.
+
+    A result that ran no suite leaves the earlier carry standing: the last observation of
+    those slots is still the one before it."""
+    scaffold_input = (envelope.inputs or {}).get("verification_scaffold")
+    if not isinstance(scaffold_input, dict):
+        return
+    carried = prior_slot_failures(result.outputs, scaffold_input)
+    if carried is None:
+        return
+    for env in (envelope, enriched_envelope):
+        if env is None:
+            continue
+        if carried:
+            env.inputs[PRIOR_SLOT_FAILURES_KEY] = carried
+        else:
+            env.inputs.pop(PRIOR_SLOT_FAILURES_KEY, None)
 
 
 def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
@@ -561,9 +629,19 @@ class _TaskOutcomeRouter:
         _holder["result"] = result
         if ledger is not None:
             record_absent_emission(ledger, result, _envelope)
+        # #2818: a product's suite failing only ``tests_pass`` in the qa image is run again on
+        # the product's own runner, after its configured setup; a pass there judges the task.
+        judged = await executor._judged_on_product_runner(
+            result, _envelope, _enriched, cycle, run_id
+        )
+        if judged is not None:
+            _record_task_evidence(result)
+            _holder["patched_result"] = judged
+            state.correction.accepted_repair_task_ids.add(_envelope.task_id)
+            return "accept_patch"
         action = await _next_action(result, _envelope, _enriched, _holder)
         while action == KEEP_PROGRESS:
-            # #1522: the repair cleared some of the round's failures and added none. It
+            # #1522: the repair made progress and broke nothing (``retest_reduction``). It
             # becomes accepted state, and the retest's failure (the task run on the kept
             # tree) is routed as the next round's: nothing is re-dispatched. Every round
             # draws on the correction budget, so this ends when a round accepts, discards,
@@ -585,12 +663,18 @@ class _TaskOutcomeRouter:
             # SIP-0110 §0.2 (#2162): the re-dispatch is another authoring invocation. It asks
             # its unit's snapshot again and records its own exposure under its attempt;
             # before, it rode the first attempt's envelope and had none.
-            await supply_the_redispatch(
-                (_envelope, _enriched),
-                recall=executor._failure_recall,
-                cycle=cycle,
-                run_id=run_id,
-                now=datetime.now(UTC),
+            # §3.6: a re-dispatch whose binding sections are incomplete holds the run here, at
+            # the task's boundary, until re-supply completes it (#2178).
+            await executor._binding_holds.supplied(
+                run_id,
+                cycle,
+                lambda: supply_the_dispatch(
+                    (_envelope, _enriched),
+                    recall=executor._failure_recall,
+                    cycle=cycle,
+                    run_id=run_id,
+                    now=datetime.now(UTC),
+                ),
             )
         if action == "accept_patch":
             # #994: remember that THIS task now has accepted, stored repaired
@@ -645,6 +729,8 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
         framework_git_sha=cycle.framework_git_sha,
         deploy_id=cycle.deploy_id,
         campaign_id=cycle.campaign_id,
+        increment_id=cycle.increment_id,
+        kind=cycle.kind,
         replay_of=replay.source_run_id if replay else None,
     )
 
@@ -679,9 +765,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Required with no ``None`` meaning: 2.1's roots inject the inert recall that answers
         # empty, so the call site is live and nothing is handed until 2.2's adapter.
         failure_recall: FailurePatternRecallPort,
+        # SIP-0113 §4.5 (§10t ruling 1): what a campaign's proposal task is shown of its accepted
+        # tree, read when the run's plan is composed. Required with no ``None`` meaning: a root
+        # with no evaluation store injects the evidence that has nothing to show.
+        proposal_evidence: ProposalEvidencePort,
         # 1.8.2 item 15: the per-task wait is declared by the composition root, never
         # defaulted here — a default is the hung-agent detector nobody chose.
         task_timeout: float,
+        # #2178: the launcher's fill of a campaign cycle's own bindings, which a run held on them
+        # calls before it composes again (§5ad). Required at the factory, which is the roots'
+        # seam. ``None``: no launcher runs here, so a held campaign cycle's missing binding
+        # waits on the sweep's fill (``reconcile_bindings``).
+        binding_fill: BindingFill | None = None,
         llm_observability: LLMObservabilityPort | None = None,
         workflow_tracker: WorkflowTrackerPort | None = None,
         event_bus: CycleEventBusPort | None = None,
@@ -690,6 +785,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         activity_port: RuntimeActivityPort | None = None,
         coordinator: RuntimeCoordinator | None = None,
         focus_lease_port: FocusLeasePort | None = None,
+        source_repository: SourceRepositoryPort | None = None,
+        sandbox: ExecutionSandboxPort | None = None,
+        route_renderer: RouteRenderer | None = None,
         run_completion: RunCompletion | None = None,
         correction_runner: CorrectionRunner | None = None,
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
@@ -699,6 +797,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     ) -> None:
         self._cycle_registry = cycle_registry
         self._failure_recall = failure_recall
+        self._proposal_evidence = proposal_evidence
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
         # campaign cycle run by an executor without one fails at that gate, loudly.
         self._campaign_registry = campaign_registry
@@ -707,6 +806,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0109 §9.3 (#1802, #1928): whether a launch is allowed now, which a run start
         # also waits on. ``None`` reads no box.
         self._box_verdict = box_verdict
+        self._binding_fill = binding_fill
         # #1929: set when the process begins to stop. A run interrupted from then on is left
         # as it was, for the startup re-attach (SIP-0109 §24am), never recorded as ended.
         self._stopping = False
@@ -740,6 +840,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # replay (#288 idempotent-skip, e.g. a resumed run), whose leases are
         # owned by this run but were never returned in `recruited_agent_ids`.
         self._focus_lease_port = focus_lease_port
+        # SIP-0112 E.4.3: the managed clones a source-backed run starts from and is captured to,
+        # and the sandbox its candidate is verified in.
+        self._source_repository = source_repository
+        self._sandbox = sandbox
+        # SIP-0109 §24co: what renders a repository-backed increment's client routes, on the product
+        # started from its declaration by the sandbox's scenario runner. The root builds it: this
+        # module never imports the held-out scenarios' package (SIP-0113 §4.1). ``None``: none, so
+        # each route a profile names is read ``blocked_unverified``.
+        self._route_renderer = route_renderer
         self._cancelled: set[str] = set()
         # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
         # injected collaborator with a default composed from this executor's
@@ -787,6 +896,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 *args, **kw
             ),
             failure_recall=failure_recall,
+            hold=lambda *args, **kw: self._binding_holds.supplied(*args, **kw),
         )
         self._correction_runner = correction_runner or CorrectionRunner(
             cycle_registry=cycle_registry,
@@ -796,6 +906,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
             failure_recall=failure_recall,
             correction_repair=self._correction_repair,
+            judge_suite=lambda result, envelope, cycle, run_id: self._judged_on_product_runner(
+                result, envelope, envelope, cycle, run_id
+            ),
         )
         # 1.7.5 recovery extraction map §4 step 2: the accepted-patch collaborator, built
         # where CorrectionRunner is and with the same injectable override. It holds no
@@ -826,6 +939,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             task_dispatcher=self._task_dispatcher,
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
             failure_recall=failure_recall,
+            hold=lambda *args, **kw: self._binding_holds.supplied(*args, **kw),
         )
         # SIP-0097 §6.6: per-run pulse summaries live on the RunLedger created
         # in execute_run() and passed explicitly; multi-workload forwarding
@@ -1084,12 +1198,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # Single-workload fast path (D7)
         if len(workload_sequence) <= 1:
-            await self.execute_run(cycle_id, first_run_id, profile_id)
-            await self._cycle_completion.end(
-                cycle_id,
-                await self._cycle_registry.get_run(first_run_id),
-                CycleStopReason.SINGLE_WORKLOAD_ENDED,
-            )
+            run_id, overrides = first_run_id, None
+            while True:
+                if overrides is None:
+                    await self.execute_run(cycle_id, run_id, profile_id)
+                else:  # an emergency withdrawal's restart (T13)
+                    await self.execute_run(
+                        cycle_id, run_id, profile_id, forwarding_overrides=overrides
+                    )
+                ended = await self._cycle_registry.get_run(run_id)
+                entry = workload_sequence[0] if workload_sequence else {"type": ended.workload_type}
+                restart = await self._emergency_restart(cycle, ended, entry, overrides)
+                if restart is None:
+                    break
+                run_id, overrides = restart
+            await self._cycle_completion.end(cycle_id, ended, CycleStopReason.SINGLE_WORKLOAD_ENDED)
             return
 
         # #257: support resuming mid-sequence. first_run_id may be a later
@@ -1157,6 +1280,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # completed run stops the sequence. A paused run read as completed was gated, its
             # empty plan rejected, and each framing re-roll cancelled it.
             run = await self._cycle_registry.get_run(current_run_id)
+            # T13 (#2178): a run halted by an emergency withdrawal restarts in its own place.
+            restart = await self._emergency_restart(
+                cycle, run, workload_entry, forwarding_overrides
+            )
+            if restart is not None:
+                current_run_id, forwarding_overrides = restart
+                continue  # same index: the restart runs this workload again
             if run.status != RunStatus.COMPLETED.value:
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_COMPLETED,
@@ -1497,6 +1627,103 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         return overrides
 
+    async def _emergency_restart(
+        self, cycle: Cycle, run: Run, workload_entry: dict, forwarding_overrides: dict | None
+    ) -> tuple[str, dict] | None:
+        """SIP-0110 §A.3.8 (T13, #2178): a run halted by a task instruction's emergency withdrawal
+        restarts as a new run in its place, from the first of its tasks that received the
+        instruction: the run takes the halted run's checkpoint before that task
+        (``_resolve_restart_checkpoint``) and reads its bindings again, so the instruction is
+        absent. ``None`` for any other run, a halt with nothing to restart, one restarted
+        already (the halt records its restart once), or a cycle cancelled since: an abort or a
+        cycle cancel ends it, and nothing runs after it (SIP-0109 §12a)."""
+        halt = run.halt
+        registry = self._cycle_registry
+        assert registry is not None  # the run was just read from it
+        if (
+            run.status != RunStatus.CANCELLED.value
+            or halt is None
+            or halt.restart_from_task_id is None
+            or halt.restart_run_id is not None
+            or (await registry.get_cycle(cycle.cycle_id)).cancelled
+        ):
+            return None
+        try:
+            restart = await self._create_next_workload_run(
+                cycle, run, workload_entry, config_hash=run.resolved_config_hash
+            )
+        except IllegalStateTransitionError:
+            return None  # cancelled since the read: the registry refuses a run on it
+        if not await registry.record_restart(run.run_id, restart.run_id):
+            await self._cancel_unstarted(restart.run_id)
+            return None
+        # A cycle's cancel sets its flag before it lists the runs to cancel, so one that listed
+        # them before this restart existed is read here, and the restart never starts.
+        if (await registry.get_cycle(cycle.cycle_id)).cancelled:
+            await self._cancel_unstarted(restart.run_id)
+            return None
+        self._cycle_event_bus.emit(
+            EventType.WORKLOAD_ADVANCED,
+            entity_type="workload",
+            entity_id=restart.run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": restart.run_id},
+            payload={
+                "workload_type": workload_entry.get("type"),
+                "reason": "emergency_withdrawal_restart",
+                "halted_run_id": run.run_id,
+                "record_id": halt.record_id,
+                "restart_from_task_id": halt.restart_from_task_id,
+            },
+        )
+        logger.warning(
+            "run_restarted_after_emergency_withdrawal cycle=%s halted=%s restart=%s from=%s",
+            cycle.cycle_id,
+            run.run_id,
+            restart.run_id,
+            halt.restart_from_task_id,
+        )
+        return restart.run_id, {
+            **(forwarding_overrides or {}),
+            EMERGENCY_RESTART_OVERRIDE: {
+                "source_run_id": run.run_id,
+                "before_task_id": halt.restart_from_task_id,
+            },
+        }
+
+    async def _cancel_unstarted(self, run_id: str) -> None:
+        """Cancel a restart that never started; one a cycle's cancel already reached stays so."""
+        registry = self._cycle_registry
+        assert registry is not None  # it created the run
+        try:
+            await registry.cancel_run(run_id)
+        except IllegalStateTransitionError:
+            logger.info("emergency_restart_already_cancelled run=%s", run_id)
+
+    async def _resolve_restart_checkpoint(self, cycle: Cycle, run_id: str) -> RunCheckpoint | None:
+        """T13 (#2178): the halted run's accepted work before the first task that received the
+        withdrawn instruction, translated onto its restart. Degrades, as a framing revision's
+        does (#811): a checkpoint that can't be read or translated runs the whole workload again,
+        which is the slower correct answer, never one that keeps work built on the instruction."""
+        restart = (cycle.execution_overrides or {}).get(EMERGENCY_RESTART_OVERRIDE)
+        if not restart:
+            return None
+        source = restart["source_run_id"]
+        registry = self._cycle_registry
+        assert registry is not None  # it created this run
+        try:
+            boundary = restart_checkpoint(
+                await registry.list_checkpoints(source), restart["before_task_id"]
+            )
+            return translate_checkpoint_for_replay(boundary, run_id) if boundary else None
+        except Exception:  # noqa: BLE001 — the full re-run is correct, only slower
+            logger.warning(
+                "emergency_restart_checkpoint_unused run=%s source=%s: re-running the workload",
+                run_id,
+                source,
+                exc_info=True,
+            )
+            return None
+
     async def _create_next_workload_run(
         self,
         cycle: Cycle,
@@ -1800,6 +2027,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # does not invalidate. Distinct from replay above: replay fails closed, a
             # revision degrades to the full re-run it used to do.
             checkpoint = await self._resolve_revision_checkpoint(cycle, run_id)
+        if checkpoint is None:
+            # T13 (#2178): an emergency withdrawal's restart keeps the halted run's work before
+            # the first task that received the instruction.
+            checkpoint = await self._resolve_restart_checkpoint(cycle, run_id)
         if checkpoint:
             await self._restore_checkpoint_state(
                 checkpoint,
@@ -1881,6 +2112,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"Build deliverable incomplete: build profile {profile_name!r} requires files "
                 f"the run never emitted. Missing required files: {missing}."
             )
+        # SIP-0112 E.4.3: a source-backed run's change is known here too, so its candidate is
+        # verified by the product's own checks and, when accepted, captured to Git. Only a run
+        # that authors the product does: a framing run changes nothing by design.
+        if cycle.source_context is not None and any(
+            authors_source(e.task_type) or authors_qa_suite(e.task_type) for e in plan
+        ):
+            await self._deliver_source_change(cycle, run_id, state.produced)
 
     async def _execute_task(
         self,
@@ -1932,6 +2170,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run_derived_contract=authored_contract,
         )
 
+        await self._supply_the_dispatch(envelope, enriched, cycle, run_id)
         task_run_id = await self._announce_dispatch(envelope, cycle, run_id, flow_run_id)
 
         # Dispatch + retry loop for retryable failures (SIP-0079). The routing of a failed
@@ -1988,6 +2227,24 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             obs_ctx=obs_ctx,
             ledger=ledger,
             pulse=pulse,
+        )
+
+    async def _supply_the_dispatch(
+        self, envelope: TaskEnvelope, enriched: TaskEnvelope, cycle: Cycle, run_id: str
+    ) -> None:
+        """SIP-0110 §0.9, §3.6 (#2681): memory's sections composed for this dispatch, on the envelope
+        as it goes out (``enriched``), and disclosed as its exposure. One that can't be read, bound
+        or fitted holds the run here, at the task's boundary, until re-supply completes it."""
+        await self._binding_holds.supplied(
+            run_id,
+            cycle,
+            lambda: supply_the_dispatch(
+                (envelope, enriched),
+                recall=self._failure_recall,
+                cycle=cycle,
+                run_id=run_id,
+                now=datetime.now(UTC),
+            ),
         )
 
     async def _announce_dispatch(
@@ -2286,6 +2543,69 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run_id,
         )
         return seeded_ids
+
+    async def _seed_checkout_artifacts(self, cycle: Cycle, run_id: str) -> list[str]:
+        """SIP-0112 E.4.3: a source-backed run starts from its product's tree at the pinned
+        commit, seeded as an increment's accepted tree is (``source_checkout``)."""
+        return await seed_checkout_artifacts(
+            cycle,
+            run_id,
+            vault=self._artifact_vault,
+            repository=self._source_repository,
+            registry=self._project_registry,
+        )
+
+    async def _deliver_source_change(self, cycle: Cycle, run_id: str, produced: Any) -> None:
+        """Verify the run's change against the inherited baseline and capture it when accepted
+        (``source_delivery``). Its evidence is the run's whether or not it is accepted; a
+        candidate that regressed or that nothing verified fails the run with it."""
+        try:
+            delivery = await deliver_source_change(
+                cycle,
+                run_id,
+                produced.stored_artifacts,
+                vault=self._artifact_vault,
+                registry=self._project_registry,
+                repository=self._source_repository,
+                sandbox=self._sandbox,
+            )
+        except (
+            SourceDeliveryRefused,
+            SourceUnavailable,
+            SandboxUnavailable,
+            InheritedBaselineNotFoundError,
+        ) as e:
+            raise _ExecutionError(f"source delivery: {e}") from e
+        produced.all_artifact_refs.extend(delivery.artifact_ids)
+        if self._cycle_registry is not None:
+            await self._cycle_registry.append_artifact_refs(run_id, delivery.artifact_ids)
+        if delivery.captured_commit is None:
+            raise _ExecutionError(
+                f"source delivery: the product's own checks: {delivery.verification.summary()}"
+            )
+        # SIP-0109 §24cd point 6: a repository-backed increment's acceptance, on the product's
+        # runner in the sandbox, in place of the qa.evaluate_increment its plan doesn't carry.
+        if evaluated_at_delivery(cycle):
+            try:
+                evaluation = await evaluate_product_increment(
+                    cycle,
+                    run_id,
+                    delivery,
+                    vault=self._artifact_vault,
+                    projects=self._project_registry,
+                    sandbox=self._sandbox,
+                    route_renderer=self._route_renderer,
+                    read_profile=self._derived_profile_for,
+                )
+            except (
+                ProductAcceptanceRefused,
+                CandidateNotDelivered,
+                SandboxUnavailable,
+            ) as e:
+                raise _ExecutionError(f"increment acceptance: {e}") from e
+            produced.all_artifact_refs.append(evaluation)
+            if self._cycle_registry is not None:
+                await self._cycle_registry.append_artifact_refs(run_id, (evaluation,))
 
     async def _seed_verification_scaffold_artifacts(
         self,
@@ -2750,6 +3070,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # #1312 / H2: the builder's optional notes reach the test author here, paired with
         # the producing artifact's id, and only through the presence-keyed appendix — the
         # curated `artifact_contents` above never carried the old handoff to qa either.
+        # SIP-0112 E.4.3: a source-backed run's task sees the product's repository through a
+        # bounded view: the map, its instruction files, and the current content of the files the
+        # task names. Never the whole tree, and never a truncated one.
+        repository = await task_source_repository(
+            self._artifact_vault,
+            stored_artifacts,
+            envelope.inputs.get("expected_artifacts") or (),
+        )
+        if repository is not None:
+            extra_inputs["source_repository"] = repository
+
         if envelope.task_type in _ASSEMBLY_NOTES_READERS:
             notes = await self._resolve_assembly_notes(stored_artifacts)
             if notes:
@@ -3047,8 +3378,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 re-rolls its artifacts and clobbers the repair).
             "break_correction" — correction handled without re-run (governance
                 "continue": advance without repair), advance to next task.
-            ``KEEP_PROGRESS`` — (#1522) a ``patch`` correction whose retest cleared some of
-                the round's failures and added none; ``_route_outcome`` stores the kept
+            ``KEEP_PROGRESS`` — (#1522) a ``patch`` correction whose retest made progress
+                and broke nothing (``retest_reduction``, #2306); ``_route_outcome`` stores the kept
                 repair and routes the retest's failure as the next round's, so the
                 dispatcher never sees this token.
 
@@ -3057,6 +3388,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             _ExecutionError — unrecoverable failure (incl. max_correction_attempts
                 exhausted, so a repair that never converges fails the run)
         """
+        # #2553: a handler that refused its inputs refuses the same envelope every time, and
+        # neither a retry nor a repair changes what this executor composes. Fail the run here,
+        # naming the refusal, rather than spend correction rounds on it.
+        refused = (result.execution_evidence or {}).get(INPUT_REFUSAL_EVIDENCE)
+        if refused:
+            raise _ExecutionError(
+                f"Task {envelope.task_id} ({envelope.task_type}) refused its inputs: "
+                + "; ".join(str(e) for e in refused),
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.INPUT_REFUSED, task_id=envelope.task_id
+                ),
+            )
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
 
         # The four steps this router has always run, in order — the blocks its own comment
@@ -3182,6 +3525,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         envelope.inputs.pop(RETAKE_CURRENT_FILES_KEY, None)
         if enriched_envelope is not None:
             enriched_envelope.inputs.pop(RETAKE_CURRENT_FILES_KEY, None)
+
+        _carry_prior_slot_failures(result, envelope, enriched_envelope)
 
         retained = failing_cases_from_evidence(result.outputs or {})
         if retained:
@@ -3321,6 +3666,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # share ``attempt`` (a refund re-takes the index, #1053) never share a task id.
         round_seq = correction_counter.get("round_seq", 0)
         correction_counter["round_seq"] = round_seq + 1
+
+        # #2664: a re-dispatched qa.test whose own merge refused a slot revision kept the
+        # accepted assertion; this round is told which subject that emission tried to drop.
+        refused_here = (result.outputs or {}).get(SLOT_SUBJECT_DROPPED_KEY)
+        if refused_here:
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"{envelope.task_type} attempt {envelope.inputs.get('prior_attempts') or 1}: "
+                f"its re-authored fill dropped a failing slot assertion's subject "
+                f"({_subject_dropped_summary(refused_here)}) — the declarations show each field "
+                "present on that surface, so the accepted assertion was kept",
+            )
 
         # The DISPATCHED envelope, as the retest hand-off below already passes: the
         # correction runner forwards the failed task's typed-acceptance workspace to the
@@ -3485,6 +3843,37 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 " — nothing was applied, verified or retested",
             )
             _carry_retake_suite(result, envelope, enriched_envelope)
+            return "continue"
+        if protocol.repair_dropped and correction_path == "patch":
+            # #2521: every file the repair emitted was one its grant excludes, so nothing reached
+            # the tree. The round is spent — it was not refunded above, since the repair emitted
+            # files — and the next one is told which paths and whose grant, where a refund had it
+            # re-taken unchanged and analysed as "emitted no content" (cyc_0df8d7215ef2).
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: {REPAIR_DROPPED_MARKER} ("
+                + "; ".join(
+                    f"{d['path']}: outside the {d['producer_task_type']} grant, {d['reason']}"
+                    for d in protocol.repair_dropped
+                )
+                + ") — nothing was applied, verified or retested; the fix belongs in files the "
+                "repair may write, or the plan's grant is wrong",
+            )
+            return "continue"
+        if protocol.repair_subject_dropped and correction_path == "patch":
+            # #2664 (SIP-0104 §13f): the qa repair kept no assertion on its failing assertion's
+            # subject, and the declarations show that field there. The round is spent, as a
+            # dropped patch's is, and the next one is told the slot and the subject.
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: {REPAIR_SUBJECT_DROPPED_MARKER} ("
+                + _subject_dropped_summary(protocol.repair_subject_dropped)
+                + ") — the declarations show each field present on that surface; nothing was "
+                "applied, verified or retested. A repair keeps an assertion on that field, and an "
+                "app that does not meet it is dev's to fix",
+            )
             return "continue"
         if correction_path == "abort":
             raise _ExecutionError(
@@ -4151,6 +4540,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             await asyncio.sleep(poll_interval)
 
     @functools.cached_property
+    def _binding_holds(self) -> BindingHolds:
+        """#2178: a run held on a task's binding sections, and its release. Built on first use,
+        as the collaborators below are, and reading the executor late."""
+        return BindingHolds(
+            cycle_registry=self._cycle_registry,
+            campaign_registry=self._campaign_registry,
+            event_bus=self._cycle_event_bus,
+            is_cancelled=lambda run_id: self._is_cancelled(run_id),
+            await_box=lambda run_id, cycle_id: self._run_admission.await_box(run_id, cycle_id),
+            fill=self._binding_fill,
+        )
+
+    @functools.cached_property
     def _run_provisioning(self) -> RunProvisioning:
         """#1507 step 2: what a run does before dispatch, bar admission. Built on first use, as
         ``_framing_gate_check`` is, and borrowing late (§38)."""
@@ -4184,7 +4586,49 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 *args, **kw
             ),
             load_contract_for_run=lambda *args, **kw: self._load_contract_for_run(*args, **kw),
+            derived_profile=lambda cycle: self._derived_profile_for(cycle),
         )
+
+    async def _judged_on_product_runner(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+    ) -> TaskResult | None:
+        """#2818: ``result`` judged passed on the product's runner, or ``None`` when it stands
+        (``product_suite.judge_on_product_runner``). The dispatched inputs are the enriched
+        envelope's, the tree the agent ran."""
+        return await judge_on_product_runner(
+            result,
+            task_type=envelope.task_type,
+            task_id=envelope.task_id,
+            inputs=(enriched or envelope).inputs,
+            cycle=cycle,
+            run_id=run_id,
+            sandbox=self._sandbox,
+            projects=self._project_registry,
+            read_profile=self._derived_profile_for,
+        )
+
+    async def _derived_profile_for(self, cycle: Any) -> Any:
+        """SIP-0112 H.4: the derived profile recorded at the source a cycle pinned, or ``None``
+        for a cycle with no source, a registry that can't say, or a capture with no profile."""
+        context = getattr(cycle, "source_context", None)
+        if not isinstance(context, ProjectSourceContext) or self._project_registry is None:
+            return None
+
+        try:
+            return await self._project_registry.get_derived_profile(
+                context.project_id,
+                at=(
+                    context.development_baseline_commit,
+                    context.development_configuration_revision,
+                ),
+            )
+        except DerivedProfileNotFoundError:
+            return None
 
     async def _reject_invalid_plan_before_workload_gate(
         self,
@@ -4329,6 +4773,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # #1912: a qa.test task that declares no suite fails whatever it returns.
         errors += classifier.collect(
             "validate_qa_tasks_author_a_suite", plan.validate_qa_tasks_author_a_suite()
+        )
+        # SIP-0112 H.4 (H.8): as at the promotion seam, no task writes where a blocking gap stops
+        # the work.
+        errors += classifier.collect(
+            "validate_blocking_gaps",
+            plan.validate_blocking_gaps(await self._derived_profile_for(cycle)),
         )
         if errors:
             raise _ExecutionError(

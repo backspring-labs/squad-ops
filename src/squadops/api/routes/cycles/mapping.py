@@ -4,10 +4,13 @@ Domain ↔ DTO mapping functions for SIP-0064.
 
 from __future__ import annotations
 
+import dataclasses
+
 from squadops.api.cycle_schemas import (
     AgentProfileEntryResponse,
     ArtifactRefResponse,
     AttributionReadingDTO,
+    BindingHoldResponse,
     ContributionDTO,
     CycleAssessmentResponse,
     CycleOutcomeDTO,
@@ -16,11 +19,15 @@ from squadops.api.cycle_schemas import (
     GateDecisionResponse,
     GateDTO,
     IndicatorDTO,
+    ProjectOwnershipResponse,
     ProjectResponse,
+    ProjectSourceResponse,
     ReplayProvenanceDTO,
+    RunHaltResponse,
     RunResponse,
     SquadProfileResponse,
     TaskFlowPolicyDTO,
+    UnresolvedRecordResponse,
     UnverifiedCheckDTO,
     WaivedCheckDTO,
     WorkloadProgressEntry,
@@ -48,6 +55,31 @@ def project_to_response(project: Project) -> ProjectResponse:
         created_at=project.created_at,
         tags=list(project.tags),
         has_prd=project.prd_path is not None,
+        lifecycle_status=project.lifecycle_status.value,
+        record_version=project.record_version,
+        source=(
+            ProjectSourceResponse(
+                repo_uri=project.source.repo_uri,
+                base_ref=project.source.base_ref,
+                contribution_mode=project.source.contribution_mode,
+                repository_root=project.source.repository_root,
+            )
+            if project.source is not None
+            else None
+        ),
+        ownership=(
+            ProjectOwnershipResponse(
+                owner=project.ownership.owner,
+                delegated_actions=list(project.ownership.delegated_actions),
+                acceptance_policy_ref=project.ownership.acceptance_policy_ref,
+            )
+            if project.ownership is not None
+            else None
+        ),
+        development_configuration_revision=project.development_configuration_revision,
+        development_baseline_commit=project.development_baseline_commit,
+        integrated_upstream_commit=project.integrated_upstream_commit,
+        validation_diagnostic=project.validation_diagnostic,
     )
 
 
@@ -77,6 +109,23 @@ def run_to_response(run: Run) -> RunResponse:
         artifact_refs=list(run.artifact_refs),
         workload_type=run.workload_type,
         failure_reason=run.failure_reason,
+        binding_holds=[
+            BindingHoldResponse(
+                hold_id=h.hold_id,
+                task_id=h.task_id,
+                task_type=h.task_type,
+                unresolved=[
+                    UnresolvedRecordResponse(ref=ref, reason=reason, kind=str(kind))
+                    for ref, reason, kind in h.unresolved
+                ],
+                sections=list(h.sections),
+                held_at=h.held_at,
+                released_at=h.released_at,
+                cause=h.cause,
+            )
+            for h in run.binding_holds
+        ],
+        halt=RunHaltResponse(**dataclasses.asdict(run.halt)) if run.halt else None,
     )
 
 
@@ -277,6 +326,10 @@ def cycle_to_response(
         deploy_id=cycle.deploy_id,
         campaign_id=cycle.campaign_id,
         kind=cycle.kind,
+        increment_id=cycle.increment_id,
+        source_context=(
+            cycle.source_context.to_document() if cycle.source_context is not None else None
+        ),
         notes=cycle.notes,
         status=status.value,
         runs=[run_to_response(r) for r in runs],

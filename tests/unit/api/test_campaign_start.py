@@ -56,14 +56,18 @@ class _Deploys:
 
 
 class _World:
-    def __init__(self, campaigns: MemoryCampaignRegistry | None = None) -> None:
+    def __init__(
+        self, campaigns: MemoryCampaignRegistry | None = None, project_registry=None
+    ) -> None:
         self.campaigns = campaigns or MemoryCampaignRegistry()
         self.cycles = MemoryCycleRegistry()
         self.executor = _Executor()
+        # One registry for the start route and the launch it makes, as the runtime wires them.
+        self.projects = project_registry or create_project_registry("config")
         self.launch = CampaignLaunchService(
             campaigns=self.campaigns,
             creation=CreationPorts(
-                project_registry=create_project_registry("config"),
+                project_registry=self.projects,
                 squad_profile=create_squad_profile_port("config"),
                 cycle_registry=self.cycles,
                 deploy_registry=_Deploys(),
@@ -94,6 +98,7 @@ class _World:
         app.state.campaign_registry = self.campaigns
         app.state.cycle_registry = self.cycles
         app.state.campaign_launch = self.launch
+        app.state.project_registry = self.projects
         app.state.authz_port = KeycloakAuthzAdapter()
         self.client = TestClient(app)
 
@@ -115,7 +120,9 @@ def _sandbox_provider(monkeypatch):
 async def world() -> _World:
     w = _World()
     await w.campaigns.create_campaign(
-        campaign(CID, policy=policy(calibration_profile="framing", squad_profile="full-38")),
+        campaign(
+            CID, policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38")
+        ),
         actor="owner",
         actor_role="admin",
         reason="r",
@@ -139,7 +146,11 @@ async def test_a_start_launches_the_calibration_cycle_by_the_cycle_create_path(w
     assert resp.status_code == 200
     assert body["campaign"]["state"] == CampaignState.CALIBRATING
     assert (intent.state, intent.cycle_id) == (LaunchIntentState.LAUNCHED, cycle_id)
-    assert (cycle.campaign_id, cycle.kind, cycle.request_profile) == (CID, "calibration", "framing")
+    assert (cycle.campaign_id, cycle.kind, cycle.request_profile) == (
+        CID,
+        "calibration",
+        "validated-fullstack",
+    )
     assert (cycle.squad_profile_id, cycle.created_by) == ("full-38", "campaign-launcher")
     assert (run.run_number, run.status, run.workload_type) == (1, "queued", "framing")
     assert world.executor.started == [(cycle_id, run.run_id, "full-38")]
@@ -188,6 +199,31 @@ async def test_a_start_pins_the_campaigns_snapshot_before_its_calibration_cycle_
     assert (pinned.unit_id, pinned.disabled) == (CID, False)
     assert cycles_at_pin == [0]
     assert await store.get_snapshot(UnitKind.CYCLE, cycle_id) is None
+
+
+async def test_a_start_hands_its_pin_the_reference_resolvers(world):
+    """#2179 T16, wired (the second read): the start route hands the campaign's pin its resolvers,
+    and a campaign, with no source context of its own, binds with no commit. Bug caught: the kwarg
+    dropped, so every required ``@current`` reference holds the campaign's tasks."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from squadops.memory.records import Reference
+    from tests.unit.memory.test_project_instructions import DESIGN, _instruction
+    from tests.unit.memory.test_reference_binding import _Resolver
+
+    store, records, resolver = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords(), _Resolver()
+    world.client.app.state.memory_store = store
+    world.client.app.state.memory_records = records
+    world.client.app.state.reference_resolvers = {"fake": resolver}
+    await records.create(
+        _instruction("mrec_c", DESIGN, references=(Reference("fake:doc:spec@current", True),))
+    )
+
+    world.start()
+    await asyncio.sleep(0)
+
+    pinned = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
+    assert [r.ref for r in pinned.instructions[0].references] == ["fake:doc:spec@r1"]
+    assert [(c.unit_kind, c.source_commit) for c in resolver.seen] == [("campaign", None)]
 
 
 async def test_the_supervisor_starts_a_campaign_and_its_row_names_the_supervisor(world):
@@ -265,7 +301,9 @@ async def test_a_launch_interrupted_before_its_mark_is_finished_by_the_next_drai
     creating a second cycle, or the found cycle left without its first run."""
     w = _World(_MarkFailsOnce())
     await w.campaigns.create_campaign(
-        campaign(CID, policy=policy(calibration_profile="framing", squad_profile="full-38")),
+        campaign(
+            CID, policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38")
+        ),
         actor="owner",
         actor_role="admin",
         reason="r",
@@ -339,7 +377,10 @@ async def test_a_restart_takes_up_the_campaign_cycle_it_died_inside(world, left,
         event_bus=MagicMock(),
         box_verdict=quiet_box,
     )
-    progress = SimpleNamespace(rehear_ended=AsyncMock(return_value=[]))
+    progress = SimpleNamespace(
+        rehear_ended=AsyncMock(return_value=[]),
+        rehear_calibration_records=AsyncMock(return_value=[]),
+    )
 
     await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
     await asyncio.sleep(0)
@@ -385,7 +426,10 @@ async def test_a_restart_starts_a_successor_left_queued(world, earlier, started)
         event_bus=MagicMock(),
         box_verdict=quiet_box,
     )
-    progress = SimpleNamespace(rehear_ended=AsyncMock(return_value=[]))
+    progress = SimpleNamespace(
+        rehear_ended=AsyncMock(return_value=[]),
+        rehear_calibration_records=AsyncMock(return_value=[]),
+    )
 
     await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
     await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
@@ -418,13 +462,16 @@ async def test_a_launch_the_preflight_refuses_escalates_and_the_owners_resume_re
     """#1971, SIP-0109 §24e item 5. Entered at the start route with the real launch service.
     Bugs caught: a refused launch left pending with nothing asking the owner, so an unattended
     campaign stalls; a resume that names an action, writing a second launch beside the pending
-    one; or a resume that does not retry the launch once what refused it is fixed."""
+    one; or a resume that does not retry the launch once what refused it is fixed. And #2621:
+    the start's or a resume's own answer read from before its drain, so it says `calibrating`
+    while that drain has refused the launch and escalated the campaign, or names the earlier
+    refusal instead of the one this resume met."""
     from squadops.campaigns.models import ControlOperation
 
     state = {"refuse": True}
     _refusing_preflight(monkeypatch, state)
 
-    world.start()
+    started = world.start()
     await world.launch.drain()  # a second drain while escalated asks nothing again
 
     log = await world.campaigns.control_log(CID)
@@ -436,9 +483,17 @@ async def test_a_launch_the_preflight_refuses_escalates_and_the_owners_resume_re
     assert intent.state is LaunchIntentState.PENDING
     assert await world.cycles.list_cycles("group_run") == []
 
+    assert started.json()["campaign"]["state"] == "escalated"
+    assert started.json()["entry"]["operation"] == "start"
+    assert started.json()["refused_launch"]["entry_id"] == refused.entry_id
+    assert "PREFLIGHT_REJECTED" in started.json()["refused_launch"]["reason"]
+
     with_action = world.client.post(
         f"/api/v1/campaigns/{CID}/resume",
         json={"reason": "r", "idempotency_key": "r-1", "action": "propose"},
+    )
+    too_soon = world.client.post(  # resumed before the model is pulled: refused again
+        f"/api/v1/campaigns/{CID}/resume", json={"reason": "early", "idempotency_key": "r-0"}
     )
     state["refuse"] = False  # the operator pulls the model
     resumed = world.client.post(
@@ -448,8 +503,12 @@ async def test_a_launch_the_preflight_refuses_escalates_and_the_owners_resume_re
 
     [cycle] = await world.cycles.list_cycles("group_run")
     assert with_action.status_code == 422
+    assert too_soon.json()["campaign"]["state"] == "escalated"
+    assert too_soon.json()["refused_launch"]["entry_id"] not in (None, refused.entry_id)
     assert resumed.status_code == 200
     assert resumed.json()["launched_cycles"] == [cycle.cycle_id]
+    assert resumed.json()["campaign"]["state"] == "calibrating"
+    assert resumed.json()["refused_launch"] is None
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.CALIBRATING
     [intent] = await world.campaigns.launch_intents(CID)
     assert (intent.state, intent.cycle_id) == (LaunchIntentState.LAUNCHED, cycle.cycle_id)
@@ -471,3 +530,94 @@ async def test_a_launch_that_fails_for_another_reason_stays_pending_unescalated(
     [intent] = await world.campaigns.launch_intents(CID)
     assert intent.state is LaunchIntentState.PENDING
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.CALIBRATING
+
+
+@pytest.mark.parametrize(
+    ("stack", "built_on"),
+    [("nextjs_ts", "nextjs_ts"), (None, "fullstack_fastapi_react")],
+    ids=["declared", "the-profiles-own"],
+)
+async def test_a_campaigns_stack_reaches_its_calibration_cycle_by_the_create_path(stack, built_on):
+    """§24bs (#2443), contract 2's wiring: entered at the start route, read back from the cycle
+    the create path made. Bug caught: a campaign that declares Next.js calibrating on FastAPI
+    because its launch carried a profile name and nothing about the stack, or one that declares
+    none built on anything but its calibration profile's own stack."""
+    w = _World()
+    await w.campaigns.create_campaign(
+        campaign(
+            CID,
+            policy=policy(
+                calibration_profile="validated-fullstack", squad_profile="full-38", stack=stack
+            ),
+        ),
+        actor="owner",
+        actor_role="admin",
+        reason="r",
+        idempotency_key="create",
+    )
+
+    resp = w.start()
+
+    [cycle_id] = resp.json()["launched_cycles"]
+    config = (await w.cycles.get_cycle(cycle_id)).resolved_config()
+    assert (config["build_profile"], config["development_profile"]) == (built_on, built_on)
+
+
+async def test_a_launch_for_a_project_that_is_not_ready_escalates_as_the_create_path_refuses_it():
+    """SIP-0112 contract 1 (#2408), at the Campaign launcher: a Project still REGISTERING is seen,
+    and refused as not ready. Bugs caught: the launcher bypassing the readiness check that the
+    create route makes, so a campaign launches a Cycle for a product whose source was never
+    reached; or the refusal surfacing as a fault the next drain repeats instead of an escalation."""
+    import dataclasses
+
+    from squadops.projects.models import ProjectLifecycleStatus
+
+    config = create_project_registry("config")
+    registering = dataclasses.replace(
+        await config.get_project("group_run"), lifecycle_status=ProjectLifecycleStatus.REGISTERING
+    )
+    registry = AsyncMock()
+    registry.get_project.return_value = registering
+    world = _World(project_registry=registry)
+    await world.campaigns.create_campaign(
+        campaign(
+            CID, policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38")
+        ),
+        actor="owner",
+        actor_role="admin",
+        reason="r",
+        idempotency_key="create",
+    )
+
+    world.start()
+    await world.launch.drain()
+
+    log = await world.campaigns.control_log(CID)
+    [refused] = [e for e in log if e.operation is ControlOperation.LAUNCH_REFUSED]
+    assert refused.binding["refusal"].startswith("PROJECT_NOT_READY: Project group_run is ")
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
+    assert await world.cycles.list_cycles("group_run") == []
+
+
+async def test_a_start_pins_its_campaign_under_the_launch_lock_so_no_drain_launches_first(world):
+    """SIP-0110 #2545, the second reader's finding 2. The start's row writes the calibration's
+    launch intent, and the pin came after it outside any lock, so a drain from the sweep, another
+    campaign or a route could launch the calibration before its campaign's snapshot existed. Every
+    drain launches under the launch service's lock (§5ad). Bug caught: the pin taken outside it.
+    Entered at the start route; a refused start pins nothing."""
+    at_pin: list[tuple[bool, list[str]]] = []
+
+    class _Store(InMemoryCrossCycleMemoryStore):
+        async def record_snapshot(self, snapshot):
+            intents = await world.campaigns.launch_intents(CID)
+            at_pin.append((world.launch.launches_held().locked(), [i.state.value for i in intents]))
+            return await super().record_snapshot(snapshot)
+
+    world.client.app.state.memory_store = _Store()
+
+    started = world.start()
+    await asyncio.sleep(0)
+    refused = world.start(key="start-2")  # not a draft any more: stale
+
+    assert started.status_code == 200 and refused.status_code == 409
+    assert at_pin == [(True, [LaunchIntentState.PENDING.value])]

@@ -11,7 +11,7 @@ include = ["squadops*", "adapters*"]  # Include both packages
 
 [project]
 name = "squadops"
-version = "2.3.1"
+version = "2.5.0"
 description = "SquadOps: a production-grade multi-agent orchestration framework."
 requires-python = ">=3.12"
 authors = [
@@ -62,7 +62,6 @@ api = [
 agent = [
   "aio-pika>=9.3.1",
   "redis>=5.0.0",
-  "lancedb>=0.8.2",
   "a2a-sdk[http-server]>=0.3.0",
   "uvicorn>=0.30.0",
   "langfuse>=2.0,<3.0",
@@ -113,6 +112,11 @@ extend-exclude = [
     # squad-ops's isort/lint config does not apply. The contract gate materializes and
     # runs them; that is their gate, not ruff (SIP-0098 phase 98.2).
     "tests/fixtures/reference_fills",
+    # The shared fixture's product (SIP-0112 §8.2.3, #2407) is an unfamiliar product with its
+    # own conventions, and the recorded outputs name its commits by hash: a fix or a reformat
+    # here would change the trees both lanes build against.
+    "tests/fixtures/shared_contract/product",
+    "tests/fixtures/shared_contract/first_commit",
 ]
 
 [tool.ruff.lint]

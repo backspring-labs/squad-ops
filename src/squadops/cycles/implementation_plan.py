@@ -53,6 +53,7 @@ from squadops.tasks.task_types import TaskType, authors_qa_suite
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_contract import VerificationContract
+    from squadops.projects.derived_profile import DerivedProfile
 
 # Known task types that may appear in plan tasks.
 _KNOWN_BUILD_TASK_TYPES = {
@@ -281,6 +282,10 @@ class ImplementationPlan:
                 )
 
             task_index = td["task_index"]
+            # #2488: refused here with a reason the author reads, never left to crash a set
+            # lookup below. A bool is an int to Python and never a task index.
+            if not isinstance(task_index, int) or isinstance(task_index, bool):
+                raise ValueError(f"Task {i}: task_index must be an integer, got {task_index!r}")
             if task_index in seen_indices:
                 raise ValueError(f"Duplicate task_index: {task_index}")
             seen_indices.add(task_index)
@@ -288,6 +293,11 @@ class ImplementationPlan:
             depends_on = td.get("depends_on", [])
             if not isinstance(depends_on, list):
                 raise ValueError(f"Task {task_index}: depends_on must be a list")
+            for dep in depends_on:
+                if not isinstance(dep, int) or isinstance(dep, bool):
+                    raise ValueError(
+                        f"Task {task_index}: depends_on lists task_index integers, got {dep!r}"
+                    )
 
             raw_criteria = td.get("acceptance_criteria", [])
             if not isinstance(raw_criteria, list):
@@ -957,6 +967,24 @@ class ImplementationPlan:
             for artifact in task.expected_artifacts
             if not is_qa_test_path_for_stack(artifact, stack)
         ]
+
+    def validate_blocking_gaps(self, profile: DerivedProfile | None) -> list[str]:
+        """SIP-0112 H.4 (H.8): no task's expected artifact lies where a blocking gap of the
+        Project's derived profile stops the work. No check could run there, so nothing a task
+        wrote there could be verified. ``None``, a Project with no profile, checks nothing."""
+        if profile is None:
+            return []
+        paths = [a for task in self.tasks for a in task.expected_artifacts]
+        errors = []
+        for gap in profile.blocking_work(paths):
+            met = [a for a in paths if gap.covers(a)] or paths
+            subject = f" ({gap.subject})" if gap.subject else ""
+            errors.append(
+                f"blocking_gap: {', '.join(met)} lie where {gap.id}{subject} stops the work "
+                f"({', '.join(gap.paths)}): {gap.reason}. Plan the change elsewhere, or close the "
+                f"gap first: {gap.closes_by}."
+            )
+        return errors
 
     def validate_increment_footprint(self, footprint: tuple[str, ...] | None) -> list[str]:
         """SIP-0109 §7.3 (#1705): an increment's plan covers only its approved change.

@@ -153,6 +153,9 @@ _CONSTRUCTION_EXCEPTIONS: dict[str, str] = {
     "ChatRepository": _SUBSTRATE,
     "ChatSessionCache": _SUBSTRATE + " (Redis)",
     "ConfigSquadProfile": _READER,
+    # SIP-0112 FR-03 (#2408): the cutover seeds the writable registry from config/projects.yaml.
+    "ConfigProjectRegistry": "bootstrap/config reader: reads config/projects.yaml to seed the "
+    "writable registry; no vendor behind it",
     "ChatAgentExecutor": _COMPOSER + " (the A2A executor over the agent, SIP-0085)",
     "AgentCardConfig": "a config dataclass, not an adapter — the CamelCase technique over-matches it",
     "LoggingRuntimeEventPublisher": _NOOP + " (logging sink)",
@@ -221,12 +224,12 @@ _EXPECTED_FACTORY_CALLS: dict[str, dict[str, int]] = {
         "create_llm_observability_provider": 1,
         "create_flow_executor": 1,
         "create_auth_provider": 1,
+        "create_sandbox_client": 1,  # #2451
     },
     "squadops.agents.entrypoint": {
         "create_llm_provider": 1,
         "create_queue_adapter": 1,
         "create_filesystem_provider": 1,
-        "create_memory_provider": 1,
         "create_prompt_repository": 1,
         "create_prompt_asset_source": 2,
         "create_telemetry_provider": 1,
@@ -272,13 +275,23 @@ _SELECTORS = (
     ("AuthConfig", "provider", "SQUADOPS__AUTH__PROVIDER"),
     ("CyclesConfig", "registry_provider", "SQUADOPS__CYCLES__REGISTRY_PROVIDER"),
     ("CyclesConfig", "squad_profile_provider", "SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER"),
+    ("CyclesConfig", "project_registry_provider", "SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER"),
     ("PromptsConfig", "asset_source_provider", "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER"),
     ("TelemetryConfig", "backend", "SQUADOPS__TELEMETRY__BACKEND"),
     ("SandboxConfig", "provider", "SQUADOPS__SANDBOX__PROVIDER"),
 )
 
+#: Selectors one root reads, in a section no other loader carries, with the compose service that
+#: names them (#2451). The runtime API's sandbox client carries the sandbox service's token, so
+#: the seven agents never load it: the section is optional in ``AppConfig`` and required where it
+#: is read, its selector without a default and the absent section refused by the root's factory.
+_ONE_ROOT_SELECTORS = (
+    ("SandboxClientConfig", "provider", "SQUADOPS__SANDBOX_CLIENT__PROVIDER", "runtime-api"),
+)
+_ALL_SELECTORS = _SELECTORS + tuple(row[:3] for row in _ONE_ROOT_SELECTORS)
 
-@pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
+
+@pytest.mark.parametrize(("model", "field", "env_key"), _ALL_SELECTORS)
 def test_every_selector_is_required_not_defaulted(model, field, env_key):
     from squadops.config import schema
 
@@ -295,7 +308,7 @@ def _valid_value(annotation) -> str:
 
 
 @pytest.mark.parametrize("bad", ["", "typo"], ids=["blank", "misspelled"])
-@pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
+@pytest.mark.parametrize(("model", "field", "env_key"), _ALL_SELECTORS)
 def test_a_blank_or_misspelled_selector_is_refused_at_config_load(model, field, env_key, bad):
     """Bug caught: an unset compose variable interpolated to "" and accepted as a provider name,
     or a misspelled one (``langfuze``) that loads and then fails somewhere a broad ``except``
@@ -316,7 +329,7 @@ def test_a_blank_or_misspelled_selector_is_refused_at_config_load(model, field, 
 
 #: Every selector carries its vocabulary in the schema (R2: "the vocabulary lives in the config
 #: schema as a ``Literal``"); ``llm.provider`` joined in #1568.
-@pytest.mark.parametrize(("model", "field", "env_key"), _SELECTORS)
+@pytest.mark.parametrize(("model", "field", "env_key"), _ALL_SELECTORS)
 def test_each_selector_names_its_vocabulary_in_the_schema(model, field, env_key):
     """Bug caught: a selector reverted to ``str``, so a misspelled provider loads and reaches a
     root instead of failing at config load."""
@@ -366,6 +379,29 @@ def test_every_compose_service_that_loads_config_names_every_selector_without_a_
     assert problems == []
 
 
+def test_a_one_root_section_is_named_by_its_own_service_alone():
+    """#2451. Bug caught: the runtime API's sandbox client dropped from its compose service (the
+    runtime API then refuses to start, found only at deploy) or given a ``:-`` fallback; or the
+    section named on another service, which then carries the sandbox service's token for
+    nothing."""
+    problems = []
+    for _, _, env_key, owner in _ONE_ROOT_SELECTORS:
+        section = env_key.rsplit("__", 1)[0] + "__"
+        for name, service in _compose_services().items():
+            env = service.get("environment") or {}
+            if not isinstance(env, dict):
+                continue
+            if name == owner:
+                if env_key not in env:
+                    problems.append(f"{name}: no {env_key}")
+                elif ":-" in str(env[env_key]):
+                    problems.append(f"{name}: {env_key} falls back to a default")
+            else:
+                problems += [f"{name}: carries {key}" for key in env if key.startswith(section)]
+
+    assert problems == []
+
+
 #: Assertion 5 — every factory selector PARAMETER is required, not only the config it is read
 #: from (#1449). One row per selector as each factory module converts; #1449's table is the
 #: full list, and a module leaves it when its PR lands here.
@@ -387,7 +423,6 @@ _FACTORY_SELECTORS = (
     ("adapters.cycles.factory", "create_flow_executor", "provider"),
     ("adapters.embeddings.factory", "create_embeddings_provider", "provider"),
     ("adapters.events.factory", "create_cycle_event_bus", "provider"),
-    ("adapters.memory.factory", "create_memory_provider", "provider"),
     ("adapters.prompts.factory", "create_prompt_repository", "provider"),
     ("adapters.prompts.factory", "create_prompt_asset_source", "provider"),
     # #1568: the auth middleware's provider, a constructor keyword the runtime root names.

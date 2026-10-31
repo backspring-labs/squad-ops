@@ -28,6 +28,7 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.memory.recall import RecallQuery, UnitKind
+from squadops.memory.records import PinnedInstruction, Rebinding
 
 #: A stack-independent lesson says so explicitly (§0.8 step 3): unknown never means everywhere.
 ANY_STACK = "*"
@@ -37,6 +38,9 @@ class RecallDisposition(StrEnum):
     """The outcomes recall keeps apart (§0.8)."""
 
     DISABLED = "memory_disabled"
+    #: The unit declared ``memory_context: none`` (Appendix A §3.7): no lesson and no project
+    #: instruction, its own experiment, never a lesson-effect reading.
+    CONTEXT_NONE = "memory_context_none"
     NONE_ELIGIBLE = "none_eligible"
     SUPPLIED = "supplied"
     OMITTED_BY_BUDGET = "omitted_by_budget"
@@ -236,7 +240,9 @@ class SnapshotEntry:
 
 @dataclass(frozen=True)
 class Snapshot:
-    """What one unit pinned at admission (§0.7). Immutable while the unit runs."""
+    """What one unit pinned at admission (§0.7), and its project instructions as bound now. Nothing
+    changes while the unit runs, except by a recorded re-binding (Appendix A §3.7), which replaces an
+    instruction's revision in ``instructions`` and keeps the replaced one in ``rebindings``."""
 
     snapshot_id: str
     unit_kind: UnitKind
@@ -245,6 +251,23 @@ class Snapshot:
     disabled: bool
     entries: tuple[SnapshotEntry, ...] = ()
     policy: RecallPolicy = field(default_factory=RecallPolicy)
+    #: The project instructions in force at admission (Appendix A §3.7; #2179), apart from the
+    #: lessons. A unit that declares memory disabled pins no lesson and still pins these: they are
+    #: requirements, not memory's guidance, so its arms differ only in the lessons.
+    instructions: tuple[PinnedInstruction, ...] = ()
+    #: Why the pin couldn't read the project's instructions, or ``None`` when it read them. The
+    #: lessons still pin; a pin that couldn't read them can't say none were in force (§3.6).
+    instructions_unread: str | None = None
+    #: The unit declared ``memory_context: none`` (§3.7): it pins no lesson and no project
+    #: instruction, and its exposures say so apart from a memory-disabled unit's.
+    context_withheld: bool = False
+    #: Each re-binding of the running unit, in order (§3.7; #2179): ``instructions`` is what the unit
+    #: binds now, and these say what it bound before and who changed it.
+    rebindings: tuple[Rebinding, ...] = ()
+    #: #2545: one more for every write after the pin, a re-binding's or the pin's settle, and the
+    #: store's compare-and-swap key. A writer that read the snapshot before another's write can't
+    #: land over it, which a re-binding count can't promise: the settle changes none.
+    version: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """The whole pin, self-contained: a stored snapshot never depends on rows read later."""
@@ -263,6 +286,21 @@ class Snapshot:
                 "max_lessons": self.policy.max_lessons,
                 "token_budget": self.policy.token_budget,
             },
+            # Only when one is pinned, so a snapshot from before #2179 is stored as it was.
+            **(
+                {"instructions": [i.to_dict() for i in self.instructions]}
+                if self.instructions
+                else {}
+            ),
+            **(
+                {"instructions_unread": self.instructions_unread}
+                if self.instructions_unread is not None
+                else {}
+            ),
+            # Only when declared, so every other snapshot is stored as it was.
+            **({"memory_context": "none"} if self.context_withheld else {}),
+            **({"rebindings": [r.to_dict() for r in self.rebindings]} if self.rebindings else {}),
+            **({"version": self.version} if self.version else {}),
         }
 
     @classmethod
@@ -280,6 +318,13 @@ class Snapshot:
                 for e in data.get("entries") or ()
             ),
             policy=RecallPolicy(**dict(data.get("policy") or {})),
+            instructions=tuple(
+                PinnedInstruction.from_dict(i) for i in data.get("instructions") or ()
+            ),
+            instructions_unread=data.get("instructions_unread"),
+            context_withheld=data.get("memory_context") == "none",
+            rebindings=tuple(Rebinding.from_dict(r) for r in data.get("rebindings") or ()),
+            version=int(data.get("version") or 0),
         )
 
 
@@ -292,10 +337,14 @@ def pin(
     revisions: Sequence[PatternRevision],
     approvals: Sequence[Approval],
     policy: RecallPolicy | None = None,
+    instructions: Sequence[PinnedInstruction] = (),
+    instructions_unread: str | None = None,
+    context_withheld: bool = False,
 ) -> Snapshot:
     """The snapshot a unit pins: each approval in force at ``pinned_at`` (given before it, and not
-    revoked by then) with the revision it binds. A unit that declares memory disabled pins
-    nothing (§0.7)."""
+    revoked by then) with the revision it binds, and the project instructions in force then. A
+    unit that declares memory disabled pins no lesson (§0.7), and still pins the instructions
+    (Appendix A §3.7, #2179). A unit that declares ``memory_context: none`` pins neither."""
     policy = policy or RecallPolicy()
     snapshot_id = (
         "snp_"
@@ -303,8 +352,15 @@ def pin(
             f"{unit_kind.value}|{unit_id}|{pinned_at.isoformat()}".encode()
         ).hexdigest()[:16]
     )
+    if context_withheld:
+        return Snapshot(
+            snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy, context_withheld=True
+        )
     if disabled:
-        return Snapshot(snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy)
+        return Snapshot(
+            snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy, tuple(instructions),
+            instructions_unread,
+        )  # fmt: skip
     by_id = {r.revision_id: r for r in revisions}
     entries = []
     for approval in approvals:
@@ -316,7 +372,28 @@ def pin(
         if not approval.applicability.within(revision.applicability):
             continue  # an approval never widens what its revision states
         entries.append(SnapshotEntry(revision, approval))
-    return Snapshot(snapshot_id, unit_kind, unit_id, pinned_at, False, tuple(entries), policy)
+    return Snapshot(
+        snapshot_id, unit_kind, unit_id, pinned_at, False, tuple(entries), policy,
+        tuple(instructions), instructions_unread,
+    )  # fmt: skip
+
+
+def _select(
+    ordered: Sequence[SnapshotEntry], max_lessons: int, budget: int
+) -> tuple[list[SnapshotEntry], list[SnapshotEntry]]:
+    """One selection pass, in order: each lesson supplied whole while the count and the budget
+    allow, the rest left out whole."""
+    supplied: list[SnapshotEntry] = []
+    left_out: list[SnapshotEntry] = []
+    spent = 0
+    for entry in ordered:
+        cost = _tokens(entry.revision.text)
+        if len(supplied) >= max_lessons or spent + cost > budget:
+            left_out.append(entry)
+            continue
+        supplied.append(entry)
+        spent += cost
+    return supplied, left_out
 
 
 @dataclass(frozen=True)
@@ -326,11 +403,16 @@ class Recalled:
     snapshot_id: str | None
     disposition: RecallDisposition
     supplied: tuple[SnapshotEntry, ...] = ()
-    #: Each eligible lesson left out, and why (``budget`` or ``superseded``).
+    #: Each eligible lesson left out, and why: ``budget`` (the snapshot's own budget would omit it),
+    #: ``remaining`` (only what the binding sections left did, §3.6) or ``superseded``.
     omitted: tuple[tuple[str, str], ...] = ()
+    #: The effective lesson budget and what it was the smaller of, when the binding sections bounded it
+    #: (``{"effective", "snapshot", "remaining"}``); ``None`` when the snapshot's budget stood alone.
+    lesson_budget: Mapping[str, int] | None = None
 
     def exposure(self) -> dict[str, Any]:
-        """What the authoring envelope's ``memory`` block records."""
+        """What the authoring envelope's ``memory`` block records. The lesson budget only when the
+        binding sections bounded it, so an envelope with no instruction is what it was."""
         return {
             "snapshot": self.snapshot_id,
             "disposition": self.disposition.value,
@@ -343,6 +425,11 @@ class Recalled:
                 for e in self.supplied
             ],
             "omitted": [{"revision_id": r, "reason": why} for r, why in self.omitted],
+            **(
+                {"lesson_budget": dict(self.lesson_budget)}
+                if self.lesson_budget is not None
+                else {}
+            ),
         }
 
 
@@ -357,6 +444,8 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
     which marks the measurement invalid, never memory off or nothing eligible."""
     if snapshot is None:
         return Recalled(None, RecallDisposition.FAILED)
+    if snapshot.context_withheld:
+        return Recalled(snapshot.snapshot_id, RecallDisposition.CONTEXT_NONE)
     if snapshot.disabled:
         return Recalled(snapshot.snapshot_id, RecallDisposition.DISABLED)
     eligible = [
@@ -377,17 +466,30 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
             omitted.append((held.revision.revision_id, "superseded"))
         latest[entry.revision.pattern_id] = entry
     ordered = sorted(latest.values(), key=lambda e: (e.approval.approved_at, e.revision.pattern_id))
-    supplied: list[SnapshotEntry] = []
-    spent = 0
-    for entry in ordered:
-        cost = _tokens(entry.revision.text)
-        if (
-            len(supplied) >= snapshot.policy.max_lessons
-            or spent + cost > snapshot.policy.token_budget
-        ):
-            omitted.append((entry.revision.revision_id, "budget"))
-            continue
-        supplied.append(entry)
-        spent += cost
+    # §3.6 (T17): one selection pass under the smaller of the snapshot's budget and what the binding
+    # sections left; nothing is trimmed after. Each omission is named against today's recall (the
+    # snapshot's budget alone): ``budget`` when today's would omit it too, ``remaining`` when only the
+    # binding sections' leftover did, so the instructions are blamed only for what they displaced.
+    available = query.available_lesson_tokens
+    policy = snapshot.policy
+    supplied, left_out = _select(ordered, policy.max_lessons, policy.token_budget)
+    todays = {e.revision.revision_id for e in left_out}
+    if available is not None:
+        supplied, left_out = _select(
+            ordered, policy.max_lessons, min(policy.token_budget, available)
+        )
+    omitted += [
+        (e.revision.revision_id, "budget" if e.revision.revision_id in todays else "remaining")
+        for e in left_out
+    ]
     disposition = RecallDisposition.SUPPLIED if supplied else RecallDisposition.OMITTED_BY_BUDGET
-    return Recalled(snapshot.snapshot_id, disposition, tuple(supplied), tuple(omitted))
+    budget = (
+        None
+        if available is None
+        else {
+            "effective": max(0, min(snapshot.policy.token_budget, available)),
+            "snapshot": snapshot.policy.token_budget,
+            "remaining": available,
+        }
+    )
+    return Recalled(snapshot.snapshot_id, disposition, tuple(supplied), tuple(omitted), budget)

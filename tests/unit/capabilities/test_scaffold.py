@@ -1622,9 +1622,29 @@ class TestClientSurfaceLines:
                 (replays / "1-6-6-react-roll-6-interface_manifest.yaml").read_text(encoding="utf-8")
             )
         )
-        # Next.js suites call route handlers directly; the stack declares no client surface.
-        assert client_surface_instructions(dataclasses.replace(manifest, stack="nextjs_ts")) == []
         assert client_surface_instructions(dataclasses.replace(manifest, stack="unknown")) == []
+
+    def test_the_nextjs_stack_shows_its_page_suites_the_client_they_mock(self):
+        """#2534's page suites mock or stub beneath the frozen ``lib/api.ts``. Bug caught: the
+        2.4 Next.js shakeout's round 6, whose suite mocked it with React's prefix-less paths
+        (``/runs``), so every page call missed the mock; or a declaration drifting from the
+        client's own bytes (its signature, its unprefixed fetch, the envelope key it reads)."""
+        import re
+
+        from squadops.stacks.scaffold import client_surface_for, client_surface_instructions
+        from squadops.stacks.stack_nextjs_ts import _API_CLIENT
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        (line,) = client_surface_instructions(manifest_for_stack("nextjs_ts"))
+        surface = client_surface_for("nextjs_ts")
+
+        assert "no prefix" in line and "`/api/runs`" in line and "`@/lib/api`" in line
+        assert "export async function api<T>(path: string, init?: RequestInit)" in _API_CLIENT
+        assert "fetch(path," in _API_CLIENT and "body?.error?.code" in _API_CLIENT
+        assert (surface.path_prefix, surface.error_envelope_key) == ("", "error")
+        assert [bool(re.fullmatch(surface.module_specifier, s)) for s in
+                ("@/lib/api", "../lib/api", "../../lib/api.ts", "./store")] == [
+                    True, True, True, False]  # fmt: skip
 
 
 def test_the_qa_namespace_is_exactly_the_suites_each_stack_seeds():

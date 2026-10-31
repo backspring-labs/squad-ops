@@ -1,27 +1,5 @@
-"""Memory domain layer.
+"""Memory domain layer: Cross-Cycle Memory's records, lessons, recall and context (SIP-0110).
 
-Provides domain models for memory operations:
-- MemoryEntry: Entry to store in memory
-- MemoryQuery: Query specification for search
-- MemoryResult: Search result with score
-
-Part of SIP-0.8.7 Infrastructure Ports Migration.
+Each module is imported by its own path. SIP-042's per-agent store and its models
+(``MemoryEntry``, ``MemoryQuery``, ``MemoryResult``) are retired (SIP-0110 §A.4.3, #2184).
 """
-
-from squadops.memory.exceptions import (
-    MemoryEmbeddingError,
-    MemoryError,
-    MemoryNotFoundError,
-    MemoryStoreError,
-)
-from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult
-
-__all__ = [
-    "MemoryEmbeddingError",
-    "MemoryEntry",
-    "MemoryError",
-    "MemoryNotFoundError",
-    "MemoryQuery",
-    "MemoryResult",
-    "MemoryStoreError",
-]

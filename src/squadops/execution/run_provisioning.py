@@ -21,15 +21,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 from squadops.campaigns.increment_tree import approved_change_request, starting_tree_refs
-from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
+from squadops.execution.binding_holds import checked_or_held
+from squadops.execution.blocked_paths import with_blocked_paths
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.product_proposal import with_product_proposal
+from squadops.execution.proposal_evidence import with_proposal_evidence
 from squadops.stacks.scaffold import frozen_paths
 
 
@@ -65,16 +67,22 @@ class RunProvisioning:
     #: bodies below already used — the whole of its dependency on the executor.
     BORROWED = (
         "_artifact_vault",
+        "_binding_holds",
         "_cycle_event_bus",
         "_cycle_registry",
+        "_derived_profile_for",
         "_failure_recall",
         "_load_contract_for_run",
         "_load_interface_manifest_for_run",
         "_load_plan_for_run",
         "_prepare_cycle_for_run",
+        "_project_registry",
+        "_proposal_evidence",
+        "_seed_checkout_artifacts",
         "_seed_skeleton_artifacts",
         "_seed_verification_scaffold_artifacts",
         "_seeded_manifest_for_authoring",
+        "_source_repository",
         "_squad_profile",
     )
 
@@ -181,11 +189,34 @@ class RunProvisioning:
             interface_manifest=interface_manifest,
             change_request=change_request,
         )
+        # SIP-0113 §4.5 (§10t ruling 1): a campaign's proposal task is shown its accepted tree's
+        # goals and readings, on its own inputs. No other task is, and the cycle's config never
+        # holds them.
+        plan = await with_proposal_evidence(self._proposal_evidence, plan, cycle=cycle)
+        # SIP-0109 §24bv point 5: a repository-backed increment's proposal is given its head, its
+        # derived profile, the previous verification and its requirements, read at its pin.
+        plan = await with_product_proposal(
+            plan,
+            cycle=cycle,
+            read_profile=self._derived_profile_for,
+            repository=self._source_repository,
+            vault=self._artifact_vault,
+            projects=self._project_registry,
+        )
+        # SIP-0112 H.8: a source-backed plan's authors are shown where a blocking gap stops the
+        # work, before either plan gate refuses a plan that goes there.
+        plan = await with_blocked_paths(self._derived_profile_for, plan, cycle=cycle)
         # SIP-0110 §0.9: each plan-writing and build-authoring task asks its unit's pinned snapshot
-        # for the lessons approved for it, and every answer is disclosed. A task handed none keeps
-        # the inputs it had before memory existed, so its prompt is unchanged.
-        plan = await supply_for_cycle(
-            plan, recall=self._failure_recall, cycle=cycle, run_id=run.run_id, now=datetime.now(UTC)
+        # for its lessons and instructions at its own dispatch, where its prompt can be measured
+        # (#2681). Before the first, the plan is checked: an instruction that can't be read, bound
+        # or fitted even now holds its task (§3.6), and the run with it. It is paused, says which and
+        # why, and starts when re-supply completes the binding. Nothing else is disclosed here.
+        plan = await checked_or_held(
+            self._binding_holds.supplied,
+            plan,
+            recall=self._failure_recall,
+            cycle=cycle,
+            run_id=run.run_id,
         )
         state.plan = plan
         participating_agent_ids = {e.agent_id for e in plan}
@@ -254,4 +285,8 @@ class RunProvisioning:
                         self._artifact_vault, cycle, frozen_paths(interface_manifest)
                     )
                 )
+        # SIP-0112 E.4.3: a source-backed run starts from its product's tree at the pinned
+        # commit, as an increment starts from its accepted tree. Seed-time only (#881).
+        if cycle is not None and cycle.source_context is not None and existing_checkpoint is None:
+            seed_artifact_refs.extend(await self._seed_checkout_artifacts(cycle, run_id))
         return seed_artifact_refs, interface_manifest

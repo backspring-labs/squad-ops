@@ -30,6 +30,10 @@ from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.capabilities.handlers.task_instructions import (
+    project_instructions_section,
+    task_instructions_section,
+)
 from squadops.cycles.authoring_failure import AuthoringOutcome, assess_authoring_outcome
 from squadops.cycles.contract_derivation import SEEDED_MANIFEST_FILENAME
 from squadops.cycles.manifest_authoring import (
@@ -88,6 +92,13 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
         rejection_section = await self._revision_context_section(renderer, inputs)
         if rejection_section:
             variables["rejection_context_section"] = rejection_section
+        # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
+        instructions = await task_instructions_section(renderer, inputs)
+        if instructions:
+            variables["task_instructions_section"] = instructions
+        project = await project_instructions_section(renderer, inputs)
+        if project:
+            variables["project_instructions_section"] = project
         # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:

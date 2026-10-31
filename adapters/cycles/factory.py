@@ -16,25 +16,40 @@ from squadops.ports.cycles.squad_profile import SquadProfilePort
 
 if TYPE_CHECKING:
     from squadops.campaigns.launcher import BoxVerdict
+    from squadops.campaigns.product_routes import RouteRenderer
     from squadops.campaigns.progress import CampaignProgress
+    from squadops.execution.binding_holds import BindingFill
     from squadops.execution.reply_router import ReplyRouter
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
+    from squadops.ports.outcomes import ProposalEvidencePort
+    from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
+    from squadops.ports.sandbox import ExecutionSandboxPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
 
 def create_project_registry(provider: str, **kwargs) -> ProjectRegistryPort:
-    """Create a ProjectRegistryPort adapter."""
+    """Create a ProjectRegistryPort adapter: the config file before SIP-0112's cutover, the
+    writable registry after it (FR-03, #2408). One selector, ``cycles.project_registry_provider``,
+    chooses it for every reader."""
     if provider == "config":
         from adapters.cycles.config_project_registry import ConfigProjectRegistry
 
         return ConfigProjectRegistry(**kwargs)
+    elif provider in ("postgres", "postgres_read_only"):
+        pool = kwargs.get("pool")
+        if pool is None:
+            raise ValueError(f"pool is required for {provider} project registry provider")
+        from adapters.cycles.postgres_project_registry import PostgresProjectRegistry
+
+        # R3: the read-only value is the rollback's write gate, every Project still readable.
+        return PostgresProjectRegistry(pool=pool, writable=provider == "postgres")
     raise ValueError(f"Unknown project registry provider: {provider}")
 
 
@@ -130,7 +145,9 @@ def create_flow_executor(
     campaign_progress: CampaignProgress | None,
     box_verdict: BoxVerdict | None,
     failure_recall: FailurePatternRecallPort,
+    proposal_evidence: ProposalEvidencePort,
     task_timeout: float,
+    binding_fill: BindingFill | None,
     llm_observability: LLMObservabilityPort | None = None,
     workflow_tracker: WorkflowTrackerPort | None = None,
     prefect_api_url: str | None = None,
@@ -140,6 +157,11 @@ def create_flow_executor(
     activity_port: RuntimeActivityPort | None = None,
     coordinator: RuntimeCoordinator | None = None,
     focus_lease_port: FocusLeasePort | None = None,
+    source_repository: SourceRepositoryPort | None = None,
+    sandbox: ExecutionSandboxPort | None = None,
+    # SIP-0109 §24co: required, as ``binding_fill`` is, so the root says what renders a product's
+    # routes. ``None``: nothing, and each route a profile names reads blocked.
+    route_renderer: RouteRenderer | None,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -180,7 +202,9 @@ def create_flow_executor(
         campaign_progress=campaign_progress,
         box_verdict=box_verdict,
         failure_recall=failure_recall,
+        proposal_evidence=proposal_evidence,
         task_timeout=task_timeout,
+        binding_fill=binding_fill,
         llm_observability=llm_observability,
         workflow_tracker=workflow_tracker,
         event_bus=event_bus,
@@ -189,4 +213,7 @@ def create_flow_executor(
         activity_port=activity_port,
         coordinator=coordinator,
         focus_lease_port=focus_lease_port,
+        source_repository=source_repository,
+        sandbox=sandbox,
+        route_renderer=route_renderer,
     )

@@ -17,16 +17,20 @@ becomes the caller.
 from __future__ import annotations
 
 import hmac
+from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from squadops.campaigns.seed_plan import SeedPlan
 from squadops.sandbox.evidence import result_to_dict
 from squadops.sandbox.models import (
     OperationName,
     RevisionOrigin,
     WorkspaceRevision,
+    decode_binary,
+    wire_files,
 )
 from squadops.sandbox.service import SandboxService
 from squadops.sandbox.workspace import (
@@ -35,6 +39,7 @@ from squadops.sandbox.workspace import (
     WorkspaceEscapeError,
     WorkspaceStoreError,
 )
+from squadops.scenarios.runner import DeclaredStart, RouteRequest
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -46,8 +51,41 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
 
 class SeedRequest(BaseModel):
     files: dict[str, str]
+    #: X-2 (#2420): each file that isn't UTF-8 text, base64-encoded. A text-only seed
+    #: sends none, so its request is what it was before bytes were carried.
+    binary_files: dict[str, str] = Field(default_factory=dict)
+    #: X-2 (#2420): the files to seed with their executable bit set.
+    executable: list[str] = Field(default_factory=list)
     origin: str = RevisionOrigin.SCAFFOLD_SEED
     created_at: str | None = None
+
+
+class EvaluationRequest(BaseModel):
+    """SIP-0113 §4.1 (#2414): an evaluated tree, by its FileTree.identity, and the scenarios to
+    run against it. The steps and the evaluation secrets are held for the call, never written."""
+
+    tree: dict[str, str]
+    binary_tree: dict[str, str] = Field(default_factory=dict)
+    executable: list[str] = Field(default_factory=list)
+    tree_identity: str
+    stack: str | None = None
+    declared: dict | None = None
+    scenarios: list[dict]
+    environment: dict[str, str] = Field(default_factory=dict)
+    #: The declared pages Lighthouse and axe measure (SIP-0113 §4.2, #2416). Required: a client
+    #: that names none says so with ``[]``, never by leaving it out.
+    pages: list[str]
+    #: §10j, §10n (#2562): the seeded reading's plan (``campaigns.seed_plan``), or none.
+    seed: dict | None = None
+    #: SIP-0109 §24co: client routes the browser reads on the started tree, each a
+    #: ``RouteRequest``. A client asking for none sends ``[]`` or leaves it out.
+    routes: list[dict] = Field(default_factory=list)
+    #: SIP-0113 §10l: the scaffold blueprint a declared product was made from, whose rule set
+    #: lints its tree; ``None`` for any other product, whose lint is ``not_a_scaffold_stack``.
+    lint_stack: str | None = None
+    #: SIP-0113 §10l (the second review of #2788, P3-5): that blueprint's lint alone, of a product
+    #: that can't be started. Nothing is copied or started.
+    lint_only: bool = False
 
 
 class OperationRequest(BaseModel):
@@ -89,11 +127,34 @@ async def _op_probe(service: SandboxService, revision: WorkspaceRevision, params
 
 
 async def _op_patch(service: SandboxService, revision: WorkspaceRevision, params: dict):
-    return await service.apply_workspace_patch(
-        base=revision,
-        files=params["files"],
-        origin=params.get("origin", RevisionOrigin.AGENT_PATCH),
-    )
+    try:
+        binary = decode_binary(params.get("binary_files", {}), alongside=params["files"])
+        return await service.apply_workspace_patch(
+            base=revision,
+            files={**params["files"], **binary},
+            origin=params.get("origin", RevisionOrigin.AGENT_PATCH),
+        )
+    except ValueError as e:
+        # The caller's error, not the service's: an unknown origin, a patch that changes
+        # nothing (a revision can't be its own parent), or bytes that don't decode. Each
+        # answered 500 before, where a seed's refusal answers 400.
+        raise _error(400, "INVALID_PATCH", str(e)) from e
+
+
+async def _op_declared_command(service: SandboxService, revision: WorkspaceRevision, params: dict):
+    try:
+        return await service.run_declared_command(
+            revision=revision,
+            command=tuple(params["command"]),
+            working_dir=params.get("working_dir", "."),
+            setup=tuple(tuple(step) for step in params.get("setup", ())),
+            timeout_seconds=params.get("timeout_seconds"),
+            findings_reader=params.get("findings_reader"),
+        )
+    except (TypeError, ValueError) as e:
+        # A declaration the sandbox can't run as given is the caller's error: an empty argv,
+        # a non-string argument, a non-positive timeout or a findings reader it doesn't have.
+        raise _error(400, "INVALID_COMMAND", str(e)) from e
 
 
 # The typed-operations table (§7 item 2): membership here IS the API surface.
@@ -105,19 +166,86 @@ _OPERATIONS = {
     OperationName.STOP_APPLICATION: _op_stop,
     OperationName.PROBE_HTTP_ENDPOINT: _op_probe,
     OperationName.APPLY_WORKSPACE_PATCH: _op_patch,
+    # SIP-0102 §11d: the one operation whose argv the caller supplies, from a product's own
+    # declaration (X-3a, #2421), run in a disposable copy, never the live tree.
+    OperationName.RUN_DECLARED_COMMAND: _op_declared_command,
 }
 
 
 async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest) -> dict:
     try:
-        revision = service.seed_workspace(
-            cycle_id, body.files, origin=body.origin, created_at=body.created_at
+        binary = decode_binary(body.binary_files, alongside=body.files)
+        revision = await service.seed_workspace(
+            cycle_id,
+            {**body.files, **binary},
+            origin=body.origin,
+            executable=body.executable,
+            created_at=body.created_at,
         )
     except AlreadySeededError as e:
         raise _error(409, "ALREADY_SEEDED", str(e)) from e
     except (WorkspaceEscapeError, WorkspaceStoreError, ValueError) as e:
         raise _error(400, "INVALID_SEED", str(e)) from e
     return revision.to_dict()
+
+
+async def _handle_release(service: SandboxService, cycle_id: str) -> Response:
+    """#2473: the consumer releases what it seeded once it has recorded what it needs."""
+    try:
+        await service.release_workspace(cycle_id)
+    except WorkspaceStoreError as e:
+        raise _error(400, "INVALID_WORKSPACE", str(e)) from e
+    return Response(status_code=204)
+
+
+async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -> dict:
+    """SIP-0113 §4.1 (#2414): one evaluated tree, started and evaluated by the scenario runner."""
+    runner = service.scenario_runner
+    if runner is None:
+        raise _error(503, "RUNNER_UNAVAILABLE", "this sandbox runs no scenario runner")
+    # Each is passed only when asked for, so a runner that takes none of them is called as before.
+    optional: dict[str, Any] = {}
+    if body.seed:
+        optional["seed"] = SeedPlan.from_dict(body.seed)
+    if body.routes:
+        optional["routes"] = [RouteRequest.from_dict(r) for r in body.routes]
+    if body.lint_stack:
+        optional["lint_stack"] = body.lint_stack
+    if body.lint_only:
+        optional["lint_only"] = True
+    try:
+        binary = decode_binary(body.binary_tree, alongside=body.tree)
+        result = await runner.evaluate_tree(
+            tree={**body.tree, **binary},
+            tree_identity=body.tree_identity,
+            executable=body.executable,
+            stack=body.stack,
+            declared=DeclaredStart.from_dict(body.declared) if body.declared else None,
+            scenarios=body.scenarios,
+            environment=body.environment,
+            pages=body.pages,
+            **optional,
+        )
+    except (KeyError, TypeError, ValueError) as e:
+        raise _error(400, "INVALID_EVALUATION", str(e)) from e
+    return result.as_dict()
+
+
+async def _handle_read(service: SandboxService, cycle_id: str, revision_id: str) -> dict:
+    """A pinned revision's content (contract 3; SIP-0112's E.4.3 captures a change back from it),
+    in the seed's wire form: text under ``files``, the rest base64 under ``binary_files``."""
+    revision = service.get_revision(cycle_id, revision_id)
+    if revision is None:
+        raise _error(404, "REVISION_NOT_FOUND", f"cycle {cycle_id} holds no revision {revision_id}")
+    try:
+        content = await service.read_workspace_revision(revision)
+    except StaleBaseRevisionError as e:
+        raise _error(409, "STALE_BASE_REVISION", str(e)) from e
+    return {
+        "revision": content.revision.to_dict(),
+        **wire_files(content.files),
+        "executable": sorted(content.executable),
+    }
 
 
 async def _handle_operate(service: SandboxService, cycle_id: str, body: OperationRequest) -> dict:
@@ -183,6 +311,10 @@ def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
             "environment": await service.environment_report(),
         }
 
+    @app.post("/api/v1/evaluations", dependencies=[Depends(require_identity)])
+    async def evaluate(body: EvaluationRequest) -> dict:
+        return await _handle_evaluation(service, body)
+
     @app.post(
         "/api/v1/workspaces/{cycle_id}/seed",
         dependencies=[Depends(require_identity)],
@@ -190,11 +322,27 @@ def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
     async def seed(cycle_id: str, body: SeedRequest) -> dict:
         return await _handle_seed(service, cycle_id, body)
 
+    @app.delete(
+        "/api/v1/workspaces/{cycle_id}",
+        status_code=204,
+        response_class=Response,
+        dependencies=[Depends(require_identity)],
+    )
+    async def release(cycle_id: str) -> Response:
+        return await _handle_release(service, cycle_id)
+
     @app.post(
         "/api/v1/workspaces/{cycle_id}/operations",
         dependencies=[Depends(require_identity)],
     )
     async def operate(cycle_id: str, body: OperationRequest) -> dict:
         return await _handle_operate(service, cycle_id, body)
+
+    @app.get(
+        "/api/v1/workspaces/{cycle_id}/revisions/{revision_id}",
+        dependencies=[Depends(require_identity)],
+    )
+    async def read_revision(cycle_id: str, revision_id: str) -> dict:
+        return await _handle_read(service, cycle_id, revision_id)
 
     return app

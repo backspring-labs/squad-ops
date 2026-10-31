@@ -21,6 +21,7 @@ from squadops.cycles.lifecycle import (
     validate_run_transition,
 )
 from squadops.cycles.models import (
+    BindingHold,
     Cycle,
     CycleNotFoundError,
     CycleStatus,
@@ -28,6 +29,7 @@ from squadops.cycles.models import (
     GateDecision,
     IllegalStateTransitionError,
     Run,
+    RunHalt,
     RunNotFoundError,
     RunStatus,
     RunTerminalError,
@@ -38,6 +40,7 @@ from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.verification_integrity import RunVerificationSummary
 from squadops.memory.authoring_envelope import envelope_id
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+from squadops.projects.source_context import ProjectSourceContext
 
 
 class MemoryCycleRegistry(CycleRegistryPort):
@@ -202,6 +205,43 @@ class MemoryCycleRegistry(CycleRegistryPort):
                 existing_set.add(aid)
         data["artifact_refs"] = existing
         return self._to_run(data)
+
+    async def record_binding_hold(self, run_id: str, hold: BindingHold) -> None:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        data = self._runs[run_id]
+        holds = list(data.get("binding_holds", ()))
+        if all(h["hold_id"] != hold.hold_id for h in holds):
+            data["binding_holds"] = [*holds, dataclasses.asdict(hold)]
+
+    async def release_binding_hold(
+        self, run_id: str, hold_id: str, *, released_at: datetime, cause: str
+    ) -> bool:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        for hold in self._runs[run_id].get("binding_holds", []):
+            if hold["hold_id"] == hold_id and hold["released_at"] is None:
+                hold["released_at"], hold["cause"] = released_at, cause
+                return True
+        return False
+
+    async def record_run_halt(self, run_id: str, halt: RunHalt) -> bool:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        data = self._runs[run_id]
+        if data.get("halt") is not None:
+            return False
+        data["halt"] = dataclasses.asdict(halt)
+        return True
+
+    async def record_restart(self, run_id: str, restart_run_id: str) -> bool:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        halt = self._runs[run_id].get("halt")
+        if halt is None or halt["restart_run_id"] is not None:
+            return False
+        halt["restart_run_id"] = restart_run_id
+        return True
 
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:
         """Record a gate decision (T11: single enforcement point)."""
@@ -369,6 +409,10 @@ class MemoryCycleRegistry(CycleRegistryPort):
             )
             d["task_flow_policy"] = TaskFlowPolicy(mode=tfp["mode"], gates=gates)
         d["expected_artifact_types"] = tuple(d.get("expected_artifact_types", ()))
+        # Contract 1's pin, read back as the Postgres registry reads it: a stored dict would
+        # leave every reader of ``source_context.pinned_commit`` an AttributeError.
+        if isinstance(d.get("source_context"), dict):
+            d["source_context"] = ProjectSourceContext(**d["source_context"])
         d["cancelled"] = d.get("cycle_id", data.get("cycle_id")) in self._cancelled_cycles
         return Cycle(**d)
 
@@ -388,6 +432,17 @@ class MemoryCycleRegistry(CycleRegistryPort):
             for g in gds
         )
         d["artifact_refs"] = tuple(d.get("artifact_refs", ()))
+        d["binding_holds"] = tuple(
+            BindingHold(
+                **{
+                    **h,
+                    "unresolved": tuple(tuple(u) for u in h["unresolved"]),
+                    "sections": tuple(h["sections"]),
+                }
+            )
+            for h in d.get("binding_holds", ())
+        )
+        d["halt"] = RunHalt(**d["halt"]) if d.get("halt") else None
         return Run(**d)
 
     # --- Checkpoint (SIP-0079) ---

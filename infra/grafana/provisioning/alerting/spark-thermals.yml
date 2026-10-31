@@ -59,7 +59,10 @@ groups:
                     type: gt
                     params: [98]
         for: 5m
-        noDataState: NoData
+        # #2433: a box with no ACPI zones (the MacBook, the PC) has no data here, and that is not
+        # an alert: NoData raised one every 30 s on every box but the Spark. The Spark's exporter
+        # going down is host-exporters.yml's alert, not a no-data state of this one.
+        noDataState: OK
         execErrState: Error
         labels:
           severity: critical

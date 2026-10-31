@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_propose_plan_tasks
-version: "6"
+version: "10"
 required_variables:
   - brief_content
   - planning_content
@@ -16,6 +16,9 @@ optional_variables:
   - increment_sections
   - rejection_context_section
   - prior_cycle_section
+  - task_instructions_section
+  - project_instructions_section
+  - source_repository_section
   - cross_cycle_lessons_section
   - authoring_rules_section
 ---
@@ -43,6 +46,8 @@ The brief below was authored upstream and is immutable. Your proposal must opera
 
 Decompose the QA work for this build into focused tasks (`task_type: qa.test`) that verify the brief's `must_cover_requirements`. Where a requirement isn't already covered by acceptance criteria on a development task, propose a qa task that covers it explicitly. Restrict your proposal to qa-domain tasks. Reference development tasks via `depends_on_focus: ["dev:..."]` strings.
 
+**Plan by fault, not by count.** Each task's description names the faults its tests tell from correct behaviour: a requirement in the brief, built wrong in a way a test would catch. Set no test count for its own sake. When the development tasks' acceptance criteria already verify a requirement, proposing no further qa task for it is a correct answer.
+
 Pre-filled identifiers below — copy verbatim:
 
 ```yaml:proposed_plan_tasks.yaml
@@ -57,15 +62,16 @@ tasks:
     role: qa
     focus: "Backend user-CRUD pytest suite"
     description: |
-      Cover the user CRUD endpoints with pytest functions exercising
-      create / read / update / delete and duplicate-handling.
+      Distinguish the faults the brief's user requirements could be built
+      with: a duplicate email accepted, a deleted user still readable.
+      One test per fault, each failing on that wrong implementation.
     expected_artifacts:
       - "backend/tests/test_users.py"
     acceptance_criteria:
       - check: function_defined
         file: backend/tests/test_users.py
         name_prefix: "test_"
-        min_count: 5
+        min_count: 1
         severity: error
     depends_on_focus:
       - "dev:user crud routes"
@@ -83,4 +89,4 @@ confidence: ""  # low | medium | high
 {{frozen_surface_section}}
 {{increment_sections}}
 {{rejection_context_section}}
-{{prior_cycle_section}}{{cross_cycle_lessons_section}}
+{{source_repository_section}}{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}

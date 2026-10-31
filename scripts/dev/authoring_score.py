@@ -57,6 +57,9 @@ def _reply(answer: dict) -> Any:
         completion_tokens=completion,
         total_tokens=(prompt or 0) + (completion or 0) if prompt or completion else None,
         reasoning_text=answer.get("reasoning_text"),
+        # How the call ended, where the engine's adapter reports it (TensorFold's; Ollama's reports
+        # none). The cap check reads it before the token count (``reached_cap``), as in production.
+        termination=answer.get("termination"),
     )
 
 

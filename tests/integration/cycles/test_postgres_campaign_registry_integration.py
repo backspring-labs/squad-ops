@@ -21,6 +21,8 @@ from adapters.cycles.postgres_campaign_registry import PostgresCampaignRegistry
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 from adapters.persistence.pool import create_pool
 from adapters.persistence.transient import TransientRetry
+from squadops.campaigns.branch_rebase import RebasedHead, rebase_transition
+from squadops.campaigns.campaign_branch import BranchBase, CampaignHead
 from squadops.campaigns.gate import ruling_transition, submission
 from squadops.campaigns.launcher import CampaignLauncher
 from squadops.campaigns.models import (
@@ -38,6 +40,7 @@ from squadops.campaigns.models import (
     SubmittedProposal,
 )
 from squadops.cycles.models import GateDecisionValue
+from squadops.projects.models import Rebased
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.campaigns.builders import campaign, cycle_for, move, quiet_box
 
@@ -208,6 +211,79 @@ async def test_a_promoted_tree_survives_a_restart_and_is_stored_whole(campaigns,
             await conn.execute(
                 "UPDATE campaigns SET accepted_cycle_id = NULL WHERE campaign_id = $1", CID
             )
+
+
+async def test_a_calibration_records_tree_survives_a_restart_naming_only_its_record(
+    campaigns, pool
+):
+    """§24cc, migration 1697. Bugs caught: the record's id left out of the UPDATE, so the tree
+    reads as a cycle's (or not at all) after a restart; or a CHECK that lets a row name both a
+    cycle and a record, or 1630's both-or-neither CHECK left standing, which refuses the record's
+    promotion at the database while the memory twin accepts it."""
+    tree = AcceptedTree("sha-rec", calibration_record_id="calrec_0123456789ab")
+    await campaigns.transition(
+        CID, move(S.CALIBRATING, "k-promote", operation=ControlOperation.PROMOTE, accepted=tree)
+    )
+
+    fresh_pool = await create_pool(POSTGRES_URL, min_size=1, max_size=2)
+    try:
+        stored = await PostgresCampaignRegistry(pool=fresh_pool).get_campaign(CID)
+    finally:
+        await fresh_pool.close()
+
+    assert stored.accepted == tree
+    async with pool.acquire() as conn:
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(
+                "UPDATE campaigns SET accepted_cycle_id = 'cyc_cal000000001' "
+                "WHERE campaign_id = $1",
+                CID,
+            )
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "accepted_commit = 'HEAD'",
+        "accepted_identity = NULL, accepted_cycle_id = NULL, accepted_calibration_record_id = NULL",
+    ],
+    ids=["not-a-commit", "a-commit-with-no-tree"],
+)
+async def test_a_campaign_branchs_head_survives_a_restart_beside_its_identity(
+    campaigns, pool, corruption
+):
+    """§24bv point 2, migration 1698. Bugs caught: the commit left out of the UPDATE (or read
+    back from the wrong column), so after a restart the accepted tree reads as a sample
+    application's, with no head, and every repository-backed increment's promotion is refused;
+    or a CHECK that lets a commit stand malformed or with no tree to be the head of."""
+    record_tree = AcceptedTree(
+        "sha-rec", calibration_record_id="calrec_0123456789ab", commit="a" * 40
+    )
+    increment_tree = AcceptedTree("sha-inc", "cyc_inc000000001", commit="b" * 40)
+    await campaigns.transition(
+        CID,
+        move(S.CALIBRATING, "k-promote", operation=ControlOperation.PROMOTE, accepted=record_tree),
+    )
+    await campaigns.transition(
+        CID,
+        move(
+            S.CALIBRATING,
+            "k-promote-2",
+            operation=ControlOperation.PROMOTE,
+            accepted=increment_tree,
+        ),
+    )
+
+    fresh_pool = await create_pool(POSTGRES_URL, min_size=1, max_size=2)
+    try:
+        stored = await PostgresCampaignRegistry(pool=fresh_pool).get_campaign(CID)
+    finally:
+        await fresh_pool.close()
+
+    assert stored.accepted == increment_tree
+    async with pool.acquire() as conn:
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(f"UPDATE campaigns SET {corruption} WHERE campaign_id = $1", CID)
 
 
 async def test_a_submitted_proposal_and_a_stale_rulings_refusal_are_stored(campaigns):
@@ -607,3 +683,100 @@ async def test_a_page_of_campaigns_is_newest_first_on_postgres(pool):
         "cmp_pgold0000001",
     ]
     assert [c.campaign_id for c in page] == ["cmp_pgmid0000002"]
+
+
+def _rebase(current, intent, *, base: str, onto: str, revision: int):
+    """§24bv point 4's row, as ``BranchRebase`` writes it: a head the reconciled commit itself."""
+    return rebase_transition(
+        current,
+        intent,
+        base=BranchBase(base, revision - 1),
+        before=CampaignHead(current.accepted.commit, current.accepted.identity, None),
+        onto=BranchBase(onto, revision),
+        made=RebasedHead(Rebased(onto, (), ()), f"sha-{onto[:4]}", None, "inherited"),
+        launch=LaunchRequest(CycleKind.INCREMENT, {"p": revision}),
+        unbuilt=None,
+        actor="campaign-launcher",
+    )
+
+
+async def test_a_rebase_supersedes_its_repair_and_writes_its_proposal_in_one_transaction(
+    campaigns,
+):
+    """§24cd point 2, migration 2000: ``branch_rebased`` and ``superseded`` are in the schema,
+    and the rebase's row, the accepted tree, the repair's supersession and the fresh proposal
+    commit together. A second rebase naming the same repair is refused and recorded. Bugs caught:
+    a CHECK list without the new values, so the first rebase on a deploy fails its own row and
+    the campaign launches on the old head; the supersession written outside the transaction, so
+    a crash leaves the repair pending beside the proposal; a superseded repair superseded
+    again."""
+    record = AcceptedTree("sha-rec", calibration_record_id="calrec_0123456789ab", commit="a" * 40)
+    await campaigns.transition(
+        CID, move(S.CALIBRATING, "k-promote", operation=ControlOperation.PROMOTE, accepted=record)
+    )
+    await campaigns.transition(CID, move(S.ESCALATED, "k-hold"))
+    repair = await campaigns.transition(
+        CID,
+        move(
+            S.REPAIRING,
+            "k-repair",
+            operation=ControlOperation.RESUME,
+            launch=LaunchRequest(CycleKind.REPAIR, {"p": 1}),
+        ),
+    )
+    current = await campaigns.get_campaign(CID)
+
+    rebased = await campaigns.transition(
+        CID, _rebase(current, repair.intent, base="a" * 40, onto="b" * 40, revision=2)
+    )
+    with pytest.raises(ControlOperationRefused) as again:
+        await campaigns.transition(
+            CID,
+            _rebase(rebased.campaign, repair.intent, base="b" * 40, onto="c" * 40, revision=3),
+        )
+
+    intents = {i.launch_id: i for i in await campaigns.launch_intents(CID)}
+    stored = await campaigns.get_campaign(CID)
+    assert rebased.entry.operation is ControlOperation.BRANCH_REBASED
+    assert intents[repair.intent.launch_id].state is LaunchIntentState.SUPERSEDED
+    assert intents[rebased.intent.launch_id].state is LaunchIntentState.PENDING
+    assert [i.launch_id for i in await campaigns.pending_launch_intents()] == [
+        rebased.intent.launch_id
+    ]
+    assert (stored.state, stored.accepted.commit, stored.accepted.identity) == (
+        S.AT_PROPOSAL,
+        "b" * 40,
+        "sha-bbbb",
+    )
+    assert again.value.entry.refusal is RefusalReason.STALE_STATE
+    assert (await campaigns.control_log(CID))[-1].outcome is ControlOutcome.REFUSED
+
+
+async def test_a_review_push_is_recorded_on_a_completed_campaign(campaigns):
+    """§24ci (b), migration 2001: ``review_pushed`` is in the schema, and as a record it is
+    accepted on a completed campaign, since the push is made at the close. Bug caught: the value
+    added in Python and not in the CHECK list, so the first push lands on the product and its row
+    fails, leaving the next push no lease."""
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    pushed = move(
+        S.COMPLETED,
+        "review-push:k-1",
+        operation=ControlOperation.REVIEW_PUSHED,
+        next_state=None,
+        target="squadops/cmp_it0000000001",
+        binding={"branch": "squadops/cmp_it0000000001", "commit": "a" * 40, "lease": None,
+                 "forced": False, "review_url": "https://forge.example.invalid/pull/1"},
+    )  # fmt: skip
+
+    result = await campaigns.transition(CID, pushed)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
+    assert (await campaigns.control_log(CID))[-1].binding["commit"] == "a" * 40

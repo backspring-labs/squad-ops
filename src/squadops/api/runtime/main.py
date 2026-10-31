@@ -14,6 +14,7 @@ performs no configuration load, no secret resolution and no construction.
 """
 
 import asyncio
+import functools
 import logging
 import os
 import time
@@ -27,9 +28,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from adapters.persistence.pool import create_pool
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
-from squadops.api.campaign_launch import CampaignLaunchService
+from squadops.api.campaign_launch import (
+    LAUNCHER_ACTOR,
+    CampaignLaunchService,
+    reconciled_at_pin,
+)
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+from squadops.api.routes.agent_status import HEARTBEAT_PATH
 from squadops.api.routes.agent_status import router as agent_status_router
 from squadops.api.routes.assignments import router as assignments_router
 from squadops.api.routes.auth import router as auth_router
@@ -46,8 +52,15 @@ from squadops.api.routes.cycles import (
     runs_router,
 )
 from squadops.api.routes.cycles.cycles import CreationPorts
-from squadops.api.routes.memory import memory_router
+from squadops.api.routes.memory import (
+    memory_records_router,
+    memory_router,
+    memory_snapshots_router,
+)
+from squadops.api.routes.outcomes import router as outcomes_router
 from squadops.api.routes.platform_health import router as platform_health_router
+from squadops.api.routes.scenarios import evaluations_router as scenario_evaluations_router
+from squadops.api.routes.scenarios import router as scenarios_router
 from squadops.api.runtime.startup_reaps import (
     detect_stranded_cycles,
     reap_stranded_activities,
@@ -56,6 +69,8 @@ from squadops.api.runtime.startup_reaps import (
 )
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
+from squadops.campaigns.branch_rebase import BranchRebase, ProductRunnerFrozen
+from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
 from squadops.config import config_fingerprint, load_config, redact_config
@@ -64,9 +79,21 @@ from squadops.cycles.cycle_assessment import AssessorIdentity
 from squadops.execution.cycle_evidence import assess_cycle
 from squadops.execution.reply_router import ReplyRouter
 from squadops.memory.reconcile import reconcile_recent
+from squadops.outcomes.campaign_package import campaign_interventions, campaign_outcomes
+from squadops.outcomes.proposal_reader import StoredProposalEvidence
+from squadops.projects.cutover import (
+    CutoverProblem,
+    RegistryCutoverRefused,
+    problems_after_seeding,
+    problems_on_the_config_provider,
+    unknown_project_ids,
+)
+from squadops.projects.registration import LocatorPolicy
+from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
+from squadops.scenarios.declared_routes import DeclaredStartRoutes
 
 from .deps import PORT_SLOTS
-from .logging_setup import configure_logging
+from .logging_setup import configure_logging, quiet_routine_successes
 
 # #427: configure application logging before any module-level log fires. uvicorn
 # configures only its own loggers and leaves the root logger untouched, so without
@@ -74,6 +101,14 @@ from .logging_setup import configure_logging
 # reach stdout and every failure is a black box. Installed at import so it survives
 # uvicorn's startup dictConfig (see logging_setup for the why).
 configure_logging()
+
+#: The container's health check probes it every 30 s (the image's HEALTHCHECK).
+HEALTH_PATH = "/health"
+#: #2425: requests whose success is recorded elsewhere, so their 2xx access line has no reader:
+#: each heartbeat sets the agent's ``last_heartbeat``, which the health checker reads, and Docker
+#: keeps its health-check history. Named from the routes' own declarations.
+ROUTINE_ACCESS = frozenset({("POST", HEARTBEAT_PATH), ("GET", HEALTH_PATH)})
+quiet_routine_successes(ROUTINE_ACCESS)
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +168,12 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(chat_router)  # SIP-0085
     app.include_router(chat_agents_router)
     app.include_router(memory_router)  # SIP-0110 §0.6 (slice 3d): lessons, approvals, revocations
+    app.include_router(memory_records_router)  # SIP-0110 Appendix A (#2177): the typed records
+    app.include_router(memory_snapshots_router)  # Appendix A §3.7 (#2179): re-binding a unit
+    app.include_router(outcomes_router)  # SIP-0113 §4.3 (#2417): the intervention ledger
+    app.include_router(scenarios_router)  # SIP-0113 §4.1 (#2413): held-out scenario suites
+    # SIP-0113 §10p ruling 8 (#2564): a page scenario's evidence, the owner's alone
+    app.include_router(scenario_evaluations_router)
 
 
 #: Connection and process objects live on ``app.state`` (FastAPI's per-app holder), so an
@@ -151,6 +192,8 @@ _STATE_SLOTS = (
     "campaign_launch_task",  # SIP-0109 §12b: the startup drain of pending launch intents
     "campaign_sweep_task",  # SIP-0109 §9.2 (§24ae): the ruling-bound sweep; cancelled on shutdown
     "memory_store",  # SIP-0110 (D13): Cross-Cycle Memory's store, beside the cycle registry
+    "memory_records",  # SIP-0110 Appendix A (#2177): notes, preferences and instructions
+    "reference_resolvers",  # SIP-0110 Appendix A §3.7 (#2179 T16): @current, bound at admission
     "memory_reconcile_task",  # SIP-0110 §0.3: the observation passes; cancelled on shutdown
 )
 
@@ -182,7 +225,7 @@ def create_app(config: AppConfig) -> FastAPI:
     # process-wide registry — so two apps in one process each resolve their own.
     for slot in (*_STATE_SLOTS, *PORT_SLOTS):
         setattr(app.state, slot, None)
-    app.add_api_route("/health", health_check, methods=["GET"])
+    app.add_api_route(HEALTH_PATH, health_check, methods=["GET"])
     return app
 
 
@@ -284,7 +327,7 @@ async def _init_migrations(config, pool) -> None:
         # deferred (optional): loads asyncpg, which the base install lacks
         from squadops.api.runtime.migrations import apply_migrations
 
-        migrations_dir = Path(config.db.migrations_dir)
+        migrations_dir = Path(config.database().migrations_dir)
         applied = await apply_migrations(pool, migrations_dir)
         if applied:
             logger.info("Applied %d migration(s) from %s", applied, migrations_dir)
@@ -301,6 +344,72 @@ async def _init_log_forwarding(state, config) -> None:
     from adapters.observability.log_forwarder import create_log_forwarder
 
     state.log_forwarder = await create_log_forwarder(config.prefect)
+
+
+async def _cut_over_project_registry(provider: str, registry, pool) -> None:
+    """SIP-0112 FR-03 (#2408): the registry cutover, read at every start. Raises, and the
+    runtime API does not serve, when a Project would be missing, shadowed or hidden.
+
+    - ``postgres`` or ``postgres_read_only``: seed each config/projects.yaml entry not seeded
+      before, then refuse unless every one is in the registry as seeded. The seed is the
+      cutover's own bookkeeping, so the write gate (R3) closes registration, not it. Squad profiles' seed logs a failure and carries on;
+      this one can't, since an existing project would read as 404 (IR-1).
+    - ``config``: refuse when the writable registry holds a registered Project, which this
+      provider cannot read (R3: a rollback never makes a Project disappear).
+    """
+    from adapters.cycles.config_project_registry import ConfigProjectRegistry
+    from adapters.cycles.postgres_project_registry import writable_registry_provenances
+
+    if provider == "config":
+        records = await writable_registry_provenances(pool) if pool is not None else None
+        problems = problems_on_the_config_provider(records or {})
+        if problems:
+            raise RegistryCutoverRefused(problems)
+        return
+
+    records = await writable_registry_provenances(pool)
+    if records is None:
+        raise RegistryCutoverRefused(
+            [CutoverProblem("*", "project_records is missing: migration 1800 has not applied")]
+        )
+    config_projects = await ConfigProjectRegistry().list_projects()
+    seeded = await registry.seed_from_config(config_projects, source="config/projects.yaml")
+    if seeded:
+        logger.info("Seeded %d project(s) from config/projects.yaml: %s", len(seeded), seeded)
+    records = await registry.provenances()
+    problems = problems_after_seeding([p.project_id for p in config_projects], records)
+    if problems:
+        raise RegistryCutoverRefused(problems)
+    unknown = unknown_project_ids(await registry.referenced_project_ids(), records)
+    if unknown:
+        logger.warning(
+            "Cycles or campaigns name %d project(s) the registry does not hold, kept as they "
+            "are (FR-03): %s",
+            len(unknown),
+            unknown,
+        )
+
+
+def _branch_rebase(state, *, campaigns, projects, vault, creation) -> BranchRebase:
+    """SIP-0109 §24bv point 4: before each launch, a repository-backed campaign's branch is
+    rebased onto the commit its Project reconciled, when upstream moved, and its head
+    re-verified: by the product's checks, and (§24cd point 5) by every frozen criterion's bundle
+    on the product's runner in the sandbox (#2774's ``frozen_on_runner``, §24cl item 10), which
+    fails closed (§24cm)."""
+    return BranchRebase(
+        campaigns=campaigns,
+        projects=projects,
+        repository=state.source_repository,
+        sandbox=state.sandbox_client,
+        vault=vault,
+        branch=CampaignBranch(projects=projects, repository=state.source_repository),
+        reconciled=functools.partial(reconciled_at_pin, creation),
+        propose=state.campaign_progress.proposal_after_rebase,
+        actor=LAUNCHER_ACTOR,
+        frozen_on_runner=ProductRunnerFrozen(
+            sandbox=state.sandbox_client, projects=projects, vault=vault
+        ),
+    )
 
 
 async def _init_cycle_subsystem(state, config, pool) -> None:
@@ -335,12 +444,39 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     )
     from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
 
-    project_registry = create_project_registry("config")
+    project_provider = config.cycles.project_registry_provider
+    project_registry = create_project_registry(
+        project_provider, **({"pool": pool} if project_provider != "config" else {})
+    )
+    await _cut_over_project_registry(project_provider, project_registry, pool)
+    state.project_locator_policy = LocatorPolicy.of(
+        config.projects.locator_allowed_hosts, config.projects.locator_local_roots
+    )
+    from adapters.tools.factory import create_source_repository
+
+    state.source_repository = create_source_repository(
+        cache_root=config.projects.clone_cache_root,
+        policy=state.project_locator_policy,
+        timeout_seconds=config.projects.git_timeout_seconds,
+        committer_name=config.projects.committer_name,
+        committer_email=config.projects.committer_email,
+    )
+    # SIP-0112 contract 6 (#2179 T16): the repository family's resolver, which binds a
+    # ``repo:file:<path>@current`` reference at the commit its unit's source context pins.
+    from adapters.tools.factory import create_repository_reference_resolver
+
+    resolver = create_repository_reference_resolver(state.source_repository, project_registry)
+    state.reference_resolvers.register(resolver)
+    # E.4.3: a review_request contribution's forge, and each Project's token for it.
+    from adapters.tools.factory import create_review_requests
+
+    state.review_requests = create_review_requests()
+    state.review_request_tokens = dict(config.projects.review_request_tokens)
     # #1976: a transient database failure is retried inside the registry, never by its callers.
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,
         **(
-            {"pool": pool, "retry": config.db.retry}
+            {"pool": pool, "retry": config.database().retry}
             if config.cycles.registry_provider == "postgres"
             else {}
         ),
@@ -352,6 +488,27 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     )
     # SIP-0109 §16: the campaigns live beside the cycles they launch, chosen by the same selector.
     campaign_registry = create_campaign_registry(
+        config.cycles.registry_provider,
+        **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+    )
+    # SIP-0113 §4.3 (#2417): the intervention ledger, beside the campaigns it classifies.
+    from adapters.outcomes.factory import create_intervention_ledger
+
+    intervention_ledger = create_intervention_ledger(
+        config.cycles.registry_provider,
+        **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+    )
+    # #2451 (the owner's ruling of 2026-10-18): the one client of the sandbox service, for every
+    # caller here. Refused at startup without its selector.
+    from adapters.sandbox.factory import create_sandbox_client, create_scenario_runner
+
+    sandbox_client = create_sandbox_client(config.sandbox_client)
+    # SIP-0113 §4.1 (#2414): the runner over the same binding, for each campaign cycle's end.
+    scenario_runner = create_scenario_runner(config.sandbox_client)
+    # SIP-0113 §4.1 (#2413): the held-out scenario store, beside the campaigns that pin its suites.
+    from adapters.scenarios.factory import create_scenario_store
+
+    scenario_store = create_scenario_store(
         config.cycles.registry_provider,
         **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
     )
@@ -491,6 +648,20 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     projected_campaigns = ProjectingCampaignRegistry(
         campaign_registry, audit=getattr(state, "audit_port", None), events=event_bus
     )
+    # SIP-0113 §4.1 (#2414): each campaign cycle that reached its build is evaluated against its
+    # campaign's pinned suite before it is decided. Reporting-only: nothing below reads the record.
+    from datetime import UTC, datetime
+
+    cycle_evaluator = CampaignCycleEvaluator(
+        store=scenario_store,
+        runner=scenario_runner,
+        vault=artifact_vault,
+        campaigns=campaign_registry,
+        clock=lambda: datetime.now(UTC),
+        # #2414: a repository-backed cycle's captured commit and declared start.
+        projects=project_registry,
+        repository=state.source_repository,
+    )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,
         cycles=cycle_registry,
@@ -504,6 +675,19 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
             ),
         ),
         launch=lambda: state.campaign_launch.drain(),
+        evaluate_outcome=cycle_evaluator.cycle_ended,
+        # SIP-0113 §10l: a repository-backed campaign's baseline reading, its calibration
+        # record's commit evaluated when the record is heard, by the same evaluator.
+        evaluate_baseline=cycle_evaluator.calibration_recorded,
+        # SIP-0113 §4.4 (#2418): the package's outcome section, read from the same store.
+        outcome_section=partial(campaign_outcomes, scenario_store),
+        # SIP-0113 §4.3, §4.6 (#2418): the ledger's entries, which AOR reads, in the package too.
+        intervention_section=partial(campaign_interventions, intervention_ledger),
+        # SIP-0109 §24bv point 2: a repository-backed Campaign's branch, in its Project's managed
+        # clone. The control log is its authority, and the clone's ref follows (§24cd point 2).
+        campaign_branch=CampaignBranch(
+            projects=project_registry, repository=state.source_repository
+        ),
     )
 
     flow_executor = create_flow_executor(
@@ -527,15 +711,43 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # SIP-0109 §9.3 (#1928): a run start waits on the launch's own verdict. The box reader
         # is built below, from the LLM port; read when a run starts, as the drain is above.
         box_verdict=lambda: state.box_reader.verdict(),
+        # #2178: a run held on a campaign cycle's bindings fills them by the launcher's own fill
+        # (§5ad) before it composes again. The launch service is built below, as the box reader.
+        binding_fill=lambda cycle_id: state.campaign_launch.fill_held(cycle_id),
         # SIP-0110 §0.8: each consuming task's lessons, from its unit's pinned snapshot in the
         # memory store (built before this subsystem, `_startup`).
-        failure_recall=create_failure_recall("snapshot", store=state.memory_store),
+        failure_recall=create_failure_recall(
+            "snapshot",
+            store=state.memory_store,
+            records=state.memory_records,
+            # #2179: each bound reference's content, read at a dispatch by its family's resolver.
+            resolvers=state.reference_resolvers,
+        ),
+        # SIP-0113 §4.5 (§10t): what a campaign's proposal task is shown of its accepted tree, read
+        # from the campaign's own evaluations, promotions and approved requests. The executor
+        # never imports the store it reads: it asks this port.
+        proposal_evidence=StoredProposalEvidence(
+            scenarios=scenario_store,
+            campaigns=campaign_registry,
+            cycles=cycle_registry,
+            vault=artifact_vault,
+        ),
+        # SIP-0112 E.4.3: the managed clones a source-backed run starts from and is captured to,
+        # and the sandbox its candidate is verified in.
+        source_repository=state.source_repository,
+        sandbox=sandbox_client,
+        # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
+        # started from its declaration, by the same runner the cycle-end hook evaluates with.
+        route_renderer=DeclaredStartRoutes(scenario_runner),
     )
 
     state.project_registry = project_registry
     state.cycle_registry = cycle_registry
     state.deploy_registry = deploy_registry
     state.campaign_registry = campaign_registry
+    state.intervention_ledger = intervention_ledger
+    state.sandbox_client = sandbox_client
+    state.scenario_store = scenario_store
     state.campaign_progress = campaign_progress
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault
@@ -574,19 +786,28 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     # SIP-0109 §12b: a campaign's launches become cycles by the cycle-create path itself.
 
+    creation = CreationPorts(
+        project_registry=project_registry,
+        squad_profile=squad_profile,
+        cycle_registry=cycle_registry,
+        deploy_registry=deploy_registry,
+        llm=llm_adapter,
+        artifact_vault=artifact_vault,
+        memory_records=state.memory_records,
+        reference_resolvers=state.reference_resolvers,
+        memory_store=state.memory_store,
+    )
+    branch_rebase = _branch_rebase(
+        state, campaigns=projected_campaigns, projects=project_registry, vault=artifact_vault,
+        creation=creation,
+    )  # fmt: skip
     state.campaign_launch = CampaignLaunchService(
         campaigns=projected_campaigns,
-        creation=CreationPorts(
-            project_registry=project_registry,
-            squad_profile=squad_profile,
-            cycle_registry=cycle_registry,
-            deploy_registry=deploy_registry,
-            llm=llm_adapter,
-            artifact_vault=artifact_vault,
-        ),
+        creation=creation,
         flow_executor=flow_executor,
         event_bus=event_bus,
         box_verdict=state.box_reader.verdict,
+        before_launch=branch_rebase.before_launch,
     )
 
 
@@ -697,7 +918,7 @@ async def _startup(app: FastAPI) -> None:
     no AMQP connection of its own: every publish goes through the queue port, which opens its own
     (#2322)."""
     state, config = app.state, app.state.config
-    state.pool = await create_pool(config.db.url, min_size=1, max_size=10)  # #577: the one factory
+    state.pool = await create_pool(config.database().url, min_size=1, max_size=10)  # #577
     await _init_auth_subsystem(state, config)
     await _init_migrations(config, state.pool)
     # SIP-0110 (D13): the memory store, before the cycle subsystem whose executor recalls from it.
@@ -717,10 +938,22 @@ def _init_memory(state, config, pool) -> None:
     """SIP-0110 (the 2.2 plan's D13): Cross-Cycle Memory's store, beside the cycle registry and
     selected by its required provider."""
     from adapters.memory.cross_cycle import create_cross_cycle_store
+    from adapters.memory.records import create_memory_records
+    from adapters.memory.reference_resolvers import create_reference_resolvers
 
     provider = config.cycles.registry_provider
     state.memory_store = create_cross_cycle_store(
         provider, **({"pool": pool} if provider == "postgres" else {})
+    )
+    state.memory_records = create_memory_records(
+        provider, **({"pool": pool} if provider == "postgres" else {})
+    )
+    # #2179 T16: the resolvers that bind an instruction's ``@current`` references at admission, by
+    # family. The repository family's is registered with the cycle subsystem, beside the managed
+    # clones it reads (SIP-0112 §B.5.1, contract 6); a family with none is refused at write. A
+    # family is registered through ``register``, which bounds each of its calls (#2575).
+    state.reference_resolvers = create_reference_resolvers(
+        config.projects.reference_resolver_timeout_seconds
     )
 
 
@@ -761,8 +994,10 @@ _CAMPAIGN_SWEEP_INTERVAL_S = 60
 async def _sweep_campaigns(state) -> None:
     """§9.2, §9.5 (§24ae): every interval, each increment gate waiting past a seat's ruling bound
     is recorded as overdue; §9.3 (#1802): each launch the box refused is re-attempted when due;
+    §24cm: each pending launch a fault left behind is drained again;
     §24v (#1972): each launched cycle that ended with no decision is re-heard, so a completion
-    hook that failed while the process stayed up is not left until the next restart. A sweep
+    hook that failed while the process stayed up is not left until the next restart; SIP-0110
+    §5ad: each running campaign cycle's binding a re-binding couldn't reach is filled. A sweep
     that fails is logged and the next one runs."""
     while True:
         await asyncio.sleep(_CAMPAIGN_SWEEP_INTERVAL_S)
@@ -775,6 +1010,18 @@ async def _sweep_campaigns(state) -> None:
         except Exception:
             logger.exception("campaign_launch_retry_sweep_failed")
         try:
+            # SIP-0109 §24cm: a launch that faulted (a campaign branch's rebase whose clone timed
+            # out, say) is left pending and its campaign where it was; it's repeated here, so it
+            # never waits on the next row that writes an intent.
+            await state.campaign_launch.drain()
+        except Exception:
+            logger.exception("campaign_launch_drain_sweep_failed")
+        try:
+            # SIP-0110 §5ad: a running campaign cycle's binding a re-binding couldn't reach.
+            await state.campaign_launch.reconcile_bindings()
+        except Exception:
+            logger.exception("cycle_binding_reconcile_sweep_failed")
+        try:
             # Outside the drain, as at startup: a decision launches through the drain's lock.
             decided = await state.campaign_progress.rehear_ended(
                 await state.campaign_launch.launched_cycles()
@@ -783,15 +1030,35 @@ async def _sweep_campaigns(state) -> None:
                 logger.warning("campaign_cycles_reheard_by_the_sweep cycles=%s (#1972)", decided)
         except Exception:
             logger.exception("campaign_rehear_sweep_failed")
+        try:
+            # §24cc: a calibration record whose start's own hearing failed, as a cycle's above.
+            recorded = await state.campaign_progress.rehear_calibration_records()
+            if recorded:
+                logger.warning("campaign_records_reheard_by_the_sweep campaigns=%s", recorded)
+        except Exception:
+            logger.exception("campaign_record_rehear_sweep_failed")
+        try:
+            # §24cd point 2: a campaign branch's ref a failed follow left behind its row.
+            await state.campaign_progress.resync_campaign_branches()
+        except Exception:
+            logger.exception("campaign_branch_resync_sweep_failed")
 
 
 async def _resume_campaigns(state) -> None:
     """§12b: an intent a crash left pending is launched, and a launched cycle's first run
     started. Then §12a (#1803): every launched cycle that ended with no decision is re-heard
-    from its recorded ending. After the drain, never inside it: a decision launches through the
-    drain, which holds its lock."""
+    from its recorded ending, and (§24cc) every calibration record a start wrote and nothing
+    decided. After the drain, never inside it: a decision launches through the drain, which
+    holds its lock. First of all (§24cd point 2), each campaign branch's ref a stop left behind its
+    row is moved to the row. The row is the authority and every reader reads it, so a re-sync that
+    fails is logged and the resumption goes on."""
+    try:
+        await state.campaign_progress.resync_campaign_branches()
+    except Exception:
+        logger.exception("campaign_branch_resync_failed")
     await state.campaign_launch.drain()
     await state.campaign_progress.rehear_ended(await state.campaign_launch.launched_cycles())
+    await state.campaign_progress.rehear_calibration_records()
     # #1922: what the dying process was running, or waiting on at a gate, is taken up again.
     await state.campaign_launch.reattach()
 

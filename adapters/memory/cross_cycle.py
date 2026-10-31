@@ -4,15 +4,26 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 from typing import Any
 
 from squadops.memory.annotation import Annotation
 from squadops.memory.approval import units_holding
 from squadops.memory.assessment import Assessment
+from squadops.memory.chat import ChatExposure
+from squadops.memory.cycle_bindings import CycleBinding
+from squadops.memory.dispatch_turns import DispatchTurns
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
-from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
+from squadops.memory.project_instructions import units_pinning
+from squadops.memory.records import PinnedInstruction
+from squadops.ports.memory.cross_cycle import (
+    CrossCycleMemoryStorePort,
+    RecordIncompatible,
+    SnapshotMoved,
+)
 
 
 def _ordered(observations: list[Observation]) -> list[Observation]:
@@ -29,9 +40,15 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._revisions: dict[str, PatternRevision] = {}
         self._approvals: dict[str, Approval] = {}
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
+        #: cycle -> (record, revision) -> (its binding, the unit's kind and id, when it was bound)
+        self._cycle_bindings: dict[
+            str, dict[tuple[str, int], tuple[PinnedInstruction, str, str, datetime]]
+        ] = {}
         self._exposures: dict[str, Exposure] = {}
+        self._chat_exposures: dict[tuple[str, str], ChatExposure] = {}
         self._assessments: dict[str, Assessment] = {}
         self._annotations: dict[str, Annotation] = {}
+        self._turns = DispatchTurns()
 
     async def record_observations(self, observations: Sequence[Observation]) -> int:
         new = 0
@@ -110,8 +127,46 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         return self._snapshots.get((unit_kind.value, unit_id))
 
+    async def record_cycle_bindings(
+        self,
+        cycle_id: str,
+        unit_kind: str,
+        unit_id: str,
+        entries: Sequence[PinnedInstruction],
+        bound_at: datetime,
+    ) -> None:
+        held = self._cycle_bindings.setdefault(cycle_id, {})
+        for entry in entries:
+            held.setdefault(
+                (entry.record_id, entry.revision), (entry, unit_kind, unit_id, bound_at)
+            )
+
+    async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
+        held = self._cycle_bindings.get(cycle_id)
+        if not held:
+            return None
+        rows = [held[key] for key in sorted(held)]
+        return CycleBinding(
+            cycle_id, rows[0][1], rows[0][2], tuple(r[0] for r in rows), max(r[3] for r in rows)
+        )
+
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
+
+    async def rebind_snapshot(self, snapshot: Snapshot) -> None:
+        key = (snapshot.unit_kind.value, snapshot.unit_id)
+        held = self._snapshots[key]
+        if held.snapshot_id != snapshot.snapshot_id or held.version != snapshot.version - 1:
+            raise SnapshotMoved(f"{key[0]} {key[1]} was re-bound since it was read")
+        self._snapshots[key] = snapshot
+
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
         return units_holding(approval_id, self._snapshots.values())
+
+    async def list_snapshots_pinning(self, record_id: str) -> list[Snapshot]:
+        return units_pinning(record_id, self._snapshots.values())
 
     async def record_exposure(self, exposure: Exposure) -> bool:
         if exposure.exposure_id in self._exposures:
@@ -127,6 +182,29 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def get_exposure(self, exposure_id: str) -> Exposure | None:
         return self._exposures.get(exposure_id)
+
+    async def record_chat_exposure(self, exposure: ChatExposure) -> bool:
+        key = (exposure.session_id, exposure.message_id)
+        if key in self._chat_exposures:
+            return False
+        self._chat_exposures[key] = exposure
+        return True
+
+    async def list_chat_exposures(self, session_id: str) -> list[ChatExposure]:
+        return sorted(
+            (e for e in self._chat_exposures.values() if e.session_id == session_id),
+            key=lambda e: (e.assembled_at, e.message_id),
+        )
+
+    async def list_chat_exposures_supplying(self, record_id: str) -> list[ChatExposure]:
+        return sorted(
+            (
+                e
+                for e in self._chat_exposures.values()
+                if any(r.record_id == record_id for s in e.sections for r in s.supplied)
+            ),
+            key=lambda e: (e.assembled_at, e.message_id),
+        )
 
     async def list_project_exposures(self, project_id: str) -> list[Exposure]:
         return sorted(
@@ -150,6 +228,9 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     def __init__(self, pool: Any) -> None:
         self._pool = pool
+        #: #2545: in this process, as every dispatch and every change to a binding is (the runtime
+        #: API's one server process). A second process needs them ordered in Postgres instead.
+        self._turns = DispatchTurns()
 
     async def record_observations(self, observations: Sequence[Observation]) -> int:
         new = 0
@@ -334,6 +415,79 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         except (KeyError, TypeError, ValueError) as e:
             raise RecordIncompatible(f"{unit_kind.value} {unit_id}'s snapshot: {e!r}") from e
 
+    async def record_cycle_bindings(
+        self,
+        cycle_id: str,
+        unit_kind: str,
+        unit_id: str,
+        entries: Sequence[PinnedInstruction],
+        bound_at: datetime,
+    ) -> None:
+        # One row per record and revision, written once: an entry the cycle holds never changes.
+        async with self._pool.acquire() as conn:
+            for entry in entries:
+                await conn.execute(
+                    "INSERT INTO memory_cycle_bindings (cycle_id, record_id, revision, unit_kind, "
+                    "unit_id, bound_at, entry_body) VALUES ($1, $2, $3, $4, $5, $6, $7) "
+                    "ON CONFLICT (cycle_id, record_id, revision) DO NOTHING",
+                    cycle_id,
+                    entry.record_id,
+                    entry.revision,
+                    unit_kind,
+                    unit_id,
+                    bound_at,
+                    entry.to_dict(),
+                )
+
+    async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT unit_kind, unit_id, bound_at, entry_body FROM memory_cycle_bindings "
+                "WHERE cycle_id = $1 ORDER BY record_id, revision",
+                cycle_id,
+            )
+        if not rows:
+            return None
+        try:
+            entries = tuple(PinnedInstruction.from_dict(r["entry_body"]) for r in rows)
+        except (KeyError, TypeError, ValueError) as e:
+            raise RecordIncompatible(f"cycle {cycle_id}'s binding: {e!r}") from e
+        return CycleBinding(
+            cycle_id, rows[0]["unit_kind"], rows[0]["unit_id"], entries,
+            max(r["bound_at"] for r in rows),
+        )  # fmt: skip
+
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
+
+    async def rebind_snapshot(self, snapshot: Snapshot) -> None:
+        # One statement, so two writes read from the same version can't both land (#2545).
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "UPDATE memory_snapshots SET snapshot_body = $3 "
+                "WHERE unit_kind = $1 AND unit_id = $2 AND snapshot_id = $4 AND "
+                "coalesce((snapshot_body->>'version')::int, 0) = $5",
+                snapshot.unit_kind.value,
+                snapshot.unit_id,
+                snapshot.to_dict(),
+                snapshot.snapshot_id,
+                snapshot.version - 1,
+            )
+            if status == "UPDATE 1":
+                return
+            held = await conn.fetchval(
+                "SELECT 1 FROM memory_snapshots WHERE unit_kind = $1 AND unit_id = $2",
+                snapshot.unit_kind.value,
+                snapshot.unit_id,
+            )
+        if held is None:
+            raise KeyError(f"{snapshot.unit_kind.value} {snapshot.unit_id} pinned no snapshot")
+        raise SnapshotMoved(
+            f"{snapshot.unit_kind.value} {snapshot.unit_id} was re-bound since it was read"
+        )
+
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
         # A text match narrows the rows; the domain's read of each entry decides.
         async with self._pool.acquire() as conn:
@@ -343,6 +497,16 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 approval_id,
             )
         return units_holding(approval_id, [Snapshot.from_dict(r["snapshot_body"]) for r in rows])
+
+    async def list_snapshots_pinning(self, record_id: str) -> list[Snapshot]:
+        # As a revocation's: the text match narrows the rows, the domain's read decides.
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT snapshot_body FROM memory_snapshots "
+                "WHERE strpos(snapshot_body::text, $1) > 0 ORDER BY pinned_at, unit_id",
+                record_id,
+            )
+        return units_pinning(record_id, [Snapshot.from_dict(r["snapshot_body"]) for r in rows])
 
     async def record_exposure(self, exposure: Exposure) -> bool:
         async with self._pool.acquire() as conn:
@@ -389,6 +553,45 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 project_id,
             )
         return [Exposure.from_dict(r["exposure_body"]) for r in rows]
+
+    async def record_chat_exposure(self, exposure: ChatExposure) -> bool:
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "INSERT INTO chat_exposures (session_id, message_id, user_id, agent_id, project_id, "
+                "assembled_at, sections) VALUES ($1, $2, $3, $4, $5, $6, $7) "
+                "ON CONFLICT (session_id, message_id) DO NOTHING",
+                exposure.session_id,
+                exposure.message_id,
+                exposure.user_id,
+                exposure.agent_id,
+                exposure.project_id,
+                exposure.assembled_at,
+                exposure.sections_document(),
+            )
+        return status.endswith(" 1")
+
+    async def list_chat_exposures(self, session_id: str) -> list[ChatExposure]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT session_id, message_id, user_id, agent_id, project_id, assembled_at, "
+                "sections FROM chat_exposures WHERE session_id = $1 "
+                "ORDER BY assembled_at, message_id",
+                session_id,
+            )
+        return [ChatExposure.from_document(r) for r in rows]
+
+    async def list_chat_exposures_supplying(self, record_id: str) -> list[ChatExposure]:
+        # JSONB containment: a section whose supplied list holds the record, any revision.
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT session_id, message_id, user_id, agent_id, project_id, assembled_at, "
+                "sections FROM chat_exposures WHERE sections @> jsonb_build_array("
+                "jsonb_build_object('supplied', jsonb_build_array("
+                "jsonb_build_object('record_id', $1::text)))) "
+                "ORDER BY assembled_at, message_id",
+                record_id,
+            )
+        return [ChatExposure.from_document(r) for r in rows]
 
     async def record_assessment(self, assessment: Assessment) -> bool:
         async with self._pool.acquire() as conn:

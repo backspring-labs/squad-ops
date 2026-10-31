@@ -12,7 +12,14 @@ from pathlib import Path
 
 import yaml
 
-from squadops.cycles.models import Project, ProjectNotFoundError
+from squadops.cycles.models import (
+    DerivedProfileNotFoundError,
+    DevelopmentConfigurationNotFoundError,
+    InheritedBaselineNotFoundError,
+    Project,
+    ProjectNotFoundError,
+    ProjectRegistryReadOnlyError,
+)
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -63,3 +70,70 @@ class ConfigProjectRegistry(ProjectRegistryPort):
         if project_id not in self._projects:
             raise ProjectNotFoundError(f"Project not found: {project_id}")
         return self._projects[project_id]
+
+    async def register_project(self, registration, *, actor: str):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: config/projects.yaml is edited, never written. "
+            "Registration needs cycles.project_registry_provider: postgres (SIP-0112 FR-03)"
+        )
+
+    async def record_validation(self, project_id, *, commit, diagnostic, actor, idempotency_key):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: its sample applications have no external source "
+            "to validate (SIP-0112 FR-03)"
+        )
+
+    async def record_development_configuration(
+        self, configuration, *, actor, idempotency_key, request_hash
+    ):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: a Development Configuration needs the writable "
+            "registry (SIP-0112 FR-03)"
+        )
+
+    async def get_development_configuration(self, project_id, revision=None):
+        raise DevelopmentConfigurationNotFoundError(
+            f"Project {project_id} is a sample application: it has no Development Configuration"
+        )
+
+    async def record_source_mapping(self, mapping):
+        raise ProjectRegistryReadOnlyError("the config provider records no source mappings")
+
+    async def source_mappings(self, project_id, *, workspace_id=None):
+        return []
+
+    async def record_inherited_baseline(
+        self, baseline, *, actor, idempotency_key, request_hash, derived_profile=None
+    ):
+        raise ProjectRegistryReadOnlyError("the config provider records no baselines")
+
+    async def record_contribution(self, contribution, *, idempotency_key, request_hash):
+        raise ProjectRegistryReadOnlyError("the config provider records no contributions")
+
+    async def contributions(self, project_id):
+        return []
+
+    async def record_contribution_state(self, project_id, cycle_id, run_id, **kwargs):
+        raise ProjectRegistryReadOnlyError("the config provider records no contributions")
+
+    async def record_sync(self, document, *, actor, idempotency_key, request_hash):
+        raise ProjectRegistryReadOnlyError("the config provider records no syncs")
+
+    async def source_syncs(self, project_id):
+        return []
+
+    async def record_initialization(self, initialization, *, idempotency_key, request_hash):
+        raise ProjectRegistryReadOnlyError("the config provider records no initializations")
+
+    async def get_initialization(self, project_id):
+        return None
+
+    async def get_inherited_baseline(self, project_id):
+        raise InheritedBaselineNotFoundError(
+            f"Project {project_id} is a sample application: it has no inherited baseline"
+        )
+
+    async def get_derived_profile(self, project_id, *, at=None):
+        raise DerivedProfileNotFoundError(
+            f"Project {project_id} is a sample application: it has no derived profile"
+        )

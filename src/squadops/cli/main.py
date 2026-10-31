@@ -29,6 +29,7 @@ from squadops.cli.commands.bootstrap import bootstrap
 from squadops.cli.commands.campaigns import app as campaigns_app
 from squadops.cli.commands.cycles import app as cycles_app
 from squadops.cli.commands.doctor import doctor
+from squadops.cli.commands.instructions import app as instructions_app
 from squadops.cli.commands.lessons import app as lessons_app
 from squadops.cli.commands.meta import app as meta_app
 from squadops.cli.commands.models import app as models_app
@@ -36,6 +37,8 @@ from squadops.cli.commands.profiles import app as profiles_app
 from squadops.cli.commands.projects import app as projects_app
 from squadops.cli.commands.request_profiles import app as request_profiles_app
 from squadops.cli.commands.runs import app as runs_app
+from squadops.cli.commands.scenarios import app as scenarios_app
+from squadops.cli.commands.snapshots import app as snapshots_app
 
 app = typer.Typer(
     name="squadops",
@@ -106,3 +109,6 @@ app.add_typer(models_app, name="models")  # SIP-0074
 app.add_typer(agent_app, name="agent")  # SIP-0089
 app.add_typer(assignment_app, name="assignment")  # SIP-0089 §2.7
 app.add_typer(lessons_app, name="lessons")  # SIP-0110 §0.6: Cross-Cycle Memory's lessons
+app.add_typer(snapshots_app, name="snapshots")  # Appendix A §3.7: a unit's snapshot, re-bound
+app.add_typer(instructions_app, name="instructions")  # Appendix A §3.5: task instructions
+app.add_typer(scenarios_app, name="scenarios")  # SIP-0113 §4.1: held-out scenario suites

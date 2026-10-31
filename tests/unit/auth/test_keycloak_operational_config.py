@@ -430,3 +430,25 @@ class TestRealmLintFunction:
 
 # Need Path for lint function import
 from pathlib import Path  # noqa: E402
+
+
+@pytest.mark.parametrize("profile", ["dev", "local", "lab", "cloud"])
+def test_a_shipped_profiles_keycloak_section_validates_with_no_secret_in_it(profile):
+    """#2498: the identity provider's admin password and database credentials are its container's,
+    from .env, and no service reads them. Bug caught: a shipped profile that no longer validates once
+    they leave it (the admin password was required), or one that still names a secret, which every
+    service loading it would have to mount."""
+    from pathlib import Path
+
+    import yaml
+
+    path = Path(__file__).resolve().parents[3] / "config" / "profiles" / f"{profile}.yaml"
+    text = path.read_text(encoding="utf-8")
+    section = yaml.safe_load(text)["auth"]["keycloak"]
+
+    cfg = KeycloakOperationalConfig(**section)
+
+    assert "secret://" not in text
+    assert cfg.admin.password is None
+    if cfg.realm != "squadops-dev":
+        assert cfg.db_dsn is not None and ":" not in cfg.db_dsn.split("@")[0].split("//")[1]

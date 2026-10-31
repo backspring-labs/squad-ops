@@ -15,26 +15,26 @@ correction-loop flows have distinct, non-overlapping capability ids.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.proposed_behaviours import is_outlet_file
+
+# #2810: what a repair shows of its tree, read through the module so the composer, the handler and
+# a replay's override (``scripts/dev/convergence_replay``) all reach the same function.
+from squadops.capabilities import repair_prompt_contents
 from squadops.capabilities.anchored_edits import (
     EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
     EMISSION_FAILURE_WHOLE_FILE_REFUSED,
     REVISION_REFUSED_FAILURES,
     apply_anchored_edits,
-    editable_file_lines,
     parse_anchored_edits,
     revision_form_reading,
     strip_edit_blocks,
-    verbatim_block,
     whole_file_refusal_line,
     whole_file_refusals,
 )
-from squadops.capabilities.context_assembly import (
-    REPAIR_FAILED_ARTIFACTS_KEY,
-    scaffold_shell_paths,
-)
+from squadops.capabilities.context_assembly import scaffold_shell_paths
 from squadops.capabilities.disputed_checks import failing_row_identities
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.cycle.fill_mode_brief import (
@@ -43,12 +43,21 @@ from squadops.capabilities.handlers.cycle.fill_mode_brief import (
 )
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
+from squadops.capabilities.handlers.increment_test_scope import (
+    increment_test_scope_section,
+    increment_views_section,
+)
+from squadops.capabilities.handlers.task_instructions import (
+    project_instructions_section,
+    task_instructions_section,
+)
 from squadops.capabilities.verification_scaffold_fill import (
+    SLOT_SUBJECT_DROPPED_KEY,
     apply_followup_fills,
     merge_fills,
     parse_fill_emission,
     recover_fills,
+    slot_subject_guard,
     strip_fill_blocks,
 )
 from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
@@ -251,39 +260,6 @@ def _format_correction_decision(correction_decision: Any) -> str:
     return str(correction_decision or "(no decision available)")
 
 
-#: Lines of the suite shown on each side of a failing line (1.8.2 item 6): enough to take in
-#: the assertion, the setup it rests on and the lines after it in the same case.
-FAILING_LINE_CONTEXT = 6
-
-
-def failing_line_excerpts(cases: list[dict[str, Any]], files: dict[str, str]) -> str:
-    """Each failing case's failing line in the suite as the repair will edit it, numbered, with
-    the line that failed marked — or "" when no case's file and line are in hand.
-
-    The model sees the assertion that failed instead of a line number to find it by (1.8.2
-    item 6, from the retest readout on 1.8.1's corpus): two scoped qa repairs edited lines
-    near the failing one and failed again on it, and two fixed the failing line and failed on
-    the next line of the same case.
-    """
-    blocks = []
-    for case in cases:
-        path, at = str(case.get("file") or ""), case.get("failing_line") or case.get("line")
-        content = files.get(path)
-        if not content or not isinstance(at, int):
-            continue
-        source = content.splitlines()
-        if not 1 <= at <= len(source):
-            continue
-        first = max(1, at - FAILING_LINE_CONTEXT)
-        last = min(len(source), at + FAILING_LINE_CONTEXT)
-        numbered = "\n".join(
-            f"{'→' if n == at else ' '} {n:>4} | {source[n - 1]}" for n in range(first, last + 1)
-        )
-        title = str(case.get("title") or "(suite-level)")
-        blocks.append(f"`{path}:{at}` › {title}\n```\n{numbered}\n```")
-    return "\n\n".join(blocks)
-
-
 class _RepairPromptMixin:
     """Shared prompt-building for correction-loop repair handlers.
 
@@ -341,6 +317,9 @@ class _RepairPromptMixin:
             "frozen_surface_section": str(inputs.get("frozen_surface_section") or ""),
             # #1884: rendered in handle() for a qa repair of an increment's suite; "" otherwise.
             "test_scope_section": str(inputs.get("test_scope_section") or ""),
+            # SIP-0109 §24cp: rendered in handle() for a dev repair on an increment that adds a
+            # page; "" otherwise.
+            "increment_views_section": str(inputs.get("increment_views_section") or ""),
             # #1015 part C: the repair could not see the loop. No attempt counter, no
             # statement that rounds are finite — each round rendered only the fresh
             # failure, so a dev with no reason to think anything was running out
@@ -368,6 +347,8 @@ class _RepairPromptMixin:
             # SIP-0096 §17a: how to dispute a check, rendered in handle() from its one asset.
             "disputed_checks_section": str(inputs.get("disputed_checks_section") or ""),
             # SIP-0110 §0.9: rendered in handle(); "" when no lesson was supplied.
+            "task_instructions_section": str(inputs.get("task_instructions_section") or ""),
+            "project_instructions_section": str(inputs.get("project_instructions_section") or ""),
             "cross_cycle_lessons_section": str(inputs.get("cross_cycle_lessons_section") or ""),
             # SIP-0107 step 4: the anchored edit form, for the named files that already exist
             # in the workspace, and — on the one retry — why the previous edits were refused.
@@ -423,6 +404,8 @@ class _RepairPromptMixin:
         inputs = {
             **inputs,
             "test_scope_section": await self._render_test_scope_section(context, inputs),
+            # SIP-0109 §24cp: "" but for a dev repair on an increment that adds a page.
+            "increment_views_section": await self._render_increment_views_section(context, inputs),
         }
         loop_state = await self._render_loop_state_section(context, inputs)
         if loop_state:
@@ -445,6 +428,13 @@ class _RepairPromptMixin:
         inputs = {
             **inputs,
             "disputed_checks_section": await self._render_disputed_checks_section(context, inputs),
+            # SIP-0110 Appendix A §3.6 (#2178): this repair's task instructions, before the lessons.
+            "task_instructions_section": await task_instructions_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            ),
+            "project_instructions_section": await project_instructions_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            ),
             # SIP-0110 §0.9: the lessons approved for this repair, in a slot of their own, apart
             # from the failure evidence it is handed; "" when none was supplied.
             "cross_cycle_lessons_section": await cross_cycle_lessons_section(
@@ -453,7 +443,7 @@ class _RepairPromptMixin:
         }
         result = await super().handle(context, inputs)
         result = await self._retry_refused_anchored_edits(context, inputs, result)
-        base = self._repair_base_files(inputs)
+        base = repair_prompt_contents.repair_base_files(inputs)
         # Every base file's size, not only the offered ones: a base file re-emitted whole that
         # the form never offered is still a whole-file response (§46p, #1583).
         self._record_revision_form(
@@ -541,13 +531,13 @@ class _RepairPromptMixin:
         before. The two used to disagree: the edit form said edits were preferred while the
         output section, and the prompt's last line, required every named file whole, so deploy
         B's Next.js repair of a one-line fix came back as a whole file. The decision is the edit
-        form's own (``_anchorable_files``), so the two cannot drift.
+        form's own (``anchorable_files``), so the two cannot drift.
         """
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return {}
 
-        editable = self._anchorable_files(inputs)
+        editable = repair_prompt_contents.anchorable_files(inputs)
         if editable:
             named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
             shells = self._scaffold_shell_paths(inputs)
@@ -570,42 +560,17 @@ class _RepairPromptMixin:
             closing = await renderer.render("request.cycle_repair_closing_whole_file", {})
         return {"output_form_section": output.content, "closing_instruction": closing.content}
 
-    def _repair_base_files(self, inputs: dict[str, Any]) -> dict[str, str]:
-        """The tree the repair patches: the workspace the verifier materialises, with the failed
-        task's own files over it (#1264) — the same tree the typed checks evaluate on."""
-        workspace = {
-            str(k): str(v) for k, v in (inputs.get("acceptance_workspace_files") or {}).items()
-        }
-        for art in inputs.get(REPAIR_FAILED_ARTIFACTS_KEY) or ():
-            if isinstance(art, dict) and isinstance(art.get("name"), str):
-                workspace[art["name"]] = str(art.get("content") or "")
-        return workspace
-
     @staticmethod
     def _scaffold_shell_paths(inputs: dict[str, Any]) -> set[str]:
         """The scaffold's shells, by path — the files a fill-mode repair fills by slot (§9.3)."""
         return scaffold_shell_paths(inputs)
-
-    def _anchorable_files(self, inputs: dict[str, Any]) -> list[str]:
-        """The named files a repair may revise by anchored edit: those it may emit that already
-        exist in its base, minus the scaffold's shells. A qa repair in fill mode revises its
-        shells by slot (§9.3) and never anchors them; a free-authored file it also owns — a
-        suite beside the shells — is anchorable like any other file (#1583: with the shells'
-        rule applied to every file, deploy D's Next.js qa repair had no scoped path to the one
-        assertion it had to fix and re-emitted the whole suite, unread as a whole-file response
-        because nothing had been offered)."""
-
-        base = self._repair_base_files(inputs)
-        shells = self._scaffold_shell_paths(inputs)
-        named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
-        return sorted({n for n in named if n and n in base and n not in shells})
 
     async def _render_current_files_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
         """The files the repair may revise, verbatim, or "" (SIP-0107 §9.2, §46m; #1576).
 
-        Each is the copy in the tree the edits resolve against (``_repair_base_files``: the
+        Each is the copy in the tree the edits resolve against (``repair_base_files``: the
         verifier's workspace with the failed task's own files over it), so the text the model
         copies an anchor from is the text the anchor is matched against. Every repair before
         this was told to copy anchors "exactly from the file as it is now" — and, under the
@@ -613,15 +578,19 @@ class _RepairPromptMixin:
         never showed: the readiness probe's routes.py repairs anchored ``@router.post("/runs")``
         six times in six for a decorator that reads ``…, status_code=201)``, and every retry
         that applied re-authored all five functions blind through structural blocks.
+
+        #2810: shown through ``repair_prompt_contents.current_files``, which the composer counts.
         """
-        files = self._anchorable_files(inputs)
+        shown = repair_prompt_contents.current_files(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
-        if not files or renderer is None:
+        if not shown or renderer is None:
             return ""
-        base = self._repair_base_files(inputs)
-        blocks = [verbatim_block(path, base[path]) for path in files]
         rendered = await renderer.render(
-            "request.cycle_repair_current_files", {"current_files": "\n\n".join(blocks)}
+            "request.cycle_repair_current_files", {"current_files": shown}
+        )
+        files, base = (
+            repair_prompt_contents.anchorable_files(inputs),
+            repair_prompt_contents.repair_base_files(inputs),
         )
         logger.info(
             "repair_current_files handler=%s files=%d chars=%d",
@@ -641,12 +610,13 @@ class _RepairPromptMixin:
         structural block targets (§7) — read from the same base the edits resolve against, so a
         listed selector is one the transaction will find. A file no resolver reads, or one that
         does not parse, is listed without entities: it can still be edited by anchor.
+
+        #2810: listed through ``repair_prompt_contents.edit_form``, which the composer counts.
         """
-        files = self._anchorable_files(inputs)
+        lines, offered = repair_prompt_contents.edit_form(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
-        if not files or renderer is None:
+        if not lines or renderer is None:
             return "", {}
-        lines, offered = editable_file_lines(files, self._repair_base_files(inputs))
         rendered = await renderer.render(
             "request.cycle_repair_anchored_edit_appendix", {"editable_files": "\n".join(lines)}
         )
@@ -672,7 +642,7 @@ class _RepairPromptMixin:
         # editing is never replaced whole without fallback authority, and nothing grants it. The
         # whole response is refused, edits included, as one invalid revision refuses its
         # transaction (§14).
-        refused = whole_file_refusals(emitted, self._anchorable_files(inputs))
+        refused = whole_file_refusals(emitted, repair_prompt_contents.anchorable_files(inputs))
         if refused:
             return [], {
                 "whole_file_refused": refused,
@@ -687,8 +657,8 @@ class _RepairPromptMixin:
         whole = [a for a in emitted if not a.get("emission_fallback")]
         application = apply_anchored_edits(
             parse,
-            self._repair_base_files(inputs),
-            writable=self._anchorable_files(inputs),
+            repair_prompt_contents.repair_base_files(inputs),
+            writable=repair_prompt_contents.anchorable_files(inputs),
             producer=str(self._task_type),
             task_id=str(inputs.get("task_id") or ""),
             whole_file_paths=[str(a.get("name") or "") for a in whole],
@@ -801,7 +771,7 @@ class _RepairPromptMixin:
         # does this evaluation, or a dev repair of a qa failure judges the qa suite's
         # criteria on a tree without the suite (cyc_4ec4ad5e2ca1: six `file_not_found`
         # failures about a file the patch never touched, and a correct fix refused twice).
-        workspace = self._repair_base_files(inputs)
+        workspace = repair_prompt_contents.repair_base_files(inputs)
         evaluation_inputs = (
             {**inputs, "acceptance_workspace_files": workspace} if workspace else inputs
         )
@@ -1071,6 +1041,26 @@ class _RepairPromptMixin:
             getattr(context.ports, "request_renderer", None), inputs
         )
 
+    async def _render_increment_views_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """SIP-0109 §24cp: the pages a repository-backed change adds, each with the anchor its
+        view renders, for a dev repair, or "". They ride ``REPAIR_PRESENCE_KEYS`` from the failed
+        ``development.develop`` (``increment_views``), or from a failed ``qa.test``'s scope, so a
+        repair of a view keeps the anchor acceptance reads the page for. A qa repair is shown them
+        in its test scope already."""
+        # Read as the mixin's other renderers read it; through getattr, since the mixin declares no
+        # ``_role`` and the type ratchet counts each bare read (its baseline holds the others).
+        if getattr(self, "_role", "") != "dev":
+            return ""
+        scope = inputs.get("increment_test_scope")
+        views = inputs.get("increment_views") or (
+            scope.get("views") if isinstance(scope, dict) else None
+        )
+        return await increment_views_section(
+            getattr(context.ports, "request_renderer", None), views
+        )
+
     async def _render_qa_frozen_surface_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
@@ -1124,6 +1114,8 @@ class _RepairPromptMixin:
         them). The cases come from the runner's structured rows on the failed task's
         ``tests_pass`` row (``failing_cases``); the "repair only these" prose lives in
         the appendix asset (CLAUDE.md #448). Non-qa roles, no evidence, no renderer → "".
+        The frames are cut through ``repair_prompt_contents.failing_case_frames``, which the
+        composer counts (#2810).
         """
         if self._role != "qa":
             return ""
@@ -1138,7 +1130,7 @@ class _RepairPromptMixin:
             "case_lines": "\n".join(f"- {line}" for line in lines),
             "case_count": str(len(lines)),
         }
-        frames = failing_line_excerpts(cases, self._repair_base_files(inputs))
+        frames = repair_prompt_contents.failing_case_frames(inputs)
         if frames:
             variables["case_frames"] = frames
         rendered = await renderer.render("request.qa_test_repair_failing_cases_appendix", variables)
@@ -1412,10 +1404,21 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
         scaffold_input = inputs.get("verification_scaffold")
         if scaffold_input and isinstance(result.outputs, dict):
             artifacts, evidence = _merge_repair_fills(
-                scaffold_input, list(result.outputs.get("artifacts") or [])
+                scaffold_input,
+                list(result.outputs.get("artifacts") or []),
+                repair_slots=inputs.get("repair_slots") or (),
             )
             result.outputs["artifacts"] = artifacts
             result.outputs["fill_merge"] = evidence
+            if evidence.get("refused"):
+                # SIP-0104 §13f (#2664): the repair resolved a failing slot assertion by
+                # dropping its subject. Nothing of it is applied; the runner spends the round
+                # and tells the next one which slot and subject (#2727's shape).
+                result.outputs[SLOT_SUBJECT_DROPPED_KEY] = list(evidence["refused"])
+                logger.warning(
+                    "qa_test_repair_handler refused: slot_subject_dropped %s",
+                    "; ".join(f"{r['slot_id']}: {r['described']}" for r in evidence["refused"]),
+                )
             logger.info(
                 "qa_test_repair_handler fill merge: applied=%s dropped_shell_rewrites=%s counts=%s",
                 evidence.get("applied"),
@@ -1426,7 +1429,10 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
 
 
 def _merge_repair_fills(
-    scaffold_input: dict[str, Any], artifacts: list[dict[str, Any]]
+    scaffold_input: dict[str, Any],
+    artifacts: list[dict[str, Any]],
+    *,
+    repair_slots: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Merge a repair's fill artifacts into the task's current shells (#970, 1.6.5 D).
 
@@ -1438,6 +1444,13 @@ def _merge_repair_fills(
     kinds) and is emitted at the shell path, so the patch overlay supersedes the
     failed shell by name and the retest runs it. A whole-shell rewrite emitted as a
     path fence is dropped and recorded, as on every other qa path.
+
+    **The slot-subject gate (SIP-0104 §13f, #2664).** ``repair_slots`` are the failed task's
+    in-slot failures, each with the merged shell's line. Every slot among them that the repair
+    revises is judged against its body in ``current_files``, whichever slots the repair was
+    aimed at, since a repair sent for another file may refill them all. One refused slot
+    refuses the repair: nothing of it is returned, and ``evidence["refused"]`` names each
+    refused slot and subject.
     """
 
     record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
@@ -1464,7 +1477,17 @@ def _merge_repair_fills(
         store_tables=scaffold_input.get("store_tables"),
         slot_element_kinds=scaffold_input.get("slot_element_kinds"),
         producer=TaskType.QA_TEST_REPAIR,
+        subject_guard=slot_subject_guard(scaffold_input, repair_slots, current),
     )
+    if merged.subject_verdicts:
+        evidence["subject_gate"] = [v.to_dict() for v in merged.subject_verdicts]
+    if merged.refused:
+        evidence["refused"] = [v.to_dict() for v in merged.refused]
+        evidence["detail"] = (
+            "refused: the repair dropped the subject of a failing slot assertion "
+            "(slot_subject_dropped); nothing of it is applied"
+        )
+        return [], evidence
     touched_paths = {
         f.path for f in record.files if any(s.slot_id in folded.applied for s in f.slots)
     }

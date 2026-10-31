@@ -24,6 +24,34 @@ import yaml
 
 CHECKS = Path(__file__).with_name("loaded_checks.yaml")
 RECORD_CHECK = Path(__file__).parent / "ops" / "record_deploy.sh"
+COMPOSE = Path(__file__).resolve().parents[2] / "docker-compose.yml"
+
+
+def opt_in_containers(compose: Path = COMPOSE) -> dict[str, str]:
+    """Each container a compose profile gates, by name, with its service (#2426).
+
+    A deploy runs one only when asked (the sandbox, #2193), so a row for one whose container does
+    not exist has nothing to read and is skipped, said by name. A recorded one that stopped
+    running still fails the deploy-record check that follows ("one recorded that no longer
+    runs", ``deploy_check``), so a sandbox that should be running cannot hide behind the skip.
+    """
+    services = yaml.safe_load(compose.read_text())["services"]
+    return {
+        spec.get("container_name", name): name
+        for name, spec in services.items()
+        if spec.get("profiles")
+    }
+
+
+def container_exists(name: str) -> bool:
+    probe = subprocess.run(
+        ["docker", "inspect", "--format", "{{.Name}}", name],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    return probe.returncode == 0
 
 
 def judge(expect: str, returncode: int, stdout: str, stderr: str) -> str | None:
@@ -58,8 +86,17 @@ def main(argv: list[str]) -> int:
             # A misspelt or unmerged id ran nothing; reporting "1 loaded" would credit it.
             print(f"no loaded check has id {a.only!r} in {CHECKS}", file=sys.stderr)
             return 2
-    failed = 0
+    opt_in = opt_in_containers()
+    failed = skipped = 0
     for row in rows:
+        service = opt_in.get(row["container"])
+        if service and not container_exists(row["container"]):
+            skipped += 1
+            print(
+                f"skip #{row['id']} {row['container']}: {row['what']} — {service} does not run "
+                "on this deploy (an opt-in compose profile)"
+            )
+            continue
         r = subprocess.run(
             ["docker", "exec", "-i", row["container"], "python", "-"],
             input=row["code"],
@@ -74,7 +111,10 @@ def main(argv: list[str]) -> int:
             f"{'ok  ' if why is None else 'FAIL'} #{row['id']} {row['container']}: {row['what']}"
             + (f" — {why}" if why else "")
         )
-    print(f"{len(rows) - failed} loaded, {failed} not")
+    print(
+        f"{len(rows) - failed - skipped} loaded, {failed} not"
+        + (f", {skipped} skipped" if skipped else "")
+    )
     if not a.only:
         ok, said = record_check()
         print(f"{'ok  ' if ok else 'FAIL'} deploy record: {said}")

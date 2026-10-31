@@ -12,6 +12,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
+from squadops.projects.models import ProjectLifecycleStatus, ProjectOwnership, ProjectSource
+from squadops.projects.source_context import ProjectSourceContext
+
 # =============================================================================
 # Enums (str, Enum) — following config/schema.py SSLMode pattern
 # =============================================================================
@@ -170,6 +173,56 @@ class ProjectNotFoundError(CycleError):
     """Raised when a project_id cannot be found."""
 
 
+class ProjectNotReadyError(CycleError):
+    """Raised when a Cycle is prepared for a Project whose lifecycle accepts none (SIP-0112
+    contract 1): registering, archived or failed. A typed refusal, never a 404."""
+
+
+class StaleSourcePreconditionError(CycleError):
+    """Raised when a Cycle's stated source precondition names a commit or Development
+    Configuration revision the Project has moved past (SIP-0112 FR-09, §D.3), or the Project's
+    upstream has, with drift in evidence the Cycle would rely on (FR-21, #2608): refused, never
+    silently re-pinned."""
+
+
+class ProjectRegistryReadOnlyError(CycleError):
+    """Raised when a Project is written through a registry that refuses writes (SIP-0112
+    FR-03, R3): the config file, or the writable registry with its write gate closed."""
+
+
+class ProjectStateConflictError(CycleError):
+    """Raised when a lifecycle operation meets a Project in a state it doesn't apply to: a
+    sample application has no external source to validate, and a READY one is not validated
+    again here (re-validation against drift is E.4.4's)."""
+
+
+class DevelopmentConfigurationNotFoundError(CycleError):
+    """Raised when a Project has no Development Configuration, or not the revision asked for."""
+
+
+class InheritedBaselineNotFoundError(CycleError):
+    """Raised when a Project has no inherited baseline captured yet (SIP-0112 FR-20)."""
+
+
+class DerivedProfileNotFoundError(CycleError):
+    """Raised when a Project's latest baseline capture has no derived profile: none is captured,
+    or it was captured before profiles were derived (SIP-0112 H.4, contract 8)."""
+
+
+class StaleConfigurationRevisionError(CycleError):
+    """Raised when a Development Configuration is recorded against a revision that is no longer
+    the current one: another revision was recorded first (§D.2's version precondition)."""
+
+
+class ProjectIdTakenError(CycleError):
+    """Raised when a registration names a Project ID the registry already holds."""
+
+
+class RegistrationKeyConflictError(CycleError):
+    """Raised when an idempotency key that already registered a Project arrives with different
+    content: a replay must repeat its request exactly."""
+
+
 class ArtifactNotFoundError(CycleError):
     """Raised when an artifact_id cannot be found."""
 
@@ -291,7 +344,11 @@ def resolve_config(applied_defaults: dict, execution_overrides: dict) -> dict:
 
 @dataclass(frozen=True)
 class Project:
-    """Pre-registered project entity. SIP-0064 §8.1."""
+    """A registered Project. SIP-0064 §8.1, extended by SIP-0112's Project Record (E.4.1).
+
+    The fields after ``prd_path`` are the record's. A Project the config registry reads is a
+    sample application shipped in the image: ``READY`` at version 1, with no external source.
+    """
 
     project_id: str
     name: str
@@ -299,6 +356,16 @@ class Project:
     created_at: datetime
     tags: tuple[str, ...] = ()
     prd_path: str | None = None
+    lifecycle_status: ProjectLifecycleStatus = ProjectLifecycleStatus.READY
+    record_version: int = 1
+    source: ProjectSource | None = None
+    ownership: ProjectOwnership | None = None
+    development_configuration_revision: int | None = None
+    #: SIP-0112 E.4.2: what the base ref named when the source was last reached (contract 1),
+    #: and why a validation failed, while the Project is FAILED_REGISTRATION.
+    development_baseline_commit: str | None = None
+    integrated_upstream_commit: str | None = None
+    validation_diagnostic: str | None = None
 
 
 @dataclass(frozen=True)
@@ -414,6 +481,14 @@ class Cycle:
     # otherwise unchanged (§19).
     campaign_id: str | None = None
     kind: str | None = None
+    #: #2578 part 2: the increment the cycle belongs to, its proposal's id, set by the campaign's
+    #: launcher from the launch's own binding: a repair or retry carries its increment's, a
+    #: re-proposal a new one. None for a calibration and a cycle no campaign launched. A
+    #: projection of the control log, which stays the campaign's source of truth.
+    increment_id: str | None = None
+    #: SIP-0112 contract 1 (E.4.3): an external Project's source, pinned before dispatch and
+    #: never changed for this Cycle. None for a sample application.
+    source_context: ProjectSourceContext | None = None
 
     notes: str | None = None
 
@@ -444,6 +519,58 @@ class Cycle:
         return resolve_config(self.applied_defaults, self.execution_overrides)
 
 
+class HoldCause(StrEnum):
+    """Why a binding hold was released (SIP-0110 §A.3.6, #2178)."""
+
+    STORE_ANSWERED = "store_answered"
+    INSTRUCTION_CHANGED = "instruction_changed"
+    REBOUND = "rebound"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+class HoldKind(StrEnum):
+    """Why one record of a binding hold couldn't be bound: the store didn't answer, or an
+    operator's input can't be bound (a required reference at the cycle's commit, an instruction
+    over its budget, or one withdrawn or narrowed to nothing). A Campaign's hold ends by it."""
+
+    STORE = "store"
+    INPUT = "input"
+
+
+@dataclass(frozen=True)
+class BindingHold:
+    """A run held on its task's binding sections (SIP-0110 §A.3.6, #2178): its task, each record
+    it couldn't bind as ``(ref, reason, kind)``, and when and why the hold was released. The run is
+    held while its last hold has no ``released_at`` and it is PAUSED."""
+
+    hold_id: str
+    task_id: str
+    task_type: str
+    unresolved: tuple[tuple[str, str, str], ...]
+    held_at: datetime
+    released_at: datetime | None = None
+    cause: str | None = None
+    #: The binding sections that held (``task_instructions``, ``project_instructions``), which
+    #: say what an operator's change to release it was: none for a dispatch turn not given.
+    sections: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RunHalt:
+    """A run halted by a task instruction's emergency withdrawal (SIP-0110 §A.3.8, T13; #2178):
+    the instruction, who withdrew it and why, and the task the restart runs again from. ``None``
+    there means the run only built on work that received it, in an earlier run of its cycle, so
+    nothing in it restarts. ``restart_run_id`` is the run its cycle restarted it as."""
+
+    record_id: str
+    requested_by: str
+    why: str
+    requested_at: datetime
+    restart_from_task_id: str | None = None
+    restart_run_id: str | None = None
+
+
 @dataclass(frozen=True)
 class Run:
     """Single execution attempt of a Cycle. SIP-0064 §8.4."""
@@ -463,6 +590,16 @@ class Run:
     # #427: why the run reached FAILED, written once at finalize alongside the
     # terminal transition. None for non-failed runs and pre-1.4.4 history.
     failure_reason: str | None = None
+    #: #2178: each time the run was held on a task's bindings, oldest first.
+    binding_holds: tuple[BindingHold, ...] = ()
+    #: #2178 (T13): the emergency withdrawal that halted it, if one did.
+    halt: RunHalt | None = None
+
+    @property
+    def open_hold(self) -> BindingHold | None:
+        """The hold the run waits on, if its last one has no release."""
+        last = self.binding_holds[-1] if self.binding_holds else None
+        return last if last is not None and last.released_at is None else None
 
 
 @dataclass(frozen=True)

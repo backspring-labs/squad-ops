@@ -13,8 +13,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.stacks.scaffold import resolve_development_profile
-from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOB
+from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
+from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOBS
 
 # ---------------------------------------------------------------------------
 # Test framework constants (D5)
@@ -75,9 +75,9 @@ class DevelopmentProfile:
     test_file_patterns: tuple[str, ...]
     #: What this stack's test runner COLLECTS — what plan validation and patch acceptance read
     #: (#1534). Distinct from ``test_file_patterns`` because the two answers differ where a
-    #: scaffold narrows the runner: Next.js's vitest config collects ``.test.ts`` only under
-    #: ``__tests__/``, while a dev repair's ``extra.test.ts`` or a ``.tsx`` suite still looks
-    #: like a test file. Required on every profile, so no stack inherits another's answer.
+    #: scaffold narrows the runner: Next.js's vitest config collects ``.test.ts`` and ``.test.tsx``
+    #: only under ``__tests__/``, while a dev repair's ``extra.test.ts`` or a ``.spec.ts`` suite
+    #: still looks like a test file. Required on every profile, so no stack inherits another's answer.
     collected_test_patterns: tuple[str, ...]
     max_completion_tokens: int = 4000
     test_timeout_seconds: int = 60
@@ -97,6 +97,17 @@ class DevelopmentProfile:
     #: Empty means NO fill-only appendix rather than another stack's — wrong guidance is
     #: worse than none (#818's asymmetric-default rule; this defect is the proof).
     fill_only_template: str = ""
+    #: The managed asset carrying this stack's conventions for a product made from its
+    #: blueprint (SIP-0112 H.13): what its languages, frameworks and tests expect of a change,
+    #: and never where a file or a test goes. A product made from a blueprint is its owner's
+    #: tree from its first commit, so its layout is its own, and its runners say where a test is
+    #: found (H.11). The prose above is another audience's: it describes the skeleton a sample
+    #: application fills ("Place tests in backend/tests/"), where a product's tests can be
+    #: anywhere (``z_shelfnote`` keeps its backend tests in ``tests/``).
+    #:
+    #: Empty means a product's cycle is never pinned to this profile from its blueprint, and a
+    #: source-backed run under it is shown the prose above, as before.
+    product_conventions_template: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +408,9 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         max_completion_tokens=12000,
         test_timeout_seconds=180,
         fill_only_template="request.development_develop_fill_only_appendix",
+        product_conventions_template=(
+            "request.source_repository_conventions_fullstack_fastapi_react"
+        ),
     ),
     # #822 stack #2. Bound to the scaffold stack of the same name by
     # ``ScaffoldStack.development_profile`` (#832), so the two registries can no longer disagree
@@ -474,12 +488,46 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "```\n"
             "For a parameterized route, pass the params argument the handler signature "
             "declares: `GET(request, { params: { run_id: 'r1' } })`.\n\n"
+            "A PAGE loads its data in the browser, through `api` from @/lib/api, so a suite "
+            "that tests a page MUST be a `.test.tsx`: it runs in a DOM with Testing Library "
+            "(#2534), while a `.test.ts` runs in node, where `document` is not defined. "
+            "Render the page, mock `next/navigation`, stub `fetch` so the page's own request "
+            "reaches the route handler, and wait for the anchor. Route the stub through the "
+            "scaffold's `callRoute` from @/vitest.routes, which finds the route for the "
+            "page's path as the App Router does and calls its handler (#2602): a stub that "
+            "answers with data of its own never runs the application, and is refused as "
+            "self-mocking. Leave `signal` out of what the stub passes on: the DOM's "
+            "AbortSignal is not Node's, and Node refuses it. "
+            "`renderToString` shows only the loading state, since no effect runs in it. "
+            "Example:\n"
+            "```tsx\n"
+            "import { vi } from 'vitest'\n"
+            "import { render, screen } from '@testing-library/react'\n"
+            "import { callRoute } from '@/vitest.routes'\n"
+            "import RunDetail from '@/app/runs/[run_id]/page'\n"
+            "vi.mock('next/navigation', () => ({\n"
+            "  useParams: () => ({ run_id: 'r1' }),\n"
+            "  useSearchParams: () => new URLSearchParams(),\n"
+            "  usePathname: () => '/runs/r1',\n"
+            "  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),\n"
+            "}))\n"
+            "vi.stubGlobal('fetch', (path: string, init: RequestInit = {}) => {\n"
+            "  const { signal: _signal, ...rest } = init\n"
+            "  return callRoute(rest.method ?? 'GET', path, rest)\n"
+            "})\n"
+            "render(<RunDetail />)\n"
+            "expect(await screen.findByTestId('run-detail-view')).toBeInTheDocument()\n"
+            "```\n"
+            "A page that takes its route params as a prop instead is rendered with them: "
+            "`render(<RunDetail params={{ run_id: 'r1' }} />)`.\n\n"
             "Import ONLY packages the shipped package.json declares — a suite that fails to "
             "load fails the whole tests_pass check (#448).\n"
             "Consume the scaffold-owned store seam (`reset`, `insert`, `all` from "
             "@/lib/store) rather than reaching into the app entry.\n"
             "Place tests in __tests__/ with a .test.ts suffix, e.g. "
-            "__tests__/runs.test.ts.\n\n"
+            "__tests__/runs.test.ts, or .test.tsx for a suite that renders a page or a "
+            "component with JSX, e.g. __tests__/run-detail.test.tsx. The runner collects "
+            "nothing else.\n\n"
             "Emit each file as a fenced code block with the language and path separated by a "
             "colon:\n"
             "```typescript:__tests__/runs.test.ts\n\n"
@@ -487,9 +535,12 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         ),
         source_filter=(".ts", ".tsx"),
         test_file_patterns=("*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"),
-        # #1534: exactly what the scaffold's vitest config collects — not .tsx, not .spec, and
-        # only under __tests__/. One glob, rendered into the config and derived here.
-        collected_test_patterns=test_file_patterns_from_glob(VITEST_SUITE_GLOB),
+        # #1534: exactly what the scaffold's vitest config collects — .test.ts and .test.tsx
+        # (#2531), not .spec, and only under __tests__/. The globs are rendered into the config
+        # and derived here.
+        collected_test_patterns=tuple(
+            p for glob in VITEST_SUITE_GLOBS for p in test_file_patterns_from_glob(glob)
+        ),
         build_support_files=(
             "package.json",
             "tsconfig.json",
@@ -502,6 +553,7 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         max_completion_tokens=12000,
         test_timeout_seconds=180,
         fill_only_template="request.development_develop_fill_only_appendix_nextjs_ts",
+        product_conventions_template="request.source_repository_conventions_nextjs_ts",
     ),
 }
 
@@ -549,6 +601,21 @@ def effective_development_profile(resolved_config: Mapping[str, Any] | None) -> 
     return resolve_development_profile(resolved_config) or DEFAULT_DEVELOPMENT_PROFILE
 
 
+def blueprint_development_profile(blueprint_stack: str | None) -> str:
+    """The development profile a product made from ``blueprint_stack`` runs under, or ``""``
+    (SIP-0112 H.13).
+
+    The blueprint's own profile, as its scaffold stack binds it (#832), when that profile says
+    what its conventions mean for a product (``product_conventions_template``). ``""`` for no
+    blueprint, an unknown one, or a profile that says nothing for a product: that product's
+    cycle runs under the default profile, as every 2.4 source-backed cycle did, rather than under
+    prose written for a skeleton it doesn't have.
+    """
+    name = development_profile_for(blueprint_stack or "")
+    profile = DEVELOPMENT_PROFILES.get(name)
+    return name if profile is not None and profile.product_conventions_template else ""
+
+
 def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
     """True when ``path`` matches any of the stack's test-file conventions.
 
@@ -558,7 +625,7 @@ def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
     plans named ``tests/*.test.ts`` suites it never ran).
 
     Basename globbing for the conventions — deliberately narrower than
-    ``handlers.cycle.validation._is_test_file``, which additionally treats anything under
+    ``capabilities.qa_prompt_contents.is_test_file``, which additionally treats anything under
     ``__tests__/`` as a test file. That generosity is right for *excluding* files from a
     source set, and wrong for asking "will the runner discover this?": ``__tests__/
     helpers.py`` is not collected by pytest, and counting it would weaken #715's guard for

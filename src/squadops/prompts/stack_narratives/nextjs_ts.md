@@ -12,6 +12,7 @@ directory.
 - **Server-first.** `'use client'` belongs only on a component that genuinely needs browser
   interactivity — anything client-rendered is absent from the initial HTML.
 - **Shared code lives in `lib/`** and is imported through the `@/` alias.
-- **Tests are vitest**, in `__tests__/`, with a `.test.ts` suffix.
+- **Tests are vitest**, in `__tests__/`, with a `.test.ts` suffix, or `.test.tsx` for a suite that
+  renders a page or a component with JSX. The runner collects nothing else.
 - **`next build` type-checks.** TypeScript is strict and build failures on type errors are
   deliberate: it is the only static analysis this stack has.

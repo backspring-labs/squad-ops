@@ -1435,6 +1435,10 @@ _VITEST_SUITE_BROKEN_MARKERS = (
     "Transform failed",
     "Cannot find module",
     "Error: Cannot find package",
+    # #2534: a suite that renders a page, named `.test.ts`, runs in node, where the DOM it
+    # needs does not exist. The page is not at fault; the suite is in the wrong environment.
+    "ReferenceError: document is not defined",
+    "ReferenceError: window is not defined",
 )
 
 

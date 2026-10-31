@@ -6,9 +6,10 @@ comes entirely from role_id → prompt_service.get_system_prompt(role_id).
 
 Key design decisions (from plan runtime contracts):
 - P2-RC1: Zero role-specific code. role_id drives identity via prompt_service.
-- P2-RC4, superseded: chat neither recalls nor stores. The legacy agent store is dormant
-  (SIP-0110 §A.4.3, #2174); chat carries no memory section until the context-assembly port
-  (#2176) supplies one.
+- P2-RC4, superseded: chat neither recalls nor stores. The legacy agent store is retired
+  (SIP-0110 §A.4.3: dormant in #2174, removed in #2184). The runtime API assembles each turn's
+  memory context from the records and sends it in the message's metadata (#2180); this executor
+  renders it through a managed template and owns no memory. A capture is only ever proposed here: the person confirms it.
 - P2-RC5: History comes from the proxy (Phase 3), not A2A context: the runtime API sends a
   session's earlier turns, bounded, in the message's metadata (#2175).
 """
@@ -33,8 +34,10 @@ from squadops.comms.chat_history import (
     HISTORY_KEY,
     HISTORY_ROLES,
     HISTORY_UNAVAILABLE_KEY,
+    MEMORY_CONTEXT_KEY,
 )
 from squadops.llm.models import ChatMessage
+from squadops.memory.chat import RENDER_FAILURE_NOTICE, memory_lines
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
@@ -55,10 +58,6 @@ class ChatAgentExecutor(AgentExecutor):
     def __init__(self, *, ports: PortsBundle, role_id: str) -> None:
         self._ports = ports
         self._role_id = role_id
-        logger.warning(
-            "legacy agent memory dormant: chat neither recalls nor stores (SIP-0110 §A.4.3, #2174)",
-            extra={"role_id": role_id},
-        )
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute a chat request: stream LLM response as A2A events."""
@@ -76,8 +75,11 @@ class ChatAgentExecutor(AgentExecutor):
         )
 
         try:
-            # 1. Assemble system prompt from role identity
+            # 1. Assemble system prompt from role identity, then the turn's memory (#2180)
             system_content = self._get_system_prompt()
+            memory, unshown = await self._memory_section(context)
+            if memory:
+                system_content = f"{system_content}\n\n{memory}"
 
             # 2. Build message list for LLM: the session's earlier turns, then this one
             messages = self._build_messages(system_content, self._history(context), user_text)
@@ -89,6 +91,8 @@ class ChatAgentExecutor(AgentExecutor):
                 task_id,
                 context_id,
                 event_queue,
+                # A context it was handed and couldn't show is said in the reply (#2180).
+                prefix=RENDER_FAILURE_NOTICE if unshown else "",
             )
             latency_ms = (time.monotonic() - t0) * 1000
 
@@ -163,6 +167,28 @@ class ChatAgentExecutor(AgentExecutor):
         assembled = self._ports.prompt_service.get_system_prompt(self._role_id)
         return assembled.content
 
+    async def _memory_section(self, context: RequestContext) -> tuple[str, bool]:
+        """The turn's memory context, rendered through ``request.chat_memory_context``, and whether
+        a context was handed and couldn't be shown. ``("", False)`` when the turn carried none (no
+        records store on the runtime). A render that fails is logged at WARNING, and the reply says
+        it was answered without the records."""
+        metadata = getattr(context.message, "metadata", None)
+        handed = metadata.get(MEMORY_CONTEXT_KEY) if isinstance(metadata, dict) else None
+        if not isinstance(handed, dict):
+            return "", False
+        renderer = self._ports.request_renderer
+        if renderer is None:
+            logger.warning("chat_memory_not_rendered: no request renderer")
+            return "", True
+        try:
+            rendered = await renderer.render(
+                "request.chat_memory_context", {"memory_lines": memory_lines(handed)}
+            )
+        except Exception:
+            logger.warning("chat_memory_not_rendered", exc_info=True)
+            return "", True
+        return rendered.content.strip("\n"), False
+
     def _history(self, context: RequestContext) -> list[ChatMessage]:
         """The earlier turns the proxy sent with this one (#2175), oldest first. A turn sent
         without them (no session yet) has none."""
@@ -203,11 +229,19 @@ class ChatAgentExecutor(AgentExecutor):
         task_id: str,
         context_id: str,
         event_queue: EventQueue,
+        prefix: str = "",
     ) -> str:
-        """Stream LLM response and enqueue A2A events. Returns full text."""
+        """Stream LLM response and enqueue A2A events, after ``prefix`` when one is given (a
+        disclosure the reply opens with). Returns full text."""
         collected: list[str] = []
 
-        async for chunk in self._ports.llm.chat_stream(messages):
+        async def chunks():
+            if prefix:
+                yield prefix
+            async for chunk in self._ports.llm.chat_stream(messages):
+                yield chunk
+
+        async for chunk in chunks():
             collected.append(chunk)
             # Emit working status with current chunk
             await event_queue.enqueue_event(

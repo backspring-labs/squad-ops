@@ -77,6 +77,55 @@ class TestRunsShow:
         assert result.exit_code == 0
         assert "run_1" in result.output
 
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_a_held_run_names_its_hold_and_why(self, mock_get_client):
+        """SIP-0110 §5ag (#2178), from the registry's run through the API's response to the table.
+        Bugs caught: a paused run that says nothing of what holds it, so an operator can't tell a
+        binding hold from a gate; a released hold still read as held; the hold dumped as raw JSON
+        in the detail."""
+        from datetime import UTC, datetime
+
+        from squadops.api.routes.cycles.mapping import run_to_response
+        from squadops.cycles.models import BindingHold, Run
+
+        held_at = datetime(2026, 10, 21, 12, tzinfo=UTC)
+        run = Run(
+            run_id="run_1", cycle_id="cyc_1", run_number=1, status="paused",
+            initiated_by="api", resolved_config_hash="h",
+            binding_holds=(
+                BindingHold("hold_1", "t_1", "qa.test", (("mrec_a@1", "unread", "store"),),
+                            held_at, released_at=held_at, cause="store_answered"),
+                BindingHold("hold_2", "t_2", "development.design_plan",
+                            (("mrec_b@3", "takes 900 tokens and the prompt has 500", "input"),),
+                            held_at, sections=("task_instructions",)),
+            ),
+        )  # fmt: skip
+        mock_get_client.return_value = _mock_client(
+            get_val=run_to_response(run).model_dump(mode="json")
+        )
+
+        from rich.console import Console
+
+        # A console wide enough that no cell wraps, whatever width an earlier test left.
+        with patch("squadops.cli.output._console", Console(width=240)):
+            result = runner.invoke(app, ["runs", "show", "proj1", "cyc_1", "run_1"])
+
+        assert result.exit_code == 0, result.output
+        detail, table = result.output.split("Binding holds", 1)
+        assert "binding_holds" not in detail
+        rows = {
+            cells[0]: cells[1:]
+            for line in table.splitlines()
+            if (cells := [c.strip() for c in line.split("│")[1:-1]] or [""])[0].startswith("hold_")
+        }
+        assert rows == {
+            "hold_1": ["qa.test", "mrec_a@1 (store): unread", "2026-10-21T12:00:00Z",
+                       "2026-10-21T12:00:00Z", "store_answered"],
+            "hold_2": ["development.design_plan",
+                       "mrec_b@3 (input): takes 900 tokens and the prompt has 500",
+                       "2026-10-21T12:00:00Z", "held", ""],
+        }  # fmt: skip
+
 
 class TestRunsRetry:
     @patch("squadops.cli.commands.runs._get_client")
@@ -166,6 +215,41 @@ class TestRunsGateIncrementRuling:
         "proposal_id: prop_cap\nversion: 2\nbaseline_tree: sha-accepted\n"
         "content_hash: hash-cap-v2\nkind: feature\n"
     )
+
+    @pytest.mark.parametrize(
+        ("content", "sent"),
+        [
+            ("- text: Keep capacity optional.\n  task_types: [development.develop]\n",
+             [{"text": "Keep capacity optional.", "task_types": ["development.develop"]}]),
+            ("text: not a list\n", None),
+        ],
+        ids=["a-list-is-sent", "anything-else-is-refused"],
+    )  # fmt: skip
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_an_approvals_task_instructions_are_read_from_their_file(
+        self, mock_get_client, tmp_path, content, sent
+    ):
+        """SIP-0110 §3.5 (#2178). Bugs caught: the instructions file read and not sent, so they
+        stay as free notes no prompt sees; a malformed file sent anyway."""
+        reviewed, given = tmp_path / "change_request.yaml", tmp_path / "instructions.yaml"
+        reviewed.write_text(self._CR)
+        given.write_text(content)
+        mock_get_client.return_value = _mock_client(post_val={"status": "ok"})
+
+        result = runner.invoke(
+            app,
+            ["runs", "gate", "group_run", "cyc_1", "run_1", "progress_increment_ruling",
+             "--approve", "--notes", "scope reads right", "--change-request", str(reviewed),
+             "--idempotency-key", "k-1", "--task-instructions", str(given)],
+        )  # fmt: skip
+
+        if sent is None:
+            assert result.exit_code == 2
+            assert not mock_get_client.return_value.post.called
+        else:
+            assert result.exit_code == 0, result.output
+            body = mock_get_client.return_value.post.call_args.kwargs["json"]
+            assert body["task_instructions"] == sent
 
     @patch("squadops.cli.commands.runs._get_client")
     def test_the_binding_is_read_from_the_reviewed_change_request(self, mock_get_client, tmp_path):
@@ -323,3 +407,38 @@ class TestRunsCheckpoints:
         )
         assert result.exit_code == 0
         assert "checkpoint_index" in result.output
+
+
+class TestRunsShowHalt:
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_a_halted_run_says_who_halted_it_why_and_where_it_restarted(self, mock_get_client):
+        """SIP-0110 §A.3.8 (T13, #2178), from the registry's run through the API's response.
+        Bugs caught: a halted run reading as an operator's cancel, with no word of the withdrawal
+        or of the run that carries its work on; the halt dumped as a raw dict."""
+        from datetime import UTC, datetime
+
+        from squadops.api.routes.cycles.mapping import run_to_response
+        from squadops.cycles.models import Run, RunHalt
+
+        run = Run(
+            run_id="run_1", cycle_id="cyc_1", run_number=1, status="cancelled",
+            initiated_by="api", resolved_config_hash="h",
+            halt=RunHalt("mrec_b", "ada", "it names the wrong table",
+                         datetime(2026, 10, 22, tzinfo=UTC),
+                         restart_from_task_id="task-run_1-002-development.design_plan",
+                         restart_run_id="run_2"),
+        )  # fmt: skip
+        mock_get_client.return_value = _mock_client(
+            get_val=run_to_response(run).model_dump(mode="json")
+        )
+
+        result = runner.invoke(app, ["runs", "show", "proj1", "cyc_1", "run_1"])
+
+        assert result.exit_code == 0, result.output
+        assert "halted_by: ada's emergency withdrawal of mrec_b: it names the wrong table" in (
+            result.output
+        )
+        assert "restart: restarted as run_2 from task-run_1-002-development.design_plan" in (
+            result.output
+        )
+        assert "{'record_id'" not in result.output

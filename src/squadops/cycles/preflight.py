@@ -31,6 +31,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.capabilities.handlers.fault_injection import (
     FAULTS,
     UnknownFault,
@@ -46,6 +47,7 @@ from squadops.cycles.models import (
     WORKLOAD_REQUIRED_ROLES,
     WorkloadType,
 )
+from squadops.cycles.task_plan import builder_assembles
 from squadops.llm.model_registry import get_model_spec
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 
@@ -212,6 +214,93 @@ def bind_mode_authoring_decision(config: Mapping[str, Any]) -> PreflightDecision
                     f"`plan_authoring_contributors` (any of {roles}) in the request "
                     "profile or `execution_overrides`, or drop `contract_ref` to run in "
                     "author mode."
+                ),
+            ),
+        )
+    )
+
+
+def builder_build_profile_decision(
+    profile: SquadProfile, config: Mapping[str, Any], *, source_backed: bool = False
+) -> PreflightDecision:
+    """Block a cycle whose builder would assemble with no ``build_profile`` (#2437).
+
+    A squad serving the builder role gets ``builder.assemble`` in every implementation workload,
+    and plan generation refuses that task without a ``build_profile`` (#392: a builder must not
+    assemble for an assumed stack). Without this check the refusal came at the start of the
+    implementation run, after a whole framing workload and a gate approval: ``cyc_68e254dcf2b7``
+    spent 7m21s framing on ``lite-14b`` under the ``build`` request profile, which sets none,
+    then failed in 0 s.
+
+    Blocks rather than warns, per this module's rule: the squad's roles, the requested workloads
+    and ``build_profile`` are all in the resolved config at create time, and whether the builder
+    assembles is the step selection's own reading (``task_plan.builder_assembles``).
+    """
+    if config.get("build_profile") or not builder_assembles(
+        profile, config, source_backed=source_backed
+    ):
+        return PreflightDecision()
+    known = ", ".join(f"`{name}`" for name in sorted(BUILD_PROFILES))
+    return PreflightDecision(
+        blocking=(
+            Finding(
+                code="builder_without_build_profile",
+                severity="block",
+                message=(
+                    f"squad profile `{profile.profile_id}` serves the builder role and this "
+                    "cycle has a build step, so its builder would assemble, but no "
+                    "`build_profile` is set. The implementation run would fail at its start, "
+                    "after the whole framing workload (#392: a builder does not assemble for an "
+                    f"assumed stack). Set `build_profile` (one of {known}) in the request "
+                    "profile or with `--set build_profile=<profile>`, or choose a squad "
+                    "without a builder."
+                ),
+            ),
+        )
+    )
+
+
+#: What names a stack's starting tree: its skeleton and authored manifest (``build_profile``)
+#: and a seeded verification contract (``contract_ref``).
+_STACK_TREE_KEYS = ("build_profile", "contract_ref")
+
+
+def seeds_skeleton(config: Mapping[str, Any]) -> bool:
+    """Whether a cycle of ``config`` would lay a stack's starting tree beside a product's files:
+    a skeleton and its authored manifest (``build_profile``), or a seeded contract
+    (``contract_ref``). SIP-0112 H.4 point 3's rule, the one both lanes call: E.4.3's guard
+    refuses a source-backed cycle that would, and a repository-backed Campaign's increment profile
+    must not (SIP-0109 §24bv point 1). ``development_profile`` alone shapes the prompts and
+    seeds nothing. A manifest seeded in ``plan_artifact_refs`` would derive a contract too; that
+    is read from the vault at create (``_seed_derived_contract``), not from the config."""
+    return any(config.get(k) for k in _STACK_TREE_KEYS)
+
+
+def source_backed_stack_decision(
+    config: Mapping[str, Any], *, source_backed: bool
+) -> PreflightDecision:
+    """Block a source-backed cycle that would seed a skeleton (SIP-0112 E.4.3, H.4 point 3).
+
+    A Cycle that pins an external Project's source starts from that product's tree at the
+    pinned commit. A ``build_profile`` would also have framing author an interface manifest and
+    seed that stack's skeleton beside the product's files, and a ``contract_ref`` would bind a
+    stack's seeded contract. Neither describes the product, so the cycle is refused at create.
+    ``development_profile`` alone only shapes the developer's prompt, and stays allowed.
+    """
+    if not source_backed or not seeds_skeleton(config):
+        return PreflightDecision()
+    named = [k for k in _STACK_TREE_KEYS if config.get(k)]
+    return PreflightDecision(
+        blocking=(
+            Finding(
+                code="source_backed_stack",
+                severity="block",
+                message=(
+                    "this cycle develops an external product from its own tree at the pinned "
+                    f"commit, and it also names a stack ({', '.join(f'`{k}`' for k in named)}), "
+                    "whose skeleton or contract would be set beside the product's files. Omit "
+                    "them for a cycle of an external Project: its own declared commands build "
+                    "and check it."
                 ),
             ),
         )
@@ -436,22 +525,35 @@ def fault_injection_decision(config: Mapping[str, Any]) -> PreflightDecision:
     )
 
 
-def memory_declaration_decision(config: Mapping[str, Any]) -> PreflightDecision:
-    """Block a ``memory`` declaration that is neither ``disabled`` nor ``enabled`` (SIP-0110 §0.7).
+def memory_declaration_decision(
+    config: Mapping[str, Any], *, campaign_cycle: bool
+) -> PreflightDecision:
+    """Block a ``memory`` declaration that is neither ``disabled`` nor ``enabled`` (SIP-0110 §0.7),
+    and a ``memory_context`` that is not ``none`` or sits beside ``memory: enabled`` (Appendix A
+    §3.7). A campaign's cycle that withholds either is blocked too: it uses its campaign's snapshot,
+    so the declaration would be recorded and never applied.
 
     A typo is refused rather than read either way: read as enabled, it would hand a counted roll
     its lessons (D12); read as disabled, it would leave a memory arm without memory.
     """
     # deferred (pair): cycles and memory would import each other at load
-    from squadops.memory.declarations import memory_disabled
+    from squadops.memory.declarations import ARM_LESSONS_ON, arm_of
 
     try:
-        memory_disabled(config)
+        arm = arm_of(config)
     except ValueError as exc:
         return PreflightDecision(
             blocking=(
                 Finding(code="memory_declaration_unknown", severity="block", message=str(exc)),
             )
+        )
+    if campaign_cycle and arm != ARM_LESSONS_ON:
+        why = (
+            f"a campaign's cycle uses its campaign's snapshot, so declaring {arm} on it would be "
+            "recorded and never applied"
+        )
+        return PreflightDecision(
+            blocking=(Finding(code="memory_declaration_unapplied", severity="block", message=why),)
         )
     return PreflightDecision()
 

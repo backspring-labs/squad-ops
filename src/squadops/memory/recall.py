@@ -39,3 +39,7 @@ class RecallQuery:
     model_family: str = ""
     unit_kind: UnitKind | None = None
     unit_id: str = ""
+    #: Tokens of lesson text the binding sections leave after the lesson slot's framing (Appendix A
+    #: §3.6, T17; #2179 stage 2), when an instruction was supplied; ``None`` when none was, so the
+    #: snapshot's own budget stands and the recall is today's exactly. Not part of a stored query.
+    available_lesson_tokens: int | None = None

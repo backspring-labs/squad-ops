@@ -14,11 +14,15 @@ import yaml
 
 from squadops.campaigns.change_request import (
     ChangeKind,
+    ChangeRequestError,
     ProposalContext,
     RefusalKind,
     apply_manifest_delta,
     content_hash,
+    load_stored_change_request,
     parse_change_request,
+    role_view,
+    stored_change_request,
     validate_proposal,
 )
 
@@ -96,6 +100,79 @@ def test_an_out_of_scope_delta_is_refused_not_trimmed():
     [refusal] = verdict.refusals
     assert refusal.kind is RefusalKind.OUT_OF_SCOPE
     assert "frontend/src/views/RunDetailView.jsx" in refusal.detail
+
+
+def _ordering_fix() -> dict:
+    """#2743's reproduction on this baseline: a backend-only fix that declares the runs list's
+    order, with one endpoint criterion. Invented for the test, after the issue's shape."""
+    return {
+        "kind": "fix",
+        "prd_delta": [],
+        "manifest_delta": [
+            {
+                "op": "modify",
+                "target": "endpoint",
+                "key": "GET /runs",
+                "definition": {
+                    "method": "GET",
+                    "path": "/runs",
+                    "summary": "list all runs",
+                    "response": "list[Run]",
+                    "order": {"field": "datetime", "direction": "asc"},
+                },
+            }
+        ],
+        "criteria": [
+            {
+                "id": "C1",
+                "statement": "The runs list is ordered by datetime, earliest first",
+                "surface_kind": "endpoint",
+                "surface": "GET /runs",
+                "observable": "two runs created later-first come back earliest-first",
+            }
+        ],
+        "must_not_break": [],
+    }
+
+
+def test_a_backend_only_fix_passes_a_scope_of_its_route_and_one_test_file():
+    """#2743, entered where the proposal handler enters: the owner scoped the change to the route
+    file and one test file. The qa test namespace is the framework's (§7.2, the owner's ruling of
+    2026-10-28), so the scope reads the product files only, and the footprint still names the
+    namespace the build may write. Bug caught: every namespace glob checked against the owner's
+    scope, which refused each narrowly scoped increment (cmp_b79783b2…, exhausted)."""
+    verdict = validate_proposal(
+        _ordering_fix(),
+        _context(
+            allowed_scope=("backend/routes.py", "backend/tests/test_runs.py"), prior_criteria=()
+        ),
+    )
+
+    assert verdict.accepted, verdict.refusals
+    assert verdict.change_request.footprint == (
+        "backend/routes.py",
+        "backend/tests/**",
+        "frontend/src/__tests__/**",
+        "frontend/src/tests/**",
+    )
+
+
+def test_a_product_file_outside_the_scope_is_still_refused_and_the_namespace_is_named():
+    """The exemption is the namespace's alone. Bug caught: a scope of test files only admitting
+    the product change; or a refusal that lists the framework's namespace as the delta's reach,
+    which tells the owner to widen the wrong thing."""
+    verdict = validate_proposal(
+        _ordering_fix(), _context(allowed_scope=("backend/tests/test_runs.py",), prior_criteria=())
+    )
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.OUT_OF_SCOPE
+    assert refusal.detail == (
+        "the delta reaches backend/routes.py, outside the objective's allowed scope "
+        "(backend/tests/test_runs.py); a proposal is refused, never trimmed. The qa test "
+        "namespace (backend/tests/, frontend/src/__tests__/, frontend/src/tests/) is the "
+        "framework's, and the scope does not read it"
+    )
 
 
 def test_a_delta_the_manifest_gates_refuse_never_reaches_the_gate():
@@ -354,3 +431,158 @@ def test_an_entity_fields_undefined_key_is_named_with_its_field():
 
     [refusal] = [r for r in verdict.refusals if r.kind is RefusalKind.UNDEFINED_KEY]
     assert f"fields[{op['definition']['fields'][0]['name']}].label" in refusal.detail
+
+
+# =============================================================================
+# The goals a proposal means to move (SIP-0113 §10t ruling 4)
+# =============================================================================
+
+_STORED_REQUESTS = sorted(_FIXTURES.glob("change-request-*.yaml"))
+
+
+@pytest.mark.parametrize("stored", _STORED_REQUESTS, ids=lambda p: p.stem)
+def test_a_request_naming_no_goal_keeps_the_identity_it_was_ruled_on(stored):
+    """Three requests stored and ruled on before §4.5. Bug caught: an empty ``moves_goals`` written
+    into the document or its hash, so every stored request is refused on load and every ruling
+    binds to a hash no request has."""
+    document = stored.read_text()
+    request = load_stored_change_request(document)
+    authored = {**yaml.safe_load(document), "moves_goals": []}
+    for derived in ("footprint", "content_hash", "proposal_id", "version", "baseline_tree"):
+        authored.pop(derived)
+
+    reparsed = parse_change_request(
+        authored,
+        proposal_id=request.proposal_id,
+        version=request.version,
+        baseline_tree=request.baseline_tree,
+    )
+
+    assert content_hash(reparsed) == request.content_hash
+    assert stored_change_request(request) == document
+    assert role_view(document) is document
+
+
+def test_the_goals_a_request_names_are_bound_by_its_ruling_and_kept_from_every_other_role():
+    """Bugs caught: the goals left out of the hash, so a request whose named goals were changed
+    after its ruling still loads as ruled; and the framing shown them, so a build role learns
+    which held-out goal its work is aimed at."""
+    verdict = validate_proposal(
+        _authored(moves_goals=["goal_export"]), _context(shown_goals=("goal_export", "goal_sort"))
+    )
+    assert verdict.accepted, verdict.refusals
+    request = verdict.change_request
+    document = stored_change_request(request)
+    unnamed = validate_proposal(_authored(), _context()).change_request
+
+    assert load_stored_change_request(document).moves_goals == ("goal_export",)
+    assert request.content_hash != unnamed.content_hash
+    stripped = yaml.safe_dump(
+        {k: v for k, v in yaml.safe_load(document).items() if k != "moves_goals"}, sort_keys=False
+    )
+    with pytest.raises(ChangeRequestError, match="does not match its hash"):
+        load_stored_change_request(stripped)
+    view = role_view(document)
+    assert "goal_export" not in view
+    assert yaml.safe_load(view) == {
+        k: v for k, v in yaml.safe_load(document).items() if k != "moves_goals"
+    }
+
+
+@pytest.mark.parametrize(
+    ("shown", "named", "unknown"),
+    [
+        ((), ["goal_export"], "goal_export"),
+        (("goal_export", "goal_sort"), ["goal_sort"], None),
+        # Ruling 5: a goal already passing is still one it was shown, so it is not refused here.
+        (("goal_export",), ["goal_export", "goal_other", "goal_other"], "goal_other"),
+        (("goal_export",), ["goal_a", "goal_export", "goal_b", "goal_b"], "goal_a, goal_b"),
+    ],
+)
+def test_a_proposal_may_name_only_the_goals_it_was_shown(shown, named, unknown):
+    """Bugs caught: an invented goal id accepted, so the ledger reads a prediction against a goal
+    no proposal could see; a shown goal refused; or only the first unknown id named, so a
+    revision fixes one per round."""
+    verdict = validate_proposal(_authored(moves_goals=named), _context(shown_goals=shown))
+
+    refused = [r.detail for r in verdict.refusals if r.kind is RefusalKind.UNKNOWN_GOAL]
+    if unknown is None:
+        assert verdict.accepted and refused == []
+    else:
+        assert refused == [
+            f"moves_goals names {unknown}, which is not the id of a goal this proposal was "
+            "shown; name only goals its evidence lists"
+        ]
+
+
+def test_an_unknown_goal_is_refused_with_every_other_refusal():
+    """Every refusal, never only the first. Bug caught: the goal rail returning early, so the
+    model fixes one reason per revision and spends its budget."""
+    verdict = validate_proposal(
+        _authored(moves_goals=["goal_x"], must_not_break=["Z9"]), _context()
+    )
+
+    assert {r.kind for r in verdict.refusals} >= {
+        RefusalKind.UNKNOWN_GOAL,
+        RefusalKind.UNKNOWN_PRIOR_CRITERION,
+    }
+
+
+@pytest.mark.parametrize("named", ["goal_export", [""], [3], {"goal_export": True}])
+def test_moves_goals_that_is_not_a_list_of_ids_is_malformed(named):
+    """Bug caught: a string read as its characters, or a blank id carried to the ledger."""
+    verdict = validate_proposal(
+        _authored(moves_goals=named), _context(shown_goals=("goal_export",))
+    )
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.MALFORMED and "moves_goals" in refusal.detail
+
+
+_GOAL = ("goal_export", "A reader exports the run list as a spreadsheet.")
+
+
+def _with_criterion_text(statement: str, observable: str) -> dict:
+    doc = _authored()
+    doc["criteria"] = [{**doc["criteria"][0], "statement": statement, "observable": observable}]
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("authored", "where"),
+    [
+        (
+            _authored(prd_delta=[{"id": "export", "op": "add", "text": f"Now: {_GOAL[1]}"}]),
+            "prd_delta export",
+        ),
+        # Case and spacing differ; the words are the goal's.
+        (
+            _with_criterion_text(
+                "An export works", "a  READER exports the run list as a spreadsheet"
+            ),
+            "criterion C1",
+        ),
+    ],
+)
+def test_a_request_that_repeats_a_goals_statement_is_refused_by_its_id(authored, where):
+    """SIP-0113 §10t ruling 7. Bugs caught: a goal's statement carried in the PRD text or a
+    criterion every framing and build role reads, and the refusal quoting the goal back into the
+    run's failure reason."""
+    verdict = validate_proposal(authored, _context(shown_goal_statements=(_GOAL,)))
+
+    [refusal] = [r for r in verdict.refusals if r.kind is RefusalKind.GOAL_TEXT_COPIED]
+    assert refusal.detail.startswith(f"{where} repeats goal goal_export's statement")
+    assert "spreadsheet" not in refusal.detail
+
+
+def test_a_request_in_its_own_words_is_not_refused_for_its_goal():
+    """Bug caught: the rail refusing any request about the goal's subject, so naming a goal in
+    ``moves_goals`` could never be paired with a criterion that meets it."""
+    authored = _with_criterion_text("The run list downloads as a file", "GET /runs.csv returns 200")
+
+    verdict = validate_proposal(
+        {**authored, "moves_goals": ["goal_export"]},
+        _context(shown_goals=("goal_export",), shown_goal_statements=(_GOAL,)),
+    )
+
+    assert not [r for r in verdict.refusals if r.kind is RefusalKind.GOAL_TEXT_COPIED]

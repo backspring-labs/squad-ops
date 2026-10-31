@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_test.test_validate
-version: "3"
+version: "5"
 required_variables:
   - prd
   - test_supplement
@@ -8,6 +8,9 @@ optional_variables:
   - validation_plan
   - source_files
   - prior_outputs
+  - task_instructions_section
+  - project_instructions_section
+  - cross_cycle_lessons_section
 ---
 ## Product Requirements Document
 
@@ -30,5 +33,5 @@ That same `conftest.py` clears every scaffold-owned in-memory store **before eac
 every case starts from an empty store whether or not it requests `client`. Do not define your
 own reset fixture and do not call `reset()` yourself: assert the state your case creates.
 
-{{test_supplement}}
+{{test_supplement}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
 {{prior_outputs}}

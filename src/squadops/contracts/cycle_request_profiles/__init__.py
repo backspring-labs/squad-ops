@@ -14,6 +14,23 @@ from typing import Any
 import yaml
 
 from squadops.contracts.cycle_request_profiles.schema import CycleRequestProfile
+from squadops.stacks.request_defaults import request_defaults_for
+
+#: The operator's request profiles, one per intent (#316, the taxonomy's R2.4). The stack, pulse
+#: checks, multi-role authoring, the correction path and a prior cycle's plan are set at create
+#: time, never in a name. ``build``, ``wrapup`` and ``benchmark`` are also old names, and keep their
+#: released YAML byte for byte.
+OPERATOR_PROFILES = ("smoke", "build", "validate", "implement", "ship", "wrapup", "benchmark")
+#: The campaign's own profiles: named by the campaign code, never chosen by an operator, and
+#: resolved by SIP-0109's pinned definitions (R2.4, decision 4).
+CAMPAIGN_PROFILES = (
+    "campaign-reference",
+    "campaign-proposal",
+    "campaign-increment",
+    "campaign-increment-asks",
+    # SIP-0112 H.4 point 3 (2.5): a repository-backed Project's increments, with no stack.
+    "campaign-increment-source",
+)
 
 _PROFILES_PACKAGE = "squadops.contracts.cycle_request_profiles.profiles"
 
@@ -24,7 +41,9 @@ def _profiles_dir() -> Path:
 
 
 def list_profiles() -> list[str]:
-    """Return sorted list of available profile names (without .yaml extension)."""
+    """Every profile name that resolves (without .yaml extension): the operator's, the campaign's,
+    and every old name, frozen so a pinned config resolves to what it ran (R2.4). The operator's
+    listing is ``OPERATOR_PROFILES``."""
     profiles_dir = _profiles_dir()
     names = []
     for item in profiles_dir.iterdir():  # type: ignore[union-attr]
@@ -93,6 +112,22 @@ def compute_overrides(defaults: dict, user_values: dict) -> dict:
     return overrides
 
 
+def resolved_defaults(profile_name: str, user_values: dict | None = None) -> dict:
+    """A cycle's applied defaults (#316, R2.3). For an operator profile, the stack's request
+    defaults sit beneath the profile's own keys, and the caller's overrides sit above both. The
+    stack is the one the cycle builds on: the caller's ``build_profile``.
+
+    Every other profile, frozen or the campaign's, gets nothing from a stack. Some declare the
+    stack's keys and some don't (``campaign-proposal`` pins its stack and none of them), so this
+    is what keeps every old name resolving to exactly what it ran, whatever stack the caller
+    passes (R2.4)."""
+    crp = load_profile(profile_name)
+    if profile_name not in OPERATOR_PROFILES:
+        return dict(crp.defaults)
+    stack = merge_config(crp.defaults, user_values or {}).get("build_profile")
+    return {**request_defaults_for(stack), **crp.defaults}
+
+
 #: The profile defaults that are top-level fields of a cycle-create request, not config keys.
 CRP_BODY_FIELDS = (
     "build_strategy",
@@ -113,12 +148,12 @@ def cycle_request_body(
     """The cycle-create request a profile and the caller's values make: exactly the body
     ``squadops cycles create`` sends, so a cycle a campaign launches server-side (SIP-0109 §12b)
     is created from the same request an operator's would be."""
-    crp = load_profile(profile_name)
-    merged = merge_config(crp.defaults, user_values or {})
+    defaults = resolved_defaults(profile_name, user_values)
+    merged = merge_config(defaults, user_values or {})
     body: dict[str, Any] = {
         "squad_profile_id": squad_profile_id,
-        "applied_defaults": crp.defaults,
-        "execution_overrides": compute_overrides(crp.defaults, merged),
+        "applied_defaults": defaults,
+        "execution_overrides": compute_overrides(defaults, merged),
         "request_profile": profile_name,
         "notes": notes,
     }

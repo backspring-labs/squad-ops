@@ -60,7 +60,7 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-30)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -77,6 +77,16 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | step 7: golden-path live validation (incl. #419) | **unplaced, deliberately** (§11c) | none |
 | §5 deferrals: browser probe, probe-as-peer, `expose_application` | **unplaced, deliberately** (§11c); `SIP-Outcome-Evaluation` may need `expose_application`-like hosting | none |
 | campaign evaluation through this sandbox | **dropped** by §11c: SIP-0109 evaluates and renders routes in the qa container (runtime-api cannot reach the sandbox), the accepted path | SIP-0109 §24n, §24p |
+| X-1: a `git_checkout` revision origin (§11d; SIP-0112 §8.2.2) | **shipped** | 2.4.0, PR #2441, issue #2419 |
+| X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
+| X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
+| X-3b: starting a product from its declaration, with `http` and `tcp` readiness, the secrets' redaction and its declared entry points (§11d, §11e) | **shipped** | 2.4.0, PRs #2450 and #2474 |
+| X-3b's remainder: resolving an owner-approved evaluation secret into the copy's environment at start (§11e; SIP-0112 Q40) | **placed**, re-placed from 2.4 on 2026-10-21, and from 2.5 on 2026-10-28 (the owner took the supervisor's recommendation to leave it unbuilt in 2.5: "Go with your recommendations"). 2.6's plan re-reads it; its consumer is the evaluation of a repository-backed Project's Campaign that needs a secret | 2.6.0, #2421 |
+| the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
+| the apps the service starts, on the internal `sandbox-apps` network by container name, with no host port (§11h; #2451 part 4) | **shipped** | 2.4.0, PR #2460 |
+| a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
+| a seeded workspace released through the port, the operation journal kept by every removal (§11j) | **shipped** | 2.4.0, PR #2527, issue #2473 |
+| a started tree's client routes read by the scenario runner, with the evaluator image's own Chromium as its entrypoint, for a repository-backed product's acceptance (§11k; SIP-0109 §24co) | **shipped** | 2.5.0, PR #2777 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
@@ -578,3 +588,305 @@ rendered image. `package_builds` stays declared unbuilt.
 **Evidence.** The read-only SIP-portfolio audit of 2026-10-04; SIP-0109 §24n and §24p.
 
 **Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".
+
+### 11d. A product's Git checkout as the live tree, and the product's declared commands (2026-10-18, §4.6, §4.7, §7 items 2 and 3; SIP-0112 §8.2.2, X-1 to X-3; implementer's record, for the owner)
+
+SIP-0112 (accepted 2026-10-17) brings products SquadOps didn't build into the sandbox. Its §8.2.2 names
+three sandbox changes, and the 2.4 plan's D12 has the Spark lane build them. They change this SIP's
+§4.6 and §7 for those products, so they are recorded here.
+
+**What changed.**
+- **X-1 (#2441): a `git_checkout` revision origin.** The commit isn't on the revision: the sandbox never
+  runs Git, and SIP-0112's revision-to-commit mapping holds it.
+- **X-2 (#2442): a checkout's tracked tree comes back exactly as it went in.**
+  - **Content is text or bytes.** A revision ID hashes each file's bytes, and text hashes as its UTF-8
+    encoding, so every existing ID is unchanged.
+  - **The tree is read as the bytes on disk.** Universal-newline reading had made a seeded `\r\n` file
+    fail its own pin.
+  - **§4.6's derived-state exclusion now keeps out only what no revision names.** A `git_checkout` seed's
+    files are all content, whatever their name, so a product's tracked `package-lock.json` or `dist/` file
+    is pinned. A patch may change one its base names, but may never add one. `.git` is never content.
+    Untracked installs and builds stay out of the pin, as §4.7 has it.
+  - **The executable bit is content in a checkout's lineage.** It enters the revision ID only when a file
+    has it. A scaffold lineage ignores modes, as it always did.
+- **X-3a (this PR, #2421): `run_declared_command`, widening §7 item 2.** "Typed operations only" now has
+  one operation whose argv the caller supplies.
+  - **Whose argv:** a product's own declaration, from the Development Configuration revision SIP-0112's
+    E.4.2 confirms. It is never an agent's output, and agents still can't reach the runtime (§7 item 1).
+  - **Where it runs:** in a disposable copy of exactly the pinned revision, taken from the live tree only
+    while the tree matches its pin (§7 item 3), and discarded afterwards. Nothing a command does reaches
+    the live tree or a revision.
+  - **Posture:** setup argvs get the install network and the command gets none (§7 item 10). Caps are
+    dropped, with no new privileges, as the workspace owner. X-3a carries no secrets.
+  - **How it ended is typed:** `exited` with its status, `setup_failed`, `timeout`, `command_not_found`
+    (127) and `command_not_executable` (126). The last two are not-run, never a failed check (§4.4).
+  - **A limit:** the command runs offline, so a check that needs the network fails. A product declares
+    such a check as needing its environment, and SIP-0112's E.4.2 records it UNVERIFIED.
+- **Still X-3b (#2421, with SIP-0113's runner #2414):** starting a product from its declaration, with
+  readiness and the owner-approved evaluation secrets (SIP-0112 Q40).
+
+**A step 5a gap, closed here.** X-1 and X-2 shipped in #2441 and #2442 without this amendment. X-2's
+tracked-name rule changes §4.6, so this, the first sandbox PR after them, records both.
+
+**§11c, for these products.** *(The selector named here is superseded by §11f.)* The runtime API reaches
+this sandbox only where the deploy sets `SQUADOPS__SANDBOX__PROVIDER=http` and runs the sandbox service
+(`rebuild_and_deploy.sh sandbox`). SIP-0112's E.4.2 uses it that way. §11c's ruling for campaign
+evaluation stands.
+
+**Evidence.** SIP-0112 §8.2.2, accepted by the owner. The MacBook lane's G4 reviews of #2441 and #2442
+raised the tracked names, the executable bit, and the bit's scope to a checkout's lineage. The X-3 split
+was agreed on #2407: E.4.2's inherited baseline runs a product's checks, which waited on X-3.
+
+**Who ruled it.** The owner accepted SIP-0112 with X-1 to X-3 in its §8.2.2 (2026-10-17), and D12
+assigns them. The tracked-name and executable-bit rules and the X-3 split are the implementer's, reviewed
+by the MacBook lane as consumer (G4), for the owner's review.
+
+### 11e. The sandbox runs SIP-0113's scenario runner, and X-3b starts a product from its declaration (2026-10-18, §4.6, §7 items 2, 3 and 10; SIP-0113 §4.1 A3; #2414, #2421; implementer's record, for the owner)
+
+- **A second surface, `POST /api/v1/evaluations`,** beside the cycle's operations. It takes an evaluated
+  tree by its `FileTree.identity`, not a workspace revision, as SIP-0112's contract 3 asks of Outcome
+  Evaluation. The tree's files are refused unless they hash to that identity, which is §7 item 3 for a
+  tree that never had a workspace.
+- **X-3b, the start:**
+  - **from a product's declaration:** setup argvs, the start argv and its port, with an `http`
+    readiness (a 2xx from the target) or a `tcp` one (a connection to the port). The argvs and the
+    working directory are checked again here with X-3a's own `declared_argv` and `working_directory`;
+  - **or from its stack's environment contract,** as today.
+
+  Either way it runs in a disposable copy that is removed afterwards. The live tree is never mounted, so
+  nothing a scenario does reaches a revision. This widens §7 item 2 the way §11d did: the argv is the
+  product's own declaration, never an agent's output.
+- **The evaluation secrets** (SIP-0112 Q40) reach only the app container's environment. They are never
+  written or journaled, and every value is replaced with `[redacted]` in the free text the runner
+  returns. An app may log its environment or answer with a token, and the start's detail, its last lines
+  and each step's detail are returned as written. Results, identities and ids are left alone.
+- **An evaluated tree's keys are checked before anything is written** (`workspace.tree_path`): a key that
+  is absolute, climbs out with `..` or isn't in its normal form is refused, and nothing runs. The tree is
+  a squad's files from the vault, and a key like `../<cycle>/workspace/x` would otherwise write into a
+  cycle's live tree.
+- **`declared_argv` refuses a string.** A string is a sequence of strings too, so `"ls -l"` had passed
+  as one-letter arguments.
+- **What X-3b doesn't ship yet, still on #2421:**
+  - **The declared entry points: built in the PR stacked on #2453.** Scenarios reach the `http_base`
+    entry point's port and path, and a blueprint reaches its stack's `api_prefix`. A `ui_base` waits on
+    page scenarios (SIP-0113 A2).
+  - **The approved secrets' resolution.** The runner takes the resolved values. Resolving only the
+    `secret://` references a Project declares and the owner approves, and refusing anything else as
+    `blocked_unverified`, `secret not available` (contract 7), needs the approval record. That record
+    is SIP-0112's E.4.2, so it lands after E.4.2(b), in the evaluation service.
+  - **Contract 7's three reasons:** `no start declaration` and `start failed` are mapped by the
+    evaluation service (#2453). `secret not available` lands with the resolution above.
+  - **The network:** the app still gets the bridge. #2451's fourth part puts it on the internal
+    `sandbox-apps` network.
+- **Posture:** setup gets the install network. The app gets the bridge to publish its one port to
+  loopback, with caps dropped, no new privileges and the copy owner's uid.
+
+### 11f. The runtime API calls the sandbox service: its own client selector, and the service's URL and token (2026-10-18, §4.1, §11c, §11d; #2451; the owner's ruling)
+
+SIP-0112's E.4.2 seeds a product's checkout into this sandbox from the runtime API, and SIP-0113's
+evaluation service runs its scenarios here (§11e). Neither could. The runtime API had no client of the
+service, compose gave it neither the service's URL nor its token, and one variable,
+`SQUADOPS__SANDBOX__PROVIDER`, was read both by the runtime's cycle-create preflight and by the
+service for its own backend.
+
+**What changed.**
+- **The runtime API binds one client of the service,** `adapters.sandbox.factory.create_sandbox_client`,
+  called once by `_init_cycle_subsystem` and read through `deps.get_sandbox_client`. E.4.2's seeding and
+  SIP-0113's runner share it.
+- **It has its own selector,** `sandbox_client.provider` (`SQUADOPS__SANDBOX_CLIENT__PROVIDER`:
+  `http` | `none`). It is required: the runtime API refuses to start without it (#1568).
+  - `http` calls the service. Compose gives the runtime API `http://squadops-sandbox-service:8002` and
+    the service's token, and a client missing either is refused at config load.
+  - `none` binds no client, and each caller reads the sandbox as unavailable.
+- **The section belongs to the runtime API alone.** It carries the service's token, so the seven agents
+  never load it. `AppConfig` holds it as optional, and the root's factory refuses it absent.
+  `test_composition_roots.py` asserts that the runtime API's compose service names it and that no other
+  service does.
+- **The service's own provider has its own variable,** `SQUADOPS_SANDBOX_SERVICE_PROVIDER` (`docker` |
+  `noop`). Compose writes it into the service's `SQUADOPS__SANDBOX__PROVIDER`. **The runtime's
+  preflight is unchanged:** it still reads `SQUADOPS__SANDBOX__PROVIDER`.
+- **The service runs on the deploys where E.4.2 or the 2.4 window runs,** the MacBook and the Spark
+  (`rebuild_and_deploy.sh sandbox`).
+- **Superseded:** §11c's "no client wired", and §11d's selector. The runtime API reaches the sandbox where
+  `SQUADOPS__SANDBOX_CLIENT__PROVIDER=http` and the service runs. §11c's ruling for campaign evaluation
+  stands.
+
+**Not covered here, ruled for the next PR: inside a deploy, the service can't reach an app it starts**
+(#2451's fourth part). `DockerAdapter.run_detached` publishes an app's port on the host's loopback, and the
+service is a container on `squadnet`, whose `127.0.0.1` is its own. So readiness, `probe_http_endpoint`
+and every scenario step fail to connect there. The flaw predates SIP-0113: `start_application` has always
+had it, unseen because the service has always been `noop`. The live runs for #2447, #2450 and #2453
+worked because they ran on the host. The owner ruled the fix on #2451 the same day: an internal,
+no-egress `sandbox-apps` network that the service joins, with apps on it by container name and no host
+port, its name reaching the service through a required `SQUADOPS__SANDBOX__APP_NETWORK`. The PR that
+builds it records it and adds its ledger row. Until then, a live evaluation runs from the host.
+
+**Evidence.** #2451's three parts, read against `docker-compose.yml`, `deps.py` and the preflight. The
+wiring test enters at `load_config` with the env compose writes and asserts the seeded tree at a
+sandbox service app (`tests/unit/sandbox/test_sandbox_client_factory.py`).
+
+**Who ruled it.** The owner, 2026-10-18, on #2451 (recorded by the MacBook session): "approved as
+proposed (D11's compose ruling …): 1. The runtime API gets the sandbox service's URL and token. 2. The
+runtime API's sandbox selector is split from the service's own, and its cycle-create preflight is
+unchanged. 3. The opt-in sandbox service runs on the deploys where E.4.2 or the window runs: the MacBook
+and the Spark." The section's scope to the runtime API is the implementer's, for the MacBook lane's
+review (G4).
+
+### 11g. Seeding joins the port (2026-10-18, §4.4, §4.6; §11f; contract 3; implementer's record, for the owner)
+
+**What changed.** `seed_workspace` is an operation of `ExecutionSandboxPort`, with X-2's signature: the
+files as text or bytes, the origin, the executable bit and the creation time. Before, it was a
+service-level method of `SandboxService` and `HttpExecutionSandbox`, outside the port. §11f's
+`create_sandbox_client` returns the port, so a caller typed against it couldn't seed: SIP-0112's E.4.2
+seeds a product's checkout through that client.
+- `SandboxService.seed_workspace` is now async, like every port operation, and the service's seed
+  route awaits it.
+- The noop cuts the content's own revision and stores nothing, as its patch returns the untouched base.
+  It never raises, and every operation on that revision is not-run.
+- All three implementations cut the same revision for the same checkout, binary file and executable bit
+  included (`tests/unit/sandbox/test_seed_on_the_port.py`).
+
+**Who ruled it.** The MacBook lane asked for it in its G4 review of #2456, as contract 3's consumer. It is
+the implementer's change, for that lane's review and the owner's.
+
+### 11h. The service's apps run on an internal network, by name, with no host port (2026-10-18, §4.3, §7 items 9 and 10; §11f; #2451 part 4; the owner's ruling)
+
+**Why.** Inside a deploy the sandbox service is a container on `squadnet`. `DockerAdapter.run_detached`
+published each app on the host's loopback (`-p 127.0.0.1:0:<port>`), and the service's own `127.0.0.1`
+is its own, so readiness, `probe_http_endpoint` and every scenario step would fail to connect. The flaw
+predates SIP-0113: the service had always been `noop`, and every live run so far ran on the host.
+
+**What changed.**
+- **Compose declares `sandbox-apps`,** named `squadops-sandbox-apps` (fixed, not project-prefixed) and
+  `internal: true`: no route out. The service joins it beside `squadnet`, and no other service does.
+  The service reads its name from `SQUADOPS__SANDBOX__APP_NETWORK`.
+- **The service's root requires it when its provider is `docker`** (`squadops.sandbox.main.build_app`),
+  never defaulted (#1568). `SandboxConfig.app_network` is optional, because the runtime's preflight and
+  the doctor read the same section and start no apps.
+- **On the network, an app runs under a name of its own** (`squadops-app-<cycle>-<suffix>`), publishes
+  nothing, and is reached at `http://<name>:<port>`. `ContainerBackend` takes `app_network` as a
+  required argument. `None` keeps loopback publishing for a host run, which the audit scripts and the
+  sandbox floor smoke name explicitly.
+- **Every detached container is named,** and a `docker run -d` that times out, or exits non-zero (125 to
+  127 can leave a container created and never started), is removed by that name before the error is
+  raised. Before, it left an unnamed container nobody could find (the MacBook
+  lane's note on #2450).
+- **Setup steps keep the install network,** with egress for dependencies and no secrets. The app, which
+  holds the evaluation secrets (SIP-0112 Q40), has no route out.
+- **SIP-0113's scenario runner joins the same network** (the PR after #2450 and this one, at the MacBook
+  lane's review of this PR). The app it starts holds the evaluation secrets, so on the network it has no route
+  out and no host port, and its setup steps keep the install network with no secrets. The factory hands it
+  `app_network`, and the runner and the backend share one placement (`adapters/sandbox/placement.py`).
+
+**Evidence.**
+- **Read live on the Spark's Docker** with a throwaway internal network and the sandbox image:
+  - an app answered 200 by name from a peer on the network;
+  - the app's own connection out failed, "Network is unreachable";
+  - it published no host port.
+- **The wiring test** enters at `build_app` with the env compose writes, and asserts the app's container
+  spec on the network with nothing published (`tests/unit/sandbox/test_app_network.py`).
+- **A compose guard** asserts the network is internal, its name is the one the service reads, and only
+  the service joins it.
+
+**Who ruled it.** The owner, 2026-10-18, on #2451: "An internal, no-egress `sandbox-apps` network that
+the sandbox service joins. Apps run on it by container name with no host port, and the network's name
+reaches the service through a required `SQUADOPS__SANDBOX__APP_NETWORK`. The Spark lane builds it; the
+MacBook lane reviews."
+
+### 11i. A pinned revision's content is read through the port (2026-10-18, §4.6, §7 item 3; §11g; contract 3; SIP-0112 E.4.3; implementer's record, for the owner)
+
+**Why.** SIP-0112's E.4.3 captures a change back from the sandbox into a product's repository. It needs
+the content of the revision a cycle accepted: its files, binary ones included, and their executable
+bits. Nothing exposed it. The store keeps hashes, not contents, so the live tree is the only copy.
+
+**What changed.**
+- **`read_workspace_revision(revision)` on `ExecutionSandboxPort`,** beside §11g's seed. It returns a
+  `RevisionContent`: the revision, its files as text or bytes, and its executable bits.
+- **It reads the way a disposable copy does** (`WorkspaceStore.read_pinned`, which X-3a's
+  `disposable_copy` now uses too). It reads only while the live tree matches the pin, and holds what
+  was read to the revision's ID, so a patch landing mid-read returns nothing rather than a mix of two
+  revisions. A tree that moved is refused.
+- **The service answers at `GET /api/v1/workspaces/{cycle_id}/revisions/{revision_id}`,** in the
+  seed's wire form: text under `files`, base64 under `binary_files`, and `executable`. A revision the
+  cycle never held is 404, and a tree that moved is 409. The two directions of the wire's encoding are
+  one pair in `squadops.sandbox.models` (`wire_files`, `decode_binary`), used by the client and the
+  service alike.
+- **The noop refuses:** its seed stored nothing, so it has nothing to read.
+
+**Evidence.** `tests/unit/sandbox/test_read_revision.py` seeds one checkout, with a `\r\n` file, a
+binary file and an executable bit, and reads it back exactly, over HTTP and in process. It refuses a
+tree edited or patched after its pin. Three mutations are each caught: the client dropping binaries,
+the pin check removed, and the executable bits dropped.
+
+**Who ruled it.** The MacBook lane asked for it in its review of #2456, as contract 3's consumer, for
+E.4.3 (#2410). It is the implementer's change, for that lane's review and the owner's.
+
+### 11j. A seeded workspace is released through the port, and the release keeps the operation journal (2026-10-19, §4.6, §7 items 11 and 12; §11g; #2473; implementer's record, for the owner)
+
+**Why.** Nothing released a workspace seeded through the port (§11g). SIP-0112's inherited baseline
+(E.4.2, #2468) seeds `baseline-<project>-<commit12>` for each capture, and a source-backed run (E.4.3)
+seeds one live tree per Cycle, so the sandbox root only grew. The store had leases
+(`touch_lease`, `cleanup_expired`), but nothing called them.
+
+**What changed.**
+- **`release_workspace(cycle_id)` on `ExecutionSandboxPort`,** beside §11g's seed and §11i's read. The
+  consumer calls it once it has recorded what it needs: the inherited baseline after
+  `record_inherited_baseline`, a source-backed run at its teardown. An application started from the
+  workspace is stopped first, since the release takes the tree away beneath it.
+  - The service removes the cycle's workspace.
+  - The client calls `DELETE /api/v1/workspaces/{cycle_id}`, which answers 204. An ID outside the
+    store's pattern is 400 `INVALID_WORKSPACE`. A `..` is resolved in the URL before any route
+    matches, so it answers 404 and deletes nothing.
+  - The noop stored nothing, so it releases nothing.
+  - Releasing an absent workspace is no error (§7 item 12).
+- **A release, a cleanup and a lease sweep keep the operation journal.** The journal (§7 item 11) lives
+  in the cycle's directory (`<root>/<cycle_id>/evidence/`), and the store removed that whole directory.
+  The store now removes only its own entries (`workspace/`, `copies/`, `revisions/` and the lease),
+  and removes the directory once nothing is left in it. The lease goes last, so a removal that a crash
+  interrupts is still leased and the next sweep finishes it.
+- **Not built: the lease at seeding.** #2473 offered either a lease taken at seeding with a sweep, or an
+  explicit release. The consumer knows when it has recorded what it needs, so the explicit release is
+  the one built. A consumer that dies before releasing leaves its workspace, as before. The store's
+  lease and sweep remain for a caller that wants a time bound.
+
+**Evidence.** `tests/unit/sandbox/test_seed_on_the_port.py` seeds a workspace through the service and
+through the HTTP client, runs a journalled operation on it, and releases it twice. The cycle's
+directory then holds only `evidence/`, no revision is left, and the journal reads every operation. An ID
+outside the pattern is refused with nothing deleted. `tests/unit/sandbox/test_workspace_store.py`
+sweeps a cleaned and an expired cycle, with and without a journal. On the store's previous whole-
+directory removal, the journalled cases of both tests fail.
+
+**Who ruled it.** The Spark lane raised it in its G4 review of #2468. The sandbox's port and service are
+that lane's files by ownership (CLAUDE.md's lanes; this SIP was its 1.4 headline), so the explicit
+release is the implementer's choice, for the MacBook lane's review as its caller and the owner's.
+
+### 11k. The scenario runner reads a started tree's client routes, with the evaluator image's own Chromium (2026-10-28, §4.6, §7 items 2, 9 and 10; §11e, §11h; SIP-0109 §24co; #2619; implementer's record, for the owner)
+
+**Why.** SIP-0109 §24co renders a repository-backed product's client routes at its increment's acceptance. The product
+can only be started here, from its declaration (§11e). §11c's dropped row, campaign evaluation through this sandbox,
+stands for a sample application, whose routes are still read in the qa container. For a repository-backed product,
+its acceptance (SIP-0109 §24cl) and its routes run here.
+
+**What changed.**
+- **`POST /api/v1/evaluations` takes `routes`:** each one a client route and, for a parameterized one, its seed
+  (`RouteRequest`). The answer carries each route's reading (`TreeEvaluation.routes`: the path it was read at, the
+  test ids its page's elements carried, or why it wasn't read). It defaults to none, so every existing caller's request
+  and answer are as they were.
+- **When:** after the quality reading and the scenarios, so a route's seed reaches neither. The app is the one started
+  from the declaration in the disposable copy, and it's torn down after.
+- **How:** Chromium runs as the evaluator image's entrypoint (`ContainerSpec.entrypoint`, rendered as `docker run
+  --entrypoint`, an inert default for every other spec). It dumps each page's DOM with the flags the qa role reads a
+  sample application's pages with.
+  - It runs on the app network, at the app's IP (a UI server may refuse a name it doesn't know), with caps dropped,
+    no new privileges, nothing mounted and nothing of the app's environment, as the evaluator's other runs are (§11h).
+  - The image's driver isn't run, so the image and its tag are unchanged.
+- **A seed** is sent to the app's own address, with the path as the manifest writes it (SIP-0113 §10n ruling 8).
+- **What reads unread, with why:** no `ui_base`, no app network, the image absent, the browser's container not run, a
+  non-zero exit, nothing dumped, no seed, or a seed refused. A reading's detail is scrubbed of the evaluation's
+  secrets, as every free text is (§11e).
+
+**Evidence.** `tests/unit/sandbox/test_scenario_runner_routes.py` and `test_http_surface.py`, and the live read
+SIP-0109 §24co records: the `-7` image's Chromium as its entrypoint, on a throwaway network, with nothing left running.
+
+**Who ruled it.** The implementer, building SIP-0109 §24co, for the owner's review. The sandbox's service is the Spark
+lane's by ownership.

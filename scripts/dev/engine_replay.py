@@ -12,6 +12,8 @@ skips what is done.
     engine_replay.py plan SELECTION.json --out PLAN.json [--seed 2199]
     engine_replay.py run PLAN.json --part panel-start|held-out|panel-end --engine … --out DIR
     engine_replay.py score ARM_DIR [ARM_DIR ...] --out SCORES.jsonl
+    engine_replay.py run PLAN.json --part held-out --engine tensorfold --recipe RECIPE.yaml --out DIR \
+        [--max-tokens N] [--first-call-note ASSET [--note-quote TEXT]]
 
 Settings: the envelope's ``max_tokens`` (production's registry default, 8,192, where the capture has
 none) and its reasoning level. Sampling is production's: Ollama's model defaults (temperature 1, top_p
@@ -31,6 +33,18 @@ first held-out call. ``run PLAN.json --part`` runs one part of it, resumably.
 
 ``score`` puts each recorded answer through its task type's own handler, in the agent container of the
 envelope's role (``authoring_score.py``), and records whether the first answer passed: G1's validator.
+
+Two overrides change the call itself, for a budget measurement (#2253), and each is named in the arm's
+folder and in its ``manifest.json``:
+- ``--max-tokens N`` sends every call at N, above the envelope's cap or below it. ``--max-tokens-cap``
+  only lowers it, for the draft check.
+- ``--first-call-note ASSET [--note-quote TEXT]`` appends one user message after the envelope's own,
+  as the cut-off re-ask delivers its fact (#2149). The note is the asset's text, or the quoted part of
+  it, word for word. A quote the asset does not hold is refused, so the note can't drift from it.
+
+An arm's settings are written to its ``manifest.json`` on its first call. A restart with different
+settings is refused: the summary would mix two arms, and the restart would skip the calls the first
+settings already made.
 """
 
 from __future__ import annotations
@@ -332,6 +346,15 @@ def engine_counts(engine: str, final: dict[str, Any], usage: dict[str, Any]) -> 
     }
 
 
+def transport_error(exc: BaseException) -> str:
+    """A call that failed before any answer, as its row records it: the exception's type and an
+    ``OSError``'s number, never its text (#2744). A header the client refuses is quoted whole in its
+    error (h11's ``Illegal header value b'Bearer …'``), the key among it, and the row is a ``var/``
+    record the line's Release carries."""
+    errno = getattr(exc, "errno", None)
+    return type(exc).__name__ + (f" (errno {errno})" if isinstance(errno, int) else "")
+
+
 def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str) -> dict[str, Any]:
     """One streamed call: every event kept, the timings read from the client's own clock."""
     t0 = time.monotonic()
@@ -394,6 +417,36 @@ def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str
     return row
 
 
+def first_call_note(asset: Path, quote: str | None = None) -> dict[str, Any]:
+    """The note ``--first-call-note`` appends: the asset's body (its front matter dropped), or the
+    quoted part of it, word for word. A quote the asset does not hold is refused, and so is a body with
+    a template variable left in it, which no call in production is sent."""
+    raw = asset.read_text()
+    body = raw
+    if raw.startswith("---\n"):
+        end = raw.find("\n---\n", 4)
+        if end < 0:
+            raise SystemExit(f"{asset}: its front matter has no closing '---'")
+        body = raw[end + len("\n---\n") :]
+    if quote is not None:
+        if not quote or quote not in body:
+            raise SystemExit(f"{asset} does not hold the quoted note, word for word: {quote!r}")
+        text = quote
+    else:
+        text = body.strip()
+        if "{{" in text:
+            raise SystemExit(
+                f"{asset} has a template variable in it; quote the part to send with --note-quote"
+            )
+    return {
+        "asset": str(asset),
+        "asset_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+        "quote": quote,
+        "text": text,
+        "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
+    }
+
+
 def _request(
     env: dict[str, Any],
     engine: str,
@@ -402,9 +455,12 @@ def _request(
     draft: bool | None,
     greedy: bool,
     max_tokens_cap: int | None,
+    max_tokens: int | None = None,
+    note: str | None = None,
 ) -> tuple[str, dict, dict[str, str]]:
     """One call's URL, body and headers, with the run's overrides: greedy sampling and a lower cap, for the
-    draft check only."""
+    draft check; a cap of its own (``max_tokens``, above the envelope's or below it) and a note appended
+    as a last user message, for a budget measurement (#2253)."""
     if engine == "ollama":
         url, body = ollama_request(env, seed)
         headers: dict[str, str] = {}
@@ -412,12 +468,48 @@ def _request(
         url, body = tensorfold_request(env, seed, served[0], served[1], draft)
         headers = {"Authorization": f"Bearer {api_key()}"}
     options = body["options"] if engine == "ollama" else body
+    key = "num_predict" if engine == "ollama" else "max_tokens"
     if greedy:  # one reply per prompt, whatever the sampler
         options["temperature"] = 0.0
+    if max_tokens:
+        options[key] = max_tokens
     if max_tokens_cap:
-        key = "num_predict" if engine == "ollama" else "max_tokens"
         options[key] = min(options[key], max_tokens_cap)
+    if note is not None:
+        # After the envelope's own messages, as the cut-off re-ask sends its fact (#2149): a new list,
+        # so the envelope is left as it was captured.
+        body["messages"] = [*body["messages"], {"role": "user", "content": note}]
     return url, body, headers
+
+
+def _file_sha(path: Path | None) -> str | None:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path else None
+
+
+def _settled(arm: Path, settings: dict[str, Any]) -> None:
+    """Write the arm's manifest on its first run; refuse a restart whose settings differ from it."""
+    manifest = arm / "manifest.json"
+    if manifest.exists():
+        recorded = json.loads(manifest.read_text())["settings"]
+        changed = sorted(
+            k for k in set(recorded) | set(settings) if recorded.get(k) != settings.get(k)
+        )
+        if changed:
+            raise SystemExit(
+                f"{arm} was recorded with other settings ({', '.join(changed)}): a restart would mix "
+                "two arms in one summary. Use another --out, or the recorded settings"
+            )
+        return
+    manifest.write_text(
+        json.dumps(
+            {
+                "settings": settings,
+                "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "script_sha256": _file_sha(Path(__file__).resolve()),
+            },
+            indent=2,
+        )
+    )
 
 
 def run(
@@ -431,6 +523,8 @@ def run(
     draft: bool | None,
     max_tokens_cap: int | None,
     greedy: bool = False,
+    max_tokens: int | None = None,
+    note: dict[str, Any] | None = None,
 ) -> int:
     doc = json.loads(selection.read_text())
     served_id = parity_effort = None
@@ -441,9 +535,33 @@ def run(
         parity_effort = rec["parity_effort"]  # required: the level that renders Ollama's prompt
     if draft is not None:
         label += f"-draft-{'on' if draft else 'off'}"
+    # Named in the folder, so two arms written to one --out stay apart, and ``score`` keys them apart.
+    if max_tokens:
+        label += f"-max{max_tokens}"
+    if note is not None:
+        label += f"-note-{note['text_sha256'][:8]}"
     picks, folder = calls(doc, part, round_no)
     arm = out / label / folder
     arm.mkdir(parents=True, exist_ok=True)
+    _settled(
+        arm,
+        {
+            "engine": label,
+            "recipe": str(recipe) if recipe else None,
+            "recipe_sha256": _file_sha(recipe),
+            "served_id": served_id,
+            "parity_effort": parity_effort,
+            "selection": str(selection),
+            "selection_sha256": _file_sha(selection),
+            "part": part,
+            "round": round_no,
+            "draft": draft,
+            "greedy": greedy,
+            "max_tokens_cap": max_tokens_cap,
+            "max_tokens": max_tokens,
+            "first_call_note": note,
+        },
+    )
     summary = arm / "summary.jsonl"
     done = (
         {
@@ -462,14 +580,22 @@ def run(
             continue
         env = envelope(m["envelope_id"])
         url, body, headers = _request(
-            env, engine, seed, (served_id, parity_effort), draft, greedy, max_tokens_cap
+            env,
+            engine,
+            seed,
+            (served_id, parity_effort),
+            draft,
+            greedy,
+            max_tokens_cap,
+            max_tokens,
+            note["text"] if note else None,
         )
         started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         try:
             row = stream_call(url, body, headers, arm / m["raw"], engine)
         except (httpx.HTTPError, OSError, ValueError) as exc:
-            row = {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}
-        max_tokens, reasoning = settings(env)
+            row = {"error": transport_error(exc)}
+        captured_max, reasoning = settings(env)
         row = {
             "envelope_id": m["envelope_id"],
             "task_type": m["task_type"],
@@ -483,10 +609,15 @@ def run(
             "raw": m["raw"],
             "started_at": started,
             "max_tokens": body.get("max_tokens") or body.get("options", {}).get("num_predict"),
-            "captured_max_tokens": max_tokens,
+            "captured_max_tokens": captured_max,
+            # Production's deadline for the call (the handler's ``generation_timeout``), which the
+            # replay does not enforce: a reading compares the call's wall time with it.
+            "captured_timeout_seconds": (env.get("chat_kwargs") or {}).get("timeout_seconds"),
             "reasoning": reasoning,
             "reasoning_effort_sent": body.get("reasoning_effort"),
             "messages_sha256": env.get("messages_sha256"),
+            "messages_sent": len(body["messages"]),
+            "first_call_note_sha256": note["text_sha256"] if note else None,
             **row,
         }
         with summary.open("a") as f:
@@ -541,6 +672,13 @@ def recorded_answer(path: Path, engine: str) -> dict[str, Any]:
         "content": "".join(text),
         "reasoning_text": "".join(think) or None,
         "finish": finish,
+        # As each adapter hands it on: TensorFold's reports how the call ended (``stop`` or ``length``),
+        # Ollama's reports none (SIP-0111 §5.2). With it, the handler reads the cap from the finish, as
+        # in production; without it, from the token count against the envelope's own cap, so an answer
+        # that finished past that cap under ``--max-tokens`` would be read as cut.
+        "termination": {"stop": "stop", "length": "length"}.get(finish)
+        if engine == "tensorfold"
+        else None,
         "prompt_tokens": counts["prompt_tokens"],
         "completion_tokens": counts["completion_tokens"],
     }
@@ -564,6 +702,15 @@ def _in_container(container: str, cases: list[dict], answers: list[dict]) -> lis
             f"{container}: {len(records)} of {len(answers)} answers scored:\n{done.stderr[-3000:]}"
         )
     return records
+
+
+def _one_key_each(answers: list[dict]) -> None:
+    """Refuse answers that share a key: two arms recorded under one name, which the scorer's table
+    would hand one arm's answers to both."""
+    keys = [a["key"] for a in answers]
+    twice = sorted({k for k in keys if keys.count(k) > 1})
+    if twice:
+        raise SystemExit(f"answers share a key, so their arms can't be told apart: {twice[:3]}")
 
 
 def score(arms: list[Path], out: Path) -> int:
@@ -591,11 +738,13 @@ def score(arms: list[Path], out: Path) -> int:
                 if row.get("error"):  # a failed call is a failed answer, never skipped (§4)
                     answers.append({**meta, "verdict": "error", "error": row["error"]})
                     continue
-                engine = "ollama" if row["engine"] == "ollama" else "tensorfold"
+                # The label carries the arm's overrides after the engine's name.
+                engine = "ollama" if row["engine"].startswith("ollama") else "tensorfold"
                 raw = summary.parent / row.get("raw", f"{eid}.jsonl")
                 answers.append({**meta, **recorded_answer(raw, engine)})
                 if eid not in cases:
                     cases[eid] = {**envelope(eid), "envelope_id": eid}
+    _one_key_each(answers)
     records = [a for a in answers if a.get("verdict") == "error"]
     by_role: dict[str, list[dict]] = defaultdict(list)
     for a in answers:
@@ -649,7 +798,18 @@ def main() -> int:
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--only", nargs="*")
     r.add_argument("--draft", choices=("on", "off"))
-    r.add_argument("--max-tokens-cap", type=int)
+    r.add_argument("--max-tokens-cap", type=int, help="lower each call's cap to this (draft check)")
+    r.add_argument(
+        "--max-tokens",
+        type=int,
+        help="send each call at this cap, above the envelope's or below it",
+    )
+    r.add_argument(
+        "--first-call-note",
+        type=Path,
+        help="an asset whose text is appended as a last user message, as the cut-off re-ask is",
+    )
+    r.add_argument("--note-quote", help="send only this part of the asset, word for word")
     r.add_argument("--greedy", action="store_true")
     c = sub.add_parser("score")
     c.add_argument("arms", type=Path, nargs="+")
@@ -667,7 +827,12 @@ def main() -> int:
         parser.error("--round goes with the tuning part, and only with it")
     if args.engine == "tensorfold" and not args.recipe:
         parser.error("--recipe is required for tensorfold")
+    if args.max_tokens and args.max_tokens_cap:
+        parser.error("--max-tokens and --max-tokens-cap set the same field: name one")
+    if args.note_quote is not None and args.first_call_note is None:
+        parser.error("--note-quote quotes the --first-call-note asset, so it needs one")
     draft = None if args.draft is None else args.draft == "on"
+    note = first_call_note(args.first_call_note, args.note_quote) if args.first_call_note else None
     return run(
         args.selection,
         args.part,
@@ -679,6 +844,8 @@ def main() -> int:
         draft,
         args.max_tokens_cap,
         args.greedy,
+        args.max_tokens,
+        note,
     )
 
 

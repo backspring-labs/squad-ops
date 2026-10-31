@@ -70,6 +70,12 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
         # each revision's id). `squadops.memory.recall.LESSONS_INPUT`, spelled here because the
         # cycle domain does not import memory; present only when a lesson is supplied.
         "cross_cycle_lessons",
+        # SIP-0110 Appendix A §3.6 (#2178): the person running the cycle's instructions for this
+        # task, binding. `squadops.memory.task_instructions.TASK_INSTRUCTIONS_INPUT`, spelled here
+        # for the same reason; present only when one applies.
+        "task_instructions",
+        # #2179: the unit's pinned project instructions that apply to this task.
+        "project_instructions",
     }
 )
 
@@ -125,6 +131,18 @@ def open_decisions(manifest_content: str | None) -> tuple[tuple[str, str], ...]:
         for d in manifest.decisions
         if d.unresolved and d.question.strip()
     )
+
+
+def manifest_stack(manifest_content: str | None) -> str:
+    """The stack the manifest names, or ``""`` when there is none to read. The plan-review tier
+    reads its qa test namespace by it (#2743), and an unreadable manifest is the gate net's to
+    report, as for ``open_decisions``: no stack is no namespace, so every path stays the scope's."""
+    if not manifest_content:
+        return ""
+    try:
+        return InterfaceManifest.from_yaml(manifest_content).stack or ""
+    except Exception:  # noqa: BLE001 - unreadable manifests are the gate net's to report
+        return ""
 
 
 def resolve_answered_questions(

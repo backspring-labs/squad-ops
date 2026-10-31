@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop.code_generate
-version: "1"
+version: "3"
 required_variables:
   - prd
   - file_structure_guidance
@@ -10,11 +10,17 @@ optional_variables:
   - strategy
   - prior_outputs
   - fill_only_section
+  - increment_views_section
+  - source_repository_section
+  - prior_cycle_section
+  - task_instructions_section
+  - project_instructions_section
+  - cross_cycle_lessons_section
 ---
 ## Product Requirements Document
 
 {{prd}}
-{{fill_only_section}}
+{{fill_only_section}}{{increment_views_section}}{{source_repository_section}}{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
 {{impl_plan}}
 {{strategy}}
 {{file_structure_guidance}}

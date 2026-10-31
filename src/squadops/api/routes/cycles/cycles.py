@@ -2,11 +2,12 @@
 Cycle API routes (SIP-0064 §9.3).
 """
 
+import json
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
@@ -21,7 +22,9 @@ from squadops.api.cycle_schemas import (
     PreflightWarningDTO,
     ProposalRatingRequest,
     ProposalRatingResponse,
+    SourcePreconditionDTO,
 )
+from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import assessment_to_response, cycle_to_response
@@ -35,18 +38,22 @@ from squadops.api.runtime.deps import (
     get_deploy_registry,
     get_flow_executor,
     get_llm_port,
+    get_memory_records,
     get_memory_store,
     get_project_registry,
+    get_reference_resolvers,
     get_squad_profile_port,
 )
 from squadops.auth.models import AuditEvent, Identity, Scope
 from squadops.campaigns.change_request import load_stored_change_request
+from squadops.campaigns.models import CycleKind
 from squadops.campaigns.proposal_rating import (
     PROPOSAL_RATING_ARTIFACT_TYPE,
     PROPOSAL_RATING_FILENAME,
     rating_document,
     rating_from_request,
 )
+from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.contract_derivation import (
@@ -55,16 +62,23 @@ from squadops.cycles.contract_derivation import (
     load_seeded_manifest_content,
 )
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
+from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
     CycleStatus,
+    DerivedProfileNotFoundError,
     Gate,
+    InheritedBaselineNotFoundError,
     PreflightRejectedError,
+    Project,
+    ProjectNotReadyError,
+    ProjectStateConflictError,
     Run,
     RunNotFoundError,
     SquadProfile,
+    StaleSourcePreconditionError,
     TaskFlowPolicy,
     ValidationError,
     resolve_config,
@@ -73,6 +87,7 @@ from squadops.cycles.preflight import (
     Finding,
     PreflightDecision,
     bind_mode_authoring_decision,
+    builder_build_profile_decision,
     combine,
     fault_injection_decision,
     memory_declaration_decision,
@@ -80,15 +95,33 @@ from squadops.cycles.preflight import (
     model_registration_decision,
     required_check_tooling_decision,
     required_roles_decision,
+    source_backed_stack_decision,
     stack_development_profile_decision,
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
+from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
-from squadops.memory.pinning import pin_standalone_cycle
+from squadops.memory.pinning import cycle_binding, pin_standalone_cycle
+from squadops.memory.records import RecordRefused, Source, SourceKind
+from squadops.memory.reference_binding import bound_for_cycle
+from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.llm.provider import LLMCapability
+from squadops.projects.source_context import (
+    CAMPAIGN_BRANCH,
+    PROJECT_BASELINE,
+    ProjectSourceContext,
+)
+from squadops.projects.sync import unreconciled
+from squadops.projects.verification import ACCEPTED as VERIFICATION_ACCEPTED
+from squadops.projects.verification import SOURCE_VERIFICATION_TYPE
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
 from squadops.sandbox.preflight import sandbox_environment_decision
+from squadops.stacks.development_profiles import blueprint_development_profile
+
+if TYPE_CHECKING:
+    from squadops.campaigns.campaign_branch import CampaignHead
+    from squadops.projects.derived_profile import DerivedProfile
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +192,12 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
 
 
 async def _run_create_preflight(
-    llm_port: Any | None, profile: SquadProfile, config: dict
+    llm_port: Any | None,
+    profile: SquadProfile,
+    config: dict,
+    *,
+    campaign_cycle: bool,
+    source_backed: bool = False,
 ) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
@@ -184,6 +222,11 @@ async def _run_create_preflight(
         # emission outside the fill slots, surfacing as "the plan claims nothing" a full
         # framing workload later.
         stack_development_profile_decision(config),
+        # #2437: a builder squad with a build step and no build_profile fails the moment
+        # implementation starts (#392), after the whole framing workload. Fail in seconds.
+        builder_build_profile_decision(profile, config, source_backed=source_backed),
+        # SIP-0112 E.4.3: an external product's cycle starts from its tree, never a stack's.
+        source_backed_stack_decision(config, source_backed=source_backed),
         model_availability_decision(profile, await _pulled_model_names(llm_port)),
         # #1145: pulled is not the same as registered. A model the backend serves but
         # MODEL_SPECS does not know runs with the overflow guard disabled and a
@@ -204,7 +247,7 @@ async def _run_create_preflight(
         # happened. A usable one warns, so the create log says the cycle is a diagnostic.
         fault_injection_decision(config),
         # SIP-0110 §0.7: a memory declaration is `disabled` or `enabled`, never guessed.
-        memory_declaration_decision(config),
+        memory_declaration_decision(config, campaign_cycle=campaign_cycle),
     )
     if decision.rejected:
         raise PreflightRejectedError(decision.summary())
@@ -216,7 +259,7 @@ async def _run_create_preflight(
 
 
 async def _seed_derived_contract(
-    vault: Any | None, body: CycleCreateRequest, project_id: str
+    vault: Any | None, body: CycleCreateRequest, project_id: str, *, source_backed: bool
 ) -> str | None:
     """Derive a verification contract from a seeded manifest (#779, M0b).
 
@@ -237,6 +280,10 @@ async def _seed_derived_contract(
     Returns the new artifact id, or None when nothing was derived. An unusable
     manifest raises :class:`PreflightRejectedError`: falling through to author mode
     would hand back a green carrying none of the criteria that were asked for.
+
+    A source-backed cycle that seeds a manifest is refused before anything is derived or
+    stored (SIP-0112 H.4 point 3): the contract would bind a stack's checks beside the
+    product's files, the ``contract_ref`` that E.4.3's guard refuses by name.
     """
 
     overrides = body.execution_overrides or {}
@@ -254,6 +301,14 @@ async def _seed_derived_contract(
     )
     if manifest_content is None:
         return None
+    if source_backed:
+        raise PreflightRejectedError(
+            "source_backed_seeded_manifest: this cycle develops an external product from its own "
+            "tree at the pinned commit, and plan_artifact_refs seeds an interface manifest, from "
+            "which a stack's verification contract would be derived and bound beside the "
+            "product's files. Seed no manifest for a cycle of an external Project: its own "
+            "declared checks verify it"
+        )
 
     try:
         return await derive_and_store_contract(vault, project_id, manifest_content)
@@ -262,6 +317,45 @@ async def _seed_derived_contract(
             f"a manifest is seeded in plan_artifact_refs but no verification contract "
             f"could be derived from it, so the cycle would run unbound: {exc}"
         ) from exc
+
+
+def _pin_blueprint_conventions(
+    body: CycleCreateRequest, profile: "DerivedProfile | None"
+) -> str | None:
+    """Pin the development profile of the blueprint a product was made from (SIP-0112 H.13).
+
+    A product's cycle runs under the default profile unless something names another, and that is
+    ``python_cli``, so a frontend change on a FastAPI and React product was given a Python
+    package's prompts and a Python-only source filter. The derived profile at the pin names the
+    blueprint the product follows (contract 8's ``blueprint``), and that blueprint's development
+    profile is pinned in ``execution_overrides``, as ``_seed_derived_contract`` pins its
+    ``contract_ref``: one value on the cycle record, read by every task, retry and repair through
+    ``effective_development_profile``. It seeds nothing (``seeds_skeleton``).
+
+    Each task is then shown the blueprint's conventions for a product, never its test placement,
+    which the product's runners give (``source_repository_section``). Nothing is pinned:
+    - for no profile at the pin, or no blueprint, or one whose profile says nothing for a product
+      (``blueprint_development_profile``): the default stands, as in 2.4;
+    - where the request already names a ``development_profile``: the operator's choice stands, as
+      a supplied ``contract_ref`` does;
+    - for a cycle with no implementation plan. Only the plan's tasks are shown the product, with
+      its runners, so a plan-less task under the blueprint's profile would be given the profile's
+      prose for the skeleton, and its test placement with it.
+
+    Returns the profile pinned, or ``None``."""
+    if profile is None:
+        return None
+    name = blueprint_development_profile(profile.blueprint_stack)
+    if not name:
+        return None
+    overrides = body.execution_overrides or {}
+    config = resolve_config(body.applied_defaults, overrides)
+    if config.get("development_profile"):
+        return None
+    if not (config.get("implementation_plan") or config.get("typed_acceptance")):
+        return None
+    body.execution_overrides = {**overrides, "development_profile": name}
+    return name
 
 
 async def _validate_replay_declaration(
@@ -341,6 +435,14 @@ class CreationPorts:
     deploy_registry: Any
     llm: Any | None = None
     artifact_vault: Any | None = None
+    #: Where a cycle's admitted task instructions are stored (#2178): by the route, and by a
+    #: campaign's launch, which creates its cycles through this same path.
+    memory_records: Any | None = None
+    #: What binds a task instruction's ``@current`` references with its cycle, by family (T16).
+    reference_resolvers: Any | None = None
+    #: Where a campaign cycle's own bindings of its campaign's pinned instructions are recorded
+    #: when the campaign launches it (SIP-0110 §5ad). Read by a launch only.
+    memory_store: Any | None = None
 
     @classmethod
     def of_request(cls, request: Request) -> "CreationPorts":
@@ -358,6 +460,9 @@ class CreationPorts:
             deploy_registry=get_deploy_registry(request),
             llm=optional(get_llm_port),
             artifact_vault=optional(get_artifact_vault),
+            memory_records=get_memory_records(request),
+            reference_resolvers=get_reference_resolvers(request),
+            memory_store=optional(get_memory_store),
         )
 
 
@@ -368,6 +473,9 @@ class PreparedCycle:
     cycle: Cycle
     run: Run
     warnings: tuple[Finding, ...]
+    #: The task instructions the request gave (#2178), as records of this cycle, confirmed by
+    #: whoever instructed it: stored by the caller before the first run is enqueued.
+    instructions: tuple[Any, ...] = ()
 
 
 def first_run(cycle: Cycle, *, initiated_by: str) -> Run:
@@ -384,6 +492,218 @@ def first_run(cycle: Cycle, *, initiated_by: str) -> Run:
     )
 
 
+def pin_source_context(
+    project: Project,
+    precondition: SourcePreconditionDTO | None,
+    head: "CampaignHead | None" = None,
+) -> ProjectSourceContext | None:
+    """SIP-0112 contract 1 (FR-04, FR-09, §D.3): an external Project's source, resolved from the
+    registry's record and pinned before dispatch. A sample application has none. A stated
+    precondition the Project has moved past is refused; an absent one pins the current source,
+    which is persisted all the same.
+
+    ``head`` is a repository-backed Campaign increment's ``CampaignHead`` (H.4, SIP-0109 §24cd
+    point 1): its tree is pinned there, and the Project's baseline stays recorded beside it."""
+    if project.source is None:
+        if precondition is not None or head is not None:
+            raise ValidationError(
+                f"Project {project.project_id} is a sample application: it has no external "
+                "source to state a precondition for, or campaign branch to pin"
+            )
+        return None
+    commit = project.development_baseline_commit
+    revision = project.development_configuration_revision
+    if commit is None or revision is None:
+        raise ProjectStateConflictError(
+            f"Project {project.project_id} needs its source validated and a Development "
+            "Configuration recorded before a Cycle develops it (E.4.2)"
+        )
+    if precondition is not None and (
+        precondition.development_baseline_commit != commit
+        or precondition.development_configuration_revision not in (None, revision)
+    ):
+        raise StaleSourcePreconditionError(
+            f"Project {project.project_id} is at baseline {commit}, Development Configuration "
+            f"revision {revision}; the request expected "
+            f"{precondition.development_baseline_commit}, revision "
+            f"{precondition.development_configuration_revision or 'any'}"
+        )
+    return ProjectSourceContext(
+        project_id=project.project_id,
+        record_version=project.record_version,
+        development_configuration_revision=revision,
+        repo_uri=project.source.repo_uri,
+        development_baseline_commit=commit,
+        integrated_upstream_commit=project.integrated_upstream_commit,
+        pinned_commit=head.commit if head is not None else commit,
+        pinned_from=CAMPAIGN_BRANCH if head is not None else PROJECT_BASELINE,
+        previous_verification_ref=head.previous_verification_ref if head is not None else None,
+    )
+
+
+async def require_campaign_head(
+    vault: Any | None,
+    context: ProjectSourceContext,
+    head: "CampaignHead | None",
+    *,
+    kind: str | None,
+) -> None:
+    """H.4, SIP-0109 §24cd point 1: a repository-backed Campaign's cycle is pinned at its campaign
+    branch's head, never at the Project's baseline by default, and its regression baseline is the
+    accepted verification that made that head. The calibration is the record of the Project's
+    inherited baseline (§24bv point 1), so the first head is the Project's baseline commit, with
+    no verification before it."""
+    if head is None:
+        raise ProjectStateConflictError(
+            f"Project {context.project_id}'s Campaign {kind or 'cycle'} is pinned at its campaign "
+            "branch's head, and its launch names none (SIP-0109 §24cd point 1): it is refused, "
+            "never pinned at the Project's baseline"
+        )
+    ref = head.previous_verification_ref
+    if ref is None:
+        if head.commit != context.development_baseline_commit:
+            raise ProjectStateConflictError(
+                f"the campaign branch's head {head.commit} names no verification, and only the "
+                f"calibration record's commit {context.development_baseline_commit} has none"
+            )
+        return
+    if vault is None:
+        raise RuntimeError("ArtifactVaultPort not configured: an increment's head can't be read")
+    got = await retrieve_or_absent(vault, ref)
+    document = None
+    if got is not None and getattr(got[0], "artifact_type", None) == SOURCE_VERIFICATION_TYPE:
+        try:
+            document = json.loads(got[1])
+        except ValueError:
+            document = None
+    if (
+        not isinstance(document, dict)
+        or document.get("verdict") != VERIFICATION_ACCEPTED
+        or document.get("candidate_tree_identity") != head.tree_identity
+    ):
+        raise ProjectStateConflictError(
+            f"the campaign branch's head {head.commit} names verification {ref}, which isn't an "
+            "accepted source verification of that tree, so the increment has no regression "
+            "baseline to be compared with (SIP-0109 §24bv point 3)"
+        )
+
+
+async def require_reconciled_upstream(registry: Any, context: ProjectSourceContext) -> None:
+    """FR-21 (#2608): once a sync has read upstream past the pinned baseline, with drift in evidence
+    a unit relies on, a Cycle on the older evidence is refused until the Project is reconciled:
+    validated, configured and its baseline captured at the new commit. Source drift alone holds
+    nothing: the pinned evidence still describes the tree the Cycle develops."""
+    finding = unreconciled(
+        await registry.source_syncs(context.project_id), context.development_baseline_commit
+    )
+    if finding is not None:
+        raise StaleSourcePreconditionError(
+            f"Project {context.project_id}'s upstream is at {finding['upstream_commit']}, past its "
+            f"baseline {context.development_baseline_commit}, with "
+            f"{', '.join(finding['drift']['relevant'])} changed (projects sync): reconcile it at "
+            "the new commit first (squadops projects validate, configure, baseline --capture)"
+        )
+
+
+async def require_inherited_baseline(registry: Any, context: ProjectSourceContext) -> None:
+    """FR-20, FR-09: a source-backed run is judged against the product's inherited baseline at
+    the commit and Development Configuration revision it pins, so a Cycle without that
+    baseline is refused before dispatch, not once its work is done."""
+    try:
+        baseline = await registry.get_inherited_baseline(context.project_id)
+    except InheritedBaselineNotFoundError:
+        baseline = None
+    pinned = (context.development_baseline_commit, context.development_configuration_revision)
+    if baseline is None or (baseline.commit, baseline.development_configuration_revision) != pinned:
+        held = (
+            "none"
+            if baseline is None
+            else f"{baseline.commit}, revision {baseline.development_configuration_revision}"
+        )
+        raise ProjectStateConflictError(
+            f"Project {context.project_id}'s inherited baseline is {held}; this Cycle pins "
+            f"{pinned[0]}, revision {pinned[1]}: capture the baseline there first "
+            "(squadops projects baseline)"
+        )
+
+
+async def derived_profile_at_pin(
+    registry: Any, context: ProjectSourceContext
+) -> "DerivedProfile | None":
+    """The derived profile at the Project's pin (contract 8), or ``None`` for a baseline captured
+    before profiles were. An increment pinned at its campaign branch's head reads it at the
+    Project's pin all the same, as SIP-0109 §24cd point 3 rules."""
+    try:
+        return await registry.get_derived_profile(
+            context.project_id,
+            at=(context.development_baseline_commit, context.development_configuration_revision),
+        )
+    except DerivedProfileNotFoundError:
+        return None
+
+
+async def require_no_blocking_gap(
+    profile: "DerivedProfile | None",
+    vault: Any | None,
+    context: ProjectSourceContext,
+    body: CycleCreateRequest,
+) -> tuple[Finding, ...]:
+    """SIP-0112 H.4 (H.6, H.8): a source-backed Cycle whose work meets a blocking gap of the
+    derived profile at its pin is refused before anything is persisted, naming the gap.
+
+    Its work's paths are known here only from an operator's plan. A framing-authored plan meets
+    the same rule at the plan gate (``validate_blocking_gaps``). A pin whose baseline has no
+    profile runs as it did in 2.4, and the absence is returned as a warning."""
+    if profile is None:
+        return (
+            Finding(
+                code="derived_profile_absent",
+                severity="warning",
+                message=(
+                    f"Project {context.project_id}'s baseline at its pin has no derived profile, "
+                    "so no gap is checked: capture the baseline again (squadops projects "
+                    "baseline --capture)"
+                ),
+            ),
+        )
+    plan = await _operator_plan(vault, body)
+    if plan is not None:
+        errors = plan.validate_blocking_gaps(profile)
+    else:
+        errors = [
+            f"blocking_gap: {g.id}{f' ({g.subject})' if g.subject else ''} stops all work: "
+            f"{g.reason}. Close it first: {g.closes_by}."
+            for g in profile.blocking_work(None)
+        ]
+    if errors:
+        raise ProjectStateConflictError(
+            f"Project {context.project_id}'s derived profile names a blocking gap this Cycle's "
+            "work meets: " + "; ".join(errors)
+        )
+    return ()
+
+
+async def _operator_plan(vault: Any | None, body: CycleCreateRequest) -> ImplementationPlan | None:
+    """The implementation plan an operator seeded in ``plan_artifact_refs``, or ``None``. One
+    that can't be read is left to the dispatch-time net, which diagnoses it in full."""
+    refs = (body.execution_overrides or {}).get("plan_artifact_refs") or []
+    if vault is None or not refs:
+        return None
+    for ref_id in refs:
+        got = await retrieve_or_absent(vault, ref_id)
+        if got is None:
+            continue
+        ref, content = got
+        if ref.filename == "implementation_plan.yaml" or (
+            getattr(ref, "artifact_type", None) == "control_implementation_plan"
+        ):
+            try:
+                return ImplementationPlan.from_yaml(content.decode(errors="replace"))
+            except Exception:  # noqa: BLE001 - an unreadable plan is the dispatch net's to name
+                return None
+    return None
+
+
 async def prepare_cycle(
     ports: CreationPorts,
     project_id: str,
@@ -393,11 +713,37 @@ async def prepare_cycle(
     initiated_by: str = "api",
     campaign_id: str | None = None,
     kind: str | None = None,
+    increment_id: str | None = None,
+    instructed_by: str | None = None,
+    campaign_head: "CampaignHead | None" = None,
 ) -> PreparedCycle:
     """Build and preflight a cycle and its first run from a create request: the route's body,
     or a campaign launch's (SIP-0109 §12b), which also names the campaign and the cycle's kind.
-    Raises before anything is persisted when the project is unknown or a preflight blocks."""
-    await ports.project_registry.get_project(project_id)
+    Raises before anything is persisted when the project is unknown, its lifecycle accepts no
+    Cycle (SIP-0112 contract 1: registering, archived or failed) or a preflight blocks."""
+    project = await ports.project_registry.get_project(project_id)
+    if not project.lifecycle_status.accepts_cycles:
+        raise ProjectNotReadyError(
+            f"Project {project_id} is {project.lifecycle_status.value}: a Cycle needs it READY"
+        )
+    source_context = pin_source_context(project, body.source_precondition, campaign_head)
+    gap_warnings: tuple[Finding, ...] = ()
+    if source_context is not None and campaign_id is not None and kind != CycleKind.CALIBRATION:
+        await require_campaign_head(ports.artifact_vault, source_context, campaign_head, kind=kind)
+    if source_context is not None:
+        await require_reconciled_upstream(ports.project_registry, source_context)
+        await require_inherited_baseline(ports.project_registry, source_context)
+        derived = await derived_profile_at_pin(ports.project_registry, source_context)
+        gap_warnings = await require_no_blocking_gap(
+            derived, ports.artifact_vault, source_context, body
+        )
+        # SIP-0112 H.13: before the effective config is read, so preflight sees what dispatch runs.
+        pinned = _pin_blueprint_conventions(body, derived)
+        if pinned is not None:
+            logger.info(
+                "cycle_create_blueprint_conventions",
+                extra={"project_id": project_id, "development_profile": pinned},
+            )
 
     # Resolve squad profile snapshot
     profile, snapshot_hash = await ports.squad_profile.resolve_snapshot(body.squad_profile_id)
@@ -424,7 +770,13 @@ async def prepare_cycle(
     effective_config = resolve_config(applied_defaults, body.execution_overrides or {})
 
     # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
-    preflight_warnings = await _run_create_preflight(ports.llm, profile, effective_config)
+    preflight_warnings = gap_warnings + await _run_create_preflight(
+        ports.llm,
+        profile,
+        effective_config,
+        campaign_cycle=campaign_id is not None,
+        source_backed=source_context is not None,
+    )
 
     # SIP-0101 Slice 3: replay declaration validated + interim compatibility
     # gate, same fail-fast point (moves into the SIP-0095 preflight in Slice 4).
@@ -434,7 +786,9 @@ async def prepare_cycle(
     # the contract it implies and pin it as an artifact, so bind mode engages
     # exactly as it does for an operator who ingested one by hand. After this the
     # effective config must be recomputed — the new ref is part of it.
-    derived_ref = await _seed_derived_contract(ports.artifact_vault, body, project_id)
+    derived_ref = await _seed_derived_contract(
+        ports.artifact_vault, body, project_id, source_backed=source_context is not None
+    )
     if derived_ref is not None:
         body.execution_overrides = {
             **(body.execution_overrides or {}),
@@ -470,8 +824,17 @@ async def prepare_cycle(
         notes=body.notes,
         campaign_id=campaign_id,
         kind=kind,
+        increment_id=increment_id,
+        source_context=source_context,
     )
-    return PreparedCycle(cycle, first_run(cycle, initiated_by=initiated_by), preflight_warnings)
+    return PreparedCycle(
+        cycle,
+        first_run(cycle, initiated_by=initiated_by),
+        preflight_warnings,
+        await _admitted_instructions(
+            cycle, body, actor=instructed_by or created_by, resolvers=ports.reference_resolvers
+        ),
+    )
 
 
 @router.post("", status_code=201)
@@ -508,15 +871,25 @@ async def create_cycle(
         )
 
     ports = CreationPorts.of_request(request)
-    prepared = await prepare_cycle(ports, project_id, body)
+    prepared = await prepare_cycle(
+        ports, project_id, body, instructed_by=identity.user_id if identity is not None else None
+    )
     cycle, run, preflight_warnings = prepared.cycle, prepared.run, prepared.warnings
     snapshot_hash = cycle.squad_profile_snapshot_ref
     config_hash = run.resolved_config_hash
+    # #2178: the cycle's task instructions, checked by prepare_cycle before anything is stored.
+    instructions, records = prepared.instructions, ports.memory_records
+    if instructions and records is None:
+        raise http_error(503, "MEMORY_RECORDS_UNAVAILABLE", "no store holds task instructions")
 
     # Persist atomically (T17)
     await ports.cycle_registry.create_cycle(cycle)
     await ports.cycle_registry.create_run(run)
     await _pin_memory(request, cycle)
+    # Before the run is enqueued, so its provisioning reads them.
+    if records is not None:
+        for record in instructions:
+            await records.create(record)
 
     # SIP-0077: cycle.created
 
@@ -554,7 +927,38 @@ async def create_cycle(
         task_flow_policy=body.task_flow_policy,
         resolved_config_hash=config_hash,
         warnings=[PreflightWarningDTO(code=w.code, message=w.message) for w in preflight_warnings],
+        source_context=(
+            cycle.source_context.to_document() if cycle.source_context is not None else None
+        ),
     )
+
+
+async def _admitted_instructions(cycle, body, *, actor: str, resolvers) -> tuple:
+    """The task instructions a cycle is created with (SIP-0110 Appendix A §3.5; #2178), as
+    records, their ``@current`` references bound with the cycle (T16), or the refusal (422) for one
+    the rules refuse or that won't bind. Nothing is stored: whoever stores the cycle stores them,
+    the route or a campaign's launch, before its first run is enqueued."""
+    if not body.task_instructions:
+        return ()
+    requested = [i.model_dump() for i in body.task_instructions]
+    try:
+        bound = await bound_for_cycle(
+            requested_references(requested), resolvers or {}, cycle_binding(cycle)
+        )
+        return tuple(
+            admitted(
+                requested,
+                project_id=cycle.project_id,
+                cycle_id=cycle.cycle_id,
+                actor=actor,
+                now=datetime.now(UTC),
+                instructable=lambda t: authoring_seam_of(t) is not None,
+                source=Source(SourceKind.CYCLE_REQUEST, {"cycle_id": cycle.cycle_id}),
+                bound=bound,
+            )
+        )
+    except RecordRefused as e:
+        raise ValidationError(str(e)) from e
 
 
 async def _pin_memory(request: Request, cycle) -> None:
@@ -566,7 +970,13 @@ async def _pin_memory(request: Request, cycle) -> None:
     if store is None:
         return
     try:
-        await pin_standalone_cycle(store, cycle, now=datetime.now(UTC))
+        await pin_standalone_cycle(
+            store,
+            cycle,
+            now=datetime.now(UTC),
+            records=get_memory_records(request),
+            resolvers=get_reference_resolvers(request),
+        )
     except Exception:
         logger.warning("memory_snapshot_not_pinned cycle=%s", cycle.cycle_id, exc_info=True)
 

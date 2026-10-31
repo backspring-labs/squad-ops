@@ -20,6 +20,7 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -36,7 +37,19 @@ logger = logging.getLogger(__name__)
 #: The headless browser the qa role's image declares (``agents/instances/qa/system-packages.txt``).
 BROWSER = "chromium"
 _NPM_INSTALL_TIMEOUT_S = 600
-_DUMP_DOM_TIMEOUT_S = 60
+#: How long one page's reading may take. A product's page, read in the sandbox, has the same bound
+#: (SIP-0109 §24co).
+DUMP_DOM_TIMEOUT_S = 60
+#: How a page is read (§8.3): headless, its virtual time run for 8 s so the client router has
+#: rendered the view, and the DOM it built written out. The qa role reads a sample application's
+#: pages with these flags, and the sandbox reads a product's with them (SIP-0109 §24co).
+DUMP_DOM_FLAGS = (
+    "--headless",
+    "--disable-gpu",
+    "--no-sandbox",
+    "--virtual-time-budget=8000",
+    "--dump-dom",
+)
 _TESTID = re.compile(r'data-testid="([^"]+)"')
 
 
@@ -173,25 +186,163 @@ def render_routes(
             steps.stop(server)
 
 
-def _reachable_path(
-    route: str, seed: Mapping[str, Any] | None, api: str, steps: RenderSteps
-) -> str | None:
-    """The concrete path to read ``route`` at, or ``None`` when its page cannot be reached: a
-    parameter with no seed, or a seed the app refused or answered without an ``id``."""
+#: The segment a catch-all route is read at: one no declared route serves, so the router falls
+#: through to the catch-all (#2754).
+UNMATCHED_SEGMENT = "__squadops_unmatched__"
 
+
+def catch_all_path(route: str) -> str | None:
+    """The concrete path a catch-all client route is read at, or ``None`` for any other route.
+    ``*`` is read at ``/__squadops_unmatched__`` and ``/docs/*`` at
+    ``/docs/__squadops_unmatched__``: a path is what a browser asks for, and ``*`` is none, so
+    reading the route as written read no page at all (#2754)."""
+    if route == "*":
+        return f"/{UNMATCHED_SEGMENT}"
+    if route.endswith("/*"):
+        return f"{route[:-1]}{UNMATCHED_SEGMENT}"
+    return None
+
+
+def literal_path(route: str) -> str | None:
+    """The path ``route`` is read at without a seed: a catch-all's unmatched path
+    (``catch_all_path``), or the route as written when it has no parameter. ``None`` for a
+    parameterized route, whose page only a seed brings into being."""
+    if (unmatched := catch_all_path(route)) is not None:
+        return unmatched
     if not any(route_param(s) is not None for s in route.split("/")):
         return route
-    if seed is None:
-        logger.warning("route rendering: no seed brings %s into being, so it is not read", route)
-        return None
-    created = steps.seed(api + str(seed["path"]), seed["json"])
+    return None
+
+
+def seeded_path(route: str, seed: Mapping[str, Any], created: Any) -> str | None:
+    """The path a parameterized ``route`` is read at once its seed's create answered
+    ``created``: its parameter filled with the created resource's ``id``. ``None`` when the
+    answer names no id (a seed the app refused answers nothing)."""
     identifier = created.get("id") if isinstance(created, Mapping) else None
     if identifier in (None, ""):
-        logger.warning("route rendering: seeding %s produced no id", route)
         return None
     # The segment as the manifest wrote it; a seed stored before #1973 names only its param.
     segment = seed.get("segment") or f":{seed['param']}"
     return route.replace(str(segment), str(identifier))
+
+
+def _reachable_path(
+    route: str, seed: Mapping[str, Any] | None, api: str, steps: RenderSteps
+) -> str | None:
+    """The concrete path to read ``route`` at, or ``None`` when its page cannot be reached: a
+    parameter with no seed, or a seed the app refused or answered without an ``id``. A
+    catch-all is read where nothing else is served (``catch_all_path``)."""
+
+    if (path := literal_path(route)) is not None:
+        return path
+    if seed is None:
+        logger.warning("route rendering: no seed brings %s into being, so it is not read", route)
+        return None
+    path = seeded_path(route, seed, steps.seed(api + str(seed["path"]), seed["json"]))
+    if path is None:
+        logger.warning("route rendering: seeding %s produced no id", route)
+    return path
+
+
+#: The elements whose content a dumped page carries without having rendered it. A ``<template>``'s
+#: content is an inert fragment, never connected to the document. Chromium runs with scripting on,
+#: so a ``<noscript>``'s content is never rendered, though its serialized text parses as markup
+#: here. An anchor inside either is no evidence the view rendered (SIP-0109 §24co item 12).
+INERT_ELEMENTS = frozenset({"template", "noscript"})
+#: The inline declarations that hide an element and all it holds (SIP-0109 §24co item 13).
+HIDING_DECLARATIONS = frozenset(
+    {
+        ("display", "none"),
+        ("visibility", "hidden"),
+        ("visibility", "collapse"),
+        ("content-visibility", "hidden"),
+    }
+)
+#: HTML's void elements: they hold nothing, and the serializer writes no end tag for them.
+_VOID = frozenset(
+    {
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "meta",
+        "param", "source", "track", "wbr",
+    }
+)  # fmt: skip
+
+
+def hidden_in_markup(attrs: list[tuple[str, str | None]]) -> bool:
+    """Whether an element's own markup hides it, and so everything it holds (SIP-0109 §24co item
+    13): the ``hidden`` attribute (whatever its value), ``aria-hidden="true"``, or an inline
+    ``style`` declaring ``display: none``, ``visibility: hidden`` or ``collapse``, or
+    ``content-visibility: hidden``. A stylesheet's rule can't be read from the markup: §24co item
+    13 names what that leaves unjudged."""
+    values = {k: (v or "") for k, v in attrs}
+    if "hidden" in values:
+        return True
+    if values.get("aria-hidden", "").strip().lower() == "true":
+        return True
+    for declaration in values.get("style", "").split(";"):
+        prop, _, value = declaration.partition(":")
+        value = value.lower().replace("!important", "").strip()
+        if (prop.strip().lower(), value) in HIDING_DECLARATIONS:
+            return True
+    return False
+
+
+class _Anchors(HTMLParser):
+    """Each ``data-testid`` a rendered element of a page carries, and nothing else: none on an
+    element inside an inert one (``INERT_ELEMENTS``) or hidden by its own or an ancestor's markup
+    (``hidden_in_markup``), however deep. The open elements are held as a stack: Chromium's
+    serializer writes every non-void element's end tag, so the stack is the document's tree."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.found: set[str] = set()
+        self._open: list[tuple[str, bool]] = []
+        self._suppressing = 0
+
+    def _count(self, attrs: list[tuple[str, str | None]]) -> None:
+        if not self._suppressing:
+            self.found.update(v for k, v in attrs if k == "data-testid" and v)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        suppresses = tag in INERT_ELEMENTS or hidden_in_markup(attrs)
+        if tag in _VOID:
+            if not suppresses:
+                self._count(attrs)
+            return
+        self._open.append((tag, suppresses))
+        self._suppressing += suppresses
+        self._count(attrs)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        # HTML ignores a self-closing slash on a non-void element, so ``<template/>`` opens one,
+        # as a browser parses it: what follows is inert until its end tag (fail-closed).
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        """Close ``tag`` and whatever it still holds open. An end tag that opened nothing is
+        ignored, so a stray one never ends a hidden or inert region early."""
+        at = next((i for i in range(len(self._open) - 1, -1, -1) if self._open[i][0] == tag), None)
+        if at is None:
+            return
+        for _tag, suppresses in self._open[at:]:
+            self._suppressing -= suppresses
+        del self._open[at:]
+
+
+def view_anchors(dom: str) -> frozenset[str]:
+    """The test ids a dumped page's rendered elements carry (§8.3), read from their attributes.
+    A product's page is read this way (SIP-0109 §24co items 5, 12 and 13). These don't count:
+    - a ``data-testid="…"`` in a script's text or a text node, which is no element (the qa role's
+      pattern, ``_TESTID``, counts it; #2776);
+    - an element inside a ``<template>``, whose content is never connected to the document;
+    - an element inside a ``<noscript>``, which a scripted page never renders;
+    - an element its own markup or an ancestor's hides (``hidden_in_markup``).
+
+    An inert or hidden element that never closes leaves every element after it uncounted, so a
+    page can only lose anchors and read broken, never gain one (fail-closed)."""
+    parser = _Anchors()
+    parser.feed(dom)
+    parser.close()
+    return frozenset(parser.found)
 
 
 # --- the real steps ---------------------------------------------------------------------------
@@ -267,17 +418,9 @@ def _seed(url: str, body: Mapping[str, Any]) -> Any:
 
 
 def _dump_dom(url: str) -> str | None:
-    argv = [
-        BROWSER,
-        "--headless",
-        "--disable-gpu",
-        "--no-sandbox",
-        "--virtual-time-budget=8000",
-        "--dump-dom",
-        url,
-    ]
+    argv = [BROWSER, *DUMP_DOM_FLAGS, url]
     try:
-        completed = run_bounded_sync(argv, cwd=None, timeout=_DUMP_DOM_TIMEOUT_S)
+        completed = run_bounded_sync(argv, cwd=None, timeout=DUMP_DOM_TIMEOUT_S)
     except OSError as e:
         logger.warning("route rendering: %s could not read %s: %s", BROWSER, url, e)
         return None
@@ -286,7 +429,7 @@ def _dump_dom(url: str) -> str | None:
             "route rendering: %s could not read %s: no exit within %ss",
             BROWSER,
             url,
-            _DUMP_DOM_TIMEOUT_S,
+            DUMP_DOM_TIMEOUT_S,
         )
         return None
     return completed.stdout.decode("utf-8", "replace") or None

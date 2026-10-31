@@ -63,6 +63,10 @@ ECMASCRIPT_SUFFIXES = JAVASCRIPT_SUFFIXES + TYPESCRIPT_SUFFIXES + TSX_SUFFIXES
 SELECTOR_IMPORTS = "imports"
 BODY_SUFFIX = "#body"
 TRY_SUFFIX = "#try"
+#: The most selectors one top-level statement gives (``KIND:NAME``, its ``#body`` and its
+#: ``#try``), each naming what lies inside that statement; ``imports`` names nothing. So a file's
+#: names total at most this many times its text, which the composer counts by (#2810).
+SELECTORS_PER_STATEMENT_MAX = 3
 
 _GRAMMAR_JAVASCRIPT = "javascript"
 _GRAMMAR_TYPESCRIPT = "typescript"

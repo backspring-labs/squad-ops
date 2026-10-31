@@ -1,0 +1,31 @@
+name: qwen27b-nvfp4-parallel2
+status: candidate for ordinary shared inference; not the frozen counted-verification
+  recipe
+why: Same pinned weights, image, sampling and context; two CUDA lanes for squad and
+  crew sharing. Requires post-cycle long-context/memory/overlap validation before
+  use.
+served_id: qwen3.8-27b-tf-nvfp4
+image: squadops-tensorfold:0.6.6-cb2ebf05
+image_id: sha256:b62567b8d89fca5ca126e614162d65b4a6eecaacd63d75699fdf70ff268f45f8
+tensorfold_commit: cb2ebf0540f42604e2759b2ddef497861e928248
+checkpoint:
+  repo: nvidia/Qwen3.8-27B-NVFP4
+  revision: 482ca0f3832238542f8f5295dde86b5f22711d80
+  container_path: /cache/hf/hub/models--nvidia--Qwen3.8-27B-NVFP4/snapshots/482ca0f3832238542f8f5295dde86b5f22711d80
+drafter:
+  repo: z-lab/Qwen3.8-27B-DFlash2
+  revision: 50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+  container_path: /cache/hf/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+parity_effort: medium
+context: 65536
+memory_reserve_gib: 20
+serve_flags:
+- --drafter
+- /cache/hf/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+- --parallel
+- '2'
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0

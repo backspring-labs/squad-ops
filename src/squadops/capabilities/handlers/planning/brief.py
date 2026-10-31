@@ -14,8 +14,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
-from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
-from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
+from squadops.capabilities.handlers.context_sections import context_sections
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -67,13 +66,9 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
             increment_section = await self._increment_section(renderer, inputs)
             if increment_section:
                 variables["increment_section"] = increment_section
-            prior = await prior_cycle_section(renderer, inputs)
-            if prior:
-                variables["prior_cycle_section"] = prior
-            # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
-            lessons = await cross_cycle_lessons_section(renderer, inputs)
-            if lessons:
-                variables["cross_cycle_lessons_section"] = lessons
+            # The shared context slots: the prior cycle, the product, the instructions and the
+            # lessons (context_sections).
+            variables.update(await context_sections(renderer, inputs))
             # #686: the brief pins the frame the proposers author against, so the
             # plan-shape rules belong here as much as on the proposers themselves.
             variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)

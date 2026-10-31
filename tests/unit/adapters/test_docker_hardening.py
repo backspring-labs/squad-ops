@@ -10,7 +10,7 @@ from squadops.tools.models import ContainerSpec
 def captured(monkeypatch):
     calls: list[tuple[str, ...]] = []
 
-    async def fake_run_docker(self, *args, timeout=None):
+    async def fake_run_docker(self, *args, timeout=None, stdin=None):
         calls.append(args)
         return 0, "", ""
 
@@ -75,7 +75,7 @@ async def test_run_detached_publishes_to_loopback_and_returns_id(monkeypatch):
     have nothing to address."""
     calls = []
 
-    async def fake_run_docker(self, *args, timeout=None):
+    async def fake_run_docker(self, *args, timeout=None, stdin=None):
         calls.append(args)
         return 0, "abc123\n", ""
 
@@ -105,7 +105,7 @@ async def test_has_image_distinguishes_present_from_absent(
     """Bug caught: preflight's image evidence inverted or guessed — a missing
     image passing preflight stalls the cycle at task time (#306 class)."""
 
-    async def fake_run_docker(self, *args, timeout=None):
+    async def fake_run_docker(self, *args, timeout=None, stdin=None):
         return exit_code, "", stderr
 
     monkeypatch.setattr(DockerAdapter, "_run_docker", fake_run_docker)
@@ -117,7 +117,7 @@ async def test_has_image_raises_when_the_daemon_cannot_answer(monkeypatch):
     block on an environment that may be perfectly provisioned."""
     from squadops.tools.exceptions import ToolContainerError
 
-    async def fake_run_docker(self, *args, timeout=None):
+    async def fake_run_docker(self, *args, timeout=None, stdin=None):
         return 1, "", "Cannot connect to the Docker daemon"
 
     monkeypatch.setattr(DockerAdapter, "_run_docker", fake_run_docker)
@@ -129,8 +129,25 @@ async def test_resolve_host_port_parses_docker_port_output(monkeypatch):
     """Bug caught: the ephemeral port mapping misparsed — every probe would
     target the wrong port and fail an app that is actually healthy."""
 
-    async def fake_run_docker(self, *args, timeout=None):
+    async def fake_run_docker(self, *args, timeout=None, stdin=None):
         return 0, "127.0.0.1:49153\n", ""
 
     monkeypatch.setattr(DockerAdapter, "_run_docker", fake_run_docker)
     assert await DockerAdapter().resolve_host_port("abc123", 8000) == 49153
+
+
+async def test_an_entrypoint_runs_in_place_of_the_images_own(captured):
+    """SIP-0109 §24co: a product's pages are read by the evaluator image's Chromium, not its
+    driver. Bugs caught: the entrypoint dropped, so the driver reads Chromium's flags as its
+    request and answers nothing; or rendered after the image, where docker reads it as the
+    command's first argument. A spec with none renders none."""
+    await DockerAdapter().run(
+        ContainerSpec(image="img", entrypoint="/usr/bin/chromium", command=["--dump-dom", "u"])
+    )
+    await DockerAdapter().run(ContainerSpec(image="img", command=["true"]))
+
+    with_one, without = list(captured[0]), list(captured[1])
+    at = with_one.index("--entrypoint")
+    assert with_one[at + 1] == "/usr/bin/chromium"
+    assert at < with_one.index("img") and with_one[-2:] == ["--dump-dom", "u"]
+    assert "--entrypoint" not in without

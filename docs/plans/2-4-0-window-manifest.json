@@ -1,0 +1,457 @@
+{
+ "window": "2.4.0 measurement window (docs/plans/2-4-0-window-preregistration.md)",
+ "registered_at": "2026-10-20T18:38:29Z",
+ "deploy": {
+  "record": {
+   "deploy_id": "dep_19dfa94c0a0a",
+   "recorded_at": "2026-10-20T14:18:10.885287+00:00",
+   "recorded_by": "rebuild_and_deploy.sh all",
+   "source_revision": "92e26330",
+   "services": [
+    {
+     "service": "bob",
+     "image_id": "sha256:d4472067f0e7425ece0c2748f90ea17816fff2a0f624b98830330e07e373016d",
+     "revision": "92e26330"
+    },
+    {
+     "service": "caddy",
+     "image_id": "sha256:d6f3b771cd41bd2e36412c43e1f5247b3abd17f314a0b704caa413eefca3236c",
+     "revision": null
+    },
+    {
+     "service": "data",
+     "image_id": "sha256:7d86219bf3475420151caeb42227b2a730ea8d791a93d28110983711feeff5b6",
+     "revision": "92e26330"
+    },
+    {
+     "service": "dcgm-exporter",
+     "image_id": "sha256:ad8339fcb6482c8adc6b49a7bf6076f931404f46b0c1aa8df23d5263fce79af1",
+     "revision": null
+    },
+    {
+     "service": "eve",
+     "image_id": "sha256:7680d996eca4d863fa4f868e14c7edb602166e59d78ba66b0a1320102b1510db",
+     "revision": "92e26330"
+    },
+    {
+     "service": "grafana",
+     "image_id": "sha256:618b96f5c3f14eac94997bc823ec1900dabc434083f2366f7653844e1bab5593",
+     "revision": null
+    },
+    {
+     "service": "han",
+     "image_id": "sha256:031c0d5345acad0822f886fb74318ab66ef542db66ec1c6ad7ee65d0f2ec8471",
+     "revision": "92e26330"
+    },
+    {
+     "service": "joi",
+     "image_id": "sha256:8b51d31944b63662b201ce6b03732bcd948058c7d38336e5a56111a20d4ec739",
+     "revision": "92e26330"
+    },
+    {
+     "service": "langfuse",
+     "image_id": "sha256:bfb03bde31debedb8d273d6b1d4dffb9f9ba2fc07374ccee69a887893015a06f",
+     "revision": "496f8980ea5eaf63544b9ee55a201657501bed8c"
+    },
+    {
+     "service": "max",
+     "image_id": "sha256:1d53ef08e81c4d5a88f8df228e70e60fdd718f512af233e4884e017793c0ce7f",
+     "revision": "92e26330"
+    },
+    {
+     "service": "nat",
+     "image_id": "sha256:1e43ac9eab3f435cca014506db0c5fb06d39fc1aaf95537835508aa0d151d065",
+     "revision": "92e26330"
+    },
+    {
+     "service": "neo",
+     "image_id": "sha256:e434a0df96c2ecb9ccbc158f56d617a66743a9c515f61b48b0b7eeea6e9ba74b",
+     "revision": "92e26330"
+    },
+    {
+     "service": "node-exporter",
+     "image_id": "sha256:95133add9e51d0bfd49f0135f5000b5a681bcc0f4a2d90d6d379794a6e03e7bd",
+     "revision": null
+    },
+    {
+     "service": "otel-collector",
+     "image_id": "sha256:9acf2ba42604b48f0dadbf2cd9dcba5ba6034723268f8d4412f01da2312a1ff3",
+     "revision": "e1e2a1dc5f1a6c867018240520c0c499046ad4ea"
+    },
+    {
+     "service": "postgres",
+     "image_id": "sha256:8e044a3419af0767e83de2c5a631f4ae563fd35af595fce4cecb45ccff4b40c9",
+     "revision": null
+    },
+    {
+     "service": "prefect-server",
+     "image_id": "sha256:af308092ef5bafb895f4715dabb2c9cac255ce4502f52f013bcb0ca64a10e3b6",
+     "revision": null
+    },
+    {
+     "service": "prometheus",
+     "image_id": "sha256:5ccfaca220fcb8f8144d7eedd9899246f4ad8273ccfe6eb079264a612df15f92",
+     "revision": null
+    },
+    {
+     "service": "rabbitmq",
+     "image_id": "sha256:95cf051f517dac2cb59c651e5004cc77d1c556c6d950a54fbe378f3b6f6a8877",
+     "revision": null
+    },
+    {
+     "service": "redis",
+     "image_id": "sha256:49898aa0365c1577275e77a57b9ffa8a6ebd9d13eb981610a679e64185eaf0f2",
+     "revision": null
+    },
+    {
+     "service": "runtime-api",
+     "image_id": "sha256:a56ce18b4015b708a5a04099cbc33d9be95b2e416930f92a1dc0ea4c605a3044",
+     "revision": "92e26330"
+    },
+    {
+     "service": "sandbox-service",
+     "image_id": "sha256:aca9adf3b8003286dab2b7368f01a0ffc0eb60d36cc45e95bce03d3f29fb1edb",
+     "revision": "92e26330"
+    },
+    {
+     "service": "squadops-console",
+     "image_id": "sha256:2aa630029b8b2675d679e16ebde36a527f4ede09217c324caa9f0e6736b32cf5",
+     "revision": null
+    },
+    {
+     "service": "squadops-keycloak",
+     "image_id": "sha256:bbc4de472c9ddae99a97477299b76a3b1231a7a06a862126f63accca3b3fa616",
+     "revision": "568246e4b593686585a0ba430e06c16e91ba38ac"
+    },
+    {
+     "service": "tensorfold",
+     "image_id": "sha256:b62567b8d89fca5ca126e614162d65b4a6eecaacd63d75699fdf70ff268f45f8",
+     "revision": "cb2ebf0540f42604e2759b2ddef497861e928248"
+    }
+   ],
+   "models": [
+    {
+     "model": "Qwen/Qwen3.8-27B-FP8",
+     "digest": null
+    },
+    {
+     "model": "qwen2.5:14b",
+     "digest": null
+    },
+    {
+     "model": "qwen2.5:3b-instruct",
+     "digest": null
+    },
+    {
+     "model": "qwen2.5:7b",
+     "digest": null
+    },
+    {
+     "model": "qwen3.6:27b",
+     "digest": null
+    },
+    {
+     "model": "qwen3.8-27b-tf-nvfp4",
+     "digest": null
+    },
+    {
+     "model": "qwen3.8:27b",
+     "digest": null
+    }
+   ]
+  },
+  "framework_commit": "92e26330",
+  "image_ids": {
+   "rate-my-gait-kinematics": "4cb93267a949",
+   "sq-throwaway-pg": "8e044a3419af",
+   "squadops-bob": "d4472067f0e7",
+   "squadops-caddy": "d6f3b771cd41",
+   "squadops-console": "2aa630029b8b",
+   "squadops-data": "7d86219bf347",
+   "squadops-dcgm-exporter": "ad8339fcb648",
+   "squadops-eve": "7680d996eca4",
+   "squadops-grafana": "618b96f5c3f1",
+   "squadops-han": "031c0d5345ac",
+   "squadops-joi": "8b51d31944b6",
+   "squadops-keycloak": "bbc4de472c9d",
+   "squadops-langfuse": "bfb03bde31de",
+   "squadops-max": "1d53ef08e81c",
+   "squadops-nat": "1e43ac9eab3f",
+   "squadops-neo": "e434a0df96c2",
+   "squadops-node-exporter": "95133add9e51",
+   "squadops-otel-collector": "9acf2ba42604",
+   "squadops-postgres": "8e044a3419af",
+   "squadops-prefect-server": "af308092ef5b",
+   "squadops-prometheus": "5ccfaca220fc",
+   "squadops-rabbitmq": "95cf051f517d",
+   "squadops-redis": "49898aa0365c",
+   "squadops-runtime-api": "a56ce18b4015",
+   "squadops-sandbox-service": "aca9adf3b800",
+   "squadops-tensorfold": "b62567b8d89f"
+  },
+  "evaluator": "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2",
+  "model": {
+   "name": "qwen3.8-27b-tf-nvfp4",
+   "profile": "full-38-tf",
+   "recipe": "infra/tensorfold/recipes/qwen27b-nvfp4.yaml",
+   "recipe_sha256": "a3d260ecd24ca895e882063f9ed0530f1f913a3231fda29fad16c966919bc283",
+   "engine_image_id": "b62567b8d89f",
+   "record_digest": null,
+   "note": "the deploy record names no model digest (#2561)"
+  }
+ },
+ "suite": {
+  "digest": "db69fd3707ea65b0c22e64aeefb90f2fc4621565b94244399be6de2ad697044d",
+  "state": "approved",
+  "approved_at": "2026-10-19T15:29:13.082746Z",
+  "scenarios": [
+   {
+    "scenario_id": "a-created-run-reads-back",
+    "version": "9289fd11de0bc9f7931d164a0f72c4baf6c4747e7d3ac5d5c8d2d7f1c734d045"
+   },
+   {
+    "scenario_id": "a-created-run-is-listed",
+    "version": "cd454acaac00226be1aa41974b0cff14aa3da1485a15f4a59fdcd978afcbc151"
+   },
+   {
+    "scenario_id": "an-unknown-run-is-not-found",
+    "version": "43f410a8e01362493c84c3a335a461fe237a7bef133e71fbc5cf6cef37994010"
+   },
+   {
+    "scenario_id": "a-run-needs-a-title",
+    "version": "913aca4b6bf22c351998b8c52241c4334579dc214121aa3aa7fd64edd0311b54"
+   },
+   {
+    "scenario_id": "a-joined-runner-is-listed",
+    "version": "45d633763548fbe13d71aaaf28923145153333f121ef2f842c679a131c99b359"
+   },
+   {
+    "scenario_id": "the-same-name-cant-join-twice",
+    "version": "09a6d4bd85c939cc4c9758e2d1efcdfc028d793f02581266e3ddc562db94bef1"
+   },
+   {
+    "scenario_id": "a-runner-needs-a-name",
+    "version": "3129b32d08b024882f92fc1f9e839e77ca7cc6fbaff783d157560229430c7bd0"
+   },
+   {
+    "scenario_id": "joining-a-missing-run-is-not-found",
+    "version": "d04680a23985b0ba5a100e93b344ab9a48027e1ccee9c77ba7f3dfe77429cec2"
+   },
+   {
+    "scenario_id": "a-joined-runner-is-listed-via-participants",
+    "version": "f60190d2e222105c1ccfb18f7ff4fb7c8fc52b761adf85cc515015fbc2140d40"
+   },
+   {
+    "scenario_id": "the-same-name-cant-join-twice-via-participants",
+    "version": "b65379e868b3636a2e71d173c500ea5a2f9631c9759295208a22b5682f2ee763"
+   },
+   {
+    "scenario_id": "a-runner-needs-a-name-via-participants",
+    "version": "2e70dceb0cf03c3d7f1933093a6ae3748e1068432e1f276934dc7a8301b84555"
+   },
+   {
+    "scenario_id": "joining-a-missing-run-is-not-found-via-participants",
+    "version": "7ba3192e8169b4655921c989525531ac4437cb5ba560c9f51a54a0cb3b6789ea"
+   },
+   {
+    "scenario_id": "a-runner-who-leaves-is-gone",
+    "version": "6ad46ed4eb70e6bb75a42c89c19bd3d965efe1479a571b6d2562f44e5af4f34e"
+   },
+   {
+    "scenario_id": "a-runner-who-leaves-is-gone-via-participants-by-name",
+    "version": "bf4f8a1297689709d09392c6f2013a22bfe96e4a4ef4aafa35bbdec6b3002522"
+   },
+   {
+    "scenario_id": "a-runner-who-leaves-is-gone-via-participants-with-a-body",
+    "version": "ebb4fb4d8e6303835ea5f65b03957c69b49ae26006706f7a5c2fc6187a8cfbb3"
+   },
+   {
+    "scenario_id": "a-runner-who-leaves-is-gone-via-join-then-delete-by-name",
+    "version": "5008d764b6740bc9da2a85f21cbb09786fa678bc77f1a3d48b1673c5388b2a0c"
+   },
+   {
+    "scenario_id": "a-full-run-turns-the-next-runner-away",
+    "version": "f47e0f6cec4cb1b79f3638bdddc4cb5fc275620cbd9106c01a4eede468c58e58"
+   },
+   {
+    "scenario_id": "a-full-run-turns-the-next-runner-away-via-participants",
+    "version": "3ff626618455b8560e0c3998cd41f4b81864369eddee3a4c86aedc9a552ca92a"
+   },
+   {
+    "scenario_id": "a-place-freed-by-a-leave-can-be-taken",
+    "version": "679986a5c2822948f068e8470bf47b4c64e90725bc0c2be81cb9e02f545194bf"
+   },
+   {
+    "scenario_id": "a-place-freed-by-a-leave-can-be-taken-via-participants-by-name",
+    "version": "56439dbecc927375a36c14f83bc1dd14467d191fb805f421ccd78f23ebd20bc1"
+   },
+   {
+    "scenario_id": "a-place-freed-by-a-leave-can-be-taken-via-participants-with-a-body",
+    "version": "f8be3963f192deb3ba97f9b791cfc1884365fd9e025f2ca39c8e2f4ac318bea8"
+   },
+   {
+    "scenario_id": "a-place-freed-by-a-leave-can-be-taken-via-join-then-delete-by-name",
+    "version": "1cbb94ac1f4d83db37f302ede051274d23dbcd8786aed2e9e4d91246a53ecd86"
+   },
+   {
+    "scenario_id": "runs-are-listed-soonest-first",
+    "version": "5387bd85e0960f47960c0d199ee11fc3fc407768ca65f83180705dd5e523678f"
+   },
+   {
+    "scenario_id": "a-name-with-spaces-is-the-same-name",
+    "version": "25d430ed5796a0d7a93a7c02645f99e2b52adc5c8e06523738b004ead2ff2a63"
+   },
+   {
+    "scenario_id": "a-name-with-spaces-is-the-same-name-via-participants",
+    "version": "e65c08bca0841054b2f8a4a7b763e5c1aa043a5a039a736a5de436d0aaeabf84"
+   }
+  ]
+ },
+ "project": {
+  "project_id": "group_run",
+  "prd": "examples/03_group_run/prd.md",
+  "prd_sha256": "de1555a68cd3d0602e2c8968c8a499fc15bdf067322397915e4482604ab70d16"
+ },
+ "campaigns": [
+  {
+   "campaign_id": "cmp_83d63c2ebb50",
+   "definition": {
+    "path": "examples/03_group_run/campaigns/2-4-0-window-fastapi-react-1.yaml",
+    "sha256": "2d9c74f1ca2e1cd77c057b67f12fd5c3806d9374c3028257c93137f11b39d82d"
+   },
+   "project_id": "group_run",
+   "stack": "fullstack_fastapi_react",
+   "policy": {
+    "max_cycles": 9,
+    "max_elapsed_s": 64800,
+    "budget_tokens": 6000000,
+    "max_repair_cycles_per_increment": 1,
+    "max_retry_cycles_per_increment": 1,
+    "max_proposal_run_retries": 1,
+    "max_proposal_revisions": 2,
+    "max_rejected_proposals_in_row": 2,
+    "max_unaccepted_increments": 2,
+    "ruling_bound_s": 1800,
+    "lease_expiry_s": 3600,
+    "launch_blocked_interval_s": 300,
+    "launch_blocked_attempts": 6,
+    "calibration_profile": "validated-fullstack",
+    "proposal_profile": "campaign-increment",
+    "squad_profile": "full-38-tf",
+    "plan_gate": "tier",
+    "stack": "fullstack_fastapi_react"
+   },
+   "created_at": "2026-10-20T18:59:10.579581Z"
+  },
+  {
+   "campaign_id": "cmp_ae20bfd95bc3",
+   "definition": {
+    "path": "examples/03_group_run/campaigns/2-4-0-window-nextjs-1.yaml",
+    "sha256": "a2ff593a5d29b15310dc993d8c2b8f3eca262879b9943898af9831df78c515f9"
+   },
+   "project_id": "group_run",
+   "stack": "nextjs_ts",
+   "policy": {
+    "max_cycles": 9,
+    "max_elapsed_s": 64800,
+    "budget_tokens": 6000000,
+    "max_repair_cycles_per_increment": 1,
+    "max_retry_cycles_per_increment": 1,
+    "max_proposal_run_retries": 1,
+    "max_proposal_revisions": 2,
+    "max_rejected_proposals_in_row": 2,
+    "max_unaccepted_increments": 2,
+    "ruling_bound_s": 1800,
+    "lease_expiry_s": 3600,
+    "launch_blocked_interval_s": 300,
+    "launch_blocked_attempts": 6,
+    "calibration_profile": "validated-fullstack",
+    "proposal_profile": "campaign-increment",
+    "squad_profile": "full-38-tf",
+    "plan_gate": "tier",
+    "stack": "nextjs_ts"
+   },
+   "created_at": "2026-10-20T21:04:43.271901Z"
+  },
+  {
+   "campaign_id": "cmp_e717aefe1143",
+   "definition": {
+    "path": "examples/03_group_run/campaigns/2-4-0-window-fastapi-react-2.yaml",
+    "sha256": "e12484cb97a9ff6e18c6065a5e409a1727f0ab09aca6e0c84817a12aac198c36"
+   },
+   "project_id": "group_run",
+   "stack": "fullstack_fastapi_react",
+   "policy": {
+    "max_cycles": 9,
+    "max_elapsed_s": 64800,
+    "budget_tokens": 6000000,
+    "max_repair_cycles_per_increment": 1,
+    "max_retry_cycles_per_increment": 1,
+    "max_proposal_run_retries": 1,
+    "max_proposal_revisions": 2,
+    "max_rejected_proposals_in_row": 2,
+    "max_unaccepted_increments": 2,
+    "ruling_bound_s": 1800,
+    "lease_expiry_s": 3600,
+    "launch_blocked_interval_s": 300,
+    "launch_blocked_attempts": 6,
+    "calibration_profile": "validated-fullstack",
+    "proposal_profile": "campaign-increment",
+    "squad_profile": "full-38-tf",
+    "plan_gate": "tier",
+    "stack": "fullstack_fastapi_react"
+   },
+   "created_at": "2026-10-20T23:42:23.258558Z"
+  },
+  {
+   "campaign_id": "cmp_263d1e49aca8",
+   "definition": {
+    "path": "examples/03_group_run/campaigns/2-4-0-window-nextjs-2.yaml",
+    "sha256": "4a0cccc71e49a2be8f0e987ee0adc7c4e94c45cc930691cec9eda8270d0f93c1"
+   },
+   "project_id": "group_run",
+   "stack": "nextjs_ts",
+   "policy": {
+    "max_cycles": 9,
+    "max_elapsed_s": 64800,
+    "budget_tokens": 6000000,
+    "max_repair_cycles_per_increment": 1,
+    "max_retry_cycles_per_increment": 1,
+    "max_proposal_run_retries": 1,
+    "max_proposal_revisions": 2,
+    "max_rejected_proposals_in_row": 2,
+    "max_unaccepted_increments": 2,
+    "ruling_bound_s": 1800,
+    "lease_expiry_s": 3600,
+    "launch_blocked_interval_s": 300,
+    "launch_blocked_attempts": 6,
+    "calibration_profile": "validated-fullstack",
+    "proposal_profile": "campaign-increment",
+    "squad_profile": "full-38-tf",
+    "plan_gate": "tier",
+    "stack": "nextjs_ts"
+   },
+   "created_at": "2026-10-21T01:29:46.635846Z"
+  }
+ ],
+ "experiment_manifest": {
+  "prompts_sha256": "145583c612d52af92626edc2b05f4cea3c813f6a4f7b19a39acba975ae3b8a3e",
+  "config_sha256": "afa24ce69262341fe58738ec4d28bdb1a7c7dd1a74ece32ee192f4c052dea431",
+  "definitions": "examples/03_group_run/campaigns/2-4-0-window-fastapi-react-1.yaml: 2d9c74f1ca2e1cd77c057b67f12fd5c3806d9374c3028257c93137f11b39d82d;examples/03_group_run/campaigns/2-4-0-window-fastapi-react-2.yaml: e12484cb97a9ff6e18c6065a5e409a1727f0ab09aca6e0c84817a12aac198c36;examples/03_group_run/campaigns/2-4-0-window-nextjs-1.yaml: a2ff593a5d29b15310dc993d8c2b8f3eca262879b9943898af9831df78c515f9;examples/03_group_run/campaigns/2-4-0-window-nextjs-2.yaml: 4a0cccc71e49a2be8f0e987ee0adc7c4e94c45cc930691cec9eda8270d0f93c1;",
+  "lessons": [
+   {
+    "revision_id": "pat_0b4aef8aea974e06@1",
+    "approvals_in_force": []
+   },
+   {
+    "revision_id": "pat_0b4aef8aea974e06@2",
+    "approvals_in_force": []
+   }
+  ]
+ },
+ "scoring_rules": {
+  "contribution": "SIP-0113 \u00a74.4",
+  "p3_counting": "pre-registration \u00a74, P3",
+  "p4_bounds": "axe, lint, accessibility, best practices spread 0; performance <= 0.05"
+ }
+}

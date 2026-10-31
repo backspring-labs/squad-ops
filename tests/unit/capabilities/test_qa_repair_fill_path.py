@@ -19,6 +19,7 @@ from squadops.capabilities.handlers.impl.repair_handlers import (
     QATestRepairHandler,
     _merge_repair_fills,
 )
+from squadops.capabilities.repair_prompt_contents import anchorable_files
 from squadops.capabilities.verification_scaffold_fill import merge_fills, parse_fill_emission
 from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
@@ -183,7 +184,11 @@ async def test_handle_authors_under_the_qa_brief_and_merges_into_the_current_she
         },
     )
 
-    rendered = [c.args[0] for c in renderer.render.await_args_list]
+    # D12's note is rendered with the call, after the request: the request's renders are these.
+    calls = [
+        c for c in renderer.render.await_args_list if c.args[0] != "request.keep_reasoning_short"
+    ]
+    rendered = [c.args[0] for c in calls]
     assert rendered[:2] == [
         "request.qa_test_fill_mode_appendix",
         "request.qa_test_repair_fill_appendix",
@@ -192,7 +197,7 @@ async def test_handle_authors_under_the_qa_brief_and_merges_into_the_current_she
     variables = renderer.render.await_args_list[1].args[1]
     assert "slot-vc-probe-api-runs-join" in variables["failed_slot_lines"]
     assert "expected [] to have a length of 1" in variables["failed_slot_lines"]
-    main_vars = renderer.render.await_args_list[-1].args[1]
+    main_vars = calls[-1].args[1]
     assert main_vars["qa_fill_mode_section"] == "PROMPT\n\nPROMPT"
 
     names = [a["name"] for a in result.outputs["artifacts"]]
@@ -290,10 +295,10 @@ async def test_a_free_authored_suite_beside_the_shells_is_offered_the_edit_form_
     handler = QATestRepairHandler()
     inputs = _fill_mode_inputs(scaffold_input)
 
-    assert handler._anchorable_files(inputs) == [_SUITE]  # the shell is filled, never anchored
+    assert anchorable_files(inputs) == [_SUITE]  # the shell is filled, never anchored
     result = await handler.handle(ctx, inputs)
 
-    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
     shown = prompt.split("The Files as They Are Now")[1].split("How to Write an Edit Fence")[0]
     assert f"`{_SUITE}`:\n```\n{_SUITE_TEXT}```" in shown
     assert _JOIN not in shown
@@ -330,7 +335,7 @@ async def test_a_pure_fill_repair_still_offers_nothing_and_reads_as_fill(scaffol
 
     result = await QATestRepairHandler().handle(ctx, inputs)
 
-    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
     assert "The Files as They Are Now" not in prompt
     assert "How to Write an Edit Fence" not in prompt
     assert result.outputs["revision_form"]["form"] == "fill"

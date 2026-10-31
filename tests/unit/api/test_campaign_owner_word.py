@@ -109,6 +109,11 @@ class _World:
             vault=_Vault(),
             assess=AsyncMock(),
             launch=AsyncMock(),
+            evaluate_outcome=None,
+            evaluate_baseline=None,
+            outcome_section=None,
+            intervention_section=None,
+            campaign_branch=None,
         )
         app.state.campaign_launch = self.launch
         app.state.authz_port = KeycloakAuthzAdapter()

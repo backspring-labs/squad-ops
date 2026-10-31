@@ -23,24 +23,47 @@ class RedactionStrategy(ABC):
 # Common patterns
 # ---------------------------------------------------------------------------
 
+_REDACTED = "[REDACTED]"
+_REDACTED_PII = "[REDACTED-PII]"
+
 # API keys / tokens — generic patterns that cover most providers
 _API_KEY_PATTERNS: list[re.Pattern[str]] = [
     # Bearer tokens
     re.compile(r"Bearer\s+[A-Za-z0-9\-_\.]{20,}", re.IGNORECASE),
-    # Generic API key patterns: sk-..., pk-..., api-..., key-...
-    re.compile(r"\b(?:sk|pk|api|key)[-_][A-Za-z0-9\-_]{16,}\b"),
+    # Vendor key prefixes: sk-..., pk-... (OpenAI, Anthropic's sk-ant-, LangFuse's sk-lf- and pk-lf-)
+    re.compile(r"\b(?:sk|pk)[-_][A-Za-z0-9\-_]{16,}\b"),
     # AWS-style keys (AKIA...)
     re.compile(r"\bAKIA[A-Z0-9]{16}\b"),
     # secret:// references that should never leak
     re.compile(r"secret://[A-Za-z0-9_]+"),
 ]
 
+#: The generic ``api-``/``key-`` form (#2462). It is a key unless what follows is hyphen-separated
+#: words: the framework's own ids (``vc-probe-api-runs-join-duplicate``, ``key-results-summary-table``)
+#: read as keys under the old pattern, and 63 of 5,874 stored generations lost one (30 days to
+#: 2026-10-18). A real key's body has a segment that isn't a lowercase word or a short number.
+_GENERIC_KEY = re.compile(r"\b(?:api|key)[-_]([A-Za-z0-9\-_]{16,})\b")
+_WORD_SEGMENT = re.compile(r"[a-z]+|\d{1,4}")
+
+
+def _redact_generic_key(match: re.Match[str]) -> str:
+    segments = [s for s in re.split(r"[-_]", match.group(1)) if s]
+    words = len(segments) >= 2 and all(_WORD_SEGMENT.fullmatch(s) for s in segments)
+    return match.group(0) if words else _REDACTED
+
+
 # Password-like patterns
 _PASSWORD_PATTERNS: list[re.Pattern[str]] = [
     # password=... or password:... in connection strings / config
     re.compile(r"(?:password|passwd|pwd)\s*[=:]\s*\S+", re.IGNORECASE),
-    # Connection string password component
-    re.compile(r"://[^:]+:([^@]+)@"),
+    # Connection string password component: a URL's userinfo, which holds no whitespace. Before
+    # #1756 the two classes crossed lines, so ``http://localhost:8000/api`` and any later ``@``
+    # (every FastAPI decorator) redacted everything between them: a constructed prompt with both
+    # kept 76 of its 5,820 characters, and the 30 days of stored generations to 2026-10-18 that
+    # carry a redaction averaged a third shorter than those that don't. A password may hold
+    # ``/``; an unencoded space would not be a URL. The user may
+    # be empty, as in Redis's ``redis://:password@host``.
+    re.compile(r"://[^:/@\s]*:([^@\s]+)@"),
 ]
 
 # PII patterns (strict mode only)
@@ -58,9 +81,6 @@ _PII_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b"),
 ]
 
-_REDACTED = "[REDACTED]"
-_REDACTED_PII = "[REDACTED-PII]"
-
 
 class StandardRedaction(RedactionStrategy):
     """Strips known secret patterns (API keys, tokens, passwords).
@@ -72,6 +92,7 @@ class StandardRedaction(RedactionStrategy):
         result = text
         for pattern in _API_KEY_PATTERNS:
             result = pattern.sub(_REDACTED, result)
+        result = _GENERIC_KEY.sub(_redact_generic_key, result)
         for pattern in _PASSWORD_PATTERNS:
             # For connection strings, only redact the password group
             if "://" in pattern.pattern:
@@ -92,6 +113,7 @@ class StrictRedaction(RedactionStrategy):
         result = text
         for pattern in _API_KEY_PATTERNS:
             result = pattern.sub(_REDACTED, result)
+        result = _GENERIC_KEY.sub(_redact_generic_key, result)
         for pattern in _PASSWORD_PATTERNS:
             if "://" in pattern.pattern:
                 result = pattern.sub(lambda m: m.group(0).replace(m.group(1), _REDACTED), result)

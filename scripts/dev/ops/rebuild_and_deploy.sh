@@ -227,14 +227,36 @@ echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
 # pg_isready / rabbitmq-diagnostics / redis-cli polling below them are gone.
 docker compose up -d --wait rabbitmq postgres redis prefect-server
 
+# #2433: the host's exporters, which the host dashboards and the Spark's board-thermal alert read.
+# Nothing started them: a `docker compose down` and a deploy left them stopped, and the MacBook
+# never ran them. node-exporter reads a Linux host's /proc and /sys, so it runs where the deploy
+# runs on Linux (Docker Desktop on macOS refuses its rslave root mount). dcgm-exporter runs where
+# the local-spark bootstrap wrote the GPU's CDI spec, which its compose service needs. A failure
+# warns rather than failing the deploy: an exporter is monitoring, not the product, and one that
+# stops later is Grafana's `host-exporter-down` alert.
+if [ "$(uname -s)" = "Linux" ]; then
+    echo "Starting the host's exporter (node-exporter)..."
+    docker compose up -d --wait node-exporter \
+        || echo -e "${YELLOW}⚠️  node-exporter did not start: the host dashboards and the board-thermal alert have no data${NC}"
+    if [ -f /etc/cdi/nvidia.yaml ]; then
+        echo "Starting the GPU's exporter (dcgm-exporter)..."
+        docker compose --profile gpu up -d --wait dcgm-exporter \
+            || echo -e "${YELLOW}⚠️  dcgm-exporter did not start: the GPU dashboards have no data${NC}"
+    fi
+fi
+
 # #372: Keycloak imports a realm only when it does not exist, so a change to the realm
 # exports never reaches an environment whose realm is already there. Re-sync the mounted
 # exports into existing realms (partialImport, ifResourceExists=SKIP — idempotent,
 # non-destructive); a realm that does not exist yet is left to --import-realm.
 # #2006: the sync also sets each client's secret from .env (sync_keycloak_realms, secrets.sh).
+# #2426: a failed sync fails the deploy, like every other deferred step (#370). It was a yellow
+# line the success banner followed, so realms went without the exports' new clients and roles.
 if docker compose config --services | grep -q '^squadops-keycloak$'; then
-    sync_keycloak_realms \
-        || echo -e "${YELLOW}⚠️  Keycloak realm sync failed — existing realms may lack new clients/roles (#372) or the deploy's client secrets (#2006)${NC}"
+    if ! sync_keycloak_realms; then
+        REALM_SYNC_FAILED=1
+        echo -e "${RED}❌ Keycloak realm sync failed — existing realms may lack new clients/roles (#372) or the deploy's client secrets (#2006)${NC}"
+    fi
 fi
 
 # Back up the database before anything else touches it (#1181). Cheap insurance at the
@@ -528,6 +550,20 @@ if [ "$REBUILD_SANDBOX" = true ]; then
         SANDBOX_FAILED=1
         echo -e "${RED}  ⚠️  sandbox-service build or restart failed${NC}"
     fi
+    # #2580: the evaluator image the sandbox's scenario runner launches (SIP-0113 A2). It was built
+    # only by hand, so a deploy could run the sandbox with no evaluator and loaded check 2416 red.
+    # - Built when its pinned tag is absent, never rebuilt under it, FORCE_REBUILD included: the tag
+    #   is each quality reading's evaluator version, and its base and Chromium aren't pinned by
+    #   digest, so a rebuild under one tag could change what Lighthouse measures with nothing said
+    #   (#2581's second read). A new evaluator is a new tag.
+    # - A failed build fails the deploy without holding the sandbox, which runs without it and says
+    #   so (not measured: evaluator_absent).
+    "$REPO_ROOT/scripts/dev/build_evaluator_image.sh" --if-absent || EVALUATOR_FAILED=1
+    # #2582: the sandbox environment image (SIP-0102), which cycle-create preflight requires on the
+    # sandbox host, so a fresh box created no cycle until someone built it by hand. Built when its
+    # pinned tag is absent and never rebuilt under it, as the evaluator is. A failed build fails the
+    # deploy, since preflight then refuses every cycle.
+    "$REPO_ROOT/scripts/dev/build_sandbox_env_image.sh" --if-absent || SANDBOX_ENV_FAILED=1
 fi
 
 # Step 6: Verify deployment
@@ -553,8 +589,11 @@ DEPLOY_FAILED=0
 [ "${RUNTIME_API_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${CONSOLE_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${SANDBOX_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${EVALUATOR_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${SANDBOX_ENV_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${AGENTS_RESTART_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${PROMPT_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${REALM_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${DEPLOY_RECORD_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 if [ "$DEPLOY_FAILED" = "1" ]; then
     echo -e "${RED}⚠️  Rebuild and deploy completed WITH FAILURES (details below).${NC}"
@@ -595,6 +634,16 @@ if [ "${SANDBOX_FAILED:-0}" = "1" ]; then
     echo -e "${RED}❌ sandbox-service build or restart failed (#2193). Fix it and rebuild:${NC}"
     echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh sandbox${NC}"
 fi
+if [ "${EVALUATOR_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ the evaluator image didn't build (#2580); the sandbox runs without it, and every quality reading is not measured (evaluator_absent). Build it:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/build_evaluator_image.sh${NC}"
+fi
+if [ "${SANDBOX_ENV_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ the sandbox environment image didn't build (#2582); cycle-create preflight refuses every cycle without it. Build it:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/build_sandbox_env_image.sh${NC}"
+fi
 if [ "${PROMPT_SYNC_FAILED:-0}" = "1" ]; then
     echo ""
     echo -e "${RED}❌ Prompt sync to LangFuse failed, so the agents were not restarted (#1691).${NC}"
@@ -606,6 +655,12 @@ if [ "${AGENTS_RESTART_FAILED:-0}" = "1" ]; then
     echo -e "${RED}❌ Agent restart failed for:${FAILED_AGENTS}${NC}"
     echo -e "${RED}   These agents keep running their previous image (stale code).${NC}"
     echo -e "${YELLOW}   Retry: ./scripts/dev/ops/rebuild_and_deploy.sh agents${FAILED_AGENTS}${NC}"
+fi
+if [ "${REALM_SYNC_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ The Keycloak realm sync failed (#2426): the realms may lack the exports' new clients${NC}"
+    echo -e "${RED}   and roles, or the deploy's client secrets. Its reason is above. Once Keycloak answers:${NC}"
+    echo -e "${YELLOW}   python3 scripts/dev/ops/keycloak_realm_sync.py --password-file secrets/keycloak_admin_password.txt infra/auth/squadops-realm*.json${NC}"
 fi
 if [ "${DEPLOY_RECORD_FAILED:-0}" = "1" ]; then
     echo ""

@@ -14,6 +14,7 @@ Part of SIP-0.8.8 migration from _v0_legacy/infra/runtime-api/deps.py
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
@@ -36,7 +37,9 @@ from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.ports.llm.provider import LLMPort
+from squadops.ports.projects.source_repository import SourceRepositoryPort
 from squadops.ports.runtime.assignments import AssignmentPort
+from squadops.projects.registration import LocatorPolicy
 
 if TYPE_CHECKING:
     from squadops.api.runtime.health_checker import HealthChecker
@@ -56,6 +59,9 @@ PORT_SLOTS = (
     "cycle_registry",
     "deploy_registry",  # #1720
     "campaign_registry",  # SIP-0109 §16
+    "intervention_ledger",  # SIP-0113 §4.3 (#2417)
+    "sandbox_client",  # #2451: the runtime API's client of the sandbox service
+    "scenario_store",  # SIP-0113 §4.1 (#2413): held-out scenario suites
     "squad_profile",
     "artifact_vault",
     "flow_executor",
@@ -114,6 +120,26 @@ def get_project_registry(request: Request) -> ProjectRegistryPort:
     return _required(request, "project_registry", "ProjectRegistryPort")
 
 
+def get_project_locator_policy(request: Request) -> LocatorPolicy:
+    """The deploy's registration locator rules (SIP-0112 R5), built from config at start."""
+    return _required(request, "project_locator_policy", "LocatorPolicy")
+
+
+def get_source_repository(request: Request) -> SourceRepositoryPort:
+    """The managed clones of registered products (SIP-0112 E.4.2)."""
+    return _required(request, "source_repository", "SourceRepositoryPort")
+
+
+def get_review_requests(request: Request):
+    """Where a review_request contribution's pull request is opened (SIP-0112 E.4.3)."""
+    return _slot(request, "review_requests")
+
+
+def get_review_request_tokens(request: Request) -> dict[str, str]:
+    """Each Project's review-request token, resolved from its secret:// reference."""
+    return _slot(request, "review_request_tokens") or {}
+
+
 def get_cycle_registry(request: Request) -> CycleRegistryPort:
     """Return the CycleRegistryPort (T14: never None at call sites)."""
     return _required(request, "cycle_registry", "CycleRegistryPort")
@@ -149,9 +175,37 @@ def get_squad_profile_port(request: Request) -> SquadProfilePort:
     return _required(request, "squad_profile", "SquadProfilePort")
 
 
+def get_intervention_ledger(request: Request):
+    """SIP-0113 §4.3 (#2417): the intervention ledger's store, beside the campaign registry."""
+    return _slot(request, "intervention_ledger")
+
+
+def get_sandbox_client(request: Request):
+    """#2451: the runtime API's client of the sandbox service, or None where it calls none."""
+    return _slot(request, "sandbox_client")
+
+
+def get_scenario_store(request: Request):
+    """SIP-0113 §4.1 (#2413): the held-out scenario store, beside the campaign registry."""
+    return _slot(request, "scenario_store")
+
+
 def get_memory_store(request: Request):
     """SIP-0110 (D13): Cross-Cycle Memory's store, beside the cycle registry (``main._init_memory``)."""
     return _slot(request, "memory_store")
+
+
+def get_memory_records(request: Request):
+    """SIP-0110 Appendix A (#2177): the typed memory records' store (``main._init_memory``)."""
+    return _slot(request, "memory_records")
+
+
+def get_reference_resolvers(request: Request) -> Mapping[str, Any]:
+    """SIP-0110 Appendix A §3.7 (#2179 T16): the reference resolvers by family, which bind an
+    instruction's ``@current`` references at its unit's admission (``main._init_memory``), each
+    under its time bound (#2575). Empty when none is registered, so ``@current`` is refused for
+    every family."""
+    return _slot(request, "reference_resolvers") or {}
 
 
 def get_artifact_vault(request: Request) -> ArtifactVaultPort:

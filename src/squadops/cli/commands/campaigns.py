@@ -18,6 +18,7 @@ import yaml
 from squadops.campaigns.models import ControlOperation
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
+from squadops.cli.forge_token import gh_token
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
 from squadops.cli.paging import limit_option, offset_option, say_when_full
 
@@ -29,9 +30,13 @@ def _fmt(ctx: typer.Context) -> tuple[str, bool]:
     return obj.get("format", "table"), obj.get("quiet", False)
 
 
-def _call(ctx: typer.Context, method: str, path: str, **kwargs):
+def _call(ctx: typer.Context, method: str, path: str, *, long_wait: bool = False, **kwargs):
+    """``long_wait``: the route does the product's own work before it answers, so the CLI waits
+    the configured long timeout (``[api] long_timeout``, #2605), not the short one."""
     try:
         client = _get_client(ctx)
+        if long_wait:
+            kwargs["timeout"] = client.long_timeout
         data = getattr(client, method)(path, **kwargs)
         client.close()
     except CLIError as e:
@@ -59,6 +64,12 @@ def _show_result(ctx: typer.Context, data: dict, key: str) -> None:
         print_success(f"cancelled cycles: {', '.join(data['cancelled_cycles'])}")
     if data.get("launched_cycles"):
         print_success(f"launched cycles: {', '.join(data['launched_cycles'])}")
+    refused = data.get("refused_launch")
+    if refused:
+        # #2621: applied, and then its own launch refused: the campaign waits on the owner.
+        print_error(
+            f"launch refused, {campaign['campaign_id']} is {campaign['state']}: {refused['reason']}"
+        )
 
 
 @app.command("create")
@@ -174,6 +185,8 @@ def _control(
     idempotency_key: str | None,
     expected_state: str | None,
     action: str | None = None,
+    *,
+    long_wait: bool = False,
 ) -> None:
     key = _key(idempotency_key)
     body = {"reason": reason, "idempotency_key": key}
@@ -181,9 +194,8 @@ def _control(
         body["expected_state"] = expected_state
     if action:
         body["action"] = action
-    _show_result(
-        ctx, _call(ctx, "post", f"/api/v1/campaigns/{campaign_id}/{operation}", json=body), key
-    )
+    path = f"/api/v1/campaigns/{campaign_id}/{operation}"
+    _show_result(ctx, _call(ctx, "post", path, json=body, long_wait=long_wait), key)
 
 
 _REASON = typer.Option(..., "--reason", help="Why: recorded on the control log")
@@ -215,11 +227,16 @@ def ledger(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
             f"{e['proposal_id']} v{e['version']}",
             (e.get("ruling") or {}).get("decision", "—"),
             str((e.get("outcome") or {}).get("row", "—")),
+            # #2578 part 4: each cycle that carried the version, with the row that decided it.
+            ", ".join(
+                f"{c['kind']} {c['cycle_id']} ({c.get('row', '…')})" for c in e.get("cycles") or []
+            )
+            or "—",
             (e.get("classification") or {}).get("classification", "—"),
         ]
         for e in entries
     ]
-    print_table(["Proposal", "Ruling", "Decided (row)", "Classified"], rows, quiet=quiet)
+    print_table(["Proposal", "Ruling", "Decided (row)", "Cycles", "Classified"], rows, quiet=quiet)
 
 
 @app.command("classify")
@@ -253,8 +270,9 @@ def classify(
 
 @app.command("escalations")
 def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
-    """The plan-review tier's escalations (SIP-0109 §24bj): each one's state, what the tier could
-    not establish, its questions, and its late answer."""
+    """The campaign's escalations (SIP-0109 §24bj, §24bw): each one's kind and state, what could
+    not be established (a plan gate's failed conditions, a held cycle's unbound records), its
+    questions, and its late answer."""
     entries = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/escalations")
     fmt, quiet = _fmt(ctx)
     if fmt == "json":
@@ -263,6 +281,7 @@ def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
     rows = [
         [
             e["escalation_id"],
+            _kind(e),
             e["state"],
             e["run_id"],
             ", ".join(f["condition"] for f in e["failed"]),
@@ -272,8 +291,16 @@ def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
         for e in entries
     ]
     print_table(
-        ["Escalation", "State", "Run", "Failed", "Questions", "Late answer"], rows, quiet=quiet
+        ["Escalation", "Kind", "State", "Run", "Failed", "Questions", "Late answer"],
+        rows,
+        quiet=quiet,
     )
+
+
+def _kind(entry: dict) -> str:
+    """``plan_review``, or ``binding_hold (store)`` with its cause class (§24bw)."""
+    kind = entry.get("kind") or "plan_review"
+    return f"{kind} ({entry['hold_class']})" if entry.get("hold_class") else kind
 
 
 @app.command("answer")
@@ -318,6 +345,42 @@ def answer(
     _show_result(ctx, data, f"escalation_answered:{escalation_id}")
 
 
+@app.command("push-review")
+def push_review(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Push with your own GitHub access (`gh auth token`), for this act only: required",
+    ),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Push a repository-backed Campaign's review request to the product (SIP-0109 §24ci (b)), at
+    its close or when the owner asks: its campaign branch, as squadops/<campaign>. The first push
+    opens the review request; one after a rebase is forced with a lease on the commit last pushed,
+    and refused if someone else moved the branch. Nothing in the deploy holds a token for it, so
+    your own is required, for this push only."""
+    if not token_from_gh:
+        print_error(
+            "a campaign's review request is pushed with your own token, for this push only: "
+            "pass --token-from-gh"
+        )
+        raise typer.Exit(code=2)
+    key = _key(idempotency_key)
+    body = {"idempotency_key": key, "token": gh_token()}
+    data = _call(ctx, "post", f"/api/v1/campaigns/{campaign_id}/review-pushes", json=body)
+    fmt, _quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(data)
+        return
+    how = f"forced with a lease on {data['lease'][:12]}" if data["forced"] else "not forced"
+    again = " (already pushed)" if data.get("replayed") else ""
+    print_success(
+        f"{data['branch']} at {data['commit'][:12]}, {how}: {data['review_url']}{again} (key {key})"
+    )
+
+
 @app.command("start")
 def start(
     ctx: typer.Context,
@@ -326,7 +389,9 @@ def start(
     idempotency_key: str | None = _KEY,
 ):
     """Start a draft campaign: its calibration cycle launches (the owner or the supervisor)."""
-    _control(ctx, "start", campaign_id, reason, idempotency_key, None)
+    # SIP-0113 §10l: a repository-backed campaign's start evaluates its calibration record's
+    # commit (the product built, started and read) before it promotes and decides it.
+    _control(ctx, "start", campaign_id, reason, idempotency_key, None, long_wait=True)
 
 
 @app.command("pause")

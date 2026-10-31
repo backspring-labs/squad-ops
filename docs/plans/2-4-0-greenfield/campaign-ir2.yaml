@@ -1,0 +1,31 @@
+# IR-2 (SIP-0112 §8.4), live on the Mac: one external Project at one pinned revision, launched through
+# the Campaign launcher. Its calibration cycle must reach prepare_cycle() with the same typed source
+# context and Development Configuration revision as a standalone Cycle of the same Project, and pin
+# a SIP-0110 snapshot under the campaign. Uncounted; aborted once the launch is read.
+project_id: prj-shelfnote
+objective:
+  statement: "IR-2: the Campaign launcher pins what a standalone create pins (SIP-0112 §8.4)"
+  allowed_scope: ["backend/**", "frontend/**", "tests/**"]
+  measurement: "the calibration cycle's source context and snapshot, read back"
+  target_accepted_increments: 1
+  work_class:
+    prd_tier: tier-1
+    attendance: attended
+policy:
+  max_cycles: 1
+  max_elapsed_s: 3600
+  budget_tokens: 200000
+  max_repair_cycles_per_increment: 0
+  max_retry_cycles_per_increment: 0
+  max_proposal_run_retries: 0
+  max_proposal_revisions: 0
+  max_rejected_proposals_in_row: 1
+  max_unaccepted_increments: 1
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 1
+  calibration_profile: implementation
+  proposal_profile: campaign-increment
+  squad_profile: smoke
+  plan_gate: tier

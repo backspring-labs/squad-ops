@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.campaigns.change_request import (
     ProposalContext,
     apply_manifest_delta,
@@ -239,6 +239,7 @@ async def test_the_plan_gate_refuses_a_plan_that_leaves_a_criterion_unproven(qa_
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = MagicMock()
     run = Run(
@@ -323,6 +324,7 @@ async def test_the_plan_gate_refuses_a_plan_that_rewrites_a_frozen_verifier(
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = MagicMock()
     run = Run(

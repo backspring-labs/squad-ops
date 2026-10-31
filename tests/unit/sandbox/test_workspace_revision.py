@@ -17,6 +17,25 @@ FILES = {"backend/main.py": "print('a')\n", "frontend/index.html": "<html></html
 
 
 class TestRevisionIdDeterminism:
+    def test_an_executable_bit_changes_the_id_only_when_one_is_set(self):
+        """Bug caught (X-2, #2420): a mode-only change hashing as no change, so a script that
+        lost its executable bit still matched its pin; or the bit joining every id, so every
+        revision cut before modes were carried would stop matching its tree."""
+        plain = compute_revision_id(FILES)
+        assert compute_revision_id(FILES, executable=()) == plain
+        assert compute_revision_id(FILES, executable={"backend/main.py"}) != plain
+
+    def test_text_hashes_as_its_utf8_bytes_so_existing_ids_are_unchanged(self):
+        """Bug caught: carrying bytes (X-2, #2420) changing how text hashes, so every revision
+        cut before it would stop matching its own tree. The literal is this tree's id on
+        ``main`` before X-2."""
+        as_bytes = {p: c.encode("utf-8") for p, c in FILES.items()}
+        assert (
+            compute_revision_id(FILES)
+            == compute_revision_id(as_bytes)
+            == ("54add815df01d9fb2c34222f10ee048bbc29272aa4066b9726bd277d0595b92a")
+        )
+
     def test_id_is_order_independent(self):
         """Bug caught: dict-insertion-order-dependent hashing — the same
         workspace content would pin different revisions across processes."""

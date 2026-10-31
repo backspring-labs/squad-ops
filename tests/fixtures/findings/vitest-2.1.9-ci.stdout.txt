@@ -1,0 +1,20 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90m/work/frontend[39m
+
+ [32m✓[39m src/__tests__/passing.test.js [2m([22m[2m2 tests[22m[2m)[22m[90m 1[2mms[22m[39m
+ [31m❯[39m src/__tests__/missing.test.js [2m([22m[2m0 test[22m[2m)[22m
+ [31m❯[39m src/__tests__/asserting.test.js [2m([22m[2m5 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[90m 6[2mms[22m[39m
+[31m   [31m×[31m Book form[2m > [22mrefuses an empty title[90m 3[2mms[22m[31m[39m
+[31m     → expected '' to be 'a title' // Object.is equality[39m
+[31m   [31m×[31m Book form[2m > [22mwhen saved > twice[2m > [22mnames the duplicate[90m 1[2mms[22m[31m[39m
+[31m     → expected { a: 1 } to deeply equal { a: 2 }[39m
+[31m   [31m×[31m Book form[2m > [22mthrows inside the app[90m 0[2mms[22m[31m[39m
+[31m     → Cannot read properties of undefined (reading 'books')[39m
+[31m   [31m×[31m Setup that breaks[2m > [22mnever reaches its body[90m 0[2mms[22m[31m[39m
+[31m     → the fixture is broken[39m
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (7)[39m
+[2m   Start at [22m 13:42:10
+[2m   Duration [22m 147ms[2m (transform 14ms, setup 0ms, collect 12ms, tests 7ms, environment 0ms, prepare 86ms)[22m
+

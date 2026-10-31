@@ -6,8 +6,8 @@ Found by the 1.7.5 checkpoint pair — on all six halves across three deploys, o
     Next.js:  Module not found: Can't resolve './globals.css'   (app/layout.tsx)
     React:    Could not resolve "./index.css"                    (frontend/src/main.jsx)
 
-`_get_source_artifacts` assembles the QA build/test workspace from the stored artifacts,
-keeping a file only if its extension is in `source_filter` or its basename is in
+`suite_run_tree` assembles the QA build/test workspace from the stored artifacts (#2815;
+`_get_source_artifacts` until then), on a sample application keeping a file only if its extension is in `source_filter` or its basename is in
 `build_support_files`. `.css` was in neither. The sheet was emitted, stored and delivered — the
 boot audit builds the delivered tree and passes — but the frozen entry point imports a file the
 verification workspace was assembled without. 1.7.4: `frontend_build` failed in 0 of 17
@@ -16,7 +16,7 @@ records. 1.7.5, after #906 and #1463: 6 of 6.
 Bug classes guarded:
 
 - **a frozen file the build needs dropped by the workspace filter.** The wiring test enters at
-  `_get_source_artifacts` with the real profiles, not at a copy of its predicate;
+  `suite_run_tree` with the real profiles, not at a copy of its predicate;
 - **the next such file.** The guard is parametrized over the registered scaffold stacks and
   asks, for every frozen file the expander actually emits, whether the QA workspace admits it.
   The exceptions are named, never inferred: the container packaging the scaffold renders
@@ -36,8 +36,8 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.handlers.build_profiles import get_profile
-from squadops.capabilities.handlers.cycle.qa_test import _is_test_file
-from squadops.capabilities.handlers.cycle_tasks import QATestHandler
+from squadops.capabilities.qa_prompt_contents import is_test_file
+from squadops.capabilities.qa_run_tree import suite_run_tree
 from squadops.stacks.development_profiles import get_development_profile
 from squadops.stacks.scaffold import _STACKS, expand, fill_slot_paths
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
@@ -47,7 +47,7 @@ pytestmark = [pytest.mark.domain_capabilities]
 
 def _admitted(profile: str, contents: dict[str, str]) -> set[str]:
     inputs = {"resolved_config": {"development_profile": profile}, "artifact_contents": contents}
-    return set(QATestHandler()._get_source_artifacts(inputs))
+    return set(suite_run_tree(inputs))
 
 
 @pytest.mark.parametrize(
@@ -102,7 +102,7 @@ def test_every_frozen_file_is_admitted_or_named(stack):
     fills = set(fill_slot_paths(manifest))
     frozen = {f["name"]: f["content"] for f in expand(manifest) if f["name"] not in fills}
     # Test-pattern files are excluded from the workspace by a separate, deliberate rule
-    # (`_is_test_file`): a suite is the qa author's OUTPUT, not the source under test, and the
+    # (`is_test_file`): a suite is the qa author's OUTPUT, not the source under test, and the
     # frozen harness proof has been excluded this way since before any stylesheet existed —
     # 1.7.4 passed with it excluded. It is not this defect and is not this guard's subject.
     packaging = set(get_profile(stack).scaffold_provided_files())
@@ -110,7 +110,7 @@ def test_every_frozen_file_is_admitted_or_named(stack):
     expected = {
         p
         for p in frozen
-        if not _is_test_file(p, profile.test_file_patterns) and p not in packaging | named
+        if not is_test_file(p, profile.test_file_patterns) and p not in packaging | named
     }
 
     kept = _admitted(stack, frozen)

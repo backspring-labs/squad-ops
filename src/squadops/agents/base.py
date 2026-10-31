@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from squadops.ports.comms.messaging import MessagingPort
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
-    from squadops.ports.memory.store import MemoryPort
     from squadops.ports.prompts.service import PromptService
     from squadops.ports.telemetry.events import EventPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
@@ -31,10 +30,12 @@ class PortsBundle:
 
     This bundle provides a single object that can be passed to execution
     contexts and other components that need access to multiple ports.
+
+    It carries no memory store: SIP-042's per-agent store is retired (SIP-0110 §A.4.3, #2184).
+    Memory's records are SIP-0110's, in Postgres beside the cycle registry.
     """
 
     llm: LLMPort
-    memory: MemoryPort
     prompt_service: PromptService
     queue: QueuePort
     metrics: MetricsPort
@@ -62,7 +63,6 @@ class BaseAgent:
         agent_id: str,
         role_id: str | None = None,
         llm: LLMPort,
-        memory: MemoryPort,
         prompt_service: PromptService,
         queue: QueuePort,
         metrics: MetricsPort,
@@ -76,7 +76,6 @@ class BaseAgent:
             agent_id: Unique agent instance identifier
             role_id: Agent role (defaults to class ROLE_ID)
             llm: LLM provider port
-            memory: Memory storage port
             prompt_service: Prompt assembly service
             queue: Message queue port
             metrics: Metrics collection port
@@ -89,7 +88,6 @@ class BaseAgent:
 
         # Store individual ports for property access
         self._llm = llm
-        self._memory = memory
         self._prompt_service = prompt_service
         self._queue = queue
         self._metrics = metrics
@@ -100,7 +98,6 @@ class BaseAgent:
         # Store bundle for easy context building
         self._ports = PortsBundle(
             llm=llm,
-            memory=memory,
             prompt_service=prompt_service,
             queue=queue,
             metrics=metrics,
@@ -132,11 +129,6 @@ class BaseAgent:
     def llm(self) -> LLMPort:
         """LLM provider port."""
         return self._llm
-
-    @property
-    def memory(self) -> MemoryPort:
-        """Memory storage port."""
-        return self._memory
 
     @property
     def prompt_service(self) -> PromptService:

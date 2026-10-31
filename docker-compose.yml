@@ -188,8 +188,6 @@ services:
     secrets:
       - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       POSTGRES_URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       RABBITMQ_URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
@@ -228,10 +226,15 @@ services:
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required (#1568); profiles are data, edited through the API
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__TELEMETRY__BACKEND: otel  # required, never defaulted (#1568)
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317  # the runtime's activity metrics (#2204)
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}  # the cycle-create preflight reads it
+      # #2451: the runtime API's client of the sandbox service, apart from the preflight's selector.
+      SQUADOPS__SANDBOX_CLIENT__PROVIDER: ${SQUADOPS__SANDBOX_CLIENT__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__SANDBOX_CLIENT__SERVICE_URL: http://squadops-sandbox-service:8002
+      SQUADOPS__SANDBOX_CLIENT__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       # Duty-transition scheduler (SIP-0089 §2.4). runtime-api is the single
       # central writer of agent mode (D16) — keep this enabled on exactly one
       # runtime-api instance (no leader election yet).
@@ -240,6 +243,7 @@ services:
     volumes:
       - ./data/artifacts:/app/data/artifacts
       - ./data/audit:/app/data/audit  # #560: the audit sink
+      - ./data/repo_cache:/app/cycle_data/repo_cache  # #2588, SIP-0112: managed clones and captured changes
     networks:
     - squadnet
     extra_hosts:
@@ -262,16 +266,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: max
       SQUADOPS_AGENT_ROLE: lead
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -298,9 +298,8 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - max_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -325,16 +324,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: nat
       SQUADOPS_AGENT_ROLE: strat
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -361,9 +356,8 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - nat_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -409,16 +403,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: neo
       SQUADOPS_AGENT_ROLE: dev
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -445,11 +435,11 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
-      - neo_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -474,16 +464,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: eve
       SQUADOPS_AGENT_ROLE: qa
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -510,9 +496,8 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - eve_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -537,16 +522,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: data
       SQUADOPS_AGENT_ROLE: data
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -573,9 +554,8 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - data_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -602,16 +582,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: han
       SQUADOPS_AGENT_ROLE: generalist
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -638,9 +614,8 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - han_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -665,16 +640,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: bob
       SQUADOPS_AGENT_ROLE: builder
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -701,9 +672,8 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - bob_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -751,10 +721,7 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: joi
       SQUADOPS_AGENT_ROLE: comms
@@ -768,8 +735,8 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -786,8 +753,6 @@ services:
       SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
-    volumes:
-      - joi_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -863,6 +828,8 @@ services:
       PREFECT_API_PUBLIC_URL: http://localhost:4200
       LANGFUSE_API_URL: http://squadops-langfuse:3000
       LANGFUSE_API_PUBLIC_URL: http://localhost:3001
+      # #2431: the console reads every setting here as required; the realm names its tab.
+      SQUADOPS_REALM: ${SQUADOPS_REALM:-squadops-dev}
       KEYCLOAK_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
       KEYCLOAK_PUBLIC_URL: http://${SQUADOPS_HOST:-localhost}:8180/realms/${SQUADOPS_REALM:-squadops-dev}
       CONSOLE_CLIENT_ID: squadops-console
@@ -895,11 +862,9 @@ services:
     restart: unless-stopped
 
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector:0.147.0  # pinned, as Prometheus and Grafana are (#2424)
     container_name: squadops-otel-collector
     command: ["--config=/etc/otel-collector/config.yaml"]
-    environment:
-      OTEL_COLLECTOR_VERSION: "0.138.0"  # Set version for health check
     volumes:
       - ./infra/otel-collector/config.yaml:/etc/otel-collector/config.yaml
     ports:
@@ -914,7 +879,7 @@ services:
       - squadnet
     restart: unless-stopped
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.10.0  # pinned (#2424)
     container_name: squadops-prometheus
     # #581
     healthcheck:
@@ -975,7 +940,7 @@ services:
       - squadnet
     restart: unless-stopped
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.4.1  # pinned (#2424)
     container_name: squadops-grafana
     # #581
     healthcheck:
@@ -987,6 +952,9 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       - GF_INSTALL_PLUGINS=
+      # #2424: usage reporting is on by default; its daily collection failed on a plugin this
+      # deploy does not install, and it sent usage data outside the deploy.
+      - GF_ANALYTICS_REPORTING_ENABLED=false
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
@@ -1012,13 +980,16 @@ services:
     ports:
       - "127.0.0.1:8002:8002"  # loopback-only (SIP-0102 transport decision)
     environment:
-      SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS_SANDBOX_SERVICE_PROVIDER:?set it in .env (see .env.example) — the service's own provider, apart from the runtime's (#2451)}
       SQUADOPS__SANDBOX__IMAGE: ${SQUADOPS_SANDBOX_IMAGE:-}
       SQUADOPS__SANDBOX__WORKSPACE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/cycles
       SQUADOPS__SANDBOX__CACHE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/caches
       # No default: create_app refuses to start without a token, and compose refuses to resolve
       # without one (#2006: the token had no home, so a recreated service could not start).
       SQUADOPS__SANDBOX__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
+      # #2451 part 4 (the owner's ruling, 2026-10-18): the apps it starts run on this internal,
+      # no-egress network by container name, with no host port. The service joins it below.
+      SQUADOPS__SANDBOX__APP_NETWORK: squadops-sandbox-apps
     volumes:
       # The sandbox service is the ONLY socket holder (SIP-0102 §4.3).
       - /var/run/docker.sock:/var/run/docker.sock
@@ -1029,6 +1000,7 @@ services:
       - ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}:${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}
     networks:
       - squadnet
+      - sandbox-apps
     restart: unless-stopped
 volumes:
   rabbitmq_data: {}
@@ -1036,14 +1008,6 @@ volumes:
   redis_data: {}
   prometheus_data: {}
   grafana_data: {}
-  max_memory_data: {}
-  neo_memory_data: {}
-  bob_memory_data: {}
-  data_memory_data: {}
-  joi_memory_data: {}
-  nat_memory_data: {}
-  eve_memory_data: {}
-  han_memory_data: {}
 secrets:
   agent_client_secret:
     file: ./secrets/agent_client_secret.txt
@@ -1058,3 +1022,9 @@ secrets:
 networks:
   squadnet:
     driver: bridge
+  # #2451 part 4: the sandbox's apps, by container name, with no route out (internal). Its name is
+  # fixed, not project-prefixed, so SQUADOPS__SANDBOX__APP_NETWORK names it exactly.
+  sandbox-apps:
+    name: squadops-sandbox-apps
+    driver: bridge
+    internal: true

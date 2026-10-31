@@ -35,6 +35,7 @@ def _a(exposure, state, *, supplied=True, work=True, minutes=0, pattern="pat_a")
         evidence=f"artifact:{exposure}",
         assessed_by="auditor",
         now=T0 + timedelta(minutes=minutes),
+        context_withheld=False,
     )
 
 

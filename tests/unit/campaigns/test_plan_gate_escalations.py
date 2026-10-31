@@ -134,6 +134,7 @@ async def _world():
         open_questions=(QUESTION,),
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -150,6 +151,11 @@ async def _world():
         vault=AsyncMock(),
         assess=AsyncMock(),
         launch=AsyncMock(),
+        evaluate_outcome=None,
+        evaluate_baseline=None,
+        outcome_section=None,
+        intervention_section=None,
+        campaign_branch=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now, cycle.cycle_id
@@ -303,6 +309,7 @@ def test_an_escalation_pending_when_its_campaign_ended_reads_cancelled():
         open_questions=(QUESTION,),
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -354,7 +361,14 @@ async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_i
 
     async def read():
         return digest(
-            package(await campaigns.get_campaign(CID), await campaigns.control_log(CID), [], [])
+            package(
+                await campaigns.get_campaign(CID),
+                await campaigns.control_log(CID),
+                [],
+                [],
+                outcomes=None,
+                interventions=None,
+            )
         )
 
     now[0] = OPENED + timedelta(seconds=BOUND - 1)
@@ -409,6 +423,7 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
         open_questions=(question,),
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -428,7 +443,14 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
     )
 
     text = digest(
-        package(await campaigns.get_campaign(CID), await campaigns.control_log(CID), [], [])
+        package(
+            await campaigns.get_campaign(CID),
+            await campaigns.control_log(CID),
+            [],
+            [],
+            outcomes=None,
+            interventions=None,
+        )
     )
 
     assert f"{joined} human:owner: list-ordering: insertion order" in text

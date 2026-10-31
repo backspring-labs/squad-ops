@@ -28,6 +28,18 @@ profiles:
       - { agent_id: eve, role: qa, model: "qwen2.5:7b", enabled: true, serves_roles: [qa] }
       - { agent_id: data, role: data, model: "qwen2.5:7b", enabled: true, serves_roles: [data] }
 
+  - profile_id: lite-14b
+    name: "Lite Squad (qwen2.5:14b)"
+    description: "The `lite` roster verbatim on qwen2.5:14b, the MacBook's build check before the Spark's 27b (#2435). On qwen2.5:7b a build cycle did not pass framing (2026-10-18, cyc_dc0804eed6d4: two plans rejected for duplicate file declarations, then a brief that would not parse). The 14b is the next size up and fits the 24 GB MacBook at its 32,768-token context. Identical to `lite` in every field except model, which a test holds. NOT reasoning-quality signal."
+    version: 1
+    agents:
+      - { agent_id: max, role: lead, model: "qwen2.5:14b", enabled: true, serves_roles: [lead] }
+      - { agent_id: neo, role: dev, model: "qwen2.5:14b", enabled: true, serves_roles: [dev] }
+      - { agent_id: nat, role: strat, model: "qwen2.5:14b", enabled: true, serves_roles: [strat] }
+      - { agent_id: bob, role: builder, model: "qwen2.5:14b", enabled: true, serves_roles: [builder] }
+      - { agent_id: eve, role: qa, model: "qwen2.5:14b", enabled: true, serves_roles: [qa] }
+      - { agent_id: data, role: data, model: "qwen2.5:14b", enabled: true, serves_roles: [data] }
+
   - profile_id: full-38
     name: "Full Squad (qwen3.8)"
     description: "The `full` roster verbatim on qwen3.8:27b — exists ONLY as the comparison arm of the V38 model-comparison window (docs/plans/1-6-0-v38-model-comparison-preregistration.md). Identical to `full` in every field except model and, since 1.6.5, the qa role's completion budget (eve: max_completion_tokens 12288, #998); `full` remains the canonical quality squad and the meaning of every historical record."

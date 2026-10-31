@@ -10,13 +10,27 @@ eligible, and neither stops the task: memory is beside execution (§0.3).
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
+from squadops.memory.cycle_bindings import as_bound_for, names_current
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, recall
-from squadops.memory.recall import RecallQuery
+from squadops.memory.project_instructions import PinUnknown, none_could_be_pinned
+from squadops.memory.recall import RecallQuery, UnitKind
+from squadops.memory.records import (
+    MemoryRecord,
+    PinnedInstruction,
+    RecordScope,
+    Reference,
+    is_current,
+)
+from squadops.memory.references import BindingContext, BoundReference, ReferenceUnresolved
 from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 from squadops.ports.memory.recall import FailurePatternRecallPort
+from squadops.ports.memory.records import MemoryRecordsPort
+from squadops.ports.memory.references import ReferenceResolverPort
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +39,82 @@ READ_ATTEMPTS = 2
 
 
 class SnapshotRecall(FailurePatternRecallPort):
-    def __init__(self, store: CrossCycleMemoryStorePort, *, attempts: int = READ_ATTEMPTS) -> None:
+    def __init__(
+        self,
+        store: CrossCycleMemoryStorePort,
+        *,
+        records: MemoryRecordsPort | None = None,
+        attempts: int = READ_ATTEMPTS,
+        resolvers: Mapping[str, ReferenceResolverPort] | None = None,
+    ) -> None:
         self._store = store
+        #: The typed records (#2178): a deploy's recall is built with them
+        #: (``create_failure_recall``); a unit test of the lessons alone may hold none.
+        self._records = records
         self._attempts = attempts
+        #: The reference resolvers by family (#2179), which read a bound reference's content at a
+        #: dispatch. A family with none can't be read, so a required reference of it holds.
+        self._resolvers = resolvers or {}
+
+    def dispatch_turn(self, unit_kind: UnitKind, unit_id: str) -> AbstractAsyncContextManager[None]:
+        return self._store.dispatch_turn(unit_kind, unit_id)
+
+    async def pinned_instructions(
+        self, unit_kind: UnitKind, unit_id: str, project_id: str, *, cycle_id: str | None = None
+    ) -> tuple[PinnedInstruction, ...]:
+        try:
+            snapshot = await self._snapshot_for_instructions(unit_kind, unit_id)
+        except Exception as e:
+            why = f"the unit's snapshot could not be read ({e})"
+        else:
+            if snapshot is not None and snapshot.instructions_unread is None:
+                pinned = snapshot.instructions
+                if unit_kind is UnitKind.CAMPAIGN and cycle_id and names_current(pinned):
+                    # §5ad: the cycle's own bindings, read only where they can differ. One that
+                    # can't be read raises, and the task holds rather than reading it unbound.
+                    return as_bound_for(pinned, await self._store.get_cycle_binding(cycle_id))
+                return pinned
+            why = (
+                snapshot.instructions_unread
+                if snapshot is not None
+                else "the unit has no pinned snapshot"
+            )
+        # What it pinned can't be known; a project with no project instruction pinned none
+        # (#2179). Records that can't be read raise here, and the task holds.
+        held = await self._records.list_project(project_id) if self._records is not None else []
+        if none_could_be_pinned(held):
+            return ()
+        raise PinUnknown(f"the unit's project instructions can't be known: {why}")
+
+    async def _snapshot_for_instructions(self, unit_kind: UnitKind, unit_id: str):
+        """The snapshot, read as the lessons read it, with their attempts. A read that fails
+        them all raises."""
+        for attempt in range(1, self._attempts + 1):
+            try:
+                return await self._store.get_snapshot(unit_kind, unit_id)
+            except Exception:
+                if attempt == self._attempts:
+                    raise
+                logger.warning(
+                    "memory_instructions_read_failed unit=%s:%s attempt=%d/%d",
+                    unit_kind,
+                    unit_id,
+                    attempt,
+                    self._attempts,
+                    exc_info=True,
+                )
+        return None
+
+    async def task_instructions(self, project_id: str, cycle_id: str) -> list[MemoryRecord]:
+        if self._records is None:
+            return []
+        return [
+            r
+            for r in await self._records.list_project(project_id)
+            if r.scope == RecordScope.TASK
+            and r.current.target is not None
+            and r.current.target.cycle_id == cycle_id
+        ]
 
     async def recall(self, query: RecallQuery) -> Recalled:
         if query.unit_kind is None or not query.unit_id:
@@ -53,6 +140,23 @@ class SnapshotRecall(FailurePatternRecallPort):
             return recall(snapshot, query)
         return Recalled(None, RecallDisposition.FAILED)
 
+    async def read_reference(self, reference: Reference, ctx: BindingContext) -> str:
+        resolver = self._resolvers.get(reference.family)
+        if resolver is None:
+            raise ReferenceUnresolved(
+                f"{reference.ref}: no resolver reads the {reference.family} family"
+            )
+        if is_current(reference.ref):
+            # The Spark lane's note on #2668: an @current reference was never bound, so it has
+            # no revision to read at; say that rather than the resolver's "not a commit".
+            raise ReferenceUnresolved(
+                f"{reference.ref}: never bound, so it has no revision to read"
+            )
+        revision = reference.ref.rsplit("@", 1)[1]
+        return await resolver.read(
+            BoundReference(reference.ref, revision, reference.digest or ""), ctx
+        )
+
     async def disclose(self, exposure: Exposure) -> None:
         try:
             await self._store.record_exposure(exposure)
@@ -67,10 +171,14 @@ class SnapshotRecall(FailurePatternRecallPort):
 
 def create_failure_recall(kind: str, **kwargs: Any) -> FailurePatternRecallPort:
     """The recall for ``kind``. Required, never defaulted (#1568): ``snapshot`` answers from the
-    store's pinned snapshots (a deploy); ``disabled`` answers every task as memory disabled (a
-    composition with no store)."""
+    store's pinned snapshots and the typed records' task instructions (a deploy: ``store``,
+    ``records`` and ``resolvers`` are required, the last reading each bound reference's content at a
+    dispatch, #2179); ``disabled`` answers every task as memory disabled (a composition with no
+    store)."""
     if kind == "snapshot":
-        return SnapshotRecall(kwargs["store"])
+        return SnapshotRecall(
+            kwargs["store"], records=kwargs["records"], resolvers=kwargs["resolvers"]
+        )
     if kind == "disabled":
         from adapters.noop.ports import NoOpFailurePatternRecall
 

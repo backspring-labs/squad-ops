@@ -35,6 +35,17 @@ from squadops.sandbox.models import OperationName
 #: act at a point where a hash change is expected, never mid-set.
 SANDBOX_ENV_IMAGE = "squadops-sandbox-env:py3.12-node20-1.4"
 
+#: SIP-0113's evaluator image (A2, #2416): headless Chromium, Lighthouse and axe, and #1937's ruff
+#: and ESLint, built from ``infra/evaluator`` by ``scripts/dev/build_evaluator_image.sh``, which
+#: reads the tag from here. The tag is each quality measure's version, which the window records (the
+#: 2.4 plan's §1.3), so it moves whenever the image's sources, or the lint config each request
+#: carries, do: ``test_evaluator_image.py`` pins their digest to it.
+EVALUATOR_IMAGE = "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7"
+#: The Chromium the evaluator image installs (its Dockerfile's ``CHROME_PATH``). SIP-0109 §24co: a
+#: product's client routes are read by it directly, as the qa role reads a sample application's
+#: (``route_rendering.DUMP_DOM_FLAGS``), so its driver, and the image's tag, are unchanged.
+EVALUATOR_BROWSER = "/usr/bin/chromium"
+
 
 @dataclass(frozen=True)
 class EnvironmentContract:
@@ -46,6 +57,19 @@ class EnvironmentContract:
     operation_commands: tuple[tuple[str, tuple[str, ...]], ...]  # (operation, argv)
     app_port: int
     install_network: str
+    #: Where the running app serves its API, on ``app_port`` (#2421): ``""`` when at the root,
+    #: as the canonical stack's backend serves ``/runs``, or a path, as Next.js serves its API
+    #: routes under ``/api``. A held-out scenario names the PRD's paths, and the runner prefixes
+    #: this, so one suite reaches the same job on either stack (SIP-0113 §10c).
+    api_prefix: str
+    #: Where the running app's pages are served, for Lighthouse and axe (SIP-0113 §4.2, #2416).
+    #: ``app_port`` when the app serves them itself, as Next.js does.
+    ui_port: int
+    #: What serves the built pages beside the started app, from the workspace root, when the app
+    #: doesn't: the canonical stack's backend serves only its API, so the build its setup made is
+    #: served by Vite's preview, whose proxy reaches the same backend. Empty when the app serves
+    #: its own pages. The instance the scenarios read is the one measured.
+    ui_serve: tuple[str, ...]
     #: Whether this stack's BUILD writes into its own pinned source (SIP-0102 §11
     #: amendment). False — the canonical stack's assumption — means the live tree must
     #: keep matching its revision through every operation, and §4.6's pin verification
@@ -67,6 +91,8 @@ class EnvironmentContract:
             seen.add(operation)
         if not (0 < self.app_port < 65536):
             raise ValueError(f"invalid app_port: {self.app_port}")
+        if not (0 < self.ui_port < 65536):
+            raise ValueError(f"invalid ui_port: {self.ui_port}")
         if not self.image:
             raise ValueError("environment contract requires an image")
 
@@ -85,6 +111,9 @@ class EnvironmentContract:
                 {"operation": op, "argv": list(argv)} for op, argv in self.operation_commands
             ],
             "app_port": self.app_port,
+            "api_prefix": self.api_prefix,
+            "ui_port": self.ui_port,
+            "ui_serve": list(self.ui_serve),
             "install_network": self.install_network,
             "build_mutates_source": self.build_mutates_source,
         }
@@ -139,6 +168,21 @@ FULLSTACK_FASTAPI_REACT = EnvironmentContract(
         ),
     ),
     app_port=8000,
+    api_prefix="",  # the backend serves the PRD's paths at the root; the Vite proxy adds /api
+    # #2416: Vite's preview serves the build the setup made (``frontend/dist``), and proxies /api
+    # to the backend as the dev server does. Read live on the Spark (2026-10-18): it refuses a
+    # request whose Host is a name it doesn't know, so the evaluator addresses it by IP.
+    ui_port=4173,
+    ui_serve=(
+        "frontend/node_modules/.bin/vite",
+        "preview",
+        "frontend",
+        "--host",
+        "0.0.0.0",  # noqa: S104 — inside the container, on the app network
+        "--port",
+        "4173",
+        "--strictPort",
+    ),
     install_network="bridge",
 )
 
@@ -178,6 +222,9 @@ NEXTJS_TS = EnvironmentContract(
         ),
     ),
     app_port=8000,
+    api_prefix="/api",  # App Router API routes: app/api/runs/route.ts serves /api/runs
+    ui_port=8000,  # `next start` serves the pages beside its API routes
+    ui_serve=(),
     install_network="bridge",
     # Measured 2026-08-15 (SIP-0104 window roll 1): `next build` GENERATES
     # `next-env.d.ts` and REWRITES the scaffold's frozen `tsconfig.json`, injecting

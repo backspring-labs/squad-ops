@@ -19,7 +19,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.runs import router
 from squadops.cycles.gate_decisions import record_gate_decision
@@ -158,6 +158,7 @@ def _executor(bus: MagicMock, vault: SimpleNamespace, registry: AsyncMock):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = bus
     return executor

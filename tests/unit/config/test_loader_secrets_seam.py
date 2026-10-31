@@ -52,6 +52,7 @@ _ENV = {
     # #1568: and so is every other selector.
     "SQUADOPS__CYCLES__REGISTRY_PROVIDER": "memory",
     "SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER": "config",
+    "SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER": "config",
     "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER": "filesystem",
     "SQUADOPS__TELEMETRY__BACKEND": "null",
     "SQUADOPS__SANDBOX__PROVIDER": "noop",
@@ -89,7 +90,7 @@ def test_the_given_factory_resolves_the_references():
     config = load_config(cli_overrides=_OVERRIDES, secret_provider_factory=factory)
     assert seen == ["env"]
     assert stub.asked == ["db_url"]
-    assert config.db.url == "postgresql://resolved:resolved@db:5432/app"
+    assert config.database().url == "postgresql://resolved:resolved@db:5432/app"
 
 
 def test_a_config_without_references_needs_no_factory():

@@ -10,8 +10,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from squadops.stacks.development_profiles import matches_test_file_patterns
-
 if TYPE_CHECKING:
     pass
 
@@ -68,8 +66,11 @@ def _detect_stubs(artifacts: list[dict], threshold: int = _STUB_THRESHOLD_BYTES)
         name = art.get("name", "")
         if name.endswith("__init__.py"):
             continue
-        if len(content) < threshold:
-            if any(pat in content for pat in _STUB_PATTERNS) or not content.strip():
+        # #2607: read as the parser handed it before files kept their final newline, so a small
+        # file ending in ``pass`` (an exception class) stays what it was here: not a stub.
+        body = content[:-1] if content.endswith("\n") else content
+        if len(body) < threshold:
+            if any(pat in body for pat in _STUB_PATTERNS) or not body.strip():
                 stubs.append(name)
     return stubs
 
@@ -321,29 +322,3 @@ def _classify_file(filename: str) -> tuple[str, str]:
 
     _, ext = os.path.splitext(filename)
     return _EXT_MAP.get(ext.lower(), _DEFAULT_TYPE)
-
-
-def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
-    """Check if *path* matches any test file pattern or resides in __tests__/.
-
-    The basename match is ``development_profiles.matches_test_file_patterns`` — shared with
-    plan validation (#846) so both read the stack's declared conventions rather than
-    each carrying its own idea of what a test file looks like.
-
-    The ``__tests__/`` clause stays local and is not shared. Callers here use this to
-    *exclude* files from a source set, where over-matching is the safe direction; plan
-    validation asks the stricter question "will the runner discover this?", and a
-    ``__tests__/helpers.py`` pytest never collects must not count there.
-
-    The clause reads a **leading** ``__tests__/`` too (#1539). On the App Router stack every
-    suite lives at the workspace root, so ``__tests__/helpers.ts`` carries no leading slash and
-    the substring test missed it: a root-level module the runner imports but whose basename
-    matches no ``*.test.ts`` pattern was handed to the qa author as application source. The
-    ``f"/{path}"`` prefix is the whole fix — the convention is the directory, wherever it sits,
-    and the leading slash keeps it a *path segment* rather than a bare substring, so
-    ``app/my__tests__util.ts`` stays source. The dev-repair emission veto already read the
-    convention this way (#1014, ``src/squadops/execution/correction_repair.py``); the two exclusions
-    now agree on it.
-    """
-
-    return matches_test_file_patterns(path, patterns) or "/__tests__/" in f"/{path}"

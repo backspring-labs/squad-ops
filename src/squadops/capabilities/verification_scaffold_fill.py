@@ -61,8 +61,9 @@ deterministic failing assertion naming the slot and the fill layer, shaped as an
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from squadops.core.hashing import text_sha256
@@ -73,7 +74,15 @@ from squadops.cycles.revision_transaction import (
     base_revision_id,
     resolve_and_apply,
 )
+from squadops.cycles.task_outcome import FailureClassification
 from squadops.cycles.write_authorization import WriteGrant
+from squadops.stacks.slot_subject import (
+    LOOSER_THAN_VALUE,
+    AssertionSubject,
+    MatcherClass,
+    SlotAssertion,
+    SubjectSurface,
+)
 from squadops.stacks.verification_scaffold import (
     ScaffoldSpineError,
     ScaffoldValidationError,
@@ -82,6 +91,7 @@ from squadops.stacks.verification_scaffold import (
     slot_body_span,
     spine_hash,
 )
+from squadops.stacks.verification_scaffold_emission import slot_assertion_reader
 from squadops.tasks.task_types import TaskType
 
 #: Size bounds for one fill body. Generous for domain assertions, prohibitive for a file.
@@ -380,6 +390,280 @@ class SlotDisposition:
     detail: str = ""
 
 
+# --------------------------------------------------------------------------- slot-subject gate
+#
+# SIP-0104 §13d: a repair is never allowed to resolve a failing slot assertion by deleting or
+# weakening it. §13f (#2664) builds that as a gate on the slot-region revision itself, so every
+# path that rewrites a slot body meets it — the slot-scoped qa repair, a re-dispatched qa.test,
+# and a repair sent for another file that refills every slot (the MacBook lane's G4, point 2).
+
+
+class SubjectVerdict(StrEnum):
+    """What the gate found when a slot with an open failure was revised."""
+
+    #: The revision still asserts on the failing assertion's subject (any matcher).
+    KEPT = "kept"
+    #: Refused: the subject is gone, and the declarations show its field on that surface.
+    SLOT_SUBJECT_DROPPED = FailureClassification.SLOT_SUBJECT_DROPPED
+    #: The subject is gone, and the declarations show its field absent there: a correct drop.
+    ABSENT_THERE = "absent_there"
+    #: The failing assertion's subject, or the revision's, cannot be read: recorded, not refused.
+    SUBJECT_UNREADABLE = "subject_unreadable"
+    #: The scaffold declares nothing for this surface, so presence cannot be shown either way.
+    DECLARATIONS_UNAVAILABLE = "declarations_unavailable"
+    #: The revision left the slot body as it was.
+    UNCHANGED = "unchanged"
+
+
+@dataclass(frozen=True)
+class SlotSubjectVerdict:
+    """One gated slot revision: the verdict, the failing subject, and the softer signals."""
+
+    slot_id: str
+    file: str
+    verdict: SubjectVerdict
+    detail: str
+    failing_target: str = ""
+    subject: AssertionSubject | None = None
+    #: G4 point 3: the subject is kept, but only by matchers looser than the failing one's
+    #: exact value — existence or shape. Recorded, never refused.
+    matcher_loosened: bool = False
+    #: The passing checks the revision dropped beside the failing one, by subject. Recorded.
+    lost_subjects: tuple[str, ...] = ()
+
+    @property
+    def refused(self) -> bool:
+        return self.verdict == SubjectVerdict.SLOT_SUBJECT_DROPPED
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "slot_id": self.slot_id,
+            "file": self.file,
+            "verdict": str(self.verdict),
+            "detail": self.detail,
+            "failing_target": self.failing_target,
+            "subject": self.subject.to_dict() if self.subject else None,
+            "described": self.subject.describe() if self.subject else "",
+            "matcher_loosened": self.matcher_loosened,
+            "lost_subjects": list(self.lost_subjects),
+        }
+
+
+#: #2664: the key a handler stamps on its outputs when the gate refused a slot revision — one
+#: entry per refused slot (``SlotSubjectVerdict.to_dict()``). The correction loop reads it: a
+#: refused repair's round is spent, and the next round is told the slot and the subject.
+SLOT_SUBJECT_DROPPED_KEY = "slot_subject_dropped"
+
+
+def _declared_on(
+    subject: AssertionSubject, surfaces: Mapping[str, Any], slot_id: str
+) -> bool | None:
+    """Whether the scaffold declares ``subject``'s field on its surface; ``None`` when it
+    declares nothing for that surface, so presence cannot be shown (G4 point 5)."""
+    if subject.surface == SubjectSurface.STORE:
+        tables = surfaces.get("tables")
+        if not isinstance(tables, Mapping):
+            return None
+        fields = tables.get(subject.table)
+        if fields is None:
+            return False
+        return not subject.field or subject.field in fields
+    slot = (surfaces.get("slots") or {}).get(slot_id)
+    if not isinstance(slot, Mapping):
+        return None
+    fields = slot.get(str(subject.surface))
+    if fields is None:
+        return None
+    if not subject.field:
+        return bool(fields) or subject.surface == SubjectSurface.RESPONSE
+    return subject.field in fields
+
+
+def _mentions(assertion: SlotAssertion, subject: AssertionSubject) -> bool:
+    """Whether an unreadable assertion could be on ``subject``: it names the field (or, for
+    a whole surface, the surface's own expression). The gate refuses only what it can show."""
+    if subject.field:
+        token = subject.field
+    elif subject.surface == SubjectSurface.STORE:
+        token = f"TABLES.{subject.table}"
+    elif subject.surface == SubjectSurface.ERROR_ENVELOPE:
+        token = "body.error"
+    else:
+        token = "body"
+    return re.search(rf"(?<![\w$]){re.escape(token)}(?![\w$])", assertion.resolved) is not None
+
+
+@dataclass(frozen=True)
+class SlotSubjectGuard:
+    """The open slot failures a merge must gate, and what it judges them against.
+
+    ``failures`` maps a slot id to ``(file, line)``: the failing assertion's line in the
+    merged shell it was observed on. ``accepted`` maps a shell path to that shell — the slot's
+    last accepted body lives there. ``surfaces`` are the scaffold's declarations
+    (``slot_subject_surfaces``) and ``reader`` the stack's fill reader.
+    """
+
+    failures: Mapping[str, tuple[str, int | None]]
+    accepted: Mapping[str, str]
+    surfaces: Mapping[str, Any]
+    reader: Callable[[str], tuple[SlotAssertion, ...]]
+
+    def accepted_body(self, slot_id: str) -> list[str] | None:
+        file, _line = self.failures.get(slot_id, ("", None))
+        content = self.accepted.get(file)
+        if content is None:
+            return None
+        try:
+            region = next((r for r in parse_slot_regions(content) if r.slot_id == slot_id), None)
+        except ScaffoldSpineError:
+            return None
+        if region is None:
+            return None
+        return content.split("\n")[region.begin_line : region.end_line - 1]
+
+    def _failing_assertion(self, slot_id: str, body: list[str]) -> SlotAssertion | str:
+        """The failing assertion, or why it cannot be read. The line is the merged shell's,
+        as the runner reported it; the slot body's first line is the one after its marker."""
+        file, line = self.failures[slot_id]
+        content = self.accepted.get(file, "")
+        region = next((r for r in parse_slot_regions(content) if r.slot_id == slot_id), None)
+        if region is None or not isinstance(line, int):
+            return "the failure carries no line inside the slot"
+        if not region.begin_line < line < region.end_line:
+            return "the failure's line is not inside the slot"
+        covering = [a for a in self.reader("\n".join(body)) if a.covers(line - region.begin_line)]
+        if not covering:
+            return f"line {line} is not an expect() the reader can place"
+        subjects = {a.subject for a in covering}
+        if None in subjects or len(subjects) != 1:
+            return f"the failing assertion's target `{covering[-1].target}` maps to no subject"
+        return covering[-1]
+
+    def judge(self, slot_id: str, file: str, new_body: str) -> SlotSubjectVerdict | None:
+        """The verdict on revising ``slot_id`` to ``new_body``, or ``None`` when the slot has no
+        open failure. ``new_body`` is ``""`` for a not-applicable disposition, which asserts
+        nothing."""
+        if slot_id not in self.failures:
+            return None
+        accepted = self.accepted_body(slot_id)
+        if accepted is None:
+            return SlotSubjectVerdict(
+                slot_id,
+                file,
+                SubjectVerdict.SUBJECT_UNREADABLE,
+                "the shell the failure was observed on is not available",
+            )
+        if "\n".join(accepted).strip() == new_body.strip():
+            return SlotSubjectVerdict(
+                slot_id, file, SubjectVerdict.UNCHANGED, "the body is unchanged"
+            )
+        failing = self._failing_assertion(slot_id, accepted)
+        if isinstance(failing, str):
+            return SlotSubjectVerdict(slot_id, file, SubjectVerdict.SUBJECT_UNREADABLE, failing)
+        subject = failing.subject
+        if subject is None:  # pragma: no cover - _failing_assertion returns a placed subject
+            return None
+        revised = self.reader(new_body)
+        verdict, detail, loosened = self._compare(slot_id, failing, subject, revised)
+        still = {a.subject for a in revised if a.subject is not None}
+        lost = tuple(
+            dict.fromkeys(
+                a.subject.describe()
+                for a in self.reader("\n".join(accepted))
+                if a.subject is not None and a.subject != subject and a.subject not in still
+            )
+        )
+        return SlotSubjectVerdict(
+            slot_id,
+            file,
+            verdict,
+            detail,
+            failing_target=failing.target,
+            subject=subject,
+            matcher_loosened=loosened,
+            lost_subjects=lost,
+        )
+
+    def _compare(
+        self,
+        slot_id: str,
+        failing: SlotAssertion,
+        subject: AssertionSubject,
+        revised: tuple[SlotAssertion, ...],
+    ) -> tuple[SubjectVerdict, str, bool]:
+        """``(verdict, detail, matcher loosened)`` for a revision of a slot whose failing
+        assertion reads ``subject``. The same surface and field with any matcher keeps it (G4
+        point 3); a drop is refused only where the declarations show the field present."""
+        kept = [a for a in revised if a.subject == subject]
+        if kept:
+            loosened = failing.matcher_class == MatcherClass.VALUE and all(
+                a.matcher_class in LOOSER_THAN_VALUE for a in kept
+            )
+            detail = f"still asserts on {subject.describe()}"
+            if loosened:
+                detail += ", only by existence or shape where it pinned a value"
+            return SubjectVerdict.KEPT, detail, loosened
+        unread = [a for a in revised if a.subject is None and _mentions(a, subject)]
+        if unread:
+            return (
+                SubjectVerdict.SUBJECT_UNREADABLE,
+                f"the revision's `{unread[0].target}` names the subject but cannot be read",
+                False,
+            )
+        declared = _declared_on(subject, self.surfaces, slot_id)
+        if declared is None:
+            return (
+                SubjectVerdict.DECLARATIONS_UNAVAILABLE,
+                f"dropped {subject.describe()}; the scaffold declares nothing for that surface",
+                False,
+            )
+        if not declared:
+            return (
+                SubjectVerdict.ABSENT_THERE,
+                f"dropped {subject.describe()}, which the declarations show absent there",
+                False,
+            )
+        return (
+            SubjectVerdict.SLOT_SUBJECT_DROPPED,
+            f"dropped {subject.describe()}, which the declarations show present there",
+            False,
+        )
+
+
+def slot_subject_guard(
+    scaffold_input: Mapping[str, Any] | None,
+    failures: Iterable[Mapping[str, Any]],
+    accepted_files: Iterable[Mapping[str, Any]],
+) -> SlotSubjectGuard | None:
+    """The guard for one merge, or ``None`` when there is nothing to gate.
+
+    ``failures`` are the open in-slot failures (``file``, ``slot_id``, ``line``), as the
+    scaffold evidence observed them; ``accepted_files`` the shells they were observed on
+    (``name``, ``content``). No scaffold, no failures, or a stack with no reader: no guard,
+    and the merge is exactly what it was (G4 point 5).
+    """
+    if not isinstance(scaffold_input, Mapping):
+        return None
+    reader = slot_assertion_reader(str((scaffold_input.get("manifest") or {}).get("stack") or ""))
+    by_slot: dict[str, tuple[str, int | None]] = {}
+    for f in failures:
+        slot_id, file = str(f.get("slot_id") or ""), str(f.get("file") or "")
+        line = f.get("line")
+        if slot_id and file and slot_id not in by_slot:
+            by_slot[slot_id] = (file, line if isinstance(line, int) else None)
+    if reader is None or not by_slot:
+        return None
+    accepted = {
+        str(a.get("name")): str(a.get("content") or "") for a in accepted_files if a.get("name")
+    }
+    return SlotSubjectGuard(
+        failures=by_slot,
+        accepted=accepted,
+        surfaces=scaffold_input.get("subject_surfaces") or {},
+        reader=reader,
+    )
+
+
 @dataclass(frozen=True)
 class MergedFile:
     path: str
@@ -397,6 +681,14 @@ class FillMergeRecord:
     #: fills addressing slot ids the scaffold does not declare (nothing to degrade —
     #: recorded so a misaddressed fill is visible, not silently dropped).
     misaddressed: tuple[SlotDisposition, ...] = ()
+    #: #2664: one verdict per gated slot revision — a slot with an open failure whose body
+    #: this merge was asked to change. Empty when no guard was given.
+    subject_verdicts: tuple[SlotSubjectVerdict, ...] = ()
+
+    @property
+    def refused(self) -> tuple[SlotSubjectVerdict, ...]:
+        """The revisions the slot-subject gate refused (``slot_subject_dropped``)."""
+        return tuple(v for v in self.subject_verdicts if v.refused)
 
     def disposition_counts(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -457,6 +749,7 @@ def merge_fills(
     *,
     producer: str = TaskType.QA_TEST,
     task_id: str = "",
+    subject_guard: SlotSubjectGuard | None = None,
 ) -> FillMergeRecord:
     """Merge an authored fill emission into the scaffold, deterministically.
 
@@ -472,6 +765,14 @@ def merge_fills(
     grammar (:func:`~squadops.stacks.verification_scaffold.slot_body_span`), and applies
     all of them or none. The bytes are the ones this function always produced, so the qa lane
     is the transaction's first proof rather than its first casualty.
+
+    **The slot-subject gate (SIP-0104 §13f, #2664).** Every slot-body write is one of these
+    region revisions, so the gate sits here. With a ``subject_guard``, each slot that has an
+    open failure and is revised to a fill or a not-applicable note is judged against its last
+    accepted body. A revision that drops the failing assertion's subject, where the
+    declarations show that field present, is refused: the slot keeps its accepted body, and the
+    verdict is in ``subject_verdicts``. A caller merging a repair spends the whole repair on a
+    refusal (``_merge_repair_fills``); a re-authoring qa.test keeps the rest of its emission.
     """
 
     declared = {slot.slot_id for f in record.files for slot in f.slots}
@@ -491,6 +792,7 @@ def merge_fills(
     base = {file_record.path: scaffold_by_path[file_record.path] for file_record in record.files}
     revisions: list[Revision] = []
     dispositions: list[SlotDisposition] = []
+    verdicts: list[SlotSubjectVerdict] = []
     for file_record in record.files:
         regions = {r.slot_id: r for r in parse_slot_regions(base[file_record.path])}
         for slot in sorted(file_record.slots, key=lambda s: regions[s.slot_id].begin_line):
@@ -512,6 +814,10 @@ def merge_fills(
                     if fill
                     else [],
                 )
+                if subject_guard is not None and fill is not None:
+                    body, disposition = _gate_revision(
+                        subject_guard, file_record.path, fill, body, disposition, verdicts
+                    )
             revisions.append(
                 Revision(
                     artifact_path=file_record.path,
@@ -560,6 +866,38 @@ def merge_fills(
         files=tuple(merged_files),
         dispositions=tuple(dispositions),
         misaddressed=misaddressed,
+        subject_verdicts=tuple(verdicts),
+    )
+
+
+def _gate_revision(
+    guard: SlotSubjectGuard,
+    path: str,
+    fill: Fill,
+    body: list[str],
+    disposition: SlotDisposition,
+    verdicts: list[SlotSubjectVerdict],
+) -> tuple[list[str], SlotDisposition]:
+    """One slot's revision through the slot-subject gate (#2664).
+
+    Only a revision that could pass is judged: a fill or a not-applicable note. A rejected or
+    missing slot renders the fill layer's failing state, which fails the suite on its own and
+    so cannot resolve a failure by agreeing with the app.
+    """
+    if disposition.disposition not in (DISPOSITION_FILLED, DISPOSITION_NOT_APPLICABLE):
+        return body, disposition
+    verdict = guard.judge(fill.slot_id, path, "" if fill.is_not_applicable else fill.body)
+    if verdict is None:
+        return body, disposition
+    verdicts.append(verdict)
+    accepted = guard.accepted_body(fill.slot_id) if verdict.refused else None
+    if accepted is None:
+        return body, disposition
+    return accepted, SlotDisposition(
+        fill.slot_id,
+        DISPOSITION_FILLED,
+        f"{verdict.verdict}: the revision was refused and the accepted body kept — "
+        f"{verdict.detail}",
     )
 
 

@@ -1,0 +1,262 @@
+"""A Project's source in the sandbox (SIP-0112 §8.2.2, contract 3; E.4.2).
+
+The managed clone's tree at a pinned commit is seeded into a sandbox workspace as a Git checkout
+(X-1, X-2), and the mapping between the commit and the sandbox revision is recorded both ways,
+with SIP-0109's tree identity beside them. The three identifiers never stand in for one another.
+The sandbox never runs Git; this is the only place a commit and a revision meet.
+
+The inherited baseline (FR-20) runs the product's declared checks against that seeded revision,
+each in a disposable copy (X-3a) after the install and build steps the checks declare, and
+records what happened.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from squadops.campaigns.evaluator_trees import FileTree
+from squadops.projects.baseline import (
+    CheckResult,
+    InheritedBaseline,
+    missing_environment,
+    result_of,
+)
+from squadops.projects.configuration import baseline_tree
+from squadops.projects.development_configuration import Commands, submission_digest
+from squadops.projects.profile_derivation import derive_profile
+from squadops.sandbox.models import RevisionOrigin
+
+if TYPE_CHECKING:
+    from squadops.cycles.models import Project
+    from squadops.ports.cycles.project_registry import ProjectRegistryPort
+    from squadops.ports.projects.source_repository import SourceRepositoryPort
+    from squadops.ports.sandbox import ExecutionSandboxPort
+    from squadops.projects.models import CheckoutTree
+    from squadops.sandbox.models import WorkspaceRevision
+
+
+class SandboxUnavailable(RuntimeError):
+    """The runtime API has no sandbox client (``sandbox_client.provider: none``): nothing can
+    be seeded or run, so nothing is recorded as if it had been."""
+
+
+#: A mapping's direction: a commit checked out into a workspace, or a verified revision
+#: committed back (E.4.3).
+SEEDED, CAPTURED = "seeded", "captured"
+
+
+@dataclass(frozen=True)
+class SourceMapping:
+    """One tree, named by all three of its identifiers (contracts 3 and 4)."""
+
+    project_id: str
+    workspace_id: str
+    direction: str  # SEEDED or CAPTURED
+    commit: str
+    sandbox_revision_id: str
+    tree_identity: str
+    cycle_id: str | None = None
+    campaign_id: str | None = None
+
+
+def delivery_workspace(run_id: str, tree_identity: str) -> str:
+    """The workspace a source-backed run's delivery verifies its candidate in (E.4.3): named by
+    the run and the candidate's tree, so a resumed run's second delivery of another tree has its
+    own."""
+    return f"{_delivered_by(run_id)}{tree_identity[:12]}"
+
+
+def _delivered_by(run_id: str) -> str:
+    """The start every one of ``run_id``'s delivery workspaces' names shares."""
+    return f"src-{run_id}-"
+
+
+@dataclass(frozen=True)
+class CapturedChange:
+    """What a run's delivery captured (contract 3): the commit, its tree identity, and the commit
+    it was captured on, which is the one its workspace was seeded at."""
+
+    commit: str
+    parent: str
+    tree_identity: str
+    workspace_id: str
+
+
+def captured_change(
+    mappings: list[SourceMapping], cycle_id: str, run_id: str
+) -> CapturedChange | None:
+    """The change run ``run_id`` of ``cycle_id`` captured, read from the Project's mappings: its
+    delivery workspace's CAPTURED mapping, the latest when a resumed run delivered twice, and the
+    SEEDED mapping of the same workspace for its parent. ``None`` when the run captured nothing:
+    only a change the product's own checks accepted is captured.
+
+    Raises:
+        ValueError: The capture's workspace records no seed, so its parent can't be read.
+    """
+    captured = [
+        m
+        for m in mappings
+        if m.direction == CAPTURED
+        and m.cycle_id == cycle_id
+        and m.workspace_id.startswith(_delivered_by(run_id))
+    ]
+    if not captured:
+        return None
+    capture = captured[-1]
+    seeded = [
+        m.commit
+        for m in mappings
+        if m.direction == SEEDED and m.workspace_id == capture.workspace_id
+    ]
+    if not seeded:
+        raise ValueError(
+            f"workspace {capture.workspace_id} records the capture {capture.commit} and no seed: "
+            "the commit it was captured on can't be read (contract 3)"
+        )
+    return CapturedChange(capture.commit, seeded[-1], capture.tree_identity, capture.workspace_id)
+
+
+async def seed_project_tree(
+    project: Project,
+    commit: str,
+    workspace_id: str,
+    *,
+    registry: ProjectRegistryPort,
+    repository: SourceRepositoryPort,
+    sandbox: ExecutionSandboxPort | None,
+    cycle_id: str | None = None,
+    campaign_id: str | None = None,
+    tree: CheckoutTree | None = None,
+) -> WorkspaceRevision:
+    """Seed ``commit``'s tree as ``workspace_id``'s first revision, and record the mapping.
+    ``tree`` is that commit's tree when the caller has already read it."""
+    if sandbox is None:
+        raise SandboxUnavailable("the runtime API has no sandbox client to seed through")
+    if project.source is None:
+        raise ValueError(f"Project {project.project_id} has no external source to seed")
+    if tree is None or tree.commit != commit:
+        tree = await baseline_tree(
+            repository, project.project_id, project.source.repo_uri, project.source.base_ref, commit
+        )
+    if tree.capability_gaps:
+        # deferred (pair): squadops.cycles imports this package at load
+        from squadops.cycles.models import ProjectStateConflictError
+
+        raise ProjectStateConflictError(
+            "capability gap: the sandbox cannot carry " + "; ".join(tree.capability_gaps)
+        )
+    revision = await sandbox.seed_workspace(
+        workspace_id,
+        dict(tree.files),
+        origin=RevisionOrigin.GIT_CHECKOUT,
+        executable=tree.executable,
+    )
+    await registry.record_source_mapping(
+        SourceMapping(
+            project_id=project.project_id,
+            workspace_id=workspace_id,
+            direction=SEEDED,
+            commit=commit,
+            sandbox_revision_id=revision.revision_id,
+            tree_identity=FileTree.of(tree.files).identity,
+            cycle_id=cycle_id,
+            campaign_id=campaign_id,
+        )
+    )
+    return revision
+
+
+async def run_checks(
+    sandbox: ExecutionSandboxPort | None, revision: WorkspaceRevision, commands: Commands
+) -> tuple[tuple[CheckResult, ...], dict[str, str]]:
+    """Each declared check against ``revision``, after the checks' own setup, in a disposable
+    copy (X-3a), and the environment they ran in. The inherited baseline and a source-backed
+    run's candidate are both checked here, so the two are compared like for like."""
+    if sandbox is None:
+        raise SandboxUnavailable("the runtime API has no sandbox client to run checks through")
+    results: list[CheckResult] = []
+    environment: dict[str, str] = {}
+    for check in commands.checks:
+        # The sandbox runs a declared check with no environment of its own (X-3a), so a check
+        # that declares one is a gap, decided by its declaration.
+        gap = missing_environment(check, ())
+        if gap is not None:
+            results.append(gap)
+            continue
+        run: Any = await sandbox.run_declared_command(
+            revision=revision,
+            command=check.argv,
+            working_dir=commands.working_directory,
+            setup=commands.check_setup,
+            findings_reader=check.findings,
+        )
+        environment = environment or {
+            "image": run.image_identity or "unknown",
+            "toolchain": run.environment_contract_id or "unknown",
+        }
+        results.append(result_of(check, run))
+    return tuple(results), environment or {"image": "unknown", "toolchain": "unknown"}
+
+
+async def capture_inherited_baseline(
+    project_id: str,
+    *,
+    registry: ProjectRegistryPort,
+    repository: SourceRepositoryPort,
+    sandbox: ExecutionSandboxPort | None,
+    actor: str,
+    idempotency_key: str,
+) -> tuple[InheritedBaseline, bool]:
+    """Run the current Development Configuration's checks against the Project's pinned,
+    unmodified baseline commit, and record the inherited baseline (FR-20), with the profile
+    derived from that tree, that revision and this capture beside it (H.4, contract 8)."""
+    project = await registry.get_project(project_id)
+    commit = project.development_baseline_commit
+    configuration = await registry.get_development_configuration(project_id)
+    if commit is None or configuration.validated_at_commit != commit:
+        # deferred (pair): squadops.cycles imports this package at load
+        from squadops.cycles.models import ProjectStateConflictError
+
+        raise ProjectStateConflictError(
+            f"Project {project_id}'s Development Configuration revision "
+            f"{configuration.revision} was recorded at {configuration.validated_at_commit}, not "
+            f"its baseline {commit}: record a revision at the baseline first (FR-21)"
+        )
+    if sandbox is None:
+        raise SandboxUnavailable("the runtime API has no sandbox client to seed through")
+    if project.source is None:
+        raise ValueError(f"Project {project_id} has no external source to seed")
+    tree = await baseline_tree(
+        repository, project_id, project.source.repo_uri, project.source.base_ref, commit
+    )
+    workspace_id = f"baseline-{project_id}-{commit[:12]}"
+    revision = await seed_project_tree(
+        project,
+        commit,
+        workspace_id,
+        registry=registry,
+        repository=repository,
+        sandbox=sandbox,
+        tree=tree,
+    )
+    results, environment = await run_checks(sandbox, revision, configuration.commands)
+    baseline = InheritedBaseline(
+        project_id=project_id,
+        commit=commit,
+        development_configuration_revision=configuration.revision,
+        environment=environment,
+        checks=results,
+    )
+    initialization = await registry.get_initialization(project_id)
+    return await registry.record_inherited_baseline(
+        baseline,
+        derived_profile=derive_profile(
+            tree.files, configuration, baseline, initialization=initialization
+        ),
+        actor=actor,
+        idempotency_key=idempotency_key,
+        request_hash=submission_digest(
+            {"project_id": project_id, "commit": commit, "revision": configuration.revision}
+        ),
+    )

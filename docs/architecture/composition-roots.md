@@ -51,7 +51,7 @@ with the reason each wires infrastructure (#154):
 | root | wires |
 |---|---|
 | `squadops.api.runtime` (`main`, `deps`, `scheduler_bootstrap`, `record_deploy`) | the runtime API: pool, queue, LLM, registries, vault, telemetry, tracker, events, executor, auth. `record_deploy` is its second process, the deploy step's one-off (#1720): the pool, the deploy registry, the squad profile and the LLM, through the same factories and selectors |
-| `squadops.agents.entrypoint` | the agent container: queue, LLM, memory, prompts, telemetry, filesystem, messaging |
+| `squadops.agents.entrypoint` | the agent container: queue, LLM, prompts, telemetry, filesystem, messaging (no memory store since #2184) |
 | `squadops.sandbox.main` | the sandbox service |
 | `squadops.bootstrap` | system composition, the doctor's checks, the secrets provider |
 
@@ -63,7 +63,7 @@ domain module reaching for an adapter fails the existing guard.
 
 | kind | what it is | the rule |
 |---|---|---|
-| **provider-selected port binding** | a port with a factory under `adapters/<package>/factory.py` — fifteen exist: audit, auth, capabilities, comms, cycles, embeddings, events, llm, memory, prompts, sandbox, secrets, tasks, telemetry, tools | **delegated to the factory, with the selector read from typed config and required** (§4 R1, R2) |
+| **provider-selected port binding** | a port with a factory under `adapters/<package>/factory.py` — fifteen exist: audit, auth, capabilities, comms, cycles, embeddings, events, llm, outcomes, prompts, sandbox, scenarios, secrets, telemetry, tools | **delegated to the factory, with the selector read from typed config and required** (§4 R1, R2) |
 | **substrate-bound persistence adapter** | a Postgres adapter constructed over the one pool — `PostgresAssignment`, `PostgresRuntimeActivity`, `PostgresFocusLease`, `PostgresRuntimeState`, `ChatRepository`, and the health checker's two | the substrate is selected once, at `adapters.persistence.pool.create_pool` (#577, guarded by `test_one_pool_factory.py`); the per-table adapters have no alternative substrate and are constructed **over that pool, in a root, under one lifecycle** (§4 R4) |
 | **bootstrap reader** | a short-lived adapter a root constructs to *read* something it owns during composition — the YAML squad profile copied into Postgres at start-up (`main.py:295`), the doctor's read of the same file (`bootstrap/setup/checks.py:857`) | permitted **when all four hold**: it is short-lived; it is used only during composition or a bootstrap check; its result is copied into an authoritative store or reported, never handed to a domain or runtime consumer as the bound port; it binds no port a route or a handler later reads. A reader that outlives composition or is handed onward is a binding and R1 applies |
 | **root-internal composer** | composition of ports that are already bound: `ReplyRouter` over the queue, `HealthChecker`, `create_runtime_coordinator`, `create_flow_executor` and the executor's own constructor (which builds `CorrectionRunner` at `dispatched_flow_executor.py:365` with an injectable override), the sandbox's `create_app(service, …)` | permitted in a root; it is what a root is for. **Two meanings of "factory", kept apart:** an *adapter factory* selects and binds an infrastructure provider and is governed by R1 and R2; an *application composer* such as `create_flow_executor` assembles collaborators from ports already bound and is governed by R4 only — no selector, because it selects nothing |
@@ -289,8 +289,9 @@ construction" also passes when a binding is deleted outright:
    in the test declares, per root, the provider-selected bindings it is expected to perform —
    the runtime API: LLM, queue, A2A client, project registry, cycle registry, deploy registry
    (#1720), squad profile, artifact vault, workflow tracker, event bus, LLM observability, flow
-   executor, auth — with `record_deploy`'s own LLM, squad profile and deploy registry; the
-   agent entrypoint: LLM, queue, filesystem, memory, prompt repository, prompt asset source,
+   executor, auth, the sandbox client (#2451) — with `record_deploy`'s own LLM, squad profile and
+   deploy registry; the
+   agent entrypoint: LLM, queue, filesystem, prompt repository, prompt asset source,
    telemetry, LLM observability, and the A2A server behind its switch; the sandbox: the
    service; bootstrap: secrets — and asserts **exactly one factory call per expected
    binding** in the root's source. A binding that vanishes fails CI as surely as one that

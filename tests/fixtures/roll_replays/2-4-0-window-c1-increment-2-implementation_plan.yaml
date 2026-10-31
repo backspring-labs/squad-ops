@@ -1,0 +1,158 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_898dc802e89b
+prd_hash: 74130830f0a50cf627138a9fd29b0e8e795df85d4d191e1999a3072b55f95d4e
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: GET /runs datetime sort
+  description: 'In backend/routes.py, locate the existing GET /runs handler. Before
+    the
+
+    handler returns its run list, apply Python''s built-in sorted() with a key
+
+    that extracts each run''s datetime string field. The sort is ascending and
+
+    lexical (plain string comparison) — no datetime parsing, no third-party
+
+    library. Use sorted() (the functional form, not list.sort()) so the
+
+    in-memory store''s internal list is not mutated. The result is a new list
+
+    returned through the handler''s existing serialization path. Read the
+
+    current handler at task start to confirm the store accessor''s return type
+
+    (list of Pydantic Run objects vs list of dicts) and adapt the sort key
+
+    accordingly. All other endpoints (POST /runs, GET /runs/{run_id}, join,
+
+    leave) and the Run model remain unchanged. No new file is created.'
+  expected_artifacts:
+  - backend/routes.py
+  acceptance_criteria:
+  - The GET /runs response list is ordered by the datetime field, ascending, via plain
+    lexical (string) comparison — no datetime-parsing dependency.
+  - sorted() is used (not list.sort()) so the in-memory store's internal list is not
+    mutated by the sort.
+  - No new import or third-party module is added; Python's built-in sorted() is sufficient.
+  - No other endpoint handler, model definition, or store function is modified in
+    this file.
+  depends_on: []
+  criteria_refs:
+  - vc-routes-endpoints
+  - vc-routes-apierror
+  - vc-routes-compiles
+  - vc-routes-imports
+- task_index: 1
+  task_type: qa.test
+  role: qa
+  focus: T6 backend sort test
+  description: "Author the T6 criterion test file at backend/tests/criteria/test_T6.py.\n\
+    Use the pytest fixture `client` provided by the root conftest.py (which\nyields\
+    \ a FastAPI TestClient against the app in backend.main and resets the\nin-memory\
+    \ store before each test).\n\nThe file must contain at minimum:\n\n1. test_list_runs_sorted_by_datetime_ascending\
+    \ — create run A with\n   datetime \"2025-06-15T10:00\" first, then run B with\
+    \ datetime\n   \"2025-06-10T08:00\" (reverse chronological insertion). Call GET\
+    \ /runs.\n   Assert the response list places run B's id at index 0 and run A's\
+    \ id at\n   index 1. This is the exact scenario from the brief's\n   must_cover_requirements\
+    \ and T6's observable.\n\n2. test_sort_does_not_mutate_store — create two runs\
+    \ in reverse\n   chronological order, call GET /runs (which triggers the sort),\
+    \ then\n   call GET /runs again. Assert both calls return the same ascending\n\
+    \   order. Additionally, call GET /runs/{id} for the run that was inserted\n \
+    \  first and confirm its fields are unaltered (the sort is view-layer\n   only;\
+    \ the in-memory store's internal list order is preserved for\n   subsequent non-list\
+    \ operations). This verifies the brief's requirement\n   that \"the sort produces\
+    \ a new list (sorted()) and does not mutate the\n   in-memory store's internal\
+    \ list.\"\n\n3. test_list_runs_empty — with no runs created, GET /runs returns\
+    \ an\n   empty list (trivially sorted).\n\n4. test_list_runs_single — one run\
+    \ returns that run in a one-element list.\n\nDo NOT assert on internal store implementation\
+    \ details (e.g., calling\nstore.run_store directly). Assert only through the HTTP\
+    \ response\nobservable. Do NOT import datetime-parsing libraries; the sort is\
+    \ lexical\nstring comparison and the test should not introduce any such dependency."
+  expected_artifacts:
+  - backend/tests/criteria/test_T6.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/criteria/test_T6.py
+    name_prefix: test_
+    min_count: 4
+  - check: import_present
+    file: backend/tests/criteria/test_T6.py
+    module: backend.main
+  - 'Primary scenario: run A (2025-06-15T10:00) created before run B (2025-06-10T08:00);
+    GET /runs response list has run B before run A.'
+  - 'No-mutation check: after a GET /runs call, a second GET /runs returns the same
+    ascending order; GET /runs/{id} for an individual run returns unaltered fields.'
+  - Empty-list and single-run edge cases return correctly without error.
+  - No third-party or datetime-parsing module is imported; only the TestClient fixture
+    and standard library are used.
+  depends_on:
+  - 0
+- task_index: 2
+  task_type: qa.test
+  role: qa
+  focus: Frontend list render order test
+  description: 'Author an additive frontend test at
+
+    frontend/src/__tests__/RunList.test.jsx. Using vitest and
+
+    @testing-library/react (both in the accepted devDependencies), render the
+
+    RunList view (imported from ../views/RunList.jsx) with a mocked
+
+    GET /runs response that returns two runs in a specific order. Assert that
+
+    the DOM list displays the runs in the exact order the mock array
+
+    provides — proving the view is a passive renderer that does not
+
+    client-side re-sort, filter, or shuffle.
+
+
+    The mock should return an array where the first element has a LATER
+
+    datetime than the second (e.g., ["2025-06-15T10:00" first,
+
+    "2025-06-10T08:00" second]) so that if the view performed a client-side
+
+    sort, the DOM order would differ from the mock order and the test would
+
+    fail. The assertion is on DOM order matching mock order, not on the
+
+    sorted order itself.
+
+
+    This test is a regression guard: it passes on the accepted baseline and
+
+    would fail if a future increment added client-side sorting to the view.
+
+    It does not test the backend sort (that is T6''s job).
+
+
+    If the existing frontend test files (T4, T5 frozen) already assert on
+
+    array order from a mocked /runs response, note this in a comment but do
+
+    NOT modify those frozen files. This new file is additive only.'
+  expected_artifacts:
+  - frontend/src/__tests__/RunList.test.jsx
+  acceptance_criteria:
+  - check: frontend_compiles
+    file: frontend/src/__tests__/RunList.test.jsx
+  - Rendered list DOM order matches the mocked API response array order exactly (no
+    client-side re-sorting).
+  - The test mocks GET /runs with two runs whose datetimes are in reverse alphabetical
+    order relative to their array positions, so any client-side sort would be detected.
+  - Uses only dependencies already in frontend/package.json (vitest, @testing-library/react,
+    @testing-library/jest-dom, react-router-dom).
+  - Does not modify or import from any frontend view source file's internal state;
+    it tests only the rendered output.
+  depends_on:
+  - 0
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 2
+  total_tasks: 3
+  estimated_layers: []

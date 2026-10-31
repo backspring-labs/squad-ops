@@ -39,14 +39,16 @@ class ChatRepository:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO chat_sessions (session_id, agent_id, user_id, started_at, metadata)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO chat_sessions
+                    (session_id, agent_id, user_id, started_at, metadata, project_id)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 session.session_id,
                 session.agent_id,
                 session.user_id,
                 session.started_at,
                 session.metadata,
+                session.project_id,
             )
         return session
 
@@ -91,7 +93,7 @@ class ChatRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM chat_sessions
-                WHERE agent_id = $1 AND user_id = $2
+                WHERE agent_id = $1 AND user_id = $2 AND deleted_at IS NULL
                 ORDER BY started_at DESC
                 LIMIT $3
                 """,
@@ -101,21 +103,54 @@ class ChatRepository:
             )
         return [self._assemble_session(r) for r in rows]
 
+    async def delete_session(self, session_id: str, deleted_at: Any) -> None:
+        """Delete a session for its owner (SIP-0110 §A.8 Q29): its messages are removed, and its row
+        stays, marked, so a memory record confirmed from it can say so.
+
+        Raises:
+            SessionNotFoundError: If the session does not exist or is already deleted.
+        """
+        async with self._pool.acquire() as conn, conn.transaction():
+            result = await conn.execute(
+                "UPDATE chat_sessions SET deleted_at = $2 "
+                "WHERE session_id = $1 AND deleted_at IS NULL",
+                session_id,
+                deleted_at,
+            )
+            if result == "UPDATE 0":
+                raise SessionNotFoundError(f"Session not found: {session_id}")
+            await conn.execute("DELETE FROM chat_messages WHERE session_id = $1", session_id)
+
+    async def get_message(self, message_id: str) -> ChatMessage | None:
+        """One message by id, or ``None``: a provenance link opens one turn, never its session."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM chat_messages WHERE message_id = $1", message_id
+            )
+        return self._assemble_message(row) if row is not None else None
+
     async def store_message(self, message: ChatMessage) -> ChatMessage:
         """Persist a chat message.
 
         Postgres write is required (P3-RC2). Failure here is a real error
-        that must be surfaced.
+        that must be surfaced. A session its owner deleted takes no message (Q29): a reply that
+        finishes after the delete is refused, not stored beside the removed ones (#2180).
 
         Returns:
             The persisted message.
+
+        Raises:
+            SessionNotFoundError: If the session does not exist or was deleted.
         """
         async with self._pool.acquire() as conn:
-            await conn.execute(
+            result = await conn.execute(
                 """
                 INSERT INTO chat_messages
                     (message_id, session_id, role, content, created_at, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                SELECT $1, $2, $3, $4, $5, $6
+                WHERE EXISTS (
+                    SELECT 1 FROM chat_sessions WHERE session_id = $2 AND deleted_at IS NULL
+                )
                 """,
                 message.message_id,
                 message.session_id,
@@ -124,6 +159,8 @@ class ChatRepository:
                 message.created_at,
                 message.metadata,
             )
+        if result == "INSERT 0 0":
+            raise SessionNotFoundError(f"Session not found: {message.session_id}")
         return message
 
     async def get_session_messages(
@@ -160,6 +197,8 @@ class ChatRepository:
             # `or {}`: a nullable metadata column decodes to None — coerce to {}
             # (preserved from the old _parse_jsonb None branch).
             metadata=row["metadata"] or {},
+            project_id=row["project_id"],
+            deleted_at=row["deleted_at"],
         )
 
     def _assemble_message(self, row: Any) -> ChatMessage:

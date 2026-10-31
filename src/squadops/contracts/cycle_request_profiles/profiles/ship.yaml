@@ -1,0 +1,28 @@
+# #316 (the request-profile taxonomy, R2.4): an operator profile, the three workloads in one cycle. It is
+# multi-phase's defaults under the operator's name; `multi-phase` stays, frozen, under its own.
+# Reference example — not a required executor topology.
+# Single-workload cycles and alternative workload sequences remain valid.
+name: ship
+description: Framing, implementation and wrap-up in one cycle.
+defaults:
+  # SIP-0086 §12a change 1: declared, never defaulted. This profile runs no output
+  # validation, so no self-evaluation pass can open; 0 says so.
+  max_self_eval_passes: 0
+  # SIP-0108 §10i item 3: the correction protocol this profile runs. The squad
+  # analyzes the failure, decides the path, then repairs.
+  correction_steps: [analyze, decide, repair]
+  squad_profile_id: full
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_approval_required
+        description: "Human approval required before advancing to next workload"
+        after_task_types: []
+  workload_sequence:
+    - type: framing
+      gate: progress_approval_required
+    - type: implementation
+      gate: auto
+    - type: wrapup
+      gate: null

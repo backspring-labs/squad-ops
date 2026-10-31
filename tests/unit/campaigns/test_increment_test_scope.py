@@ -98,7 +98,7 @@ async def _qa_prompt(envelope, monkeypatch) -> str:
     sent: list = []
     inputs = {**envelope.inputs, "prd": "Runs API", "artifact_contents": {}}
     await QATestHandler().handle(_qa_context(sent), inputs)
-    return sent[0][-1].content
+    return sent[0][1].content  # the user turn: a qa first call ends with D12's note
 
 
 def _implementation(cycle, change_request):
@@ -124,6 +124,63 @@ async def test_an_increments_qa_test_is_shown_what_its_tests_may_assert(monkeypa
         "- T1 (frozen by an earlier increment): Runs are listed in ascending order of their date"
         in prompt
     )
+
+
+@pytest.mark.parametrize(
+    ("stack", "told"), [("nextjs_ts", True), ("fullstack_fastapi_react", False)]
+)
+async def test_an_endpoint_criterions_test_author_is_told_to_call_its_route_through_the_caller(
+    monkeypatch, stack, told
+):
+    """#2577, entered at the task plan and through the qa.test handler's render. The 2.4
+    window's campaign 2 (Next.js) seed increment: its criterion test imported the route module
+    its change added, so on the accepted tree the file failed at collection and the increment
+    was rejected (`only_setup_failures`) however correct the build. Bugs caught: a Next.js
+    author never told to call a route through the scaffold's caller, or told an import it can't
+    resolve; a FastAPI author told it, whose `client` fixture already answers a missing route."""
+    cycle = _increment_cycle()
+    cycle = dataclasses.replace(
+        cycle, applied_defaults={**cycle.applied_defaults, "build_profile": stack}
+    )
+    [qa] = [e for e in _implementation(cycle, STORED) if e.task_type == "qa.test"]
+
+    prompt = await _qa_prompt(qa, monkeypatch)
+
+    assert _RULE in prompt
+    assert ("### How a criterion's test calls its route" in prompt) is told
+    if told:
+        assert "Each of these criteria is proven at an API route: C1, C2." in prompt
+        assert "import { callRoute } from '@/vitest.routes'" in prompt
+
+
+@pytest.mark.parametrize(
+    ("stack", "told"), [("nextjs_ts", True), ("fullstack_fastapi_react", False)]
+)
+async def test_a_page_criterions_test_author_is_told_to_load_its_page_through_the_loader(
+    monkeypatch, stack, told
+):
+    """#2602, entered at the task plan and through the qa.test handler's render: the page half
+    of the test above. A Next.js page criterion's test that imports a page the change adds, or
+    stubs its fetch with a route the change adds, fails at collection on the accepted tree and
+    the increment is refused (`only_setup_failures`) however correct the build. Bugs caught: a
+    Next.js author with a page criterion (the fixture's C3) never told to load its page through
+    the scaffold's loader and to answer its fetches through the route caller, or told an import
+    it can't resolve; a FastAPI author told it."""
+    cycle = _increment_cycle()
+    cycle = dataclasses.replace(
+        cycle, applied_defaults={**cycle.applied_defaults, "build_profile": stack}
+    )
+    [qa] = [e for e in _implementation(cycle, STORED) if e.task_type == "qa.test"]
+
+    prompt = await _qa_prompt(qa, monkeypatch)
+
+    assert _RULE in prompt
+    assert ("### How a criterion's test renders its page" in prompt) is told
+    if told:
+        assert "Each of these criteria is proven on a page: C3." in prompt
+        assert "import { loadPage } from '@/vitest.pages'" in prompt
+        assert "import { callRoute } from '@/vitest.routes'" in prompt
+        assert "{{" not in prompt
 
 
 async def test_a_qa_test_outside_a_campaign_is_shown_none_of_it(monkeypatch):

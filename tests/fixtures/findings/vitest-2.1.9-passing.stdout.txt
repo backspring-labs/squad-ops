@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ✓ src/__tests__/passing.test.js (2 tests) 1ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  13:42:27
+   Duration  130ms (transform 11ms, setup 0ms, collect 6ms, tests 1ms, environment 0ms, prepare 25ms)
+

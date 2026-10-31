@@ -32,11 +32,12 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any
 
-from squadops.stacks.app_invocation import JS_MODULE_LOAD, AppInvocation
+from squadops.stacks.app_invocation import JS_MODULE_LOAD, NETWORK_SEAM_FETCH_STUB, AppInvocation
 from squadops.stacks.baseline_stylesheet import BASELINE_CSS
+from squadops.stacks.client_surface import KIND_FUNCTION, ClientExport, ClientSurface
 from squadops.stacks.rendered_packaging import render_packaging
 from squadops.stacks.route_paths import path_segments
 from squadops.stacks.success_status import success_status_for
@@ -47,19 +48,40 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold impo
 STACK_NAME = "nextjs_ts"
 
 #: #1126: how a suite on this stack invokes the application. Under the in-process model
-#: (#877) a suite reaches the app by loading its ``app/api/`` route handler — an import
+#: (#877) an API suite reaches the app by loading its ``app/api/`` route handler — an import
 #: statement, a ``require``, or a dynamic ``import(`` (``JS_MODULE_LOAD``, #1533), never a
-#: ``vi.mock('@/app/api/...')`` string — so
-#: there is no ``fetch`` for a correct suite to stub, and mocking the route module under
-#: test is unconditionally self-mocking. These three patterns used to live in the shared
+#: ``vi.mock('@/app/api/...')`` string — and calls it directly. A page suite (#2534) reaches it
+#: by rendering a real ``app/**/page`` module or a ``components/`` component, as stack #1's
+#: suites render ``App`` or a view: the network is a seam UNDER the page, so a ``fetch`` stub
+#: or a mock of the frozen ``@/lib/api`` client is legitimate beneath a rendered page and
+#: self-mocking when nothing is rendered. A page criterion about structure fetches nothing,
+#: so requiring a handler import refused a correct page test (#2547). Mocking a route module
+#: or a page module itself is mocking the subject. These patterns used to live in the shared
 #: detector as if they were every stack's; they are this stack's.
 APP_INVOCATION = AppInvocation(
-    invocation_import=JS_MODULE_LOAD + r"""['"`][^'"`]*app/api/""",
-    subject_mock=r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*app/api/""",
+    invocation_import=(
+        JS_MODULE_LOAD
+        + r"""['"`][^'"`]*(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|components/"""
+        # #2577: the frozen route caller loads and calls the route module itself, and #2602's
+        # frozen page loader loads the page module.
+        + r"""|vitest\.(?:routes|pages)(?:\.ts)?['"`])"""
+    ),
+    subject_mock=(
+        r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*"""
+        r"""(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|vitest\.(?:routes|pages)(?:\.ts)?['"`])"""
+    ),
+    network_seam_mock=(
+        NETWORK_SEAM_FETCH_STUB
+        + r"""    | (?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*lib/api(?:\.tsx?)?['"`]"""
+    ),
     invocation_description=(
         "an import of an `app/api/**/route` handler module, called directly with a "
-        "`new Request(...)` — the in-process model; `@/lib/api` is the browser client and "
-        "reaches no server under vitest"
+        "`new Request(...)` — the in-process model — or a route called through the frozen "
+        "`callRoute` from `@/vitest.routes`, or, for a page, rendering the real "
+        "`app/**/page` (or one loaded through the frozen `loadPage` from `@/vitest.pages`, or a "
+        "`components/` component) with `fetch` or the frozen `@/lib/api` "
+        "client stubbed beneath it; `@/lib/api` alone is the browser client and reaches no "
+        "server under vitest"
     ),
 )
 
@@ -219,9 +241,14 @@ def _package_json(manifest: Any) -> str:
                     "test": "vitest run",
                 },
                 "dependencies": {"next": "14.2.5", "react": "18.3.1", "react-dom": "18.3.1"},
+                # #2534: a page suite renders in a DOM with Testing Library, as stack #1's do.
                 "devDependencies": {
+                    "@testing-library/dom": "10.4.0",
+                    "@testing-library/jest-dom": "6.5.0",
+                    "@testing-library/react": "16.0.1",
                     "@types/node": "20.14.10",
                     "@types/react": "18.3.3",
+                    "jsdom": "25.0.1",
                     "typescript": "5.5.3",
                     "vitest": "1.6.0",
                 },
@@ -268,7 +295,10 @@ export default nextConfig
 #: ``.tsx`` and ``.spec`` forms and the plan-authoring rules said vitest discovers ``.tsx``.
 #: Six stored plans named a qa suite the runner never collects; on 1.8.0 deploy A's Next.js
 #: checkpoint (``cyc_79f70a0bbac1``) the qa author spent a self-eval pass writing one.
-VITEST_SUITE_GLOB = "**/__tests__/**/*.test.ts"
+#: ``.test.tsx`` is collected too (#2531): a suite that renders a page writes JSX, which a ``.ts``
+#: file can't hold, so a planner testing a page named ``.tsx`` and plan review refused the plan,
+#: in two of the 2.4 shakeout's three framings that planned one. ``esbuild.jsx`` below compiles it.
+VITEST_SUITE_GLOBS = ("**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx")
 
 #: ``esbuild.jsx`` (#2394): without it vite compiled each page's JSX as ``React.createElement``,
 #: and a Next.js page does not import React, so a suite that rendered one failed "React is not
@@ -293,10 +323,250 @@ const root = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
   resolve: { alias: { '@': root } },
-  test: { environment: 'node', include: ['"""
-    + VITEST_SUITE_GLOB
-    + """'] },
+  test: {
+    environment: 'node',
+    // A page suite renders a page, so it runs in a DOM (#2534); an API suite stays in node,
+    // the environment the route handlers run in.
+    environmentMatchGlobs: [['**/__tests__/**/*.test.tsx', 'jsdom']],
+    setupFiles: ['vitest.setup.ts'],
+    include: ['"""
+    + "', '".join(VITEST_SUITE_GLOBS)
+    + """'],
+  },
 })
+"""
+)
+
+#: Scaffold-owned setup (frozen, #2534), stack #1's ``test-setup.js`` for this stack: jest-dom's
+#: matchers on vitest's ``expect``, and Testing Library's cleanup after each test that rendered,
+#: since under ``globals: false`` it registers none itself (#1127). It runs for API suites too,
+#: in node, where there is no document and nothing to clean up.
+_VITEST_SETUP = """// Scaffold-owned (frozen): jest-dom's matchers, and Testing Library's cleanup after each
+// test, so one test's render never leaks into the next (a suite that renders in more than one
+// `it` would otherwise fail "Found multiple elements").
+import '@testing-library/jest-dom/vitest'
+import { afterEach } from 'vitest'
+
+afterEach(async () => {
+  if (typeof document === 'undefined') return
+  const { cleanup } = await import('@testing-library/react')
+  cleanup()
+})
+"""
+
+#: Scaffold-owned harness proof (frozen, #2534): a ``.test.tsx`` suite renders in a DOM and
+#: Testing Library finds a test id in it. It imports no page, so it passes on the bare skeleton
+#: and after any fill, and an install that lost the DOM fails here, by name.
+_HARNESS_DOM_TEST = """// Scaffold-owned harness proof (frozen): a page suite (`.test.tsx`) runs in a DOM, with
+// Testing Library and jest-dom's matchers. Write page suites in NEW files beside this one,
+// rendering the page as below and mocking what it fetches.
+import { describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
+
+describe('page test harness', () => {
+  it('renders into a DOM where a test id is found', async () => {
+    render(<main data-testid="harness-root">ready</main>)
+    expect(await screen.findByTestId('harness-root')).toHaveTextContent('ready')
+  })
+})
+"""
+
+#: Where the scaffold's route caller lives, and how a criterion test imports it. A test-config
+#: file beside ``vitest.setup.ts`` (``ScaffoldStack.test_config_files``), outside the qa
+#: namespace, which holds suites only: so every criterion's verifier bundle carries it, and the
+#: bundle is what runs on the accepted tree, which may predate this file (SIP-0109 §7.4).
+ROUTE_CALLER_PATH = "vitest.routes.ts"
+ROUTE_CALLER_IMPORT = "@/vitest.routes"
+
+#: The App Router's resolution, written once and emitted into both the route caller and the page
+#: loader (#2602), so the two never route one path differently. Each emitted file carries its own
+#: copy: a criterion's bundle carries the test-config files, and a stored bundle's caller is the
+#: one it was frozen with, so neither file may import the other.
+_NODE_IMPORTS = """import { existsSync, readdirSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+"""
+
+_APP_DIR = """// As vitest.config.ts finds the root: a literal `new URL(..., import.meta.url)` is rewritten to an
+// http URL in a DOM suite, and `fileURLToPath` refuses it.
+const APP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'app')
+"""
+
+_SEGMENT_MATCH = """function match(segments: string[], parts: string[]): Record<string, string> | null {
+  if (segments.length !== parts.length) return null
+  const params: Record<string, string> = {}
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]
+    if (segment.startsWith('[') && segment.endsWith(']')) params[segment.slice(1, -1)] = parts[i]
+    else if (segment !== parts[i]) return null
+  }
+  return params
+}
+
+function specificity(segments: string[]): string {
+  return segments.map((s) => (s.startsWith('[') ? '1' : '0')).join('')
+}
+"""
+
+
+def _app_tree_walk(function: str, is_entry: str) -> str:
+    """The walk of ``app/`` that lists each file ``is_entry`` accepts with its URL segments: a
+    ``_private`` folder is skipped and a ``(group)`` folder adds no segment, as the App Router
+    routes them."""
+    return f"""function {function}(dir: string, segments: string[] = []): {{ file: string; segments: string[] }}[] {{
+  if (!existsSync(dir)) return []
+  const found: {{ file: string; segments: string[] }}[] = []
+  for (const entry of readdirSync(dir, {{ withFileTypes: true }})) {{
+    if (entry.isDirectory()) {{
+      if (entry.name.startsWith('_')) continue
+      const group = entry.name.startsWith('(') && entry.name.endsWith(')')
+      found.push(...{function}(path.join(dir, entry.name), group ? segments : [...segments, entry.name]))
+    }} else if ({is_entry}) {{
+      found.push({{ file: path.join(dir, entry.name), segments }})
+    }}
+  }}
+  return found
+}}
+"""
+
+
+#: Scaffold-owned route caller (frozen, #2577), the counterpart of stack #1's ``client`` fixture.
+#: A criterion's test runs on the accepted application, where it must fail, and on the change,
+#: where it must pass (SIP-0109 §8.2). This stack's tests import a route's module, and a route the
+#: change adds has no module on the accepted tree, so the file failed at collection: a setup
+#: failure, never counted as the criterion failing, and the 2.4 window's campaign 2 seed increment
+#: was rejected however correct its build. Through ``callRoute`` the route is found when the call
+#: is made, as the App Router finds it, and a path no route serves answers 404.
+_ROUTE_CALLER = (
+    """// Scaffold-owned (frozen): call a route handler by method and path, as a client calls the
+// running application. The route is found when the call is made, the way the App Router finds
+// it: a static folder wins over a [param] folder, segment by segment; a (group) folder adds no
+// segment and a _private folder routes nothing. A path no route serves answers 404, a method its
+// route does not export 405, HEAD is served by GET, OPTIONS answers 204 with Allow, and a path
+// with a trailing slash is redirected (308), as `next start` does.
+//
+// A criterion's test calls its route here, never by importing the route module: on the
+// application before the change that module may not exist, and an import of it fails the file
+// before any assertion runs.
+"""
+    + _NODE_IMPORTS
+    + """
+type Handler = (
+  request: Request,
+  context: { params: Record<string, string> },
+) => Response | Promise<Response>
+
+const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+"""
+    + _APP_DIR
+    + "\n"
+    + _app_tree_walk("routes", "entry.name === 'route.ts'")
+    + "\n"
+    + _SEGMENT_MATCH
+    + """
+export async function callRoute(method: string, url: string, init: RequestInit = {}): Promise<Response> {
+  const target = new URL(url, 'http://localhost')
+  if (target.pathname.length > 1 && target.pathname.endsWith('/')) {
+    const location = target.pathname.replace(/\\/+$/, '') + target.search
+    return new Response(null, { status: 308, headers: { location } })
+  }
+  let parts: string[]
+  try {
+    parts = target.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  } catch {
+    return new Response(null, { status: 400 })
+  }
+  const candidates = routes(APP)
+    .map((r) => ({ ...r, params: match(r.segments, parts) }))
+    .filter((c): c is { file: string; segments: string[]; params: Record<string, string> } => c.params !== null)
+    .sort((a, b) => specificity(a.segments).localeCompare(specificity(b.segments)))
+  const chosen = candidates[0]
+  if (chosen === undefined) return new Response(null, { status: 404 })
+  const handlers = (await import(/* @vite-ignore */ chosen.file)) as Record<string, Handler | undefined>
+  const verb = method.toUpperCase()
+  const exported = METHODS.filter((m) => typeof handlers[m] === 'function')
+  const handler = handlers[verb] ?? (verb === 'HEAD' ? handlers.GET : undefined)
+  if (handler === undefined) {
+    if (verb === 'OPTIONS') return new Response(null, { status: 204, headers: { allow: exported.join(', ') } })
+    return new Response(null, { status: 405, headers: { allow: exported.join(', ') } })
+  }
+  const response = await handler(new Request(target, { ...init, method: verb }), { params: chosen.params })
+  return verb === 'HEAD' && handlers.HEAD === undefined
+    ? new Response(null, { status: response.status, headers: response.headers })
+    : response
+}
+"""
+)
+
+#: Where the scaffold's page loader lives, and how a criterion test imports it (#2602): the page
+#: counterpart of the route caller, a test-config file beside it for the same reason.
+PAGE_LOADER_PATH = "vitest.pages.ts"
+PAGE_LOADER_IMPORT = "@/vitest.pages"
+
+#: Scaffold-owned page loader (frozen, #2602), the page half of ``_ROUTE_CALLER``. A page
+#: criterion's test (``client_route``) renders its page. A page the change adds has no
+#: ``app/**/page`` module on the accepted tree, so a test that imports it failed at collection,
+#: a setup failure §8.2 never counts, and the increment was refused however correct its build.
+#: Through ``loadPage`` the page is found when the test runs, by the route caller's own
+#: resolution, and a path no page serves renders a not-found page: the test fails at its anchor's
+#: assertion, as §8.2 counts "a missing view rendering without its declared test ids". No JSX, so
+#: the file is ``.ts`` like the caller and needs no compile setting of its own.
+_PAGE_LOADER = (
+    """// Scaffold-owned (frozen): load the page the App Router serves for a path, to render it in a
+// page suite (`.test.tsx`). The page is found when the test runs, as vitest.routes.ts finds a
+// route: a static folder wins over a [param] folder, segment by segment; a (group) folder adds no
+// segment and a _private folder routes nothing. The page is rendered with its `params` and
+// `searchParams` props, as the App Router passes them. A path no page serves renders a not-found
+// page instead, as `next start` answers it.
+//
+// A criterion's test loads its page here, never by importing the page module: on the application
+// before the change that module may not exist, and an import of it fails the file before any
+// assertion runs.
+"""
+    + _NODE_IMPORTS
+    + """import { createElement, type ComponentType } from 'react'
+
+type PageProps = { params: Record<string, string>; searchParams: Record<string, string> }
+
+const PAGE_FILES = ['page.tsx', 'page.ts', 'page.jsx', 'page.js']
+"""
+    + _APP_DIR
+    + "\n"
+    + _app_tree_walk("pages", "PAGE_FILES.includes(entry.name)")
+    + "\n"
+    + _SEGMENT_MATCH
+    + """
+function NotFound() {
+  return createElement(
+    'main',
+    null,
+    createElement('h1', null, '404'),
+    createElement('p', null, 'This page could not be found.'),
+  )
+}
+
+export async function loadPage(url: string): Promise<ComponentType> {
+  const target = new URL(url, 'http://localhost')
+  let parts: string[]
+  try {
+    parts = target.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  } catch {
+    return NotFound
+  }
+  const candidates = pages(APP)
+    .map((p) => ({ ...p, params: match(p.segments, parts) }))
+    .filter((c): c is { file: string; segments: string[]; params: Record<string, string> } => c.params !== null)
+    .sort((a, b) => specificity(a.segments).localeCompare(specificity(b.segments)))
+  const chosen = candidates[0]
+  if (chosen === undefined) return NotFound
+  const loaded = (await import(/* @vite-ignore */ chosen.file)) as { default?: ComponentType<PageProps> }
+  const Page = loaded.default
+  if (Page === undefined) throw new Error(`${chosen.file} has no default-exported page component`)
+  const props: PageProps = { params: chosen.params, searchParams: Object.fromEntries(target.searchParams) }
+  return function LoadedPage() {
+    return createElement(Page, props)
+  }
+}
 """
 )
 
@@ -587,11 +857,21 @@ export function errorResponse(err: unknown): Response {{
 # --------------------------------------------------------------------------- #
 
 
-def _route_stub(path: str, endpoints: list[Any]) -> str:
+def _route_stub(
+    path: str, endpoints: list[Any], shapes: Mapping[str, Any], entities: Mapping[str, Any]
+) -> str:
     """A route file exporting one handler per declared method.
 
     Stubs throw rather than return: the bare skeleton must fail its probes, or the
     behavioral gate would measure the scaffold instead of the fill (SIP-0098 §7).
+
+    Each handler states its contract where it is written: the request shape's fields, the
+    response entity's fields and the declared errors. A route file is one endpoint's, not every
+    endpoint's as FastAPI's ``routes.py`` is, so without them a change to an endpoint's request,
+    response or errors left its file's skeleton unchanged. An increment's footprint is the files whose skeleton the delta
+    changes (``change_request.derive_footprint``), so the route a capacity increment must
+    implement fell outside it, and every edit to it was dropped as another producer's slot
+    (Next.js shakeout round 2, cyc_0df8d7215ef2).
     """
     head = [
         "// FILL SLOT. Implement each exported handler against the declared contract.",
@@ -611,6 +891,7 @@ def _route_stub(path: str, endpoints: list[Any]) -> str:
             f"export async function {ep.method.upper()}(request: Request) {{",
             "  try {",
             f"    // TODO: implement {ep.method} {ep.path} — respond {status}",
+            *_contract_lines(ep, shapes, entities=entities),
             *order,
             f"    throw new ApiError('not_implemented', '{ep.method} {ep.path}')",
             "  } catch (err) {",
@@ -620,6 +901,41 @@ def _route_stub(path: str, endpoints: list[Any]) -> str:
             "",
         ]
     return "\n".join(head + body)
+
+
+def _contract_lines(
+    ep: Any, shapes: Mapping[str, Any], *, entities: Mapping[str, Any]
+) -> list[str]:
+    """The endpoint's request fields, response fields and declared errors, as comment lines in
+    its handler.
+
+    The response line is #2522's request line for what the handler returns: a field added to the
+    entity changes every route that returns it, so those routes join the increment's footprint. A
+    handler that lists the fields it returns could otherwise never add one (Next.js shakeout
+    round 5, ``cyc_311e2117c21d``: the detail route returned a run without ``capacity``)."""
+    lines = []
+    shape = shapes.get(ep.request) if ep.request else None
+    if shape is not None:
+        optional = f"; optional {', '.join(shape.optional)}" if shape.optional else ""
+        lines.append(
+            f"    // request {shape.name}: {', '.join(shape.required) or 'no required field'}{optional}"
+        )
+    response = str(ep.response or "")
+    listed = response.startswith("list[") and response.endswith("]")
+    entity = entities.get(response[5:-1] if listed else response)
+    if entity is not None:
+        always = [f.name for f in entity.fields if f.required]
+        sometimes = [f.name for f in entity.fields if not f.required]
+        rest = f"; optional {', '.join(sometimes)}" if sometimes else ""
+        lines.append(
+            f"    // response {response}: {', '.join(always) or 'no required field'}{rest}"
+        )
+    if ep.errors:
+        lines.append(f"    // errors: {', '.join(ep.errors)}")
+    if ep.query:
+        # #2378: the inputs it reads from ``new URL(request.url).searchParams``.
+        lines.append(f"    // query: {', '.join(q.placeholder() for q in ep.query)}")
+    return lines
 
 
 def _page_stub(route: Any) -> str:
@@ -655,6 +971,7 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "tsconfig.json", "content": _TSCONFIG},
         {"name": "next.config.mjs", "content": _NEXT_CONFIG},
         {"name": "vitest.config.ts", "content": _VITEST_CONFIG},
+        {"name": "vitest.setup.ts", "content": _VITEST_SETUP},
         {"name": "lib/models.ts", "content": _models_source(manifest)},
         {"name": "lib/store.ts", "content": _store_source(manifest)},
         {"name": "lib/errors.ts", "content": _errors_source(manifest)},
@@ -662,14 +979,50 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "app/layout.tsx", "content": _LAYOUT},
         {"name": "app/globals.css", "content": BASELINE_CSS},
         {"name": "__tests__/harness.test.ts", "content": _harness_test_source(manifest)},
+        {"name": "__tests__/harness-dom.test.tsx", "content": _HARNESS_DOM_TEST},
+        {"name": ROUTE_CALLER_PATH, "content": _ROUTE_CALLER},
+        {"name": PAGE_LOADER_PATH, "content": _PAGE_LOADER},
         # #598: rendered from the environment contract and frozen, not builder-authored.
         *render_packaging("nextjs_ts"),
     ]
+    shapes = {s.name: s for s in getattr(manifest.api, "request_shapes", ()) or ()}
+    entities = {e.name: e for e in getattr(manifest, "entities", ()) or ()}
     for path, endpoints in _route_groups(manifest).items():
-        files.append({"name": path, "content": _route_stub(path, endpoints)})
+        files.append({"name": path, "content": _route_stub(path, endpoints, shapes, entities)})
     for route in getattr(manifest.frontend, "routes", ()) or ():
         files.append({"name": _page_path(route), "content": _page_stub(route)})
     return files
+
+
+#: The frozen ``lib/api.ts`` client's call surface (#668), as the registry carries it and the
+#: ``client_mock_surface`` check judges by. Declared here rather than read off the template, which is
+#: TypeScript (``api<T>(path: string, init?: RequestInit)``); a test holds the two together. Its page
+#: suites mock or stub beneath it since they render pages in a DOM (#2534): the 2.4 Next.js shakeout's
+#: round 6 mocked it with React's prefix-less paths (``/runs``), which this client never receives, so
+#: every page call missed the mock and no page rendered its data.
+CLIENT_SURFACE = ClientSurface(
+    path="lib/api.ts",
+    # Suites import it by the stack's alias, or relatively from __tests__/ and its subdirectories.
+    module_specifier=r"(?:@/|(?:\.\./)+)lib/api(?:\.ts)?",
+    exports=(ClientExport("api", KIND_FUNCTION, ("path", "init")),),
+    path_prefix="",
+    error_envelope_key="error",
+    default_export=None,
+)
+
+
+def client_surface_lines_nextjs_ts(manifest: InterfaceManifest) -> list[str]:
+    """The frozen client's call surface as the page suite's author reads it (#668), one line per
+    export, from ``CLIENT_SURFACE``; the prose around them is the appendix asset's."""
+    del manifest
+    return [
+        f"`{export.name}(path, init?)` exported from `{CLIENT_SURFACE.path}` (import it as "
+        "`@/lib/api`) — fetches the path it is given verbatim, with no prefix, so a page calls it "
+        "with the endpoint's full declared path (`/api/runs`, `/api/runs/{run_id}/join`); sends "
+        "JSON headers, returns the parsed JSON body, and on a non-2xx response throws an `Error` "
+        f"whose message is the `{CLIENT_SURFACE.error_envelope_key}.code` of the body's envelope"
+        for export in CLIENT_SURFACE.call_exports
+    ]
 
 
 def endpoint_owners_nextjs_ts(manifest: InterfaceManifest) -> dict[str, list[str]]:

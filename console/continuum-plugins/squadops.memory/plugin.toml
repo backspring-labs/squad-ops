@@ -1,0 +1,26 @@
+[plugin]
+id = "squadops.memory"
+name = "Memory"
+version = "0.1.0"
+description = "A project's memory records, one page per record: source, revisions, references, what used it and, apart from that, its effect (SIP-0110 Appendix A §3.11)."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-memory"
+bundle = "plugin.js"
+
+[[contributions.nav]]
+slot = "ui.slot.left_nav"
+label = "Memory"
+icon = "bookmark"
+priority = 550
+
+[contributions.nav.target]
+type = "panel"
+panel_id = "memory"
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "memory"
+component = "squadops-memory-perspective"
+priority = 800

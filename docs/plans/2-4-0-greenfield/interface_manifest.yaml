@@ -1,0 +1,84 @@
+# Shelfnote interface manifest, authored from prd.md (v0.1) alone. Each entry cites the PRD
+# section it derives from; `decisions:` pins what the PRD leaves to implementation.
+
+version: 1
+kind: interface_manifest
+project_id: prj-shelfnote
+source_prd: prd.md  # v0.1
+stack: fullstack_fastapi_react
+scope: core
+
+# ---------------------------------------------------------------- PRD §3
+entities:
+  - name: Note
+    fields:
+      - { name: id,     type: string, required: true, generated: true }
+      - { name: author, type: string, required: true }
+      - { name: text,   type: string, required: true }
+  - name: Book
+    fields:
+      - { name: id,       type: string, required: true, generated: true }
+      - { name: title,    type: string, required: true }
+      - { name: author,   type: string, required: true }
+      - { name: added_by, type: string, required: true }
+      - { name: notes,    type: "list[Note]", required: true, default: [] }
+
+# ---------------------------------------------------------------- PRD §3, §4
+api:
+  base_path: ""
+  request_shapes:
+    BookCreate:  # §3.2
+      required: [title, author, added_by]
+      optional: []
+    NoteCreate:  # §3.3
+      required: [author, text]
+      optional: []
+  endpoints:
+    - { method: GET,  path: /books, summary: list books, response: "list[Book]" }      # §3.1
+    - { method: POST, path: /books, summary: add a book,
+        request: BookCreate, response: Book, success_status: 201,
+        errors: [validation_error] }                                                   # §3.2
+    - { method: GET,  path: "/books/{book_id}", summary: a book and its notes,
+        response: Book, errors: [book_not_found] }                                     # §3.3
+    - { method: POST, path: "/books/{book_id}/notes", summary: leave a note,
+        request: NoteCreate, response: Book,
+        errors: [book_not_found, validation_error] }                                   # §3.3
+  error_contract:  # §4
+    shape: '{"error": {"code": string, "message": string}}'
+    codes:
+      validation_error: { http: 422 }
+      book_not_found:   { http: 404 }
+
+# ---------------------------------------------------------------- PRD §3
+frontend:
+  framework: react_vite
+  language: javascript
+  api_client: fetch
+  routes:
+    - path: "/"
+      view: BooksListView
+      purpose: "the shared list, newest first, with note counts; empty state with a link to add"  # §3.1
+      testids: [books-list, book-item, book-note-count, empty-state, add-book-link]
+    - path: "/add"
+      view: AddBookView
+      purpose: "add a book: title, author, who is adding it; refusal shown"  # §3.2
+      testids: [add-book-view, add-book-form, field-title, field-author, field-added-by,
+                submit-add, form-error]
+    - path: "/books/:id"
+      view: BookDetailView
+      purpose: "the book, its notes oldest first, the note form, not-found state"  # §3.3
+      testids: [book-detail, note-list, note-item, note-form, note-author-input,
+                note-text-input, note-submit, action-error, not-found]
+
+persistence: in_memory  # §5
+
+decisions:
+  - id: list-order
+    choice: newest book first; a book's notes oldest first
+    warrant: "§3.1 'newest first'; §3.3 'oldest first'"
+  - id: note-length
+    choice: a note over 500 characters is refused as validation_error
+    warrant: "§3.3 'at most 500 characters'"
+  - id: mutation-response-shape
+    choice: adding a note returns the whole updated Book
+    warrant: "§3.3 shows the book with its notes; returning it avoids a second fetch"

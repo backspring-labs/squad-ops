@@ -161,7 +161,7 @@ async def evaluate_increment(
             candidate_verifier_overlay(candidate, bundle, surface), surface, run
         )
     frozen_results = accumulated_acceptance(increment_id, candidate.identity, held_by, runs)
-    frozen_results = _changed_verifiers_blocked(frozen_results, frozen, candidate)
+    frozen_results = changed_verifiers_blocked(frozen_results, frozen, candidate)
     routes = route_rendering(declared_routes, rendered, unseeded=unseeded)
     return IncrementEvaluation(
         acceptance=increment_acceptance(tuple(discriminations), frozen_results, routes),
@@ -172,7 +172,7 @@ async def evaluate_increment(
     )
 
 
-def _changed_verifiers_blocked(
+def changed_verifiers_blocked(
     results: tuple[FrozenResult, ...], frozen: list[FrozenCriterion], candidate: FileTree
 ) -> tuple[FrozenResult, ...]:
     """§8.1, §19 item 7: a frozen criterion's test file changed in the candidate, without a
@@ -244,6 +244,9 @@ def evaluation_document(
                 "held": str(r.held),
                 "missing": list(r.missing),
                 "not_shown": list(r.not_shown),
+                # SIP-0109 §24co: only a route whose reader said why it wasn't read carries it,
+                # so a sample application's document is as it was.
+                **({"detail": r.detail} if r.detail else {}),
             }
             for r in evaluation.routes
         ],

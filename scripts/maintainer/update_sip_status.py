@@ -10,7 +10,7 @@ import os
 import re
 import shutil
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,16 @@ STATUS_TO_FOLDER = {
     "implemented": IMPLEMENTED_DIR,
     "deprecated": DEPRECATED_DIR,
 }
+
+
+def utc_stamp() -> str:
+    """The time now in UTC, as ISO 8601 with a ``Z`` suffix: ``2026-10-23T22:44:13.174273Z``.
+
+    ``datetime.now()`` is the machine's local time, so labelling it ``Z`` wrote every stamp off
+    by the box's UTC offset (#2710: four hours early on an EDT box). The naive form keeps the
+    stamps' existing shape, with no ``+00:00`` before the ``Z``.
+    """
+    return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
 
 
 def check_maintainer_flag() -> bool:
@@ -105,7 +115,7 @@ def update_sip_file_metadata(file_path: Path, updates: dict[str, Any]) -> bool:
             yaml_content = match.group(1)
             metadata = yaml.safe_load(yaml_content)
             metadata.update(updates)
-            metadata["updated_at"] = datetime.now().isoformat() + "Z"
+            metadata["updated_at"] = utc_stamp()
 
             # Convert back to YAML
             yaml_str = yaml.dump(
@@ -443,7 +453,7 @@ def deprecate_proposal(sip_file: Path, metadata: dict[str, Any], registry: dict[
         return False
     shutil.copy2(str(sip_file), str(new_path))
     sip_file.unlink()
-    now = datetime.now().isoformat() + "Z"
+    now = utc_stamp()
     rel = str(new_path.relative_to(REPO_ROOT))
     if row is None:
         registry.setdefault("sips", []).append(
@@ -705,7 +715,7 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         title = metadata.get("title", "Untitled")
         sip_uid = metadata.get("sip_uid")
         author = metadata.get("author", "Unknown")
-        created_at = metadata.get("created_at", datetime.now().isoformat() + "Z")
+        created_at = metadata.get("created_at", utc_stamp())
 
         # Check for and clean up duplicate files
         print("\n🔍 Checking for duplicate SIP files...")
@@ -830,7 +840,7 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
             "author": author,
             "approver": os.environ.get("USER", "maintainer"),
             "created_at": created_at,
-            "updated_at": datetime.now().isoformat() + "Z",
+            "updated_at": utc_stamp(),
         }
 
         if upsert_registry_entry(registry, registry_entry):
@@ -964,7 +974,7 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         # Update registry
         registry_entry["status"] = new_status
         registry_entry["path"] = str(new_path.relative_to(REPO_ROOT))
-        registry_entry["updated_at"] = datetime.now().isoformat() + "Z"
+        registry_entry["updated_at"] = utc_stamp()
 
         print(f"\n✅ SIP-{sip_number:04d} status updated: {current_status} → {new_status}")
         print(f"   Path: {new_path.relative_to(REPO_ROOT)}")

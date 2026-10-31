@@ -203,6 +203,11 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         entry_id = lifecycle.new_entry_id()
         seq = len(self._log[campaign_id]) + 1
         refusal = verdict.refusal
+        superseded = (
+            self._intents.get(transition.supersedes) if transition.supersedes is not None else None
+        )
+        if refusal is None:
+            refusal = lifecycle.supersession_refusal(campaign, transition, superseded)
         lease = None
         if refusal is None and transition.operation.changes_the_lease:
             held_by = str(transition.binding["held_by"])
@@ -246,6 +251,8 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         self._log[campaign_id].append(entry)
         if intent is not None:
             self._intents[intent.launch_id] = copy.deepcopy(intent)
+        if superseded is not None:
+            self._intents[superseded.launch_id] = lifecycle.superseded_intent(superseded)
         if lease is not None:
             self._lease = lease
         return TransitionResult(

@@ -62,7 +62,6 @@ def _executor(sent: list[dict]) -> HandlerExecutor:
     prompt_service.assemble.return_value = assembled
     ports = PortsBundle(
         llm=llm,
-        memory=MagicMock(),
         prompt_service=prompt_service,
         queue=MagicMock(),
         metrics=MagicMock(),

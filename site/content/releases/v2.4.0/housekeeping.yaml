@@ -1,0 +1,13 @@
+tag: v2.4.0
+applied_at: '2026-10-24T00:43:30+00:00'
+worktrees_removed:
+- /tmp/claude-1000/-home-jladd-Code-squad-ops/d6ea102c-ec30-4d33-8d81-31830b1e1569/scratchpad/wt-1966
+- /tmp/claude-1000/-home-jladd-Code-squad-ops/d6ea102c-ec30-4d33-8d81-31830b1e1569/scratchpad/wt-cut
+- /tmp/claude-1000/-home-jladd-Code-squad-ops/d6ea102c-ec30-4d33-8d81-31830b1e1569/scratchpad/wt-reg
+- /tmp/claude-1000/-home-jladd-Code-squad-ops/d6ea102c-ec30-4d33-8d81-31830b1e1569/scratchpad/wt-rel
+branches_deleted:
+- docs/2-4-0-cut-preregistration
+- docs/2-4-window-close
+- feature/2-4-fastapi-shakeout
+problems: []
+scenario_evidence_purged: 71

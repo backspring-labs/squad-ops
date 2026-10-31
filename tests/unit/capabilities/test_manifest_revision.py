@@ -35,7 +35,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities.handlers.planning import DevelopmentAuthorManifestHandler
 from squadops.cycles.manifest_authoring import AUTHORING_INPUT_CONTRACT
 from squadops.cycles.task_plan import inject_contract_inputs  # noqa: F401  (import guard)
@@ -202,6 +202,7 @@ def _executor_with_checkpoints(checkpoints: list[Any]) -> Any:
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_registry = AsyncMock()
     executor._cycle_registry.list_checkpoints.return_value = checkpoints

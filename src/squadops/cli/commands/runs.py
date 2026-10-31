@@ -8,6 +8,7 @@ import dataclasses
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import typer
@@ -129,7 +130,47 @@ def show_run(
     if fmt == "json":
         print_json(data)
     else:
+        holds = data.pop("binding_holds", None) or []
+        halt = data.pop("halt", None)
         print_detail(data, quiet=quiet)
+        if halt:
+            # SIP-0110 §A.3.8 (T13): an emergency withdrawal halted it, and where it restarted.
+            restart = (
+                f"restarted as {halt.get('restart_run_id') or '(not yet)'} from "
+                f"{halt['restart_from_task_id']}"
+                if halt.get("restart_from_task_id")
+                else "nothing in it restarts: it built on work an earlier run did"
+            )
+            print_detail(
+                {
+                    "halted_by": f"{halt['requested_by']}'s emergency withdrawal of "
+                    f"{halt['record_id']}: {halt['why']}",
+                    "restart": restart,
+                },
+                quiet=quiet,
+            )
+        if holds:
+            # SIP-0110 §5ag (#2178): each time the run was held on a task's bindings, and why.
+            print_table(
+                ["Hold", "Task", "Unresolved", "Held at", "Released", "Cause"],
+                [_hold_row(h) for h in holds],
+                quiet=quiet,
+                title="Binding holds",
+            )
+
+
+def _hold_row(hold: dict) -> list[str]:
+    unresolved = "; ".join(
+        f"{u.get('ref')} ({u.get('kind')}): {u.get('reason')}" for u in hold.get("unresolved", [])
+    )
+    return [
+        hold.get("hold_id", ""),
+        hold.get("task_type", ""),
+        unresolved,
+        hold.get("held_at", ""),
+        hold.get("released_at") or "held",
+        hold.get("cause") or "",
+    ]
 
 
 @app.command("cat", hidden=True)
@@ -264,6 +305,13 @@ def gate_decision(
         "--classification-rationale",
         help="With --classification unclassified: why none of the classes fits.",
     ),
+    task_instructions: Path | None = typer.Option(
+        None,
+        "--task-instructions",
+        help="The increment gate's approval only (SIP-0110 Appendix A §3.5): a YAML list of "
+        "{text, task_types, carries_into?} for the ruled cycle's framing and build. Unlike "
+        "--notes, these reach the tasks they name.",
+    ),
 ):
     """Record a gate decision.
 
@@ -297,7 +345,7 @@ def gate_decision(
     else:
         decision = "returned_for_revision"
 
-    body = {"decision": decision}
+    body: dict[str, Any] = {"decision": decision}
     # #812: only sent when declared. Omitted → the API uses the token's own identity type,
     # which is the truthful default for a person and the known gap for an undeclared agent.
     if as_agent:
@@ -313,6 +361,8 @@ def gate_decision(
             gate_name, change_request, idempotency_key, classification, classification_rationale
         )
     )
+    if task_instructions is not None:
+        body["task_instructions"] = _instructions_file(task_instructions)
 
     try:
         client = _get_client(ctx)
@@ -329,6 +379,20 @@ def gate_decision(
         print_json(data)
     else:
         print_success(f"Gate {gate_name!r} {decision}")
+
+
+def _instructions_file(path: Path) -> list[dict]:
+    """A ruling's task instructions from YAML: a list of mappings, each with its text and task
+    types. Anything else is refused here, before the ruling is sent."""
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as e:
+        print_error(f"{path}: {e}")
+        raise typer.Exit(code=2) from e
+    if not isinstance(data, list) or not all(isinstance(i, dict) for i in data):
+        print_error(f"{path}: expected a list of {{text, task_types}} mappings")
+        raise typer.Exit(code=2)
+    return data
 
 
 def _increment_ruling_fields(

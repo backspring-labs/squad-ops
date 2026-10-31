@@ -23,12 +23,20 @@ from typing import Any
 
 from squadops.campaigns.escalation import ANSWERABLE, EscalationState, escalations
 from squadops.campaigns.models import CampaignState, ControlOperation, ControlOutcome
+from squadops.campaigns.safety_guarantees import GuaranteeStatus, all_intact, safety_guarantees
 from squadops.campaigns.scorecard import scorecard_lines
 
 #: Bumped when the package's shape changes; a reader checks it before reading further.
 #: 2: each cycle carries its runs' revision forms (#1710).
 #: 3: and its runs' lint readings, evidence only (#1937).
-PACKAGE_VERSION = 3
+#: 5: an increment's outcome section reads the goals its change request named (SIP-0113 §4.5).
+#: 6: its quality deltas carry §10y's failing ids, introduced and resolved, where both trees were
+#:    read by the evaluator's ``-7`` or later (``failing_moved``); its pages, the finer reading.
+#: 7: a repository-backed campaign's outcome section names its baseline, its calibration record's
+#:    reading (SIP-0113 §10l), and each increment's ``vs_baseline`` says when there is none.
+#: 8: an evaluation whose start failed carries why, its detail and the app's last lines
+#:    (``start_failure``, SIP-0113 §10ae, #2793).
+PACKAGE_VERSION = 8
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -71,8 +79,18 @@ class CycleRecords:
     lint_findings: tuple = ()
 
 
-def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]) -> dict:
-    """The package document, with its identity."""
+def package(
+    campaign: Any,
+    log: list,
+    launches: list,
+    cycles: list[CycleRecords],
+    *,
+    outcomes: dict | None,
+    interventions: dict | None,
+) -> dict:
+    """The package document, with its identity. ``outcomes`` is SIP-0113's section (version 4,
+    #2418): each cycle's scenario results by id, contribution and quality, or ``None`` for a
+    campaign with no suite pinned."""
     decisions = {
         e.target: e.binding
         for e in log
@@ -95,6 +113,8 @@ def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]
             }
             for c in cycles
         ],
+        "outcomes": outcomes,
+        "interventions": interventions,
     }
     return {**body, "identity": package_identity(body)}
 
@@ -131,6 +151,7 @@ def digest(doc: dict) -> str:
             if c["objective"].get("target_accepted_increments")
             else ""
         ),
+        _work_class_line(c["objective"]),
         f"**Package:** `{doc['identity'][:16]}` (version {doc['package_version']})",
         f"**Size:** {_kb(len(serialized(doc)))} of its {_kb(size_bound(c['policy']))} bound "
         f"({c['policy']['max_cycles']} cycles at most)",
@@ -153,6 +174,9 @@ def digest(doc: dict) -> str:
             f"| `{cyc['cycle_id']}` | {cyc['kind']} | {d.get('ending', '—')} | "
             f"{d.get('verdict') or '—'} | {decided} | {_primary(cyc['assessment'])} |"
         )
+    lines += ["", "## Outcomes", ""] + _outcome_lines(doc.get("outcomes"))
+    lines += ["", "## Safety guarantees", ""] + _guarantee_lines(doc)
+    lines += ["", "## Autonomy", ""] + _autonomy_lines(doc)
     lines += ["", "## Escalations", ""] + (
         _escalation_lines(c, rows) or ["- the plan-review tier escalated nothing"]
     )
@@ -224,30 +248,269 @@ def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
     return asks
 
 
+def _guarantee_lines(doc: dict) -> list[str]:
+    """The 2.0 set's seven, read from this package (SIP-0113 §4.6, ruled 2026-10-19; #2418)."""
+    readings = safety_guarantees(doc)
+    intact = all_intact(readings)
+    verdict = {True: "all seven held", False: "**violated**", None: "not all read"}[intact]
+    lines = [f"Every safety guarantee intact: {verdict}.", ""]
+    for r in readings:
+        mark = {
+            GuaranteeStatus.HELD: "held",
+            GuaranteeStatus.VIOLATED: "**violated**",
+            GuaranteeStatus.NOT_READ: "not read",
+        }[r.status]
+        lines.append(
+            f"- {mark}: {r.guarantee}" + (f" ({'; '.join(r.evidence)})" if r.evidence else "")
+        )
+    return lines
+
+
+def _autonomy_lines(doc: dict) -> list[str]:
+    """AOR's four inputs for this campaign (SIP-0113 §4.6, #2418), each with what it was read
+    from. The rate is a reading across campaigns of one work class, never one campaign's."""
+    # deferred (pair): squadops.outcomes imports squadops.campaigns at load
+    from squadops.outcomes.aor import aor_inputs
+
+    read = aor_inputs(doc)
+    counted = {True: "counts as reliable", False: "doesn't count", None: "not yet read"}[
+        read.reliable
+    ]
+    lines = [f"Toward its work class's AOR: {counted}.", ""]
+    marks = {True: "yes", False: "**no**", None: "not read"}
+    lines += [f"- {name}: {marks[value]} ({why})" for name, value, why in read.inputs]
+    return lines
+
+
+def _work_class_line(objective: dict) -> str:
+    """SIP-0113 §4.6 (#2418): the class AOR groups this campaign by, as declared."""
+    declared = objective.get("work_class")
+    if not declared:
+        return "**Work class:** none declared (created before SIP-0113 §4.6)"
+    target = objective.get("target_accepted_increments")
+    return f"**Work class:** {declared['prd_tier']}, {declared['attendance']}" + (
+        f", {target} increments" if target else ""
+    )
+
+
+def _named_goal_lines(cyc: dict) -> list[str]:
+    """SIP-0113 §4.5: what became of each goal the increment's request named, by id only."""
+    named = cyc.get("named_goals") or {}
+    if not named:
+        return []
+    return ["  - named goals: " + ", ".join(f"{goal} {move}" for goal, move in named.items())]
+
+
+def _outcome_lines(outcomes: dict | None) -> list[str]:
+    """SIP-0113's readings per cycle (#2418), reporting-only: each contribution, its scenarios
+    by result, its quality, and what moved against the tree it built on and the baseline. Never
+    a scenario's goal or steps: ids and results only."""
+    if not outcomes:
+        return ["- no held-out suite is pinned on this campaign"]
+    if "unreadable" in outcomes:
+        return [f"- the outcome records could not be read: {outcomes['unreadable']}"]
+    lines = [
+        f"Held-out suite `{outcomes['suite_digest'][:16]}`; reporting-only, no decision reads it.",
+        "",
+    ]
+    if (base := outcomes.get("baseline")) is not None:
+        lines += _baseline_lines(base)
+    for cyc in outcomes["cycles"]:
+        if not cyc.get("evaluation"):
+            lines.append(f"- `{cyc['cycle_id']}`: not evaluated")
+            lines += _named_goal_lines(cyc)
+            continue
+        read = cyc.get("contribution") or {}
+        reading = read.get("reading") or f"not read ({read.get('unread_because', 'no reading')})"
+        lines.append(f"- `{cyc['cycle_id']}`: **{reading}**; " + _results_line(cyc["scenarios"]))
+        for moved in ("newly_passing", "regressed", "unverified"):
+            if read.get(moved):
+                lines.append(f"  - {moved.replace('_', ' ')}: {', '.join(read[moved])}")
+        lines += _named_goal_lines(cyc)
+        if controls := cyc.get("page_controls"):
+            # SIP-0113 §10p ruling 4: a page scenario whose names matched no control.
+            lines.append(
+                f"  - page scenarios: {controls['control_absent']} of "
+                f"{controls['read_in_a_browser']} found no control by any of their names"
+            )
+        lines.append(
+            f"  - quality: {_measure_line(cyc.get('quality'))}; lint: {_lint_line(cyc.get('lint'))}"
+        )
+        lines += _start_lines(cyc)
+        for label, key in (
+            ("against the tree it built on", "vs_previous"),
+            ("against the baseline", "vs_baseline"),
+        ):
+            if cyc.get(key):
+                lines.append(f"  - {label}: {_moves_line(cyc[key])}")
+    return lines
+
+
+def _results_line(scenarios: list) -> str:
+    results: dict[str, int] = {}
+    for _id, result, reason in scenarios:
+        key = f"{result} ({reason})" if reason else result
+        results[key] = results.get(key, 0) + 1
+    return ", ".join(f"{n} {key}" for key, n in sorted(results.items()))
+
+
+def _baseline_lines(base: dict) -> list[str]:
+    """SIP-0113 §10l: a repository-backed campaign's baseline, its calibration record's reading,
+    or why there is none. Ids and results only."""
+    head = f"- calibration record `{base['calibration_record_id']}`"
+    if not base.get("evaluation"):
+        return [f"{head}: **{base.get('unread_because') or 'no baseline reading'}**"]
+    lines = [
+        f"{head}: baseline reading `{base['evaluation']}`; {_results_line(base['scenarios'])}",
+        f"  - quality: {_measure_line(base.get('quality'))}; lint: {_lint_line(base.get('lint'))}",
+        *_start_lines(base),
+    ]
+    if base.get("unread_because"):
+        lines.append(f"  - {base['unread_because']}")
+    return lines
+
+
+def _start_lines(section: dict) -> list[str]:
+    """SIP-0113 §10ae (#2793): why a reading's start failed, on one line. The app's last lines are
+    in the package beside it, under ``start_failure``."""
+    failure = section.get("start_failure")
+    if not failure:
+        return []
+    # deferred (pair): squadops.scenarios imports squadops.campaigns at load
+    from squadops.scenarios.evaluation import NO_START_DETAIL
+
+    cause = " ".join((failure.get("detail") or NO_START_DETAIL).split())
+    kept = len(failure.get("diagnostics") or ())
+    where = f" (the app's last {kept} lines are in the package)" if kept else ""
+    return [f"  - the start failed: {cause}{where}"]
+
+
+def _measured() -> str:
+    # deferred (pair): squadops.scenarios imports squadops.campaigns at load
+    from squadops.scenarios.quality import QualityStatus
+
+    return QualityStatus.MEASURED.value
+
+
+def _measure_line(quality: dict | None) -> str:
+    if not quality:
+        return "not recorded"
+    if quality["status"] != _measured():
+        return f"{quality['status']} ({quality.get('reason') or 'no reason'})"
+    scored = [p for p in quality["pages"] if not p.get("error")]
+    told = f"measured on {len(scored)} of {len(quality['pages'])} pages"
+    finer = [p for p in scored if p.get("axe_nodes") is not None]
+    if not finer:
+        return told
+    # SIP-0113 §10y, reporting-only: Lighthouse's raw best practices, read with the sandbox's
+    # plain HTTP, beside the app's own, without the environment's audits.
+    raw = [p["lighthouse"].get("best_practices") for p in finer]
+    app = [p.get("best_practices_app") for p in finer]
+    return (
+        f"{told}; best practices raw {_range(raw)}, the app's without the environment's audits "
+        f"{_range(app)}"
+    )
+
+
+def _range(values: list) -> str:
+    known = [v for v in values if v is not None]
+    if not known:
+        return "not read"
+    low, high = min(known), max(known)
+    told = f"{low:g}" if low == high else f"{low:g} to {high:g}"
+    return told + (f" ({len(values) - len(known)} not read)" if len(known) < len(values) else "")
+
+
+def _lint_line(lint: dict | None) -> str:
+    if not lint:
+        return "not recorded"
+    if lint["status"] != _measured():
+        return f"{lint['status']} ({lint.get('reason') or 'no reason'})"
+    reading = lint["reading"]
+    missing = (
+        f", {', '.join(reading['unavailable'])} unavailable" if reading.get("unavailable") else ""
+    )
+    return f"{reading['total']} findings{missing}"
+
+
+def _moves_line(deltas: dict) -> str:
+    if "unread_because" in deltas:
+        return f"not read ({deltas['unread_because']})"
+    moves = [
+        f"{measure}{f' on {page}' if page else ''} {delta:+g}"
+        for measure, page, _before, _after, delta in deltas["moved"]
+    ]
+    # SIP-0113 §10y: each failing-id list that moved, by the ids introduced (+) and resolved (-).
+    moves += [
+        f"{measure} on {page} "
+        + " ".join([*(f"+{i}" for i in introduced), *(f"-{i}" for i in resolved)])
+        for measure, page, introduced, resolved in deltas.get("failing_moved", ())
+    ]
+    gaps = [f"{what}: {why}" for what, why in deltas["not_compared"]]
+    told = "; ".join(moves) or f"nothing moved ({deltas['unmoved']} compared)"
+    return told + (f"; not compared: {'; '.join(gaps)}" if gaps else "")
+
+
 def _kb(size: int) -> str:
     return f"{size / 1024:.0f} KB"
 
 
 def _accepted(doc: dict) -> list[str]:
     """Each promotion, with what it shipped: the criteria it froze (the change request's own
-    statements), and any it retired."""
+    statements), and any it retired. A promotion that froze a criterion without its statement
+    (an accepted repair's, before #2595) says so: the record is what it is, and a package that
+    refuses it is never written."""
     kinds = {cyc["cycle_id"]: cyc["kind"] for cyc in doc["cycles"]}
     lines = []
     for r in doc["control_log"]:
-        if r["operation"] != ControlOperation.PROMOTE or r["outcome"] != ControlOutcome.APPLIED:
+        if r["outcome"] != ControlOutcome.APPLIED:
             continue
         b = r["binding"]
+        if r["operation"] == ControlOperation.BRANCH_REBASED:
+            lines.append(_rebased(b))
+            continue
+        if r["operation"] != ControlOperation.PROMOTE:
+            continue
+        if b.get("calibration_record_id"):
+            # §24cc: a repository-backed calibration is a record of the product's own commit.
+            lines.append(
+                f"- calibration record `{b['calibration_record_id']}`: commit "
+                f"`{b['commit'][:12]}`, revision {b['development_configuration_revision']}, "
+                f"tree `{b['identity'][:12]}`"
+            )
+            continue
+        # §24bv point 2: an increment on the campaign branch is its captured commit there.
+        shipped = (
+            f"commit `{b['commit'][:12]}` on the campaign branch"
+            if b.get("commit")
+            else f"{b.get('files', '?')} files"
+        )
         lines.append(
             f"- {kinds.get(b['cycle_id'], 'cycle')} `{b['cycle_id']}`: tree `{b['identity'][:12]}`, "
-            f"{b.get('files', '?')} files"
+            f"{shipped}"
         )
         lines += [
-            f"  - froze {f['criterion_id']}: {f['statement']}"
+            f"  - froze {f['criterion_id']}: {f.get('statement') or 'statement not recorded'}"
             for f in b.get("frozen_criteria") or ()
         ]
         if b.get("retired_criteria"):
             lines.append(f"  - retired {', '.join(b['retired_criteria'])}")
     return lines
+
+
+def _rebased(b: dict) -> str:
+    """§24bv point 4: the campaign branch rebased when upstream moved, with what it superseded
+    and the frozen criteria that held at it (§24cm)."""
+    line = (
+        f"- rebased onto `{b['base'][:12]}` (revision {b['development_configuration_revision']}): "
+        f"head `{b['head_before'][:12]}` → `{b['commit'][:12]}`, tree `{b['identity'][:12]}`; "
+        f"{b.get('verification_summary') or b.get('verification')}"
+    )
+    if b.get("superseded_launch_id"):
+        line += f"; superseded {b['superseded_launch_id']}, abandoned as upstream_moved"
+    if b.get("frozen_criteria_held"):
+        line += f"; frozen criteria held: {', '.join(b['frozen_criteria_held'])}"
+    return line
 
 
 def _proposals(rows: list[dict]) -> list[str]:

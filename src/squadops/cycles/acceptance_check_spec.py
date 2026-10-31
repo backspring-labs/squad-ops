@@ -25,7 +25,7 @@ PlanTask, etc.).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 # Allowed severity values. Anything else → ValueError at parse time.
@@ -346,6 +346,31 @@ _assert_safelist_is_runnable()
 def argv_matches_safelist(argv: list[str]) -> bool:
     """True when argv matches one of the safelisted command forms."""
     return any(pat.matcher(argv) for pat in COMMAND_SAFELIST)
+
+
+def check_subject_paths(check_name: str, params: Mapping[str, object]) -> frozenset[str]:
+    """The workspace paths an authored check reads, as written: the values of its spec's
+    ``path_params``, and a safelisted command's file. Every safelisted form is a fixed prefix
+    and one path (``_exact_then_one_path``), so that path is the argv's last element; an argv
+    the safelist refuses names nothing here, since it never runs. An unknown check names
+    nothing (the parser refuses it elsewhere).
+
+    #2795: the plan merge drops a task's checks on a file it gives to another task, which it
+    finds by this.
+    """
+    spec = CHECK_SPECS.get(check_name)
+    if spec is None:
+        return frozenset()
+    paths = {value for key in spec.path_params if isinstance(value := params.get(key), str)}
+    argv = params.get("argv")
+    if (
+        isinstance(argv, list)
+        and argv
+        and all(isinstance(a, str) for a in argv)
+        and argv_matches_safelist(argv)
+    ):
+        paths.add(argv[-1])
+    return frozenset(paths)
 
 
 # #423: skip reasons that mean "enforcement is deliberately off by config" —
@@ -998,8 +1023,13 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         name=CHECK_CONTRACT_ASSERTIONS,
         applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "endpoints"}),
-        optional_params=frozenset({"allowed_error_statuses"}),
-        param_types={"file": str, "endpoints": list, "allowed_error_statuses": list},
+        optional_params=frozenset({"allowed_error_statuses", "declared_routes"}),
+        param_types={
+            "file": str,
+            "endpoints": list,
+            "allowed_error_statuses": list,
+            "declared_routes": list,
+        },
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         framework_injected=True,
@@ -1007,6 +1037,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "file": "backend/tests/test_runs.py",
             "endpoints": ["POST /runs 201", "POST /runs 422"],
             "allowed_error_statuses": [404, 409, 422],
+            "declared_routes": ["POST /runs", "DELETE /runs/{run_id}/tags/{tag}"],
         },
         # #629 / pf-54: five authored suite versions asserted 200-on-create
         # against a contract-pinned 201 — an unwinnable correction loop no
@@ -1018,7 +1049,11 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "status codes in the suite are diffed against the contract's pinned "
             "endpoint statuses (`endpoints` tokens, `METHOD /path STATUS`); a "
             "pinned path requested through an undeclared prefix is also a "
-            "violation. Never authored."
+            "violation, and so (#2297) is a status assertion on a request that is a "
+            "declared route (`declared_routes` tokens, `METHOD /path`, from the "
+            "interface manifest) with a required path segment left empty, unless it "
+            "asserts the router's own answer (405 or 404, derived from the routes). "
+            "Never authored."
         ),
         failure_ownership=OWNERSHIP_SUITE,
         qa_available=True,

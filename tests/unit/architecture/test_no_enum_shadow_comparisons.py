@@ -50,6 +50,11 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # verification (#389).
     ("src/squadops/cycles/patch_verification.py", "failed"),
     ("src/squadops/cycles/patch_verification.py", "error"),
+    # SIP-0113's ScenarioResult (#2415) made "passed" an enum value. These two are not scenario
+    # results: the first counts CheckOutcome.status rows (a dataclass's vocabulary, as "failed"
+    # above), and the second tests for an acceptance row's "passed" KEY, not a status value.
+    ("src/squadops/execution/patch_acceptance.py", "passed"),
+    ("src/squadops/cycles/verification_normalize.py", "passed"),
     # Same CheckOutcome.status vocabulary again, evaluated at plan-authoring time to
     # prove a frozen-file check can pass before the run is dispatched (pf-42).
     ("src/squadops/cycles/frozen_check_validation.py", "failed"),
@@ -104,6 +109,14 @@ _ALLOWLIST: set[tuple[str, str]] = {
     ("src/squadops/cycles/container_packaging.py", "add"),
     # - a plan proposer's parse-error text ("malformed" names the YAML failure).
     ("src/squadops/capabilities/handlers/planning/propose.py", "malformed"),
+    # SIP-0109 §24bv point 5 made "command" and "package" criterion surfaces (SurfaceKind). These
+    # three use the words for something else:
+    # - a pulse check's ``command`` key in its raw dict;
+    ("src/squadops/cycles/pulse_models.py", "command"),
+    # - a runner error's text, read for "command not found";
+    ("src/squadops/cycles/verification_normalize.py", "command"),
+    # - a campaign evidence artifact's ``part`` metadata (the package, §14).
+    ("src/squadops/campaigns/progress.py", "package"),
 }
 
 # Enum values this short/common that they produce coincidental matches are not

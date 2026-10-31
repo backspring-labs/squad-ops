@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -172,6 +172,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_ro
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
 
 
@@ -622,6 +623,7 @@ class TestReserveBufferGuard:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
     async def test_imminent_hard_duty_pauses_run_before_dispatch(
@@ -822,6 +824,7 @@ class TestRecruitmentCoordinatorAdmission:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
     async def test_lease_conflict_defers_run_before_dispatch(
@@ -1150,6 +1153,7 @@ class TestCancellationProbeWiring:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
         envelope = TaskEnvelope(
             task_id="task-run_001-m000-development.develop",
@@ -1339,6 +1343,7 @@ class TestRunCompletionActivityWiring:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
         assert executor._run_completion._activity_port is activity_port
@@ -1365,6 +1370,9 @@ class TestRunCompletionActivityWiring:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
+            binding_fill=None,
+            route_renderer=None,
             focus_lease_port=focus_lease_port,
         )
 

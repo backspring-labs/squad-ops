@@ -20,6 +20,11 @@ class ChatSession:
     started_at: datetime
     ended_at: datetime | None = None
     metadata: dict = field(default_factory=dict)
+    #: The project the session was bound to when it opened, server-side; ``None`` for an unbound
+    #: session, which sees only its owner's private records (SIP-0110 Appendix A §3.3, #2180).
+    project_id: str | None = None
+    #: When its owner deleted it (Q29). Its messages are gone, and it reads as no session.
+    deleted_at: datetime | None = None
 
 
 @dataclass(frozen=True)

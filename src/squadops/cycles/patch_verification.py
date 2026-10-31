@@ -395,7 +395,15 @@ def retake_identity_mismatch(
     else ``None`` (SIP-0107 §20, #1727: ``verified_revision_id == persisted_revision_id`` on the
     re-take path, as on the patch path). Taken after storage enforces the producer's grants, so it
     catches both a set changed in transit and a file the agent evaluated that storage then drops
-    (#1913's class). Only a result that recorded its evaluated identity is judged."""
+    (#1913's class). Only a result that recorded its evaluated identity is judged.
+
+    A re-take a repair then patched is not the set the re-take evaluated, and isn't meant to be:
+    the accepted patch is a new candidate, proven by its own identity (``persisted_revision_id``,
+    which the §5.5 guard holds storage to). Judged against the re-take's, it failed a run whose
+    repair had verified and passed (the 2.4 Next.js shakeout's round 4, ``run_4809753cdacd``)."""
+    validation = (outputs or {}).get("validation_result")
+    if isinstance(validation, Mapping) and validation.get("persisted_revision_id"):
+        return None
     evaluated = (outputs or {}).get(RETAKE_EVALUATED_REVISION_KEY)
     if not evaluated:
         return None

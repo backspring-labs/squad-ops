@@ -39,7 +39,7 @@ from typing import Any
 
 import yaml
 
-from squadops.campaigns.models import CampaignObjective, CampaignPolicy
+from squadops.campaigns.models import CampaignObjective, CampaignPolicy, WorkClass
 
 PROVENANCE = "provenance.yaml"
 
@@ -71,6 +71,7 @@ def _objective(data: Mapping[str, Any]) -> CampaignObjective:
         allowed_scope=tuple(data["allowed_scope"]),
         measurement=data["measurement"],
         target_accepted_increments=data.get("target_accepted_increments"),
+        work_class=WorkClass.from_stored(data.get("work_class")),
     )
 
 

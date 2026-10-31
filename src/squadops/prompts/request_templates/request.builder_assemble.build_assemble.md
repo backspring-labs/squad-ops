@@ -1,6 +1,6 @@
 ---
 template_id: request.builder_assemble.build_assemble
-version: "8"
+version: "10"
 required_variables:
   - prd
   - source_files
@@ -11,6 +11,8 @@ optional_variables:
   - contract_expectations
   - disputed_checks_section
   - prior_cycle_section
+  - task_instructions_section
+  - project_instructions_section
   - cross_cycle_lessons_section
 ---
 ## Product Requirements Document
@@ -18,7 +20,7 @@ optional_variables:
 {{prd}}
 {{task_section}}
 {{contract_expectations}}
-{{prior_cycle_section}}{{cross_cycle_lessons_section}}
+{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
 
 ## Source Files (from developer)
 

@@ -1,0 +1,29 @@
+# continuum's Development Configuration: its own checks, as its README and CLAUDE.md describe
+# them, run in the sandbox from a clean checkout (SIP-0112 E.4.2). Each check runs in its own
+# disposable copy after the checks' install and build steps.
+technical:
+  project_type: service
+  target: python
+  stack: null
+  commands:
+    working_directory: .
+    install:
+      - [python3, -m, venv, .venv]
+      - [.venv/bin/pip, install, --quiet, -e, ., pytest, pytest-asyncio, requests, ruff]
+    build:
+      # README: "Build plugin UIs" (npm install, then vite build, for each plugin's ui/). Each
+      # plugin is built here directly: scripts/build-plugins.sh stops after the first under
+      # bash 4.1 or later, since `((built++))` from 0 is a failing command under `set -e`.
+      - [npm, --prefix, plugins/continuum.sample_chat/ui, install, --silent]
+      - [npm, --prefix, plugins/continuum.sample_chat/ui, run, build, --silent]
+      - [npm, --prefix, plugins/continuum.sample_signal/ui, install, --silent]
+      - [npm, --prefix, plugins/continuum.sample_signal/ui, run, build, --silent]
+      - [npm, --prefix, plugins/continuum.sample_systems/ui, install, --silent]
+      - [npm, --prefix, plugins/continuum.sample_systems/ui, run, build, --silent]
+    checks:
+      - id: tests
+        argv: [.venv/bin/python, -m, pytest, tests, -q, --ignore=tests/visual, -p, no:cacheprovider]
+      - id: lint
+        argv: [.venv/bin/ruff, check, src, tests]
+quality:
+  contract_ref: null

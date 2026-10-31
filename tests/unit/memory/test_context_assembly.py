@@ -79,7 +79,12 @@ async def test_a_tasks_lesson_section_is_recalls_answer_from_its_snapshot_owner(
     bundle = await LessonContextAssembly(recall, now=_NOW).assemble(request)
 
     assert bundle.recalled == await recall.recall(query_of(request))
-    [lessons] = bundle.sections
+    # #2178, #2179: the two binding sections beside it, none recorded or pinned for this unit.
+    instructions, project, lessons = bundle.sections
+    assert [(s.kind, s.disposition) for s in (instructions, project)] == [
+        (SectionKind.TASK_INSTRUCTIONS, Disposition.NONE_ELIGIBLE),
+        (SectionKind.PROJECT_INSTRUCTIONS, Disposition.NONE_ELIGIBLE),
+    ]
     assert (lessons.kind, lessons.disposition, bundle.complete) == (
         SectionKind.LESSONS,
         Disposition.SUPPLIED,
@@ -101,7 +106,7 @@ async def test_a_recall_that_raises_is_a_failed_section_and_a_failed_exposure_ne
     bundle = await assembly.assemble(ContextRequest(ProjectBound("group_run"), _task()))
     await assembly.disclose(bundle)
 
-    assert bundle.sections[0].disposition is Disposition.FAILED
+    assert bundle.section(SectionKind.LESSONS).disposition is Disposition.FAILED
     [exposure] = await store.list_exposures("run_1")
     assert (exposure.disposition, exposure.cycle_id) == ("recall_failed", "cyc_a")
 

@@ -227,6 +227,25 @@ class TestCodeLineageRoundTrip:
         )
 
 
+class TestIncrementIdentityRoundTrip:
+    """#2578 part 2 against real Postgres: migration 1699's column takes a campaign cycle's
+    increment and reads back as None for one that has none. Only this proves the INSERT's column
+    list and the table agree."""
+
+    @pytest.mark.parametrize(
+        ("kind", "increment_id"),
+        [("repair", "prop_3f0c9a71d2e4"), ("calibration", None)],
+        ids=["an increment's repair", "a calibration"],
+    )
+    async def test_the_increment_round_trips(self, registry, kind, increment_id):
+        cycle = _make_cycle(campaign_id="cmp_be852b0f08f0", kind=kind, increment_id=increment_id)
+        await registry.create_cycle(cycle)
+
+        fetched = await registry.get_cycle(cycle.cycle_id)
+
+        assert (fetched.kind, fetched.increment_id) == (kind, increment_id)
+
+
 class TestRunLoopSummaryRoundTrip:
     """SIP-0108 §4.1 against real Postgres: migration 1500's table takes the row, a re-finalize
     supersedes it, and the JSONB reads back as the same summary. The unit contract test runs
@@ -524,6 +543,89 @@ class TestMemoryLessons:
                 await conn.execute("DELETE FROM memory_approvals WHERE project_id = $1", project)
                 await conn.execute("DELETE FROM memory_revisions WHERE project_id = $1", project)
 
+    async def test_a_withdrawal_names_only_the_units_whose_snapshot_pinned_the_instruction(
+        self, migrated_pool
+    ):
+        """Appendix A §3.8 against the table (#2179). Bugs caught: the text match deciding alone,
+        so a unit whose own instruction quotes the withdrawn record's id is named as holding it; a
+        query that can't read the stored body."""
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.pinning import pin_unit
+        from tests.unit.memory.test_project_instructions import _instruction
+
+        project = "group_run"
+        tag = uuid.uuid4().hex[:8]
+        withdrawn_id, quoting_id = f"mrec_w{tag}", f"mrec_q{tag}"
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        units = [f"cyc_holds_{tag}", f"cyc_quotes_{tag}"]
+        try:
+            for unit_id, record in zip(
+                units,
+                [
+                    _instruction(withdrawn_id, "qa.test"),
+                    _instruction(quoting_id, "qa.test", text=f"Unlike {withdrawn_id}, keep ids."),
+                ],
+                strict=True,
+            ):
+                records = InMemoryMemoryRecords()
+                await records.create(record)
+                await pin_unit(
+                    store, unit_kind=UnitKind.CYCLE, unit_id=unit_id, project_id=project,
+                    pinned_at=datetime.now(UTC), disabled=False, records=records,
+                )  # fmt: skip
+
+            holding = await store.list_snapshots_pinning(withdrawn_id)
+
+            assert [s.unit_id for s in holding] == [units[0]]
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute("DELETE FROM memory_snapshots WHERE unit_id = ANY($1)", units)
+
+    async def test_a_rebinding_lands_once_on_the_snapshot_it_was_read_from(self, migrated_pool):
+        """Appendix A §3.7 against the table (#2179). Bugs caught: a second re-binding read from
+        the same snapshot overwriting the first; the update writing a body that reads back
+        different; a unit with no pin answered as conflict instead of absent."""
+        from dataclasses import replace
+
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.pinning import pin_unit
+        from squadops.memory.rebinding import rebound
+        from squadops.memory.records import revised, withdrawn
+        from squadops.ports.memory.cross_cycle import SnapshotMoved
+        from tests.unit.memory.test_project_instructions import _instruction
+
+        tag = uuid.uuid4().hex[:8]
+        unit_id = f"cyc_rebound_{tag}"
+        record = _instruction(f"mrec_r{tag}", "qa.test")
+        records = InMemoryMemoryRecords()
+        await records.create(record)
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        try:
+            read = await pin_unit(
+                store, unit_kind=UnitKind.CYCLE, unit_id=unit_id, project_id="group_run",
+                pinned_at=datetime.now(UTC), disabled=False, records=records,
+            )  # fmt: skip
+            two = revised(record, replace(record.current, body="revised"))
+            first = rebound(read, two, by="ada", at=datetime.now(UTC), why="clarified")
+            late = rebound(
+                read, withdrawn(record, by="bo", at=_NOW, why="x"), by="bo", at=_NOW, why="x"
+            )
+
+            await store.rebind_snapshot(first)
+            with pytest.raises(SnapshotMoved):
+                await store.rebind_snapshot(late)
+            with pytest.raises(KeyError):
+                await store.rebind_snapshot(replace(first, unit_id=f"cyc_none_{tag}"))
+
+            assert await store.get_snapshot(UnitKind.CYCLE, unit_id) == first
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute("DELETE FROM memory_snapshots WHERE unit_id = $1", unit_id)
+
     async def test_an_exposure_is_stored_once_per_invocation_and_a_damaged_pin_reads_as_incompatible(
         self, migrated_pool
     ):
@@ -587,6 +689,7 @@ class TestMemoryLessons:
                 evidence="e",
                 assessed_by="auditor",
                 now=datetime(2026, 10, 8, 1, tzinfo=UTC),
+                context_withheld=False,
             )
             second = dataclasses.replace(
                 first, state=TargetState.ABSENT, assessed_at=datetime(2026, 10, 8, 2, tzinfo=UTC)

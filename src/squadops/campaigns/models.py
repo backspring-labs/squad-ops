@@ -18,6 +18,10 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.cycles.models import GateDecisionValue
+from squadops.stacks.scaffold import hosts_campaign_increments
+
+#: A commit id, as the managed clone names one (SIP-0112 E.4.2).
+_COMMIT = re.compile(r"[0-9a-f]{40}")
 
 # =============================================================================
 # Enums
@@ -117,6 +121,22 @@ class ControlOperation(StrEnum):
     #: A late answer to an expired or cancelled escalation (§24bj, §24bl). A record, accepted on a
     #: completed campaign; it never reopens one, and a later plan gate reads it by decision id.
     ESCALATION_ANSWERED = "escalation_answered"
+    #: The campaign's snapshot was re-bound (SIP-0110 Appendix A §3.7; #2179): a project
+    #: instruction's revision it bound was replaced. A record, and an intervention: its
+    #: measurements are set apart from the re-binding.
+    REBIND = "rebind"
+    #: A task instruction was added to, revised on or withdrawn from one of the campaign's cycles
+    #: after its admission (SIP-0110 Appendix A §3.5; #2178). A record, and an intervention.
+    INSTRUCT = "instruct"
+    #: A repository-backed campaign's branch rebased onto the commit its Project reconciled
+    #: (§24bv point 4, §24cd point 2): the accepted tree's base and head move, with the rebased
+    #: head's verification. A pending repair or retry built on the old head is superseded in the
+    #: same transaction, its increment abandoned as ``upstream_moved``.
+    BRANCH_REBASED = "branch_rebased"
+    #: The supervisor pushed the Campaign's review request to the product (§24ci (b)): the branch,
+    #: the commit, and the lease it was pushed under. A record, accepted on a completed campaign,
+    #: since the push is made at the Campaign's close.
+    REVIEW_PUSHED = "review_pushed"
 
     @property
     def records_only(self) -> bool:
@@ -134,6 +154,9 @@ class ControlOperation(StrEnum):
             ControlOperation.ESCALATION_OPENED,
             ControlOperation.ESCALATION_CLOSED,
             ControlOperation.ESCALATION_ANSWERED,
+            ControlOperation.REBIND,
+            ControlOperation.INSTRUCT,
+            ControlOperation.REVIEW_PUSHED,
         )
 
     @property
@@ -191,6 +214,9 @@ class LaunchIntentState(StrEnum):
 
     PENDING = "pending"
     LAUNCHED = "launched"
+    #: A repair or retry a campaign branch's rebase left nothing to continue (§24cd point 2): its
+    #: candidate was built on the head the rebase replaced. Never launched, and never drained.
+    SUPERSEDED = "superseded"
 
 
 # =============================================================================
@@ -269,6 +295,88 @@ class CampaignDefinition:
         return cls(**recorded) if recorded else None
 
 
+class PrdTier:
+    """The PRD tier an objective reaches for (SIP-0113 §4.6, the owner's ruling of 2026-10-18):
+    the PRD's core, or one of its expansion tiers. Constants, not an enum: ``core`` and the tiers
+    are words other vocabularies use too (#380)."""
+
+    CORE = "core"
+    TIER_1 = "tier-1"
+    TIER_2 = "tier-2"
+    TIER_3 = "tier-3"
+    ALL = frozenset({CORE, TIER_1, TIER_2, TIER_3})
+
+
+class Attendance:
+    """Whether the campaign runs with a person attending its gates, as declared."""
+
+    ATTENDED = "attended"
+    UNATTENDED = "unattended"
+    ALL = frozenset({ATTENDED, UNATTENDED})
+
+
+@dataclass(frozen=True)
+class WorkClass:
+    """The class a campaign's work belongs to (SIP-0113 §4.6; D2; ruled 2026-10-18), declared in
+    its objective and never inferred, so two campaigns compare only when they declared the same.
+    With the objective's ``target_accepted_increments`` (the increment count), it is what AOR and
+    the AWE group campaigns by. Nothing that decides a campaign reads it."""
+
+    prd_tier: str
+    attendance: str
+
+    def __post_init__(self) -> None:
+        if self.prd_tier not in PrdTier.ALL:
+            raise ValueError(
+                f"WorkClass.prd_tier must be one of {sorted(PrdTier.ALL)}, got {self.prd_tier!r}"
+            )
+        if self.attendance not in Attendance.ALL:
+            raise ValueError(
+                f"WorkClass.attendance must be one of {sorted(Attendance.ALL)}, "
+                f"got {self.attendance!r}"
+            )
+
+    @classmethod
+    def from_stored(cls, stored: Mapping[str, Any] | None) -> WorkClass | None:
+        return cls(**stored) if stored else None
+
+
+#: §24bv point 5: a file in the product's tree, bound at each increment's head as SIP-0110 §5ad
+#: binds an instruction's (the repository family's one kind, SIP-0112 contract 6).
+_REQUIREMENTS_FILE = re.compile(r"^repo:file:(?P<path>[^@\s]+)@current$")
+#: Or a stored artifact, by its id.
+_REQUIREMENTS_ARTIFACT = re.compile(r"^art_[0-9a-f]+$")
+
+
+@dataclass(frozen=True)
+class RequirementsSource:
+    """A repository-backed Campaign's requirements source (§24bv point 5): exactly one of a path
+    in the product (``repo:file:<path>@current``) and a stored artifact's id."""
+
+    path: str | None = None
+    artifact_id: str | None = None
+
+
+def parse_requirements_source(text: str) -> RequirementsSource:
+    """``objective.requirements`` read. Raises ``ValueError`` naming the field for anything else:
+    a reference to another family, a fixed revision (a PRD an increment changed would be read as
+    it was), a path leaving the product, or no reference at all."""
+    if not isinstance(text, str):
+        raise ValueError("objective.requirements is text")
+    file = _REQUIREMENTS_FILE.match(text.strip())
+    if file is not None:
+        path = file["path"]
+        if path.startswith("/") or ".." in path.split("/"):
+            raise ValueError(f"objective.requirements: {path!r} leaves the product's repository")
+        return RequirementsSource(path=path)
+    if _REQUIREMENTS_ARTIFACT.match(text.strip()):
+        return RequirementsSource(artifact_id=text.strip())
+    raise ValueError(
+        f"objective.requirements {text!r} is neither repo:file:<path>@current, a file in the "
+        "product bound at each increment's head, nor a stored artifact's id (art_…)"
+    )
+
+
 @dataclass(frozen=True)
 class CampaignObjective:
     """What the campaign is for (§15): the statement, the scope it may touch, how success reads.
@@ -283,9 +391,19 @@ class CampaignObjective:
     allowed_scope: tuple[str, ...]
     measurement: str
     target_accepted_increments: int | None
+    #: SIP-0113 §4.6: required of every new campaign, as the target is; ``None`` only on a
+    #: campaign stored before it existed, which AOR then groups with no class.
+    work_class: WorkClass | None
+    #: §24bv point 5 (D10 point 3): a repository-backed Project's requirements source, which such
+    #: a Project has in place of a PRD: ``repo:file:<path>@current``, bound at each increment's
+    #: head, or a stored artifact's id. Required at creation for one, refused for a sample
+    #: application (``requirements_source_refusal``); ``None`` on every other campaign.
+    requirements: str | None = None
 
     def __post_init__(self) -> None:
         _require_text("CampaignObjective", statement=self.statement, measurement=self.measurement)
+        if self.requirements is not None:
+            parse_requirements_source(self.requirements)
         target = self.target_accepted_increments
         if target is not None and (isinstance(target, bool) or not isinstance(target, int)):
             raise ValueError(
@@ -318,8 +436,9 @@ _POSITIVE_POLICY_FIELDS = frozenset(
 
 @dataclass(frozen=True)
 class CampaignPolicy:
-    """The campaign's limits and bounds (§9.5, §15). Every field is required: a limit is set from
-    its basis and recorded, never defaulted (the 2.0 plan's limits ruling)."""
+    """The campaign's limits and bounds (§9.5, §15). Every limit is required: a limit is set from
+    its basis and recorded, never defaulted (the 2.0 plan's limits ruling). The stack is not a
+    limit, and its absence is declared, not defaulted: it is the campaign profiles' own (§24bs)."""
 
     # §9.5's limits
     max_cycles: int
@@ -347,6 +466,11 @@ class CampaignPolicy:
     squad_profile: str
     # §24bj: who decides the plan gates of the cycles this campaign launches
     plan_gate: PlanGate
+    # §24bs (#2443): the stack every cycle the campaign launches builds on, passed to each launch
+    # as its ``build_profile`` and ``development_profile``. ``None`` is the campaign profiles' own
+    # stack, as a cycle that overrides none runs its profile's; a policy stored before it was
+    # declarable reads as that.
+    stack: str | None = None
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
@@ -387,19 +511,48 @@ class CampaignPolicy:
             proposal_profile=self.proposal_profile,
             squad_profile=self.squad_profile,
         )
+        if self.stack is not None and not hosts_campaign_increments(self.stack):
+            raise ValueError(
+                f"CampaignPolicy.stack {self.stack!r} is not a stack a campaign can run on: it "
+                "needs a scaffold that declares where a criterion's test file lives (§8.1)"
+            )
 
 
 @dataclass(frozen=True)
 class AcceptedTree:
-    """The campaign's accepted tree (§7.1, §7.4): its verified identity and the cycle whose
-    candidate it is. Every increment is proposed against it and every ruling binds to it; it
-    changes only by a promotion (§12a)."""
+    """The campaign's accepted tree (§7.1, §7.4): its verified identity and what it is the tree
+    of. Every increment is proposed against it and every ruling binds to it; it changes only by a
+    promotion (§12a).
+
+    It names exactly one of two things (§24cc): the cycle whose candidate it is, or, on a
+    repository-backed Project, the calibration record whose commit it is (§24bv point 1). A reader
+    that needs a cycle reads ``cycle_id`` and refuses a record by name; it never passes ``None``
+    on as if it were a cycle.
+
+    On a repository-backed Project it is the head of the campaign's branch (§24bv point 2), and
+    ``commit`` is that head: the record's commit, or an increment's captured one. A sample
+    application's tree is the vault's, and names no commit."""
 
     identity: str
-    cycle_id: str
+    cycle_id: str | None = None
+    calibration_record_id: str | None = None
+    commit: str | None = None
 
     def __post_init__(self) -> None:
-        _require_text("AcceptedTree", identity=self.identity, cycle_id=self.cycle_id)
+        _require_text("AcceptedTree", identity=self.identity)
+        if (self.cycle_id is None) == (self.calibration_record_id is None):
+            raise ValueError(
+                "AcceptedTree names exactly one of cycle_id and calibration_record_id, got "
+                f"cycle_id={self.cycle_id!r}, calibration_record_id={self.calibration_record_id!r}"
+            )
+        for name in ("cycle_id", "calibration_record_id"):
+            value = getattr(self, name)
+            if value is not None and not value.strip():
+                raise ValueError(f"AcceptedTree.{name} is required")
+        if self.commit is not None and not _COMMIT.fullmatch(self.commit):
+            raise ValueError(
+                f"AcceptedTree.commit is a 40-character commit id, not {self.commit!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -548,6 +701,10 @@ class CampaignTransition:
     tree a promotion makes the campaign's accepted tree, and only a promotion carries one.
     ``submitted`` is the proposal a submission puts at the increment gate, and ``ruling`` the
     ruling on it; each operation, and only it, carries its own.
+
+    A branch's rebase (§24cd point 2) names the tree it makes the accepted one, as a promotion
+    does, and ``supersedes`` is the pending repair's or retry's launch id it marks superseded in
+    the same transaction, when there is one. Only a rebase supersedes.
     """
 
     operation: ControlOperation
@@ -564,6 +721,7 @@ class CampaignTransition:
     accepted: AcceptedTree | None = None
     submitted: SubmittedProposal | None = None
     ruling: IncrementRuling | None = None
+    supersedes: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(
@@ -585,8 +743,16 @@ class CampaignTransition:
             )
         if self.launch is not None and self.operation.records_only:
             raise ValueError(f"{self.operation} records a fact; it cannot launch")
-        if (self.operation is ControlOperation.PROMOTE) != (self.accepted is not None):
-            raise ValueError("a promotion, and only a promotion, names the tree it accepts")
+        moves_the_tree = self.operation in (
+            ControlOperation.PROMOTE,
+            ControlOperation.BRANCH_REBASED,
+        )
+        if moves_the_tree != (self.accepted is not None):
+            raise ValueError(
+                "a promotion or a branch's rebase, and only those, names the tree it accepts"
+            )
+        if self.supersedes is not None and self.operation is not ControlOperation.BRANCH_REBASED:
+            raise ValueError("only a branch's rebase supersedes a pending launch (§24cd point 2)")
         if (self.operation is ControlOperation.SUBMIT) != (self.submitted is not None):
             raise ValueError("a submission, and only a submission, names the proposal it submits")
         if (self.operation is ControlOperation.RULE) != (self.ruling is not None):

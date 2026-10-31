@@ -1,9 +1,9 @@
 """Cross-Cycle Memory's store (SIP-0110 §0.2, §0.8; the 2.2 plan's D13).
 
 Phase 1's records live in Postgres beside the cycle registry, behind this port, with an
-in-memory adapter for tests. It is not SIP-042's ``MemoryPort``, which is each agent's own
-semantic store: the runtime API, where recall and the projections run, has none of those, and
-Phase 1's recall is exact filtering that needs no embedding. It holds the observations (3a), and
+in-memory adapter for tests. It was never SIP-042's ``MemoryPort``, each agent's own semantic
+store (retired in 2.5, #2184): recall and the projections run in the runtime API, and Phase 1's
+recall is exact filtering that needs no embedding. It holds the observations (3a), and
 the lessons, their approvals, each unit's pinned snapshot, each consuming task's exposure (3c), and
 each exposure's assessments (3d).
 """
@@ -12,12 +12,22 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 
 from squadops.memory.annotation import Annotation
 from squadops.memory.assessment import Assessment
+from squadops.memory.chat import ChatExposure
+from squadops.memory.cycle_bindings import CycleBinding
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
+from squadops.memory.records import PinnedInstruction
+
+
+class SnapshotMoved(RuntimeError):
+    """A re-binding written over a snapshot that changed since it was read: another re-binding
+    landed first. Nothing was written; the caller re-reads and decides (#2179)."""
 
 
 class RecordIncompatible(ValueError):
@@ -86,8 +96,50 @@ class CrossCycleMemoryStorePort(ABC):
         :class:`RecordIncompatible` for a stored pin this code cannot read."""
 
     @abstractmethod
+    async def record_cycle_bindings(
+        self,
+        cycle_id: str,
+        unit_kind: str,
+        unit_id: str,
+        entries: Sequence[PinnedInstruction],
+        bound_at: datetime,
+    ) -> None:
+        """Store a campaign cycle's own bindings of these pinned instructions (SIP-0110 §5ad), one
+        per record and revision, each written once: an entry for a revision the cycle already holds
+        is left as it is. So writers never read each other's entries, and an entry a dispatch may
+        have been handed never changes. A re-binding stores its revision's entries before its
+        snapshot names that revision, so a dispatch reading either revision finds its own."""
+
+    @abstractmethod
+    async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
+        """A campaign cycle's bindings, or ``None`` for a cycle that recorded none. Raises
+        :class:`RecordIncompatible` for a stored binding this code cannot read."""
+
+    @abstractmethod
+    async def rebind_snapshot(self, snapshot: Snapshot) -> None:
+        """Store ``snapshot`` over its unit's, if the stored one is the same pin at the version just
+        before it (``snapshot.version - 1``): a re-binding (Appendix A §3.7; #2179), or the pin's
+        own settle (#2545). Raises :class:`SnapshotMoved` when another write landed since its writer
+        read the snapshot, and ``KeyError`` for a unit that pinned none."""
+
+    @abstractmethod
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        """The unit's dispatch turn (#2545, ``squadops.memory.dispatch_turns``). A dispatch holds it
+        from reading what it is handed to recording its exposure. A change to what the unit's
+        dispatches are handed (a re-binding, a task instruction added after admission) holds it
+        from its check of the exposures to its write. Raises ``DispatchTurnUnavailable`` when the
+        turn isn't given within ``wait_seconds`` (a change's bound), or the dispatch's bound."""
+
+    @abstractmethod
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
         """The pinned snapshots that carry ``approval_id``: the units a revocation names."""
+
+    @abstractmethod
+    async def list_snapshots_pinning(self, record_id: str) -> list[Snapshot]:
+        """The pinned snapshots that carry a revision of project instruction ``record_id``: the
+        units its emergency withdrawal names (Appendix A §3.8; #2179)."""
 
     @abstractmethod
     async def record_exposure(self, exposure: Exposure) -> bool:
@@ -106,6 +158,19 @@ class CrossCycleMemoryStorePort(ABC):
     @abstractmethod
     async def list_project_exposures(self, project_id: str) -> list[Exposure]:
         """A project's exposures, oldest first."""
+
+    @abstractmethod
+    async def record_chat_exposure(self, exposure: ChatExposure) -> bool:
+        """Store a chat turn's exposure, once per session and message (Appendix A §3.6; #2180).
+        Returns whether it was new."""
+
+    @abstractmethod
+    async def list_chat_exposures(self, session_id: str) -> list[ChatExposure]:
+        """A chat session's exposures, oldest first."""
+
+    @abstractmethod
+    async def list_chat_exposures_supplying(self, record_id: str) -> list[ChatExposure]:
+        """The chat turns whose context supplied ``record_id``, any revision, oldest first (#2182)."""
 
     @abstractmethod
     async def record_assessment(self, assessment: Assessment) -> bool:

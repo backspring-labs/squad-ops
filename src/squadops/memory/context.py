@@ -5,14 +5,17 @@ a consuming seam or a chat turn, and so is its project binding, so a fabricated 
 represented: a chat turn has no cycle, run or task, an unbound request has no project, and a task invocation
 is always bound to a project.
 
-In 2.3 the only section is SIP-0110's lessons, optional and answered by today's recall. There is no binding
-section yet, so every bundle is complete; 2.4 adds the binding sections (#2179) and chat's own (#2180).
+In 2.3 the only section is SIP-0110's lessons, optional and answered by today's recall. 2.4 adds the binding
+sections (#2178, #2179) and chat's own (#2180, ``squadops.memory.chat``): optional, since a chat turn executes no
+work.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from squadops.memory.lessons import Recalled
 from squadops.memory.recall import UnitKind
@@ -33,6 +36,9 @@ class Disposition(StrEnum):
     #: Recall's own word for it (``RecallDisposition.DISABLED``), so a section and its exposure read the same.
     #: §3.6 writes "disabled"; that bare word would shadow unrelated config comparisons (#380's guard).
     DISABLED = "memory_disabled"
+    #: The unit declared ``memory_context: none`` (§3.7): its project instructions and lessons are
+    #: withheld, as recall words it (``RecallDisposition.CONTEXT_NONE``).
+    CONTEXT_NONE = "memory_context_none"
     #: An optional section only.
     OMITTED_BY_BUDGET = "omitted_by_budget"
     INCOMPATIBLE = "incompatible"
@@ -50,6 +56,9 @@ class SectionKind(StrEnum):
     LESSONS = "lessons"
     NOTES = "notes"
     PREFERENCES = "preferences"
+    #: A project's approved lessons shown to a chat turn that asks about them, to explain, never as
+    #: guidance (§3.5, #2181): that is ``LESSONS``, which a chat turn never holds.
+    INSPECTED_LESSONS = "inspected_lessons"
 
 
 @dataclass(frozen=True)
@@ -101,7 +110,8 @@ class TaskInvocation:
     stack: str
     model_family: str
     agent_id: str
-    #: Tokens: the model's window less the completion reserve and the task's own inputs (§3.6 Budgets).
+    #: Tokens: the model's window less the completion reserve and the task's own inputs (§3.6 Budgets);
+    #: ``-1`` when the model's window is unknown, which never means room.
     prompt_budget: int
 
 
@@ -113,6 +123,11 @@ class ChatTurn:
     message_id: str
     user_id: str
     agent_id: str
+    #: What the person said: the notes are ranked by it, and the cycles it names select task
+    #: instructions (§3.10, #2180).
+    text: str = ""
+    #: The person's scopes, from their identity: what of a bound project they may read (§3.3).
+    viewer_scopes: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -137,6 +152,10 @@ class Section:
     effective_budget: int | None = None
     #: Binding sections only: what could not be loaded, resolved or fitted.
     unresolved: tuple[tuple[RecordRef, str], ...] = ()
+    #: Binding sections only: incomplete because the store didn't answer, so nothing an operator
+    #: gave can be judged. Otherwise an incomplete section is the operator's input: over its
+    #: budget, or naming a reference its cycle couldn't bind. A held run ends by which (#2178).
+    store_failed: bool = False
 
 
 @dataclass(frozen=True)
@@ -149,6 +168,14 @@ class ContextBundle:
     #: The section rendered is exactly the set recall returned (§3.6), so it is carried, never rebuilt.
     #: None for a consumer recall does not answer.
     recalled: Recalled | None = None
+    #: What the task is handed on ``TASK_INSTRUCTIONS_INPUT`` (#2178), carried as recall's answer is:
+    #: ``None`` when no task instruction applies.
+    task_instructions: Mapping[str, Any] | None = None
+    #: What the task is handed on ``PROJECT_INSTRUCTIONS_INPUT`` (#2179): ``None`` when none applies.
+    project_instructions: Mapping[str, Any] | None = None
+    #: What a chat turn's agent is handed (#2180): its sections' records, and the sections that failed.
+    #: ``None`` for a task, and for a chat turn with no records store.
+    chat: Mapping[str, Any] | None = None
 
     def section(self, kind: SectionKind) -> Section | None:
         return next((s for s in self.sections if s.kind == kind), None)

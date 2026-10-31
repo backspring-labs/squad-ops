@@ -1,0 +1,17 @@
+# The missing_field form: the captured entry's commit is absent. Otherwise identical to valid.yaml.
+# Contracts 3 and 4 (SIP-0112 §8.2.2): Cycle cyc_2407a0000001 was seeded at the first commit, and
+# its verified change was captured back as the second. Each entry names one tree by all three of its
+# identifiers, which never substitute for one another: the Git commit, the sandbox revision ID
+# (compute_revision_id over the files' bytes, as X-2 extends it) and SIP-0109's FileTree.identity.
+schema: workspace-commit-mapping/v1
+project_id: prj-tally
+campaign_id: cmp_2407a0000001
+cycle_id: cyc_2407a0000001
+entries:
+  - direction: seeded
+    commit: 15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1
+    sandbox_revision_id: 4132b9d7897eb17f4894fc092263c4225bbbfda2278ebf6af797624539be74f0
+    tree_identity: 1c985890772dbda5b07d438658a78f6ab70fafd06e6914c111368dd7e503157a
+  - direction: captured
+    sandbox_revision_id: 23f7057c386d19b44136ac1c6ec385bf5d8a13247a00a7769392fbc5cb1808a3
+    tree_identity: 41e6cc797da0ddc58a4456e8ff1e6fce0c9ebedc9d0638bff5f69c630cff67ce

@@ -28,6 +28,12 @@ from squadops.tools.security import PathSecurityPolicy
 if TYPE_CHECKING:
     from squadops.core.secret_manager import SecretManager
 
+    from squadops.ports.cycles.project_registry import ProjectRegistryPort
+    from squadops.ports.memory.references import ReferenceResolverPort
+    from squadops.ports.projects.review_request import ReviewRequestPort
+    from squadops.ports.projects.source_repository import SourceRepositoryPort
+    from squadops.projects.registration import LocatorPolicy
+
 
 def create_filesystem_provider(
     provider: str,
@@ -131,3 +137,43 @@ def create_vcs_provider(
         return raw_adapter
 
     raise ValueError(f"Unknown VCS provider: {provider}")
+
+
+def create_source_repository(
+    *,
+    cache_root: Path,
+    policy: LocatorPolicy,
+    timeout_seconds: float,
+    committer_name: str,
+    committer_email: str,
+) -> SourceRepositoryPort:
+    """The managed clone of each registered product's repository (SIP-0112 E.4.2), Git's. The
+    runtime API's alone: an agent's VCS tool never reaches a registered repository."""
+    from adapters.tools.git_source import GitSourceRepository
+
+    return GitSourceRepository(
+        cache_root,
+        policy,
+        timeout_seconds=timeout_seconds,
+        committer_name=committer_name,
+        committer_email=committer_email,
+    )
+
+
+def create_repository_reference_resolver(
+    repository: SourceRepositoryPort, projects: ProjectRegistryPort
+) -> ReferenceResolverPort:
+    """The repository family's reference resolver (SIP-0112 contract 6, #2179 T16): a
+    ``repo:file:<path>@current`` reference bound at its unit's pinned commit, through ``repository``,
+    for a project ``projects`` records with a source."""
+    from adapters.tools.repository_references import RepositoryReferenceResolver
+
+    return RepositoryReferenceResolver(repository, projects)
+
+
+def create_review_requests() -> ReviewRequestPort:
+    """Where a review_request contribution's pull request is opened (SIP-0112 E.4.3): GitHub's,
+    which refuses by name a repository on another forge."""
+    from adapters.tools.github_review_request import GitHubReviewRequests
+
+    return GitHubReviewRequests()

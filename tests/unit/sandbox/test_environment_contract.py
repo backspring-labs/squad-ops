@@ -26,6 +26,9 @@ def _minimal(**overrides) -> EnvironmentContract:
         "required_tools": (("python", "3.12"),),
         "operation_commands": ((OperationName.BUILD_FRONTEND, ("npm", "run", "build")),),
         "app_port": 8000,
+        "api_prefix": "",
+        "ui_port": 8000,
+        "ui_serve": (),
         "install_network": "bridge",
     }
     return EnvironmentContract(**{**base, **overrides})

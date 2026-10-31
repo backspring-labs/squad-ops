@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.failure_attribution import TerminalKind
@@ -163,6 +163,7 @@ def executor(reply_router):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     ex._store_artifact = AsyncMock(side_effect=lambda art, *a, **k: _ref(art["name"]))
     ex._emit_scaffold_integrity_evidence = MagicMock()
@@ -622,6 +623,40 @@ class TestTheVerifiedCandidateIsTheStoredCandidate:
                 compliance_counter={"n": 0},
             )
         assert _stored_names(executor) == []
+
+    async def test_a_re_take_a_repair_then_patched_stores_the_patch_it_verified(self, executor):
+        """Entered at ``_try_accept_patch`` with a failed re-take, then at
+        ``_collect_artifacts_and_checkpoint`` with what it accepted, as the correction loop does.
+        Bug caught: the accepted patch's outputs carrying the re-take's evaluated identity, so the
+        re-take check judged a set the patch had replaced and failed a run whose repair verified
+        and passed (the 2.4 Next.js shakeout's round 4, ``run_4809753cdacd``)."""
+        from squadops.cycles.patch_verification import (
+            RETAKE_EVALUATED_REVISION_KEY,
+            candidate_revision_id,
+        )
+
+        retake_set = [{**AUTHORIZED, "content": AUTHORIZED["content"] + "# the re-take's own\n"}]
+        failed_retake = dataclasses.replace(
+            _failed(retake_set),
+            outputs={
+                **_failed(retake_set).outputs,
+                RETAKE_EVALUATED_REVISION_KEY: candidate_revision_id(None, retake_set),
+            },
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            _builder_envelope(), failed_retake, [AUTHORIZED], holder
+        )
+        accepted = holder["patched_result"]
+
+        await executor._collect_artifacts_and_checkpoint(
+            accepted, _builder_envelope(), _cycle(), "run_1", {}, [], [], [], [],
+            bound_record=_record(), compliance_counter={"n": 0},
+        )  # fmt: skip
+
+        assert action == "accept_patch"
+        assert RETAKE_EVALUATED_REVISION_KEY not in accepted.outputs
+        assert _stored_names(executor) == [AUTHORIZED["name"]]
 
     async def test_storage_that_would_alter_an_accepted_patch_stores_nothing(self, executor):
         """Bug caught: the grants storage re-applies dropping a file from an ACCEPTED patch —

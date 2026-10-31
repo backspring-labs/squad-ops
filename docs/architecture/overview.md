@@ -40,9 +40,10 @@ models and decisions around them, and `adapters/` implements the ports against r
 ## Core packages (`src/squadops/`)
 
 ### `squadops.agents`
-`BaseAgent`, which receives its ports (LLM, memory, prompts, queue, metrics and events, filesystem,
-LLM observability) by constructor injection, the immutable `PortsBundle`, and the agent container's
-entrypoint, which consumes task envelopes from the queue and is the agent's composition root.
+`BaseAgent`, which receives its ports (LLM, prompts, queue, metrics and events, filesystem, LLM
+observability) by constructor injection, the immutable `PortsBundle`, and the agent container's
+entrypoint, which consumes task envelopes from the queue and is the agent's composition root. An
+agent holds no memory store: SIP-042's per-agent store was retired in 2.5 (SIP-0110 §A.4.3, #2184).
 
 ### `squadops.api`
 The runtime API: the FastAPI service (`squadops.api.runtime`, a composition root), its routes on the
@@ -98,7 +99,9 @@ verification evidence rules (SIP-0096) and the delivered-tree rules. Its executo
 `squadops.execution` (#1992).
 
 ### `squadops.embeddings`
-The embeddings domain: the request and result models an `EmbeddingsPort` adapter serves.
+The embeddings domain: the request and result models an `EmbeddingsPort` adapter serves. Nothing
+consumes it since the LanceDB store's retirement (#2184); a semantic index, if one is ever added, is
+derived from Postgres (SIP-0110 §A.3.10).
 
 ### `squadops.execution`
 The cycle's orchestration (#1992): `DispatchedFlowExecutor`, which implements `FlowExecutionPort`, and
@@ -116,20 +119,35 @@ The LLM domain: request, response and chat-message models, its exceptions, and t
 registry (SIP-0073), which maps each model name to its context window and defaults.
 
 ### `squadops.memory`
-The memory domain: entries, queries and scored results for SIP-042's per-agent semantic store (legacy: only console
-chat reads it, it holds no record on the deploy, and it is retired in 2.5, SIP-0110 §5g and #2184), and
-Cross-Cycle Memory's (SIP-0110): the observations projected from three sources and the repeat report; the lessons,
-their approvals and each unit's pinned snapshot; the recall query and its deterministic policy; the
-exposures recording what each consuming task was supplied; and the authoring replay envelope with its
-four seams.
+The memory domain, Cross-Cycle Memory's (SIP-0110): the observations projected from three sources and the repeat
+report; the lessons, their approvals and each unit's pinned snapshot; the recall query and its deterministic policy;
+the exposures recording what each consuming task was supplied; the authoring replay envelope with its four seams; and
+the entry points' typed records and instructions, and what a chat turn may hold and capture. SIP-042's per-agent
+store and its models were retired in 2.5 (SIP-0110 §A.4.3, #2184).
 
 ### `squadops.orchestration`
 Coordination between agents and handlers: `AgentOrchestrator`, the handler registry and the
 `HandlerExecutor`.
 
+### `squadops.outcomes`
+Outcome Evaluation's readings beside its scenarios (SIP-0113 §4.2–§4.6), starting with the intervention
+ledger (§4.3): each person's or supervisor's action on a campaign, projected from SIP-0109's control log
+and classified by its reason and severity, plus declared entries for actions outside the interface.
+Also what a campaign's proposal run is shown of its accepted tree (§4.5): the goals with their results,
+the quality moves and the accepted PRD, read through `ProposalEvidencePort` and composed onto that one
+task's inputs by `squadops.execution.proposal_evidence`. `StoredProposalEvidence` reads them from the
+campaign's evaluations, promotions and approved requests; the executor never imports it.
+
 ### `squadops.ports`
 The port interfaces, the contracts between the domain and external systems: secrets, queue, cycle
 registry, auth, audit, LLM observability, sandbox and the rest.
+
+### `squadops.projects`
+Project Lifecycle Management (SIP-0112): the Project Record's parts (its lifecycle status, source
+binding and ownership) and the registry cutover's refusals. The read model stays
+`squadops.cycles.models.Project`, which carries these parts; this package imports nothing from
+the cycle domain. The writable registry behind `ProjectRegistryPort` is
+`adapters.cycles.postgres_project_registry`.
 
 ### `squadops.prompts`
 Deterministic, versioned prompt assembly: fragments and request templates through `PromptService`
@@ -139,6 +157,15 @@ and the request renderer. Prompt content lives here as managed assets, never as 
 ### `squadops.runtime`
 Agent runtime state (SIP-0089): runtime modes, activity, focus leases, assignments and duty windows.
 A pure coordination layer that depends on ports only, never on adapters.
+
+### `squadops.scenarios`
+Outcome Evaluation's held-out scenarios (SIP-0113 §4.1, §4.7): a scenario's goal, held-out steps,
+checks and surfaces, content-addressed, and a suite of them that the supervisor drafts and the owner
+approves before a campaign pins it. No squad-side package imports it (IR-4). An evaluation run's
+record, and apart from it in `squadops.scenarios.reference`, the reference SIP-0112's Project history
+stores (contract 5), which imports only the standard library. A suite's markers
+(`squadops.scenarios.markers`), the step values the P2 sweep searches for and a proposal's goals are
+held back by.
 
 ### `squadops.sandbox`
 The execution sandbox domain (SIP-0102): the service that builds and runs a delivered app in
@@ -185,7 +212,7 @@ config-backed project registry, and the factory that composes the executor from 
 with the ports a root has bound.
 
 ### `adapters.embeddings`
-Implementations of `EmbeddingsPort`.
+Implementations of `EmbeddingsPort`, which nothing builds since the LanceDB store's retirement (#2184).
 
 ### `adapters.events`
 Cycle event buses: in-process and NoOp, the runtime event publisher, and their factory.
@@ -194,14 +221,23 @@ Cycle event buses: in-process and NoOp, the runtime event publisher, and their f
 Model servers: Ollama, vLLM's OpenAI-compatible API, and Atlas (SIP-0106).
 
 ### `adapters.memory`
-Semantic memory on LanceDB, and Cross-Cycle Memory's store (Postgres beside the cycle registry, and
-in memory for tests) with the recall that answers from a unit's pinned snapshot.
+Cross-Cycle Memory's store (Postgres beside the cycle registry, and in memory for tests) with the
+recall that answers from a unit's pinned snapshot, the typed records' store, and the reference
+resolvers. SIP-042's LanceDB store was retired in 2.5 (SIP-0110 §A.4.3, #2184).
 
+
+### `adapters.scenarios`
+The held-out scenario store (SIP-0113 §4.1): Postgres beside the campaigns that pin its suites, and
+in memory for tests. Never the artifact vault, which is where squad tasks' inputs come from.
 ### `adapters.noop`
 NoOp port stubs for bootstrapping a `PortsBundle` (SIP-0066).
 
 ### `adapters.observability`
 Health-check reporting over HTTP, for the operations dashboard.
+
+### `adapters.outcomes`
+The intervention ledger's store (SIP-0113 §4.3): Postgres beside the campaigns whose control logs it
+classifies, and in memory for tests.
 
 ### `adapters.persistence`
 Postgres through asyncpg: the runtime connection pool and the runtime ports, and the chat repository

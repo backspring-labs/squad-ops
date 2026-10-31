@@ -38,12 +38,14 @@ from squadops.campaigns.models import (
     RefusalReason,
     SubmittedProposal,
     TransitionResult,
+    WorkClass,
 )
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
 
 _CAMPAIGN_COLUMNS = (
     "campaign_id, project_id, objective, policy, state, outcome, created_at, created_by, "
-    "updated_at, accepted_identity, accepted_cycle_id, proposal"
+    "updated_at, accepted_identity, accepted_cycle_id, accepted_calibration_record_id, "
+    "accepted_commit, proposal"
 )
 _ENTRY_COLUMNS = (
     "entry_id, campaign_id, seq, operation, actor, actor_role, reason, target, idempotency_key, "
@@ -320,6 +322,9 @@ async def _commit(
         campaign.campaign_id,
     )
     refusal = verdict.refusal
+    superseded = await _superseded(conn, transition)
+    if refusal is None:
+        refusal = lifecycle.supersession_refusal(campaign, transition, superseded)
     lease = None
     if refusal is None and lease_change is not None:
         current, runs_in_flight = lease_change
@@ -367,7 +372,8 @@ async def _commit(
     if updated is not campaign:
         await conn.execute(
             "UPDATE campaigns SET state = $2, outcome = $3, updated_at = $4, "
-            "accepted_identity = $5, accepted_cycle_id = $6, proposal = $7 "
+            "accepted_identity = $5, accepted_cycle_id = $6, accepted_calibration_record_id = $7, "
+            "accepted_commit = $8, proposal = $9 "
             "WHERE campaign_id = $1",
             updated.campaign_id,
             updated.state.value,
@@ -391,6 +397,7 @@ async def _commit(
             f"VALUES ({_placeholders(_INTENT_COLUMNS)})",
             *_intent_args(intent),
         )
+    await _mark_superseded(conn, superseded)
     if lease is not None:
         # An upsert, not an update: a lease row that went missing (a truncated campaigns table
         # cascades to it) must not turn a committed change into one that wrote nothing.
@@ -407,6 +414,32 @@ async def _commit(
             lease.expires_at,
         )
     return TransitionResult(entry=entry, campaign=updated, intent=intent, replayed=False)
+
+
+async def _superseded(
+    conn: asyncpg.Connection, transition: CampaignTransition
+) -> LaunchIntent | None:
+    """The intent a rebase supersedes (§24cd point 2), read under the campaign's lock, which every
+    write of its intents holds; ``None`` when it names none, or none such exists."""
+    if transition.supersedes is None:
+        return None
+    row = await conn.fetchrow(
+        f"SELECT {_INTENT_COLUMNS} FROM campaign_launch_intents WHERE launch_id = $1",
+        transition.supersedes,
+    )
+    return _row_to_intent(row) if row else None
+
+
+async def _mark_superseded(conn: asyncpg.Connection, superseded: LaunchIntent | None) -> None:
+    """The applied rebase's supersession, in its transaction: adjudicated pending above."""
+    if superseded is None:
+        return
+    await conn.execute(
+        "UPDATE campaign_launch_intents SET state = $2 WHERE launch_id = $1 AND state = $3",
+        superseded.launch_id,
+        LaunchIntentState.SUPERSEDED.value,
+        LaunchIntentState.PENDING.value,
+    )
 
 
 _LEASE_COLUMNS = "holder, held_by, campaign_id, acquired_at, expires_at"
@@ -481,8 +514,13 @@ def _row_to_proposal(value: dict | None) -> SubmittedProposal | None:
     )
 
 
-def _accepted_args(accepted: AcceptedTree | None) -> tuple[str | None, str | None]:
-    return (accepted.identity, accepted.cycle_id) if accepted else (None, None)
+def _accepted_args(accepted: AcceptedTree | None) -> tuple[str | None, ...]:
+    """The tree's identity, the one thing it names (its cycle or its calibration record: §24cc,
+    1697's CHECK holds them to exactly one), and on a repository-backed Project the commit at the
+    head of its campaign branch (§24bv point 2, 1698)."""
+    if accepted is None:
+        return (None, None, None, None)
+    return (accepted.identity, accepted.cycle_id, accepted.calibration_record_id, accepted.commit)
 
 
 def _intent_args(intent: LaunchIntent) -> tuple:
@@ -510,6 +548,10 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             measurement=objective["measurement"],
             # §24ah: absent on a campaign stored before the field existed.
             target_accepted_increments=objective.get("target_accepted_increments"),
+            # SIP-0113 §4.6: absent on a campaign stored before the field existed.
+            work_class=WorkClass.from_stored(objective.get("work_class")),
+            # SIP-0109 §24bv point 5: absent on a campaign stored before the field existed.
+            requirements=objective.get("requirements"),
         ),
         policy=CampaignPolicy.from_stored(row["policy"]),
         state=CampaignState(row["state"]),
@@ -518,7 +560,12 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
         updated_at=row["updated_at"],
         outcome=CampaignOutcome(row["outcome"]) if row["outcome"] else None,
         accepted=(
-            AcceptedTree(row["accepted_identity"], row["accepted_cycle_id"])
+            AcceptedTree(
+                row["accepted_identity"],
+                row["accepted_cycle_id"],
+                row["accepted_calibration_record_id"],
+                row["accepted_commit"],
+            )
             if row["accepted_identity"]
             else None
         ),

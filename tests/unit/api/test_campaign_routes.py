@@ -9,6 +9,7 @@ refusal not recorded, a resume to the wrong state, an abort that leaves a launch
 from __future__ import annotations
 
 import dataclasses
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+from adapters.cycles.factory import create_project_registry
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.api.error_handlers import register_domain_error_handlers
@@ -92,6 +94,8 @@ class _World:
         app.include_router(campaigns_router)
         register_domain_error_handlers(app)
         app.state.campaign_registry = self.campaigns
+        # SIP-0109 §24bv point 5: creation reads the Project's kind; group_run is a sample app.
+        app.state.project_registry = create_project_registry("config")
         app.state.cycle_registry = self.cycles
         app.state.authz_port = KeycloakAuthzAdapter()
         app.state.audit_port = self.audit
@@ -115,6 +119,7 @@ def _create(world: _World, key: str = "create-1", **overrides):
             "allowed_scope": ["backend", "frontend"],
             "measurement": "two accepted increments",
             "target_accepted_increments": 2,
+            "work_class": {"prd_tier": "tier-1", "attendance": "unattended"},
         },
         "policy": _POLICY,
         "reason": "the 2.0 shakeout",
@@ -297,10 +302,30 @@ async def test_resume_returns_the_campaign_to_the_state_it_was_paused_from(world
     )
 
 
-async def test_the_campaign_read_carries_its_accepted_tree(world):
+@pytest.mark.parametrize(
+    ("tree", "names"),
+    [
+        (
+            AcceptedTree("sha-cal", "cyc_cal000000001"),
+            {"cycle_id": "cyc_cal000000001", "calibration_record_id": None, "commit": None},
+        ),
+        (
+            AcceptedTree("sha-cal", calibration_record_id="calrec_0123456789ab", commit="a" * 40),
+            {"cycle_id": None, "calibration_record_id": "calrec_0123456789ab", "commit": "a" * 40},
+        ),
+        (
+            AcceptedTree("sha-cal", "cyc_inc000000001", commit="b" * 40),
+            {"cycle_id": "cyc_inc000000001", "calibration_record_id": None, "commit": "b" * 40},
+        ),
+    ],
+    ids=["a-cycles", "a-calibration-records", "a-campaign-branchs"],
+)
+async def test_the_campaign_read_carries_its_accepted_tree(world, tree, names):
     """§7.1: the tree every increment is proposed against and every ruling binds to is readable
-    by the supervisor. Bug caught: the response mapping leaving it out, so a ruling's binding
-    cannot be built from a read."""
+    by the supervisor. Bugs caught: the response mapping leaving it out, so a ruling's binding
+    cannot be built from a read; (§24cc) a read that requires a cycle, so every campaign on a
+    repository-backed Project answers 500 once its calibration record is promoted; or (§24bv
+    point 2) the head of a campaign branch read without its commit."""
     _create(world)
     await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "a"))
     before = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
@@ -310,7 +335,7 @@ async def test_the_campaign_read_carries_its_accepted_tree(world):
             CampaignState.CALIBRATING,
             "promote",
             operation=ControlOperation.PROMOTE,
-            accepted=AcceptedTree("sha-cal", "cyc_cal000000001"),
+            accepted=tree,
         ),
     )
 
@@ -319,7 +344,7 @@ async def test_the_campaign_read_carries_its_accepted_tree(world):
     )
 
     assert before["accepted"] is None
-    assert after.json()["accepted"] == {"identity": "sha-cal", "cycle_id": "cyc_cal000000001"}
+    assert after.json()["accepted"] == {"identity": "sha-cal", **names}
 
 
 async def test_a_resume_after_the_gate_opened_during_the_pause_returns_to_the_gate(world):
@@ -639,6 +664,7 @@ async def _escalation(world: _World, *, ended: str | None) -> str:
         open_questions=("which order does the runs list use?",),
         footprint=("backend/main.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -789,3 +815,41 @@ async def test_a_late_answer_with_nothing_to_answer_is_a_422_and_records_nothing
     assert message in resp.json()["detail"]["error"]["message"]
     [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
     assert listed["answers"] == {}
+
+
+@pytest.mark.parametrize(
+    ("work_class", "said"),
+    [
+        (None, "objective.work_class is required"),
+        ({"prd_tier": "tier-4", "attendance": "unattended"}, "prd_tier"),
+        ({"prd_tier": "tier-1", "attendance": "sometimes"}, "attendance"),
+        ({"prd_tier": "tier-1", "attendance": "attended", "stack": "x"}, "stack"),
+    ],
+    ids=["undeclared", "an-unknown-tier", "an-unknown-attendance", "an-extra-key"],
+)
+def test_a_campaign_without_its_declared_work_class_is_refused(world, work_class, said):
+    """SIP-0113 §4.6 (the owner's ruling of 2026-10-18). Bug caught: a campaign created with no
+    class, or one outside the ruled vocabulary, that AOR can never group with its like."""
+    objective = {
+        "statement": "evolve group_run",
+        "allowed_scope": ["backend"],
+        "measurement": "two accepted increments",
+        "target_accepted_increments": 2,
+        "work_class": work_class,
+    }
+
+    response = _create(world, objective=objective)
+
+    assert response.status_code == 422
+    assert said in json.dumps(response.json())
+    assert world.client.get("/api/v1/campaigns/cmp_api000000001").status_code == 404
+
+
+def test_a_campaigns_declared_work_class_reads_back(world):
+    """Bug caught: the class accepted at creation and dropped on the way to the store or the
+    response, so the digest's AOR has nothing to group by."""
+    assert _create(world).status_code == 201
+
+    read = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
+
+    assert read["objective"]["work_class"] == {"prd_tier": "tier-1", "attendance": "unattended"}

@@ -70,6 +70,12 @@ def build_app() -> FastAPI:
     from adapters.sandbox.factory import create_sandbox_service, resolve_service_token
 
     config = sandbox_config_from_env()
+    if config.provider == "docker" and not config.app_network:
+        # #2451 part 4: inside a deploy the service is a container, and an app published to the
+        # host's loopback is out of its reach. Required here, never defaulted (#1568).
+        raise ValueError(
+            "the sandbox service runs apps on its app network: set SQUADOPS__SANDBOX__APP_NETWORK"
+        )
     service = create_sandbox_service(config)
     token = resolve_service_token(config, secret_manager=secret_manager_from_env())
     return create_app(service, service_token=token)

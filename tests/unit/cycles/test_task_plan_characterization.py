@@ -46,7 +46,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
     WorkloadType,
 )
-from squadops.cycles.task_plan import generate_task_plan
+from squadops.cycles.task_plan import builder_assembles, generate_task_plan
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.stacks.scaffold import InterfaceManifest
 
@@ -355,3 +355,91 @@ def test_an_increment_without_its_change_request_is_refused(monkeypatch):
     observed = _observe(_cases()["increment_without_its_change_request"], monkeypatch)
     assert observed["envelopes"] is None
     assert "has no approved change request" in observed["raised"]
+
+
+@pytest.mark.parametrize(
+    ("defaults", "workload", "with_builder"),
+    [
+        ({"build_tasks": True}, None, True),
+        ({"build_tasks": True}, None, False),
+        ({}, None, True),
+        (
+            {"implementation_plan": True, "workload_sequence": [{"type": "implementation"}]},
+            WorkloadType.IMPLEMENTATION,
+            True,
+        ),
+        (
+            {"implementation_plan": True, "workload_sequence": [{"type": "implementation"}]},
+            WorkloadType.IMPLEMENTATION,
+            False,
+        ),
+        ({"workload_sequence": [{"type": "framing"}]}, WorkloadType.FRAMING, True),
+    ],
+    ids=[
+        "legacy-build-builder",
+        "legacy-build-no-builder",
+        "legacy-plan-only",
+        "implementation-builder",
+        "implementation-no-builder",
+        "framing-only",
+    ],
+)
+def test_preflight_reads_builder_assembly_as_plan_generation_does(
+    defaults, workload, with_builder, monkeypatch
+):
+    """#2437: create-time preflight refuses exactly the cycles whose plan the #392 check would
+    refuse, by asking ``builder_assembles``. Entered at ``generate_task_plan`` with no
+    ``build_profile``. Bug caught: the two readings drifting, so preflight refuses a cycle that
+    would have run, or accepts one that fails after framing."""
+    import dataclasses
+
+    profile = (
+        _PROFILE
+        if with_builder
+        else dataclasses.replace(
+            _PROFILE, agents=tuple(a for a in _PROFILE.agents if "builder" not in a.serves_roles)
+        )
+    )
+    cycle = _cycle(defaults, {})
+    case: dict[str, Any] = {"cycle": cycle, "run": _run(workload)}
+    if workload == WorkloadType.IMPLEMENTATION:
+        case["plan"] = _plan([])
+    observed = _observe({**case, "profile": profile}, monkeypatch)
+    refused = observed["raised"] is not None and "build_profile is required" in observed["raised"]
+
+    assert builder_assembles(profile, cycle.resolved_config()) is refused
+
+
+@pytest.mark.parametrize(
+    ("defaults", "workload"),
+    [
+        ({"build_tasks": True}, None),
+        (
+            {"implementation_plan": True, "workload_sequence": [{"type": "implementation"}]},
+            WorkloadType.IMPLEMENTATION,
+        ),
+    ],
+    ids=["legacy-build", "implementation"],
+)
+def test_a_source_backed_cycle_never_assembles_with_the_builder(defaults, workload, monkeypatch):
+    """SIP-0112 E.4.3: an external product builds itself, by its own declared commands.
+    Entered at ``generate_task_plan`` on a squad serving the builder role. Bugs caught: the
+    builder dispatched on an external product, and refused there for a ``build_profile`` the
+    product can't have; preflight and the plan reading it differently."""
+    import dataclasses
+
+    from squadops.projects.source_context import parse_source_context
+    from tests.fixtures.shared_contract.repository import recorded
+
+    context = parse_source_context(recorded("project_source_context", "valid"))
+    cycle = dataclasses.replace(_cycle(defaults, {}), source_context=context)
+    case: dict[str, Any] = {"cycle": cycle, "run": _run(workload), "profile": _PROFILE}
+    if workload == WorkloadType.IMPLEMENTATION:
+        case["plan"] = _plan([])
+
+    observed = _observe(case, monkeypatch)
+
+    assert observed["raised"] is None
+    assert not [e for e in observed["envelopes"] if e["task_type"].startswith("builder.")]
+    assert builder_assembles(_PROFILE, cycle.resolved_config(), source_backed=True) is False
+    assert builder_assembles(_PROFILE, cycle.resolved_config()) is True

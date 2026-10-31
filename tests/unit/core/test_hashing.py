@@ -66,8 +66,14 @@ def test_the_bound_record_and_the_verification_scaffold_keep_their_identities():
         # #2363 (2026-10-15): the Next.js store gained `remove`, so the expanded tree moved. The
         # spine and scaffold hashes above did not, which is the evidence the change was the
         # store's alone. #2394 (2026-10-16): the seeded vitest config gained `esbuild.jsx`, and the
-        # tree moved again with the spine and scaffold hashes unmoved.
-        "dd63dcdfb00f6c8df364e144e7bb4b18a402da817965fba981181a7303d6375f",
+        # tree moved again with the spine and scaffold hashes unmoved. #2522 (2026-10-19): each
+        # route handler states its request fields and errors, so the tree moved a third time, the
+        # spine and scaffold hashes again unmoved. #2531 (2026-10-19): the vitest config collects
+        # `.test.tsx` too, a fourth tree-only move. #2534 (2026-10-19): the page-suite DOM harness,
+        # a fifth. 2026-10-20: each route handler states its response entity's fields, a sixth.
+        # #2577 (2026-10-21): the frozen route caller, `vitest.routes.ts`, a seventh. #2602
+        # (2026-10-27): the frozen page loader, `vitest.pages.ts`, an eighth; the caller unmoved.
+        "39fc4dbd74387ced2ae006f067df981a18d7646a6f4b821a379d4e9b5c94c033",
     )
 
 

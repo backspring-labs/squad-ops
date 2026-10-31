@@ -37,6 +37,39 @@ COMMITTED = {v for c in REGISTRY_ROWS for v in c["committed"]}
 _DSN = next(c for c in REGISTRY_ROWS if c["env"] == "KEYCLOAK_DB_PASSWORD")
 
 
+def test_tensorfold_ensure_preserves_independent_callers_and_adopts_only_its_label():
+    credential = next(c for c in REGISTRY_ROWS if c["env"] == "SQUADOPS_TENSORFOLD_API_KEY")
+    target = credential["secret_file"]
+    original = "# callers\nnostromo-mother: mother-fixture\nsquadops: squad-fixture\nnostromo-brett: brett-fixture\n"
+    assert value_from_secret_file(credential, original) == "squad-fixture"
+    adopted = plan([credential], {}, {target: original}, existing=True)
+    assert adopted.env_updates[credential["env"]] == ("squad-fixture", "adopted")
+    assert adopted.secret_writes == {}
+    updated = plan(
+        [credential], {credential["env"]: "rotated-fixture"}, {target: original}, existing=True
+    )
+    assert (
+        updated.secret_writes[target]
+        == original.replace("squad-fixture", "rotated-fixture").rstrip()
+    )
+    assert (
+        plan(
+            [credential],
+            {credential["env"]: "rotated-fixture"},
+            updated.secret_writes,
+            existing=True,
+        ).secret_writes
+        == {}
+    )
+    with pytest.raises(ValueError, match="duplicate managed key"):
+        plan(
+            [credential],
+            {credential["env"]: "value"},
+            {target: "squadops: a\nsquadops: b"},
+            existing=True,
+        )
+
+
 def _counter():
     n = iter(range(1000))
     return lambda: f"generated-{next(n)}"
@@ -65,6 +98,9 @@ def test_an_existing_deploy_adopts_what_it_runs_with_and_generates_only_what_it_
     assert decided.env_updates["KEYCLOAK_ADMIN_PASSWORD"] == ("kept-admin", "adopted")
     assert decided.env_updates["LANGFUSE_SALT"] == ("mysalt", "adopted")
     assert decided.env_updates["SQUADOPS_SANDBOX_SERVICE_TOKEN"][1] == "generated"
+    # #2464: the supervisor never existed before, so a deploy that predates it adopts nothing for
+    # it: a shared or committed value would let anyone with the repository draft a suite as it.
+    assert decided.env_updates["SQUADOPS_SUPERVISOR_PASSWORD"][1] == "generated"
     # The adopted file already holds what .env now says: it is not rewritten.
     assert "secrets/keycloak_admin_password.txt" not in decided.secret_writes
 

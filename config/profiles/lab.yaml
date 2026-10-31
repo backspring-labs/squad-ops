@@ -8,13 +8,14 @@ auth:
     realm: squadops-lab
     base_url: "http://squadops-keycloak:8080"
     public_url: "https://auth.lab.squadops.example"
-    db_dsn: "secret://keycloak_db_dsn"
+    # #2498: where the realm's data lives, without its password. Keycloak's container takes its database
+    # credentials from .env (KC_DB_*), and no service reads this.
+    db_dsn: "postgresql://keycloak@postgres:5432/keycloak"
     proxy_mode: edge
     external_tls_termination: true
     hostname_strict: true
     admin:
       username: admin
-      password: "secret://keycloak_admin_password"
       allowed_networks: ["10.0.0.0/8", "192.168.0.0/16"]
     token_policy:
       access_token_minutes: 10

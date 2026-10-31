@@ -1,9 +1,14 @@
-"""Every agent container keeps its memory store on a volume of its own (#2112).
+"""No agent container mounts a store of its own (#2184).
 
-An agent opens its store at ``/app/data/memory_db`` (``squadops.agents.entrypoint``, the
-``MEMORY_DB_PATH`` default). A service with no volume there keeps the store in the container's
-writable layer, and every recreation (a rebuild, a deploy) empties it. Three agents shipped that
-way: han was added in 1.8.1 without the mount the other five had.
+Until 2.5 every agent opened SIP-042's LanceDB store at ``/app/data/memory_db``, and #2112 gave
+each one a named volume there so the store outlived a recreation. SIP-0110 §A.4.3 retired the
+store: the eight held no record when it was re-inventoried, and #2184 removed it, its port and
+the eight volumes. Memory's records are SIP-0110's, in Postgres beside the cycle registry, so an
+agent keeps nothing that a recreation could lose.
+
+This guard keeps it so: an agent service mounts no named volume and nothing at the old store
+path, sets no ``MEMORY_DB_PATH``, and the file declares no ``*_memory_data`` volume. Bind mounts
+of host files (neo's ``docker-compose.yml`` and Docker socket) are not stores.
 """
 
 from __future__ import annotations
@@ -13,7 +18,7 @@ import pathlib
 import pytest
 import yaml
 
-_STORE = "/app/data/memory_db"
+_RETIRED_STORE = "/app/data/memory_db"
 _AGENT_DOCKERFILE = "agents/Dockerfile"
 
 
@@ -27,53 +32,80 @@ def _is_agent(service: dict) -> bool:
     return isinstance(build, dict) and build.get("dockerfile") == _AGENT_DOCKERFILE
 
 
-def _memory_volume_problems(compose: dict) -> list[str]:
-    """What keeps an agent's store off a volume of its own: no named volume at the store path,
-    one no top-level ``volumes:`` declares, one another agent also mounts, or a
-    ``MEMORY_DB_PATH`` that moves the store away from the mount."""
-    declared = set((compose.get("volumes") or {}).keys())
-    owners: dict[str, list[str]] = {}
+def _fields(spec: str) -> list[str]:
+    """A short-syntax mount split on its colons, outside any ``${VAR:-default}``."""
+    fields, depth, current = [], 0, ""
+    for char in spec:
+        depth += {"{": 1, "}": -1}.get(char, 0)
+        if char == ":" and depth == 0:
+            fields.append(current)
+            current = ""
+        else:
+            current += char
+    return [*fields, current]
+
+
+#: The source of a volume compose creates with no name: it persists like a named one.
+_ANONYMOUS = "an anonymous volume"
+
+
+def _mounts(service: dict) -> list[tuple[str, str]]:
+    """``(source, target)`` for each of a service's mounts, short or long syntax. A host path is
+    its source as written; a volume with no source is ``_ANONYMOUS``."""
+    out = []
+    for spec in service.get("volumes") or []:
+        if isinstance(spec, str):
+            fields = _fields(spec)
+            out.append((_ANONYMOUS, fields[0]) if len(fields) == 1 else (fields[0], fields[1]))
+        elif isinstance(spec, dict):
+            source = spec.get("source") or ""
+            if spec.get("type", "volume") == "volume" and not source:
+                source = _ANONYMOUS
+            out.append((source, spec.get("target", "")))
+    return out
+
+
+def _is_volume(source: str) -> bool:
+    """A volume, named or anonymous; not a host path (``./x``, ``/x``, ``~/x``, ``${VAR}``)."""
+    return bool(source) and not source.startswith((".", "/", "~", "$"))
+
+
+def _store_problems(compose: dict) -> list[str]:
+    """What gives an agent a store of its own."""
     problems = []
     for name, service in (compose.get("services") or {}).items():
         if not _is_agent(service):
             continue
         env = service.get("environment") or {}
-        if isinstance(env, dict) and "MEMORY_DB_PATH" in env:
-            problems.append(f"{name}: MEMORY_DB_PATH moves the store off {_STORE}")
-        mounted = [
-            spec.split(":")[0]
-            for spec in service.get("volumes") or []
-            if isinstance(spec, str) and spec.split(":")[1:2] == [_STORE]
-        ]
-        if not mounted:
-            problems.append(f"{name}: nothing is mounted at {_STORE}")
-            continue
-        volume = mounted[0]
-        if volume.startswith((".", "/")):
-            problems.append(f"{name}: {volume} is a bind mount, not a named volume")
-        elif volume not in declared:
-            problems.append(f"{name}: {volume} is not declared under the top-level volumes")
-        owners.setdefault(volume, []).append(name)
+        names = env.keys() if isinstance(env, dict) else [e.split("=")[0] for e in env]
+        if "MEMORY_DB_PATH" in names:
+            problems.append(f"{name}: sets MEMORY_DB_PATH")
+        for source, target in _mounts(service):
+            if target == _RETIRED_STORE:
+                problems.append(f"{name}: mounts {source} at the retired store {_RETIRED_STORE}")
+            elif _is_volume(source):
+                problems.append(f"{name}: mounts {source} at {target}")
     problems += [
-        f"{volume} is mounted by {', '.join(names)}"
-        for volume, names in owners.items()
-        if len(names) > 1
+        f"the volume {volume} is declared"
+        for volume in (compose.get("volumes") or {})
+        if volume.endswith("_memory_data")
     ]
     return problems
 
 
-def test_every_agent_keeps_its_memory_store_on_a_volume_of_its_own():
-    """Bug caught: an agent service added without the store's volume (#2112), or two agents
-    sharing one store."""
+def test_no_agent_mounts_a_store():
+    """Bug caught: a branch from before #2184 merged or rebased back in with an agent's store
+    volume, so a store comes back that nothing reads and the next re-inventory has to account
+    for it; or an agent given a volume of its own for state that belongs in Postgres."""
     compose = _compose()
     agents = [name for name, service in compose["services"].items() if _is_agent(service)]
 
     assert len(agents) >= 8, f"the eight agent services are built from {_AGENT_DOCKERFILE}"
-    assert _memory_volume_problems(compose) == []
+    assert _store_problems(compose) == []
 
 
 def _agent(volumes=None, environment=None) -> dict:
-    service = {"build": {"dockerfile": _AGENT_DOCKERFILE}}
+    service: dict = {"build": {"dockerfile": _AGENT_DOCKERFILE}}
     if volumes is not None:
         service["volumes"] = volumes
     if environment is not None:
@@ -82,64 +114,74 @@ def _agent(volumes=None, environment=None) -> dict:
 
 
 @pytest.mark.parametrize(
-    ("services", "declared", "expected"),
+    ("compose", "expected"),
     [
         pytest.param(
-            {"eve": _agent()},
-            [],
-            ["eve: nothing is mounted at /app/data/memory_db"],
-            id="no mount (#2112)",
+            {"services": {"eve": _agent(["eve_memory_data:/app/data/memory_db"])}},
+            ["eve: mounts eve_memory_data at the retired store /app/data/memory_db"],
+            id="the #2112 mount restored",
         ),
         pytest.param(
-            {"eve": _agent(["/var/run/docker.sock:/var/run/docker.sock"])},
-            [],
-            ["eve: nothing is mounted at /app/data/memory_db"],
-            id="other mounts only",
+            {"services": {"eve": _agent(["./data/eve:/app/data/memory_db:rw"])}},
+            ["eve: mounts ./data/eve at the retired store /app/data/memory_db"],
+            id="a bind mount at the store path",
         ),
         pytest.param(
-            {"eve": _agent(["eve_memory_data:/app/data/memory_db"])},
-            [],
-            ["eve: eve_memory_data is not declared under the top-level volumes"],
-            id="undeclared volume",
+            {"services": {"eve": _agent(["${EVE_DATA:-/srv/eve}:/app/data/memory_db"])}},
+            ["eve: mounts ${EVE_DATA:-/srv/eve} at the retired store /app/data/memory_db"],
+            id="an interpolated host path at the store path",
         ),
         pytest.param(
-            {"eve": _agent(["./data/eve:/app/data/memory_db"])},
-            [],
-            ["eve: ./data/eve is a bind mount, not a named volume"],
-            id="bind mount",
+            {"services": {"eve": _agent(["eve_state:/app/state"])}},
+            ["eve: mounts eve_state at /app/state"],
+            id="a named volume elsewhere",
         ),
         pytest.param(
-            {
-                "eve": _agent(["shared_memory:/app/data/memory_db"]),
-                "han": _agent(["shared_memory:/app/data/memory_db"]),
-            },
-            ["shared_memory"],
-            ["shared_memory is mounted by eve, han"],
-            id="two agents share a store",
+            {"services": {"eve": _agent(["/app/state"])}},
+            ["eve: mounts an anonymous volume at /app/state"],
+            id="an anonymous volume",
         ),
         pytest.param(
             {
-                "eve": _agent(
-                    ["eve_memory_data:/app/data/memory_db"],
-                    {"MEMORY_DB_PATH": "/tmp/memory_db"},
-                )
+                "services": {
+                    "eve": _agent([{"type": "volume", "source": "eve_state", "target": "/s"}])
+                }
             },
-            ["eve_memory_data"],
-            ["eve: MEMORY_DB_PATH moves the store off /app/data/memory_db"],
-            id="store moved off the mount",
+            ["eve: mounts eve_state at /s"],
+            id="long syntax",
+        ),
+        pytest.param(
+            {"services": {"eve": _agent(environment=["MEMORY_DB_PATH=/tmp/memory_db"])}},
+            ["eve: sets MEMORY_DB_PATH"],
+            id="the store path set in a list environment",
+        ),
+        pytest.param(
+            {"services": {"eve": _agent()}, "volumes": {"eve_memory_data": {}}},
+            ["the volume eve_memory_data is declared"],
+            id="a store volume declared, unmounted",
         ),
     ],
 )
-def test_a_store_off_a_volume_of_its_own_is_named(services, declared, expected):
+def test_a_store_is_named(compose, expected):
     """Bug caught: a check that passes the shapes it exists to refuse."""
-    compose = {"services": services, "volumes": {name: {} for name in declared}}
-
-    assert _memory_volume_problems(compose) == expected
+    assert _store_problems(compose) == expected
 
 
-def test_a_service_not_built_as_an_agent_needs_no_store():
-    """Bug caught: the check reaching the runtime API or a third-party service, which open no
-    agent store."""
-    compose = {"services": {"postgres": {"image": "postgres:16"}, "runtime-api": {"build": "."}}}
+def test_host_files_and_other_services_are_not_stores():
+    """Bug caught: the check refusing neo's bind mounts of the compose file and the Docker socket,
+    a ``${VAR}`` host path, or reaching services not built as agents, whose volumes are theirs."""
+    compose = {
+        "services": {
+            "neo": _agent(
+                [
+                    "./docker-compose.yml:/app/docker-compose.yml",
+                    "/var/run/docker.sock:/var/run/docker.sock",
+                    "${SQUADOPS_SANDBOX_ROOT:-/tmp/s}:${SQUADOPS_SANDBOX_ROOT:-/tmp/s}",
+                ]
+            ),
+            "postgres": {"image": "postgres:15", "volumes": ["postgres_data:/var/lib/data"]},
+        },
+        "volumes": {"postgres_data": {}},
+    }
 
-    assert _memory_volume_problems(compose) == []
+    assert _store_problems(compose) == []

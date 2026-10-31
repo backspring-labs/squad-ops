@@ -44,7 +44,8 @@ idle.** Pass the campaign and its diagnostics in order:
    increment's decision; the abort lands on the next proposal run.
 
 3. **2.1 rebuild 1** (2.1.0 plan §4 step 3): a campaign of one increment,
-   ``restart-at:at_proposal restart-queued-successor duplicate-completion``
+   ``restart-at:at_proposal restart-queued-successor duplicate-completion
+   --foreign-model <a model no deploy declares>``
    (``examples/03_group_run/campaigns/2-1-0-rebuild1-diag.yaml``). The increment's cycle ends by
    its own rules, and the last record reads #2007 over every run the restarts touched.
 
@@ -84,10 +85,12 @@ PROPOSER = "squadops-nat"
 PROPOSAL_TASK = "strategy.propose_increment"
 PREFECT_API = "http://localhost:4200/api"
 OLLAMA = "http://localhost:11434"
-#: A model no deploy record declares: while it is resident the box is not quiet, so a run start
-#: waits, still queued (``RunAdmission.await_box``). The 2.0 blocked legs used it (operator notes,
-#: ``cmp_678167dcd86a``).
-FOREIGN_MODEL = "llama3.1:8b"
+#: The diagnostics that hold the box with a model no deploy record declares, named on the command
+#: line (``--foreign-model``): while it is resident the box is not quiet, so a run start waits,
+#: still queued (``RunAdmission.await_box``). The 2.0 blocked legs used ``llama3.1:8b`` (operator
+#: notes, ``cmp_678167dcd86a``). Since #2676 a deploy declares it as Joi's own model, so resident it
+#: leaves the box quiet, and a model the active record declares is refused before any injection.
+HOLDS_THE_BOX = frozenset({"restart-queued-successor", "box-held-past-the-lease"})
 _TERMINAL = frozenset({"completed", "failed", "cancelled"})
 _DISPATCHED = re.compile(r"Dispatched task (\S+) \((\S+)\) to ")
 _REPLAYED = re.compile(r"task_reply_replayed: task=(\S+)")
@@ -792,14 +795,14 @@ def box_held_by(model: str) -> Iterator[dict]:
         facts["available_gb_after_unload"] = _available_gb()
 
 
-def restart_queued_successor(campaign_id: str) -> Verdict:
+def restart_queued_successor(campaign_id: str, foreign_model: str) -> Verdict:
     """#2042: the ruling's successor run is created queued and waits for the box, which a foreign
     model holds; the runtime restarts in that window; then the box is freed. The startup
     re-attach must start the successor, once."""
     cycle_id, run_id = _at_the_ruling(campaign_id)
     before = control_log(campaign_id)
     notes = "#2042 diagnostic: a restart while the ruling's successor waits, queued, for the box"
-    with box_held_by(FOREIGN_MODEL) as held:
+    with box_held_by(foreign_model) as held:
         _rule(cycle_id, run_id, notes, f"diag-successor-{run_id}", ("--approve",))
         wait_for(
             lambda: (
@@ -862,7 +865,7 @@ def _continuation(campaign_id: str, cycle_id: str) -> tuple[dict, str] | None:
     return (json.loads(rows[-1][0]), rows[-1][1]) if rows else None
 
 
-def box_held_past_the_lease(campaign_id: str) -> Verdict:
+def box_held_past_the_lease(campaign_id: str, foreign_model: str) -> Verdict:
     """#1824: the ruling's successor run waits for a box a foreign model holds past one full
     lease of its campaign, and is refused (``RunAdmission.await_box``). The run must end as an
     infrastructure failure and the campaign retry the cycle (row 10), not escalate (row 14).
@@ -885,7 +888,7 @@ def box_held_past_the_lease(campaign_id: str) -> Verdict:
         successor[:] = [r for r, _st in runs[-1:]]
         return bool(runs) and runs[-1][1] == "failed"
 
-    with box_held_by(FOREIGN_MODEL) as held:
+    with box_held_by(foreign_model) as held:
         _rule(cycle_id, run_id, notes, f"diag-infra-{run_id}", ("--approve",))
         wait_for(refused, "the successor is refused by the held box", timeout_s=lease_s + 900)
     wait_for(
@@ -992,7 +995,7 @@ def abort_in_flight(campaign_id: str) -> Verdict:
     return abort_verdict(control_log(campaign_id), campaign_state(campaign_id)[0], cancelled)
 
 
-DIAGNOSTICS: dict[str, Callable[[str], Verdict]] = {
+DIAGNOSTICS: dict[str, Callable[..., Verdict]] = {
     "restart-paused": restart_paused,
     "repeated-ruling": repeated_ruling,
     "kill-before-promotion": kill_before_promotion,
@@ -1003,7 +1006,19 @@ DIAGNOSTICS: dict[str, Callable[[str], Verdict]] = {
 }
 
 
-def _diagnostic(spec: str) -> Callable[[str], Verdict]:
+def _declared_models() -> set[str]:
+    """The models the active deploy record declares (#1720)."""
+    rows = _psql("select models::text from deploy_records order by recorded_at desc limit 1")
+    return {m["model"] for m in json.loads(rows[0][0])} if rows else set()
+
+
+def _diagnostic(spec: str, foreign_model: str | None) -> Callable[[str], Verdict]:
+    if spec in HOLDS_THE_BOX:
+        if not foreign_model:
+            raise argparse.ArgumentTypeError(
+                f"{spec} holds the box with a model no deploy declares: name it (--foreign-model)"
+            )
+        return lambda campaign_id: DIAGNOSTICS[spec](campaign_id, foreign_model)
     if spec.startswith("restart-at:"):
         state = spec.removeprefix("restart-at:")
         if state not in {s.value for s in CampaignState} - {"draft", "completed"}:
@@ -1022,11 +1037,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         nargs="+",
         help=f"in order: restart-at:<state>, {', '.join(DIAGNOSTICS)}",
     )
+    parser.add_argument(
+        "--foreign-model",
+        help=f"for {', '.join(sorted(HOLDS_THE_BOX))}: a model the engine serves and no deploy "
+        "record declares",
+    )
     args = parser.parse_args(argv)
     try:  # every spec is read before the first injection: a typo never strands a campaign
-        runs = [_diagnostic(spec) for spec in args.diagnostics]
+        runs = [_diagnostic(spec, args.foreign_model) for spec in args.diagnostics]
     except argparse.ArgumentTypeError as e:
         parser.error(str(e))
+    if HOLDS_THE_BOX.intersection(args.diagnostics) and args.foreign_model in _declared_models():
+        parser.error(
+            f"{args.foreign_model} is declared by the active deploy record: resident, it leaves the "
+            "box quiet, so it cannot hold it (#2676)"
+        )
     failed = 0
     for run in runs:
         verdict = run(args.campaign_id)

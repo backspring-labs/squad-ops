@@ -17,6 +17,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.prompt_budget import completion_reserve
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
@@ -48,6 +49,7 @@ from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.llm.models import ChatMessage
 from squadops.stacks.app_invocation import JS_SUITE_SUFFIXES
 from squadops.stacks.scaffold import scaffold_stack_for
+from squadops.tasks.task_types import first_call_keeps_reasoning_short
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -173,6 +175,18 @@ def failing_check_lines(checks: Any) -> list[str]:
         elif actual.get("stderr_tail"):
             lines.append(verbatim_block("build output", str(actual["stderr_tail"])))
     return lines
+
+
+def build_context_errors(inputs: dict[str, Any], task_kind: str) -> list[str]:
+    """A build task needs something to build on: the upstream documents the executor resolved
+    (D3), the vault to read them from, or (SIP-0112 E.4.3) a source-backed run's bounded view of
+    the product's repository. A source-backed run from an operator's plan has no framing
+    documents, so the view is the whole of its context."""
+    if any(key in inputs for key in ("artifact_contents", "artifact_vault", "source_repository")):
+        return []
+    return [
+        f"'artifact_contents', 'artifact_vault' or 'source_repository' is required for {task_kind}"
+    ]
 
 
 class SelfEvalFollowup:
@@ -492,28 +506,20 @@ class _CycleTaskHandler(CapabilityHandler):
 
         Returns (model_name, max_tokens, context_window).
         """
-        agent_overrides = inputs.get("agent_config_overrides", {})
         agent_model = inputs.get("agent_model") or None
         model_name = agent_model or default_model
         model_spec = get_model_spec(model_name)
-
-        max_tokens = capability_max_tokens
-        context_window = None
-        if model_spec is not None:
-            max_tokens = min(max_tokens, model_spec.default_max_completion)
-            context_window = model_spec.context_window
-        # #1173: the clamp above is an OUTPUT budget; thinking is billed against the
-        # same wire budget and the framework discards it. Add room for the level this
-        # capability declared, so declaring HIGH does not silently shrink the answer.
-        max_tokens += thinking_headroom(
-            resolve_reasoning_level(
-                self._task_type, agent_overrides=agent_overrides, model_name=agent_model
-            ),
-            model_spec,
+        # #2681: one reserve, the composer's and this guard's, so a binding the composer admits is
+        # one the guard passes. It clamps the capability's ceiling to the model's completion
+        # budget, then adds the thinking its reasoning level buys (#1173).
+        max_tokens = completion_reserve(
+            self._task_type,
+            model_name=model_name,
+            agent_model=agent_model,
+            agent_overrides=inputs.get("agent_config_overrides", {}),
+            capability_max_tokens=capability_max_tokens,
         )
-        if "max_completion_tokens" in agent_overrides:
-            max_tokens = agent_overrides["max_completion_tokens"]
-
+        context_window = model_spec.context_window if model_spec is not None else None
         return model_name, max_tokens, context_window
 
     def _capability_ceiling(self) -> int | None:
@@ -1456,18 +1462,25 @@ class _CycleTaskHandler(CapabilityHandler):
         it. Defaulting to True is the point — a new seam records unless someone opts
         out in writing, which is the inverse of how ten of them went dark.
 
-        The recorded prompt is the last message's content — the user turn at every
-        primary and the corrective feedback at every re-ask, which is what
+        The recorded prompt is the caller's last message — the user turn at every
+        primary (D12's note, appended after it, is not the prompt) and the corrective
+        feedback at every re-ask, which is what
         ``prompt_text`` meant at each of the seven sites that already recorded one.
         Reading it off ``messages`` rather than taking it as an argument is what stops
         the two drifting apart.
         """
-        self._capture_authoring_envelope(context, messages, chat_kwargs, rendered)
+        # D12 (#2253): a step declared ``first_call_keeps_reasoning_short`` is sent the note on its
+        # first call, after the caller's messages. A self-evaluation pass is a later call. The
+        # envelope captures what the model is sent, note included.
+        first_messages = (
+            messages if self_eval_pass else await self._first_call_messages(context, messages)
+        )
+        self._capture_authoring_envelope(context, first_messages, chat_kwargs, rendered)
         # 1.8.2 item 2: a call that spent its whole completion budget and wrote nothing is
         # asked again once, with that fact. The loop keeps ONE call and one sequence: every
         # call — the discarded one included — is accounted, shape-logged and recorded here,
         # and the declared fault applies only to the emission this returns.
-        call_messages = messages
+        call_messages = first_messages
         retried = False
         label = shape_label or self._handler_name
         while True:
@@ -1555,7 +1568,8 @@ class _CycleTaskHandler(CapabilityHandler):
             if record:
                 self._record_generation(
                     context,
-                    call_messages[-1].content,
+                    # The caller's last message, or the re-ask's fact: never D12's note.
+                    call_messages[-1].content if retried else messages[-1].content,
                     content,
                     (time.perf_counter() - started) * 1000,
                     chat_kwargs.get("model"),
@@ -1568,7 +1582,7 @@ class _CycleTaskHandler(CapabilityHandler):
             if retry_fact is None:
                 return response, content
             retried = True
-            call_messages = [*messages, ChatMessage(role="user", content=retry_fact)]
+            call_messages = [*first_messages, ChatMessage(role="user", content=retry_fact)]
 
     def _capture_authoring_envelope(
         self,
@@ -1694,9 +1708,40 @@ class _CycleTaskHandler(CapabilityHandler):
                 "completion_cap": str(cap),
                 "completion_tokens": str(response.completion_tokens),
                 "cut_block": cut,
+                "keep_reasoning_short": await self._keep_reasoning_short(renderer),
             },
         )
         return kept, cut, fact.content
+
+    @staticmethod
+    async def _keep_reasoning_short(renderer: Any) -> str:
+        """The clause the cut-off re-ask ends with, from its one asset: the same words a qa first
+        call is sent (D12, #2253)."""
+        return (await renderer.render("request.keep_reasoning_short", {})).content.strip()
+
+    async def _first_call_messages(
+        self, context: ExecutionContext, messages: list[ChatMessage]
+    ) -> list[ChatMessage]:
+        """A task's first call, with the note its step is declared to be sent (the 2.5 plan's D12).
+
+        A step declaring ``first_call_keeps_reasoning_short`` is sent the cut-off re-ask's clause
+        as a last user message, as the re-ask delivers its fact and as #2253's two checks sent it:
+        on 46 cut qa calls it finished 39 against 14, and on 80 that were not cut it cost no pass
+        the sample could see and about a third of the tokens. Any other step's call is returned as
+        it is. A handler with no renderer can't state it, so it is sent none, as the re-ask isn't.
+        """
+        if not first_call_keeps_reasoning_short(self._task_type):
+            return messages
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            logger.warning(
+                "keep_reasoning_short: %s has no request renderer to state it, so its first call "
+                "is sent without it (D12, #2253)",
+                self._handler_name,
+            )
+            return messages
+        note = await self._keep_reasoning_short(renderer)
+        return [*messages, ChatMessage(role="user", content=note)]
 
     async def _cap_exhausted_fact(
         self,

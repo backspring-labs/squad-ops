@@ -20,7 +20,12 @@ from squadops.cycles.task_outcome import TaskOutcome
 from squadops.memory.authoring_envelope import json_safe
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
-from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
+from squadops.tasks.models import (
+    INPUT_REFUSAL_EVIDENCE,
+    TaskEnvelope,
+    TaskResult,
+    TaskResultStatus,
+)
 from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
@@ -171,12 +176,16 @@ class HandlerExecutor(CapabilityExecutor):
             # Validate inputs
             errors = handler.validate_inputs(envelope.inputs or {})
             if errors:
+                # #2553: the reply alone named this; a refusal is now in the agent's own log.
+                logger.warning(
+                    "inputs_refused task_id=%s task_type=%s errors=%s", task_id, task_type, errors
+                )
                 return TaskResult(
                     task_id=task_id,
                     status=TaskResultStatus.FAILED,
                     outputs=None,
                     error=f"Validation failed: {'; '.join(errors)}",
-                    execution_evidence={"validation_errors": errors},
+                    execution_evidence={INPUT_REFUSAL_EVIDENCE: errors},
                     llm_usage=context.llm_usage.to_dict(),
                     authoring_envelope=context.authoring_envelope,
                 )

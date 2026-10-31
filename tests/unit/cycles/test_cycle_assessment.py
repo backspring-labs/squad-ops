@@ -539,6 +539,30 @@ class TestFailureEvents:
         )
         assert read(blocked, ()).attribution.primary == AttributionClass.UNATTRIBUTED
 
+    def test_a_run_ended_by_an_input_refusal_reads_input_contract_failure(self):
+        """#2553. Bug caught: the refused run's persisted ending read as another kind on its way
+        to the assessment, so a framework composition fault is scored ``unattributed``, or is
+        asked for round failures it never had."""
+        from squadops.cycles.run_loop_summary import RunLoopSummary
+
+        outcome, evidence = _failed_impl(Decision(kind=TerminalKind.INPUT_REFUSED, task_id="t-dev"))
+        stored = evidence.loop_summaries["run_i1"]
+        evidence = CycleEvidence(
+            **{
+                **evidence.__dict__,
+                "loop_summaries": {
+                    **evidence.loop_summaries,
+                    "run_i1": RunLoopSummary.from_dict(stored.to_dict()),
+                },
+            }
+        )
+
+        reading = assess(outcome, evidence, assessor=ASSESSOR).attribution
+
+        assert reading.attribution.primary == AttributionClass.INPUT_CONTRACT_FAILURE
+        assert reading.attribution.contributing == ()
+        assert reading.unrecorded == ()
+
     @pytest.mark.parametrize(
         "scenario",
         ["accepted", "rejected", "blocked", "correction-terminated", "gate-refused"],

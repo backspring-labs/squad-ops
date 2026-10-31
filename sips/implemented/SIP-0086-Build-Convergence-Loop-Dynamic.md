@@ -1462,3 +1462,136 @@ element, and the retest reads as `shifted`.
 
 On the code before the change, the kept case is discarded, and the two discarded cases log no
 refusal.
+
+### 12e. 2026-10-22 — a red retest is judged by the tests that fail, with the row's facts judged by their direction (#2306)
+
+**Ruled by the supervisor, 2026-10-22,** under the owner's grant of 2026-10-19, on #2306 (question 1, part 1:
+issuecomment-6340246074). Part 2, a kept repair surviving a later refused round, is ruled in principle and waits for this
+part's reading. A fresh second reader reviewed the change before it merged; its findings are folded in below.
+
+**What §12b and §12d said.** A repair is kept when its retest's failure signature is `MOVEMENT_PROGRESS` against the
+round's: fewer failures and none new. An element is `(check_id, subject, reason_token)`, and `_reason_token` adds the
+row's suite health and exit code, and the round's failure category (`;cat=app_error`), to every test's element.
+
+**The evidence.** #2306's replay covered every red retest of the 19 runs terminated as `plan_defect` from 2026-09-14 to
+10-22, 20 in all.
+- **Main keeps 5:** two logged as kept (6f518c27 r0, d34a3039 r0), and 642c6086 r0, 7b9430c9 r0 and 2f14e827 r0.
+- **Main refuses 15:**
+  - 10 are repeats, the same tests failing with the same facts;
+  - 1 is a regression: 6492fa2d r1, a test that passed in the round failing after the repair;
+  - 4 made progress and were refused for it:
+    - **A round-level fact on every test.** be3caea2 r0 and a1e8f6da r1 cleared an application error, so every remaining
+      test's element lost `;cat=app_error` and the retest read as `shifted`. b56f8bff r0's one test was unchanged, but its
+      suite went from broken to ran.
+    - **A test the round never ran, read as added.** 56d6ead9 r0's round failed at collection. Its retest ran the file's
+      tests, which failed, and they counted as new failures. Its typed `acceptance:*` checks were also unevaluated by the
+      suite-only retest, although patch verification had passed them before the retest was dispatched.
+- **The fixture:** the 18 retests whose rows were rebuilt from the stored reports and logs are in
+  `tests/fixtures/roll_replays/2306-red-retests.json`, with free text replaced by labels. The 2 logged keeps have no
+  rebuilt rows. Main's rule reproduces all 18 of the replay's verdicts on the rebuilt rows.
+
+**What changes** (`retest_reduction_or_refusal`, `correction_signature.py`).
+
+**How each side is split:**
+- failing tests, by `(check, file, title)`;
+- every other failing row, by `(check, subject, reason)`, with a declared probe compared without its reason (§12d);
+- each such row's criterion, `criterion_identity`: its check and params;
+- the facts, apart.
+
+**A repair is kept when all of these hold:**
+- **No fact got worse.**
+  - A suite's verdict and exit code: broken then ran is better; ambiguous then ran is neither. Any other change is worse,
+    including an exit code that moved under the same verdict, since nothing says which way it went.
+  - Two rows of one suite merge to the worse verdict.
+  - The category is ranked: assertions failing, then an application error, then a subject that didn't boot. A move to an
+    unranked category is worse.
+- **No other check is newly failing, or failing for a new reason** (pf-31 Fix E, unchanged).
+- **No test the round ran fails in the retest.**
+  - A test whose file never loaded in the round was never run, and the runner names that file without a title. Its
+    failure is unmasked, not added.
+  - The runner records only which tests failed, so any other new failure reads as one the repair broke.
+- **Something cleared, or a fact got better.**
+- **Every failure of the round was evaluated:**
+  - its check by a retest row that executed (a row that skipped, such as a probe whose subject never launched, is no
+    evidence);
+  - or each of its criteria by a row patch verification ran and passed (`_verified_criteria`). Matching is by criterion,
+    not by check: verification can pass one criterion of a check and skip another on a file the patch doesn't carry.
+
+**What the log says:**
+- A refusal logs `progress_not_kept … why=…` with `no_signature`, `worse=<facts>`, `added=<checks>`, `regressed=<n>`,
+  `no_progress` or `unevaluated=<checks>`. §12d's `movement=<class>` is gone.
+- A kept repair's line adds `unmasked=<n> improved=<facts>`, and the next round's carry says what was unmasked and what
+  got better.
+
+**Deliberately not built:**
+- **A whole session that ran nothing.** The ruling counts every test as unmasked when the whole suite didn't run. A pytest
+  session that a collection error interrupted (exit 2) ran no test, but the round records only the file that failed to
+  collect. A broken vitest verdict doesn't say whether other files ran. So a new failure in another file is still
+  refused as `regressed`, the conservative direction.
+  - What would build it: the runner stating, as a fact on the row, whether any test ran.
+- **The round-over-round signature and the termination rule** (`failure_signature`, `carried_failures`). They still fold
+  the facts into every element. Whether they should is #2306's question 2.
+
+**Where it is stricter than main.** A retest main kept now keeps only when its evaluation rests on executed rows and on
+verified criteria, not on a skipped row or on a check name alone. Main had both hazards; the second reader found them.
+
+**On the replay,** the rule:
+- keeps the 4 refused retests that made progress;
+- keeps every rebuilt retest main kept;
+- refuses every repeat (`no_progress`) and the regression (`regressed=1`).
+
+Two of the 4 rest on an inference. be3caea2's and a1e8f6da's retest probe outcomes were not logged, and their suites
+show the create answering 201. If the probes still failed, be3caea2 is a repeat.
+
+**Verified by:**
+- the fixture, read by `test_the_stored_red_retests_get_the_verdicts_the_pre_registration_names`;
+- the rule's edges, kept and refused (`test_correction_signature.py`, `TestRetestProgress`). This includes the criterion
+  match, the suite merge in both orders, exit codes, and the case not built above;
+- at the executor's acceptance entry (`test_outcome_routing.py`):
+  - kept: an app error cleared; a suite that loads, beside a criterion verification passed;
+  - refused: a criterion verification skipped; a probe the retest skipped;
+- eighteen mutations, each caught;
+- a before-and-after pair on the yardstick, pre-registered in
+  `docs/plans/verification-sets/2-4-0-retest-progress-comparison-preregistration.md`.
+
+### 12f. 2026-10-22 — a kept repair's base after a refused round, and the termination rule's two questions: read, and not changed (#2306)
+
+**Ruled by the supervisor, 2026-10-22,** under the owner's grant of 2026-10-19, closing #2306. §12e built question 1's
+first part. Its second part, and questions 2 and 3, are read here on the whole population and left as they are.
+
+**The population.** Every keep since #1522 (§12b): 7 kept rounds in 7 runs, each at round 0 on a `qa.test` task. They come
+from the runtime's `progress_kept` lines in Prefect's log table, with the archived runtime logs and the run records naming
+the same 7. What followed each keep:
+- **4: the next round's patch was accepted** (fceaa062, d5cbe881, 466f9f71, b266348e).
+  - Three of those runs completed.
+  - d5cbe881 then failed at storage on the kept file. That was #2379, since closed.
+- **1: the next repair was empty and refunded.** The task was re-taken, the re-take passed, and the run completed (1fd06c51).
+- **2: the next repair was refused, and the task was re-dispatched from its inputs** (6f518c27, d34a3039).
+  - Neither re-roll passed. Both ended `plan_defect` at round 2.
+  - Each termination record (`term_-qa.test_02/correction_termination.json`) repeats one element: the single test still
+    failing after the keep, with nothing cleared and nothing added.
+  - The re-rolls brought back none of the failures the keeps had cleared.
+
+**Part 2: a kept repair survives a later refused round. Not built.** §12e ruled it in principle: start the round after a
+refused repair from the kept tree, not a re-dispatch. In both runs it would have applied to, the run ended on the one
+failure still standing after the keep, which two further attempts didn't fix. Starting from the kept tree would have
+ended them the same way. In neither run did a re-dispatch undo what was kept.
+- **6f518c27's keep was in the QA file the re-dispatch rewrote whole.** The re-dispatched file still failed only the case
+  the keep left.
+- **d34a3039's keep was a developer file the re-dispatch didn't touch.**
+
+So no run since #1522 lost progress this way. It is reopened if one does: a re-dispatch after a keep that brings back a
+failure the keep had cleared.
+
+**Question 2: what the repeated-signature rule compares. No change.** In both terminations it compared the keep's retest
+with the re-dispatch's failure, and the same test failed for the same reason after two attempts. That is the repeat it
+exists to catch. #2306's case was a re-roll compared with a round the re-roll had replaced. §12e removed the cause, since
+a repair that made progress is now kept rather than re-rolled.
+
+**Question 3: whether the advisory structural candidate should count. No change.** Every decision in #2306's 12 runs, and
+in both terminations here, chose `patch` and named `tighten_acceptance`. The candidate condition is always met when the
+first condition is, so it changes no termination either way. It stays as the second condition, as §12b and #435 have it.
+
+**What closes #2306:**
+- §12e (question 1, part 1, shipped in #2663 and read on the issue);
+- this section (part 2, and questions 2 and 3).

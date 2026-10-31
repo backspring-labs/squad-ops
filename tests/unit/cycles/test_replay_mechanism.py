@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import Run
 from squadops.cycles.replay import (
@@ -194,6 +194,7 @@ class TestExecutorReplayResolution:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
     def _cycle(self, overrides) -> MagicMock:

@@ -32,6 +32,11 @@ from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lesso
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.capabilities.handlers.source_repository import source_repository_section
+from squadops.capabilities.handlers.task_instructions import (
+    project_instructions_section,
+    task_instructions_section,
+)
 from squadops.cycles.check_registry import (
     CHECK_FRONTEND_BUILD,
     CHECK_NO_SELF_MOCKING_TESTS,
@@ -63,9 +68,17 @@ from squadops.capabilities.anchored_edits import (
     strip_edit_blocks,
     verbatim_block,
 )
-from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY, scaffold_shell_paths
+from squadops.capabilities.context_assembly import (
+    PRIOR_SLOT_FAILURES_KEY,
+    RETAKE_CURRENT_FILES_KEY,
+    scaffold_shell_paths,
+)
 from squadops.capabilities.delivered_lint import LINT_READING_VERSION, lint_delivered
-from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import (
+    SelfEvalFollowup,
+    _CycleTaskHandler,
+    build_context_errors,
+)
 from squadops.capabilities.handlers.cycle.fill_mode_brief import (
     render_fill_mode_section,
     render_self_eval_fill_section,
@@ -75,7 +88,6 @@ from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _classify_file,
     _detect_stubs,
-    _is_test_file,
 )
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
@@ -90,12 +102,17 @@ from squadops.capabilities.handlers.test_runner import (
     failed_tests_pass_row,
     run_build_validation,
 )
+from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents, source_files
+from squadops.capabilities.qa_run_tree import suite_run_tree
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.verification_scaffold_fill import (
+    SLOT_SUBJECT_DROPPED_KEY,
+    SlotSubjectGuard,
     apply_followup_fills,
     measure_assertion_strength,
     merge_fills,
     parse_fill_emission,
+    slot_subject_guard,
     strip_fill_blocks,
 )
 from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
@@ -343,6 +360,12 @@ class _ScaffoldFill(_WholeFileTests):
         self._merged_suite_files: list[dict[str, Any]] = []
         self._merge_evidence: dict[str, Any] = {}
         self._shell_paths: set[str] = set()
+        # SIP-0104 §13f (#2664): a re-dispatched qa.test re-fills slots that have open
+        # failures, so its merge is gated against the shells those failures were observed on.
+        prior = inputs.get(PRIOR_SLOT_FAILURES_KEY) or {}
+        self._subject_guard = slot_subject_guard(
+            self._scaffold, prior.get("failures") or (), prior.get("current_files") or ()
+        )
 
     async def prompt_section(self, context: ExecutionContext) -> str:
         # SIP-0104 P3: the FILL MODE block rides both prompt paths.
@@ -373,6 +396,7 @@ class _ScaffoldFill(_WholeFileTests):
                 self._emission,
                 artifacts,
                 self._handler._app_invocation(self._inputs),
+                subject_guard=self._subject_guard,
             )
         )
         self._shell_paths = {m["filename"] for m in self._merged_suite_files}
@@ -460,6 +484,11 @@ class _ScaffoldFill(_WholeFileTests):
             artifacts,
             self._handler._app_invocation(self._inputs),
         )
+        # #2664: a refused slot revision kept its accepted body; the executor tells the next
+        # correction round which subject this emission tried to drop.
+        refused = self._merge_evidence.get("refused")
+        if refused:
+            outputs[SLOT_SUBJECT_DROPPED_KEY] = list(refused)
 
 
 def _extracted_type(filename: str) -> str:
@@ -521,11 +550,14 @@ def _settle_outlet(
 @dataclasses.dataclass(frozen=True)
 class _QAPrompt:
     """What step 1a composes (#1994): the user prompt so far, the template it rendered (``None`` on
-    the focused path), the source artifacts, and what a re-take after a refunded repair was shown."""
+    the focused path), the tree the suite runs on, and what a re-take after a refunded repair was
+    shown."""
 
     user_prompt: str
     rendered: Any
-    sources: dict[str, str]
+    #: The files the suite is built and run against (``qa_run_tree``, #2815), never what the
+    #: prompt shows: on a repository-backed product the run holds the product's whole tree.
+    run_tree: dict[str, str]
     retake_offered: dict[str, int]
 
 
@@ -586,8 +618,7 @@ class QATestHandler(_CycleTaskHandler):
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
-        if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
-            errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
+        errors.extend(build_context_errors(inputs, "build tasks"))
         return errors
 
     async def _validate_output(
@@ -706,28 +737,15 @@ class QATestHandler(_CycleTaskHandler):
         )
 
     def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
-        """Get source artifacts filtered by capability (D4, D9).
-
-        Includes source files (by ``source_filter`` extension, non-test) AND the
-        capability's ``build_support_files`` (config/entry files matched by
-        basename — package.json, vite.config.js, index.html, …). Without the
-        support files the QA build/test workspace can't build the deliverable and
-        the frontend build check (#290) + vitest skip on "no package.json" (#296).
-        """
+        """The cycle's source and build-support files (D4, D9), by its development profile: the
+        monolithic prompt's source files (``qa_prompt_contents.source_files``, which the
+        composer's budget counts too, #2805). The tree the suite runs against is
+        ``qa_run_tree.suite_run_tree``'s, which is these files on a sample application only
+        (#2815)."""
         capability = get_development_profile(
             effective_development_profile(inputs.get("resolved_config"))
         )
-        contents = inputs.get("artifact_contents", {})
-        support = set(getattr(capability, "build_support_files", ()))
-        sources = {}
-        for key, value in contents.items():
-            basename = key.replace("\\", "/").rsplit("/", 1)[-1]
-            is_source = any(
-                key.endswith(ext) for ext in capability.source_filter
-            ) and not _is_test_file(key, capability.test_file_patterns)
-            if is_source or basename in support:
-                sources[key] = value
-        return sources
+        return source_files(inputs.get("artifact_contents", {}), capability)
 
     @staticmethod
     def _fence_lang(path: str) -> str:
@@ -866,8 +884,9 @@ class QATestHandler(_CycleTaskHandler):
         if not probes:
             return
 
-        sources = self._get_source_artifacts(inputs)
-        artifacts = [{"name": path, "content": content} for path, content in sources.items()]
+        # #2815: the tree the suite ran on, whose app the probes boot.
+        run_tree = suite_run_tree(inputs)
+        artifacts = [{"name": path, "content": content} for path, content in run_tree.items()]
         if patched_files:
             # #639: on the retest path the PATCHED tree must be under probe.
             # Sources are the dispatch-time workspace — probing only them
@@ -896,10 +915,11 @@ class QATestHandler(_CycleTaskHandler):
     @staticmethod
     async def _run_test_suite(
         capability: Any,
-        sources: dict[str, str],
+        run_tree: dict[str, str],
         extracted: list[dict],
     ) -> tuple[Any, dict]:
-        """Run the build-validation suite and return (result, report_artifact).
+        """Run the build-validation suite on ``run_tree`` (``qa_run_tree``) and return (result,
+        report_artifact).
 
         Framework dispatch (pytest/vitest/both) and the #276 frontend build check
         live in ``test_runner`` (which owns test-framework knowledge). This handler
@@ -907,7 +927,7 @@ class QATestHandler(_CycleTaskHandler):
         and reads only the generic ``RunTestsResult``.
         """
 
-        source_file_records = [{"path": p, "content": c} for p, c in sources.items()]
+        source_file_records = [{"path": p, "content": c} for p, c in run_tree.items()]
         test_file_records = [
             {"path": rec["filename"], "content": rec["content"]} for rec in extracted
         ]
@@ -981,31 +1001,6 @@ class QATestHandler(_CycleTaskHandler):
         """
 
         return app_invocation_for(scaffold_stack_for(inputs.get("resolved_config")))
-
-    @staticmethod
-    def _prompt_scoped_contents(
-        artifact_contents: dict[str, str],
-        expected_artifacts: list[Any],
-    ) -> dict[str, str]:
-        """pf-33: scope the focused prompt's source dump to the top-level
-        package(s) the task's own artifacts live in (the RC2 package rule at
-        the prompt seam). m007's prompt carried all 16 files (~18k tokens,
-        every frontend .jsx included) into a backend suite task — prefill cost
-        plus rambling pressure against the 8192 completion clamp, and the
-        truncation crashed collection. No expected artifacts or no package
-        match → contents unchanged (never starve the prompt).
-        """
-        packages = {
-            str(e).strip().lstrip("./").partition("/")[0] for e in (expected_artifacts or []) if e
-        }
-        if not packages:
-            return artifact_contents
-        scoped = {
-            name: content
-            for name, content in artifact_contents.items()
-            if str(name).strip().lstrip("./").partition("/")[0] in packages
-        }
-        return scoped or artifact_contents
 
     async def _behavior_contract_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -1415,6 +1410,8 @@ class QATestHandler(_CycleTaskHandler):
         fill_emission: Any,
         artifacts: list[dict],
         invocation: AppInvocation | None,
+        *,
+        subject_guard: SlotSubjectGuard | None = None,
     ) -> tuple[list[dict], list[dict], dict[str, Any]]:
         """Merge parsed fills into the scaffold and bound the additive surface.
 
@@ -1437,6 +1434,7 @@ class QATestHandler(_CycleTaskHandler):
             store_tables=scaffold_input.get("store_tables"),
             slot_element_kinds=scaffold_input.get("slot_element_kinds"),
             producer=TaskType.QA_TEST,
+            subject_guard=subject_guard,
         )
         merged_artifacts = [
             {
@@ -1463,6 +1461,11 @@ class QATestHandler(_CycleTaskHandler):
             # so the per-roll record reads it from stored state.
             "assertion_strength": measure_assertion_strength(fill_emission),
         }
+        # SIP-0104 §13f (#2664): each gated slot revision's verdict, and the refused ones.
+        if merged.subject_verdicts:
+            evidence["subject_gate"] = [v.to_dict() for v in merged.subject_verdicts]
+        if merged.refused:
+            evidence["refused"] = [v.to_dict() for v in merged.refused]
         self._bank_additive_surface(evidence, kept, invocation)
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence
@@ -1547,9 +1550,8 @@ class QATestHandler(_CycleTaskHandler):
         description = inputs.get("subtask_description", "")
         expected_files = inputs.get("expected_artifacts", [])
         acceptance_criteria = inputs.get("acceptance_criteria", [])
-        artifact_contents = self._prompt_scoped_contents(
-            inputs.get("artifact_contents", {}), expected_files
-        )
+        # pf-33's package scoping, through the one function the composer counts it with (#2805).
+        artifact_contents = qa_test_prompt_contents(inputs)
 
         # SIP-0104 (#933): in fill mode the deliverable is fills, and the appendix —
         # a managed asset — is the sole owner of the emission contract. Rendering an
@@ -1636,7 +1638,8 @@ class QATestHandler(_CycleTaskHandler):
         execution of the repaired suite in this (the QA agent's) environment.
         No LLM is involved — the suite is provided in ``retest_files``, the
         source workspace comes from ``artifact_contents`` exactly as the
-        original run saw it, and success is exactly "the suite passed".
+        original run saw it (``qa_run_tree``: the product's tree on a product's run, whose
+        marker the retest forwards, #2815), and success is exactly "the suite passed".
         """
         del context  # no LLM/prompt ports in execute-only mode
 
@@ -1650,9 +1653,9 @@ class QATestHandler(_CycleTaskHandler):
         if not extracted:
             return self._fail_result(start_time, inputs, "retest_files contained no usable files")
 
-        sources = self._get_source_artifacts(inputs)
+        run_tree = suite_run_tree(inputs)
         test_result, test_report_artifact = await self._run_test_suite(
-            capability, sources, extracted
+            capability, run_tree, extracted
         )
 
         artifacts = [
@@ -1760,7 +1763,7 @@ class QATestHandler(_CycleTaskHandler):
             passed = False
         # #1937: the tree this retest evaluated, the patched files over the sources (#639).
         await self._record_lint(
-            outputs, {**sources, **{f["filename"]: f["content"] for f in extracted}}
+            outputs, {**run_tree, **{f["filename"]: f["content"] for f in extracted}}
         )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1810,7 +1813,7 @@ class QATestHandler(_CycleTaskHandler):
         )
         if isinstance(prompt, HandlerResult):
             return prompt
-        rendered, sources = prompt.rendered, prompt.sources
+        rendered, run_tree = prompt.rendered, prompt.run_tree
         shape, user_prompt = await self._shape_and_sections(context, inputs, prompt.user_prompt)
         request = await self._generation_request(
             context, inputs, capability, resolved_config, user_prompt, start_time
@@ -1858,7 +1861,7 @@ class QATestHandler(_CycleTaskHandler):
         # Run generated tests and build report — on what the task will store (#1109).
         extracted = self._suite_files(artifacts)
         test_result, test_report_artifact = await self._run_test_suite(
-            capability, sources, extracted
+            capability, run_tree, extracted
         )
         artifacts.append(test_report_artifact)
         evidence_artifact = self._fill_merge_evidence_artifact(evidence_extra)
@@ -1932,6 +1935,23 @@ class QATestHandler(_CycleTaskHandler):
             )
             if prior_section:
                 user_prompt = f"{user_prompt}\n{prior_section}"
+            # SIP-0112 E.4.3: a source-backed run's test author is shown the product it changes.
+            repository_section = await source_repository_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if repository_section:
+                user_prompt = f"{user_prompt}\n{repository_section}"
+            # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
+            instructions_section = await task_instructions_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if instructions_section:
+                user_prompt = f"{user_prompt}{instructions_section}"
+            project_section = await project_instructions_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if project_section:
+                user_prompt = f"{user_prompt}{project_section}"
             # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own. The
             # section opens with its own paragraph break.
             lessons_section = await cross_cycle_lessons_section(
@@ -1943,12 +1963,12 @@ class QATestHandler(_CycleTaskHandler):
             if retake_section:
                 user_prompt = f"{user_prompt}\n{retake_section}"
             rendered = None
-            sources = self._get_source_artifacts(inputs)
         else:
             # Legacy monolithic prompt path (unchanged)
 
             # Resolve plan artifacts with vault fallback (D3)
             val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+            # What the prompt shows, apart from the tree the suite runs on (#2815).
             sources = self._get_source_artifacts(inputs)
 
             # Check required artifacts (fail only when vault was available but empty)
@@ -1965,11 +1985,12 @@ class QATestHandler(_CycleTaskHandler):
                 val_plan,
                 sources,
                 capability_name,
+                inputs,
             )
         return _QAPrompt(
             user_prompt=user_prompt,
             rendered=rendered,
-            sources=sources,
+            run_tree=suite_run_tree(inputs),
             retake_offered=retake_offered,
         )
 
@@ -2346,7 +2367,7 @@ class QATestHandler(_CycleTaskHandler):
         """Step 1h (#1994): the task's outputs, with the outcome, the frontend build's row, the
         contract probes, the lint and the scaffold evidence; returns them, and the validation after
         a failing probe is folded in."""
-        rendered, sources = prompt.rendered, prompt.sources
+        rendered, run_tree = prompt.rendered, prompt.run_tree
         content, evidence_extra = emission.content, emission.evidence_extra
         assembled, retake_form = request.assembled, emission.retake_form
 
@@ -2403,7 +2424,8 @@ class QATestHandler(_CycleTaskHandler):
                     probe_failure if validation.passed else f"{validation.summary}; {probe_failure}"
                 ),
             )
-        await self._record_lint(outputs, sources)
+        # #1937: the tree the suite ran on (#2815).
+        await self._record_lint(outputs, run_tree)
 
         # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
         shape.append_evidence(outputs, test_result, artifacts)
@@ -2440,6 +2462,7 @@ class QATestHandler(_CycleTaskHandler):
         val_plan: str | None,
         sources: dict[str, str],
         capability_name: str,
+        inputs: dict[str, Any] | None = None,
     ) -> tuple[Any, str]:
         """Build the QA prompt via renderer or fallback. Returns (rendered, user_prompt)."""
         rendered = None
@@ -2458,6 +2481,19 @@ class QATestHandler(_CycleTaskHandler):
                     source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
                 variables["source_files"] = "\n".join(source_parts)
             variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            # SIP-0110 Appendix A §3.6 (#2674): this task's instructions and its project's, before
+            # the lessons, as the focused path shows them. None handed renders the prompt unchanged.
+            instructions = await task_instructions_section(renderer, inputs or {})
+            if instructions:
+                variables["task_instructions_section"] = instructions
+            project = await project_instructions_section(renderer, inputs or {})
+            if project:
+                variables["project_instructions_section"] = project
+            # SIP-0110 §0.9 (#2509): the lessons approved for this task, in a slot of their own, as
+            # the other build-authoring seams show them. None supplied renders the prompt unchanged.
+            lessons = await cross_cycle_lessons_section(renderer, inputs or {})
+            if lessons:
+                variables["cross_cycle_lessons_section"] = lessons
             rendered = await renderer.render(
                 "request.qa_test.test_validate",
                 variables,

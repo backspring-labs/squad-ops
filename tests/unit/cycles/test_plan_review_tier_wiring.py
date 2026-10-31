@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.campaigns.escalation import (
     EscalationIdentity,
     EscalationState,
@@ -183,6 +183,7 @@ async def _a_late_answer_on_record(campaigns: MemoryCampaignRegistry) -> None:
         open_questions=(QUESTION,),
         footprint=("backend/main.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -240,15 +241,17 @@ async def _reach_the_gate(
     asks: bool = False,
     answered_late: bool = False,
     manifest: str | None = None,
+    allowed_scope: tuple[str, ...] = ("backend/**", "frontend/**"),
 ):
     campaigns = MemoryCampaignRegistry()
     if answered_late:
         await _a_late_answer_on_record(campaigns)
     objective = CampaignObjective(
         statement="evolve group_run",
-        allowed_scope=("backend/**", "frontend/**"),
+        allowed_scope=allowed_scope,
         measurement="two accepted increments",
         target_accepted_increments=2,
+        work_class=None,
     )
     await campaigns.create_campaign(
         campaign(CID, objective=objective, policy=policy(plan_gate=plan_gate)),
@@ -278,6 +281,7 @@ async def _reach_the_gate(
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = MagicMock()
     executor._reject_invalid_plan_before_workload_gate = AsyncMock(return_value=[])
@@ -329,9 +333,29 @@ async def test_a_tier_campaigns_plan_every_condition_holds_for_is_approved_by_th
     assert step.outcome is GateOutcome.PROCEED
     assert _recorded_deciders(registry) == [GATE_DECIDED_BY_PLAN_REVIEW_TIER]
     notes = registry.record_gate_decision.await_args.args[1].notes
-    assert "inside_scope: held: all 2 files inside" in notes
+    assert "inside_scope: held: the 1 product file inside" in notes
     executor._approve_gate_without_questions.assert_not_awaited()
     executor._poll_inter_workload_gate.assert_not_awaited()
+
+
+async def test_a_plans_criterion_test_is_the_frameworks_under_a_scope_of_one_route_file():
+    """#2743 at the gate: the owner scoped the change to its route file, and the plan's criterion
+    test sits in the stack's qa namespace, read by the manifest's stack. Bug caught: the tier
+    holding the framework's test path to the owner's scope, which escalated every narrowly scoped
+    increment; or the gate passing the tier no stack, so the namespace reads as product."""
+    executor, registry, step = await _reach_the_gate(
+        PlanGate.TIER,
+        plan=_plan("backend/routes.py", "backend/tests/criteria/test_c1.py"),
+        allowed_scope=("backend/routes.py",),
+    )
+
+    assert step.outcome is GateOutcome.PROCEED
+    assert _recorded_deciders(registry) == [GATE_DECIDED_BY_PLAN_REVIEW_TIER]
+    notes = registry.record_gate_decision.await_args.args[1].notes
+    assert (
+        "inside_scope: held: the 1 product file inside (backend/routes.py); 1 in the qa test "
+        "namespace, the framework's: backend/tests/criteria/test_c1.py"
+    ) in notes
 
 
 @pytest.mark.parametrize(

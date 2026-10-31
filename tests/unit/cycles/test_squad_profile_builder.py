@@ -81,7 +81,17 @@ class TestFullSquadBuilderProfile:
         # (1.8.1 plan §8 decision 12) — its removal moves this line too.
         # full-38-tf is the same roster on TensorFold's served id (SIP-0111, #2200): for cycles
         # while engine_switch.py has moved the clients there. Inert until a cycle names it.
-        assert ids == {"smoke", "lite", "full", "full-38", "full-38-atlas", "full-38-tf", "solo"}
+        # lite-14b is the lite roster on qwen2.5:14b, the MacBook's build check (#2435).
+        assert ids == {
+            "smoke",
+            "lite",
+            "lite-14b",
+            "full",
+            "full-38",
+            "full-38-atlas",
+            "full-38-tf",
+            "solo",
+        }
 
 
 class TestFull38QaCompletionBudget:
@@ -108,3 +118,29 @@ class TestFull38QaCompletionBudget:
     async def test_full_is_untouched(self, provider):
         profile = await provider.get_profile("full")
         assert all(not a.config_overrides for a in profile.agents)
+
+
+def test_the_14b_lite_squad_is_lite_on_the_14b():
+    """#2435. Bug caught: ``lite-14b`` drifting from ``lite`` in a role, a member or a budget, so
+    a MacBook build check that passes on it and fails on ``lite`` measures the roster rather than
+    the model; or naming a model the registry does not know, which turns its guard off and leaves
+    Ollama at its own default context (#2427)."""
+    from pathlib import Path
+
+    import yaml
+
+    from squadops.llm.model_registry import get_model_spec
+
+    profiles = {
+        p["profile_id"]: p
+        for p in yaml.safe_load(
+            (Path(__file__).resolve().parents[3] / "config" / "squad-profiles.yaml").read_text()
+        )["profiles"]
+    }
+
+    def without_model(profile: dict) -> list[dict]:
+        return [{k: v for k, v in a.items() if k != "model"} for a in profile["agents"]]
+
+    assert {a["model"] for a in profiles["lite-14b"]["agents"]} == {"qwen2.5:14b"}
+    assert without_model(profiles["lite-14b"]) == without_model(profiles["lite"])
+    assert get_model_spec("qwen2.5:14b").context_window == 32_768

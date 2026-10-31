@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 # =============================================================================
 # Nested DTOs
@@ -22,12 +22,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class GateDTO(BaseModel):
+    # Nested in CycleCreateRequest, which forbids extras: a misspelt key here is refused too,
+    # never dropped (SIP-0112 contract 2).
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     description: str
     after_task_types: list[str] = Field(default_factory=list)
 
 
 class TaskFlowPolicyDTO(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     mode: Literal["sequential", "fan_out_fan_in", "fan_out_soft_gates"] = "sequential"
     gates: list[GateDTO] = Field(default_factory=list)
 
@@ -35,6 +41,29 @@ class TaskFlowPolicyDTO(BaseModel):
 # =============================================================================
 # Request DTOs
 # =============================================================================
+
+
+class TaskInstructionDTO(BaseModel):
+    """A task instruction given when a cycle is created (SIP-0110 Appendix A §3.5; #2178): binding,
+    for the named task types of this cycle only."""
+
+    text: str
+    task_types: list[str]
+    references: list[dict] = Field(default_factory=list)
+    #: ``"continuations"``: it also reaches a campaign's repair or retry of this cycle (§3.7).
+    carries_into: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SourcePreconditionDTO(BaseModel):
+    """What a caller expects an external Project's source to be (SIP-0112 FR-09, §D.3). A
+    Project that has moved past it is refused, never silently re-pinned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    development_baseline_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    development_configuration_revision: int | None = Field(default=None, ge=1)
 
 
 class CycleCreateRequest(BaseModel):
@@ -50,6 +79,10 @@ class CycleCreateRequest(BaseModel):
     experiment_context: dict = Field(default_factory=dict)
     request_profile: str | None = None  # SIP-0096: cycle-level config provenance (CRP name)
     notes: str | None = None
+    #: #2178: directives for this cycle's selected tasks, stored as task instructions with it.
+    task_instructions: list[TaskInstructionDTO] = Field(default_factory=list)
+    # SIP-0112 §D.3 (E.4.3): an external Project's expected source; absent, the current one.
+    source_precondition: SourcePreconditionDTO | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -111,6 +144,10 @@ class GateDecisionRequest(BaseModel):
     #: ``unclassified``) and, with ``unclassified``, the rationale. Refused elsewhere.
     classification: str | None = None
     classification_rationale: str | None = None
+    #: SIP-0110 Appendix A §3.5 (#2178), the increment gate's approval only: task instructions for
+    #: the ruled cycle's framing and build, beside the free notes, which reach no prompt. Refused
+    #: elsewhere, and for a task that has dispatched.
+    task_instructions: list[TaskInstructionDTO] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -176,6 +213,66 @@ class BaselinePromoteRequest(BaseModel):
 # =============================================================================
 
 
+class ProjectOriginRequest(BaseModel):
+    """How the Project's source comes to exist (SIP-0112 D.2). E.4.1 registers an existing
+    repository; ``new`` (greenfield, E.4.6) and ``attach`` (in place, E.4.7) come later."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["import"]
+
+
+class ProjectSourceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repo_uri: str = Field(min_length=1, max_length=2000)
+    base_ref: str = Field(min_length=1, max_length=255)
+    contribution_mode: Literal["review_request", "patch_export", "direct_push"]
+    repository_root: str = "."
+
+
+class ProjectOwnershipRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    owner: str = Field(min_length=1, max_length=200)
+    delegated_actions: list[
+        Literal["engineering_decisions", "candidate_acceptance", "contribution", "integration"]
+    ] = Field(default_factory=list)
+    acceptance_policy_ref: str | None = None
+
+
+class ProjectRegistrationRequest(BaseModel):
+    """Register an existing product (SIP-0112 FR-02, E.4.1): ``POST /api/v1/projects``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    project_id: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    origin: ProjectOriginRequest
+    source: ProjectSourceRequest
+    ownership: ProjectOwnershipRequest
+
+
+class ProjectSourceResponse(BaseModel):
+    """The external source binding (SIP-0112 §B.5): the authoritative locator and its refs."""
+
+    repo_uri: str
+    base_ref: str
+    contribution_mode: str
+    repository_root: str
+
+
+class ProjectOwnershipResponse(BaseModel):
+    """The external product's authority (SIP-0112 §B.5.1)."""
+
+    owner: str
+    delegated_actions: list[str]
+    acceptance_policy_ref: str | None
+
+
 class ProjectResponse(BaseModel):
     project_id: str
     name: str
@@ -183,6 +280,148 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     tags: list[str]
     has_prd: bool = False
+    # SIP-0112's Project Record (E.4.1): added fields only, so a client reading the six above is
+    # unchanged (D.6). A sample application reads READY at version 1 with no source or owner.
+    lifecycle_status: str
+    record_version: int
+    source: ProjectSourceResponse | None
+    ownership: ProjectOwnershipResponse | None
+    development_configuration_revision: int | None
+    development_baseline_commit: str | None
+    integrated_upstream_commit: str | None
+    validation_diagnostic: str | None
+
+
+class ProjectValidationRequest(BaseModel):
+    """Validate a registered Project (SIP-0112 E.4.2): reach its source, record what was found."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The owner's own forge token, for a private repository's fetch in this one act: never
+    #: stored, logged or returned. Absent, the deploy's token for the Project is used, if any.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class DevelopmentConfigurationRequest(BaseModel):
+    """Record a Project's next Development Configuration revision (SIP-0112 §B.5, E.4.2).
+    ``expected_revision`` is the current one (0 for the first), so a concurrent recording is
+    refused rather than silently superseded (§D.2's version precondition)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=0)
+    technical: dict[str, Any]
+    quality: dict[str, Any] | None = None
+
+
+class DevelopmentConfigurationResponse(BaseModel):
+    """One revision, as it is stored and read: the document is contract 7's carrier."""
+
+    project_id: str
+    revision: int
+    document: dict[str, Any]
+
+
+class DevelopmentConfigurationRecordedResponse(BaseModel):
+    configuration: DevelopmentConfigurationResponse
+    idempotency_key: str
+    replayed: bool
+
+
+class InheritedBaselineRequest(BaseModel):
+    """Capture a Project's inherited baseline (SIP-0112 FR-20, E.4.2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class InheritedBaselineResponse(BaseModel):
+    """The baseline, as the shared fixture records it, and whether this replayed a capture."""
+
+    project_id: str
+    document: dict[str, Any]
+    replayed: bool = False
+    #: The profile derived at the Project's latest capture (SIP-0112 H.4, contract 8), or ``None``
+    #: when that capture predates profiles.
+    derived_profile: dict[str, Any] | None = None
+
+
+class DerivedProfileResponse(BaseModel):
+    """The derived development profile, as contract 8 records it (SIP-0112 H.6)."""
+
+    project_id: str
+    document: dict[str, Any]
+
+
+class ContributionRequest(BaseModel):
+    """Contribute a run's verified change through the Project's own process (SIP-0112 FR-06)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cycle_id: str = Field(min_length=1, max_length=200)
+    run_id: str = Field(min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The contributor's own forge token, for this one act: used in memory for the push and the
+    #: review request, never stored, logged or returned. Absent, the deploy's token for the
+    #: Project is used (`projects.review_request_tokens`).
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class ContributionResponse(BaseModel):
+    """A contribution, pending until the product takes it, and whether this replayed one."""
+
+    contribution: dict[str, Any]
+    replayed: bool = False
+
+
+class InitializationRequest(BaseModel):
+    """Make a greenfield Project's first commit from an approved interface manifest (SIP-0112
+    FR-01, E.4.6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The approved interface manifest, as YAML: the structure the blueprint's layout is
+    #: rendered from, kept as submitted.
+    manifest: str = Field(min_length=1, max_length=200_000)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The owner's own forge token, for this one act: used in memory for the push, never stored,
+    #: logged or returned. Absent, the deploy's token for the Project is used.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class InitializationResponse(BaseModel):
+    """A greenfield Project's initialization, and whether this replayed one."""
+
+    initialization: dict[str, Any]
+    replayed: bool = False
+
+
+class SourceSyncRequest(BaseModel):
+    """Read a Project's upstream against its approved baseline (SIP-0112 FR-21, E.4.4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The caller's own forge token, to read its review requests' state for this sync only.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class SourceSyncResponse(BaseModel):
+    """A sync's record: the drift by category and each contribution's standing."""
+
+    document: dict[str, Any]
+    replayed: bool = False
+
+
+class ProjectRegistrationResponse(BaseModel):
+    """A registration, applied or replayed: the Project, and the key a retry resends (D.6)."""
+
+    project: ProjectResponse
+    idempotency_key: str
+    replayed: bool
 
 
 class GateDecisionResponse(BaseModel):
@@ -193,6 +432,41 @@ class GateDecisionResponse(BaseModel):
     notes: str | None = None
     waived_checks: list[str] = Field(default_factory=list)  # SIP-0096 §6.5 (#682)
     waiver_reason: str | None = None
+
+
+class UnresolvedRecordResponse(BaseModel):
+    """One record a binding hold couldn't bind (SIP-0110 §A.3.6, #2178)."""
+
+    ref: str
+    reason: str
+    #: ``store``: the store didn't answer. ``input``: an operator's input can't be bound.
+    kind: str
+
+
+class BindingHoldResponse(BaseModel):
+    """A run held on a task's binding sections, and its release (SIP-0110 §5ag, #2178)."""
+
+    hold_id: str
+    task_id: str
+    task_type: str
+    unresolved: list[UnresolvedRecordResponse]
+    sections: list[str]
+    held_at: datetime
+    released_at: datetime | None = None
+    cause: str | None = None
+
+
+class RunHaltResponse(BaseModel):
+    """A run halted by a task instruction's emergency withdrawal (SIP-0110 §A.3.8, T13; #2178)."""
+
+    record_id: str
+    requested_by: str
+    why: str
+    requested_at: datetime
+    #: The task its restart runs again from; ``None``: nothing in it restarts.
+    restart_from_task_id: str | None = None
+    #: The run its cycle restarted it as, once it has.
+    restart_run_id: str | None = None
 
 
 class RunResponse(BaseModel):
@@ -209,6 +483,10 @@ class RunResponse(BaseModel):
     artifact_refs: list[str] = Field(default_factory=list)
     workload_type: str | None = None
     failure_reason: str | None = None
+    #: #2178: each time the run was held on a task's bindings, oldest first.
+    binding_holds: list[BindingHoldResponse] = Field(default_factory=list)
+    #: #2178 (T13): the emergency withdrawal that halted it, if one did.
+    halt: RunHaltResponse | None = None
 
 
 class WorkloadProgressEntry(BaseModel):
@@ -289,6 +567,10 @@ class CycleResponse(BaseModel):
     # launched, which is otherwise unchanged.
     campaign_id: str | None = None
     kind: str | None = None
+    #: #2578 part 2: the increment the cycle belongs to (its proposal's id); null otherwise.
+    increment_id: str | None = None
+    # SIP-0112 contract 1 (E.4.3): the external source this Cycle pinned; None for a sample app.
+    source_context: dict[str, Any] | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)
@@ -322,6 +604,8 @@ class CycleCreateResponse(BaseModel):
     resolved_config_hash: str
     # SIP-0095 Phase 4: non-blocking preflight warnings surfaced to the operator.
     warnings: list[PreflightWarningDTO] = Field(default_factory=list)
+    # SIP-0112 §D.3: the external source the server pinned, stated or implicit.
+    source_context: dict[str, Any] | None = None
 
 
 class EvidenceRefDTO(BaseModel):
@@ -452,6 +736,18 @@ class PromptMetaResponse(BaseModel):
     required: bool = False
 
 
+class CycleRequestResolveRequest(BaseModel):
+    """A request profile's name resolved into a cycle-create body, server-side (#2520): the squad,
+    the caller's values over the profile's, and the notes and PRD the body carries."""
+
+    squad_profile_id: str
+    values: dict = Field(default_factory=dict)
+    notes: str | None = None
+    prd_ref: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class CycleRequestProfileResponse(BaseModel):
     """Cycle request profile with defaults and prompt metadata (SIP-0074)."""
 
@@ -459,6 +755,10 @@ class CycleRequestProfileResponse(BaseModel):
     description: str = ""
     defaults: dict = Field(default_factory=dict)
     prompts: dict[str, PromptMetaResponse] = Field(default_factory=dict)
+    #: The stacks an operator profile runs on, each adding its request defaults beneath the
+    #: profile's (#316, R2.3), so a client offers the choice the CLI's ``--set build_profile``
+    #: makes (#2520). Empty for every other profile: it pins its stack or takes none.
+    stacks: list[str] = Field(default_factory=list)
 
 
 class ModelSpecResponse(BaseModel):

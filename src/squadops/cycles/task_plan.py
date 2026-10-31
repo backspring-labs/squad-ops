@@ -38,6 +38,7 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
     derived_check_names,
     is_check_applicable,
+    parse_method_path,
 )
 from squadops.cycles.agent_config import resolve_agent_config, served_roles, serves_role
 from squadops.cycles.bound_scaffold_record import _normalize
@@ -76,6 +77,7 @@ from squadops.stacks.scaffold import (
     harness_entry_modules,
     is_qa_test_path_for_stack,
     is_scaffoldable_stack,
+    names_entry_module,
     root_persisted_entities,
     scaffold_stack_for,
     testid_surface_instructions,
@@ -84,6 +86,7 @@ from squadops.stacks.scaffold import (
 from squadops.stacks.verification_scaffold_emission import (
     emit_verification_scaffold,
     slot_element_kinds,
+    slot_subject_surfaces,
 )
 from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import TaskType, authors_qa_suite, authors_source
@@ -359,6 +362,17 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT: dict[str, list[tuple[str, str]]]
 }
 
 
+def repairs_revising(task_type: str) -> tuple[str, ...]:
+    """The repair task types that revise ``task_type``'s own output (SIP-0110 Appendix A §3.7;
+    #2178), read from the two tables above: its own-artifact repair, else its declared repair.
+    None for a type with neither: the default chain repairs the application, not that type's
+    output, so a task instruction for the type never reaches it."""
+    steps = _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT.get(
+        task_type
+    ) or _REPAIR_STEPS_BY_FAILED_TASK_TYPE.get(task_type, [])
+    return tuple(step for step, _ in steps)
+
+
 def own_artifact_role(failed_task_type: str) -> str | None:
     """The role that owns *failed_task_type*'s own artifacts, when declared (#884).
 
@@ -485,6 +499,35 @@ def _has_builder_role(profile: SquadProfile) -> bool:
     return serves_role(profile, "builder")
 
 
+def _assembles_with_builder(profile: SquadProfile, *, source_backed: bool) -> bool:
+    """A squad's builder assembles the deliverable, except for a source-backed cycle (SIP-0112
+    E.4.3): the external product builds itself, by its own declared commands."""
+    return _has_builder_role(profile) and not source_backed
+
+
+def builder_assembles(
+    profile: SquadProfile, config: Mapping[str, Any], *, source_backed: bool = False
+) -> bool:
+    """Whether a cycle of ``config`` on ``profile`` dispatches a builder task (#2437).
+
+    The step selection's own reading, for the whole cycle: an ``implementation`` workload in
+    ``workload_sequence`` (``_resolve_workload_steps``), or, with no sequence, the legacy
+    ``build_tasks`` flag (``_resolve_legacy_steps``), on a squad serving the builder role. Each
+    adds ``builder.assemble``, which the #392 check below refuses without a ``build_profile``.
+    Cycle-create preflight asks it, so that cycle is refused before its framing runs.
+    """
+    if not _assembles_with_builder(profile, source_backed=source_backed):
+        return False
+    sequence = config.get("workload_sequence") or []
+    if sequence:
+        return any(
+            (entry.get("type") if isinstance(entry, Mapping) else None)
+            == WorkloadType.IMPLEMENTATION
+            for entry in sequence
+        )
+    return bool(config.get("build_tasks"))
+
+
 def _check_required_roles(
     profile_id: str, required: set[str], available: set[str], label: str = ""
 ) -> None:
@@ -503,6 +546,8 @@ def _resolve_workload_steps(
     profile: SquadProfile,
     profile_roles: set[str],
     resolved_config: dict | None = None,
+    *,
+    source_backed: bool = False,
 ) -> tuple[list, bool]:
     """Select task steps and builder flag based on workload type (SIP-0078)."""
     if workload_type not in _KNOWN_WORKLOAD_TYPES:
@@ -521,13 +566,13 @@ def _resolve_workload_steps(
         # plan_authoring_contributors config. Empty/missing contributors
         # → sole-author route through the merger.
         # deferred (cycle): campaigns.increment_tree loads this module
-        from squadops.campaigns.increment_tree import increment_baseline
+        from squadops.campaigns.increment_tree import is_increment
 
         contributors = (resolved_config or {}).get("plan_authoring_contributors")
         steps = build_planning_steps(
             contributors,
             authors_manifest=authors_interface_manifest(resolved_config),
-            increment=increment_baseline(resolved_config) is not None,
+            increment=is_increment(resolved_config),
         )
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
@@ -535,7 +580,7 @@ def _resolve_workload_steps(
         )
         steps = list(REFINEMENT_TASK_STEPS)
     elif workload_type == WorkloadType.IMPLEMENTATION:
-        builder_used = _has_builder_role(profile)
+        builder_used = _assembles_with_builder(profile, source_backed=source_backed)
         if builder_used:
             steps = list(IMPLEMENTATION_TASK_STEPS[:1]) + list(BUILDER_ASSEMBLY_TASK_STEPS)
         else:
@@ -567,7 +612,9 @@ def _resolve_legacy_steps(
     """Select task steps from legacy plan_tasks/build_tasks flags."""
     include_plan = bool(cycle.resolved_config().get("plan_tasks", True))
     include_build = bool(cycle.resolved_config().get("build_tasks"))
-    builder_used = include_build and _has_builder_role(profile)
+    builder_used = include_build and _assembles_with_builder(
+        profile, source_backed=cycle.source_context is not None
+    )
 
     steps: list = []
     if include_plan:
@@ -711,6 +758,13 @@ def _inject_increment_indexes(
         from squadops.campaigns.increment_tree import test_scope_lines
 
         inputs["increment_test_scope_index"] = test_scope_lines(test_scope)
+        # SIP-0109 §24cp: the pages the change adds and the anchor each view renders, so the plan
+        # gives the view's task the anchor acceptance reads the page for.
+        if test_scope.get("views"):
+            # deferred (cycle): campaigns.increment_tree loads this module
+            from squadops.campaigns.increment_tree import view_lines
+
+            inputs["increment_views_index"] = view_lines(test_scope["views"])
 
 
 def _increment_criterion_files(
@@ -738,11 +792,10 @@ def _require_change_request_for_increment(
     handed one. Without it the framing would design the accepted application again from its
     PRD; given to another run, it would frame a cycle that never proposed it."""
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_baseline
+    from squadops.campaigns.increment_tree import is_increment
 
-    in_an_increment = (
-        run.workload_type in _CHANGE_REQUEST_WORKLOADS
-        and increment_baseline(resolved_config) is not None
+    in_an_increment = run.workload_type in _CHANGE_REQUEST_WORKLOADS and is_increment(
+        resolved_config
     )
     if in_an_increment and not change_request:
         raise CycleError(
@@ -774,8 +827,14 @@ def _increment_evaluation(
     if run.workload_type != WorkloadType.IMPLEMENTATION or not change_request:
         return _IncrementEvaluation()
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_evaluation_inputs
+    from squadops.campaigns.increment_tree import increment_basis, increment_evaluation_inputs
 
+    basis = increment_basis(resolved_config)
+    if basis is not None and basis.evaluated_at_delivery:
+        # SIP-0109 §24cd point 6: a repository-backed increment is judged at its delivery, on the
+        # product's runner in the sandbox (``execution.product_acceptance``), never in a role's
+        # container, which holds no product toolchain.
+        return _IncrementEvaluation()
     return _IncrementEvaluation(
         steps=((TaskType.QA_EVALUATE_INCREMENT, "qa"),),
         inputs=increment_evaluation_inputs(resolved_config, change_request, interface_manifest),
@@ -793,14 +852,38 @@ def _increment_inputs(
     change request, its framed objective (§7.3); each ``increment_evaluation`` task what its
     judgement needs (§8)."""
     if change_request is not None and run.workload_type == WorkloadType.FRAMING:
-        return {"increment_change_request": change_request}
+        # deferred (cycle): campaigns.change_request's package loads this module
+        from squadops.campaigns.change_request import role_view
+
+        # SIP-0113 §10t ruling 4: without the goals it means to move, which only its proposer and
+        # the supervisor see.
+        return {"increment_change_request": role_view(change_request)}
     if get_context_contract(task_type).increment_evaluation:
         return dict(evaluation.inputs)
     # #1884: the suite's author is handed what its tests may assert. WHO is the registry's
     # declaration; its repair inherits the key through REPAIR_PRESENCE_KEYS.
     if test_scope is not None and get_context_contract(task_type).increment_test_scope:
         return {"increment_test_scope": dict(test_scope)}
+    # SIP-0109 §24cp: the view's author is handed the pages the change adds, with each anchor.
+    # WHO is the registry's declaration (``increment_views``).
+    if test_scope and test_scope.get("views") and get_context_contract(task_type).increment_views:
+        return {"increment_views": [dict(v) for v in test_scope["views"]]}
     return {}
+
+
+def _criterion_file_inputs(
+    task_type: str, change_request: str | None, criterion_files: tuple[Any, ...]
+) -> dict[str, Any]:
+    """#2795 (SIP-0093 §15b): an increment's new criterion files, as data, for the merge, which
+    gives a file a development task and a qa task both claim to the qa task. An increment with no
+    new criterion carries an empty list, so the key's absence means no increment and the merge can
+    require it. WHO is the registry's declaration (``increment_criterion_files``)."""
+    if change_request is None or not get_context_contract(task_type).increment_criterion_files:
+        return {}
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import criterion_file_rows
+
+    return {"increment_criterion_files": criterion_file_rows(criterion_files)}
 
 
 def _prior_cycle_inputs(resolved_config: Mapping[str, Any], task_type: str) -> dict[str, Any]:
@@ -854,6 +937,24 @@ def _inject_rejection_context(
         inputs["prior_manifest_yaml"] = manifest_yaml
 
 
+def inject_branch_increment_inputs(
+    inputs: dict,
+    task_type: str,
+    footprint: tuple[str, ...] | None,
+    criterion_files: tuple[Any, ...],
+    frozen_files: tuple[tuple[str, str], ...],
+    test_scope: Mapping[str, Any] | None,
+) -> None:
+    """SIP-0109 §24bv point 5 (§24cj): a repository-backed increment has no manifest, so no
+    contract, and ``inject_contract_inputs`` gives it nothing. Its plan authors are still shown
+    its footprint, criterion files, frozen files and test scope before the framing gate holds the
+    plan to them (#686). WHO receives them is the same declaration (``bind_criteria_index``)."""
+    if get_context_contract(task_type).bind_criteria_index:
+        _inject_increment_indexes(
+            inputs, footprint, criterion_files, frozen_files, frozenset(), test_scope
+        )
+
+
 def inject_contract_inputs(
     inputs: dict,
     contract: VerificationContract | None,
@@ -886,7 +987,8 @@ def inject_contract_inputs(
     born of a failing probe can be aimed at the slot that owns the endpoint.
 
     Author mode (``contract is None``) injects nothing — contract-less cycles
-    stay byte-identical.
+    stay byte-identical. A repository-backed increment, which has no contract, is given its
+    increment's indexes by ``inject_branch_increment_inputs`` instead.
 
     #663 S3: WHO receives each bind-mode input class is the registry's
     declaration (``bind_criteria_index`` / ``bind_behavioral_surface``); this
@@ -966,11 +1068,18 @@ def inject_contract_inputs(
                     # fields, so a fill asserting a contradicting element kind is
                     # rejected at merge rather than at a retest it then loses.
                     "slot_element_kinds": slot_element_kinds(interface_manifest),
+                    # SIP-0104 §13f (#2664): what each shell's surfaces declare, so a revision
+                    # dropping a failing assertion's subject is refused unless the declarations
+                    # show the field absent there. Read from the manifest, never the app.
+                    "subject_surfaces": slot_subject_surfaces(interface_manifest),
                 }
 
 
 def _contract_assertion_criteria(
-    task_type: str, plan_task: Any, contract: VerificationContract | None
+    task_type: str,
+    plan_task: Any,
+    contract: VerificationContract | None,
+    interface_manifest: InterfaceManifest | None,
 ) -> list[TypedCheck]:
     """#629 (1.5 A6/D2): contract-owned ``contract_assertions_match`` checks for a bound
     qa.test task — one per expected ``.py`` suite file in the stack's QA namespace, params
@@ -978,7 +1087,12 @@ def _contract_assertion_criteria(
     tokens + the suite-wide allowed error statuses), so the evaluator needs no contract
     access. pf-54: five authored suite versions asserted 200 where the probe pinned 201 —
     the authoring injection (layer 1) states the pins; this check enforces them. Empty in
-    author mode, non-qa tasks, and probe-less contracts (byte-identical plans there)."""
+    author mode, non-qa tasks, and probe-less contracts (byte-identical plans there).
+
+    #2297: with a manifest, the params also carry its declared routes (``METHOD /path``
+    tokens, in declaration order), so the check can refuse a request that is a declared
+    route with a required path segment left empty. Without one the key is absent and the
+    check reads what it read before."""
     if not authors_qa_suite(task_type) or contract is None:
         return []
     pinned = contract.pinned_endpoint_statuses()
@@ -993,6 +1107,9 @@ def _contract_assertion_criteria(
     error_statuses = contract.allowed_error_statuses()
     if error_statuses:
         params["allowed_error_statuses"] = list(error_statuses)
+    declared = _declared_route_tokens(interface_manifest)
+    if declared:
+        params["declared_routes"] = declared
     stack = contract.skeleton.expander
     return [
         TypedCheck(
@@ -1008,6 +1125,19 @@ def _contract_assertion_criteria(
         if is_check_applicable(CHECK_CONTRACT_ASSERTIONS, art)
         and is_qa_test_path_for_stack(art, stack)
     ]
+
+
+def _declared_route_tokens(interface_manifest: InterfaceManifest | None) -> list[str]:
+    """The manifest's endpoints as ``METHOD /path`` tokens, in declaration order, each once
+    — the grammar ``endpoint_defined`` and the contract read (``parse_method_path``)."""
+    if interface_manifest is None:
+        return []
+    tokens: dict[str, None] = {}
+    for ep in interface_manifest.api.endpoints:
+        parsed = parse_method_path(f"{ep.method} {ep.path}")
+        if parsed is not None:
+            tokens.setdefault(f"{parsed[0]} {parsed[1]}")
+    return list(tokens)
 
 
 def _assertion_kind_criteria(
@@ -1143,6 +1273,52 @@ def _harness_boundary_criteria(
     ]
 
 
+def _without_entry_module_imports(acceptance: list, harness: list[TypedCheck]) -> list:
+    """#2572: ``acceptance`` without each authored ``import_present`` that requires importing an
+    app entry module in a file ``harness`` binds the boundary onto.
+
+    The boundary refuses that import, so no suite passes both rows: one that imports the module
+    fails the boundary, and one that doesn't fails the authored row. ``cyc_898dc802e89b``'s qa
+    suite added the import, disputed the boundary, and the analyzer confirmed the dispute, which
+    ended the run (``contested_check``). The boundary is the row whose intent is right — the suite
+    reaches the app through the scaffold's ``client`` fixture — so the authored row is dropped,
+    loudly, as a derived row is (#1254). Only a row no suite can pass beside the boundary is
+    dropped (``_boundary_refuses``)."""
+    bound = {_normalize(c.params["file"]): c.params["entry_modules"] for c in harness}
+    kept: list = []
+    for criterion in acceptance:
+        if isinstance(criterion, TypedCheck) and criterion.check == "import_present":
+            target = _normalize(criterion.params.get("file", ""))
+            module = criterion.params.get("module")
+            if (
+                target in bound
+                and isinstance(module, str)
+                and _boundary_refuses(module, criterion.params.get("symbol"), bound[target])
+            ):
+                logger.warning(
+                    "entry_module_import_stripped file=%s module=%s — the harness boundary "
+                    "bound on this file refuses importing the app entry module, so no suite "
+                    "passes both rows (#2572)",
+                    target,
+                    module,
+                )
+                continue
+        kept.append(criterion)
+    return kept
+
+
+def _boundary_refuses(module: str, symbol: Any, entry_modules: list[str]) -> bool:
+    """Whether every import that satisfies ``import_present`` of ``module`` (and ``symbol``) is one
+    the harness boundary refuses. The boundary reads a from-import's module without its relative
+    dots, so ``from .main import x`` is ``main``. The one form it reads no module from is
+    ``from . import main``, which satisfies a one-segment relative spec without a symbol (``.main``,
+    ``..main``): that row can pass beside the boundary, and is kept."""
+    name = module.lstrip(".")
+    if module.startswith(".") and symbol is None and "." not in name:
+        return False
+    return names_entry_module(name, entry_modules)
+
+
 def _fill_slot_signature_criteria(
     task_type: str,
     plan_task: Any,
@@ -1251,6 +1427,8 @@ class _PlanFacts:
     frozen_files: tuple[tuple[str, str], ...]
     test_scope: dict[str, list[dict[str, str]]] | None
     evaluation: _IncrementEvaluation
+    #: SIP-0109 §24bv point 5: a repository-backed increment, on its campaign branch.
+    on_branch: bool = False
 
 
 def _plan_facts(
@@ -1270,9 +1448,11 @@ def _plan_facts(
     framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
     # SIP-0109 §7.3 (#1705 d): an increment cycle's footprint, for its plan authors.
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_footprint
+    from squadops.campaigns.increment_tree import increment_basis, plan_footprint
 
-    footprint = increment_footprint(resolved_config, interface_manifest)
+    # A repository-backed increment's is its approved change request's (§24bv point 5).
+    footprint = plan_footprint(resolved_config, interface_manifest, change_request)
+    basis = increment_basis(resolved_config)
     criterion_files = _increment_criterion_files(change_request, resolved_config)
     # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_frozen_files
@@ -1293,6 +1473,7 @@ def _plan_facts(
         frozen_files=frozen_files,
         test_scope=test_scope,
         evaluation=evaluation,
+        on_branch=basis is not None and not basis.has_manifest,
     )
 
 
@@ -1304,19 +1485,22 @@ def _plan_task_acceptance(
 ) -> list[Any]:
     """A plan task's acceptance criteria: its own, then the seven families bound onto it, in
     order (#1994, the extraction map's §4e step 5b)."""
-    acceptance = _applicable_acceptance(plan_task)
+    # SIP-0100 1.1: scaffold-owned harness_boundary checks for bound qa.test slots, bound below.
+    harness = _harness_boundary_criteria(task_type, plan_task, contract)
+    acceptance = _without_entry_module_imports(_applicable_acceptance(plan_task), harness)
     # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
     # TypedChecks (stamped with contract ids) and merge them in. The plan
     # binds by id, dispatch materializes — evaluation is unchanged. Author
     # mode (no contract / no refs) leaves acceptance_criteria as authored.
     if contract is not None and plan_task.criteria_refs:
         acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
-    # SIP-0100 1.1: bind scaffold-owned harness_boundary checks onto bound qa.test slots.
-    acceptance.extend(_harness_boundary_criteria(task_type, plan_task, contract))
+    acceptance.extend(harness)
     # #629 (A6/D2): bind contract-owned assertion-vs-contract checks onto
     # bound qa.test suite files — layer 1's authoring block is guidance,
     # this is the guarantee.
-    acceptance.extend(_contract_assertion_criteria(task_type, plan_task, contract))
+    acceptance.extend(
+        _contract_assertion_criteria(task_type, plan_task, contract, interface_manifest)
+    )
     # #1153: the manifest's declared field kinds, enforced on the suite's own
     # literal assertions — the free-authored counterpart of the fill kind gate.
     acceptance.extend(_assertion_kind_criteria(task_type, plan_task, contract, interface_manifest))
@@ -1396,8 +1580,13 @@ def _step_inputs(
         frozen_files,
         test_scope,
     )
+    if facts.on_branch:
+        inject_branch_increment_inputs(
+            inputs, task_type, footprint, criterion_files, frozen_files, test_scope
+        )
     _inject_rejection_context(inputs, framing_rejection_context, task_type)
     inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
+    inputs.update(_criterion_file_inputs(task_type, change_request, criterion_files))
     inputs.update(_prior_cycle_inputs(resolved_config, task_type))
     return inputs
 
@@ -1446,7 +1635,11 @@ def generate_task_plan(
 
     if run.workload_type is not None:
         steps, builder_used = _resolve_workload_steps(
-            run.workload_type, profile, profile_roles, resolved_config
+            run.workload_type,
+            profile,
+            profile_roles,
+            resolved_config,
+            source_backed=cycle.source_context is not None,
         )
     else:
         steps, builder_used = _resolve_legacy_steps(cycle, profile, profile_roles)

@@ -141,6 +141,46 @@ def test_a_mistyped_sequence_is_refused_before_the_first_injection(spec, monkeyp
     assert exit_.value.code == 2
 
 
+@pytest.mark.parametrize(
+    ("argv", "declared"),
+    [
+        (["restart-queued-successor"], set()),
+        (["box-held-past-the-lease", "--foreign-model", "llama3.1:8b"], {"llama3.1:8b"}),
+    ],
+    ids=["no-foreign-model", "a-model-the-deploy-declares"],
+)
+def test_a_box_diagnostic_without_a_foreign_model_is_refused_before_the_first_injection(
+    argv, declared, monkeypatch
+):
+    """#2676. Bug caught: the box held with a model the deploy declares, which leaves it quiet, so
+    the successor starts at once and the diagnostic fails for a reason it never states. Since
+    #2676 that is ``llama3.1:8b``, the 2.0 legs' foreign model: Joi's own."""
+    monkeypatch.setattr(diag, "_declared_models", lambda: declared)
+    monkeypatch.setattr(diag, "restart_runtime", lambda: pytest.fail("injected"))
+    monkeypatch.setattr(diag, "_ollama_keep", lambda *a: pytest.fail("loaded a model"))
+
+    with pytest.raises(SystemExit) as exit_:
+        diag.main(["cmp_abc", "restart-at:building", *argv])
+
+    assert exit_.value.code == 2
+
+
+def test_a_box_diagnostic_holds_the_box_with_the_model_it_was_named(monkeypatch, tmp_path):
+    """Wiring, entered at ``main``: the named model reaches the diagnostic that holds the box."""
+    held: list[tuple[str, str]] = []
+    monkeypatch.setattr(diag, "_declared_models", lambda: {"llama3.1:8b", "qwen3.8:27b"})
+    monkeypatch.setitem(
+        diag.DIAGNOSTICS,
+        "restart-queued-successor",
+        lambda campaign_id, model: held.append((campaign_id, model)) or diag.Verdict("x", True),
+    )
+    monkeypatch.setattr(diag, "_record", lambda campaign_id, verdict: None)
+
+    code = diag.main(["cmp_abc", "restart-queued-successor", "--foreign-model", "phi3:mini"])
+
+    assert (code, held) == (0, [("cmp_abc", "phi3:mini")])
+
+
 def test_every_cli_call_logs_in_first(monkeypatch):
     """Bug caught: the 2026-10-03 increment legs, whose CLI session expired 45 minutes into a
     wait. A ruling, a pause or an abort made on it fails, and ``restart-paused`` then waits on a

@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "13"
+version: "16"
 required_variables:
   - prd
   - role
@@ -23,12 +23,15 @@ optional_variables:
   - app_traceback_section
   - frozen_surface_section
   - test_scope_section
+  - increment_views_section
   - loop_state
   - qa_fill_mode_section
   - current_files_section
   - anchored_edit_section
   - anchored_edit_retry_section
   - disputed_checks_section
+  - task_instructions_section
+  - project_instructions_section
   - cross_cycle_lessons_section
 ---
 ## Repair Task
@@ -43,6 +46,7 @@ You are repairing a failed `{{failed_task_type}}` task. Your job is to re-produc
 {{app_traceback_section}}
 {{frozen_surface_section}}
 {{test_scope_section}}
+{{increment_views_section}}
 
 ### Failed Task Contract
 
@@ -75,7 +79,7 @@ The narrative criteria below describe intent. They are context, not letter-of-th
 {{failure_summary}}
 
 {{correction_decision_section}}
-{{disputed_checks_section}}{{cross_cycle_lessons_section}}
+{{disputed_checks_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
 
 ### Product Requirements Document
 

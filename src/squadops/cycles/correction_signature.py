@@ -21,9 +21,11 @@ artifacts, and the abort.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.cycles.check_registry import CHECK_TESTS_PASS
 from squadops.cycles.failure_evidence import FailureEvidenceCategory, derive_failure_category
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import derived_failure_reason, row_is_blocking_failure
@@ -52,8 +54,9 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
     as an exact repeat. Roll 2 of the SIP-0104 window (run_6cb3563d3291) is the
     canonical loss: round 0 failed on error-envelope assertions, round 1 on five
     unfilled scaffold slots — two unrelated defects, one collapsed signature, a
-    converging run terminated at round 1. Absent (pytest, which emits no machine
-    report, and every legacy row) falls back to the aggregate element byte-identically.
+    converging run terminated at round 1. Absent (a report the runner could not parse, and
+    every legacy row) falls back to the aggregate element byte-identically. pytest has had
+    per-test identities since #1130, read from its ``-q --tb=short`` text.
 
     #761: two further machine facts join the token, both already on the row and
     both previously unread. ``runner`` and ``exit_code`` are what remain when a
@@ -195,36 +198,142 @@ def classify_movement(
     return MOVEMENT_SHIFTED
 
 
-def _progress_identity(
-    element: tuple[str, str, str], probe_ids: frozenset[str]
-) -> tuple[str, str, str]:
-    """An element as the retest comparison sees it: a contract probe's without its reason (#2340).
+#: How bad a side's failure category is, judged between a round and its retest (#2306). A repair
+#: that turns an application error into failing assertions made the app run further, and the
+#: reverse broke it. An emission or extraction failure has no signature, so it never gets here.
+_CATEGORY_RANK: dict[str, int] = {
+    FailureEvidenceCategory.EXECUTED_AND_FAILED: 0,
+    FailureEvidenceCategory.APP_ERROR: 1,
+    FailureEvidenceCategory.SANDBOX_PREEXEC_FAILURE: 2,
+}
 
-    A probe stops at its first failed assertion, so a repair that fixes that one moves the
-    probe's reason on to the next ("response missing key(s): ['id']", then the list's order).
-    Compared with its reason, the half-fixed probe reads as a failure the repair added and the
-    repair is discarded. Every other check keeps its reason: a still-failing check whose reason
-    changed may be one the repair broke a new way, which #1522 must not keep.
+#: A suite row's ``suite_broken`` verdict, worst first, for merging two rows of one check:
+#: could not run, then ambiguous, then ran.
+_SUITE_VERDICT_RANK: dict[bool | None, int] = {True: 2, None: 1, False: 0}
+
+
+def criterion_identity(check_id: str, params: Any) -> tuple[str, str]:
+    """A failing row's criterion: its check and its params, the identity a typed criterion keeps
+    across environments (#2306). Two criteria of one check on two files are two identities."""
+    return check_id, json.dumps(params or {}, sort_keys=True, default=str)
+
+
+@dataclass(frozen=True)
+class _RetestSide:
+    """A round or its retest, split the way the retest comparison judges it (#2306).
+
+    ``failure_signature`` folds the row's facts into every test's element: the suite's health,
+    the exit code and the round's category. Between two rounds that is what it should do. Between
+    a round and its retest it isn't: a repair that clears the app's error changes every test's
+    element, and the retest reads as shifted though the same tests fail. So the facts are kept
+    apart here and judged by their direction.
     """
-    check_id, subject, _reason = element
-    return (check_id, subject, "") if check_id in probe_ids else element
+
+    #: ``(check, file, title)`` per failing test. A file that never loaded is ``(check, file,
+    #: "")``, and so is a suite row with no per-test report.
+    tests: frozenset[tuple[str, str, str]]
+    #: Every other failing row, ``(check, subject, reason)``; a declared probe without its
+    #: reason (#2340).
+    checks: frozenset[tuple[str, str, str]]
+    #: Each check element's criteria (``criterion_identity``): the rows it stands for.
+    criteria: dict[tuple[str, str, str], frozenset[tuple[str, str]]]
+    #: Each suite row's verdict and exit code: ``suite_broken`` (True could not run, False ran,
+    #: None ambiguous), the worst of a check's rows.
+    suites: dict[str, tuple[bool | None, Any]]
+    category: str
+
+    @property
+    def elements(self) -> frozenset[tuple[str, str, str]]:
+        return self.tests | self.checks
+
+
+def _retest_side(evidence: dict[str, Any], probe_ids: frozenset[str]) -> _RetestSide | None:
+    """``evidence`` as the retest comparison reads it, or ``None`` with no product signature."""
+    if failure_signature(evidence) is None:
+        return None
+    tests: set[tuple[str, str, str]] = set()
+    checks: set[tuple[str, str, str]] = set()
+    criteria: dict[tuple[str, str, str], set[tuple[str, str]]] = {}
+    suites: dict[str, tuple[bool | None, Any]] = {}
+    for row in (evidence.get("validation_result") or {}).get("checks") or []:
+        if not isinstance(row, dict) or not row_is_blocking_failure(row):
+            continue
+        check_id = str(row.get("check", ""))
+        if not check_id:
+            continue
+        subject = str(row.get("file") or row.get("subject") or "")
+        failing_tests = row.get("failing_tests") or ()
+        if failing_tests or check_id == CHECK_TESTS_PASS:
+            broken = row.get("suite_broken")
+            verdict = (broken if isinstance(broken, bool) else None, row.get("exit_code"))
+            held = suites.get(check_id)
+            if held is None or _SUITE_VERDICT_RANK[verdict[0]] > _SUITE_VERDICT_RANK[held[0]]:
+                suites[check_id] = verdict
+            for identity in failing_tests:
+                test_file, _, title = str(identity).partition("::")
+                tests.add((check_id, test_file, title))
+            if not failing_tests:
+                tests.add((check_id, subject, ""))
+        else:
+            reason = (
+                ""
+                if check_id in probe_ids
+                else _reason_token(row, FailureEvidenceCategory.EXECUTED_AND_FAILED)
+            )
+            element = (check_id, subject, reason)
+            checks.add(element)
+            criteria.setdefault(element, set()).add(criterion_identity(check_id, row.get("params")))
+    return _RetestSide(
+        tests=frozenset(tests),
+        checks=frozenset(checks),
+        criteria={element: frozenset(keys) for element, keys in criteria.items()},
+        suites=suites,
+        category=derive_failure_category(evidence),
+    )
+
+
+def _fact_moves(before: _RetestSide, after: _RetestSide) -> tuple[list[str], list[str]]:
+    """The row facts that got worse and better between a round and its retest (#2306).
+
+    A suite's verdict and exit code: a suite that could not run and now runs is better; one that
+    was ambiguous and now runs is neither; any other change is worse, including an exit code that
+    moved under the same verdict, since nothing says which way it went. The category is ranked by
+    ``_CATEGORY_RANK``, and a move to one it doesn't rank is worse.
+    """
+    worse: list[str] = []
+    better: list[str] = []
+    for check, now in sorted(after.suites.items()):
+        then = before.suites.get(check)
+        if then is None or then == now:
+            continue
+        if then[0] is True and now[0] is False:
+            better.append(f"suite:{check}")
+        elif not (then[0] is None and now[0] is False):
+            worse.append(f"suite:{check}")
+    if before.category != after.category:
+        then_rank = _CATEGORY_RANK.get(before.category)
+        now_rank = _CATEGORY_RANK.get(after.category)
+        move = f"category:{before.category}->{after.category}"
+        if then_rank is None or now_rank is None or now_rank > then_rank:
+            worse.append(move)
+        else:
+            better.append(move)
+    return worse, better
 
 
 @dataclass(frozen=True)
 class RetestReduction:
-    """A repair's retest that cleared some of its round's failures and added none (#1522)."""
+    """A repair's retest that made progress on its round and broke nothing (#1522, #2306)."""
 
+    #: The round's and the retest's failures as the comparison reads them (``_RetestSide``).
     before: frozenset[tuple[str, str, str]]
     after: frozenset[tuple[str, str, str]]
-    #: The contract probes compared without their reason (#2340).
-    probe_ids: frozenset[str] = frozenset()
-
-    @property
-    def cleared(self) -> frozenset[tuple[str, str, str]]:
-        still = {_progress_identity(e, self.probe_ids) for e in self.after}
-        return frozenset(
-            e for e in self.before if _progress_identity(e, self.probe_ids) not in still
-        )
+    #: The round's failures the retest no longer has.
+    cleared: frozenset[tuple[str, str, str]]
+    #: Failing tests the round never ran, because their file never loaded.
+    unmasked: frozenset[tuple[str, str, str]] = frozenset()
+    #: Row facts that got better: a suite that now runs, an application that no longer errors.
+    improved: tuple[str, ...] = ()
 
 
 def retest_reduction(
@@ -232,27 +341,31 @@ def retest_reduction(
     retest_evidence: dict[str, Any],
     retest_evaluated: frozenset[str],
     probe_ids: frozenset[str] = frozenset(),
+    verified_criteria: frozenset[tuple[str, str]] = frozenset(),
 ) -> RetestReduction | None:
-    """The retest's failures as ``MOVEMENT_PROGRESS`` against the round's, or ``None`` (#1522).
+    """The retest as progress on its round, or ``None`` (#1522, #2306).
 
     A repair whose retest does not pass is discarded, and the failed task is re-dispatched
-    against the tree without it. When the retest cleared some failures and added none, that
-    throws away progress, and the next round's signature measures the unrepaired app (1.7.5
-    React roll 3: 7 → 4, 9 → 4 and 5 → 3, each repair discarded). This names the one case
-    worth keeping. It is the movement table's own ``progress`` class, taken between the round
-    and its retest rather than between two rounds.
+    against the tree without it. When the retest made progress and broke nothing, that throws
+    progress away, and the next round measures the unrepaired app (1.7.5 React roll 3: 7 → 4,
+    9 → 4 and 5 → 3, each repair discarded). The repair is kept when all of these hold:
+    - **no row fact got worse** (``_fact_moves``);
+    - **no other check is newly failing, or failing for a new reason.** A declared contract
+      probe is compared without its reason (#2340): it stops at its first failed assertion;
+    - **no test the round ran fails in the retest.** A test whose file never loaded in the round
+      was never run, so its failure is unmasked, not added. The round records only which tests
+      failed, so any other test that fails now is read as one the repair broke;
+    - **something cleared, or a fact got better;**
+    - **every failure of the round was evaluated:** its check by the retest (``retest_evaluated``,
+      the check ids the retest's executed rows carry), or each of its criteria by the patch's
+      verification (``verified_criteria``, ``criterion_identity`` of the rows it ran and passed).
+      A failure nothing looked at would otherwise read as cleared.
 
-    ``None`` whenever the comparison cannot be trusted:
-    - either side has no product signature (an infra round, or a retest with no failing row);
-    - the retest added a failure, cleared nothing, or shifted;
-    - the retest did not evaluate a check the round failed (``retest_evaluated`` holds the
-      check ids its rows carry). A failure the retest never looked at would otherwise read as
-      cleared.
-
-    ``probe_ids`` names the task's contract probes, compared without their reason (#2340).
+    ``None`` too when either side has no product signature: an infra round, or a retest with no
+    failing row.
     """
     return retest_reduction_or_refusal(
-        round_evidence, retest_evidence, retest_evaluated, probe_ids
+        round_evidence, retest_evidence, retest_evaluated, probe_ids, verified_criteria
     )[0]
 
 
@@ -261,27 +374,55 @@ def retest_reduction_or_refusal(
     retest_evidence: dict[str, Any],
     retest_evaluated: frozenset[str],
     probe_ids: frozenset[str] = frozenset(),
+    verified_criteria: frozenset[tuple[str, str]] = frozenset(),
 ) -> tuple[RetestReduction | None, str]:
     """``retest_reduction``, with why a retest was not taken as progress when it wasn't (#2340).
 
-    The refusal is a machine reason for the log: ``no_signature`` (a side has no product
-    failure), ``movement=<class>`` (the comparison was not progress), or ``unevaluated=<checks>``
-    (the retest did not look at a check the round failed). Empty for a reduction.
+    The refusal is a machine reason for the log, empty for a reduction:
+    - ``no_signature``: a side has no product failure;
+    - ``worse=<facts>``: a suite's verdict or exit code moved the wrong way, or the category did;
+    - ``added=<checks>``: a check is newly failing or failing for a new reason;
+    - ``regressed=<n>``: tests the round ran now fail;
+    - ``no_progress``: nothing cleared and nothing got better, a repeat;
+    - ``unevaluated=<checks>``: neither the retest nor the patch's verification looked at a
+      failure of the round.
     """
-    before = failure_signature(round_evidence)
-    after = failure_signature(retest_evidence)
-    if not before or not after:
+    before = _retest_side(round_evidence, probe_ids)
+    after = _retest_side(retest_evidence, probe_ids)
+    if before is None or after is None:
         return None, "no_signature"
-    movement = classify_movement(
-        frozenset(_progress_identity(e, probe_ids) for e in before),
-        frozenset(_progress_identity(e, probe_ids) for e in after),
-    )
-    if movement != MOVEMENT_PROGRESS:
-        return None, f"movement={movement}"
-    unevaluated = {check for check, _, _ in before} - retest_evaluated
+    worse, better = _fact_moves(before, after)
+    if worse:
+        return None, "worse=" + ",".join(worse)
+    added_checks = after.checks - before.checks
+    if added_checks:
+        return None, "added=" + ",".join(sorted({check for check, _, _ in added_checks}))
+    never_loaded = {(check, file) for check, file, title in before.tests if not title}
+    added_tests = after.tests - before.tests
+    regressed = [test for test in added_tests if (test[0], test[1]) not in never_loaded]
+    if regressed:
+        return None, f"regressed={len(regressed)}"
+    cleared = before.elements - after.elements
+    if not cleared and not better:
+        return None, "no_progress"
+
+    def evaluated(element: tuple[str, str, str]) -> bool:
+        criteria = before.criteria.get(element)
+        return element[0] in retest_evaluated or bool(criteria and criteria <= verified_criteria)
+
+    unevaluated = {element[0] for element in before.elements if not evaluated(element)}
     if unevaluated:
         return None, "unevaluated=" + ",".join(sorted(unevaluated))
-    return RetestReduction(before=before, after=after, probe_ids=probe_ids), ""
+    return (
+        RetestReduction(
+            before=before.elements,
+            after=after.elements,
+            cleared=cleared,
+            unmasked=added_tests,
+            improved=tuple(better),
+        ),
+        "",
+    )
 
 
 def carried_failures(
@@ -377,12 +518,24 @@ REPAIR_REFUSED_MARKER = "repair REJECTED by patch verification"
 REPAIR_EMPTY_MARKER = "the repair emitted no content"
 
 
+#: The executor's wording for a repair whose every file write authorization dropped (#2521): it
+#: emitted files its grant excludes, so its round is spent rather than refunded, and nothing was
+#: applied. One constant, two readers, like the two above.
+REPAIR_DROPPED_MARKER = "write authorization dropped every file the repair emitted"
+
+
+#: The executor's wording for a repair refused because it dropped the subject of a failing slot
+#: assertion (SIP-0104 §13f, #2664): the field the assertion read is declared on its surface, and
+#: the repair kept no assertion on it. Spent, not refunded, and nothing applied, as #2521's drop.
+REPAIR_SUBJECT_DROPPED_MARKER = "the repair dropped a failing slot assertion's subject"
+
+
 def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:
     """Whether round ``round_no``'s repair was never applied to the tree (#1129, #1658).
 
     Such a round is not one the signature rule may count: no retest ran, the failed task was
     re-dispatched against the unrepaired tree, and the failure signature repeated *by
-    construction*. Two ways a repair is not applied:
+    construction*. The ways a repair is not applied:
 
     - **refused by patch verification** (#1129) — 1.6.5 FastAPI+React rolls 5 and 6 ended as
       ``plan_defect`` after zero applied repairs, and roll 6's refused patch carried the fix;
@@ -390,13 +543,22 @@ def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: i
       and the rule still counted it: both of Han's shakeout rolls on the 1.8.1 deploy B′ ended
       ``plan_defect`` on such a round, one after zero applied repairs. Where no decision step
       is declared the rule is the carried failures alone, so nothing else shielded it.
+    - **every file dropped by write authorization** (#2521) — the round is spent, and the tree
+      the next round fails on is the one this round left unrepaired;
+    - **refused for dropping a failing slot assertion's subject** (#2664) — the same: spent,
+      and nothing of the repair reached the tree.
 
     The carry entries are the executor's own ``"correction attempt N: <marker> …"`` lines; a
     retest that ran and FAILED is a different entry and stays informative.
     """
     prefixes = tuple(
         f"correction attempt {round_no}: {marker}"
-        for marker in (REPAIR_REFUSED_MARKER, REPAIR_EMPTY_MARKER)
+        for marker in (
+            REPAIR_REFUSED_MARKER,
+            REPAIR_EMPTY_MARKER,
+            REPAIR_DROPPED_MARKER,
+            REPAIR_SUBJECT_DROPPED_MARKER,
+        )
     )
     return any(str(entry).startswith(prefixes) for entry in repair_rejections or [])
 

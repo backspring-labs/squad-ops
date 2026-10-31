@@ -27,7 +27,7 @@ import ast
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -61,7 +61,15 @@ from squadops.stacks.stack_fastapi_react import (
     store_brief_lines as _store_brief_lines_fastapi_react,
 )
 from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import CLIENT_SURFACE as _CLIENT_SURFACE_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import PAGE_LOADER_IMPORT as _PAGE_LOADER_IMPORT_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import PAGE_LOADER_PATH as _PAGE_LOADER_PATH_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_IMPORT as _ROUTE_CALLER_IMPORT_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_PATH as _ROUTE_CALLER_PATH_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
+from squadops.stacks.stack_nextjs_ts import (
+    client_surface_lines_nextjs_ts as _client_surface_lines_nextjs_ts,
+)
 from squadops.stacks.stack_nextjs_ts import expand_nextjs_ts as _expand_nextjs_ts
 from squadops.stacks.stack_nextjs_ts import (
     fill_slots_nextjs_ts as _fill_slots_nextjs_ts,
@@ -166,6 +174,34 @@ class ListOrder:
         return f"Return the list ordered by {self.field}, {word}: the contract checks it."
 
 
+#: The types a query parameter may declare (#2378): the ones both stacks read from a query
+#: string's text without a schema of their own.
+QUERY_PARAM_TYPES = frozenset(
+    {"string", "str", "integer", "int", "number", "float", "boolean", "bool"}
+)
+_QUERY_PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class QueryParam:
+    """An input an endpoint reads from its query string (#2378).
+
+    **Structure, not prose.** A manifest chose ``DELETE /runs/{run_id}/participants`` with the
+    name "as a query param" in its summary and a decision. No field held it, so the scaffold seeded
+    a signature without it, the signature check refused the conventional handler, and the repair
+    read the parameter through a context variable to get past the check (#2378). Declared here,
+    the scaffold seeds it, the check pins it, and QA and the route stub read it.
+    """
+
+    name: str
+    type: str = "string"
+    required: bool = True
+
+    def placeholder(self) -> str:
+        """``name=<string>``, as QA and the route stub read it."""
+        return f"{self.name}=<{self.type}{'' if self.required else ', optional'}>"
+
+
 @dataclass(frozen=True)
 class Endpoint:
     method: str
@@ -184,6 +220,12 @@ class Endpoint:
     success_status: int | None = None
     #: A collection GET's declared element order (#2202). ``None`` declares none.
     order: ListOrder | None = None
+    #: The inputs it reads from its query string, in declaration order (#2378).
+    query: tuple[QueryParam, ...] = ()
+
+    def query_suffix(self) -> str:
+        """``?name=<string>&page=<integer, optional>``, or nothing when it declares no query."""
+        return "?" + "&".join(p.placeholder() for p in self.query) if self.query else ""
 
 
 @dataclass(frozen=True)
@@ -507,6 +549,18 @@ class InterfaceManifest:
                             if ep.order
                             else {}
                         ),
+                        # #2378: present only when declared, as ``order`` is. It changes the
+                        # seeded signature, so it moves the hash.
+                        **(
+                            {
+                                "query": [
+                                    {"name": q.name, "type": q.type, "required": q.required}
+                                    for q in ep.query
+                                ]
+                            }
+                            if ep.query
+                            else {}
+                        ),
                     }
                     for ep in self.api.endpoints
                 ],
@@ -592,11 +646,35 @@ class InterfaceManifest:
                     f"{label}: errors {undeclared} are not defined in api.error_contract.codes"
                 )
             errors.extend(f"{label}: {e}" for e in self._order_errors(ep))
+            errors.extend(f"{label}: {e}" for e in self._query_errors(ep))
 
         for route in self.frontend.routes:
             if not route.view:
                 errors.append(f"frontend route {route.path!r}: view is required")
 
+        return errors
+
+    def _query_errors(self, ep: Endpoint) -> list[str]:
+        """Why ``ep``'s declared query parameters can't be seeded, if any can't (#2378).
+
+        Each is a name a handler couldn't take as its own argument: not an identifier, or the name
+        of a path parameter or a body field, which the handler already reads by that name. And a
+        type no stack reads from text. A mapping can't name a parameter twice."""
+        errors: list[str] = []
+        path_params = set(re.findall(r"\{(\w+)\}", ep.path))
+        body_fields = set(self.request_body_fields(ep.request)) if ep.request else set()
+        for param in ep.query:
+            if not _QUERY_PARAM_NAME.match(param.name):
+                errors.append(f"query parameter {param.name!r} is not an identifier")
+            if param.name in path_params:
+                errors.append(f"query parameter {param.name!r} is also a path parameter")
+            if param.name in body_fields:
+                errors.append(f"query parameter {param.name!r} is also a request body field")
+            if param.type.strip().lower() not in QUERY_PARAM_TYPES:
+                errors.append(
+                    f"query parameter {param.name!r} type {param.type!r} must be one of "
+                    f"{sorted(QUERY_PARAM_TYPES)}"
+                )
         return errors
 
     def _order_errors(self, ep: Endpoint) -> list[str]:
@@ -757,6 +835,7 @@ def _parse_api(raw: dict[str, Any]) -> Api:
                 int(ep["success_status"]) if ep.get("success_status") is not None else None
             ),
             order=_parse_order(ep.get("order")),
+            query=_parse_query(ep.get("query")),
         )
         for ep in raw.get("endpoints", [])
     )
@@ -793,6 +872,29 @@ def _parse_order(raw: Any) -> ListOrder | None:
     return ListOrder(
         field=str(raw.get("field", "")), direction=str(raw.get("direction", "")).strip().lower()
     )
+
+
+def _parse_query(raw: Any) -> tuple[QueryParam, ...]:
+    """An endpoint's ``query``, in declaration order (#2378): a mapping of each parameter's name to
+    its type (``{name: string}``), or to ``{type, required}`` when it is optional. Required by
+    default, as a parameter a handler reads is."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise ValueError(f"an endpoint's query must map each name to its type, got {raw!r}")
+    params = []
+    for name, spec in raw.items():
+        if isinstance(spec, dict):
+            params.append(
+                QueryParam(
+                    name=str(name),
+                    type=str(spec.get("type", "string")),
+                    required=bool(spec.get("required", True)),
+                )
+            )
+        else:
+            params.append(QueryParam(name=str(name), type=str(spec or "string")))
+    return tuple(params)
 
 
 def _parse_frontend(raw: dict[str, Any]) -> Frontend:
@@ -1007,9 +1109,19 @@ class ErrorSeam:
     #: invented.
     framework_exception: str = ""
 
+    #: The envelope's one top-level key: a failing request's body is ``{"error": {...}}``.
+    ENVELOPE_ROOT = "error"
+
+    @property
+    def envelope_fields(self) -> tuple[str, ...]:
+        """The fields inside ``error``: what a fill may read off a failing request's body
+        (SIP-0104 §13f — the slot-subject gate's "absent there" for the envelope)."""
+        return ("code", self.body_field)
+
     def envelope_example(self, code: str) -> str:
         """The literal JSON body a failing request returns, for a real declared code."""
-        return f'{{"error": {{"code": "{code}", "{self.body_field}": "..."}}}}'
+        code_field, body_field = self.envelope_fields
+        return f'{{"{self.ENVELOPE_ROOT}": {{"{code_field}": "{code}", "{body_field}": "..."}}}}'
 
 
 ERROR_SEAM_FASTAPI = ErrorSeam(
@@ -1716,6 +1828,13 @@ def harness_entry_modules(stack: str) -> tuple[str, ...]:
     return known.harness_entry_modules if known else ()
 
 
+def names_entry_module(module: str, entry_modules: Iterable[str]) -> bool:
+    """Whether ``module`` is one of ``entry_modules`` or a module inside one: an import the harness
+    boundary refuses (SIP-0100). Read by the boundary itself and by dispatch, which drops an
+    authored row requiring that import (#2572)."""
+    return any(module == m or module.startswith(m + ".") for m in entry_modules)
+
+
 def test_config_files_for_stack(stack: str) -> tuple[str, ...]:
     """The stack's test-runner configuration files outside its qa namespace (SIP-0109 §7.4)."""
     return _stack(stack).test_config_files
@@ -1739,6 +1858,11 @@ def is_scaffoldable_stack(stack: str) -> bool:
     dispatch an authoring stage, so a non-scaffoldable stack never produces a manifest
     describing a skeleton nothing can build."""
     return bool(stack) and stack in _STACKS
+
+
+def scaffoldable_stacks() -> tuple[str, ...]:
+    """The stacks with a walking-skeleton expander, by name: SIP-0105's blueprints."""
+    return tuple(sorted(_STACKS))
 
 
 @dataclass(frozen=True)
@@ -1883,6 +2007,24 @@ class ScaffoldStack:
     #: test changes never touch it. Inside ``qa_test_namespace`` (held by the stack inventory).
     #: Empty means the stack cannot host a campaign increment's criteria, and asking refuses.
     criterion_test_files: tuple[tuple[str, str], ...] = ()
+    #: #2577: the request asset that tells an endpoint criterion's test author how to call a
+    #: route so the test fails on the application before the change as an assertion, not at
+    #: collection (SIP-0109 §8.2). Empty for a stack whose test client already answers a missing
+    #: route (stack #1's ``client`` fixture answers 404).
+    criterion_route_harness: str = ""
+    #: How a criterion test imports the stack's frozen route caller (#2577), which the stack
+    #: declares among its ``test_config_files`` so every criterion's bundle carries it.
+    route_caller_import: str = ""
+    #: #2602: the request asset that tells a page criterion's (``client_route``) test author how
+    #: to load its page and answer its fetches so the test fails on the application before the
+    #: change at its anchor's assertion, not at collection (SIP-0109 §8.2). Empty for a stack
+    #: whose page tests reach a page through a frozen entry: stack #1's render the frozen ``App``
+    #: under a ``MemoryRouter`` at the page's path, and on the accepted tree a path its ``App``
+    #: doesn't route renders the shell without the view's test ids.
+    criterion_page_harness: str = ""
+    #: How a criterion test imports the stack's frozen page loader (#2602), declared among its
+    #: ``test_config_files`` beside the route caller.
+    page_loader_import: str = ""
     #: SIP-0109 §8.3: how this stack's app is stood up so its pages can be read — a *name*
     #: in ``handlers.route_rendering``, like ``probe_profile``. Empty means its pages cannot
     #: be read, and every declared route is ``blocked_unverified``, never passed.
@@ -1952,7 +2094,14 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_NEXTJS_TS_NAME,
         expand=_expand_nextjs_ts,
         fill_slots=_fill_slots_nextjs_ts,
-        test_config_files=("vitest.config.ts",),
+        # #2577, #2602: the frozen route caller and page loader ride every criterion's bundle,
+        # as the setup does.
+        test_config_files=(
+            "vitest.config.ts",
+            "vitest.setup.ts",
+            _ROUTE_CALLER_PATH_NEXTJS_TS,
+            _PAGE_LOADER_PATH_NEXTJS_TS,
+        ),
         # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
         # one of the three FastAPI-shaped assumptions S2 selected this stack to break. The
         # bare name is the declaration of that convention; `within_namespace` reads it as a
@@ -1974,14 +2123,27 @@ _STACKS: dict[str, ScaffoldStack] = {
         # #1973 (SIP-0109 §24p): its pages are read from the app ``next start`` serves.
         render_profile="next_start",
         app_invocation=_APP_INVOCATION_NEXTJS_TS,
+        # #2534's page suites mock or stub beneath the frozen client, so its author is shown it.
+        client_surface_lines=_client_surface_lines_nextjs_ts,
+        client_surface=_CLIENT_SURFACE_NEXTJS_TS,
         development_profile=_NEXTJS_TS_NAME,
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
         verification_scaffold=_NEXTJS_TS_NAME,
+        # #2511: both files are ones this stack's runner collects (``VITEST_SUITE_GLOBS``, #1534).
+        # A page criterion's is ``.test.tsx`` again, now that the runner collects it (#2531) and
+        # runs it in a DOM (#2534): its test renders the page, which loads its data in the browser.
         criterion_test_files=(
             ("endpoint", "__tests__/criteria/{criterion}.test.ts"),
             ("client_route", "__tests__/criteria/{criterion}.test.tsx"),
         ),
+        # #2577: an endpoint criterion's test calls its route through the frozen route caller.
+        criterion_route_harness="request.increment_route_harness_appendix_nextjs_ts",
+        route_caller_import=_ROUTE_CALLER_IMPORT_NEXTJS_TS,
+        # #2602: a page criterion's test loads its page through the frozen page loader, and
+        # answers the page's fetches through the route caller.
+        criterion_page_harness="request.increment_page_harness_appendix_nextjs_ts",
+        page_loader_import=_PAGE_LOADER_IMPORT_NEXTJS_TS,
         # #1950: the frozen types write an optional field ``field?: type`` and the frozen store
         # adds no default, so what a create without it returns is each build's handler's choice.
         # 225 stored handlers return it left out, null and "" (#1950's comment of 2026-10-05).
@@ -2003,11 +2165,45 @@ def _stack(stack: str) -> ScaffoldStack:
     return known
 
 
+def hosts_campaign_increments(stack: str) -> bool:
+    """True when a campaign can run on ``stack`` (#2443): it is scaffoldable, and it declares
+    where a campaign criterion's own test file lives (SIP-0109 §8.1), without which an
+    increment's criteria have nowhere to go."""
+    known = _STACKS.get(stack) if stack else None
+    return known is not None and bool(known.criterion_test_files)
+
+
 def render_profile_name_for(stack: str) -> str:
     """The render profile ``stack`` declares (SIP-0109 §8.3), or ``""`` for a stack whose pages
     cannot be read — or one not registered."""
     known = _STACKS.get(stack)
     return known.render_profile if known else ""
+
+
+def criterion_route_harness_for(stack: str) -> str:
+    """The request asset telling ``stack``'s endpoint criterion tests how to call a route (#2577),
+    or ``""`` when the stack needs none, or isn't registered."""
+    known = _STACKS.get(stack) if stack else None
+    return known.criterion_route_harness if known else ""
+
+
+def route_caller_import_for(stack: str) -> str:
+    """How ``stack``'s criterion tests import its frozen route caller (#2577), or ``""``."""
+    known = _STACKS.get(stack) if stack else None
+    return known.route_caller_import if known else ""
+
+
+def criterion_page_harness_for(stack: str) -> str:
+    """The request asset telling ``stack``'s page criterion tests how to load a page (#2602), or
+    ``""`` when the stack needs none, or isn't registered."""
+    known = _STACKS.get(stack) if stack else None
+    return known.criterion_page_harness if known else ""
+
+
+def page_loader_import_for(stack: str) -> str:
+    """How ``stack``'s criterion tests import its frozen page loader (#2602), or ``""``."""
+    known = _STACKS.get(stack) if stack else None
+    return known.page_loader_import if known else ""
 
 
 def criterion_test_path(stack: str, criterion_id: str, surface_kind: str) -> str:
@@ -2024,7 +2220,14 @@ def criterion_test_path(stack: str, criterion_id: str, surface_kind: str) -> str
             f"stack {stack!r} declares no criterion test file for a {surface_kind!r} criterion "
             f"(declared: {sorted(templates)})"
         )
-    return template.format(criterion=re.sub(r"[^A-Za-z0-9_]", "_", criterion_id))
+    return template.format(criterion=criterion_module_name(criterion_id))
+
+
+def criterion_module_name(criterion_id: str) -> str:
+    """A criterion's id as its test file names it: kept to letters, digits and ``_``, so the file
+    is a valid module name on every runner. Two ids can name one file (``T-1``, ``T_1``), so a
+    proposal's ids must name distinct ones (SIP-0109 §24cj)."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", criterion_id)
 
 
 def skeleton_pins_success_status_for(stack: str) -> bool:

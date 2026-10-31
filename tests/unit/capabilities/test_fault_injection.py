@@ -1208,7 +1208,6 @@ class TestTheDevLaneFaultSurvivesTheTasksOwnSelfEvaluation:
         prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
         ports = PortsBundle(
             llm=llm,
-            memory=MagicMock(),
             prompt_service=prompt_service,
             queue=MagicMock(),
             metrics=MagicMock(),
@@ -1487,7 +1486,6 @@ class TestTheDeployADiagnosticsFaults:
         prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
         ports = PortsBundle(
             llm=llm,
-            memory=MagicMock(),
             prompt_service=prompt_service,
             queue=MagicMock(),
             metrics=MagicMock(),
@@ -1532,7 +1530,7 @@ class TestTheDeployADiagnosticsFaults:
         )
         assert result.status == "FAILED", "the planted row still fails on the unchanged code"
         stored = {a["name"]: a["content"] for a in result.outputs["artifacts"]}
-        assert stored["app/api/runs/route.ts"] == route.rstrip("\n"), "the import left as it was"
+        assert stored["app/api/runs/route.ts"] == route, "the import left as it was"
         (contested,) = evidence["contested_rows"]
         assert contested["criterion_id"] == "vc-declared-imports-lib-alias"
         assert contested["contested"]["by"] == "dev"

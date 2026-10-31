@@ -43,8 +43,11 @@ from squadops.api.campaign_schemas import (
     PackageDigestResponse,
     PackageMaterializedResponse,
     ResumeRequest,
+    ReviewPushRequest,
+    ReviewPushResponse,
+    WorkClassDTO,
 )
-from squadops.api.errors import error_body
+from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
@@ -58,10 +61,21 @@ from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_cycle_event_bus,
     get_cycle_registry,
+    get_memory_records,
     get_memory_store,
+    get_project_registry,
+    get_reference_resolvers,
+    get_review_requests,
+    get_scenario_store,
+    get_source_repository,
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
+from squadops.campaigns.calibration_record import (
+    CalibrationRecord,
+    record_for,
+    recorded_calibration,
+)
 from squadops.campaigns.continuation import PendingAction
 from squadops.campaigns.escalation import Escalation, answer_refusal, answer_transition, escalations
 from squadops.campaigns.gate import increment_sequence_refusal
@@ -86,6 +100,7 @@ from squadops.campaigns.models import (
     ProposalClassification,
     ResumeReservedToOwner,
     TransitionResult,
+    WorkClass,
 )
 from squadops.campaigns.progress import (
     EVIDENCE_ARTIFACT_TYPE,
@@ -94,9 +109,15 @@ from squadops.campaigns.progress import (
     owner_held,
 )
 from squadops.campaigns.projection import project
+from squadops.campaigns.repository_backed import creation_refusal
+from squadops.campaigns.review_push import ReviewPushRefused, push_review
 from squadops.cycles.gate_attribution import compose_decided_by
-from squadops.cycles.models import CycleStatus
+from squadops.cycles.models import CycleStatus, ProjectNotFoundError
 from squadops.memory.pinning import pin_campaign
+from squadops.ports.projects.review_request import ReviewRequestFailed
+from squadops.projects.contribution import ContributionRefused
+from squadops.projects.models import SourceUnavailable
+from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +240,12 @@ async def create_campaign(
                 "objective.target_accepted_increments is required: the accepted increments "
                 "that meet the objective (§10 row 3)"
             )
+        if body.objective.work_class is None:
+            # SIP-0113 §4.6: a campaign created without its class can never be grouped for AOR.
+            raise ValueError(
+                "objective.work_class is required: its prd_tier and its attendance, declared "
+                "(SIP-0113 §4.6)"
+            )
         campaign = Campaign(
             campaign_id=body.campaign_id or lifecycle.new_campaign_id(),
             project_id=body.project_id,
@@ -227,6 +254,8 @@ async def create_campaign(
                 allowed_scope=tuple(body.objective.allowed_scope),
                 measurement=body.objective.measurement,
                 target_accepted_increments=body.objective.target_accepted_increments,
+                work_class=WorkClass(**body.objective.work_class.model_dump()),
+                requirements=body.objective.requirements,
             ),
             policy=CampaignPolicy(**body.policy.model_dump()),
             state=CampaignState.DRAFT,
@@ -235,7 +264,9 @@ async def create_campaign(
             updated_at=now,
         )
         _require_profiles(campaign.policy)
+        await _require_project_rules(request, campaign)
         definition = CampaignDefinition(**body.definition.model_dump()) if body.definition else None
+        scenarios = await _pinnable_scenario_store(request, body.scenario_suite)
         result = await _registry(request).create_campaign(
             campaign,
             actor=actor,
@@ -244,10 +275,54 @@ async def create_campaign(
             idempotency_key=body.idempotency_key,
             definition=definition,
         )
+    except SuiteRefused as e:
+        raise HTTPException(422, error_body(e.code, f"scenario_suite: {e}")) from e
     except ValueError as e:
         raise HTTPException(422, _validation(str(e))) from e
+    # Projected before the pin, so a refused pin leaves the created campaign projected: a replay
+    # projects nothing (#2448's review).
     _project(request, result, identity)
+    if scenarios is not None and body.scenario_suite is not None:
+        # SIP-0113 §4.7 (§24bt): pinned after the creation, by the campaign it names, so a
+        # replayed creation replays its pin and a different suite for the same one is refused.
+        try:
+            await pin_campaign_suite(
+                scenarios,
+                result.campaign.campaign_id,
+                body.scenario_suite,
+                draft=result.campaign.state is CampaignState.DRAFT,
+                actor=actor,
+                at=now,
+            )
+        except SuiteRefused as e:
+            raise HTTPException(409, error_body(e.code, str(e))) from e
     return _result(result)
+
+
+async def _require_project_rules(request: Request, campaign: Campaign) -> None:
+    """SIP-0109 §24bv point 5: what a Campaign must declare on its Project's kind, refused at
+    creation (422), naming the field. A Project the registry doesn't hold is refused at the
+    start, where its state is read (§24cc), and is not read here."""
+    try:
+        project = await get_project_registry(request).get_project(campaign.project_id)
+    except ProjectNotFoundError:
+        return
+    refusal = creation_refusal(campaign, repository_backed=project.source is not None)
+    if refusal:
+        raise ValueError(refusal)
+
+
+async def _pinnable_scenario_store(request: Request, digest: str | None):
+    """The scenario store, when the creation names a suite that can be pinned: stored and
+    approved (the 2.4 plan's D2). Checked before the campaign exists, so a refused suite creates
+    nothing."""
+    if digest is None:
+        return None
+    store = get_scenario_store(request)
+    if store is None:
+        raise ValueError("scenario_suite: the scenario store is not configured on this deploy")
+    await require_pinnable(store, digest)
+    return store
 
 
 @router.get("")
@@ -289,12 +364,23 @@ async def start_campaign(
     body: ControlRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
-    """The start (§17), the owner's or the supervisor's (#1940): the draft moves to calibrating, its calibration cycle's launch
-    intent written in the same row (§12b), and the cycle is launched by the cycle-create path.
-    A campaign that is not a draft refuses the start as stale, and the refusal is recorded."""
+    """The start (§17), the owner's or the supervisor's (#1940): the draft moves to calibrating.
+    A campaign that is not a draft refuses the start as stale, and the refusal is recorded.
+
+    - **A sample application's:** its calibration cycle's launch intent is written in the same
+      row (§12b), and the cycle is launched by the cycle-create path.
+    - **A repository-backed Project's** (§24bv point 1, §24cc): a calibration record is written
+      in the row instead, and nothing is launched. The record is then heard in this request: with
+      a suite pinned, its commit is evaluated first (SIP-0113 §10l, its baseline reading, which
+      builds and starts the product, so the start can take minutes); then its tree is promoted
+      and row 5 decides. A pause or an abort applied during the reading holds: the start answers
+      with nothing decided, and a resumed campaign is decided by the re-hearing.
+      A start that can't write one is refused (409 ``CALIBRATION_REFUSED``, naming the cause), and
+      nothing is written."""
 
     actor, role = actor_from(identity)
     campaign = await _registry(request).get_campaign(campaign_id)
+    record = await _calibration_record(request, campaign)
     try:
         transition = start_transition(
             campaign,
@@ -302,15 +388,53 @@ async def start_campaign(
             actor_role=role,
             reason=body.reason,
             idempotency_key=body.idempotency_key,
+            record=record,
         )
     except FileNotFoundError as e:
         # The policy names a request profile that does not exist: nothing can launch.
         raise HTTPException(status_code=422, detail=_validation(str(e))) from e
-    result = await apply_control(request, campaign_id, transition, identity)
     # SIP-0110 §0.7: the campaign pins its memory snapshot at admission, before its calibration
-    # launches, so every proposal and cycle of it selects from one snapshot.
-    await _pin_memory(request, result.campaign)
-    return _result(result, launched_cycles=await launch_pending(request, result))
+    # launches, so every proposal and cycle of it selects from one snapshot. #2545: the start's row
+    # writes the calibration's launch intent, and any drain (the sweep's, another campaign's, a
+    # route's) could launch it while the pin is still being taken. Every drain launches under this
+    # lock (§5ad), so none does until the pin is stored. A refused start pins nothing, and a pin
+    # that fails is logged and the campaign launches, as before.
+    async with get_campaign_launch(request).launches_held():
+        result = await apply_control(request, campaign_id, transition, identity)
+        await _pin_memory(request, result.campaign)
+    if record is None:
+        return await _after_drain(request, result, await launch_pending(request, result))
+    # §24bv point 1: the record is promoted and decided now, after the pin and outside the launch
+    # lock, since the decision's own launch drains under it. A hearing that fails here is retried
+    # by the sweep and at startup (``rehear_calibration_records``); a replayed start hears nothing.
+    decided = await get_campaign_progress(request).calibration_recorded(campaign_id)
+    if decided is None or decided.intent is None:
+        return await _after_drain(request, result, [])
+    intent = await _registry(request).get_launch_intent(decided.intent.launch_id)
+    return await _after_drain(
+        request,
+        result,
+        [intent.cycle_id] if intent.cycle_id else [],
+        launch_id=intent.launch_id,
+    )
+
+
+async def _calibration_record(request: Request, campaign: Campaign) -> CalibrationRecord | None:
+    """The calibration record a repository-backed Project's start writes (§24bv point 1), or
+    ``None`` for a sample application's, whose start launches its calibration cycle (§11).
+
+    A draft's is read from the Project's state now, refused with :class:`CalibrationRecordRefused`
+    when it can't be written. A campaign past its draft can only replay its start or be refused
+    as stale, so it is given the record its start wrote, if any: a replay then matches, and a
+    Project that has moved on since doesn't turn a replay into a refusal."""
+    project = await get_project_registry(request).get_project(campaign.project_id)
+    if project.source is None:
+        return None
+    if campaign.state is not CampaignState.DRAFT:
+        return recorded_calibration(await _registry(request).control_log(campaign.campaign_id))
+    return await record_for(
+        get_project_registry(request), project, campaign_id=campaign.campaign_id
+    )
 
 
 async def _pin_memory(request: Request, campaign) -> None:
@@ -322,7 +446,13 @@ async def _pin_memory(request: Request, campaign) -> None:
     if store is None:
         return
     try:
-        await pin_campaign(store, campaign, now=datetime.now(UTC))
+        await pin_campaign(
+            store,
+            campaign,
+            now=datetime.now(UTC),
+            records=get_memory_records(request),
+            resolvers=get_reference_resolvers(request),
+        )
     except Exception:
         logger.warning(
             "memory_snapshot_not_pinned campaign=%s", campaign.campaign_id, exc_info=True
@@ -375,6 +505,53 @@ async def classify_proposal(
         },
     )
     return _result(await apply_control(request, campaign_id, transition, identity))
+
+
+@router.post("/{campaign_id}/review-pushes", status_code=201)
+async def push_review_request(
+    request: Request,
+    campaign_id: str,
+    body: ReviewPushRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
+) -> ReviewPushResponse:
+    """Push a repository-backed Campaign's review request to the product (SIP-0109 §24ci (b)):
+    the supervisor's act, at the Campaign's close or when the owner asks, with the supervisor's
+    own token in the request and none the deploy holds. The first push opens the review request;
+    one after a rebase is forced with a lease on the commit last pushed, so a branch someone else
+    moved is refused (409 ``REVIEW_BRANCH_MOVED``), never overwritten. Each push is a
+    ``review_pushed`` record, accepted on a completed Campaign."""
+    actor, role = actor_from(identity)
+    try:
+        pushed = await push_review(
+            campaign_id,
+            campaigns=_registry(request),
+            projects=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            token=body.token.get_secret_value(),
+            actor=actor,
+            actor_role=role,
+            idempotency_key=body.idempotency_key,
+            record=lambda t: apply_control(request, campaign_id, t, identity),
+        )
+    except (ReviewPushRefused, ContributionRefused) as e:
+        raise http_error(409, "REVIEW_PUSH_REFUSED", str(e)) from e
+    except SourceUnavailable as e:
+        if e.reason == "lease_refused":
+            raise http_error(409, "REVIEW_BRANCH_MOVED", str(e)) from e
+        raise http_error(502, "REVIEW_PUSH_FAILED", f"{e.reason}: {e}") from e
+    except ReviewRequestFailed as e:
+        raise http_error(502, "REVIEW_PUSH_FAILED", str(e)) from e
+    return ReviewPushResponse(
+        campaign_id=campaign_id,
+        branch=pushed.branch,
+        commit=pushed.commit,
+        lease=pushed.lease,
+        forced=pushed.forced,
+        review_url=pushed.review_url,
+        entry_id=pushed.entry_id,
+        replayed=pushed.replayed,
+    )
 
 
 @router.get("/{campaign_id}/escalations")
@@ -443,14 +620,18 @@ async def read_ledger(
     campaign_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
 ) -> list[LedgerEntryResponse]:
-    """The proposal ledger (§9.4), read from the control log: per proposal version, its
-    submission, its ruling, its cycle's outcome and its classification."""
+    """The proposal ledger (§9.4), read from the control log and the launch outbox: per proposal
+    version, its submission, its ruling, the cycles that carried it with their outcomes (#2578),
+    and its classification."""
     import dataclasses
 
-    await _registry(request).get_campaign(campaign_id)
+    registry = _registry(request)
+    await registry.get_campaign(campaign_id)
     return [
         LedgerEntryResponse(**dataclasses.asdict(e))
-        for e in ledger(await _registry(request).control_log(campaign_id))
+        for e in ledger(
+            await registry.control_log(campaign_id), await registry.launch_intents(campaign_id)
+        )
     ]
 
 
@@ -526,7 +707,8 @@ async def resume_campaign(
             expected_state=CampaignState.ESCALATED,
         )
         result = await apply_control(request, campaign_id, transition, identity)
-        return _result(result, launched_cycles=await _retry_launch(request, launch_id, result))
+        launched = await _retry_launch(request, launch_id, result)
+        return await _after_drain(request, result, launched, launch_id=launch_id)
     if campaign.state is CampaignState.ESCALATED and named is None:
         if escalated_by_a_blocked_launch(campaign, log):
             # §9.3 (#1802): the launch it escalated over is still pending. The owner's word
@@ -560,7 +742,7 @@ async def resume_campaign(
         except CannotLaunch as e:
             raise HTTPException(422, _validation(str(e))) from e
         result = await apply_control(request, campaign_id, transition, identity)
-        return _result(result, launched_cycles=await launch_pending(request, result))
+        return await _after_drain(request, result, await launch_pending(request, result))
     paused_from = _paused_from(log)
     target = (
         paused_from if campaign.state is CampaignState.PAUSED and paused_from else campaign.state
@@ -747,6 +929,8 @@ def _escalation(e: Escalation) -> EscalationResponse:
         answers=dict(e.answers),
         answered_by=e.answered_by,
         answered_at=e.answered_at,
+        kind=str(e.kind),
+        hold_class=e.hold_class,
     )
 
 
@@ -916,6 +1100,17 @@ def _campaign(c: Campaign) -> CampaignResponse:
             allowed_scope=list(c.objective.allowed_scope),
             measurement=c.objective.measurement,
             target_accepted_increments=c.objective.target_accepted_increments,
+            work_class=(
+                WorkClassDTO.model_validate(
+                    {
+                        "prd_tier": c.objective.work_class.prd_tier,
+                        "attendance": c.objective.work_class.attendance,
+                    }
+                )
+                if c.objective.work_class
+                else None
+            ),
+            requirements=c.objective.requirements,
         ),
         policy=CampaignPolicyDTO(
             **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}
@@ -926,7 +1121,12 @@ def _campaign(c: Campaign) -> CampaignResponse:
         created_by=c.created_by,
         updated_at=c.updated_at,
         accepted=(
-            AcceptedTreeDTO(identity=c.accepted.identity, cycle_id=c.accepted.cycle_id)
+            AcceptedTreeDTO(
+                identity=c.accepted.identity,
+                cycle_id=c.accepted.cycle_id,
+                calibration_record_id=c.accepted.calibration_record_id,
+                commit=c.accepted.commit,
+            )
             if c.accepted
             else None
         ),
@@ -965,4 +1165,37 @@ def _result(
         replayed=result.replayed,
         cancelled_cycles=cancelled_cycles or [],
         launched_cycles=launched_cycles or [],
+    )
+
+
+async def _after_drain(
+    request: Request,
+    result: TransitionResult,
+    launched: list[str],
+    *,
+    launch_id: str | None = None,
+) -> ControlResultResponse:
+    """What an operation that launches left once its own drain ran (#2621). The drain may have
+    refused the launch and escalated the campaign, so the campaign is read again, and that
+    refusal's row is named beside the operation's own: the answer never reads as started while
+    the campaign waits on the owner. ``launch_id`` is the launch retried, else the row's own."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(result.campaign.campaign_id)
+    launch_id = launch_id or (result.intent.launch_id if result.intent is not None else None)
+    refused = None
+    if not launched and launch_id is not None:
+        log = await registry.control_log(campaign.campaign_id)
+        escalated = escalated_by_a_refused_launch(campaign, log)
+        if escalated is not None and escalated[1] == launch_id:
+            refused = [
+                e
+                for e in log
+                if e.operation is ControlOperation.LAUNCH_REFUSED and e.target == launch_id
+            ][-1]
+    return ControlResultResponse(
+        campaign=_campaign(campaign),
+        entry=_entry(result.entry),
+        replayed=result.replayed,
+        launched_cycles=launched,
+        refused_launch=_entry(refused) if refused is not None else None,
     )

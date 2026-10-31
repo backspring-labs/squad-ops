@@ -82,7 +82,11 @@ DEPLOY_SERVICES = ("runtime-api", *AGENT_SERVICES)
 #: squad deploy has no `han`, and a set that does not name it is not asked about it. A set
 #: names it by pinning its image id or probing it, and only then is it read and required up.
 SOLO_SERVICES = ("han",)
-KNOWN_SERVICES = (*DEPLOY_SERVICES, *SOLO_SERVICES)
+#: The platform's own containers a set reads only when it names them: the 2.4 line's loaded checks
+#: run in the sandbox service (the scenario runner, #2414, #2451, #2464) and the console (#2412).
+#: Not squad containers, so a set that probes none of them is not asked about them.
+PLATFORM_SERVICES = ("sandbox-service", "console")
+KNOWN_SERVICES = (*DEPLOY_SERVICES, *SOLO_SERVICES, *PLATFORM_SERVICES)
 POSTGRES_CONTAINER = "squadops-postgres"
 RUNTIME_API_CONTAINER = "squadops-runtime-api"
 
@@ -1045,10 +1049,11 @@ def image_id(service: str) -> str:
 
 
 def named_services(cfg: SetConfig) -> tuple[str, ...]:
-    """The services this set's identity is read from: the deploy's, plus any solo service the
-    config names by pinning its image or probing it (the 1.8.1 window's `han`)."""
+    """The services this set's identity is read from: the deploy's, plus any solo or platform
+    service the config names by pinning its image or probing it (the 1.8.1 window's `han`; the
+    2.4 line's sandbox service and console)."""
     extra = {c.service for c in cfg.loaded_checks} | set(cfg.frozen_image_ids)
-    return (*DEPLOY_SERVICES, *(s for s in SOLO_SERVICES if s in extra))
+    return (*DEPLOY_SERVICES, *(s for s in (*SOLO_SERVICES, *PLATFORM_SERVICES) if s in extra))
 
 
 def set_agent_services(cfg: SetConfig) -> tuple[str, ...]:
@@ -1192,15 +1197,26 @@ MEMORY_DECLARATION = ("memory", "disabled")
 
 def memory_declaration_problems(cfg: SetConfig) -> list[str]:
     """D12: a counted roll runs with memory disabled until the owner rules otherwise on a finding
-    of supported benefit. A set config that declares anything else cannot be counted."""
+    of supported benefit. A set config that declares anything else cannot be counted, and
+    ``memory_context`` is refused outright: a counted roll declares ``lessons: disabled``, and
+    ``none`` would withhold the project's instructions too (SIP-0110 Appendix A §3.7)."""
+    from squadops.memory.declarations import CONTEXT_DECLARATION_KEY
+
     key, value = MEMORY_DECLARATION
     declared = str(cfg.overrides.get(key, value)).strip().lower()
-    if declared == value:
-        return []
-    return [
-        f"D12: a counted roll declares {key}: {value}; the set config says {key}: {declared}. "
-        "Memory on a counted roll needs the owner's ruling on a finding of supported benefit."
-    ]
+    problems = []
+    if declared != value:
+        problems.append(
+            f"D12: a counted roll declares {key}: {value}; the set config says {key}: {declared}. "
+            "Memory on a counted roll needs the owner's ruling on a finding of supported benefit."
+        )
+    if cfg.overrides.get(CONTEXT_DECLARATION_KEY) is not None:
+        problems.append(
+            f"D12: a counted roll declares {key}: {value} alone; the set config also says "
+            f"{CONTEXT_DECLARATION_KEY}: {cfg.overrides[CONTEXT_DECLARATION_KEY]}, which withholds "
+            "the project's instructions and changes the roll's requirements (SIP-0110 §A.3.7)."
+        )
+    return problems
 
 
 def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> list[str]:
@@ -2597,7 +2613,7 @@ _RUNTIME_LINE_KEYS = (
     "task_timeout task=",
     # SIP-0096 §17a change 5: each round's disputes as the analyzer ruled them.
     "contested_rows task=",
-    # #1522: a repair kept, its retest having cleared some failures and added none.
+    # #1522: a repair kept, its retest having made progress and broken nothing (#2306).
     "progress_kept task=",
 )
 
@@ -3115,16 +3131,16 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "attempt 0 refunded (round s01): the repair emitted no content (signature unreported), "
         "so the round is re-taken rather than spent (refund 2 of 3, #1053/#998)",
     ),
-    # Rendered: #1522 is new, so no deploy has emitted it. The line is the format string in
-    # `PatchAcceptance._keep_progress`, filled by the real `retest_reduction` and
-    # `render_signature` over a three-to-one reduction.
+    # Rendered: the format string in `PatchAcceptance._keep_progress` as #2306 left it, filled by
+    # the real `retest_reduction` and `render_signature` over a three-to-one reduction. A cleared
+    # test renders as check|file|title since #2306; the row's facts are judged apart.
     "progress_kept": (
-        "2026-09-30 09:00:00,000 INFO squadops.execution.patch_acceptance: progress_kept task=task"
+        "2026-10-22 09:00:00,000 INFO squadops.execution.patch_acceptance: progress_kept task=task"
         "-run_b6a8121c-m006-qa.test round=0 failing_before=3 failing_after=1 cleared=tests_pass"
-        "|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1;test=renders the"
-        " list; tests_pass|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1"
-        ";test=shows the join error persisted_revision_id=57ed944cf457ad772da339b65a9404e42a0c5"
-        "cb4ed2e4dd7f2d34cad73bfd4a1 (#1522)",
+        "|frontend/src/__tests__/runViews.test.jsx|renders the list; tests_pass|frontend/src/"
+        "__tests__/runViews.test.jsx|shows the join error unmasked=0 improved=- "
+        "persisted_revision_id=57ed944cf457ad772da339b65a9404e42a0c5cb4ed2e4dd7f2d34cad73bfd4a1 "
+        "(#1522, #2306)",
     ),
     "evidence_superseded": (
         "2026-09-23 13:45:20,213 INFO squadops.execution.patch_acceptance: patch "
@@ -5692,6 +5708,18 @@ def cmd_rerender(cfg: SetConfig, record: Path, out: Path) -> int:
     return 0
 
 
+def _pinned_words(rec: dict) -> str:
+    """The roll's pinned project instructions (SIP-0110 §A.3.7), as the record's header says them."""
+    if "pinned_instructions" not in rec:
+        return "not recorded (a record from before SIP-0110 §5t)"
+    pinned = rec["pinned_instructions"]
+    if pinned is None:
+        return "**unknown**: the cycle pinned no snapshot, or its pin could not read the records"
+    if not pinned:
+        return "none"
+    return ", ".join(f"`{i['record_id']}@{i['revision']}`" for i in pinned)
+
+
 def render(cfg: SetConfig, title: str, rec: dict) -> str:
     audit = rec.get("boot_audit", {})
     functional = rec.get("verdict") == "accepted" and audit.get("passed") is True
@@ -5710,8 +5738,50 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'lineage.framework_git_sha', lambda v: f'`{v}`')} · request profile "
         f"{_show_at(rec, 'lineage.request_profile', lambda v: f'`{v}`')}",
         "",
+        f"**Project instructions pinned** {_pinned_words(rec)}",
+        "",
         "## Headline",
         "",
+        *(
+            [
+                "- **The pinned project-instruction set changed since "
+                f"`{rec['instruction_set_change']['previous_record']}`**: a listed input moved "
+                "(SIP-0110 §0.12), so this roll's result is not comparable with that one's as is."
+            ]
+            if rec.get("instruction_set_change")
+            else []
+        ),
+        *(
+            [
+                "- **Re-bound while it ran**: "
+                + ", ".join(
+                    f"`{r['record_id']}` revision {r['replaced']} to "
+                    + (f"revision {r['replacement']}" if r["replacement"] else "none (withdrawn)")
+                    + f" by {r['by']}"
+                    for r in rec["rebindings"]
+                )
+                + ". A re-binding is an intervention, and a counted roll refuses one (SIP-0110 "
+                "Appendix A §3.7): this roll is not counted."
+            ]
+            if rec.get("rebindings")
+            else []
+        ),
+        *(
+            [
+                "- **Instructed after admission**: "
+                + ", ".join(
+                    f"`{i['record_id']}` withdrawn"
+                    if i.get("withdrawn")
+                    else f"`{i['record_id']}` revision {i['revision']}"
+                    for i in rec["instruction_interventions"]
+                )
+                + ". A task instruction added, revised or withdrawn after a cycle is admitted is an "
+                "intervention, and a counted roll refuses one (SIP-0110 Appendix A §3.5): this "
+                "roll is not counted."
+            ]
+            if rec.get("instruction_interventions")
+            else []
+        ),
         *(
             [
                 "- **DIAGNOSTIC — injected fault(s): "
@@ -5902,6 +5972,112 @@ def identity_mismatch(expected_prefix: str, actual: str) -> bool:
     return bool(expected_prefix) and not (actual or "").startswith(expected_prefix)
 
 
+def _cycle_snapshot(cycle_id: str) -> dict | None:
+    """The cycle's stored memory snapshot, or ``None`` when it pinned none."""
+    body = psql(
+        "select coalesce(snapshot_body::text,'') from memory_snapshots "
+        f"where unit_kind='cycle' and unit_id='{cycle_id}';"
+    )
+    return json.loads(body) if body else None
+
+
+def pinned_instruction_set(cycle_id: str) -> list[dict] | None:
+    """SIP-0110 Appendix A §3.7: the project instructions the cycle's snapshot binds, each by
+    its record and revision, sorted. ``None`` when the cycle pinned no snapshot, or its pin could
+    not read the project's records: an unknown set, never read as an empty one."""
+    snapshot = _cycle_snapshot(cycle_id)
+    if snapshot is None:
+        return None
+    if snapshot.get("instructions_unread"):
+        return None
+    return sorted(
+        (
+            {
+                "record_id": i["record_id"],
+                "revision": i["revision"],
+                # T16: a reference bound at admission is part of the set, so two rolls bound to
+                # different revisions of it read as changed. Only when one is, so a set from
+                # before T16 compares as it was.
+                **(
+                    {"references": sorted(r["ref"] for r in i["references"] if r.get("digest"))}
+                    if any(r.get("digest") for r in i.get("references") or ())
+                    else {}
+                ),
+            }
+            for i in snapshot.get("instructions") or ()
+        ),
+        key=lambda i: (i["record_id"], i["revision"]),
+    )
+
+
+def snapshot_rebindings(cycle_id: str) -> list[dict]:
+    """§3.7: each re-binding the cycle's snapshot records while it ran, by record and revisions.
+    A re-binding is an intervention, and a counted roll refuses every intervention (§3.5): the API
+    can't know a cycle is a counted roll, so the driver records it and the roll isn't counted."""
+    snapshot = _cycle_snapshot(cycle_id) or {}
+    return [
+        {
+            "record_id": r["record_id"],
+            "replaced": r["replaced"]["revision"],
+            "replacement": (r.get("replacement") or {}).get("revision"),
+            "by": r["by"],
+            "at": r["at"],
+        }
+        for r in snapshot.get("rebindings") or ()
+    ]
+
+
+def instruction_interventions(cycle_id: str) -> list[dict]:
+    """§3.5, §3.8: each task instruction revision written for the cycle after its admission, by
+    record and revision, and each of its task instructions withdrawn. One given in the cycle's
+    create request is an admitted input; any later revision or withdrawal is an intervention, and a
+    counted roll refuses every intervention, so the roll isn't counted."""
+    target = f"r.document->'target'->>'cycle_id' = '{cycle_id}'"
+    revised = psql(
+        "select r.record_id || '@' || r.number from memory_record_revisions r "
+        "join memory_records m on m.record_id = r.record_id "
+        f"where m.scope = 'task' and {target} "
+        "and r.document->'source'->>'kind' not in ('cycle_request', 'gate_decision') "
+        "order by r.record_id, r.number;"
+    )
+    withdrawn = psql(
+        "select distinct c.record_id from memory_record_status_changes c "
+        "join memory_records m on m.record_id = c.record_id "
+        "where m.scope = 'task' and c.status = 'withdrawn' and exists (select 1 from "
+        f"memory_record_revisions r where r.record_id = c.record_id and {target}) "
+        "order by c.record_id;"
+    )
+    return [
+        {"record_id": ref.rsplit("@", 1)[0], "revision": int(ref.rsplit("@", 1)[1])}
+        for ref in (revised or "").split()
+    ] + [{"record_id": rid, "withdrawn": True} for rid in (withdrawn or "").split()]
+
+
+def instruction_set_change(cfg: SetConfig, pinned: list[dict] | None) -> dict | None:
+    """§3.7: a counted roll whose pinned instruction set differs from the set's previous counted
+    roll's has changed a listed input (SIP-0110 §0.12), so it is flagged and the yardstick never
+    moves unannounced. The previous roll is the latest ``roll-*`` record that read its set and
+    wasn't re-bound: a re-bound roll isn't counted, and its set is the one it ended on, so taking
+    it as the baseline would carry the re-binding into the yardstick unannounced (§5v). ``None``
+    when this one agrees with it, or no counted roll came before."""
+    earlier = []
+    for path in cfg.records_path.glob("roll-*.json"):
+        try:
+            rec = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if "pinned_instructions" in rec and not rec.get("rebindings"):
+            earlier.append(
+                (str(rec.get("launched_at") or ""), path.name, rec["pinned_instructions"])
+            )
+    if not earlier:
+        return None
+    _, name, previous = max(earlier)
+    if previous == pinned:
+        return None
+    return {"previous_record": name, "previous": previous, "now": pinned}
+
+
 def _write_record(cfg: SetConfig, stem: str, rec: dict, md: str) -> None:
     cfg.records_path.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -5942,6 +6118,31 @@ def _run_cycle(
     rec["stack"] = stack
     rec["config_hash"] = chash
     rec["launched_at"] = launched_at
+    # SIP-0110 Appendix A §3.7: the project instructions the roll pinned, and, for a counted
+    # roll, a set that moved since the previous one's.
+    rec["pinned_instructions"] = pinned_instruction_set(cyc)
+    if stem.startswith("roll-"):
+        change = instruction_set_change(cfg, rec["pinned_instructions"])
+        if change is not None:
+            log(
+                f"!! the pinned project-instruction set changed since {change['previous_record']}: "
+                "a listed input moved (SIP-0110 §0.12)"
+            )
+            rec["instruction_set_change"] = change
+    interventions = instruction_interventions(cyc)
+    if interventions:
+        rec["instruction_interventions"] = interventions
+        log(
+            f"!! the cycle was given {len(interventions)} task instruction revision(s) after its "
+            "admission: an intervention, so the roll is not counted (SIP-0110 Appendix A §3.5)"
+        )
+    rebindings = snapshot_rebindings(cyc)
+    if rebindings:
+        rec["rebindings"] = rebindings
+        log(
+            f"!! the cycle was re-bound while it ran ({len(rebindings)}): an intervention, so the "
+            "roll is not counted (SIP-0110 Appendix A §3.7)"
+        )
     if identity_mismatch(cfg.expected_squad_snapshot_prefix, rec["squad_profile_snapshot_ref"]):
         log(
             f"!! squad-profile snapshot {rec['squad_profile_snapshot_ref'][:16]} != the set's "

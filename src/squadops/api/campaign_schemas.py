@@ -10,9 +10,19 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from squadops.campaigns.models import PlanGate
+
+
+class WorkClassDTO(BaseModel):
+    """SIP-0113 §4.6 (the owner's ruling of 2026-10-18): the class the campaign's work belongs
+    to, declared, never inferred. With the target (the increment count), what AOR groups by."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prd_tier: Literal["core", "tier-1", "tier-2", "tier-3"]
+    attendance: Literal["attended", "unattended"]
 
 
 class CampaignObjectiveDTO(BaseModel):
@@ -22,6 +32,13 @@ class CampaignObjectiveDTO(BaseModel):
     #: §24ah: the accepted increments that meet the objective, read by §10 row 3. Required of a
     #: new campaign; ``None`` reads back only for one stored before the field existed.
     target_accepted_increments: int | None
+    #: SIP-0113 §4.6: required of a new campaign, as the target is; ``None`` reads back only for
+    #: one stored before the field existed.
+    work_class: WorkClassDTO | None = None
+    #: SIP-0109 §24bv point 5 (D10 point 3): a repository-backed Project's requirements source,
+    #: ``repo:file:<path>@current`` or a stored artifact's id. Required at creation for one, and
+    #: refused for a sample application.
+    requirements: str | None = None
 
 
 class CampaignPolicyDTO(BaseModel):
@@ -43,6 +60,9 @@ class CampaignPolicyDTO(BaseModel):
     squad_profile: str
     #: §24bj: required, so a definition that does not declare it is refused at creation.
     plan_gate: PlanGate
+    #: §24bs (#2443): the stack every cycle the campaign launches builds on. Omitted, it is the
+    #: campaign profiles' own.
+    stack: str | None = None
 
 
 class CampaignDefinitionDTO(BaseModel):
@@ -55,6 +75,10 @@ class CampaignDefinitionDTO(BaseModel):
 class CampaignCreateRequest(BaseModel):
     """A new campaign, in ``draft``. Starting it (its calibration cycle) is a later operation."""
 
+    #: Contract 2: an unknown field is refused, so a misspelled ``scenario_suit`` is not a
+    #: campaign created with no suite pinned (#2448's review).
+    model_config = ConfigDict(extra="forbid")
+
     project_id: str
     objective: CampaignObjectiveDTO
     policy: CampaignPolicyDTO
@@ -66,6 +90,10 @@ class CampaignCreateRequest(BaseModel):
     #: Optional (#1954): the definition file, recorded on the creation row. ``campaigns create
     #: --file`` always sends it; a caller with no file sends none.
     definition: CampaignDefinitionDTO | None = None
+    #: SIP-0113 §4.7, phase 1 (#2413; SIP-0109 §24bt): the digest of an approved held-out scenario
+    #: suite, pinned on the campaign in Outcome Evaluation's own record. No SIP-0109 decision reads
+    #: it. Optional: a campaign created without one is evaluated by no suite.
+    scenario_suite: str | None = None
 
 
 class ControlRequest(BaseModel):
@@ -136,7 +164,9 @@ class EscalationAnswerRequest(BaseModel):
 
 
 class EscalationResponse(BaseModel):
-    """One escalation of the plan-review tier, as the control log holds it (§24bj, §24bk)."""
+    """One escalation, as the control log holds it (§24bj, §24bk): a plan gate the tier couldn't
+    approve, or a cycle held on its instruction bindings (§24bw), whose unresolved records stand
+    in ``failed`` (the reference as ``condition``, its reason as ``reading``)."""
 
     escalation_id: str
     cycle_id: str
@@ -152,11 +182,20 @@ class EscalationResponse(BaseModel):
     answers: dict[str, str]
     answered_by: str | None
     answered_at: datetime | None
+    #: §24bw: ``plan_review`` or ``binding_hold``, and a hold's cause class (``store``, ``input``).
+    kind: str = "plan_review"
+    hold_class: str | None = None
 
 
 class AcceptedTreeDTO(BaseModel):
+    """The accepted tree's identity and the one thing it names (§24cc): the cycle whose candidate
+    it is, or, on a repository-backed Project, the calibration record whose commit it is. On such
+    a Project, ``commit`` is the head of the campaign's branch (§24bv point 2)."""
+
     identity: str
-    cycle_id: str
+    cycle_id: str | None = None
+    calibration_record_id: str | None = None
+    commit: str | None = None
 
 
 class CampaignResponse(BaseModel):
@@ -207,6 +246,8 @@ class LedgerEntryResponse(BaseModel):
     ruling: dict[str, Any] | None = None
     outcome: dict[str, Any] | None = None
     classification: dict[str, Any] | None = None
+    #: #2578 part 4: each cycle that carried the version, in launch order, with its deciding row.
+    cycles: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PackageMaterializedResponse(BaseModel):
@@ -225,6 +266,33 @@ class PackageDigestResponse(BaseModel):
     digest: str
 
 
+class ReviewPushRequest(BaseModel):
+    """Push the Campaign's review request (SIP-0109 §24ci (b)): the supervisor's act, with the
+    supervisor's own forge token for it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The supervisor's own forge token, for this one push: used in memory, never stored, logged or
+    #: returned. Required: nothing in the deploy is stored for a Campaign's push.
+    token: SecretStr = Field(min_length=1, max_length=512)
+
+
+class ReviewPushResponse(BaseModel):
+    """One push of the Campaign's review request, as its row records it."""
+
+    campaign_id: str
+    branch: str
+    commit: str
+    #: The commit the push was leased on: the last one pushed, or ``None`` for the first.
+    lease: str | None
+    #: Whether the push rewrote the branch: a rebase's head, after the commit last pushed.
+    forced: bool
+    review_url: str
+    entry_id: str
+    replayed: bool
+
+
 class ControlResultResponse(BaseModel):
     """What an applied (or replayed) control operation left."""
 
@@ -235,3 +303,7 @@ class ControlResultResponse(BaseModel):
     cancelled_cycles: list[str] = Field(default_factory=list)
     #: Cycles the operation's launch intent started (a start's calibration cycle, §12b).
     launched_cycles: list[str] = Field(default_factory=list)
+    #: #2621: the row of the launch this operation's own drain refused, which escalated the
+    #: campaign. ``campaign`` is read after that drain, so it reads escalated with it. ``None``
+    #: when nothing was refused.
+    refused_launch: ControlLogEntryResponse | None = None

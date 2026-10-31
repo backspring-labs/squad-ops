@@ -4,6 +4,7 @@ pins once and a restart gets the original, and what is approved later reaches on
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -144,3 +145,198 @@ def test_the_declaration_is_one_of_two_words_and_anything_else_is_refused(config
             memory_disabled(config)
     else:
         assert memory_disabled(config) is disabled
+
+
+class _WithdrawnOnceRead:
+    """A records store where a withdrawal lands just after the pin's first read (#2545's race)."""
+
+    def __init__(self, inner, record_id: str) -> None:
+        self._inner, self._id, self.reads = inner, record_id, 0
+
+    async def list_project(self, project_id: str):
+        self.reads += 1
+        held = await self._inner.list_project(project_id)
+        if self.reads == 1:
+            from squadops.memory.records import withdrawn
+
+            record = await self._inner.get(self._id)
+            gone = withdrawn(record, by="ada", at=T0, why="harmful")
+            await self._inner.append_status(self._id, gone.status_changes[-1])
+        return held
+
+
+class _RevokedOnceRead(InMemoryCrossCycleMemoryStore):
+    """A lesson store where the approval is revoked just after the pin's first read of them."""
+
+    reads = 0
+
+    async def list_approvals(self, project_id: str):
+        self.reads += 1
+        held = await super().list_approvals(project_id)
+        if self.reads == 1:
+            for a in held:
+                await self.record_revocation(revoke(a, by="owner", reason="harm", now=T0))
+        return held
+
+
+async def test_an_instruction_withdrawn_while_the_unit_is_pinned_is_not_held_by_it():
+    """#2545, through ``pin_unit``. Bug caught: a withdrawal answered between the pin's read and
+    its write found no snapshot, told the operator later units pin without it, and the unit being
+    admitted pinned it anyway, unnamed."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from tests.unit.memory.test_project_instructions import _instruction
+
+    store, inner = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await inner.create(_instruction("mrec_w", "qa.test"))
+
+    pinned = await pin_unit(
+        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_x", project_id="group_run", pinned_at=T0,
+        disabled=False, records=_WithdrawnOnceRead(inner, "mrec_w"),
+    )  # fmt: skip
+
+    assert pinned.instructions == ()
+    assert (await store.get_snapshot(UnitKind.CYCLE, "cyc_x")).instructions == ()
+    assert await store.list_snapshots_pinning("mrec_w") == []
+
+
+async def test_a_lesson_revoked_while_the_unit_is_pinned_is_not_held_by_it():
+    """The same race for a revocation (#2545): the unit being admitted must not hold a lesson
+    whose revocation found no snapshot to name."""
+    store = _RevokedOnceRead()
+    rev = _revision("criterion_already_satisfied")
+    await store.record_revision(rev)
+    approval = _approve(rev, at=T0 - timedelta(hours=1))
+    await store.record_approval(approval)
+
+    pinned = await pin_unit(
+        store, unit_kind=UnitKind.CAMPAIGN, unit_id="cmp_x", project_id="group_run",
+        pinned_at=T0, disabled=False,
+    )  # fmt: skip
+
+    assert pinned.entries == ()
+    assert await store.list_snapshots_holding(approval.approval_id) == []
+
+
+async def test_a_pin_with_no_removal_is_written_once_and_a_settle_read_that_fails_keeps_it():
+    """Bugs caught: every pin rewritten on the settle read; a settle read that fails costing the
+    unit its snapshot."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from tests.unit.memory.test_project_instructions import _instruction
+
+    class _FailsAfterOneRead(InMemoryMemoryRecords):
+        reads = 0
+
+        async def list_project(self, project_id: str):
+            self.reads += 1
+            if self.reads > 1:
+                raise ConnectionError("the pool is gone")
+            return await super().list_project(project_id)
+
+    class _CountsRebinds(InMemoryCrossCycleMemoryStore):
+        writes = 0
+
+        async def rebind_snapshot(self, snapshot):
+            self.writes += 1
+            await super().rebind_snapshot(snapshot)
+
+    for records in (InMemoryMemoryRecords(), _FailsAfterOneRead()):
+        await records.create(_instruction("mrec_k", "qa.test"))
+        store = _CountsRebinds()
+
+        pinned = await pin_unit(
+            store, unit_kind=UnitKind.CYCLE, unit_id="cyc_y", project_id="group_run",
+            pinned_at=T0, disabled=False, records=records,
+        )  # fmt: skip
+
+        assert [p.record_id for p in pinned.instructions] == ["mrec_k"]
+        assert store.writes == 0
+
+
+class _KeepsFirstWrite(InMemoryCrossCycleMemoryStore):
+    """The snapshot as the pin first stored it: what a re-binding that read it then would hold."""
+
+    first = None
+
+    async def record_snapshot(self, snapshot):
+        recorded = await super().record_snapshot(snapshot)
+        self.first = self.first or recorded
+        return recorded
+
+
+async def test_a_rebinding_read_before_the_pin_settled_cant_put_the_withdrawn_instruction_back():
+    """#2545, the second reader's finding 1 (a lost update). Bug caught: the settle wrote with the
+    snapshot id and the re-binding count unchanged, which were the whole compare-and-swap key, so a
+    re-binding that read the unsettled pin landed after the settle and restored the withdrawn
+    instruction."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from squadops.memory.rebinding import rebound
+    from squadops.ports.memory.cross_cycle import SnapshotMoved
+    from tests.unit.memory.test_project_instructions import _instruction
+    from tests.unit.memory.test_rebinding import _revision_two
+
+    store, inner = _KeepsFirstWrite(), InMemoryMemoryRecords()
+    kept = _instruction("mrec_k", "qa.test")
+    for record in (_instruction("mrec_w", "qa.test"), kept):
+        await inner.create(record)
+
+    await pin_unit(
+        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_x", project_id="group_run", pinned_at=T0,
+        disabled=False, records=_WithdrawnOnceRead(inner, "mrec_w"),
+    )  # fmt: skip
+    stale = rebound(store.first, _revision_two(kept), by="bo", at=T0, why="clarified")
+    with pytest.raises(SnapshotMoved):
+        await store.rebind_snapshot(stale)
+
+    held = await store.get_snapshot(UnitKind.CYCLE, "cyc_x")
+    assert {p.record_id for p in store.first.instructions} == {"mrec_k", "mrec_w"}
+    assert [p.record_id for p in held.instructions] == ["mrec_k"]
+    assert (held.version, stale.version) == (1, 1)
+
+
+async def test_a_pin_another_pin_beat_to_the_store_is_returned_as_it_stands_and_never_settled():
+    """The second reader's finding 3. Bug caught: a pin that lost the race read the records again
+    and wrote its correction over the snapshot another admission of the unit stored."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from tests.unit.memory.test_project_instructions import _instruction
+
+    class _AnotherPinFirst(InMemoryCrossCycleMemoryStore):
+        async def record_snapshot(self, snapshot):
+            await super().record_snapshot(replace(snapshot, snapshot_id="snap_first"))
+            return await super().record_snapshot(snapshot)
+
+    store, inner = _AnotherPinFirst(), InMemoryMemoryRecords()
+    await inner.create(_instruction("mrec_w", "qa.test"))
+    records = _WithdrawnOnceRead(inner, "mrec_w")
+
+    pinned = await pin_unit(
+        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_x", project_id="group_run", pinned_at=T0,
+        disabled=False, records=records,
+    )  # fmt: skip
+
+    assert (pinned.snapshot_id, pinned.version, records.reads) == ("snap_first", 0, 1)
+
+
+async def test_a_unit_that_withholds_its_memory_context_reads_nothing_when_it_settles():
+    """The second reader's finding 4 (§3.7). Bug caught: a ``memory_context: none`` unit, which
+    pins neither lessons nor instructions, read both again on its settle."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from tests.unit.memory.test_project_instructions import _instruction
+
+    class _CountsApprovals(InMemoryCrossCycleMemoryStore):
+        reads = 0
+
+        async def list_approvals(self, project_id: str):
+            self.reads += 1
+            return await super().list_approvals(project_id)
+
+    store, inner = _CountsApprovals(), InMemoryMemoryRecords()
+    await inner.create(_instruction("mrec_w", "qa.test"))
+    records = _WithdrawnOnceRead(inner, "mrec_w")
+
+    pinned = await pin_unit(
+        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_x", project_id="group_run", pinned_at=T0,
+        disabled=True, records=records, context_withheld=True,
+    )  # fmt: skip
+
+    assert (pinned.context_withheld, pinned.instructions, pinned.version) == (True, (), 0)
+    assert (records.reads, store.reads) == (0, 0)

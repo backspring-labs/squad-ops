@@ -50,12 +50,14 @@ class DockerAdapter(ContainerPort):
         self,
         *args: str,
         timeout: float | None = None,
+        stdin: bytes | None = None,
     ) -> tuple[int, str, str]:
         """Run docker command.
 
         Args:
             *args: Docker command arguments
             timeout: Optional timeout in seconds
+            stdin: Optional input for the command
 
         Returns:
             Tuple of (exit_code, stdout, stderr)
@@ -68,7 +70,7 @@ class DockerAdapter(ContainerPort):
         try:
             # #2045: the client runs in a group of its own, ended whole on a timeout, so a
             # timed-out command never leaves its docker client running.
-            run = await run_bounded(cmd, cwd=None, timeout=timeout)
+            run = await run_bounded(cmd, cwd=None, timeout=timeout, stdin=stdin)
         except Exception as e:
             raise ToolContainerError(f"Docker command failed: {e}") from e
         if run.timed_out:
@@ -122,6 +124,10 @@ class DockerAdapter(ContainerPort):
         for port in spec.publish_ports:
             args.extend(["-p", f"127.0.0.1:0:{port}"])
 
+        # SIP-0109 §24co: a program other than the image's entrypoint, before the image.
+        if spec.entrypoint is not None:
+            args.extend(["--entrypoint", spec.entrypoint])
+
         # Add image
         args.append(spec.image)
 
@@ -146,8 +152,11 @@ class DockerAdapter(ContainerPort):
                 "--rm",
                 "--name",
                 name,
+                # SIP-0113 A3 (#2416): an input is read on stdin, so the container keeps it open.
+                *(["-i"] if spec.stdin is not None else []),
                 *self._render_run_args(spec),
                 timeout=spec.timeout_seconds,
+                stdin=spec.stdin,
             )
         except ToolContainerError as e:
             if "timed out" in str(e):
@@ -162,24 +171,48 @@ class DockerAdapter(ContainerPort):
         )
 
     async def run_detached(self, spec: ContainerSpec) -> str:
-        """Start a container detached; returns its id."""
+        """Start a container detached; returns its id. It is always named (``spec.name``, or a
+        generated one), so a ``docker run -d`` that times out leaves no container nobody can find:
+        it is removed by that name before the timeout is raised (#2451 part 4)."""
         # Deliberately NOT --rm (#1214): an app that crashes on startup exits within
         # a second, Docker removes the container at that moment, and the readiness
         # poll then runs to its full timeout before asking for logs that no longer
         # exist. The failure mode was inverted — a slow app kept its evidence, a hard
         # crash destroyed it. Removal is explicit now, after the logs are read.
-        exit_code, stdout, stderr = await self._run_docker(
-            "run",
-            "-d",
-            *self._render_run_args(spec),
-            timeout=spec.timeout_seconds,
-        )
+        name = spec.name or f"squadops-app-{uuid.uuid4().hex[:12]}"
+        try:
+            exit_code, stdout, stderr = await self._run_docker(
+                "run",
+                "-d",
+                "--name",
+                name,
+                *self._render_run_args(spec),
+                timeout=spec.timeout_seconds,
+            )
+        except ToolContainerError as e:
+            if "timed out" in str(e):
+                await self._remove_quietly(name)
+            raise
         if exit_code != 0:
+            # 125 to 127 can leave a container created but never started (the MacBook lane's
+            # review of #2460): removed by its name, as after a timeout.
+            await self._remove_quietly(name)
             raise ToolContainerError(f"Failed to start container: {stderr}")
         container_id = stdout.strip().splitlines()[-1] if stdout.strip() else ""
         if not container_id:
             raise ToolContainerError("docker run -d returned no container id")
         return container_id
+
+    async def _remove_quietly(self, name: str) -> None:
+        """Remove a timed-out detached start's container by name, running or not. Best effort, as
+        ``_kill_quietly``: the timeout it follows is what the caller must hear."""
+        try:
+            exit_code, _, stderr = await self._run_docker("rm", "-f", name, timeout=_KILL_TIMEOUT_S)
+        except ToolContainerError as e:
+            logger.warning("docker rm -f %s after a timeout failed: %s", name, e)
+            return
+        if exit_code != 0 and "no such container" not in stderr.lower():
+            logger.warning("docker rm -f %s after a timeout failed: %s", name, stderr.strip())
 
     async def _kill_quietly(self, name: str) -> None:
         """Kill a timed-out run's container by name. Best effort: a container that already ended

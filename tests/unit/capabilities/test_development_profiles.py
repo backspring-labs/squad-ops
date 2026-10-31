@@ -285,9 +285,11 @@ class TestTestFilesAreWhatTheRunnerCollects:
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         emitted = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
-        (glob,) = re.findall(r"include: \['([^']+)'\]", emitted["vitest.config.ts"])
+        (include,) = re.findall(r"include: \[([^\]]+)\]", emitted["vitest.config.ts"])
+        globs = re.findall(r"'([^']+)'", include)
         collected = get_development_profile("nextjs_ts").collected_test_patterns
-        assert collected == test_file_patterns_from_glob(glob)
+        assert globs == ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx"]
+        assert collected == tuple(p for g in globs for p in test_file_patterns_from_glob(g))
         suites = [n for n in emitted if n.startswith("__tests__/") and ".test." in n]
         assert suites and all(matches_test_file_patterns(n, collected) for n in suites)
 
@@ -297,7 +299,10 @@ class TestTestFilesAreWhatTheRunnerCollects:
             ("__tests__/runs.test.ts", True),
             ("__tests__/scaffold/vs-get-api-runs.scaffold.test.ts", True),
             ("./__tests__/runs.test.ts", True),
-            ("__tests__/runs-ui.test.tsx", False),
+            # #2531: a suite that renders a page writes JSX, so it is .tsx, and collected.
+            ("__tests__/runs-ui.test.tsx", True),
+            ("__tests__/criteria/T3.test.tsx", True),
+            ("app/runs/page.test.tsx", False),
             ("__tests__/runs.spec.ts", False),
             ("tests/api.test.ts", False),
             ("lib/store.test.ts", False),
@@ -311,11 +316,11 @@ class TestTestFilesAreWhatTheRunnerCollects:
 
     def test_the_test_file_vocabulary_still_covers_what_collection_leaves_out(self):
         """The exclusions keep the broad answer: a dev repair's ``extra.test.ts`` or a
-        ``.tsx`` suite is not collected, and must still count as a test file (#1014)."""
+        ``.spec.ts`` suite is not collected, and must still count as a test file (#1014)."""
         from squadops.stacks.development_profiles import matches_test_file_patterns
 
         vocabulary = get_development_profile("nextjs_ts").test_file_patterns
-        for path in ("extra.test.ts", "__tests__/runs-ui.test.tsx", "__tests__/runs.spec.ts"):
+        for path in ("extra.test.ts", "app/runs/page.test.tsx", "__tests__/runs.spec.ts"):
             assert matches_test_file_patterns(path, vocabulary)
 
     @pytest.mark.parametrize(

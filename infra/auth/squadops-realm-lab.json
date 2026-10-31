@@ -339,6 +339,18 @@
       ]
     },
     {
+      "username": "squadops-supervisor",
+      "email": "supervisor@squadops.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "SquadOps",
+      "lastName": "Supervisor",
+      "realmRoles": [
+        "campaign-supervisor",
+        "mfa-required"
+      ]
+    },
+    {
       "username": "service-account-squadops-agent",
       "enabled": true,
       "serviceAccountClientId": "squadops-agent",

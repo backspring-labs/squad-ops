@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 2.3.1 (single-sourced from `pyproject.toml`; installed metadata is the
+**Framework Version**: 2.5.0 (single-sourced from `pyproject.toml`; installed metadata is the
 install-time copy and is used only when no source tree is present — #1089)
 **Python Requirement**: 3.12 everywhere — containers, CI and dev (#237). Production ran 3.11 until 2026-08-31 while CI tested on 3.12; the lock files were compiled on 3.11 and CI's constraints on 3.12, which is half of what #1041 was.
 
@@ -86,7 +86,7 @@ squadops doctor dev-mac --json                     # Machine-readable output
 ### CLI (Cycle Execution)
 ```bash
 squadops login                             # Authenticate via Keycloak
-squadops cycles create <project> --squad-profile full --request-profile selftest
+squadops cycles create <project> --squad-profile full --request-profile smoke
 squadops cycles show <project> <cycle-id>  # Show cycle status + runs
 squadops cycles list <project>             # List cycles for project
 squadops runs list <project> <cycle-id>    # List runs for cycle
@@ -118,7 +118,7 @@ package and its entry disagree (#1989), so read it rather than a list here.
 - **CRP Applied Defaults**: Extra keys in CRP `defaults` flow into `applied_defaults`: `build_tasks`, `plan_tasks`, `pulse_checks`, `cadence_policy`
 
 ### Agent Squad
-6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). Roster is set per profile via `members:` (#173): `full` (27b) and `lite` (7b) carry all 6 incl. Bob; `smoke` (3b) is the 5-agent no-builder plumbing squad. Implementations in `src/squadops/agents/`.
+6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). Roster is set per profile via `members:` (#173): `full` (27b) and `lite` (7b) carry all 6 incl. Bob; `lite-14b` is `lite` on qwen2.5:14b, the MacBook's build check (#2435); `smoke` (3b) is the 5-agent no-builder plumbing squad. Implementations in `src/squadops/agents/`.
 
 ### Agent status vs runtime state
 Don't conflate the signals. **Health = `runtime_status`, posture = `mode`** (both from `agent_runtime_state`, SIP-0089); `lifecycle_state`/`network_status` on `agent_status` are heartbeat telemetry (`network_status` is legacy/deprecated). Canonical model + the rule surfaces must conform to: `docs/agent-runtime-status-model.md` (#231).
@@ -248,7 +248,7 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named. `scripts/maintainer/sip_sweep.py <version>` reads the ledgers (after `refresh_open_issues.py`) and prints the promotable SIPs, the parts to re-place and the stale rows; the release PR's `SIP sweep:` line must name each (#1980) |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
 | 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/`; **then attach the line's records** — `scripts/maintainer/attach_release_records.py X.Y.Z` to build and credential-scan the tarball, then `--upload --expect-sha256 <the preview's>` to attach exactly the approved bytes to the Release and record its sha256 in the package (the tarball is byte-stable, and a rebuild that differs is refused, #1732) |
-| 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout> --record-release vX.Y.Z` (the record, `site/content/releases/vX.Y.Z/housekeeping.yaml`, is committed): each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left |
+| 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout> --record-release vX.Y.Z` (the record, `site/content/releases/vX.Y.Z/housekeeping.yaml`, is committed): each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left. From 2.4.0, first `squadops scenarios purge-evidence --before <the tag's time>` (the line's page evidence, held out: SIP-0113 §10p ruling 8), and its count goes on the record with `--evidence-purged N` |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
 Release is now automated on tag push. Step 5 is checked by the `SIP sweep:` line a

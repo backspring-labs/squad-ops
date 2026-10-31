@@ -8,13 +8,20 @@ on ``LESSONS_INPUT``; a task handed none has exactly the inputs it had before me
 prompt renders byte-identical (§0.9).
 
 Which task types consume is their context-assembly contract's declaration (``authoring_seam_of``),
-never a branch on the type. Plan writing and build authoring are supplied here, when the run's plan
-is composed; repair when the correction runner composes a repair, and proposal writing when a
-campaign composes its proposal, each through the same function.
+never a branch on the type. Plan writing and build authoring are supplied at each dispatch, on the
+envelope as the executor sends it (:func:`supply_the_dispatch`); repair when the correction runner
+composes a repair, and proposal writing when a campaign composes its proposal.
 
-An exposure is one authoring invocation's (§0.2), so a task the loop dispatches again (a correction
-round's re-take, an emission retry) asks again and discloses its own answer, under its attempt
-(:func:`supply_the_redispatch`, #2162).
+An exposure is one authoring invocation's (§0.2), recorded when it is dispatched, so a task the
+loop dispatches again (a correction round's re-take, an emission retry) asks again and discloses
+its own answer, under its attempt (#2162).
+
+#2681: the prompt budget is measured on the dispatched envelope, as its handler renders it
+(``squadops.capabilities.prompt_budget``). The executor adds a task's upstream outputs, the
+accepted tree and the product's repository at dispatch (``_enrich_envelope``), so a measure taken
+when the plan is composed can't see them. The plan is checked then (:func:`check_the_plan`): a
+binding that can't fit even without them holds the run before its first dispatch, and nothing
+else is disclosed or handed.
 
 Every seam asks through the context-assembly port (Appendix A §3.6, #2176). In 2.3 the port is
 :class:`LessonContextAssembly`: one optional section, the lessons today's recall supplies from the snapshot
@@ -24,16 +31,20 @@ owner, disclosed as today's exposure, so prompts and exposures are what they wer
 from __future__ import annotations
 
 import dataclasses
-import json
+import functools
 import logging
-from collections.abc import Sequence
+import re
+from collections.abc import Collection, Sequence
 from datetime import datetime
+from importlib import resources
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
+from squadops.capabilities.prompt_budget import prompt_budget
 from squadops.cycles.benchmark_registry import cycle_stack
-from squadops.llm.model_registry import get_model_spec, model_family_of
+from squadops.cycles.models import HoldKind
+from squadops.llm.model_registry import model_family_of
 from squadops.memory.context import (
     ChatTurn,
     ContextBundle,
@@ -47,9 +58,35 @@ from squadops.memory.context import (
     TaskInvocation,
     UnitRef,
 )
+from squadops.memory.dispatch_turns import DispatchTurnUnavailable
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, RecallPolicy, _tokens
+from squadops.memory.project_instructions import (
+    PROJECT_INSTRUCTIONS_INPUT,
+    PinUnknown,
+    bound_references,
+    unbound_references,
+)
+from squadops.memory.project_instructions import applicable as project_applicable
+from squadops.memory.project_instructions import handed as project_handed
+from squadops.memory.project_instructions import section_of as project_section_of
 from squadops.memory.recall import LESSONS_INPUT, RecallQuery, UnitKind
+from squadops.memory.reference_reading import (
+    ReferencesRead,
+    measured,
+    read_references,
+    unread_references,
+)
+from squadops.memory.references import BindingContext
+from squadops.memory.task_instructions import (
+    TASK_INSTRUCTIONS_INPUT,
+    TaskInstructionsUnavailable,
+    applicable,
+    handed,
+    interventions,
+    section_of,
+    unresolved_reason,
+)
 from squadops.ports.memory.context_assembly import ContextAssemblyPort
 
 if TYPE_CHECKING:
@@ -59,15 +96,67 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: The slots' managed templates, whose fixed framing (heading and precedence) a section is measured with.
+_TASK_SLOT = "request.task_instructions_section"
+_PROJECT_SLOT = "request.project_instructions_section"
+_LESSON_SLOT = "request.cross_cycle_lessons_section"
+#: How a reference's content is shown under its instruction (#2179), its framing measured per reference.
+_REFERENCE_SLOT = "request.instruction_reference"
+
+
+@functools.cache
+def _framing(template_id: str) -> int:
+    """A slot's fixed framing in tokens (§3.6: a section's size includes it), measured as recall
+    measures lessons: the template's body with its variable taken out."""
+    text = (
+        resources.files("squadops.prompts") / "request_templates" / f"{template_id}.md"
+    ).read_text(encoding="utf-8")
+    body = text.split("---", 2)[2]
+    return _tokens(re.sub(r"\{\{\w+\}\}", "", body).strip())
+
+
+def _binding_size(template_id: str, texts: list[str]) -> int:
+    """A binding section's size, framing included; 0 for a section with nothing to show."""
+    return _framing(template_id) + sum(_tokens(t) for t in texts) if texts else 0
+
+
+def _references_framing(references, read) -> int:
+    """The framing of each reference read (its slot's heading and fence), which its section's size
+    includes beside the content (#2179); nothing when none was read."""
+    shown = {r.ref for r in references if r.ref in read.contents}
+    return _framing(_REFERENCE_SLOT) * len(shown)
+
+
+def _available_for_lessons(prompt_budget: int, binding: int) -> int | None:
+    """§3.6's effective lesson budget's second figure: the lesson text the binding sections leave after
+    the lesson slot's framing, below zero when not even the framing fits. ``None`` when no binding
+    section was supplied, or the budget is unknown, so the snapshot's own budget stands and the
+    lessons are today's recall exactly."""
+    if binding == 0 or prompt_budget < 0:
+        return None
+    return prompt_budget - binding - _framing(_LESSON_SLOT)
+
+
 #: Recall's outcomes, as the lesson section's dispositions (§3.6).
 _SECTION_DISPOSITION = {
     RecallDisposition.SUPPLIED: Disposition.SUPPLIED,
     RecallDisposition.NONE_ELIGIBLE: Disposition.NONE_ELIGIBLE,
     RecallDisposition.DISABLED: Disposition.DISABLED,
+    RecallDisposition.CONTEXT_NONE: Disposition.CONTEXT_NONE,
     RecallDisposition.OMITTED_BY_BUDGET: Disposition.OMITTED_BY_BUDGET,
     RecallDisposition.INCOMPATIBLE: Disposition.INCOMPATIBLE,
     RecallDisposition.FAILED: Disposition.FAILED,
 }
+
+
+def reaches(selector: Collection[str], task_type: str) -> bool:
+    """Whether a task instruction selecting ``selector``'s task types reaches a dispatch of
+    ``task_type`` (§3.7): a selected type itself, or a repair that revises a selected type's own
+    output (``task_plan.repairs_revising``)."""
+    # deferred (cycle): cycles.task_plan loads the context-assembly contracts this module reads
+    from squadops.cycles.task_plan import repairs_revising
+
+    return any(task_type == s or task_type in repairs_revising(s) for s in selector)
 
 
 def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
@@ -77,24 +166,18 @@ def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
     return UnitKind.CYCLE, cycle.cycle_id
 
 
-def prompt_budget_of(envelope: TaskEnvelope) -> int:
-    """§3.6's total prompt budget: the model's context window (SIP-0073's registry) less its completion
-    reserve and the task's own inputs, measured as recall measures lessons. A model the registry does not
-    know has none, since an unknown never means room. The reserve is the registry's default completion
-    budget; nothing reads this in 2.3, and the binding sections that will (#2179) refine it."""
-    spec = get_model_spec(str(envelope.inputs.get("agent_model") or ""))
-    if spec is None:
-        return 0
-    own = _tokens(json.dumps(envelope.inputs, sort_keys=True, default=str))
-    return max(0, spec.context_window - spec.default_max_completion - own)
-
-
 def request_for(
-    envelope: TaskEnvelope, *, unit: tuple[UnitKind, str], stack: str, run_id: str
+    envelope: TaskEnvelope,
+    *,
+    unit: tuple[UnitKind, str],
+    stack: str,
+    run_id: str,
+    measured: TaskEnvelope | None = None,
 ) -> ContextRequest:
     """The task's context request, from trusted context only: its project and cycle from the envelope,
     the role the plan step names and the model the plan resolved, both written by the framework, never
-    by an agent (§0.8 step 1), and the unit whose snapshot answers."""
+    by an agent (§0.8 step 1), and the unit whose snapshot answers. Its prompt budget is measured on
+    ``measured``, the envelope as it is dispatched, when that is another copy (#2681)."""
     return ContextRequest(
         binding=ProjectBound(envelope.project_id),
         consumer=TaskInvocation(
@@ -108,7 +191,7 @@ def request_for(
             stack=stack,
             model_family=model_family_of(str(envelope.inputs.get("agent_model") or "")),
             agent_id=envelope.agent_id,
-            prompt_budget=prompt_budget_of(envelope),
+            prompt_budget=prompt_budget(measured or envelope),
         ),
     )
 
@@ -180,25 +263,63 @@ async def supply_lessons(
     now: datetime,
 ) -> list[TaskEnvelope]:
     """``envelopes``, each consuming task's with the lessons it is supplied, in order. Every
-    consuming task's answer is disclosed; a task that consumes nothing is passed through as is."""
-    supplied: list[TaskEnvelope] = []
-    for envelope in envelopes:
-        seam = authoring_seam_of(str(envelope.task_type))
-        if seam is None:
-            supplied.append(envelope)
-            continue
-        handed = await _ask_and_disclose(
-            envelope, recall=recall, unit=unit, stack=stack, run_id=run_id, now=now
-        )
-        if handed is None:
-            supplied.append(envelope)
-        else:
-            inputs = {**envelope.inputs, LESSONS_INPUT: handed}
-            supplied.append(dataclasses.replace(envelope, inputs=inputs))
+    consuming task's answer is disclosed; a task that consumes nothing is passed through as is.
+    For envelopes about to be dispatched as they are: a repair, a pulse repair.
+
+    #2178: composed in one dispatch turn, and disclosed only when every task's binding sections are
+    complete, since a disclosed answer reads as dispatched (§5w) and handed (§5v)."""
+    consuming = [
+        (i, envelope)
+        for i, envelope in enumerate(envelopes)
+        if authoring_seam_of(str(envelope.task_type)) is not None
+    ]
+    bundles = await _composed(
+        [envelope for _, envelope in consuming],
+        recall=recall,
+        unit=unit,
+        stack=stack,
+        run_id=run_id,
+        now=now,
+    )
+    supplied = list(envelopes)
+    for (i, envelope), bundle in zip(consuming, bundles, strict=True):
+        inputs = dict(envelope.inputs)
+        for key, value in _handed(bundle):
+            if value is not None:
+                inputs[key] = value
+        if inputs != envelope.inputs:
+            supplied[i] = dataclasses.replace(envelope, inputs=inputs)
     return supplied
 
 
-async def supply_the_redispatch(
+async def check_the_plan(
+    envelopes: Sequence[TaskEnvelope],
+    *,
+    recall: FailurePatternRecallPort,
+    cycle: Cycle,
+    run_id: str,
+    now: datetime,
+) -> list[TaskEnvelope]:
+    """The run's plan, checked before its first dispatch (#2681): each consuming task is composed
+    on its plan envelope, and a binding that can't be read, bound or fitted holds the run there,
+    its answer disclosed as held. Nothing else is disclosed or handed: each task is composed again
+    at its own dispatch (:func:`supply_the_dispatch`), on the envelope as it goes out.
+
+    The plan envelope lacks what the executor adds at dispatch, so its budget is at least the
+    dispatch's: a task held here is one its dispatch would hold too, never one it would pass."""
+    await _composed(
+        [e for e in envelopes if authoring_seam_of(str(e.task_type)) is not None],
+        recall=recall,
+        unit=unit_of(cycle),
+        stack=cycle_stack(cycle) or "",
+        run_id=run_id,
+        now=now,
+        disclose=False,
+    )
+    return list(envelopes)
+
+
+async def supply_the_dispatch(
     envelopes: Sequence[TaskEnvelope | None],
     *,
     recall: FailurePatternRecallPort,
@@ -206,51 +327,124 @@ async def supply_the_redispatch(
     run_id: str,
     now: datetime,
 ) -> None:
-    """A task the loop is about to dispatch again is another authoring invocation (§0.2, #2162):
-    it asks its unit's snapshot again and discloses its own exposure, under its attempt.
+    """A task about to be dispatched, the first time or again, is one authoring invocation (§0.2,
+    #2162): it asks its unit's snapshot and discloses its own exposure, under its attempt.
 
-    The loop re-dispatches the envelopes it already holds, so what this attempt is handed replaces
-    what the one before it was handed, in place, on each of them: a lesson the earlier answer
-    supplied and this one does not is taken off, or the envelope would carry a lesson its exposure
-    says it never got. The first of ``envelopes`` is the task's own; the rest (the enriched copy the
-    loop dispatches) are kept equal to it. A task at no consuming seam is left as it is.
-    """
+    What this dispatch is handed replaces, in place, what any before it was handed, on each of
+    ``envelopes``: a lesson an earlier answer supplied and this one does not is taken off, or the
+    envelope would carry a lesson its exposure says it never got. The first of ``envelopes`` is the
+    task's own and names its attempt; the last is the copy the executor dispatches, enriched with
+    what the task is shown, and its prompt is measured on it (#2681). A task at no consuming seam is
+    left as it is."""
 
     held = [e for e in envelopes if e is not None]
     if not held:
         return
     if authoring_seam_of(str(held[0].task_type)) is None:
         return
-    handed = await _ask_and_disclose(
-        held[0],
+    [bundle] = await _composed(
+        [held[0]],
         recall=recall,
         unit=unit_of(cycle),
         stack=cycle_stack(cycle) or "",
         run_id=run_id,
         now=now,
+        measured=[held[-1]],
     )
+    # #2178: each dispatch reads its task instructions again, so one withdrawn since the attempt
+    # before is gone from this one, and nothing is copied from that attempt.
     for envelope in held:
-        if handed is None:
-            envelope.inputs.pop(LESSONS_INPUT, None)
-        else:
-            envelope.inputs[LESSONS_INPUT] = handed
+        for key, value in _handed(bundle):
+            if value is None:
+                envelope.inputs.pop(key, None)
+            else:
+                envelope.inputs[key] = value
 
 
-async def _ask_and_disclose(
-    envelope: TaskEnvelope,
+def _handed(bundle: ContextBundle) -> tuple[tuple[str, dict | None], ...]:
+    """What a task is handed on each supplied input, ``None`` where nothing is supplied."""
+    task, project = bundle.task_instructions, bundle.project_instructions
+    return (
+        (LESSONS_INPUT, lessons_input(bundle.recalled)),
+        (TASK_INSTRUCTIONS_INPUT, dict(task) if task else None),
+        (PROJECT_INSTRUCTIONS_INPUT, dict(project) if project else None),
+    )
+
+
+async def _composed(
+    envelopes: Sequence[TaskEnvelope],
     *,
     recall: FailurePatternRecallPort,
     unit: tuple[UnitKind, str],
     stack: str,
     run_id: str,
     now: datetime,
-) -> dict | None:
-    """One invocation's context, through the port: assembled with the task's trusted scope, disclosed
-    under its attempt, and what it is handed (``None`` when nothing is supplied)."""
+    measured: Sequence[TaskEnvelope] | None = None,
+    disclose: bool = True,
+) -> list[ContextBundle]:
+    """Each invocation's context, through the port, assembled with its task's trusted scope and
+    disclosed under its attempt. A binding section that is incomplete holds its task (§3.6): only
+    the first held task's answer is disclosed, marked held, and the hold is raised with why.
+    ``measured`` are the envelopes each prompt is measured on, when they are other copies (#2681),
+    and ``disclose=False`` discloses a held answer alone (:func:`check_the_plan`).
+
+    #2545: read and disclosed in the unit's dispatch turn, so a re-binding or an instruction added
+    after admission lands before the reads or after the exposures, never between them. A turn that
+    isn't given holds the first task, as an unreadable store does."""
+    if not envelopes:
+        return []
     assembly = LessonContextAssembly(recall, now=now)
-    bundle = await assembly.assemble(request_for(envelope, unit=unit, stack=stack, run_id=run_id))
-    await assembly.disclose(bundle)
-    return lessons_input(bundle.recalled)
+    sizes = list(measured) if measured is not None else list(envelopes)
+    try:
+        async with recall.dispatch_turn(*unit):
+            bundles = [
+                await assembly.assemble(
+                    request_for(e, unit=unit, stack=stack, run_id=run_id, measured=m)
+                )
+                for e, m in zip(envelopes, sizes, strict=True)
+            ]
+            held = next((b for b in bundles if not b.complete), None)
+            for bundle in [held] if held is not None else bundles if disclose else []:
+                await assembly.disclose(bundle)
+    except DispatchTurnUnavailable as e:
+        first = envelopes[0]
+        raise TaskInstructionsUnavailable(
+            f"task {first.task_id} is held: {e}",
+            task_id=first.task_id,
+            task_type=str(first.task_type),
+            unresolved=((f"dispatch_turn:{unit[0].value}:{unit[1]}", str(e), HoldKind.STORE),),
+        ) from e
+    if held is not None:
+        raise _unavailable(held)
+    return bundles
+
+
+def _unavailable(bundle: ContextBundle) -> TaskInstructionsUnavailable:
+    """The hold an incomplete bundle raises: its task, each record it couldn't bind with why and
+    whether the store failed it, and the sections that held."""
+    task = bundle.request.consumer
+    assert isinstance(task, TaskInvocation)  # only a task invocation's bundle binds
+    incomplete = [
+        s
+        for s in bundle.sections
+        if s.need is Need.BINDING and s.disposition is Disposition.INCOMPLETE
+    ]
+    why = "; ".join(unresolved_reason(s) for s in incomplete)
+    return TaskInstructionsUnavailable(
+        f"task {task.task_id} is held: {why}",
+        task_id=task.task_id,
+        task_type=task.task_type,
+        unresolved=tuple(
+            (
+                f"{ref.record_id}@{ref.revision}" if ref.revision else ref.record_id,
+                reason,
+                HoldKind.STORE if s.store_failed else HoldKind.INPUT,
+            )
+            for s in incomplete
+            for ref, reason in s.unresolved
+        ),
+        sections=tuple(s.kind.value for s in incomplete),
+    )
 
 
 class LessonContextAssembly(ContextAssemblyPort):
@@ -270,11 +464,50 @@ class LessonContextAssembly(ContextAssemblyPort):
         if isinstance(request.consumer, ChatTurn):
             lessons = Section(SectionKind.LESSONS, Need.OPTIONAL, Disposition.NOT_APPLICABLE)
             return ContextBundle(request, (lessons,), complete=True)
+        task_unread, bound = await self._task_instructions(request)
+        project_unread, pinned = await self._project_instructions(request)
+        # #2179: each reference either section hands, read at its bound revision, once.
+        read = await self._read_references(request, bound, pinned)
+        # The project instructions take what the task instructions leave (§3.6), each binding
+        # section measured with its slot's framing and the content of the references it hands.
+        budget = request.consumer.prompt_budget
+        task_refs = [r for b in bound for r in b.references]
+        task_size = _binding_size(
+            _TASK_SLOT, [measured(b.text, b.references, read) for b in bound]
+        ) + _references_framing(task_refs, read)
+        instructions = task_unread or section_of(
+            bound,
+            budget=budget,
+            framing=_framing(_TASK_SLOT) + _references_framing(task_refs, read),
+            read=read,
+        )
+        left = max(0, budget - task_size) if budget >= 0 else -1
+        project_refs = [r for p in pinned for r in p.references if r.ref not in dict(p.unbound)]
+        project = project_unread or project_section_of(
+            pinned,
+            budget=left,
+            framing=_framing(_PROJECT_SLOT) + _references_framing(project_refs, read),
+            read=read,
+        )
+        project_size = _binding_size(
+            _PROJECT_SLOT,
+            [measured(p.text, [r for r in p.references if r.ref not in dict(p.unbound)], read)
+             for p in pinned],
+        ) + _references_framing(project_refs, read)  # fmt: skip
+        available = _available_for_lessons(budget, task_size + project_size)
         try:
-            recalled = await self._recall.recall(query_of(request))
+            recalled = await self._recall.recall(
+                dataclasses.replace(query_of(request), available_lesson_tokens=available)
+            )
         except Exception:  # the port never raises: a recall that raised is a failed one, never none
             logger.exception("recall raised for task %s", request.consumer.task_id)
             recalled = Recalled(snapshot_id=None, disposition=RecallDisposition.FAILED)
+        if recalled.disposition is RecallDisposition.CONTEXT_NONE:
+            # §3.7: the snapshot pinned none, and its project section says it was withheld rather
+            # than that none applied, so the exposure records the experiment it ran.
+            project = Section(
+                SectionKind.PROJECT_INSTRUCTIONS, Need.BINDING, Disposition.CONTEXT_NONE
+            )
         lessons = Section(
             SectionKind.LESSONS,
             Need.OPTIONAL,
@@ -284,9 +517,120 @@ class LessonContextAssembly(ContextAssemblyPort):
                 for e in recalled.supplied
             ),
             omitted=tuple((RecordRef.of_revision_id(r), why) for r, why in recalled.omitted),
-            effective_budget=RecallPolicy().token_budget,
+            effective_budget=(
+                recalled.lesson_budget["effective"]
+                if recalled.lesson_budget is not None
+                else RecallPolicy().token_budget
+            ),
         )
-        return ContextBundle(request, (lessons,), complete=True, recalled=recalled)
+        return ContextBundle(
+            request,
+            (instructions, project, lessons),
+            complete=Disposition.INCOMPLETE not in (instructions.disposition, project.disposition),
+            recalled=recalled,
+            task_instructions=handed(bound, read),
+            project_instructions=project_handed(pinned, read),
+        )
+
+    async def _read_references(self, request: ContextRequest, bound, pinned) -> ReferencesRead:
+        """Each reference the dispatch would be handed, read at its bound revision through the
+        unit's recall (#2179): a task instruction's, and each a project instruction's admission
+        bound."""
+        task = request.consumer
+        if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
+            return ReferencesRead()
+        ctx = BindingContext(
+            project_id=request.binding.project_id,
+            unit_kind=task.snapshot_owner.kind.value,
+            unit_id=task.snapshot_owner.unit_id,
+        )
+        references = [r for b in bound for r in b.references] + [
+            r for p in pinned for r in p.references if r.ref not in dict(p.unbound)
+        ]
+        return await read_references(
+            references, lambda reference: self._recall.read_reference(reference, ctx)
+        )
+
+    async def _project_instructions(self, request: ContextRequest):
+        """The snapshot owner's pinned project instructions that apply to this dispatch (#2179),
+        with no section, or the section that stands for them: not applicable, or incomplete when
+        the snapshot can't be read, since it binds and never reads as none (§3.6)."""
+        task = request.consumer
+        kind = SectionKind.PROJECT_INSTRUCTIONS
+        if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
+            return Section(kind, Need.BINDING, Disposition.NOT_APPLICABLE), []
+        owner = task.snapshot_owner
+        try:
+            pinned = await self._recall.pinned_instructions(
+                owner.kind, owner.unit_id, request.binding.project_id,
+                cycle_id=task.target_cycle_id,
+            )  # fmt: skip
+        except Exception as e:
+            logger.warning(
+                "project_instructions_unreadable unit=%s:%s task=%s",
+                owner.kind,
+                owner.unit_id,
+                task.task_id,
+                exc_info=True,
+            )
+            why = (
+                str(e)
+                if isinstance(e, PinUnknown)
+                else f"the unit's pin could not be checked against the project's records ({e})"
+            )
+            unread = RecordRef(f"snapshot:{owner.kind}:{owner.unit_id}", "")
+            unresolved = ((unread, why),)
+            return (
+                Section(
+                    kind,
+                    Need.BINDING,
+                    Disposition.INCOMPLETE,
+                    unresolved=unresolved,
+                    store_failed=True,
+                ),
+                [],
+            )
+        chosen = project_applicable(
+            pinned, task_type=task.task_type, role=task.role, stack=task.stack
+        )
+        return None, chosen
+
+    async def _task_instructions(self, request: ContextRequest):
+        """The task instructions that apply (#2178), with no section, or the section that stands
+        for them: not applicable, or incomplete when the store can't be read, since it never
+        reads as none (§3.6)."""
+        task = request.consumer
+        if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
+            kind, need = SectionKind.TASK_INSTRUCTIONS, Need.BINDING
+            return Section(kind, need, Disposition.NOT_APPLICABLE), []
+        try:
+            records = await self._recall.task_instructions(
+                request.binding.project_id, task.target_cycle_id
+            )
+        except Exception:
+            logger.warning(
+                "task_instructions_unreadable cycle=%s task=%s",
+                task.target_cycle_id,
+                task.task_id,
+                exc_info=True,
+            )
+            unread = RecordRef(f"task_instructions:{task.target_cycle_id}", "")
+            return (
+                Section(
+                    SectionKind.TASK_INSTRUCTIONS,
+                    Need.BINDING,
+                    Disposition.INCOMPLETE,
+                    unresolved=((unread, "the memory records could not be read"),),
+                    store_failed=True,
+                ),
+                [],
+            )
+        bound = applicable(
+            records,
+            cycle_id=task.target_cycle_id,
+            reaches=lambda selector: reaches(selector, task.task_type),
+        )
+        return None, bound
 
     async def disclose(self, bundle: ContextBundle) -> None:
         task = bundle.request.consumer
@@ -306,5 +650,44 @@ class LessonContextAssembly(ContextAssemblyPort):
                 recalled=bundle.recalled,
                 recorded_at=self._now,
                 attempt=task.attempt,
+                task_instructions=_section_record(
+                    bundle.section(SectionKind.TASK_INSTRUCTIONS),
+                    marked=interventions(bundle.task_instructions),
+                    bound=bound_references(bundle.task_instructions),
+                    omitted=unread_references(bundle.task_instructions),
+                ),
+                project_instructions=_section_record(
+                    bundle.section(SectionKind.PROJECT_INSTRUCTIONS),
+                    bound=bound_references(bundle.project_instructions),
+                    omitted=unbound_references(bundle.project_instructions)
+                    + unread_references(bundle.project_instructions),
+                ),
             )
         )
+
+
+def _section_record(
+    section: Section | None,
+    *,
+    marked: Sequence[str] = (),
+    bound: Sequence[dict] = (),
+    omitted: Sequence[dict] = (),
+) -> dict | None:
+    """A binding section as its exposure keeps it: the disposition, each revision supplied, and
+    each that couldn't be with why, the interventions among them (§3.5), and each reference a
+    unit's admission bound and the revision it was handed at (§3.7, T16). ``None`` for no
+    section, so an exposure with no instructions read is what it was before #2178."""
+    if section is None or section.disposition is Disposition.NONE_ELIGIBLE:
+        return None
+    return {
+        "disposition": section.disposition.value,
+        "supplied": [{"record_id": r.record_id, "revision": r.revision} for r in section.supplied],
+        "unresolved": [
+            {"record_id": r.record_id, "revision": r.revision, "why": why}
+            for r, why in section.unresolved
+        ],
+        # Only when one was handed, so every other exposure is recorded as it was.
+        **({"interventions": list(marked)} if marked else {}),
+        **({"bound_references": list(bound)} if bound else {}),
+        **({"omitted_references": list(omitted)} if omitted else {}),
+    }

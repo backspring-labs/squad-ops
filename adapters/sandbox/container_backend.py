@@ -23,15 +23,21 @@ proxy; "bridge" is the floor).
 from __future__ import annotations
 
 import asyncio
+import posixpath
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 import httpx
 
+from adapters.sandbox.placement import address, placement
 from squadops.ports.tools.container import ContainerPort
+from squadops.sandbox.findings import read
 from squadops.sandbox.models import (
     BuildResult,
+    CommandOutcome,
+    CommandResult,
     DiagnosticsResult,
     InstallResult,
     OperationName,
@@ -41,9 +47,12 @@ from squadops.sandbox.models import (
     StopResult,
     TestRunResult,
     WorkspaceRevision,
+    declared_argv,
+    declared_reader,
+    unread,
 )
 from squadops.sandbox.noop import NoOpExecutionSandbox
-from squadops.sandbox.workspace import WorkspaceStore, WorkspaceStoreError
+from squadops.sandbox.workspace import WorkspaceStore, WorkspaceStoreError, working_directory
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 
@@ -79,6 +88,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         environment_contract_id: str | None = None,
         cache_root: Path | None = None,
         build_mutates_source: bool = False,
+        app_network: str | None,
     ) -> None:
         self._container = container
         self._store = store
@@ -97,10 +107,14 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._readiness_timeout = readiness_timeout_seconds
         self._poll_interval = poll_interval_seconds
         self._http_client_factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=5.0))
-        # cycle_id → (container_id, host_port). Runtime units are short-lived;
-        # a service restart orphans nothing durable (`--rm` containers), and
-        # the labeled-container sweep is 102.2+ hardening.
-        self._running: dict[str, tuple[str, int]] = {}
+        # #2451 part 4: where the runtime unit runs. On the app network it is reached by container
+        # name with no host port (the service is a container, and the host's loopback is not its
+        # own); None, as on a host run, publishes to loopback.
+        self._app_network = app_network
+        # cycle_id → (container_id, base_url). Runtime units are short-lived, and every one is
+        # named and removed explicitly (not `--rm` since #1214, so a crashed app's logs survive to
+        # be read). A service restart can orphan one; the labeled-container sweep is 102.2+.
+        self._running: dict[str, tuple[str, str]] = {}
 
     def _cache_volumes(self) -> tuple[tuple[str, str], ...]:
         """Read-through download caches (§4.7): pip/npm download caches shared
@@ -122,12 +136,26 @@ class ContainerBackend(NoOpExecutionSandbox):
             (str(npm_cache), "/cache/npm"),
         )
 
-    def _spec(self, operation: str, cycle_id: str, command: tuple[str, ...]) -> ContainerSpec:
-        network = (
-            self._install_network
-            if operation == OperationName.INSTALL_DEPENDENCIES
-            else "none"  # §7 item 10: deny by default
-        )
+    def _spec(
+        self,
+        operation: str,
+        cycle_id: str,
+        command: tuple[str, ...],
+        *,
+        tree: Path | None = None,
+        working_dir: str = _WORKSPACE_MOUNT,
+        network: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ContainerSpec:
+        """The hardened run for one command. ``tree`` is the directory mounted as the
+        workspace: the live tree unless a declared command names its disposable copy."""
+        if network is None:
+            network = (
+                self._install_network
+                if operation == OperationName.INSTALL_DEPENDENCIES
+                else "none"  # §7 item 10: deny by default
+            )
+        mounted = tree if tree is not None else self._store.workspace_dir(cycle_id)
         return ContainerSpec(
             image=self._image,
             command=list(command),
@@ -140,11 +168,11 @@ class ContainerBackend(NoOpExecutionSandbox):
             if self._cache_root is not None
             else (("HOME", "/tmp"),),
             volumes=(
-                (str(self._store.workspace_dir(cycle_id)), _WORKSPACE_MOUNT),
+                (str(mounted), _WORKSPACE_MOUNT),
                 *self._cache_volumes(),
             ),
-            working_dir=_WORKSPACE_MOUNT,
-            timeout_seconds=self._timeout_seconds,
+            working_dir=working_dir,
+            timeout_seconds=timeout_seconds or self._timeout_seconds,
             network=network,
             memory_limit=self._memory_limit,
             cpu_limit=self._cpu_limit,
@@ -254,6 +282,133 @@ class ContainerBackend(NoOpExecutionSandbox):
             output_tail=(run.stdout + run.stderr)[-_TAIL_CHARS:] if run else "",
         )
 
+    async def run_declared_command(
+        self,
+        *,
+        revision: WorkspaceRevision,
+        command: tuple[str, ...],
+        working_dir: str = ".",
+        setup: tuple[tuple[str, ...], ...] = (),
+        timeout_seconds: float | None = None,
+        findings_reader: str | None = None,
+    ) -> CommandResult:
+        """X-3a (#2421; SIP-0102 §11d): a product's own declared command, after its setup
+        commands, in a disposable copy of exactly the pinned revision (contract 3). Setup
+        reaches the dependency network, as an install does; the command itself gets none
+        (§7 item 10). The copy is discarded whatever happens, so nothing a command does
+        reaches the live tree or a revision. A named ``findings_reader`` reads the command's
+        whole output, before its tails are cut (#2609); setup steps are never read."""
+        argv = declared_argv(command)
+        steps = tuple(declared_argv(step) for step in setup)
+        declared_reader(findings_reader)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError(f"timeout_seconds must be positive, got {timeout_seconds}")
+        inside = posixpath.join(_WORKSPACE_MOUNT, working_directory(working_dir)).rstrip("/")
+        base: dict[str, Any] = {
+            "operation": OperationName.RUN_DECLARED_COMMAND,
+            "workspace_revision_id": revision.revision_id,
+            "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
+            "command": argv,
+        }
+        started = time.monotonic()
+        with self._store.disposable_copy(revision.cycle_id, revision.revision_id) as copy:
+            for index, step in enumerate(steps):
+                ended = await self._run_declared(
+                    revision.cycle_id, copy, step, inside, self._install_network, timeout_seconds
+                )
+                if ended.get("outcome") != CommandOutcome.EXITED or ended["exit_code"] != 0:
+                    # A step that ran and failed stops the run before the command; one that
+                    # never started keeps its own outcome.
+                    if ended["ran"]:
+                        ended["outcome"] = CommandOutcome.SETUP_FAILED
+                    # A setup step's output is never the check's: the reader reads nothing.
+                    ended["findings"] = unread(
+                        findings_reader, f"setup step {index} stopped the run"
+                    )
+                    return CommandResult(
+                        **base,
+                        **ended,
+                        failed_setup_step=index,
+                        duration_seconds=time.monotonic() - started,
+                    )
+            ended = await self._run_declared(
+                revision.cycle_id, copy, argv, inside, "none", timeout_seconds, findings_reader
+            )
+        return CommandResult(**base, **ended, duration_seconds=time.monotonic() - started)
+
+    async def _run_declared(
+        self,
+        cycle_id: str,
+        tree: Path,
+        argv: tuple[str, ...],
+        inside: str,
+        network: str,
+        timeout_seconds: float | None,
+        findings_reader: str | None = None,
+    ) -> dict[str, Any]:
+        """One declared argv in the copy, read into a command result's fields: its findings by
+        ``findings_reader`` when one is named, from the whole output, before the tails are cut."""
+        spec = self._spec(
+            OperationName.RUN_DECLARED_COMMAND,
+            cycle_id,
+            argv,
+            tree=tree,
+            working_dir=inside,
+            network=network,
+            timeout_seconds=timeout_seconds,
+        )
+        try:
+            run = await self._container.run(spec)
+        except ToolContainerError as e:
+            if "timed out" in str(e).lower():
+                # It executed until the limit: the command's own failure, as a one-shot's is.
+                return {
+                    "status": OperationStatus.FAILED,
+                    "ran": True,
+                    "outcome": CommandOutcome.TIMEOUT,
+                    "exit_classification": "timeout",
+                    "findings": unread(findings_reader, "the command timed out"),
+                }
+            return {
+                "status": OperationStatus.NOT_RUN,
+                "ran": False,
+                "unavailable_reason": str(e),
+                "findings": unread(findings_reader, "the command never started"),
+            }
+        tails = {
+            "stdout_tail": run.stdout[-_TAIL_CHARS:],
+            "stderr_tail": run.stderr[-_TAIL_CHARS:],
+            "stdout_truncated": len(run.stdout) > _TAIL_CHARS,
+            "stderr_truncated": len(run.stderr) > _TAIL_CHARS,
+        }
+        if run.exit_code in _UNRUNNABLE:
+            # The command never started: missing from the image, or not executable. The
+            # environment's gap, never a failed check (§4.4).
+            outcome = _UNRUNNABLE[run.exit_code]
+            return {
+                **tails,
+                "status": OperationStatus.NOT_RUN,
+                "ran": False,
+                "outcome": outcome,
+                "exit_code": run.exit_code,
+                "unavailable_reason": f"{outcome}: {argv[0]}",
+                "findings": unread(findings_reader, f"{outcome}: {argv[0]}"),
+            }
+        ok = run.exit_code == 0
+        findings = None
+        if findings_reader is not None:
+            findings = read(findings_reader, run.stdout, run.stderr, run.exit_code).as_dict()
+        return {
+            **tails,
+            "status": OperationStatus.SUCCEEDED if ok else OperationStatus.FAILED,
+            "ran": True,
+            "outcome": CommandOutcome.EXITED,
+            "exit_code": run.exit_code,
+            "exit_classification": None if ok else "nonzero_exit",
+            "findings": findings,
+        }
+
     async def read_build_diagnostics(self, *, revision: WorkspaceRevision) -> DiagnosticsResult:
         common, run = await self._one_shot(OperationName.READ_BUILD_DIAGNOSTICS, revision)
         return DiagnosticsResult(
@@ -321,26 +476,26 @@ class ContainerBackend(NoOpExecutionSandbox):
             volumes=((str(self._store.workspace_dir(revision.cycle_id)), _WORKSPACE_MOUNT),),
             working_dir=_WORKSPACE_MOUNT,
             timeout_seconds=self._timeout_seconds,
-            # The runtime unit publishes its declared endpoint to loopback, so
-            # it keeps the default bridge network for the floor; the 102.2
-            # policy network restores deny-by-default with a declared opening.
+            # On the app network (#2451 part 4) the runtime unit has no route out and no host
+            # port, and is reached by its name. Without one, it publishes its declared endpoint
+            # to loopback on the default bridge, the floor a host run keeps.
             memory_limit=self._memory_limit,
             cpu_limit=self._cpu_limit,
             pids_limit=self._pids_limit,
             cap_drop_all=True,
             no_new_privileges=True,
             user=self._workspace_user(revision.cycle_id),
-            publish_ports=(self._app_port,),
+            **placement(self._app_network, revision.cycle_id, (self._app_port,)),
         )
         started = time.monotonic()
         try:
             container_id = await self._container.run_detached(spec)
-            host_port = await self._container.resolve_host_port(container_id, self._app_port)
+            host, port = await address(self._container, container_id, spec, self._app_port)
+            base_url = f"http://{host}:{port}"
         except ToolContainerError as e:
             return StartResult(
                 **base, status=OperationStatus.NOT_RUN, ran=False, unavailable_reason=str(e)
             )
-        base_url = f"http://127.0.0.1:{host_port}"
         ready = await self._await_ready(base_url)
         duration = time.monotonic() - started
         if not ready:
@@ -385,7 +540,7 @@ class ContainerBackend(NoOpExecutionSandbox):
                 startup_diagnostics=diagnostics,
                 cleanup_handle=container_id,
             )
-        self._running[revision.cycle_id] = (container_id, host_port)
+        self._running[revision.cycle_id] = (container_id, base_url)
         return StartResult(
             **base,
             status=OperationStatus.SUCCEEDED,
@@ -426,11 +581,11 @@ class ContainerBackend(NoOpExecutionSandbox):
                 ran=False,
                 unavailable_reason="application is not running",
             )
-        _container_id, host_port = running
+        _container_id, base_url = running
         started = time.monotonic()
         try:
             async with self._http_client_factory() as client:
-                response = await client.request(method, f"http://127.0.0.1:{host_port}{path}")
+                response = await client.request(method, f"{base_url}{path}")
         except (httpx.HTTPError, OSError) as e:
             # The app is up but unreachable/unresponsive on its declared
             # endpoint — that is the application's failure, not the probe's.
@@ -495,3 +650,10 @@ class ContainerBackend(NoOpExecutionSandbox):
                 detail=str(e),
             )
         return StopResult(**base, status=OperationStatus.SUCCEEDED, ran=True)
+
+
+#: The exit statuses a container runtime gives a command that never started.
+_UNRUNNABLE = {
+    127: CommandOutcome.COMMAND_NOT_FOUND,
+    126: CommandOutcome.COMMAND_NOT_EXECUTABLE,
+}

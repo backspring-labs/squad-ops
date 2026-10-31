@@ -1,0 +1,38 @@
+# 2.4's first Next.js shakeout (docs/plans/2-4-0-plan.md §1.3, D3): the campaign path on the Next.js stack,
+# which has never run a campaign, ahead of the window's two Next.js campaigns. The stack comes from the policy
+# (#2443, SIP-0109 §24bs), so the campaign profiles stay as they are. The window's held-out suite is pinned so the
+# evaluation path (the runner, Lighthouse, axe and lint, SIP-0113 phase 1) runs on Next.js at each cycle's end,
+# reporting only. Plan gates stay `tier`; proposal rulings are the supervisor's, under the owner's grant of
+# 2026-10-19. Uncounted. The exit rule: this campaign on one deploy with no new seam finding.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  # The Next.js stack's tree (squadops.stacks.stack_nextjs_ts): the App Router, its library, its components and
+  # its vitest suites. Root config stays out: the PRD's expansion rules add no dependency.
+  allowed_scope: ["app/**", "lib/**", "components/**", "__tests__/**"]
+  measurement: "two accepted increments"
+  target_accepted_increments: 2
+  work_class:
+    prd_tier: tier-1
+    attendance: unattended
+policy:
+  # 1 calibration + 2 increments + one repair or retry each (2) + 2 replacements for abandoned ones.
+  max_cycles: 7
+  max_elapsed_s: 43200
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38-tf
+  plan_gate: tier
+  stack: nextjs_ts
+scenario_suite: db69fd3707ea65b0c22e64aeefb90f2fc4621565b94244399be6de2ad697044d

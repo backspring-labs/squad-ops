@@ -39,7 +39,7 @@ async def test_patch_flows_through_store_and_is_journaled(parts):
     without mutation — the two must be one motion."""
     store, journal = parts
     service = SandboxService(store=store, journal=journal)
-    seed = service.seed_workspace("cyc_1", FILES)
+    seed = await service.seed_workspace("cyc_1", FILES)
     result = await service.apply_workspace_patch(
         base=seed, files={"backend/main.py": "print('b')\n"}
     )
@@ -55,7 +55,7 @@ async def test_stale_patch_raises_and_leaves_no_evidence_or_revision(parts):
     failed authority checks must leave no trace claiming success."""
     store, journal = parts
     service = SandboxService(store=store, journal=journal)
-    seed = service.seed_workspace("cyc_1", FILES)
+    seed = await service.seed_workspace("cyc_1", FILES)
     (store.workspace_dir("cyc_1") / "backend/main.py").write_text("drift", encoding="utf-8")
     with pytest.raises(StaleBaseRevisionError):
         await service.apply_workspace_patch(base=seed, files={"backend/main.py": "x"})
@@ -69,7 +69,7 @@ async def test_backendless_execution_is_not_run_but_journaled(parts):
     even when the environment cannot execute it."""
     store, journal = parts
     service = SandboxService(store=store, journal=journal, backend=None)
-    seed = service.seed_workspace("cyc_1", FILES)
+    seed = await service.seed_workspace("cyc_1", FILES)
     result = await service.build_frontend(revision=seed)
     assert result.ran is False
     assert result.status == OperationStatus.NOT_RUN
@@ -83,7 +83,7 @@ async def test_backend_results_pass_through_and_are_journaled(parts):
     way through — the journaled result must be the returned result."""
     store, journal = parts
     service = SandboxService(store=store, journal=journal, backend=StubBackend())
-    seed = service.seed_workspace("cyc_1", FILES)
+    seed = await service.seed_workspace("cyc_1", FILES)
     result = await service.build_frontend(revision=seed)
     assert result.ran is True
     assert result.warning_count == 2

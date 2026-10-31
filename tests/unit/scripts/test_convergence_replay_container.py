@@ -371,3 +371,32 @@ async def test_every_role_generates_through_its_own_recorder(monkeypatch):
     plain, no_stub = await container.compose_recorded_systems(bundle, stub=False)
     assert no_stub is None
     assert not any(isinstance(s.ports.llm._inner, container.StubLLM) for s in plain.values())
+
+
+@pytest.mark.parametrize("arm", [container.WHOLE_FILE, "anchored"])
+async def test_the_whole_file_arm_offers_no_file_through_the_repairs_one_decision(arm, monkeypatch):
+    """#2810 moved the repair's decision of what it may revise into ``repair_prompt_contents``,
+    which the handler, its current files and its edit form each read. Entered at ``use_arm``, then
+    the dev repair's real ``handle()``. Bug caught: the arm overriding a decision the handler no
+    longer reads, so the whole-file arm still shows the file and offers the edit form."""
+    from squadops.capabilities import repair_prompt_contents
+    from tests.unit.capabilities.handlers.test_repair_prompt_characterization import (
+        _CASES,
+        _context,
+    )
+
+    monkeypatch.setattr(
+        repair_prompt_contents, "anchorable_files", repair_prompt_contents.anchorable_files
+    )
+    container.use_arm(arm)
+    handler_class, responses, inputs = _CASES["dev_named_file_in_the_workspace"]
+    # Offered nothing, the recorded edit is refused and the repair asked once more.
+    ctx, _calls, renderer = _context(*responses, *responses)
+
+    await handler_class().handle(ctx, dict(inputs))
+
+    rendered = {c["template"] for c in renderer.calls}
+    whole = arm == container.WHOLE_FILE
+    assert ("request.cycle_repair_current_files" in rendered) is not whole
+    assert ("request.cycle_repair_anchored_edit_appendix" in rendered) is not whole
+    assert ("request.cycle_repair_output_whole_file" in rendered) is whole

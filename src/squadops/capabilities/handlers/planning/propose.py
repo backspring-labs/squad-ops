@@ -16,15 +16,16 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
-from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
-from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
+from squadops.capabilities.handlers.context_sections import context_sections
 from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.capabilities.handlers._plan_authoring import (
+    DEVELOPMENT_INCREMENT_SURFACES,
     INCREMENT_SURFACES,
+    SOURCE_SURFACES,
     render_surfaces,
     retry_yaml_call,
 )
@@ -111,6 +112,10 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
     _success_artifact_name: str = ""  # subclasses override
     _success_artifact_type: str = ""  # subclasses override
     _proposer_role: str = ""  # subclasses override — appears as proposing_role in YAML
+    #: What this proposer is shown of an increment (SIP-0109 §7.3, §8.1), as
+    #: ``(asset, variable, input key)``. The development proposer's tells it the criterion files
+    #: are the qa tasks' (#2795).
+    _increment_surfaces: tuple[tuple[str, str, str], ...] = INCREMENT_SURFACES
 
     def _failure_artifact_name(self) -> str:
         # task_type with dots → underscores, plus _failure.yaml — a
@@ -224,12 +229,17 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         """What an increment's dev/qa proposers are shown, or "" (SIP-0109 §7.3, §8.1): the
         footprint, the files the scaffold regenerates, each new criterion's own test file and
         the earlier criteria's frozen verifiers — the same table the merger renders
-        (``INCREMENT_SURFACES``, #1874). The index data is injected by the executor, the prose a
-        managed asset (#448); the plan gate refuses what these teach, so they teach first."""
+        (``INCREMENT_SURFACES``, #1874), but for the criterion files' appendix, which is the
+        development proposer's own (``_increment_surfaces``, #2795). The index data is injected by
+        the executor, the prose a managed asset (#448); the plan gate refuses what these teach, so
+        they teach first."""
         if self._proposer_role not in ("development", "qa"):
             return ""
 
-        return await render_surfaces(renderer, inputs, INCREMENT_SURFACES)
+        # SIP-0112 H.8: and, on a source-backed cycle, where a blocking gap stops the work.
+        return await render_surfaces(
+            renderer, inputs, (*SOURCE_SURFACES, *self._increment_surfaces)
+        )
 
     async def handle(
         self,
@@ -286,14 +296,9 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         rejection_section = await self._rejection_context_section(renderer, inputs)
         if rejection_section:
             variables["rejection_context_section"] = rejection_section
-        # #1692: a retry's proposers are shown the failed cycle it recovers from.
-        prior = await prior_cycle_section(renderer, inputs)
-        if prior:
-            variables["prior_cycle_section"] = prior
-        # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
-        lessons = await cross_cycle_lessons_section(renderer, inputs)
-        if lessons:
-            variables["cross_cycle_lessons_section"] = lessons
+        # The shared context slots: the prior cycle, the product, the instructions and the
+        # lessons (context_sections).
+        variables.update(await context_sections(renderer, inputs))
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 
@@ -450,6 +455,7 @@ class DevelopmentProposePlanTasksHandler(_ProposeBaseHandler):
     _success_artifact_name = "proposed_plan_tasks.yaml"
     _success_artifact_type = "proposed_plan_tasks"
     _proposer_role = "development"
+    _increment_surfaces = DEVELOPMENT_INCREMENT_SURFACES
 
     def _parse_and_validate(
         self,

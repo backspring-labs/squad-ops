@@ -90,7 +90,29 @@ INCREMENT_SURFACES = (
         "scope_lines",
         "increment_test_scope_index",
     ),
+    # SIP-0109 §24cp: the pages a repository-backed change adds, and the anchor each view
+    # renders, which acceptance reads the page for.
+    ("request.increment_views_appendix", "view_lines", "increment_views_index"),
 )
+
+#: #2795 (SIP-0109 §24cr): the same surfaces as the development proposer is shown them. Each new
+#: criterion's file is the qa tasks' (§24m), so its appendix tells the development proposer to leave
+#: the files out of its tasks. Told the qa author's "plan a qa task whose expected_artifacts include
+#: each of these files", which no development proposal can hold, it wrote them into its develop
+#: tasks, and the plan gate refused the merge's dual claim on every re-roll.
+DEVELOPMENT_INCREMENT_SURFACES = tuple(
+    (
+        ("request.plan_increment_criteria_development_appendix", variable, key)
+        if key == "increment_criterion_files_index"
+        else (template, variable, key)
+    )
+    for template, variable, key in INCREMENT_SURFACES
+)
+
+
+#: SIP-0112 H.8: what a source-backed plan's authors are shown, as ``(asset, variable, input key)``:
+#: where a blocking gap stops the work, which the plan gate refuses a task for writing (#686).
+SOURCE_SURFACES = (("request.plan_blocking_gaps_appendix", "blocked_index", "blocked_paths_index"),)
 
 
 async def render_surfaces(renderer: Any, inputs: dict[str, Any], surfaces) -> str:
@@ -146,6 +168,7 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
                 "frozen_surface_index",
                 "frozen_surface_index",
             ),
+            *SOURCE_SURFACES,
             *INCREMENT_SURFACES,
         ),
     )

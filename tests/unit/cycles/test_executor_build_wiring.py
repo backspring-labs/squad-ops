@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities.context_assembly import ACCEPTANCE_WORKSPACE_FILTER
 from squadops.cycles.models import (
     ArtifactRef,
@@ -77,6 +77,7 @@ def executor(reply_router):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     return ex
 
@@ -515,6 +516,7 @@ class TestBuildOnlyValidation:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -669,6 +671,7 @@ class TestBuildOnlySeeding:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -816,6 +819,7 @@ class TestBuilderDeliverableCompleteness:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -872,6 +876,7 @@ class TestBuilderDeliverableCompleteness:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -990,6 +995,7 @@ class TestPlanOnlyCyclesUnaffected:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -1337,6 +1343,7 @@ class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
     async def test_the_override_is_what_the_outcome_router_reaches(self, reply_router):
@@ -1430,6 +1437,7 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
     def test_the_override_reaches_the_runner_that_drives_it(self, reply_router):

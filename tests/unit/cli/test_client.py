@@ -220,3 +220,63 @@ class TestNetworkErrors:
             api.get("/test")
         assert exc_info.value.exit_code == exit_codes.NETWORK_ERROR
         assert "timed out" in str(exc_info.value)
+
+
+# =============================================================================
+# A request's own bound, and a timeout said as what it is (#2605)
+# =============================================================================
+
+
+def _transport_client(handler) -> httpx.Client:
+    """An httpx client built as ``APIClient`` builds its own, with the configured 30 s bound."""
+    return httpx.Client(transport=httpx.MockTransport(handler), base_url="http://api", timeout=30)
+
+
+@pytest.mark.parametrize(
+    ("timeout", "read"),
+    [(None, 30), (1800, 1800)],
+    ids=["the-configured-bound", "the-requests-own"],
+)
+def test_a_requests_own_bound_reaches_the_transport(timeout, read):
+    """#2605. Bug caught: a long request's bound accepted and dropped, so a baseline capture still
+    gives up at the default 30 s while the server is running the product's checks."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(request.extensions["timeout"])
+        return httpx.Response(201, json={"ok": True})
+
+    api = APIClient(CLIConfig(timeout=30), client=_transport_client(handler))
+
+    api.post("/api/v1/projects/p/baselines", json={"idempotency_key": "k"}, timeout=timeout)
+
+    assert seen["read"] == read
+
+
+@pytest.mark.parametrize(
+    ("body", "tail"),
+    [
+        (
+            {"idempotency_key": "cap-7"},
+            "Resend it with --idempotency-key cap-7 to read its outcome",
+        ),
+        (None, "timed out after 1800s"),
+    ],
+    ids=["keyed", "unkeyed"],
+)
+def test_a_timed_out_request_says_the_cli_stopped_waiting_and_how_to_read_the_outcome(body, tail):
+    """#2605. Bug caught: a timeout read as a failure while the server completes the request,
+    with no word that resending the same key replays its outcome; or the message naming the
+    default bound when the request had its own."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    api = APIClient(CLIConfig(timeout=30), client=_transport_client(handler))
+
+    with pytest.raises(CLIError) as exc_info:
+        api.post("/api/v1/projects/p/baselines", json=body, timeout=1800)
+
+    assert exc_info.value.exit_code == exit_codes.NETWORK_ERROR
+    assert str(exc_info.value).endswith(tail)
+    assert "may still complete on the server" in str(exc_info.value) or body is None

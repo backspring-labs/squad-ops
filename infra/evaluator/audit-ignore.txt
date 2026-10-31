@@ -1,0 +1,8 @@
+# npm advisories the dependency audit is told to ignore in the evaluator image's lock — each with its
+# reason, and the issue that retires it. Format: one advisory id per line; `#` comments.
+#
+# Empty since `-6` (2.5): pinning the peer `puppeteer` that @axe-core/puppeteer installs to 25.14.0, the
+# version of the `puppeteer-core` the driver uses (`overrides` in package.json), takes its browser-download
+# chain off `extract-zip` and `basic-ftp` (#2469) and its `chromium-bidi` onto `zod` 4 (#2712), and `fast-uri`
+# moves to 3.1.9 (#2712). The eight advisories accepted for 2.4.0 (the owner's rulings on #2455, 2026-10-18,
+# and at the 2.4.0 cut, 2026-10-23) no longer apply.

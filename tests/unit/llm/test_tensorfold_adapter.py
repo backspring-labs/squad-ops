@@ -343,6 +343,9 @@ def test_each_frozen_recipe_is_the_adapters_table_and_the_registrys_window():
             "min_p": recipe.min_p,
         } == doc["sampling"]
         assert get_model_spec(doc["served_id"]).context_window == doc["context"]
+        # #2561: the deploy record's digest for the served id is the checkpoint the recipe pins.
+        checkpoint = doc["checkpoint"]
+        assert recipe.weights == f"hf:{checkpoint['repo']}@{checkpoint['revision']}"
 
 
 @pytest.mark.parametrize(

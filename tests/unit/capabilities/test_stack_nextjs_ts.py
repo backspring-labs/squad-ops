@@ -382,6 +382,24 @@ def test_the_test_supplement_shows_in_process_handler_invocation():
     assert "{ params:" in supplement
 
 
+def test_the_supplements_page_example_answers_its_fetches_through_the_route_caller():
+    """#2602: a page suite's `fetch` stub was taught as a call to a statically imported route
+    handler, and a page criterion's test copies it. Its page fetching a route the change adds,
+    the import fails on the accepted tree before any assertion (`only_setup_failures`). Bug
+    caught: the page example importing a route module again, or calling its stub's target some
+    other way than through the scaffold's `callRoute`, by the import the scaffold emits."""
+    import re
+
+    from squadops.stacks.scaffold import route_caller_import_for
+
+    supplement = DEVELOPMENT_PROFILES[_STACK].test_prompt_supplement
+    [page_example] = re.findall(r"```tsx\n(.*?)```", supplement, re.S)
+
+    assert "@/app/api/" not in page_example
+    assert f"import {{ callRoute }} from '{route_caller_import_for(_STACK)}'" in page_example
+    assert "return callRoute(rest.method ?? 'GET', path, rest)" in page_example
+
+
 class TestStoreUpdateSeam:
     """#1055: the store gained an update verb because it had none.
 

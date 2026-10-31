@@ -105,6 +105,11 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
         vault=AsyncMock(),
         assess=AsyncMock(),
         launch=AsyncMock(),
+        evaluate_outcome=None,
+        evaluate_baseline=None,
+        outcome_section=None,
+        intervention_section=None,
+        campaign_branch=None,
         clock=lambda: now[0],
     )
 
@@ -226,11 +231,20 @@ async def test_the_digest_asks_for_the_ruling_and_says_which_bounds_it_has_passe
     [row] = ruling_overdue_transitions(
         await at_the_gate.get_campaign(CID), log, gate_opened_at(log) + timedelta(seconds=BOUND)
     )
-    before = digest(package(await at_the_gate.get_campaign(CID), log, [], []))
+    before = digest(
+        package(await at_the_gate.get_campaign(CID), log, [], [], outcomes=None, interventions=None)
+    )
     await at_the_gate.transition(CID, row)
 
     after = digest(
-        package(await at_the_gate.get_campaign(CID), await at_the_gate.control_log(CID), [], [])
+        package(
+            await at_the_gate.get_campaign(CID),
+            await at_the_gate.control_log(CID),
+            [],
+            [],
+            outcomes=None,
+            interventions=None,
+        )
     )
 
     assert "- The increment gate waits on a ruling for `prop_1` v1. Rule it" in before

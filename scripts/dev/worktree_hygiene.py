@@ -218,6 +218,16 @@ def _real_dir_with_files(path: Path) -> int:
     return sum(1 for p in path.rglob("*") if p.is_file())
 
 
+def within_roots(main: Path, path: Path) -> bool:
+    """Whether the sweep may judge a worktree: one beside the main checkout, or under its
+    ``.claude/worktrees/``. Git lists every worktree of the repository wherever it lives, and a
+    checkout another tool keeps at a pinned commit (the nostromo crews' ``squadops-reviewed``,
+    detached on main) read as finished work and was marked for removal (#2751). Anything else is
+    kept and named, for a person to remove by hand if it is ours."""
+    resolved, root = path.resolve(), main.resolve()
+    return resolved.parent == root.parent or (root / ".claude" / "worktrees") in resolved.parents
+
+
 def survey(main: Path, pr_lookup: PrLookup) -> tuple[list[WorktreeFinding], list[BranchFinding]]:
     base = base_ref(main)
     trees: list[WorktreeFinding] = []
@@ -225,6 +235,16 @@ def survey(main: Path, pr_lookup: PrLookup) -> tuple[list[WorktreeFinding], list
     for wt in list_worktrees(main):
         if wt.branch:
             held.add(wt.branch)
+        if not within_roots(main, wt.path):
+            trees.append(
+                WorktreeFinding(
+                    wt,
+                    False,
+                    "outside this checkout's worktree roots (beside it, or .claude/worktrees/): "
+                    "another tool's, or remove it by hand",
+                )
+            )
+            continue
         if wt.prunable:
             trees.append(WorktreeFinding(wt, True, "its directory is gone (prune)"))
             continue
@@ -380,11 +400,20 @@ def main(
         help="with --apply, at a release cut (step 8): write the verdict to "
         "site/content/releases/TAG/housekeeping.yaml, which check_release_packages.py reads",
     )
+    ap.add_argument(
+        "--evidence-purged",
+        metavar="N",
+        type=int,
+        help="with --record-release, from 2.4.0: how many scenarios' page evidence "
+        "`squadops scenarios purge-evidence` purged at this cut (SIP-0113 §10p ruling 8)",
+    )
     args = ap.parse_args(argv)
     if args.apply and args.archive_root is None:
         ap.error("--apply requires --archive-root")
     if args.record_release and not args.apply:
         ap.error("--record-release records an applied run: it requires --apply")
+    if args.evidence_purged is not None and (not args.record_release or args.evidence_purged < 0):
+        ap.error("--evidence-purged is a count of zero or more, recorded with --record-release")
     main_path = main_checkout(cwd or Path.cwd())
     trees, branches = survey(main_path, pr_lookup or gh_pr_lookup(main_path))
     print(render(trees, branches))
@@ -396,7 +425,9 @@ def main(
         print(f"  ✗ {p}")
     print(f"\napplied; {len(problems)} problems")
     if args.record_release:
-        path = record_release(main_path, args.record_release, trees, branches, problems)
+        path = record_release(
+            main_path, args.record_release, trees, branches, problems, args.evidence_purged
+        )
         print(f"recorded: {path.relative_to(main_path)}")
     return 1 if problems else 0
 
@@ -407,6 +438,7 @@ def record_release(
     trees: Sequence[WorktreeFinding],
     branches: Sequence[BranchFinding],
     problems: Sequence[str],
+    evidence_purged: int | None = None,
 ) -> Path:
     """Cut step 8's record (#1957), beside the release package: what this run removed, and every
     problem it left. ``check_release_packages.py`` refuses the release until it exists, clean."""
@@ -420,6 +452,8 @@ def record_release(
         "worktrees_removed": sorted(str(f.worktree.path) for f in trees if f.remove),
         "branches_deleted": sorted(b.branch for b in branches if b.delete),
         "problems": list(problems),
+        # SIP-0113 §10p ruling 8: the line's page evidence, purged at its cut, from 2.4.0.
+        **({"scenario_evidence_purged": evidence_purged} if evidence_purged is not None else {}),
     }
     target.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
     return target

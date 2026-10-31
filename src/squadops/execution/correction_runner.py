@@ -97,10 +97,10 @@ from squadops.cycles.task_plan import (
 )
 from squadops.events.types import EventType
 from squadops.execution.correction_ids import correction_task_id
-from squadops.execution.correction_repair import CorrectionRepair
+from squadops.execution.correction_repair import OWNERSHIP_DROPPED_KEY, CorrectionRepair
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
-from squadops.tasks.models import TaskEnvelope, TaskResultStatus
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -354,6 +354,14 @@ class CorrectionProtocolResult:
     #: #1911: whether this round's empty repair was offered the scoped edit form; ``None``
     #: when the round's emission was not empty or no step recorded its form.
     empty_emission_offered_scoped: bool | None = None
+    #: #2521: the files write authorization dropped from a repair that kept nothing else, each
+    #: naming its path, the producer whose grant excluded it, and why. Such a round is spent:
+    #: it emitted files, so it is not the empty emission #1053 refunds.
+    repair_dropped: tuple[dict[str, str], ...] = ()
+    #: #2664 (SIP-0104 §13f): the slot revisions the qa repair's merge refused because they
+    #: dropped a failing assertion's subject, each naming the slot and the subject. Such a round
+    #: is spent: the repair failed a gate, it did not emit nothing.
+    repair_subject_dropped: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -407,7 +415,11 @@ class CorrectionRunner:
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
         failure_recall: FailurePatternRecallPort,
         correction_repair: CorrectionRepair | None = None,
+        judge_suite: Callable[..., Awaitable[TaskResult | None]] | None = None,
     ) -> None:
+        # #2818: a product's repaired suite is judged on the product's runner too, as the
+        # ordinary outcome is (``product_suite``); the executor hands in its judgement.
+        self._judge_suite = judge_suite
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
         self._event_bus = event_bus
@@ -537,13 +549,26 @@ class CorrectionRunner:
         # repair overlay, patch verification). In-place replacement of
         # the artifacts list is deliberate — both consumers read
         # result.outputs.
-        step_artifacts = (result.outputs or {}).get("artifacts") or []
+        outputs = result.outputs
+        if outputs is None:
+            return  # nothing emitted, so nothing to enforce
+        step_artifacts = outputs.get("artifacts") or []
         if bound_record is not None and step_artifacts:
             enforced, integrity_evidence = enforce_frozen_ownership(
                 step_artifacts, bound_record, step_envelope
             )
             if integrity_evidence:
-                result.outputs["artifacts"] = enforced
+                outputs["artifacts"] = enforced
+                # #2521: what was dropped, for the round's judgment — a step whose files were
+                # all dropped emitted a refused repair, not nothing.
+                outputs[OWNERSHIP_DROPPED_KEY] = [
+                    {
+                        "path": str(record.normalized_path or record.attempted_path),
+                        "producer_task_type": str(record.producer_task_type),
+                        "reason": str(record.violation_code),
+                    }
+                    for record in integrity_evidence
+                ]
                 step_artifacts = enforced
                 for record in integrity_evidence:
                     self._emit_scaffold_integrity_evidence(record, step_envelope)
@@ -566,7 +591,7 @@ class CorrectionRunner:
         if step_artifacts:
             kept, rejected = syntax_gate_python_artifacts(step_artifacts)
             if rejected:
-                result.outputs["artifacts"] = kept
+                outputs["artifacts"] = kept
                 for art, error in rejected:
                     name = art.get("name") or art.get("path") or "(unnamed)"
                     payload = {
@@ -1173,6 +1198,8 @@ class CorrectionRunner:
             dispute_carry[envelope.task_id] = list(repair.disputes)
 
         emission_empty = self._correction_repair.judge_emission(repair, correction_attempts)
+        repair_dropped = self._correction_repair.dropped_entirely(repair)
+        repair_subject_dropped = self._correction_repair.subject_refused(repair)
 
         # 8. Emit CORRECTION_COMPLETED
         self._event_bus.emit(
@@ -1190,6 +1217,10 @@ class CorrectionRunner:
                 "empty_emission_signatures": (
                     list(repair.empty_signatures) if emission_empty else []
                 ),
+                # #2521: and a round whose files were all dropped must not read as either.
+                "repair_dropped": [d["path"] for d in repair_dropped],
+                # #2664: and a round whose qa repair dropped a failing assertion's subject.
+                "repair_subject_dropped": [str(d.get("slot_id")) for d in repair_subject_dropped],
             },
         )
 
@@ -1202,6 +1233,8 @@ class CorrectionRunner:
             empty_emission_offered_scoped=(
                 any(repair.offered_scoped) if emission_empty and repair.offered_scoped else None
             ),
+            repair_dropped=repair_dropped,
+            repair_subject_dropped=repair_subject_dropped,
         )
 
     async def _diagnose(
@@ -1776,7 +1809,7 @@ class CorrectionRunner:
             metadata={"role": "qa", "retest": True},
         )
 
-        return await self._dispatch_protocol_step(
+        result = await self._dispatch_protocol_step(
             retest_envelope,
             run_id,
             cycle,
@@ -1788,3 +1821,8 @@ class CorrectionRunner:
             plan_delta_refs=plan_delta_refs,
             budget_guard=budget_guard,
         )
+        if result is not None and self._judge_suite is not None:
+            judged = await self._judge_suite(result, retest_envelope, cycle, run_id)
+            if judged is not None:
+                return judged
+        return result

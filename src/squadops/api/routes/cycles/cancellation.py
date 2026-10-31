@@ -27,7 +27,7 @@ import logging
 
 from fastapi import Request
 
-from squadops.api.cycle_schemas import CycleCancelResponse
+from squadops.api.cycle_schemas import CycleCancelResponse, RunCancelResponse
 from squadops.api.runtime.deps import (
     get_activity_port,
     get_cancel_queue_port,
@@ -198,6 +198,30 @@ async def abort_cancelled_cycle_activities(request: Request, cycle_id: str) -> i
             cycle_id,
         )
     return aborted
+
+
+async def cancel_run_by_the_existing_path(
+    request, project_id: str, cycle_id: str, run_id: str
+) -> RunCancelResponse:
+    """Cancel one run everywhere it lives: its status, its Prefect flow run, its focus leases and
+    its cycle's open activities, telling its agents first. The run route calls it for an
+    operator's cancel, and a task instruction's emergency withdrawal for its halt (SIP-0110
+    §A.3.8, T13), so a halt stops a run exactly as a cancel does."""
+
+    await get_cycle_registry(request).cancel_run(run_id)
+    # #1648: first, while the activities and leases still say who holds the run's tasks.
+    agents_notified = await notify_agents_of_cancel(request, cycle_id, [run_id])
+    cancelled = await cancel_orphaned_flow_runs(request, project_id, cycle_id, [run_id])
+    leases_released = await release_cancelled_run_leases(request, cycle_id, [run_id])
+    activities_ended = await abort_cancelled_cycle_activities(request, cycle_id)
+    return RunCancelResponse(
+        status="cancelled",
+        run_id=run_id,
+        prefect_flow_runs_cancelled=cancelled,
+        focus_leases_released=leases_released,
+        activities_ended=activities_ended,
+        agents_notified=agents_notified,
+    )
 
 
 async def cancel_cycle_by_the_existing_path(

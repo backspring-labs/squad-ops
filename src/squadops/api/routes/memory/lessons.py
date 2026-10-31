@@ -19,8 +19,9 @@ restarted under a new snapshot and their measurements set apart (D9).
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -43,11 +44,9 @@ from squadops.api.memory_schemas import (
     SuppliedTogetherResponse,
 )
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.mapping import cycle_status_of
-from squadops.api.runtime.deps import get_campaign_registry, get_cycle_registry, get_memory_store
+from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_row
+from squadops.api.runtime.deps import get_memory_records, get_memory_store
 from squadops.auth.models import Identity, Scope
-from squadops.campaigns.models import CampaignState
-from squadops.cycles.models import CycleStatus
 from squadops.memory.annotation import (
     AnnotationRefused,
     annotate,
@@ -71,9 +70,18 @@ from squadops.memory.assessment import (
     supplied_to,
     target_absence_rates,
 )
-from squadops.memory.lessons import Applicability, Approval, PatternRevision, Snapshot, UnitKind
+from squadops.memory.exposures import Exposure
+from squadops.memory.lessons import (
+    Applicability,
+    Approval,
+    PatternRevision,
+    RecallDisposition,
+)
+from squadops.memory.record_uses import handed_instructions, withdrawn_uses
+from squadops.memory.records import MemoryRecord
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["memory"])
+logger = logging.getLogger(__name__)
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -267,60 +275,17 @@ async def revoke_lesson(
             raise _error(409, "ALREADY_REVOKED", str(e)) from e
         raise _error(422, "VALIDATION_ERROR", str(e)) from e
     await store.record_revocation(revoked)
-    live: list[Snapshot] = []
-    finished: list[Snapshot] = []
-    for s in await store.list_snapshots_holding(approval_id):
-        (live if await _still_runs(request, s) else finished).append(s)
-    if live:
-        next_step = (
-            "units admitted from now pin without it. Each unit named here keeps it while it runs: "
-            "halt or restart its work under a new snapshot, and set its measurements apart "
-            "(SIP-0110 §0.7)."
-        )
-    elif finished:
-        next_step = (
-            "units admitted from now pin without it; no running unit holds it. The finished units "
-            "named here ran with it: set their measurements apart (SIP-0110 §0.7)."
-        )
-    else:
-        next_step = "units admitted from now pin without it; no unit holds it"
+    live, finished = await running_and_finished(
+        request, await store.list_snapshots_holding(approval_id)
+    )
     return RevocationResponse.model_validate(
         {
             "approval": revoked.to_dict(),
-            "units_holding_it": [_unit(s) for s in live],
-            "finished_units_holding_it": [_unit(s) for s in finished],
-            "next": next_step,
+            "units_holding_it": [unit_row(s) for s in live],
+            "finished_units_holding_it": [unit_row(s) for s in finished],
+            "next": next_step(live, finished, rule="SIP-0110 §0.7"),
         }
     )
-
-
-def _unit(s: Snapshot) -> dict[str, Any]:
-    return {
-        "unit_kind": s.unit_kind.value,
-        "unit_id": s.unit_id,
-        "snapshot_id": s.snapshot_id,
-        "pinned_at": s.pinned_at.isoformat(),
-    }
-
-
-#: A cycle in these states still runs: a revocation names it as work to halt (#2210).
-_RUNNING_CYCLE = frozenset({CycleStatus.CREATED, CycleStatus.ACTIVE, CycleStatus.PAUSED})
-
-
-async def _still_runs(request: Request, s: Snapshot) -> bool:
-    """Whether the unit that pinned ``s`` still runs: a campaign not completed, or a cycle whose
-    status, read the way the cycle route reads it, has not ended. A unit that can't be read counts
-    as running: an emergency revocation names one unit too many rather than miss one (#2210)."""
-
-    try:
-        if s.unit_kind is UnitKind.CAMPAIGN:
-            campaign = await get_campaign_registry(request).get_campaign(s.unit_id)
-            return campaign.state is not CampaignState.COMPLETED
-        cycles = get_cycle_registry(request)
-        cycle = await cycles.get_cycle(s.unit_id)
-        return cycle_status_of(cycle, await cycles.list_runs(s.unit_id)) in _RUNNING_CYCLE
-    except Exception:  # noqa: BLE001 — unreadable is named, never dropped
-        return True
 
 
 @router.get("/observations")
@@ -412,9 +377,12 @@ async def list_exposures(
     run_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
 ) -> list[ExposureResponse]:
-    """A run's exposures, each with the latest assessment of each target (§0.8 step 7, §0.10)."""
+    """A run's exposures, each with the latest assessment of each target (§0.8 step 7, §0.10), and
+    the instructions it was handed that are withdrawn now, marked (Appendix A §3.8)."""
     store = _store(request)
     read = latest(await store.list_assessments(project_id))
+    exposures = [e for e in await store.list_exposures(run_id) if e.query.project_id == project_id]
+    records = await _records_by_id(request, project_id, exposures)
     return [
         ExposureResponse.model_validate(
             {
@@ -424,10 +392,35 @@ async def list_exposures(
                     for (exposure_id, _), a in read.items()
                     if exposure_id == e.exposure_id
                 ],
+                "withdrawn_instructions": _withdrawn(e, records),
             }
         )
-        for e in await store.list_exposures(run_id)
-        if e.query.project_id == project_id
+        for e in exposures
+    ]
+
+
+async def _records_by_id(
+    request: Request, project_id: str, exposures: list[Exposure]
+) -> Mapping[str, MemoryRecord] | None:
+    """The project's records by id, read only when an exposure was handed an instruction; ``None``
+    when they can't be read, so a mark that couldn't be checked never reads as "none withdrawn"."""
+    if not any(handed_instructions(e) for e in exposures):
+        return {}
+    records = get_memory_records(request)
+    try:
+        if records is None:
+            raise LookupError("the memory records' store is not configured")
+        return {r.record_id: r for r in await records.list_project(project_id)}
+    except Exception:  # noqa: BLE001 — unread is said, never read as unwithdrawn
+        logger.warning("memory_exposure_records_unread project=%s", project_id, exc_info=True)
+        return None
+
+
+def _withdrawn(e: Exposure, records: Mapping[str, MemoryRecord] | None) -> list[dict] | None:
+    if records is None:
+        return None if handed_instructions(e) else []
+    return [
+        {**vars(w), "withdrawn_at": w.withdrawn_at.isoformat()} for w in withdrawn_uses(e, records)
     ]
 
 
@@ -458,6 +451,7 @@ async def assess_exposure(
             evidence=body.evidence,
             assessed_by=assessed_by,
             now=datetime.now(UTC),
+            context_withheld=exposure.disposition == RecallDisposition.CONTEXT_NONE,
         )
     except AssessmentRefused as e:
         raise _error(422, "VALIDATION_ERROR", str(e)) from e

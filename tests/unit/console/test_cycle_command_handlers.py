@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import APIRouter
+
+from tests.unit.console.console_settings import compose_settings
 
 # The console main.py imports from continuum and auth_bff which aren't installed
 # in the test environment. We inject stubs so we can import the command handler
@@ -94,7 +97,9 @@ def _load_main():
     """Import (or re-import) the console main module."""
     if "main" in sys.modules:
         del sys.modules["main"]
-    return importlib.import_module("main")
+    # #2431: the console requires every setting compose gives it.
+    with patch.dict(os.environ, compose_settings()):
+        return importlib.import_module("main")
 
 
 class TestCommandHandlerRegistry:

@@ -53,19 +53,23 @@ async def run_bounded(
     cwd: str | Path | None,
     timeout: float | None,
     env: Mapping[str, str] | None = None,
+    stdin: bytes | None = None,
 ) -> BoundedRun:
-    """Run ``argv`` for at most ``timeout`` seconds (``None``: no limit), capturing its output.
-    On a timeout, or when the caller is cancelled, every process the command started is ended."""
+    """Run ``argv`` for at most ``timeout`` seconds (``None``: no limit), capturing its output,
+    with ``stdin`` as its input when given. On a timeout, or when the caller is cancelled, every
+    process the command started is ended."""
     proc = await asyncio.create_subprocess_exec(
         *argv,
         cwd=None if cwd is None else str(cwd),
         env=None if env is None else dict(env),
+        stdin=None if stdin is None else asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        exchange = proc.communicate() if stdin is None else proc.communicate(stdin)
+        stdout, stderr = await asyncio.wait_for(exchange, timeout=timeout)
     except TimeoutError:
         await end_group(proc)
         return BoundedRun(None, b"", b"")

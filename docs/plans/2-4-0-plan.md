@@ -134,6 +134,11 @@ The owner reads the window's record and decides. If the data is late or doesn't 
 next even release with the record. **Project Lifecycle Management is then the release's headline, with phase 1 as the
 yardstick** (D14), and the memory entry points ship as placed (§3).
 
+**Decided 2026-10-22 (SIP-0113 §10s):** the owner chose the split. §4.5 is built in 2.4 (#2677). §4.7 waits, with the quality
+gates, until a reading shows contribution separating from acceptance, since the window falsified P3 as written. P2's
+exposure was remedied by suite revision 4, and revision 5's sweep (B3) found no leak. #1966's adoption comes no
+earlier than the release after §4.5's.
+
 **SIP-0109 §24ap's deferred row joins phase 2:** accepted increments' `prd_delta` text to the proposer ("a 2.4
 question", ruled 2026-10-03). It is the same seam: what the proposer is shown.
 
@@ -240,7 +245,7 @@ each one as its consumer (G4).
 |---|---|---|---|
 | **X-1** (#2419): a revision origin for a Git checkout | `RevisionOrigin` is a closed set (`src/squadops/sandbox/models.py:23`), and a revision with any other origin is refused (`:103`) | E.4.2 can't seed a checkout without it | first, right after the fixture: E.4.2 waits on it |
 | **X-2** (#2420): binary files | seeding, reading the tree and persisting revisions handle UTF-8 text only (`src/squadops/sandbox/workspace.py:205`). Until X-2 ships, a product with binary files is refused at seeding, with that gap named | most real repositories carry some binary files (images, fonts) | before the brownfield demonstration, unless its product is text-only. Every existing revision ID stays the same: hashing the raw bytes gives today's digest for UTF-8 text |
-| **X-3** (#2421): a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | with Outcome Evaluation's runner, before IR-6 |
+| **X-3** (#2421): a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | **split 2026-10-18 (the lanes, on #2407):** X-3a, a declared command such as a product's check, run against a pinned revision in a disposable copy, straight after X-2 and before E.4.2's inherited baseline (FR-20); X-3b, starting the product from its declaration with readiness and the evaluation secrets, with Outcome Evaluation's runner, before IR-6 |
 
 **X-3 also starts a pinned revision in a disposable copy.** Today's start mounts the cycle's live tree and runs the app as
 the tree's owner, so the app can write its state there (`adapters/sandbox/container_backend.py:157-164`, `:316-321`). Contract 3 rules that out
@@ -322,6 +327,12 @@ scenarios, not a release requirement.
 - **If it can't run before the cut:** its scenarios report *not run*, each with its missing prerequisite (G5). The
   release ships on each lane's own evidence.
 - **It stays held out:** neither the product nor the squad sees a scenario step (the SIP's §8.3, IR-4).
+- **Not run in 2.4** (the owner, 2026-10-21: "go with 2.5"). A Campaign on a repository-backed Project runs its
+  calibration but can't launch an increment (#2619). Its profiles pin a template stack that source-backed cycles refuse,
+  and a proposal needs an interface manifest the product has none of. So the demonstration's feature cycles can't run,
+  and its scenarios report *not run* with #2619 as the missing prerequisite. The fix is SIP-0112's amendment H.4,
+  placed in 2.5: a development profile derived from the product, its capability gaps named, calibration as the inherited
+  baseline, and proposals read from the product's tree.
 
 ---
 
@@ -343,7 +354,8 @@ Seven placed rows, each with its open issue (SIP-0110 Appendix A, epic #2173):
 needed to deliver the entry points, and they don't block it. So they build in parallel, on their own branches.
 
 **Two things to settle before they ship:**
-- **Q29: conversation history's retention** is set before #2180 ships (D5).
+- **Q29: conversation history's retention** is ruled (2026-10-17, SIP-0110 §A.8): no automatic expiry while the deploy
+  has one operator; a person deletes their own sessions; a record confirmed from a deleted session stays, marked so.
 - **They change squad behaviour only through approved records.** A task or project instruction reaches the squad
   only when the operator writes one. The window's campaigns write none, so the entry points don't touch the window's
   readings.
@@ -359,13 +371,14 @@ own evidence, #2183's acceptance matrix, live.
 
 | item | what | when in the line |
 |---|---|---|
-| #316, the request-profile taxonomy (`sips/proposed/SIP-Cycle-Request-Profile-Naming-Taxonomy.md`) | names drawn from one axis, with old names resolving as aliases (Q13) | its SIP's design review early; the rename lands before the window's deploy freezes, so the window runs on the final names |
-| #1966, risk-first QA and builder instructions | an A/B on replayed increments (#1959), read on the per-increment scorecard (#1960) and the window's scenarios | **the A/B runs in 2.4; adoption is a separate ruling, not before phase 2's decision,** so the release doesn't change two squad behaviours at once and lose both readings |
-| #2378's proper fix | an endpoint declares its query parameters as a field the scaffold, QA's prompt and the probes read | after the window, each output-quality change measured on the yardstick, pre-registered as 2.3's #2202 and #2205 comparisons were |
-| #2153's build | a failing slot assertion routed by demonstrated defect ownership (SIP-0104 §13d), now that SIP-0110's window has closed | after the window, as above |
-| #2306 | a converging repair ended as a plan defect: read the 12 recent terminations first, then fix | the read early; the fix after the window if the read finds converging repairs |
+| #316, the request-profile taxonomy (`sips/accepted/SIP-0114-Cycle-Request-Profile-Naming.md`, accepted 2026-10-19) | names drawn from one axis, with old names resolving as aliases (Q13) | its SIP's design review early; the rename lands before the window's deploy freezes, so the window runs on the final names |
+| #1966, risk-first QA and builder instructions | an A/B on replayed increments (#1959), read on the per-increment scorecard (#1960) and the window's scenarios | **the A/B runs in 2.4; adoption is a separate ruling, not before phase 2's decision,** so the release doesn't change two squad behaviours at once and lose both readings. **Read 2026-10-22; the qa half adopted 2026-10-23 (D6)** |
+| #2378's proper fix | an endpoint declares its query parameters as a field the scaffold, QA's prompt and the probes read | after the window, each output-quality change measured on the yardstick, pre-registered as 2.3's #2202 and #2205 comparisons were. **Built 2026-10-22** (SIP-0103's amendment of that date): one manifest in 404 since 09-15 chose a query input, so it is read by a replay of #2378's own cycle, not a rate. No probe is derived for it; a `DELETE` gets none today |
+| #2153's build | a failing slot assertion routed by demonstrated defect ownership (SIP-0104 §13d), now that SIP-0110's window has closed | after the window, as above. **Dropped 2026-10-22 (SIP-0104 §13e):** the frozen spine asserts the contract before the slot runs, so the routing is met by construction; 37 days of runs show no route it would change. The unbuilt ambiguous-case guard is #2664, unplaced |
+| #2306 | a converging repair ended as a plan defect: read the 12 recent terminations first, then fix | the read early; the fix after the window if the read finds converging repairs. **Done 2026-10-22:** question 1's part 1 shipped (#2663, SIP-0086 §12e) and read on its pre-registered comparison; part 2 and questions 2 and 3 read on every keep since #1522 and left as they are (§12f) |
 | #1756 | the full rendered request stored once per generation, readable by id, with the redaction applied | early, as an instrument: it reaches the seams the authoring envelopes don't |
 | #2253 | QA's output budget: read the headroom across every recorded `qa.test` call, then decide | the read early; any budget change only between measurements, named in the record |
+| #2443, a campaign's stack (found 2026-10-18, a prerequisite of D3) | a campaign can't run on Next.js: each launch carries only a profile name, and every campaign profile pins FastAPI. The campaign's policy gains its stack, passed to every launch as an override; a contract 2 field, with the MacBook lane's review (G4), and a SIP-0109 amendment | **before the window's pre-registration:** the window runs two campaigns per stack (D3), and a Next.js campaign has never run, so uncounted Next.js shakeout campaigns come first |
 | #2395 (placed in 2.4 by the owner, the 2.3.1 plan's D4) | a Next.js plan asks QA for page-state tests the stack's vitest can't run: one suite needed a DOM library the stack doesn't seed, another rendered on the server and saw only the loading state (2.3.1's round 3) | **before the window's deploy freezes:** it rejected 2.3.1's last Next.js roll, and the window runs two Next.js campaigns, so left in place it would decide their increments rather than the app's outcome |
 | #2297 (placed in 2.4 by the owner after the 2.3.0 cut) | QA's test author was shown the leave endpoint and used it exactly, but the planned "empty name" case can't be expressed against a name in the path | after the window, with the other output-quality changes (D8) |
 
@@ -374,11 +387,14 @@ own evidence, #2183's acceptance matrix, live.
 | item | why | where |
 |---|---|---|
 | #557, #949, #950: the judgement steps | they follow Outcome Evaluation and are measured on it, and 2.4 already changes the proposer. Adding judgement steps would make neither change readable | 2.5 or later, re-read at 2.4's cut |
-| #2230, Qwen3.8-Flash-Next on TensorFold | the owner on 2026-10-15: "no second tensorfold candidate at this time" | **unplaced, deliberately,** with the owner's words, until the owner places it (D9) |
+| #2230, the upgrade to TensorFold 1.x (redirected by the owner on 2026-10-18 from Qwen3.8-Flash-Next on TensorFold; SIP-0111 §9m) | the owner on 2026-10-15: "no second tensorfold candidate at this time"; on 2026-10-18: "I will want to tackle this move to 1.1.0 - but not just yet", and "I think this model change will come after 2.4 and the outcome evaluation work" | **unplaced, deliberately,** with the owner's words, until the owner places it (D9) |
 | #1978, test-first verification | "after Outcome Evaluation's baseline": it needs phase 1's data first | 2.5 or later |
+| #2619, Campaigns on a repository-backed Project (SIP-0112 H.4) | a Campaign on an external or greenfield product can't launch an increment. The fix derives the product's development profile, names its capability gaps and reads proposals from its tree. That needs SIP-0109's counterpart and a live full-squad run. The shared demonstration (§2.7) reports *not run* in 2.4 | **2.5**, the owner, 2026-10-21 |
+| #2414's remainder (the declared start at the cycle-end hook) and #2421's (an owner-approved evaluation secret resolved at start) | each one's only consumer is the evaluation of a repository-backed Project's Campaign, which moved to 2.5 with #2619. Every 2.4 evaluation is a sample application's, started by its stack | **2.5**, re-placed by the supervisor, 2026-10-21 |
 | #1965, the framework suite's test-value audit | the crew's first optimization experiment, an outer-loop item with no 2.4 dependency | the owner's to place |
 | the squad authoring its own backlog | portfolio Q1: 2.6, with its own SIP. The squad chooses features only once there's an independent measure of whether a feature helped | 2.6 |
 | #2184, retiring the legacy store | placed 2.5.0 (SIP-0110) | 2.5 |
+| #2433, the Spark board-thermal rule's no-data alert on boxes without that board, and the deploy never starting node-exporter | the owner on 2026-10-18: "we can pickup 2433 in 2.5 if it's not a blocker to anything". It isn't one: on the Spark both exporters run and the rule reads Normal, and nothing in 2.4 reads them. The MacBook pays log noise until then | 2.5 |
 | #2286, TensorFold operator keys | credentials: the owner's to place | the owner |
 | #2287, a box-level operator lease | no 2.4 dependency | the owner's to place |
 
@@ -405,6 +421,7 @@ cut.
 **The dependencies across the lanes,** and only these:
 - the fixture before either lane's first contract PR;
 - X-1 before E.4.2;
+- X-3a before E.4.2's inherited baseline (split from X-3 on 2026-10-18, #2407);
 - X-2 before the brownfield demonstration, unless its product is text-only;
 - contract 7 (E.4.2) and X-3 before Outcome Evaluation reads any external Project (IR-6, the shared demonstration);
 - the registry cutover never inside the window;
@@ -509,12 +526,12 @@ reading beside it (Outcome Evaluation §1).
 | D1 | **the headline** | **ruled** 2026-10-16. Q35 added the MacBook lane's feature (2026-10-17) | **ruled 2026-10-16:** Outcome Evaluation leads; its design review comes early; phase 2 is conditional on phase 1's data; the entry points carry 2.4 if it moves. **Since then (2026-10-17):** the owner made Project Lifecycle Management the MacBook lane's 2.4 feature (Q35, PR #2401). D1 stands for the Spark lane's (§2) |
 | D2 | **Outcome Evaluation's five questions** (its §8) | **ruled** 2026-10-17, as recommended. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review; written into SIP-0113, accepted 2026-10-17, where A2 moves (3)'s Lighthouse and axe to the evaluator's image | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
 | D3 | **the window** | **ruled** 2026-10-17, as recommended. G7, ruled, freezes the window's deploy for both lanes | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
-| D4 | **phase 2's condition** | **ruled** 2026-10-17, as recommended | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
-| D5 | **the entry points** | **ruled** 2026-10-17, as recommended. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships |
-| D6 | **#1966** | **ruled** 2026-10-17, as recommended | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision |
+| D4 | **phase 2's condition** | **ruled** 2026-10-17, as recommended; **decided on the record** 2026-10-22 | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record. **Decided 2026-10-22, the split** ("I prefer your recommedaiton for the best approach here"): §4.5 in 2.4 (#2677, with SIP-0109 §24ap's `prd_delta`); §4.7 and the quality gates held until a reading shows contribution separating from acceptance (SIP-0113 §10s) |
+| D5 | **the entry points** | **ruled** 2026-10-17, as recommended. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships: **ruled 2026-10-17** (SIP-0110 §A.8) |
+| D6 | **#1966** | **ruled** 2026-10-17, as recommended; **adopted** 2026-10-23, as recommended | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision. **Adopted 2026-10-23** (the owner: "1 yes"): the qa half merges before the cut's pre-registered set, which is its first campaign-scale run and reverts it before the tag if it loses a held-out scenario or adds rounds from QA's own tests. The builder half was never in the A/B and stays unbuilt. §4.5 and this change each had their own reading before they met |
 | D7 | **#316** | **ruled** 2026-10-17, as recommended | **in 2.4, after its SIP's design review,** landing before the window's deploy freezes |
 | D8 | **the 2.3 cut's output-quality findings** | **ruled** 2026-10-17, as recommended | **#2378's proper fix and #2153's build after the window,** each measured on the yardstick. **#2306 and #2253 as reads first.** **#1756 early,** as an instrument |
-| D9 | **#2230** | **ruled** 2026-10-17, as recommended | **unplaced, deliberately,** with the owner's words of 2026-10-15, until the owner places it. Its SIP-0111 ledger row moved to unplaced in this plan's PR |
+| D9 | **#2230** | **ruled** 2026-10-17, as recommended | **unplaced, deliberately,** with the owner's words of 2026-10-15, until the owner places it. Its SIP-0111 ledger row moved to unplaced in this plan's PR. Redirected by the owner on 2026-10-18 to the upgrade to TensorFold 1.x, and still unplaced (SIP-0111 §9m) |
 | D10 | **the judgement steps (#557, #949, #950) and #1978** | **ruled** 2026-10-17, as recommended | **not in 2.4;** re-read at 2.4's cut |
 | D11 | **who runs the line** | **ruled** 2026-10-17, as recommended. Q35 split the line into two lanes | **the supervisor runs the Spark lane, on the 2.3 line's terms:** build in §5's order, merge on green with main's run read, rebuilds and uncounted runs. The MacBook lane is run by its own session, on its own grant. **The owner's:** the SIP acceptances (Outcome Evaluation, #316, Project Lifecycle Management), opening the integration branch (G2), the first suite's approval, Q29, the phase-2 decision, lesson approvals, compose changes, and the tag and Release unless delegated at the cut |
 | D12 | **when the lanes meet** (§2; the contracts and gates are Project Lifecycle Management's, ruled) | **ruled** 2026-10-17, as recommended | **(1)** The shared fixture first: the MacBook lane writes it, the Spark lane adds its recorded evaluation reference, and both review. **(2)** X-1 to X-3 are built by the Spark lane, which owns the sandbox, and reviewed by the MacBook lane: X-1 right after the fixture; X-2 before the brownfield demonstration unless its product is text-only; X-3 with phase 1's runner, including starting a pinned revision in a disposable copy. **(3)** The registry cutover deploys before the window's freeze if IR-1 has passed, otherwise after the window (G7). **(4)** The lanes agree where the demonstrations run; on the Spark, they run outside the window |

@@ -19,9 +19,8 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
-from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
+from squadops.capabilities.handlers.context_sections import context_sections
 from squadops.capabilities.handlers.cycle import _CycleTaskHandler
-from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 from squadops.stacks.scaffold import scaffold_stack_for
@@ -258,14 +257,9 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             increment_section = await self._increment_section(renderer, inputs)
             if increment_section:
                 variables["increment_section"] = increment_section
-            # #1692: a retry's framing is shown the failed cycle it continues.
-            prior = await prior_cycle_section(renderer, inputs)
-            if prior:
-                variables["prior_cycle_section"] = prior
-            # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
-            lessons = await cross_cycle_lessons_section(renderer, inputs)
-            if lessons:
-                variables["cross_cycle_lessons_section"] = lessons
+            # The shared context slots: the prior cycle, the product, the instructions and the
+            # lessons (context_sections).
+            variables.update(await context_sections(renderer, inputs))
             # #1845: a stage handed a revision request shows it — #811's technical design
             # answers the note it replays for. The registry decides who is handed one
             # (`plan_rejection_context`); a stage given none renders nothing.

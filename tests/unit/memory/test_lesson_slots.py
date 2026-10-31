@@ -36,10 +36,12 @@ _SLOTTED = {
     "request.qa_propose_plan_tasks": "prior_cycle_section",
     "request.strategy_propose_plan_guidance": "prior_cycle_section",
     "request.development_develop.focused_build_task": "prior_cycle_section",
+    "request.development_develop.code_generate": "prior_cycle_section",
     "request.builder_assemble.build_assemble": "prior_cycle_section",
     "request.strategy_propose_increment": "prd_section",
     "request.cycle_repair_task": "disputed_checks_section",
     "request.repair_task_base": "verification_context",
+    "request.qa_test.test_validate": "test_supplement",
 }
 
 _LESSONS = {
@@ -368,3 +370,155 @@ async def test_a_lesson_and_a_retrys_prior_cycle_brief_render_in_separate_slots(
     assert f"\n\n{_HEADING}\n" in both
     assert attempted in prompts["brief"] and _HEADING not in prompts["brief"]
     assert _HEADING in prompts["lessons"] and attempted not in prompts["lessons"]
+
+
+async def test_the_test_author_shows_the_lessons_on_its_monolithic_path():
+    """#2509, entered at ``QATestHandler._compose_user_prompt`` with the shipped assets, on the path
+    a ``qa.test`` without a subtask focus takes. Bug caught: the lessons on the envelope, and the
+    exposure saying supplied, while this path's prompt never showed them (the focused path did)."""
+    import time
+
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+    from squadops.stacks.development_profiles import get_development_profile
+
+    context = _author_context([])
+    profile = get_development_profile("python_cli")
+    base = {"artifact_contents": {"validation_plan.md": "check the join"}}
+
+    async def prompt(inputs):
+        composed = await QATestHandler()._compose_user_prompt(
+            context, inputs, profile, "python_cli", "the PRD", None, time.monotonic()
+        )
+        return composed.user_prompt
+
+    shown = await prompt({**base, LESSONS_INPUT: _LESSONS})
+    plain = await prompt(base)
+
+    assert _shows_the_lessons(shown)
+    assert _HEADING not in plain
+    assert (
+        shown.replace(
+            await cross_cycle_lessons_section(
+                context.ports.request_renderer, {LESSONS_INPUT: _LESSONS}
+            ),
+            "",
+        )
+        == plain
+    )
+
+
+async def test_the_test_author_shows_its_instructions_on_its_monolithic_path():
+    """#2674, entered at ``QATestHandler._compose_user_prompt`` with the shipped assets, on the path
+    a ``qa.test`` without a subtask focus takes (live: ``cyc_3c4c69d0a18e``). Bug caught: the task
+    and project instructions on the envelope, and the exposure saying supplied, while this path's
+    prompt never showed them, as it once didn't show the lessons (#2509)."""
+    import time
+
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+    from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
+    from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT
+    from squadops.stacks.development_profiles import get_development_profile
+
+    context = _author_context([])
+    profile = get_development_profile("python_cli")
+    base = {"artifact_contents": {"validation_plan.md": "check the join"}}
+    task = {
+        "instructions": [
+            {
+                "record_id": "mrec_t",
+                "revision": 1,
+                "text": "Cover the empty-shelf case.",
+                "references": [],
+            }
+        ]
+    }
+    project = {"instructions": [{"record_id": "mrec_p", "revision": 2,
+                                 "text": "Name each test for the behaviour it checks.",
+                                 "references": []}]}  # fmt: skip
+
+    async def prompt(inputs):
+        composed = await QATestHandler()._compose_user_prompt(
+            context, inputs, profile, "python_cli", "the PRD", None, time.monotonic()
+        )
+        return composed.user_prompt
+
+    shown = await prompt(
+        {**base, TASK_INSTRUCTIONS_INPUT: task, PROJECT_INSTRUCTIONS_INPUT: project,
+         LESSONS_INPUT: _LESSONS}
+    )  # fmt: skip
+    plain = await prompt({**base, LESSONS_INPUT: _LESSONS})
+
+    order = [
+        shown.index("## INSTRUCTIONS FOR THIS TASK"),
+        shown.index("1. Cover the empty-shelf case."),
+        shown.index("## THIS PROJECT'S STANDING INSTRUCTIONS"),
+        shown.index("1. Name each test for the behaviour it checks."),
+        shown.index(_HEADING),
+    ]
+    assert order == sorted(order)
+    assert "INSTRUCTIONS FOR THIS TASK" not in plain and "STANDING INSTRUCTIONS" not in plain
+
+
+async def test_the_developer_shows_its_memory_sections_on_its_monolithic_path():
+    """#2682, entered at ``DevelopmentDevelopHandler.handle`` with the shipped assets, on the path a
+    ``development.develop`` without a subtask focus takes (``request.development_develop
+    .code_generate``). Bug caught: the task's instructions, its project's and its lessons on the
+    envelope, and the exposure saying supplied, while this path's prompt showed none of them, as
+    ``qa.test``'s didn't (#2674, #2509). Handed none, the prompt is the one it rendered before."""
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+    from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
+    from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT
+
+    task = {
+        "instructions": [
+            {
+                "record_id": "mrec_t",
+                "revision": 1,
+                "text": "Keep the board in memory.",
+                "references": [],
+            }
+        ]
+    }
+    project = {"instructions": [{"record_id": "mrec_p", "revision": 2,
+                                 "text": "Keep every function under forty lines.",
+                                 "references": []}]}  # fmt: skip
+    shown: list = []
+    plain: list = []
+
+    await DevelopmentDevelopHandler().handle(
+        _author_context(shown),
+        {"prd": "the PRD", TASK_INSTRUCTIONS_INPUT: task, PROJECT_INSTRUCTIONS_INPUT: project,
+         LESSONS_INPUT: _LESSONS},
+    )  # fmt: skip
+    await DevelopmentDevelopHandler().handle(_author_context(plain), {"prd": "the PRD"})
+
+    prompt = "\n".join(str(m.content) for m in shown[0])
+    order = [
+        prompt.index("## INSTRUCTIONS FOR THIS TASK"),
+        prompt.index("1. Keep the board in memory."),
+        prompt.index("## THIS PROJECT'S STANDING INSTRUCTIONS"),
+        prompt.index("1. Keep every function under forty lines."),
+        prompt.index(_HEADING),
+    ]
+    assert order == sorted(order)
+    assert _shows_the_lessons(prompt)
+    unchanged = "\n".join(str(m.content) for m in plain[0])
+    assert "INSTRUCTIONS FOR THIS TASK" not in unchanged and _HEADING not in unchanged
+    assert prompt.index("the PRD") < order[0]
+
+
+def test_every_template_showing_lessons_shows_both_instruction_slots_before_them():
+    """#2674's guard. Bug caught: an authoring template that shows the lessons but not the task's
+    or the project's instructions, so a task is handed binding instructions its prompt never
+    shows; or shows them after the lessons, against the slots' precedence (§3.6)."""
+    from pathlib import Path
+
+    templates = Path(__file__).resolve().parents[3] / "src/squadops/prompts/request_templates"
+    lessons = "{{cross_cycle_lessons_section}}"
+    showing = [t for t in sorted(templates.glob("*.md")) if lessons in t.read_text()]
+    assert len(showing) >= 10
+    for path in showing:
+        body = path.read_text().split("---", 2)[2]
+        slots = ["{{task_instructions_section}}", "{{project_instructions_section}}", lessons]
+        assert all(s in body for s in slots), path.name
+        assert [body.index(s) for s in slots] == sorted(body.index(s) for s in slots), path.name

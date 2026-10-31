@@ -1,12 +1,12 @@
 """NoOp port implementations for PortsBundle bootstrap.
 
 Cycle task handlers don't use external ports, but the
-PortsBundle dataclass requires concrete values for all 7 slots.
+PortsBundle dataclass requires concrete values for all 6 slots.
 These stubs exist only to satisfy that requirement.
 
 Behavior split per SIP-0066 D3:
   - Safe do-nothing (fire-and-forget / ambient): MetricsPort, EventPort, QueuePort
-  - Hard-fail (NotImplementedError): LLMPort, MemoryPort, PromptService, FileSystemPort
+  - Hard-fail (NotImplementedError): LLMPort, PromptService, FileSystemPort
 
 Part of SIP-0066 Phase 2.
 """
@@ -14,6 +14,7 @@ Part of SIP-0066 Phase 2.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from contextlib import AbstractAsyncContextManager, nullcontext
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -22,12 +23,12 @@ from squadops.comms.queue_message import QueueMessage
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled
-from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult
 from squadops.memory.recall import RecallQuery
+from squadops.outcomes.proposal_evidence import ProposalEvidence
 from squadops.ports.comms.queue import QueuePort
 from squadops.ports.llm.provider import LLMPort
 from squadops.ports.memory.recall import FailurePatternRecallPort
-from squadops.ports.memory.store import MemoryPort
+from squadops.ports.outcomes import ProposalEvidencePort
 from squadops.ports.prompts.service import PromptService
 from squadops.ports.telemetry.events import EventPort
 from squadops.ports.telemetry.metrics import MetricsPort
@@ -89,32 +90,42 @@ class NoOpLLMPort(LLMPort):
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
 
 
-class NoOpMemoryPort(MemoryPort):
-    """Hard-fail memory stub. Cycle task handlers never access memory."""
+class NoOpProposalEvidence(ProposalEvidencePort):
+    """Evidence for a composition with no evaluation store (tests and tools): nothing to show, so
+    a proposal task keeps the inputs it had before SIP-0113 §4.5."""
 
-    async def store(self, entry: MemoryEntry) -> str:
-        raise NotImplementedError("NoOpMemoryPort: memory not expected in cycle task handlers")
-
-    async def search(self, query: MemoryQuery) -> list[MemoryResult]:
-        raise NotImplementedError("NoOpMemoryPort: memory not expected in cycle task handlers")
-
-    async def get(self, memory_id: str) -> MemoryEntry | None:
-        raise NotImplementedError("NoOpMemoryPort: memory not expected in cycle task handlers")
-
-    async def delete(self, memory_id: str) -> bool:
-        raise NotImplementedError("NoOpMemoryPort: memory not expected in cycle task handlers")
+    async def for_proposal(self, *, campaign_id: str, accepted_cycle_id: str) -> ProposalEvidence:
+        return ProposalEvidence()
 
 
 class NoOpFailurePatternRecall(FailurePatternRecallPort):
     """A recall for a composition with no memory store (tests and tools): every task is answered
     as memory disabled, so it is handed nothing and its prompt renders as if memory did not exist
-    (SIP-0110 §0.7). Not ``NoOpMemoryPort``, which raises: the call sites are live."""
+    (SIP-0110 §0.7). It answers rather than raising: the call sites are live."""
 
     async def recall(self, query: RecallQuery) -> Recalled:
         return Recalled(None, RecallDisposition.DISABLED)
 
     async def disclose(self, exposure: Exposure) -> None:
         return None
+
+    async def task_instructions(self, project_id: str, cycle_id: str) -> list:
+        """A composition with no memory store has no records, so no task instructions."""
+        return []
+
+    async def pinned_instructions(self, unit_kind, unit_id, project_id, *, cycle_id=None) -> tuple:
+        """No store, so no snapshot pinned any instruction."""
+        return ()
+
+    def dispatch_turn(self, unit_kind, unit_id) -> AbstractAsyncContextManager[None]:
+        """No store, so nothing changes what a dispatch is handed, and there is nothing to order."""
+        return nullcontext()
+
+    async def read_reference(self, reference, ctx) -> str:
+        """No store, so no instruction names a reference to read: one asked for is unreadable."""
+        from squadops.memory.references import ReferenceUnresolved
+
+        raise ReferenceUnresolved(f"{reference.ref}: memory is disabled, so no resolver reads it")
 
 
 class NoOpPromptService(PromptService):

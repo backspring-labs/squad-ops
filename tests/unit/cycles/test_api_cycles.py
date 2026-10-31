@@ -713,6 +713,56 @@ class TestCreateCyclePreflight:
         mock_cycle_registry.create_cycle.assert_not_called()  # fail-fast: nothing persisted
         mock_cycle_registry.create_run.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("overrides", "status"),
+        [({}, 422), ({"build_profile": "python_cli_builder"}, 201)],
+        ids=["no-build-profile", "build-profile-set"],
+    )
+    def test_a_builder_squad_with_no_build_profile_is_refused_before_persist(
+        self, client, mock_squad_profile, mock_cycle_registry, overrides, status
+    ):
+        """#2437, at the create route with the `build` request profile's defaults (a framing
+        then an implementation workload, no build_profile) on a squad with a builder. Bug
+        caught: the decision written and never asked by the create path, so the cycle runs a
+        whole framing workload and fails when implementation starts (cyc_68e254dcf2b7)."""
+        roles = ("strat", "dev", "qa", "data", "lead", "builder")
+        builder_squad = SquadProfile(
+            profile_id="lite-14b",
+            name="Lite",
+            description="",
+            version=1,
+            agents=tuple(
+                AgentProfileEntry(
+                    agent_id=f"a-{r}", role=r, model="gpt-4", enabled=True, serves_roles=(r,)
+                )
+                for r in roles
+            ),
+            created_at=NOW,
+        )
+        mock_squad_profile.resolve_snapshot.return_value = (builder_squad, "sha256:x")
+        request = {
+            **self._REQUEST,
+            "squad_profile_id": "lite-14b",
+            "request_profile": "build",
+            "applied_defaults": {
+                "workload_sequence": [
+                    {"type": "framing", "gate": "progress_plan_review"},
+                    {"type": "implementation", "gate": None},
+                ],
+                "build_tasks": True,
+            },
+            "execution_overrides": overrides,
+        }
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=request)
+
+        assert resp.status_code == status
+        if status == 422:
+            err = resp.json()["detail"]["error"]
+            assert err["code"] == "PREFLIGHT_REJECTED"
+            assert "`build_profile`" in err["message"] and "`lite-14b`" in err["message"]
+            mock_cycle_registry.create_cycle.assert_not_called()
+
     def test_blocks_when_a_required_model_is_not_pulled(self, client, mock_cycle_registry):
         # backend reachable but empty → the profile's `gpt-4` is definitively absent
         with patch(
@@ -1001,6 +1051,43 @@ class TestCreatePinsTheMemorySnapshot:
         carried = [e.revision.revision_id for e in snapshot.entries]
         assert carried == ([] if disabled else [lesson.revision_id])
 
+    async def test_the_create_route_binds_an_instructions_current_reference_at_the_pin(
+        self, client, store
+    ):
+        """#2179 T16, wired (the second read): the route hands the pin its resolvers. Bug caught:
+        the kwarg dropped, so with ``resolvers or {}`` every required ``@current`` reference
+        holds its tasks, while every unit test of the pin itself passes."""
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.records import (
+            InstructionApplicability,
+            Reference,
+            Revision,
+            Source,
+            new_record,
+        )
+        from tests.unit.memory.test_reference_binding import _Resolver
+
+        records, resolver = InMemoryMemoryRecords(), _Resolver()
+        client.app.state.memory_records = records
+        client.app.state.reference_resolvers = {"fake": resolver}
+        await records.create(new_record(
+            record_id="mrec_wired", kind="instruction", scope="project", project_id="hello_squad",
+            owner_id="ada",
+            revision=Revision(
+                number=1, body="Read the spec.", author="ada", created_at=NOW,
+                source=Source("api_call"), confirmed_by="ada",
+                applicability=InstructionApplicability(("*",), ("*",), ("*",)),
+                references=(Reference("fake:doc:spec@current", True),),
+            ),
+        ))  # fmt: skip
+
+        resp = client.post(self._URL, json=self._REQUEST)
+
+        snapshot = await store.get_snapshot(UnitKind.CYCLE, resp.json()["cycle_id"])
+        assert resp.status_code == 201
+        assert [r.ref for r in snapshot.instructions[0].references] == ["fake:doc:spec@r1"]
+
     def test_an_unknown_declaration_is_refused_before_the_cycle_exists(
         self, client, store, mock_cycle_registry
     ):
@@ -1031,3 +1118,232 @@ class TestCreatePinsTheMemorySnapshot:
         assert resp.status_code == 201
         mock_cycle_registry.create_run.assert_called_once()
         assert "memory_snapshot_not_pinned" in caplog.text
+
+    async def test_the_pin_carries_the_project_instructions_in_force_at_create(self, client, store):
+        """Wiring, entered at the create route (#2179). Bug caught: the route pinning the unit's
+        lessons and not the records' store, so a confirmed project instruction reaches no cycle."""
+        from datetime import UTC, datetime
+
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.records import InstructionApplicability, Revision, Source, new_record
+
+        records = InMemoryMemoryRecords()
+        client.app.state.memory_records = records
+        await records.create(
+            new_record(
+                record_id="mrec_p", kind="instruction", scope="project", project_id="hello_squad",
+                owner_id="ada",
+                revision=Revision(
+                    number=1, body="Name each run by its route.", author="ada",
+                    created_at=datetime(2026, 10, 19, tzinfo=UTC), source=Source("api_call"),
+                    confirmed_by="ada",
+                    applicability=InstructionApplicability(("qa.test",), ("*",), ("*",)),
+                ),
+            )
+        )  # fmt: skip
+
+        resp = client.post(self._URL, json=self._REQUEST)
+
+        snapshot = await store.get_snapshot(UnitKind.CYCLE, resp.json()["cycle_id"])
+        assert [(i.record_id, i.revision) for i in snapshot.instructions] == [("mrec_p", 1)]
+
+
+class TestCreateRefusesAProjectThatIsNotReady:
+    """SIP-0112 contract 1 (#2408): ``prepare_cycle()`` with the shared fixture's Project, entered
+    at the create route. Bugs caught: a Project still registering (or archived, or failed) given
+    a Cycle; the refusal read as a 404, so a caller treats a registered Project as unknown; or a
+    refused create persisting its cycle anyway."""
+
+    @pytest.fixture
+    def fixture_project(self, mock_project_registry):
+        from squadops.cycles.models import Project
+        from tests.fixtures.shared_contract.repository import recorded
+
+        project_id = recorded("project_source_context", "valid")["project_id"]
+
+        def project(status):
+            return Project(
+                project_id=project_id,
+                name="Tally",
+                description="the shared fixture",
+                created_at=NOW,
+                lifecycle_status=status,
+            )
+
+        return project_id, project
+
+    @pytest.mark.parametrize("status", ["REGISTERING", "ARCHIVED", "FAILED_REGISTRATION"])
+    def test_a_project_that_accepts_no_cycle_is_refused_as_not_ready(
+        self, client, mock_project_registry, mock_cycle_registry, fixture_project, status
+    ):
+        from squadops.projects.models import ProjectLifecycleStatus
+
+        project_id, project = fixture_project
+        mock_project_registry.get_project.return_value = project(ProjectLifecycleStatus(status))
+
+        resp = client.post(
+            f"/api/v1/projects/{project_id}/cycles", json={"squad_profile_id": "full"}
+        )
+
+        error = resp.json()["detail"]["error"]
+        assert (resp.status_code, error["code"]) == (409, "PROJECT_NOT_READY")
+        assert status in error["message"]
+        mock_cycle_registry.create_cycle.assert_not_called()
+
+    def test_a_ready_project_is_created_as_before(
+        self, client, mock_project_registry, mock_cycle_registry, fixture_project
+    ):
+        from squadops.projects.models import ProjectLifecycleStatus
+
+        project_id, project = fixture_project
+        mock_project_registry.get_project.return_value = project(ProjectLifecycleStatus.READY)
+
+        resp = client.post(
+            f"/api/v1/projects/{project_id}/cycles", json={"squad_profile_id": "full"}
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["project_id"] == project_id
+        mock_cycle_registry.create_cycle.assert_called_once()
+
+
+class TestCreateCycleTaskInstructions:
+    """SIP-0110 Appendix A §3.5 (#2178): the instructions a cycle is created with are stored as its
+    task instructions before its run is enqueued, and refused, before the cycle exists, when no
+    authoring task would receive them."""
+
+    _URL = "/api/v1/projects/hello_squad/cycles"
+    _REQUEST = {"squad_profile_id": "full", "task_flow_policy": {"mode": "sequential"}}
+
+    @pytest.fixture
+    def records(self, client):
+        from adapters.memory.records import InMemoryMemoryRecords
+
+        records = InMemoryMemoryRecords()
+        client.app.state.memory_records = records
+        return records
+
+    async def test_an_instruction_is_stored_for_the_cycle_it_was_given_with(self, client, records):
+        """Bug caught: an instruction accepted with the request and stored for no cycle, or for
+        the project, so it binds tasks its creator never named."""
+        instruction = {"text": "Cover capacity 1.", "task_types": ["qa.test"]}
+
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 201, resp.text
+        [record] = await records.list_project("hello_squad")
+        assert (record.kind, record.scope, record.current.body) == (
+            "instruction",
+            "task",
+            "Cover capacity 1.",
+        )
+        assert record.current.target.cycle_id == resp.json()["cycle_id"]
+        assert record.current.target.task_types == ("qa.test",)
+        assert record.current.confirmed_by == record.owner_id
+
+    @pytest.mark.parametrize(
+        "instruction",
+        [
+            {"text": "say so", "task_types": ["data.report"]},
+            {"text": "x", "task_types": ["qa.test"], "references": [{"ref": "manifest:decision:j@3", "content": "x"}]},
+            {"text": "", "task_types": ["qa.test"]},
+        ],
+        ids=["a-task-that-authors-nothing", "a-reference-carrying-a-copy", "an-empty-instruction"],
+    )  # fmt: skip
+    async def test_a_refused_instruction_leaves_no_cycle(
+        self, client, records, mock_cycle_registry, instruction
+    ):
+        """Bug caught: the cycle created and run without the instruction its creator gave, or
+        with one stored that reaches nothing."""
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 422, resp.text
+        mock_cycle_registry.create_cycle.assert_not_called()
+        assert await records.list_project("hello_squad") == []
+
+    async def test_a_current_reference_is_bound_with_the_cycle_it_was_given_with(
+        self, client, records
+    ):
+        """SIP-0110 §3.7, T16's task part (#2178). Bugs caught: ``@current`` stored as written, so
+        the cycle's tasks read whatever is current at each dispatch; the binding made for some
+        unit other than the cycle the instruction targets; what was written lost, so a
+        continuation can't bind it again."""
+        from tests.unit.memory.test_reference_binding import _Resolver
+
+        resolver = _Resolver()
+        client.app.state.reference_resolvers = {"fake": resolver}
+        instruction = {"text": "Follow the spec.", "task_types": ["qa.test"],
+                       "references": [{"ref": "fake:doc:spec@current", "required": True}]}  # fmt: skip
+
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 201, resp.text
+        [record] = await records.list_project("hello_squad")
+        [reference] = record.current.references
+        assert (reference.ref, reference.digest, reference.written) == (
+            "fake:doc:spec@r1", "sha256:r1", "fake:doc:spec@current",
+        )  # fmt: skip
+        [ctx] = resolver.seen
+        assert (ctx.unit_kind, ctx.unit_id) == ("cycle", resp.json()["cycle_id"])
+
+    @pytest.mark.parametrize(
+        ("families", "required"),
+        [((), True), (("fake",), True), (("fake",), False)],
+        ids=["no-resolver-for-the-family", "a-required-one-the-resolver-refuses",
+             "an-optional-one-the-resolver-refuses"],
+    )  # fmt: skip
+    async def test_a_reference_that_wont_bind_leaves_no_cycle(
+        self, client, records, mock_cycle_registry, families, required
+    ):
+        """§3.6. Bugs caught: the cycle created with an instruction whose reference binds nothing,
+        so its task is held at dispatch for a reason its creator could have fixed at create; an
+        optional one dropped silently, so the creator believes the task reads it."""
+        from tests.unit.memory.test_reference_binding import _Resolver
+
+        resolver = _Resolver()
+        resolver.refuse = "no such document"
+        client.app.state.reference_resolvers = {f: resolver for f in families}
+        instruction = {"text": "Follow the spec.", "task_types": ["qa.test"],
+                       "references": [{"ref": "fake:doc:spec@current", "required": required}]}  # fmt: skip
+
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 422, resp.text
+        assert "fake:doc:spec@current" in resp.json()["detail"]["error"]["message"]
+        mock_cycle_registry.create_cycle.assert_not_called()
+        assert await records.list_project("hello_squad") == []
+
+
+class TestTheConsolesResolvedRequestCreatesTheCLIsCycle:
+    """#2520, entered as the console creates a cycle: the request-profile route resolves the body,
+    and the create route takes it as it came."""
+
+    def test_a_resolved_request_creates_the_cycle_the_cli_would(self, client, mock_cycle_registry):
+        """Bug caught: the console's cycle differing from the CLI's for the same request: a stack's
+        request defaults missing, the profile's provenance (``request_profile``) dropped, or a config
+        hash that never matches the CLI's because the client's body carried keys the CLI's doesn't
+        (the old modal put ``project_id`` and ``squad_profile_id`` into ``applied_defaults``)."""
+        from squadops.api.routes.cycles.cycle_request_profiles import router as profiles_router
+        from squadops.contracts.cycle_request_profiles import cycle_request_body
+        from squadops.cycles.lifecycle import compute_config_hash
+
+        client.app.include_router(profiles_router)
+        values = {"build_profile": "nextjs_ts"}
+        resolved = client.post(
+            "/api/v1/cycle-request-profiles/validate/resolve",
+            json={"squad_profile_id": "full", "values": values, "prd_ref": "art_prd"},
+        ).json()
+
+        created = client.post("/api/v1/projects/hello_squad/cycles", json=resolved)
+
+        cli = cycle_request_body(
+            "validate", squad_profile_id="full", user_values=values, prd_ref="art_prd"
+        )
+        assert created.status_code == 201, created.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert (cycle.request_profile, cycle.prd_ref) == ("validate", "art_prd")
+        assert compute_config_hash(
+            cycle.applied_defaults, cycle.execution_overrides
+        ) == compute_config_hash(cli["applied_defaults"], cli["execution_overrides"])
+        assert cycle.resolved_config()["build_profile"] == "nextjs_ts"

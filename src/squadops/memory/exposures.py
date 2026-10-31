@@ -17,8 +17,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from squadops.memory.context import Disposition
 from squadops.memory.lessons import Recalled
 from squadops.memory.recall import RecallQuery, UnitKind
+
+#: What a held task's exposure id ends with (#2178).
+HELD_SUFFIX = ":held"
+
+#: The exposure fields a record is handed through (#2178, #2179): a task's binding sections.
+INSTRUCTION_SECTIONS = ("task_instructions", "project_instructions")
 
 
 def exposure_id_for(run_id: str, task_id: str, attempt: int = 1) -> str:
@@ -47,12 +54,33 @@ class Exposure:
     #: Which dispatch of the task this was: 1 for the first, one more for each re-dispatch.
     attempt: int = 1
     exposure_id: str = field(default="")
+    #: The task instructions' binding section (#2178): its disposition, each revision supplied and
+    #: each that couldn't be. ``None`` when the dispatch's composer read no instructions.
+    task_instructions: Mapping[str, Any] | None = None
+    #: The project instructions' binding section (#2179), kept as the task instructions' is.
+    project_instructions: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.exposure_id:
-            object.__setattr__(
-                self, "exposure_id", exposure_id_for(self.run_id, self.task_id, self.attempt)
-            )
+            exposure_id = exposure_id_for(self.run_id, self.task_id, self.attempt)
+            # #2178: a held task's answer is its own record, so the dispatch after its release
+            # records the attempt's exposure rather than finding this one in its place.
+            object.__setattr__(self, "exposure_id", exposure_id + HELD_SUFFIX * self.held)
+
+    @property
+    def incomplete_sections(self) -> tuple[str, ...]:
+        """The binding sections that couldn't be completed. Any one holds the task undispatched
+        (§3.6: the bundle is held), so nothing in its sections reached the model."""
+        return tuple(
+            name
+            for name in INSTRUCTION_SECTIONS
+            if (getattr(self, name) or {}).get("disposition") == Disposition.INCOMPLETE.value
+        )
+
+    @property
+    def held(self) -> bool:
+        """Whether the task was held, not dispatched: it counts as no dispatch (#2178)."""
+        return bool(self.incomplete_sections)
 
     @classmethod
     def of(
@@ -67,6 +95,8 @@ class Exposure:
         recalled: Recalled,
         recorded_at: datetime,
         attempt: int = 1,
+        task_instructions: Mapping[str, Any] | None = None,
+        project_instructions: Mapping[str, Any] | None = None,
     ) -> Exposure:
         return cls(
             run_id,
@@ -78,6 +108,8 @@ class Exposure:
             recalled.exposure(),
             recorded_at,
             attempt,
+            task_instructions=task_instructions,
+            project_instructions=project_instructions,
         )
 
     @property
@@ -105,6 +137,17 @@ class Exposure:
             },
             "recalled": dict(self.recalled),
             "recorded_at": self.recorded_at.isoformat(),
+            # Only when instructions were read, so an exposure from before #2178 is unchanged.
+            **(
+                {"task_instructions": dict(self.task_instructions)}
+                if self.task_instructions is not None
+                else {}
+            ),
+            **(
+                {"project_instructions": dict(self.project_instructions)}
+                if self.project_instructions is not None
+                else {}
+            ),
         }
 
     @classmethod
@@ -123,4 +166,6 @@ class Exposure:
             # An exposure stored before the attempt was recorded is its task's first (#2162).
             attempt=int(data.get("attempt") or 1),
             exposure_id=str(data["exposure_id"]),
+            task_instructions=data.get("task_instructions"),
+            project_instructions=data.get("project_instructions"),
         )

@@ -40,6 +40,11 @@ class FailureClassification:
     # correction, NOT an implementation defect — routed to a targeted correction and a separate
     # bounded compliance counter (plan D6), never the convergence counter.
     CONTRACT_COMPLIANCE = "contract_compliance"
+    # SIP-0104 §13f (#2664): a slot revision refused because it dropped the subject of the
+    # slot's failing assertion while the declarations show that field present there. Like
+    # CONTRACT_COMPLIANCE, a malformed correction set by the framework, never by the analyzer:
+    # the refused repair's round is spent, and the next round is told which subject it dropped.
+    SLOT_SUBJECT_DROPPED = "slot_subject_dropped"
 
 
 class ContractComplianceViolation:
