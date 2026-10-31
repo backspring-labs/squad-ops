@@ -240,11 +240,13 @@ def campaign_continuation_decision(
         and cycle.rejected_only_as_already_met
         and latest_verdict(latest) is RunVerdict.ACCEPTED
     )
-    # Rows 13, 15, 16 and 18: this decision abandons the increment, and the abandonment counts as
+    # Rows 13, 15 and 18: this decision abandons the increment, and the abandonment counts as
     # unaccepted at this decision, so the one that reaches the limit stops rather than proposing
     # once more (#2294). A parked calibration, or one stopped at its plan gate, never reaches row
-    # 4: row 2 ends the campaign.
-    abandons = (rejected and not environment and (already_met or not repairs_remain)) or (
+    # 4: row 2 ends the campaign. Row 16's abandonment (criteria the accepted application already
+    # meets, told to the next proposal) counts toward no limit but the cycles and the budget
+    # (#2849, §24ct): the work built and verified; the criteria were the fault.
+    abandons = (rejected and not environment and not already_met and not repairs_remain) or (
         cycle.ending in _ABANDONED_UNBUILT
     )
 

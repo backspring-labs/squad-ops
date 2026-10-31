@@ -434,6 +434,10 @@ def increment_verdict(
         return RunVerdict.BLOCKED_UNVERIFIED
 
 
+#: §10 row 16 (#2315): an increment rejected only for criteria the accepted application already meets.
+_ALREADY_MET_ROW = 16
+
+
 def already_met(evaluation: dict | None) -> tuple[str, ...]:
     """The new criteria an increment's evaluation found the accepted application already meets
     (#2315): each unmet only because its test passes on the accepted tree (``no_baseline_failure``,
@@ -550,6 +554,8 @@ def derive_counters(
             for e in applied
             if e.binding.get("action") == PendingAction.ABANDON_AND_PROPOSE
             and (e.operation != ControlOperation.DECIDE or e.binding.get("guard") == Guard.PROCEED)
+            # #2849 (§24ct): row 16's abandonment counts toward no unaccepted limit.
+            and e.binding.get("row") != _ALREADY_MET_ROW
         ),
         objective_met=objective_met,
     )

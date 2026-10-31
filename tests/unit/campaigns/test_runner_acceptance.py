@@ -73,7 +73,7 @@ _P = "tests/test_probe.py::"
          Discrimination("c1", False, R.ONLY_SETUP_FAILURES)),
         ("pytest", _pytest("pytest-classes.txt"), _pytest("pytest-classes.txt"),
          Discrimination("c1", False, R.FAILS_ON_CANDIDATE)),
-        ("pytest", _ALL_PASS, _ALL_PASS, Discrimination("c1", False, R.NO_BASELINE_FAILURE)),
+        ("pytest", _ALL_PASS, _ALL_PASS, Discrimination("c1", False, R.NO_BASELINE_FAILURE, candidate_passed=True)),
         (None, _pytest("pytest-classes.txt"), _ALL_PASS,
          Discrimination("c1", False, R.NO_TEST_ID_READER)),
         ("pytest", _pytest("pytest-classes.txt"), read("pytest", "9 passed in 0.1s\n", "", 0),
