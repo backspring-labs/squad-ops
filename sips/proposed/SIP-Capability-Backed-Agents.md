@@ -8,6 +8,13 @@ created_at: '2026-07-01'
 
 # SIP-XXXX: Capability-Backed Agents
 
+> **Note (2026-10-31): a first slice proposed, and a premise to correct.** *Game Development Capability Packs
+> and Squad Composition* (`SIP-Game-Capability-Packs.md`) proposes landing this SIP's smallest cycle-bound
+> foundation before 3.x: discovery, versioned contracts, explicit bindings, scoped skill loading, mediated
+> tools, runner and result providers, preflight and the Campaign snapshot. It builds on §21's taxonomy and
+> §25c and §27, **not on §5**, which extends the SIP-0040 skill layer that was deleted (#400, #401). That
+> conflicts with the 3.x deferral below, and waits for the owner (portfolio Q45). Nothing here is ruled.
+
 > **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deferred to 3.x**, with the duty cluster: "move them to 3.x including capability-backed agents". Its main consumer is the reselling pack, which is duty work, and nothing in 2.x needs it.
 > - **Before 3.0's plan, correct its premise:** §5 extends a skills layer that was deleted (#400, #401).
 > - **Memory:** Cross-Cycle Memory owns memory's scopes, lifecycle and payload, and this SIP's §11 defers to it.

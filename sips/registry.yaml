@@ -1182,6 +1182,15 @@ sips:
   approver: null
   created_at: '2026-10-30T00:00:00Z'
   updated_at: null
+- sip_uid: '17934561107767162'
+  sip_number: null
+  title: Game Development Capability Packs and Squad Composition
+  path: sips/proposed/SIP-Game-Capability-Packs.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-10-31T00:00:00Z'
+  updated_at: null
 - sip_uid: '17883224960416254'
   sip_number: null
   title: Test-First Verification
