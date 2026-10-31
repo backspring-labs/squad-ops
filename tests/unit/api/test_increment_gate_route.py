@@ -8,6 +8,7 @@ back.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -160,8 +161,10 @@ async def world() -> _World:
         # An operator writes cycles, and never rules an increment.
         (Role.OPERATOR, INCREMENT_RULING_GATE, 403),
         (Role.CAMPAIGN_TRIAGE, INCREMENT_RULING_GATE, 403),
-        # The supervisor rules the increment gate, and writes no other.
-        (Role.CAMPAIGN_SUPERVISOR, "progress_plan_review", 403),
+        # #2837: the supervisor answers a campaign cycle's plan gate, as the runbook says; it
+        # writes no other gate, and no plan gate outside a campaign (the test below).
+        (Role.CAMPAIGN_SUPERVISOR, "progress_plan_review", 200),
+        (Role.CAMPAIGN_TRIAGE, "progress_plan_review", 403),
     ],
 )
 async def test_the_increment_gate_is_the_supervisors_and_only_that_gate(world, role, gate, status):
@@ -270,3 +273,31 @@ async def test_a_returns_classification_rides_its_ruling_row(world, body, record
     ]
     assert resp.status_code == 200
     assert {k: v for k, v in row.binding.items() if k.startswith("classification")} == recorded
+
+
+async def test_the_supervisor_answers_no_plan_gate_outside_a_campaign(world):
+    """#2837's boundary. Bug caught: campaigns:supervise answering the plan gate of an operator's
+    own cycle, which stays a cycle write (the owner's ruling of 2026-10-02, narrowed to campaign
+    cycles only)."""
+    cycle = await world.cycles.get_cycle("cyc_inc")
+    await world.cycles.create_cycle(
+        dataclasses.replace(cycle, cycle_id="cyc_own", campaign_id=None, kind=None)
+    )
+    await world.cycles.create_run(
+        Run(
+            run_id="run_own",
+            cycle_id="cyc_own",
+            run_number=1,
+            status="completed",
+            initiated_by="operator",
+            resolved_config_hash="cfg",
+            workload_type="planning",
+        )
+    )
+    resp = world.client.post(
+        "/api/v1/projects/group_run/cycles/cyc_own/runs/run_own/gates/progress_plan_review",
+        json={"decision": "approved", "notes": "n"},
+    )
+    assert resp.status_code == 403
+    assert "cycles:write" in resp.text
+    assert (await world.cycles.get_run("run_own")).gate_decisions == ()
