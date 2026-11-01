@@ -134,6 +134,77 @@ set, the console, or the held-out yardstick.
 **What it changes in the rest of the plan:** §1a's 2.5.1 list is replaced by step 1's (D11), and #2818 leaves Track A.
 Everything else in §2 waits for the spike's reading, which may reorder it.
 
+### 0a. The second spike: a crew-driven Campaign, steered from Buzz, on outcome goals
+
+**Added 2026-11-01 at the owner's request,** with about 10% of the owner's weekly usage left. Spike 1's readings
+(`var/verification_sets/2-6-0-spike/readings.md`) went past its stop rule: the overnight run `cmp_828bfc06aa63` accepted
+10 of 10 items unattended. Every one of those runs was launched and steered from a terminal. Spike 2 asks the next
+question, and changes what the squad is given.
+
+**What the crew's first attempts showed (2026-11-01).** Four crew-launched Shelfnote Campaigns were aborted. The
+last, `cmp_7c4c28bb4118`, was launched from a plain-language request and approved by the owner's one-word reply
+(Nostromo PRs #27 and #28):
+- **Ripley over-ruled the increment gate.** She returned the proposal twice:
+  - first for exact rules on `GET /books?q=`;
+  - then for "a seam table covering every evaluator", which is the engineering discipline in her prompt for her
+    own repository work, not a bar for a squad's proposal.
+  Two revisions used up `max_proposal_revisions`, and v3 escalated.
+- **The owner had no way to answer from Buzz.** In the owner's words: Ripley "was holding the campaign and not a
+  clear way for me to approve moving forward", and "her changes requested seem like things that should go in a
+  framing plan".
+- **The goals weren't read.** Each crew draft said `docs/goals.md` was unreadable and recovered the list from an
+  older Campaign. Ripley's first request was item 1 of that file, word for word.
+- **A busy box parked the Campaign.** On `cmp_4edfa3d9746b`, SquadOps refused the launch because the crew's own
+  call was on the shared engine. That is fixed by #2852 (SIP-0109 §24cu). Nostromo then parked the Campaign on the
+  transient `launch_blocked` and had no way back.
+
+**The goals are outcomes, not a specification.** The owner, reading Shelfnote's `docs/goals.md`: "those aren't really
+goals in my opinion, these are very specific technical changes".
+- **Where the file stands.** Its Goal and E1–E5 are goals. Its backlog fixes endpoints, status codes, orders and a
+  CSV header. Those were written there so unattended criteria would discriminate. That is part of why the overnight
+  run went 10 of 10, and it means that run showed the squad implementing a specification, not turning a goal into
+  a design.
+- **The change.**
+  - The goals and the backlog are written as reader outcomes, one line per item, with no endpoint or status code.
+  - The squad's framing plan turns each item into behaviour, endpoints and tests.
+  - The increment gate asks only whether the plan serves the item, stays in scope and can be tested.
+  - This is the split Track D's SIP already describes (PR #2833): goals and backlog are the owner's; the technical
+    design is framing's output.
+- **What it costs.** Without exact behaviour handed to it, the squad has to design criteria that still fail before
+  the change. Expect lower acceptance at first. That is the reading this spike exists to take.
+
+**Before the launch.**
+1. **Nostromo** (the Nostromo session's work, on the owner's prompt):
+   - **Ripley's rubric.** She returns a proposal only when it is out of the item's scope, can't be tested, or
+     contradicts the goal or an accepted increment. How-to-build detail is an approval with notes for framing. Her
+     design discipline stays with her own repository work.
+   - **Escalations answered in Buzz.** Mother asks a plain question with the choices, and the owner's reply rules.
+   - **Goals read live.** Drafting reads the product's current goals. If it can't, it says so and stops; it never
+     substitutes an older list.
+   - **`launch_blocked` is not a park.** SquadOps retries it.
+2. **SquadOps:** the increment ruling's notes reach that increment's framing run as reviewer guidance.
+   - What is known: a gate's `approved_with_refinements` notes are kept as an artifact, and "nothing renders them to
+     a model" (`execution/workload_gate.py`).
+   - What is unverified: whether an increment ruling's notes reach the framing run at all. That is checked first.
+   - Without this, Ripley's notes would be dropped, so it lands before the run.
+3. **Shelfnote:** `docs/goals.md` is rewritten in outcome form. The goal, E1–E5 and the out-of-scope list stay. The
+   ten backlog items become one reader outcome each, in the same order.
+
+**The run.**
+- First, a small Campaign (3 increments), asked for in Buzz: "@Mother start a small campaign on ShelfNote, search
+  first."
+- If it closes clean, the 8-increment run, unattended, overnight.
+
+**What it reads.**
+- **Launched, ruled and closed with no terminal step.** Any escalation is answered by one Buzz reply.
+- **At least 2 of the 3 increments accepted.**
+- **Ripley's notes visible in the framing plan** of the increment they were about.
+- **Each criterion's discrimination reading.** The squad's own criteria have to fail before the change without a
+  specification to copy from.
+
+**What it doesn't read:** the held-out yardstick, a real-size product, or Nebulus. **Stop rule:** as spike 1's. A
+round that finds a new defect files it and stops, with what it learned recorded here.
+
 ---
 
 ## 1. Why 2.5's product Campaigns lasted under an hour
