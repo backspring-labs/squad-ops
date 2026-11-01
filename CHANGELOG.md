@@ -5,6 +5,23 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+The 2.6 plan's §0 spike found these on `prj-shelfnote` (D11: spike fixes are 2.5.1's).
+
+- **A product's `qa.test` failing only `tests_pass` in the qa image is judged on the product's own runner** (#2818,
+  #2835). A product's suite is re-judged when the qa image fails it beside environment-sensitive checks, and a
+  skipped row isn't a failure (#2838, #2840). The suite's workspace id is in the sandbox's alphabet, and a judgement
+  that can't run leaves the agent's result (#2845, #2846).
+- **A repair or retry binds its proposal's approved version,** not the launch block's first (#2824, #2836).
+- **The campaign supervisor answers a Campaign cycle's plan gate,** and only a Campaign cycle's (#2837, #2843).
+- **A repository-backed increment's plan gate reads its approved change request as its design** (#2796, #2844;
+  SIP-0109 §24cs).
+- **An already-met criterion beside discriminating ones is kept as a preservation check,** and row 16's abandonment
+  counts toward no unaccepted limit (#2849, #2850; SIP-0109 §24ct).
+- **A busy engine serving only declared models is a quiet box,** so the crew's own model call on the shared
+  TensorFold engine no longer blocks a Campaign launch or a run start (#2851, #2852; SIP-0109 §24cu, SIP-0111 §9n).
+
 ### Security
 
 - **`pyasn1` 0.6.4 → 0.6.5** in the agent image's lock (`CVE-2026-119194` to `CVE-2026-119197`), and in
