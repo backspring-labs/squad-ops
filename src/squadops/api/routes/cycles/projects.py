@@ -24,6 +24,7 @@ from squadops.api.cycle_schemas import (
     ProjectRegistrationResponse,
     ProjectResponse,
     ProjectValidationRequest,
+    SourceFileResponse,
     SourceSyncRequest,
     SourceSyncResponse,
 )
@@ -392,6 +393,37 @@ async def get_project(request: Request, project_id: str) -> ProjectResponse:
     registry = get_project_registry(request)
     project = await registry.get_project(project_id)
     return project_to_response(project)
+
+
+@router.get("/{project_id}/source-file", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def get_source_file(request: Request, project_id: str, path: str) -> SourceFileResponse:
+    """A file of a registered product, at the Project's integrated commit, with that commit
+    (#2855). It is what a Campaign drafted from the product's goals reads, so the draft can state
+    the commit it read and refuse when it can't read one. Read-only, from the managed clone; a
+    sample application has no repository, and a Project not yet synced has no commit."""
+    project = await get_project_registry(request).get_project(project_id)
+    if project.source is None:
+        raise http_error(404, "SOURCE_FILE_NOT_FOUND", f"{project_id} has no source repository")
+    commit = project.integrated_upstream_commit
+    if commit is None:
+        raise http_error(
+            409, "SOURCE_NOT_INTEGRATED", f"{project_id} has no integrated commit: sync it first"
+        )
+    try:
+        content = await get_source_repository(request).file_at(project_id, commit, path)
+    except SourceUnavailable as e:
+        if e.reason == "path_refused":
+            raise http_error(422, "VALIDATION_ERROR", str(e), {"field": "path"}) from e
+        if e.reason in ("read", "not_a_commit"):
+            raise http_error(
+                404, "SOURCE_FILE_NOT_FOUND", f"{path} is not in {project_id} at {commit[:12]}"
+            ) from e
+        raise http_error(502, "SOURCE_UNAVAILABLE", f"{e.reason}: {e}") from e
+    try:
+        text = content.decode()
+    except UnicodeDecodeError as e:
+        raise http_error(422, "VALIDATION_ERROR", f"{path} is not text", {"field": "path"}) from e
+    return SourceFileResponse(project_id=project_id, path=path, commit=commit, content=text)
 
 
 @router.get(
