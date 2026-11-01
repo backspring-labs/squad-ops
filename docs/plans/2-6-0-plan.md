@@ -152,13 +152,13 @@ last, `cmp_7c4c28bb4118`, was launched from a plain-language request and approve
 - **The owner had no way to answer from Buzz.** In the owner's words: Ripley "was holding the campaign and not a
   clear way for me to approve moving forward", and "her changes requested seem like things that should go in a
   framing plan".
-- **The goals weren't read.** Each crew draft said `docs/goals.md` was unreadable and recovered the list from an
+- **The goals weren't read.** Each crew draft said Shelfnote's `goals.md` was unreadable and recovered the list from an
   older Campaign. Ripley's first request was item 1 of that file, word for word.
 - **A busy box parked the Campaign.** On `cmp_4edfa3d9746b`, SquadOps refused the launch because the crew's own
   call was on the shared engine. That is fixed by #2852 (SIP-0109 §24cu). Nostromo then parked the Campaign on the
   transient `launch_blocked` and had no way back.
 
-**The goals are outcomes, not a specification.** The owner, reading Shelfnote's `docs/goals.md`: "those aren't really
+**The goals are outcomes, not a specification.** The owner, reading Shelfnote's `goals.md`: "those aren't really
 goals in my opinion, these are very specific technical changes".
 - **Where the file stands.** Its Goal and E1–E5 are goals. Its backlog fixes endpoints, status codes, orders and a
   CSV header. Those were written there so unattended criteria would discriminate. That is part of why the overnight
@@ -187,7 +187,7 @@ goals in my opinion, these are very specific technical changes".
      a model" (`execution/workload_gate.py`).
    - What is unverified: whether an increment ruling's notes reach the framing run at all. That is checked first.
    - Without this, Ripley's notes would be dropped, so it lands before the run.
-3. **Shelfnote:** `docs/goals.md` is rewritten in outcome form. The goal, E1–E5 and the out-of-scope list stay. The
+3. **Shelfnote:** its `goals.md` is rewritten in outcome form. The goal, E1–E5 and the out-of-scope list stay. The
    ten backlog items become one reader outcome each, in the same order.
 
 **The run.**
@@ -204,6 +204,28 @@ goals in my opinion, these are very specific technical changes".
 
 **What it doesn't read:** the held-out yardstick, a real-size product, or Nebulus. **Stop rule:** as spike 1's. A
 round that finds a new defect files it and stops, with what it learned recorded here.
+
+**How each objective advances this plan.** The owner, 2026-11-01: "make sure you are tracking these spike objective
+against the existing 2.5.1 and 2.6 plans so we are advancing to the same common plan goals". The spike adds no goal
+of its own. Each objective is a piece of a track or a rung below, and its result is read back there.
+
+| spike objective | advances | what the reading feeds |
+|---|---|---|
+| launched, ruled and closed from Buzz, no terminal step | §4 rung 3 ("the owner works through the crew in Buzz… not a terminal"); §2.3 Track C and D14, the crew dependency | §2.3's **unverified** question, whether the crew's harness (which parks on any missing evidence, worker error or blocking review) can run unattended for hours, is read on this run instead of on the first proving run |
+| an escalation answered by one Buzz reply | §1's third person-at-every-turn item ("resuming an escalation is admin-only"); D6's declared touchpoints | each escalation's class and who answered it, which §4 says every run records |
+| Ripley rules on scope, can it be tested, and the goal; design detail goes to framing as notes | §1's first item (every plan gate escalated on a product); §2.2 Track B, a Campaign that carries itself past a failure | the escalations by class, and whether `max_proposal_revisions` is still the row that stops a run |
+| Ripley's notes reach the increment's framing run (SquadOps) | §2.2 Track B | is filed as an issue once its current behaviour is checked, sized there, and lands before the run |
+| goals and backlog as reader outcomes; design in framing | §2.4 Track D, the headline: the SIP's MECE split (intent in the goal set, design in framing). Until slice 1 lands, Shelfnote's `goals.md` stands in for the goal set, as §2.4 already allows | the first evidence for D8's claim that a Project's goals can be written as outcomes and still produce accepted increments |
+| the squad's own criteria discriminate without a specification | §1's second item (the same non-discriminating criterion proposed three times); D9's early criterion check; #2613 | whether D9 is needed before rung 2, from the discrimination reading of each criterion |
+| a small Campaign, then the 8-increment overnight | the shape of §4 rungs 2 and 3, on Shelfnote, not the proving Project | a rehearsal, not a rung: rung 2 needs the proving Project (§2.6 Track F), and rung 3 also needs the held-out threshold and the console (§2.7 Track G) |
+
+**What it does not advance:** §2.5 Track E (the scripted squad), §2.6 Track F (Nebulus and its held-out suite),
+§2.7 Track G (the console) and §2.4's slices themselves. Those stay sequenced as §3 has them.
+
+**Against 2.5.1** (D11, §1a): spike 1's fixes and #2852 are the 2.5.1 patch so far, recorded under `[Unreleased]` in
+`CHANGELOG.md`. Spike 2's SquadOps item is a 2.6 change, not a patch (§1a: "2.5.1 is not a feature release"). The
+rest of 2.5.1 (#2817, #2814, #2804, #2809, #2813, #2798, #2765, #2830, #2402, #2839) is not advanced by the spike,
+and still decides the 2.5.1 cut.
 
 ---
 
