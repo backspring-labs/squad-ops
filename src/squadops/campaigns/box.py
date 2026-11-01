@@ -72,7 +72,9 @@ class Model:
 class EngineReading:
     """One engine's loaded models, or ``None`` when it could not be read (and ``error`` says
     why). ``in_flight`` is the requests it is serving now, where the engine reports them
-    (SIP-0111 §5.5), and ``None`` where it does not."""
+    (SIP-0111 §5.5), and ``None`` where it does not. It is read, and an engine whose count
+    cannot be read is unread, but a count above zero does not make the box loud: a shared
+    engine serves the crew and the squad at once (SIP-0109 §24cu)."""
 
     engine: str
     loaded: tuple[Model, ...] | None
@@ -87,9 +89,11 @@ class Quietness:
 
 
 def box_quietness(declared: Iterable[Model], readings: Iterable[EngineReading]) -> Quietness:
-    """Quiet when every engine was read, every model it has loaded is declared by the active
-    deploy record, and none that reports its requests is serving any (SIP-0111 §5.5: only an
-    idle engine is safe to launch on). Every reason is reported, not the first."""
+    """Quiet when every engine was read and every model it has loaded is declared by the active
+    deploy record. An engine serving requests is still quiet when it holds only declared models:
+    the requests are the crew's or another run's on the same model, and the engine serves them
+    side by side (SIP-0109 §24cu, which retired SIP-0111 §5.5's idle-only launch). Every reason
+    is reported, not the first."""
     declared = tuple(declared)
     reasons: list[str] = []
     for reading in readings:
@@ -103,11 +107,6 @@ def box_quietness(declared: Iterable[Model], readings: Iterable[EngineReading]) 
                     + (f" ({model.digest[:12]})" if model.digest else "")
                     + " loaded, which the deploy record does not declare"
                 )
-        if reading.in_flight:
-            reasons.append(
-                f"engine {reading.engine} is serving {reading.in_flight} request(s) already: "
-                "work the launch did not start"
-            )
     return Quietness(not reasons, tuple(reasons))
 
 

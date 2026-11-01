@@ -114,16 +114,16 @@ def _tensorfold(running: int | None) -> object:
     ("running", "quiet", "said"),
     [
         (0, True, None),
-        (1, False, "is serving 1 request(s) already"),
+        (2, True, None),
         (None, False, "could not be read"),
     ],
-    ids=["idle", "busy", "refused the key"],
+    ids=["idle", "serving the crew", "refused the key"],
 )
-async def test_tensorfold_is_quiet_only_when_idle(running, quiet, said):
-    """SIP-0111 §5.5, entered at the TensorFold adapter. Bugs caught: a busy TensorFold read as a
-    quiet box because the model it holds is the declared one, so a launch lands on an engine
-    already serving someone else's work; an alias read as a second model; and a refused key read
-    as an idle engine."""
+async def test_tensorfold_is_quiet_while_it_serves_its_declared_model(running, quiet, said):
+    """SIP-0109 §24cu, entered at the TensorFold adapter. Bugs caught: a campaign launch, or a
+    run start, refused because the crew is mid-call on the shared engine, which serves the
+    squad beside it (the 2026-11-01 launch Mother's own model call blocked); an alias read as a
+    second model; and a refused key read as an idle engine (SIP-0111 §5.5, kept)."""
     readings = await read_engines({"tensorfold": _tensorfold(running)})
     declared = declared_models(_record(ModelWeights("qwen3.8-27b-tf-nvfp4", None)))
 

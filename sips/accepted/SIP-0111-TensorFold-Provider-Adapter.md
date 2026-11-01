@@ -1153,3 +1153,12 @@ eventually upgrading to TensorFold 1.x, and on evaluating its performance agains
 On the PR that records this section (#2423), the owner set its sequencing: "I think this model change will come after 2.4 and the outcome evaluation work".
 The supervisor rewrote #2230 (its comment `issuecomment-6250014247` records the redirection) and drafted this section.
 Asked whether to add NVIDIA's QAD checkpoint as a second Flash-Next checkpoint, the owner answered "sure add".
+
+### 9n. A busy engine is safe to launch on when it serves only the declared model (2026-11-01, §5.5; SIP-0109 §24cu; #2851; the owner's ruling)
+
+**What changed.** §5.5 said "Only `idle` is safe to launch". `busy` is now safe too: authenticated, the expected
+model, requests running. The crew shares the engine in Nostromo's shared inference mode, and TensorFold serves its
+requests beside the squad's (`--parallel 2`). `unauthorized`, `unreachable` and `unknown` are still never safe.
+The rule and its evidence are in SIP-0109 §24cu, where the quiet box is decided.
+
+**Who ruled it.** The owner, 2026-11-01, on a launch that the crew's own model call blocked (SIP-0109 §24cu).
