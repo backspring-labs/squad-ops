@@ -755,15 +755,17 @@ checks:
       print(len(HOST_QUERIES), MEMORY_FLOOR_AFTER_LOAD_BYTES)
     expect: "10 17179869184"
   - id: "2229-quiet"
-    what: SIP-0111 §5.5 - the launch gate reads an engine serving requests as not quiet, and an idle one as quiet
+    what: SIP-0109 §24cu (#2851) - the launch gate reads an engine serving the declared model as quiet, busy or idle, and one holding an undeclared model or unread as not quiet
     container: squadops-runtime-api
     code: |
       from squadops.campaigns.box import EngineReading, Model, box_quietness
       served = (Model("qwen3.8-27b-tf-nvfp4"),)
       busy = box_quietness(served, [EngineReading("tensorfold", served, in_flight=1)])
       idle = box_quietness(served, [EngineReading("tensorfold", served, in_flight=0)])
-      print(busy.quiet, idle.quiet)
-    expect: "False True"
+      foreign = box_quietness(served, [EngineReading("tensorfold", (Model("other"),), in_flight=0)])
+      unread = box_quietness(served, [EngineReading("tensorfold", None, "401")])
+      print(busy.quiet, idle.quiet, foreign.quiet, unread.quiet)
+    expect: "True True False False"
   - id: "2281"
     what: SIP-0111 §9j - a TensorFold call that sets no seed sends a fresh one, and a call's own seed is sent as it is
     container: squadops-max
