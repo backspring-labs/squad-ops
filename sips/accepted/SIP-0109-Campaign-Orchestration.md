@@ -5663,3 +5663,25 @@ already-met abandonment.
 
 **Not built here:** the earlier check, each criterion's test run against the head as soon as it exists (the 2.6
 plan's D9). It would save the cycle row 16 spends.
+
+### 24cu. A busy engine serving only declared models is a quiet box (2026-11-01, §9.3, §24an; SIP-0111 §5.5 and §9n; #2851; the owner's ruling)
+
+**What changed.** The quiet box no longer reads an engine's requests in flight as a reason. A box is quiet when every
+engine was read and every model it holds is one the active deploy record declares. Both a launch and a run start
+(§24an) read that verdict, so neither waits on the engine going idle any more. The count is still read, on the
+engine's authenticated source, so an engine that refuses the key is still unread and never quiet. A model the
+deploy doesn't declare still refuses, and so does the supervisor's lease. Exclusive inference for counted
+verification is not this check's job: Nostromo's exclusive window stops the crew's harnesses before the squad
+takes the Spark.
+
+**The evidence.** On 2026-11-01, `cmp_4edfa3d9746b7b204e8cea68` on `prj-shelfnote` went `launch_blocked`:
+`box_not_quiet`, "engine tensorfold is serving 1 request(s) already". The request was the crew's own. Mother
+launches the Campaign from a model turn on the same TensorFold engine, which serves its one model with
+`--parallel 2` (Nostromo's shared inference mode). In shared mode the crew is on the engine whenever it is
+working, so the rule refused the launches it was there to protect, and held every run start while any crew member
+was thinking. Test: `test_box_reading.py`'s `test_tensorfold_is_quiet_while_it_serves_its_declared_model`,
+entered at the TensorFold adapter (idle, serving the crew, refused the key).
+
+**Who ruled it.** The owner, 2026-11-01: "this box busy logic I think is overly restrictive. we can support
+parallel processing with TensorFold and it is blocking campaigns i am trying to kick off in buzz; can you revisit
+this logic and approach so it is not such a blocker?"

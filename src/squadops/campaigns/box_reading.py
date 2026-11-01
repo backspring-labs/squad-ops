@@ -49,8 +49,8 @@ async def read_engines(engines: Mapping[str, Any]) -> tuple[EngineReading, ...]:
             continue
         try:
             loaded = await port.list_loaded_models()
-            # SIP-0111 §5.5: where the engine reports what it is serving, a busy engine is not
-            # quiet. An unread count is an unread engine, never a zero.
+            # SIP-0111 §5.5: the count is read on the engine's authenticated source, so an engine
+            # that refuses the key is unread, never quiet. A busy engine is still quiet (§24cu).
             in_flight = (
                 await port.requests_in_flight()
                 if port.supports(LLMCapability.REQUESTS_IN_FLIGHT)
