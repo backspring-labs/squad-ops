@@ -338,6 +338,16 @@ class InheritedBaselineRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=200)
 
 
+class SourceFileResponse(BaseModel):
+    """A file of a registered product, read from the managed clone at the Project's integrated
+    commit: the commit a Campaign's ``repo:file:<path>@current`` requirements resolve to (#2855)."""
+
+    project_id: str
+    path: str
+    commit: str
+    content: str
+
+
 class InheritedBaselineResponse(BaseModel):
     """The baseline, as the shared fixture records it, and whether this replayed a capture."""
 
