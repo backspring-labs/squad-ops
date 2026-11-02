@@ -170,7 +170,15 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             "request.increment_framing_section",
             {"change_request": verbatim_block("change_request.yaml", document)},
         )
-        return rendered.content
+        notes = str(inputs.get("increment_ruling_notes") or "").strip()
+        if not notes:
+            return rendered.content
+        # #2854: the reviewer approved it, and said how it is to be built.
+        guidance = await renderer.render(
+            "request.increment_ruling_notes_section",
+            {"ruling_notes": verbatim_block("ruling_notes.md", notes + "\n")},
+        )
+        return rendered.content + "\n\n" + guidance.content
 
     async def _authoring_rules_section(self, renderer: Any) -> str:
         """The plan-shape rules every deterministic validator enforces (#686).
