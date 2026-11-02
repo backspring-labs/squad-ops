@@ -23,7 +23,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from squadops.campaigns.increment_tree import approved_change_request, starting_tree_refs
+from squadops.campaigns.increment_tree import (
+    approved_change_request,
+    approved_ruling_notes,
+    starting_tree_refs,
+)
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
@@ -177,8 +181,12 @@ class RunProvisioning:
         # SIP-0109: an increment's framing frames its approved change request (§7.3), and its
         # implementation's evaluation judges the criteria it names (§8).
         change_request = None
+        ruling_notes = None
         if run.workload_type in (WorkloadType.FRAMING, WorkloadType.IMPLEMENTATION):
             change_request = await approved_change_request(self._artifact_vault, cycle)
+        if change_request is not None and run.workload_type == WorkloadType.FRAMING:
+            # #2854: and the notes the reviewer approved it with, on how it is to be built.
+            ruling_notes = await approved_ruling_notes(self._cycle_registry, cycle)
 
         plan = generate_task_plan(
             cycle,
@@ -188,6 +196,7 @@ class RunProvisioning:
             contract=verification_contract,
             interface_manifest=interface_manifest,
             change_request=change_request,
+            ruling_notes=ruling_notes,
         )
         # SIP-0113 §4.5 (§10t ruling 1): a campaign's proposal task is shown its accepted tree's
         # goals and readings, on its own inputs. No other task is, and the cycle's config never

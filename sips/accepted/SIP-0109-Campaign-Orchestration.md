@@ -5685,3 +5685,26 @@ entered at the TensorFold adapter (idle, serving the crew, refused the key).
 **Who ruled it.** The owner, 2026-11-01: "this box busy logic I think is overly restrictive. we can support
 parallel processing with TensorFold and it is blocking campaigns i am trying to kick off in buzz; can you revisit
 this logic and approach so it is not such a blocker?"
+
+### 24cv. The notes on an increment's approval reach its framing (2026-11-01, §7.3, §24cs; #2854; the owner's go on the 2.6 plan's §0a)
+
+**What changed.** An approved increment's framing is shown the notes of the ruling that approved it, after the
+approved change request, as the reviewer's guidance on how it is to be built. They are rendered by
+`request.increment_ruling_notes_section`. It applies to either approving decision (`APPROVING_DECISIONS`), read from
+the cycle's last ruling on its increment gate. A ruling with no notes shows nothing. A return's or a rejection's notes
+are never shown to a version approved after them. Before this, `approved_with_refinements` notes were kept as an
+artifact that "nothing renders to a model", and an `approved` ruling's notes went nowhere.
+
+**Why.** The crew's reviewer returned a sound proposal twice for detail that belongs to framing, and that used up
+`max_proposal_revisions` (`cmp_7c4c28bb4118`). The owner: "her changes requested seem like things that should go in a
+framing plan". Nostromo's gate rule now approves with notes (nostromo#30). Without this section, those notes would be
+dropped.
+
+**Not built.** A repair's or a retry's launch runs no proposal and reuses its increment's ruling, so its framing is
+shown no notes. If a repair is found to need them, a later section adds them.
+
+**The evidence.** `test_increment_framing.py`:
+- **Notes reach the prompt.** Entered at `generate_task_plan`, carried to the technical design's prompt: notes shown,
+  and none shown when the ruling had none.
+- **The right ruling's notes.** `approved_ruling_notes` across ruling histories: approved, approved with refinements,
+  a return then a bare approval, a rejection last, no ruling, and a cycle that is not an increment.

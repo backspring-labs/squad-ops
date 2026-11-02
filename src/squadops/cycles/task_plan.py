@@ -847,6 +847,7 @@ def _increment_inputs(
     change_request: str | None,
     evaluation: _IncrementEvaluation,
     test_scope: Mapping[str, Any] | None = None,
+    ruling_notes: str | None = None,
 ) -> dict[str, Any]:
     """What one envelope of an increment is handed (SIP-0109): every framing stage the approved
     change request, its framed objective (§7.3); each ``increment_evaluation`` task what its
@@ -857,7 +858,11 @@ def _increment_inputs(
 
         # SIP-0113 §10t ruling 4: without the goals it means to move, which only its proposer and
         # the supervisor see.
-        return {"increment_change_request": role_view(change_request)}
+        framed = {"increment_change_request": role_view(change_request)}
+        # #2854: the reviewer's notes on the ruling that approved it, how it is to be built.
+        if ruling_notes:
+            framed["increment_ruling_notes"] = ruling_notes
+        return framed
     if get_context_contract(task_type).increment_evaluation:
         return dict(evaluation.inputs)
     # #1884: the suite's author is handed what its tests may assert. WHO is the registry's
@@ -1532,6 +1537,7 @@ def _step_inputs(
     interface_manifest: InterfaceManifest | None,
     change_request: str | None,
     implementation_artifacts: list[Any],
+    ruling_notes: str | None = None,
 ) -> dict:
     """One envelope's inputs, with their keys in the order an agent receives them (#1994, the
     extraction map's §4e step 5c)."""
@@ -1585,7 +1591,9 @@ def _step_inputs(
             inputs, task_type, footprint, criterion_files, frozen_files, test_scope
         )
     _inject_rejection_context(inputs, framing_rejection_context, task_type)
-    inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
+    inputs.update(
+        _increment_inputs(run, task_type, change_request, evaluation, test_scope, ruling_notes)
+    )
     inputs.update(_criterion_file_inputs(task_type, change_request, criterion_files))
     inputs.update(_prior_cycle_inputs(resolved_config, task_type))
     return inputs
@@ -1599,6 +1607,7 @@ def generate_task_plan(
     contract: VerificationContract | None = None,
     interface_manifest: InterfaceManifest | None = None,
     change_request: str | None = None,
+    ruling_notes: str | None = None,
 ) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -1623,6 +1632,8 @@ def generate_task_plan(
         change_request: An increment's approved change request, for its framing run
             (SIP-0109 §7.3) — the framed objective every framing task is shown. Required
             there, and refused anywhere else.
+        ruling_notes: The notes on the ruling that approved an increment, shown to its
+            framing beside its change request (#2854)
 
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
@@ -1754,6 +1765,7 @@ def generate_task_plan(
             interface_manifest=interface_manifest,
             change_request=change_request,
             implementation_artifacts=implementation_artifacts,
+            ruling_notes=ruling_notes,
         )
 
         envelope = TaskEnvelope(
