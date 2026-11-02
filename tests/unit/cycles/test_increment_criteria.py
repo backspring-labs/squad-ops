@@ -360,3 +360,63 @@ def test_the_plan_authors_are_shown_the_frozen_verifiers():
     )
 
     assert inputs["increment_frozen_files_index"] == f"- F1: `{_F1}`"
+
+
+@pytest.mark.parametrize(
+    ("qa_files", "clashes"),
+    [
+        ((C1, C2, C3, "backend/test_C1.py"), [("backend/test_C1.py", C1)]),
+        ((C1, C2, C3, "backend/tests/test_routes.py"), []),
+    ],
+    ids=["a second file of the criterion's name", "another name"],
+)
+async def test_the_plan_gate_refuses_a_second_file_with_a_criterion_files_name(qa_files, clashes):
+    """#2858 (``cmp_f8eddb8f175f``), entered at the plan gate the framing re-roll keys on. Bug
+    caught: a qa task writing the placed criterion file and a second module of its name elsewhere,
+    so pytest refuses collection ("import file mismatch"), the product's tests read as a
+    regression, and no repair can fix the layout the plan chose."""
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+
+    executor = DispatchedFlowExecutor(
+        cycle_registry=AsyncMock(),
+        artifact_vault=_Vault(_plan_yaml(("qa.test", qa_files))),
+        queue=AsyncMock(),
+        squad_profile=AsyncMock(),
+        task_timeout=5.0,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
+    )
+    executor._cycle_event_bus = MagicMock()
+    run = Run(
+        "run_f", "cyc_inc", 2, "completed", "system", "cfg", workload_type="framing",
+        artifact_refs=("art_plan", "art_seed", "art_cr"),
+    )  # fmt: skip
+
+    errors = await executor._reject_invalid_plan_before_workload_gate(
+        run, _cycle(), "progress_plan_review"
+    )
+
+    assert [
+        (e.split("declares ")[1].split(",")[0].strip("'"), e.split("same file name as ")[1].split(",")[0].strip("'"))
+        for e in errors
+        if "same file name as" in e
+    ] == clashes  # fmt: skip
+
+
+def test_a_second_file_with_a_frozen_verifiers_name_is_refused():
+    """#2858 for an earlier criterion's frozen file. Bug caught: the clash allowed against a
+    verifier frozen by an earlier increment, which breaks collection the same way."""
+    plan = _plan(("qa.test", ("tests/test_criterion_T1.py",)))
+
+    errors = plan.validate_increment_frozen_files((("T1", "test_criterion_T1.py"),))
+
+    assert len(errors) == 1
+    assert (
+        "'tests/test_criterion_T1.py', which has the same file name as 'test_criterion_T1.py'"
+        in errors[0]
+    )
+    assert "frozen verifier of criterion T1" in errors[0]
