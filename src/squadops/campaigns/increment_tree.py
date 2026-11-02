@@ -25,7 +25,7 @@ from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTI
 from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
-from squadops.cycles.models import RunStatus, WorkloadType
+from squadops.cycles.models import APPROVING_DECISIONS, RunStatus, WorkloadType
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.stacks.scaffold import InterfaceManifest, criterion_test_path, scaffold_stack_for
 from squadops.stacks.scaffold_contract import create_request_body
@@ -202,6 +202,31 @@ async def approved_change_request(vault: Any, cycle: Any) -> str | None:
             f"{CHANGE_REQUEST_ARTIFACT_TYPE}, and an increment frames nothing else"
         )
     return document
+
+
+async def approved_ruling_notes(registry: Any, cycle: Any) -> str | None:
+    """The notes on the ruling that approved an increment cycle's proposal, for its framing
+    (#2854), or ``None``: a cycle that is not an increment, a ruling with no notes, or a cycle
+    that ran no proposal (a repair's or a retry's launch, which reuses its increment's ruling).
+
+    The reviewer approves a sound proposal and says how it is to be built in the notes, rather
+    than returning it for detail that is framing's to settle (2.6 plan §0a). Either approving
+    decision carries them; the ruling read is the cycle's last on its increment gate."""
+
+    # deferred (cycle): campaigns.gate loads this module's package
+    from squadops.campaigns.gate import INCREMENT_RULING_GATE
+
+    if not is_increment(cycle.resolved_config()):
+        return None
+    rulings = [
+        decision
+        for run in sorted(await registry.list_runs(cycle.cycle_id), key=lambda r: r.run_number)
+        for decision in run.gate_decisions
+        if decision.gate_name == INCREMENT_RULING_GATE
+    ]
+    if not rulings or rulings[-1].decision not in APPROVING_DECISIONS:
+        return None
+    return (rulings[-1].notes or "").strip() or None
 
 
 async def forwarded_change_request(vault: Any, cycle: Any) -> str | None:

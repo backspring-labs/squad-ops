@@ -279,6 +279,7 @@ _DEVELOP_APPENDIX_TEMPLATES = (
 _PLANNING_TEMPLATES = (
     "request.planning_task_base",
     "request.increment_framing_section",
+    "request.increment_ruling_notes_section",
     "request.plan_reroll_rejected_plan_appendix",
     "request.plan_reroll_rejection_appendix",
     "request.target_stack_section",
