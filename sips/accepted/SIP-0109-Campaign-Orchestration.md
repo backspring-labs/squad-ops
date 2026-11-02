@@ -5708,3 +5708,34 @@ shown no notes. If a repair is found to need them, a later section adds them.
   and none shown when the ruling had none.
 - **The right ruling's notes.** `approved_ruling_notes` across ruling histories: approved, approved with refinements,
   a return then a bare approval, a rejection last, no ruling, and a cycle that is not an increment.
+
+### 24cw. A product's criterion file sits beside the runner's own tests, and no planned file takes its name elsewhere (2026-11-02, §24bv point 5, §24cj, §8.1; #2858; the owner's "yes")
+
+**What changed.**
+1. **Placement.** A repository-backed Project's criterion file is placed in the directory that holds most of its
+   runner's own test files, the first by name on a tie. It was placed under the runner's first root. A runner with
+   no test files yet still places under its first root. Change requests already stored keep the paths they placed.
+2. **The plan gate.** The plan gate refuses a planned file whose basename matches a new criterion's file, or an
+   earlier criterion's frozen verifier, at another path. The refusal names the pair. The plan authors are taught the
+   rule in `request.plan_increment_criteria_appendix` (v4) and `request.plan_increment_frozen_appendix` (v2). It is
+   enforced within the existing validators `validate_increment_criterion_files` and
+   `validate_increment_frozen_files`, so no new rule id was added.
+
+**The evidence.** `cmp_f8eddb8f175f9225b01701ac` on `prj-shelfnote` (spike 2, 2026-11-02):
+- **Where it was placed.** Pytest is rooted at `.` there, and the product's tests are under `tests/`. The criterion
+  files were placed at the root (`test_criterion_T1.py`, then `T2`).
+- **What the qa task wrote.** The qa task also wrote `tests/test_criterion_T1.py`, and later the T2 counterpart.
+- **What pytest did.** With no package `__init__.py`, pytest refused collection ("import file mismatch", exit 2).
+- **How the Campaign read it.** Source delivery read "backend_tests failed where the baseline did not". Both repairs
+  ended `plan_defect` (`tighten_acceptance`). The increments ended at rows 13 and 9, and the owner aborted.
+
+Tests:
+- `test_criterion_placement.py`: a runner rooted at `.` places beside its tests; a frontend file goes beside the
+  runner's `__tests__/`.
+- `test_increment_criteria.py`: the plan gate, entered as the framing re-roll keys on it, refuses a second file of a
+  criterion's name and allows another name; the frozen-verifier case.
+
+**Who ruled it.** The owner, 2026-11-02, said "yes" to building the guard and to fixing the placement. The Nostromo
+session confirmed that the root placement was not the crew's design: the ShelfNote registry's root
+`test_criterion_*.py` scope was added only because the proposer placed criterion files there. It will remove that
+pattern once this is deployed.

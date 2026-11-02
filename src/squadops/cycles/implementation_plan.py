@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from graphlib import CycleError, TopologicalSorter
 from pathlib import PurePosixPath
@@ -1029,13 +1029,37 @@ class ImplementationPlan:
             if authors_qa_suite(task.task_type)
             for artifact in task.expected_artifacts
         }
-        return [
+        unplanned = [
             f"Criterion {f.criterion_id} ({f.surface_kind} {f.surface}) is proven in its own "
             f"test file {f.path!r}, and no qa task's expected_artifacts include it. Add it to a "
             "qa task; the file holds that criterion's tests and no other's"
             for f in criterion_files
             if f.path not in planned
         ]
+        return unplanned + self._same_name_as(
+            {f.path: f"criterion {f.criterion_id}'s own test file" for f in criterion_files}
+        )
+
+    def _same_name_as(self, files: Mapping[str, str]) -> list[str]:
+        """#2858: a planned file with the basename of one of ``files`` at another path. A test
+        runner that imports test modules by basename (pytest, with no package ``__init__.py``)
+        refuses two of one name at collection, so the product's own tests fail before any test
+        runs, and no repair of the code can fix a layout the plan chose."""
+        by_name = {PurePosixPath(path).name: (path, what) for path, what in files.items()}
+        errors = []
+        for task in self.tasks:
+            for artifact in task.expected_artifacts:
+                path, what = by_name.get(PurePosixPath(artifact).name, (artifact, ""))
+                if path == artifact:
+                    continue
+                errors.append(
+                    f"Task {task.task_index} ({task.focus}): {task.task_type} declares "
+                    f"{artifact!r}, which has the same file name as {path!r}, {what}. A test "
+                    "runner that imports test modules by file name refuses two of one name, so "
+                    f"the product's tests would fail to collect. Write {path!r} itself, or give "
+                    "this file another name"
+                )
+        return errors
 
     def validate_increment_frozen_files(self, frozen_files: tuple[Any, ...]) -> list[str]:
         """SIP-0109 §8.1, §19 item 12e: an earlier criterion's test file is its frozen verifier.
@@ -1047,7 +1071,7 @@ class ImplementationPlan:
             List of validation error strings (empty = valid), one per offending task and file.
         """
         frozen = {path: criterion_id for criterion_id, path in frozen_files}
-        return [
+        rewritten = [
             f"Task {task.task_index} ({task.focus}): {task.task_type} declares {artifact!r}, the "
             f"frozen verifier of criterion {frozen[artifact]}. It is kept exactly as frozen; an "
             "earlier criterion's test changes only when an approved change request retires it"
@@ -1055,6 +1079,9 @@ class ImplementationPlan:
             for artifact in task.expected_artifacts
             if artifact in frozen
         ]
+        return rewritten + self._same_name_as(
+            {path: f"the frozen verifier of criterion {cid}" for path, cid in frozen.items()}
+        )
 
     def validate_frozen_artifact_ownership(self, contract: VerificationContract) -> list[str]:
         """#658: no task, any role, may declare a frozen-surface file as an

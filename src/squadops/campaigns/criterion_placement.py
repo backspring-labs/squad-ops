@@ -5,7 +5,8 @@ stack, so the file is placed under the product's own test runners, as the derive
 them (SIP-0112 H.6, contract 8):
 - **the runner** is the first, in the profile's order, whose ``covers`` holds every product path
   the criterion exercises: its own ``paths``, or the footprint's when it names none;
-- **the file** lies under that runner's first root, named by its ``file_pattern``, with the
+- **the file** lies beside the runner's own test files (the directory holding most of them; its
+  first root when it holds none, #2858), named by its ``file_pattern``, with the
   criterion's id where the pattern's first ``*`` stands. A pattern's second ``*`` is the file's
   extension, which the product's own test files under the runner give (``*.test.*`` over
   ``harness.test.jsx`` is ``criterion_T1.test.jsx``);
@@ -128,8 +129,21 @@ def _template(runner: Any, paths: tuple[str, ...]) -> str:
     if "*" in rest:
         extension = _extension(runner, pattern, paths)
         name = name.replace("*", extension, 1)
-    root = str(runner.roots[0]) if runner.roots else "."
-    return name if root in (".", "") else f"{root.rstrip('/')}/{name}"
+    directory = _test_directory(runner, paths)
+    return name if directory in (".", "") else f"{directory.rstrip('/')}/{name}"
+
+
+def _test_directory(runner: Any, paths: tuple[str, ...]) -> str:
+    """Where the runner's own test files live, so a criterion's file sits beside them (#2858): the
+    directory holding most of them, the first by name on a tie, or the runner's first root when
+    it holds none. A runner rooted at ``.`` whose tests are all under ``tests/`` places there,
+    never at the root, where a module of the same basename under ``tests/`` would break the
+    runner's collection."""
+    seen = Counter(str(PurePosixPath(p).parent) for p in paths if runner.holds(p))
+    if not seen:
+        return str(runner.roots[0]) if runner.roots else "."
+    count = max(seen.values())
+    return sorted(d for d, n in seen.items() if n == count)[0]
 
 
 def _extension(runner: Any, pattern: str, paths: tuple[str, ...]) -> str:
