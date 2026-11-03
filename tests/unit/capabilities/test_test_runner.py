@@ -218,6 +218,77 @@ class TestRunGeneratedTestsPackageImport:
         assert result.tests_passed is True
 
 
+_SUITE = [
+    {
+        "path": "tests/test_totals.py",
+        "content": (
+            "import warnings\n\nfrom ledger import total\n\n\n"
+            "def test_total():\n"
+            "    warnings.warn('old call', DeprecationWarning)\n"
+            "    assert total([2, 3]) == 5\n"
+        ),
+    }
+]
+#: The product's module, with a doctest that fails: run only if the product's addopts governs.
+_LEDGER = {
+    "path": "ledger.py",
+    "content": 'def total(xs):\n    """\n    >>> total([1])\n    2\n    """\n    return sum(xs)\n',
+}
+
+
+class TestTheProductsPytestConfigDoesNotGovernTheSuite:
+    """#2817 item 1. A repository-backed product's run tree carries its pytest configuration, and
+    the qa image's ``pytest .`` read it. Bugs caught: the suite never collected (exit 5, a broken
+    suite charged to the qa task), the product's doctests run and failing the suite, a plugin the
+    qa image lacks refusing the run, a warning failing it."""
+
+    @pytest.mark.parametrize(
+        ("config_path", "config"),
+        [
+            ("pyproject.toml", '[tool.pytest.ini_options]\npython_files = ["check_*.py"]\n'),
+            ("pyproject.toml", '[tool.pytest.ini_options]\naddopts = "--doctest-modules"\n'),
+            ("pytest.ini", "[pytest]\nrequired_plugins = pytest-ledger-nonexistent\n"),
+            ("setup.cfg", "[tool:pytest]\nfilterwarnings =\n    error\n"),
+            ("tox.ini", "[pytest]\nstrict_config = true\nledger_unknown_key = 1\n"),
+        ],
+        ids=["python_files", "addopts doctests", "required_plugins", "filterwarnings", "strict"],
+    )
+    async def test_the_suite_runs_under_the_frameworks_config(self, config_path, config):
+        source = [_LEDGER, {"path": config_path, "content": config}]
+
+        result = await run_generated_tests(source, _SUITE)
+
+        assert result.executed is True
+        assert (result.exit_code, result.tests_passed) == (0, True), result.stdout
+        assert "1 passed" in result.stdout
+
+    async def test_the_trees_conftest_still_loads(self):
+        """Edge: the product's test support is its conftest, which the framework's config must
+        not drop. Bug caught: ``-c`` read as "no conftest" too, so a fixture the suite uses is
+        missing."""
+        source = [
+            _LEDGER,
+            {"path": "pyproject.toml", "content": '[tool.pytest.ini_options]\naddopts = "-x"\n'},
+            {
+                "path": "tests/conftest.py",
+                "content": "import pytest\n\n\n@pytest.fixture\ndef amounts():\n    return [2, 3]\n",
+            },
+        ]
+        suite = [
+            {
+                "path": "tests/test_fixture.py",
+                "content": (
+                    "from ledger import total\n\n\n"
+                    "def test_total(amounts):\n    assert total(amounts) == 5\n"
+                ),
+            }
+        ]
+
+        result = await run_generated_tests(source, suite)
+
+        assert (result.exit_code, result.tests_passed) == (0, True), result.stdout
+
+
 class TestRunGeneratedTestsTimeout:
     async def test_timeout_returns_not_executed(self):
         tests = [

@@ -2698,3 +2698,55 @@ hold is absent from the run, as it is from the product the squad delivers, and t
 
 **Who ruled.** The supervisor (the Spark lane), under the owner's 2.5 grants, on #2815's proposed fix: the run tree
 split from the prompt's files, and the prompt unchanged.
+
+## H.16 What a product's run tree admits, bounded: the framework's pytest configuration, a runner's pattern under its roots, and the limit past 512 KB (2026-11-03; H.15; #2817; the owner's go on 2.5.1)
+
+H.15's second reader found that the tree H.15 admits needed bounding (#2817). Three things changed, and one sentence
+of H.15 is corrected.
+
+1. **The qa image's suite runs under the framework's own, empty pytest configuration** (`pytest -c <the null
+   device> --rootdir=<the run root>`, `test_runner.run_generated_tests`), never the configuration in the tree.
+   - **What broke.** H.15 put a product's `pyproject.toml`, `pytest.ini`, `setup.cfg` and `tox.ini` in the run tree,
+     and the qa image's `pytest .` read them:
+     - `python_files = ["check_*.py"]` collected nothing (exit 5);
+     - `addopts = "--doctest-modules"` ran the product's doctests;
+     - `required_plugins` named a plugin the qa image, which carries pytest alone, doesn't have;
+     - `filterwarnings = error` failed the suite on a warning;
+     - `strict_config = true` refused the run on a key the qa image's pytest doesn't know.
+   - **What it doesn't change.** Conftest files still load, because they are the tree's test support. A sample
+     application ships no pytest configuration, so its runs are unchanged.
+   - **Why the framework's configuration, not neutralized options.** The issue's alternative was to clear the
+     selection options one by one (`-o addopts= -o python_files=…`). That would leave every option nobody listed
+     still governing the run.
+   - **The product's own runner is unaffected.** It still runs the suite under the product's configuration in the
+     sandbox (`execution/product_suite`, #2818).
+2. **A product runner's `file_pattern` names a test only under that runner's roots** (`qa_run_tree.product_tree`,
+   through `derived_profile.runner_holds`, which `Runner.holds` now calls too: one rule).
+   - H.15 matched the pattern by file name anywhere. So unittest's `test*.py` rooted at `tests` dropped a source
+     module `orchard/testing.py`, and a runner's `*.py` dropped every Python file, `conftest.py` and source included.
+   - H.15's line "a test is … one the product's runners declare (their `file_pattern`)" now reads: **one a product's
+     runner holds, under its roots.**
+3. **H.15's sentence on a tree that lacks a file is corrected.** It said "a file the workspace doesn't hold is
+   absent from the run, as it is from the product the squad delivers". That holds only below `artifact_contents`'
+   512 KB resolution limit. Past it, the product holds a file the run doesn't (`dispatched_flow_executor.py`,
+   `artifact_contents` truncation). That is a gap, named and not built.
+
+**Not built** (#2817's P3, recorded in `qa_run_tree`'s docstring):
+- The stack patterns are path-blind. A product helper named like a test (`tests/test_utils.py`) or a source named like
+  one (`ab_test.py`) is left out of the run, as the qa image's `pytest .` would collect it.
+- A product with no derived profile has only the stacks' JavaScript extensions, so a `.test.mjs`, `.cjs`, `.mts` or
+  `.cts` file stays in its run tree.
+
+**The evidence:**
+- **Wiring:** `test_test_runner.py::TestTheProductsPytestConfigDoesNotGovernTheSuite` runs real pytest through
+  `run_generated_tests`, the call every qa path (emission, retest, probes) reaches through `run_suite`, with each
+  configuration above in the tree.
+  - Each of the five configurations fails before the change and passes after it.
+  - A conftest fixture still reaches the suite.
+- **The qa image itself:** checked by hand in the qa container (pytest 9.2.0). The product's configuration refused
+  the run; `-c /dev/null --rootdir` ran it and passed.
+- **The run tree:** `test_qa_run_tree.py::test_a_runners_pattern_names_a_test_only_under_its_roots` covers a rooted
+  `test*.py`, a rooted `*.py`, and a runner rooted at `.`. The first two fail before the change.
+
+**Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2817. The choice
+of the framework's configuration over neutralized options is the supervisor's, for the reason in point 1.

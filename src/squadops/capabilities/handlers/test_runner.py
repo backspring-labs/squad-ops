@@ -178,6 +178,18 @@ def _source_dir_pythonpath(workspace: str, source_files: list[dict[str, str]]) -
     return os.pathsep.join(parts)
 
 
+#: The suite runs under the framework's own, empty pytest configuration, never the tree's (#2817):
+#: a repository-backed product's ``pyproject.toml``, ``pytest.ini``, ``setup.cfg`` or ``tox.ini``
+#: is in the run tree, and its ``python_files`` stopped the suite being collected (exit 5), its
+#: ``addopts`` ran the product's doctests, and ``required_plugins``, ``filterwarnings = error`` or
+#: ``--strict-config`` would refuse or fail a run in the qa image, which carries pytest alone.
+#: ``--rootdir`` keeps node ids relative to the run root, as without a config. Conftest files
+#: still load: they are the tree's test support. A sample application ships no pytest config,
+#: so its runs are unchanged. The product's own runner (``execution/product_suite``) still runs
+#: under the product's configuration.
+_FRAMEWORK_CONFIG = ("-c", os.devnull)
+
+
 async def run_generated_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
@@ -234,7 +246,16 @@ async def run_generated_tests(
 
         env = {**os.environ, "PYTHONPATH": _source_dir_pythonpath(workspace, source_files)}
         run = await run_bounded(
-            [sys.executable, "-m", "pytest", ".", "--tb=short", "-q"],
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                *_FRAMEWORK_CONFIG,
+                f"--rootdir={workspace}",
+                ".",
+                "--tb=short",
+                "-q",
+            ],
             cwd=workspace,
             env=env,
             timeout=timeout_seconds,
