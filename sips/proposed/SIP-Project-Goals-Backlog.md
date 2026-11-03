@@ -57,7 +57,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 - **The Continuum Runtime Console** (proposed, partly absorbed). The goals panel here is a SIP-0069 plugin. The
   duty view that SIP keeps is unrelated.
 
-## Delivery ledger (current as of 2026-10-30)
+## Delivery ledger (current as of 2026-11-03)
 
 | part | status | where |
 |---|---|---|
