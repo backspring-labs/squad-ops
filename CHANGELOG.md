@@ -5,6 +5,8 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-11-03
+
 **A patch on 2.5, an odd line that is feature-free by rule, carrying one addition by the owner's decision.**
 On 2026-11-03 the owner chose to acknowledge the one feature merged to main during the 2.6 plan's spikes. The tag is
 cut from the tree those spikes ran on, not from a branch of fixes only. #2854 is recorded as a fix: a ruling's notes
@@ -57,6 +59,14 @@ defects, on a Campaign's path or in the cut's tooling (D11).
   never sent and never truncated past its output instructions (#2813, #2870; SIP-0110 §5aq).
 - **The release records attach scans for held-out step values and goals** as well as credentials, refuses to run
   with no suite named, and leaves a file out only through a withhold list with reasons (#2830, #2871).
+
+### Documentation
+
+- **The 2.6 plan drafted for outside review,** §0's CLI spike adopted, and §0a's second spike, crew-driven from Buzz
+  on outcome goals (#2832, #2853).
+- **Project Goals and Backlog filed for design review** (#2833), proposed as 2.6's headline.
+- **The v2.5.0 release package:** the cut's evidence, screenshots, the records on the Release, housekeeping (#2831).
+- **The TensorFold 1.x upgrade deferred to 3.x** by the owner, replacing the 2.5 plan's placement in 2.6 (#2829).
 
 ### Security
 
