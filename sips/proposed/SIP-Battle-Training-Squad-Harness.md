@@ -25,7 +25,7 @@ original_filename: "SIP-Battle-Training-Squad-Harness.md"
 Checked against `sips/PORTFOLIO.md`, the 2.6 plan (`docs/plans/2-6-0-plan.md`) and the Nostromo
 repository at `f181b46` on 2026-11-03, before this draft was recorded (CLAUDE.md, "SIP System"). The
 body below the rule is the owner's text, unchanged. Findings wait for its first revision; six wait for
-the owner (Q49–Q54 in the portfolio's §4). The I0 inventory §10.1 asks for is started here, by what the
+the owner (Q49–Q54 in the portfolio's §4), and Amendment A02's four more (Q55–Q58). The I0 inventory §10.1 asks for is started here, by what the
 repository holds on that date.
 
 **What exists today (the I0 inventory, SquadOps side):**
@@ -104,8 +104,9 @@ there, never here.
 | I2c: the research → goal → experiment → evidence → assessment loop (A01.4) on Project Goals and Backlog's records | **unplaced**, deliberately: waits on that SIP's slices 1, 2 and 5 | — |
 | I3: provider credentials, governed publication and the ladder observer | **unplaced**, deliberately: needs #2421's secrets half (not in 2.6, D10) and the owner's external authorization | — |
 | I4: the single-agent versus squad comparison, memory ablations | **unplaced**, deliberately: after I2 | — |
+| A02: the experiment cycle (a request profile, the §7.3 amendment, a derived plan, an evidence-producing check, the parent comparison) | **unplaced**, deliberately: waits on Q55–Q58 | — |
 
-This SIP closes when I0–I2 are shipped, and I3 and I4 are shipped or dropped by a numbered amendment.
+This SIP closes when I0–I2 and A02 are shipped, and I3 and I4 are shipped or dropped by a numbered amendment.
 
 ---
 
@@ -910,3 +911,111 @@ Role contracts are **normative**; named personas are the **initial mappings**, n
 **Not resolved by this amendment:** Real-time Battle Training provider contracts, SDK shape, exact publication quotas, runtime topology, whether any agent has operational access to a future `battle-trainer` repository, or a valid end-to-end governed research-to-goal implementation. Those belong in I0 verification.
 
 **Requested owner ruling:** Adopt A01 as a role/authority and handoff design amendment; authorize an offline-first, version-pinned charter trial. Retain independent evaluation and publication controls from the parent SIP. A change to those controls requires a separate, explicitly reviewed policy decision.
+
+---
+
+## 16. Proposed Amendment A02 — The experiment cycle (2026-11-03)
+
+**Status:** Proposed by the MacBook lane at the owner's direction ("draft the amendment while this
+campaign finishes", 2026-11-03), after the owner, watching the first campaign's plan steps, asked
+whether "a better or tighter sequence of tasks among agents" suits a controller improved
+simulation over simulation. It changes §7.2's candidate iteration as SquadOps runs it, and names
+the framework changes that needs. Nothing in it is built.
+
+### A02.1 What changes, and why
+
+**WHAT:** A Battle Training increment runs an **experiment cycle**: a hypothesis, one bounded
+change, deterministic tests, a deterministic development-cohort simulation, and a comparison with
+the parent. It runs no framing workload. The approved change request is the plan.
+
+**WHY:** SIP-0109's increment cycle (§7.3) was built for multi-file applications, where the plan is
+the hard part: its framing workload runs a design plan, a test strategy, a plan-authoring brief,
+the plan proposers, a merge and a review, each scoped to the change request's footprint. For a
+controller the change is one file, and the hard parts are choosing the hypothesis and reading the
+evidence. Those are the only two judgements here a deterministic simulator cannot make.
+
+**Evidence (the MacBook, `lite-14b`, campaign `cmp_3efdd75b38dd`, 2026-11-03):** the charter's
+one-criterion change to `src/controller.js` (one file, about thirty lines) passed its proposal in
+55 s. Its first framing run dispatched eight tasks over 12 min 32 s (seven model calls; the merge took 0 s): a design plan, a test strategy, a plan-authoring brief (240 s), two plan proposers, plan guidance, the merge and the review, and its plan was rejected at
+review, so framing ran again (`run_871c8f41172c` cancelled, `run_e1779a6ff922`). The campaign's
+totals per accepted increment are recorded in A02.5 when it closes. A rejected plan from a 14b
+model is not a defect: the point is what the sequence spends before any code exists.
+
+### A02.2 The sequence
+
+| # | step | role | model call |
+|---|---|---|---|
+| 1 | **Read the parent's evidence:** its development-cohort results by opponent, side and seed; where it loses; what the last increment's hypothesis predicted and what happened | Data | one summary |
+| 2 | **Propose:** a hypothesis, its predicted effect on step 6's results, the change and its criteria (A01.4.3's Tactical Experiment Proposal, as a SIP-0109 change request) | Nat (`strategy.propose_increment`, shown step 1) | yes |
+| 3 | **Ruling** at the increment gate | the crew (Ripley, through Mother), or the owner | — |
+| 4 | **Implement** the change, within the footprint's write grants | Neo | yes |
+| 5 | **Test:** each criterion's own test and the contract tests, on the product's runner (vitest), with the correction loop on a failure | Eve | on a failure only |
+| 6 | **Simulate the development cohort:** seeded matches against the house bots and the parent champion, written to a results file | **a declared check, no agent** | no |
+| 7 | **Compare with the parent** and record the finding: the predicted effect against the measured one, with its uncertainty | Data | one |
+
+Step 7's record is step 1's input for the next increment. Max's work moves to the Campaign's
+continuation decision (§10 of SIP-0109), which the sequence does not change. Bob has nothing to
+assemble in a one-file product and is not in it.
+
+**What it keeps:** the increment gate and its binding to the proposal version; the footprint's
+write grants; accumulated acceptance, with one discriminating test per new criterion (SIP-0109 §8);
+the correction loop; the product's own checks under no-introduced-regression (SIP-0112 FR-20).
+**What it does not touch:** the sealed confirmation cohort, which stays SIP-0113's (Q49, Q50).
+Step 6 is development evidence, which builders may read (§6.1), and is never a promotion verdict.
+
+### A02.3 The framework changes it needs
+
+1. **A new cycle request profile,** proposed as `campaign-increment-experiment`, which a Campaign
+   names in its `proposal_profile` policy field. Its `workload_sequence` is `proposal` (gate
+   `progress_increment_ruling`), then `implementation`. A new file, since SIP-0114 freezes the
+   campaign profiles by hash (its decision 4, Q13).
+2. **A SIP-0109 amendment to §7.3,** which today runs `framing` on every increment. It states when
+   an increment may run without framing: the product's derived profile names one package surface
+   and the change request's footprint holds no more files than criteria plus one, for example.
+   The rule's exact bound is the amendment's to set (Q55).
+3. **An implementation plan derived from the change request,** with no model call: one development
+   task for the footprint's source files and one qa task per criterion file, under the plan
+   validator's existing refusal of writes outside the footprint (Q56).
+4. **A check whose output is evidence, not only a result.** Step 6 must record its results file as
+   an artifact the next proposal is shown. Today a declared check yields `PASS`, `FAIL` or
+   `UNVERIFIED` (SIP-0112 FR-20) (Q57).
+5. **Step 1 and step 7 as data tasks,** extending the prior-cycle brief (SIP-0109 §10a, #1692) from
+   a failed cycle's correction chain to an accepted increment's measured effect. Whether they are
+   new `TaskType` members or `data.report` with a declared input is the implementer's call under
+   CLAUDE.md's task-type rule 3 (properties over identity).
+
+### A02.4 Lane
+
+CLAUDE.md assigns executor, handler and framing surfaces to the MacBook lane by file ownership, so
+changes 1, 3 and 5 can be built there without touching the Spark lane's 2.6 files. The 2.6 plan is
+one lane, the Spark's (its §5). Whether the MacBook lane builds this during 2.6, and in which
+release it ships, is the owner's (Q58).
+
+### A02.5 How it is judged
+
+A like-for-like comparison on the MacBook, a case study, never an estimate (§6.4):
+
+- **Baseline:** `cmp_3efdd75b38dd`, today's `campaign-increment-source`, on the machinery charter.
+- **Arm:** the same charter, the same baseline commit, `lite-14b`, on `campaign-increment-experiment`.
+- **Read, per accepted increment:** model calls, tokens, wall-clock, proposal and plan rerolls,
+  correction rounds, and whether the increment was accepted. Each read from the cycle registry and
+  the run reports, not from an agent's narrative.
+- **The amendment's claim** is fewer model calls and less wall-clock per accepted increment, with
+  acceptance no worse. If the arm is accepted less often, the claim is false and recorded so.
+
+| measure | baseline (`cmp_3efdd75b38dd`) | experiment cycle |
+|---|---|---|
+| accepted increments | pending its close | not run |
+| model calls per accepted increment | pending | not run |
+| wall-clock per accepted increment | pending | not run |
+| proposal / plan rerolls | proposal 0; plan ≥ 1 | not run |
+| correction rounds | pending | not run |
+
+### A02.6 Acceptance additions
+
+| Test ID | Scenario | Required result | Requirement coverage |
+|---|---|---|---|
+| **AT-31** | An experiment-cycle increment on a one-file change | No framing task is dispatched; the implementation plan is derived from the change request; a write outside the footprint is refused as today | A02.3 items 1–3 |
+| **AT-32** | A change request whose footprint exceeds the rule's bound | The cycle is refused at create, or runs `campaign-increment-source`, by the §7.3 amendment's rule; never a framing-free cycle over the bound | A02.3 item 2 |
+| **AT-33** | Step 6's simulation crashes or does not terminate | The check is `UNVERIFIED` with the reason, and no comparison is recorded as a measured effect (BT-019) | A02.3 item 4 |
+| **AT-34** | The next increment's proposal | It is shown step 7's record from the parent, and its predicted effect is compared with what step 6 measures | A02.3 item 5; BT-029, BT-031 |
