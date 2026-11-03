@@ -634,11 +634,16 @@ class _TaskOutcomeRouter:
         judged = await executor._judged_on_product_runner(
             result, _envelope, _enriched, cycle, run_id
         )
-        if judged is not None:
+        if judged is not None and judged.status == TaskResultStatus.SUCCEEDED:
             _record_task_evidence(result)
             _holder["patched_result"] = judged
             state.correction.accepted_repair_task_ids.add(_envelope.task_id)
             return "accept_patch"
+        if judged is not None:
+            # #2877: the qa image couldn't run the suite; the correction loop reads the product
+            # runner's reading of it, not the image's "not run".
+            result = judged
+            _holder["result"] = result
         action = await _next_action(result, _envelope, _enriched, _holder)
         while action == KEEP_PROGRESS:
             # #1522: the repair made progress and broke nothing (``retest_reduction``). It
