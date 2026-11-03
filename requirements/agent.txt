@@ -28,7 +28,10 @@ langfuse>=2.0,<3.0
 # Structural revision of JavaScript/JSX (SIP-0107 §38 step 5): the React frontend's resolver.
 # Owner's choice 2026-09-14 over a vendored @babel/parser and esprima (which cannot read
 # `?.`/`??`). Agent-only: repairs apply structural edits in the agent container.
-tree-sitter>=0.25
+# <0.26 (#2814): 0.26.0 corrupts the tree of a file past about 257 lines (nodes outside the
+# content, then SIGSEGV), on both grammars; 0.25.2 parses the same inputs clean. #1626's row
+# 69,421,703,888,908 was very likely the same fault, contained rather than cured.
+tree-sitter>=0.25,<0.26
 tree-sitter-javascript>=0.25
 # TypeScript and TSX (SIP-0107 §38 step 6): the Next.js stack, on the same library.
 tree-sitter-typescript>=0.23
