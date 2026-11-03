@@ -5739,3 +5739,31 @@ Tests:
 session confirmed that the root placement was not the crew's design: the ShelfNote registry's root
 `test_criterion_*.py` scope was added only because the proposer placed criterion files there. It will remove that
 pattern once this is deployed.
+
+### 24cx. A criterion file is never placed under a file name the product already holds elsewhere (2026-11-03, §24bv point 5, §24cw; #2860; the owner's go on 2.5.1)
+
+**What changed.** §24bv point 5 refused a placement only when the file it would place was already a product file
+at **the same path**. Placement now refuses one whose **file name** any tracked file of the product holds at
+**any path**, and the refusal names that file.
+- The runner's `taken` list holds every tracked file whose name the template could give an id, wherever it lies.
+- The placement moves on to the next runner that covers the paths, as it does for any other refusal.
+- When no runner can place it, the proposal is refused (`unplaceable_criterion`), and the reason tells the proposer
+  to give the criterion an id the product's tests don't already name.
+- Placement does not rename, because §24cj's rails require the file to be named for its criterion's id.
+
+**The evidence.** §24cw fixed where a file is placed and what the plan gate refuses. It still left a gap in the
+tree a Campaign inherits:
+- Campaign 4 on `prj-shelfnote` (`cmp_bdf625d66ef2`) accepted root `test_criterion_T1.py` … `T8.py`.
+- Once that branch merged upstream, a later Campaign could place `tests/test_criterion_T1.py` beside the root file.
+- Pytest then refuses collection with "import file mismatch", as in #2858.
+
+z_shelfnote's own copies were renamed by hand when campaigns 4 and 6 were contributed (PRs #2 and #3). This rule
+covers any product.
+
+Tests:
+- `test_criterion_placement.py`: a file of the name at the root, and deeper than the runner's tests, is refused, and
+  another id still places.
+- `test_product_change_request.py`: the rails, entered through `validate_proposal` with the placements
+  `runner_placements` reads, refuse it and name the file.
+
+**Who ruled it.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2860.

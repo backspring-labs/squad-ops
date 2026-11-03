@@ -12,8 +12,8 @@ them (SIP-0112 H.6, contract 8):
   ``harness.test.jsx`` is ``criterion_T1.test.jsx``);
 - **refused, named,** when no runner covers the paths, or every runner that does can't host one:
   it can't be scoped to one file (``runner_not_scopable``), its pattern names no single file, its
-  extension can't be read from any test file it holds, or the file it would place is a product
-  file already.
+  extension can't be read from any test file it holds, or a product file anywhere in the tree
+  has its file name already (#2860: two test modules of one name stop a runner's collection).
 
 Placement has two halves. ``runner_placements`` reads each runner's template from the profile and
 the tree at the head, runtime-side, where the tree is. ``place_criterion`` places one criterion
@@ -57,7 +57,8 @@ class RunnerPlacement:
     #: ``<root>/<file name>`` with ``{criterion}`` for the criterion's id, or ``None``.
     template: str | None
     refused: str | None = None
-    #: The product's files the template would name for some id: never overwritten.
+    #: The product's files, anywhere in the tree, whose file name the template would give some
+    #: id: never overwritten, and never shadowed by a second module of the name (#2860).
     taken: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -112,7 +113,8 @@ def runner_placements(
         except Unplaceable as e:
             out.append(RunnerPlacement(**base, template=None, refused=str(e)))
             continue
-        taken = tuple(sorted(p for p in paths if fnmatch(p, template.replace(_CRITERION, "*"))))
+        name = PurePosixPath(template).name.replace(_CRITERION, "*")
+        taken = tuple(sorted(p for p in paths if fnmatch(PurePosixPath(p).name, name)))
         out.append(RunnerPlacement(**base, template=template, taken=taken))
     return tuple(out)
 
@@ -190,8 +192,17 @@ def place_criterion(
             reasons.append(str(p.refused))
             continue
         path = p.template.replace(_CRITERION, criterion_module_name(criterion_id))
-        if path in p.taken:
+        name = PurePosixPath(path).name
+        clash = [t for t in p.taken if PurePosixPath(t).name == name]
+        if path in clash:
             reasons.append(f"{path} is a file of the product's already, never overwritten")
+            continue
+        if clash:
+            reasons.append(
+                f"{path} would share its file name with the product's {clash[0]}, and two test "
+                f"modules of one name stop {p.runner}'s collection: give the criterion an id the "
+                "product's tests don't already name"
+            )
             continue
         return path
     raise Unplaceable(f"criterion {criterion_id}: " + "; ".join(reasons))
