@@ -18,7 +18,8 @@ were recorded and then dropped.
 
 ### Fixed
 
-The 2.6 plan's §0 and §0a spikes found these on `prj-shelfnote` (D11: spike fixes are 2.5.1's).
+The 2.6 plan's §0 and §0a spikes found the first ten on `prj-shelfnote`. The rest are the 2.5 cut's own open
+defects, on a Campaign's path or in the cut's tooling (D11).
 
 - **A product's `qa.test` failing only `tests_pass` in the qa image is judged on the product's own runner** (#2818,
   #2835). A product's suite is re-judged when the qa image fails it beside environment-sensitive checks, and a
@@ -37,6 +38,25 @@ The 2.6 plan's §0 and §0a spikes found these on `prj-shelfnote` (D11: spike fi
 - **A product's criterion file sits beside its runner's own tests,** and the plan gate refuses a planned file that
   shares a basename with a criterion file or a frozen verifier. A root `test_criterion_T1.py` and a qa test of the
   same name under `tests/` had stopped pytest at collection (#2858, #2859; SIP-0109 §24cw).
+- **A criterion file is never placed under a file name the product already holds elsewhere** in its tree, which
+  would stop pytest at collection (#2860, #2865; SIP-0109 §24cx).
+- **tree-sitter is pinned below 0.26.** 0.26.0 corrupts the tree of a JS/TS file past about 257 lines, or kills
+  the parse worker, so a product's long module had no anchored-edit entities. 0.25.2 parses the same inputs
+  clean (#2814, #2866).
+- **A product's qa run is bounded** (#2817, #2867; SIP-0112 H.16):
+  - The qa image's suite runs under the framework's own, empty pytest configuration, never the product's. A
+    product's `python_files`, `addopts`, `required_plugins`, `filterwarnings = error` or `strict_config` no longer
+    stops or fails it.
+  - A product runner's file pattern names a test only under that runner's roots.
+- **A develop task's typed check on a criterion file the merge gives to qa is resolved as its evaluator reads it:**
+  a command against its `cwd`, a glob against the files. A `frontend_compiles` on it is re-pointed to a file the
+  task keeps, not dropped (#2804, #2868; SIP-0093 §15c).
+- **`qa.test`'s monolithic prompt chooses its validation plan by one rule, shared by the handler and the budget,**
+  and a plan that is also a source file is counted as often as it is shown (#2809, #2869; SIP-0110 §5ap).
+- **A correction repair's call, its anchored-edit retry included, is refused by name over its model's window,**
+  never sent and never truncated past its output instructions (#2813, #2870; SIP-0110 §5aq).
+- **The release records attach scans for held-out step values and goals** as well as credentials, refuses to run
+  with no suite named, and leaves a file out only through a withhold list with reasons (#2830, #2871).
 
 ### Security
 
