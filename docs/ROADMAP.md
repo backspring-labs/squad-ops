@@ -49,11 +49,24 @@ from (#2855). 2.5 is feature-free by rule; the tag is cut from the tree the spik
 **Validated:** each fix's tests, failing on the code before it; the regression suite on every merge; and, on the
 deploy `dep_9b2e46f055c7` (`ab996e9b`), all 247 loaded checks answering and #2814, #2817 and #2813 read in the live
 containers. The spikes' fixes were read live by their Campaigns (`var/verification_sets/2-6-0-spike/readings.md`),
-the overnight run accepting 10 of 10 in 5 h 21 min. **Not covered:** no Campaign has run on the final deploy, so the
-cut's own defects (#2817, #2814, #2804, #2809, #2813) are not read on a live Campaign. That is 2.6's shakeout (the
-plan's §3 phase 4).
+the overnight run accepting 10 of 10 in 5 h 21 min.
 
-**What it moves on:** #2798, #2765 and #2402 to a later patch; #2839 to 2.6's Track A; #2861–#2863 for 2.6's placement.
+**Validated before the tag, on that deploy** (pre-registered; `var/verification_sets/2-5-1-validation/`):
+- **An uncounted regression pair, accepted on both stacks:** FastAPI + React 21/21 with one correction round, Next.js
+  21/21 with two. Its three anchored JSX/TSX repairs were accepted (#2814, #2813).
+- **A 3-increment Campaign on `prj-shelfnote`:** it accepted 1 of 3 and ended `failure` by its unaccepted-increment
+  limit.
+  - Each rejection was a criterion test failing on the product's own runner, so #2817's bounded run and #2818's
+    judgement were read live.
+  - It found #2881, which predates 2.5.1.
+
+**Not covered:** these were read only by their tests and the PR-time live probes:
+- #2804 and #2809, which triggered in no run;
+- the repair guard's refusal and truncation, and the criterion basename-clash refusal, which no run reached;
+- a hostile product pytest configuration, which Shelfnote doesn't have.
+
+**What it moves on:** #2798, #2765 and #2402 to a later patch; #2839 to 2.6's Track A; #2861–#2863 and #2881 for
+2.6's placement.
 
 **Upgrade from 2.5.0:** no migration and no configuration change. Rebuild the runtime API and the agents. The records
 attach now requires `SQUADOPS_HELDOUT_SUITES`.
