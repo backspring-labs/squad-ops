@@ -13,6 +13,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,36 @@ sys.modules["attach_release_records"] = attach
 _spec.loader.exec_module(attach)
 
 _DB_PASSWORD = "s3cret-db-pass"
+#: An invented held-out suite's step value and goal: never a real suite's (#2830).
+_STEP_VALUE = "Lanternfish Ledger 7731"
+_GOAL = "A saved lantern reads back with its ledger name"
+
+
+def _suite(path: Path) -> Path:
+    doc = {
+        "name": "invented",
+        "scenarios": [
+            {
+                "scenario_id": "s-invented",
+                "goal": _GOAL,
+                "surfaces": [{"kind": "http_endpoint", "path": "/lanterns", "method": "POST"}],
+                "steps": [
+                    {
+                        "action": "http",
+                        "method": "POST",
+                        "path": "/lanterns",
+                        "json": {"@Lantern:name": _STEP_VALUE},
+                        "save": {"lantern_id": "id"},
+                    }
+                ],
+                "checks": [{"check": "json", "step": 1, "path": "name", "equals": _STEP_VALUE}],
+                "fields": {"Lantern:name": ["name"]},
+            }
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    return path
 
 
 def _write(path: Path, text: str) -> None:
@@ -54,14 +85,17 @@ def box(tmp_path, monkeypatch):
     monkeypatch.setattr(attach, "main_checkout", lambda _p: main)
     # The box's own TensorFold key is never read by a test: absent unless a test writes it.
     monkeypatch.setattr(attach, "TENSORFOLD_KEY", tmp_path / "tensorfold" / "api_key")
+    _suite(tmp_path / "heldout" / "suite.yaml")
     return main
 
 
-def _run(box, tmp_path, *args, deploy=(), public=None):
+def _run(box, tmp_path, *args, deploy=(), public=None, suites=None):
+    suites = str(tmp_path / "heldout" / "suite.yaml") if suites is None else suites
     return attach.main(
         ["1.8.1", "--out-dir", str(tmp_path), *args],
         deploy_pairs=list(deploy),
         public_in=lambda value: list((public or {}).get(value, ())),
+        environ={attach.HELDOUT_SUITES_ENV: suites},
     )
 
 
@@ -212,7 +246,7 @@ def test_the_preview_uploads_nothing_and_names_a_secret_too_short_to_scan(
 
     out = capsys.readouterr().out
     assert "unscanned (shorter than 6 chars): secrets/pin.txt" in out
-    assert "clean: no credential found" in out
+    assert "clean: no credential and no held-out content found" in out
 
 
 def test_env_values_are_scanned_only_for_secret_names_and_never_for_references():
@@ -234,7 +268,8 @@ def test_a_line_with_no_records_attaches_nothing(tmp_path, monkeypatch):
     main = tmp_path / "empty"
     (main / "var" / "verification_sets").mkdir(parents=True)
     monkeypatch.setattr(attach, "main_checkout", lambda _p: main)
-    assert attach.main(["1.8.1", "--out-dir", str(tmp_path)], deploy_pairs=[]) == 1
+    environ = {attach.HELDOUT_SUITES_ENV: str(_suite(tmp_path / "suite.yaml"))}
+    assert attach.main(["1.8.1", "--out-dir", str(tmp_path)], deploy_pairs=[], environ=environ) == 1
 
 
 def test_a_version_that_is_not_semver_is_refused():
@@ -478,3 +513,88 @@ def test_tensorfolds_key_in_an_engine_record_refuses_the_upload(
         in out
     )
     assert planted not in out
+
+
+# --- #2830: held-out content ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        f'{{"json": {{"name": "{_STEP_VALUE}"}}}}',
+        f"the proposal was shown: {_GOAL}",
+    ],
+    ids=["a step value", "a goal"],
+)
+def test_held_out_content_in_any_record_refuses_by_file_and_never_prints_it(
+    box, tmp_path, capsys, line
+):
+    """#2830: the 2.5.0 preview scanned clean for credentials while 59 replay files held a suite's
+    step values, found by hand. Bugs caught: a step value or a goal reaching the public Release;
+    the refusal printing the value it found, which publishes it in the cut's log."""
+    _write(box / "var" / "verification_sets" / "1-8-1-diagnostics" / "replay.jsonl", line + "\n")
+
+    assert _run(box, tmp_path) == 1
+
+    out = capsys.readouterr().out
+    assert "1 held-out hit(s)" in out
+    assert "var/verification_sets/1-8-1-diagnostics/replay.jsonl  held-out marker" in out
+    assert "s-invented" in out
+    assert _STEP_VALUE not in out and _GOAL not in out
+
+
+def test_the_scan_refuses_to_run_with_no_suite_named(box, tmp_path, capsys):
+    """Bug caught: an unset variable read as "nothing held out", so the scan skips and the
+    tarball goes up unscanned, as each cut before this one did."""
+    assert _run(box, tmp_path, suites="") == 2
+
+    assert "SQUADOPS_HELDOUT_SUITES names no held-out suite" in capsys.readouterr().out
+    assert not (tmp_path / "squadops-1.8.1-records.tar.gz").exists()
+
+
+def test_a_withheld_file_is_left_out_and_recorded_with_its_reason(box, tmp_path, monkeypatch):
+    """The named way to leave a file out (the 2.5.0 cut moved 59 by hand). Bug caught: a withheld
+    file still in the tarball, or left out with no record of why on the package."""
+    replay = box / "var" / "verification_sets" / "1-8-1-diagnostics" / "replay.jsonl"
+    _write(replay, f'{{"name": "{_STEP_VALUE}"}}\n')
+    listed = tmp_path / "withhold.yaml"
+    listed.write_text(
+        yaml.safe_dump(
+            [{"member": "var/verification_sets/1-8-1-diagnostics/*.jsonl", "reason": "replay"}]
+        )
+    )
+    digest = _approved_with(box, tmp_path, monkeypatch, "--withhold", str(listed))
+    monkeypatch.setattr(
+        attach.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "", "")
+    )
+
+    assert (
+        _run(box, tmp_path, "--withhold", str(listed), "--upload", "--expect-sha256", digest) == 0
+    )
+
+    package = box / "site" / "content" / "releases" / "v1.8.1" / "package.yaml"
+    records = yaml.safe_load(package.read_text())["records"]
+    assert records["withheld"] == [
+        {"member": "var/verification_sets/1-8-1-diagnostics/replay.jsonl", "reason": "replay"}
+    ]
+    assert records["scanned"]["heldout_markers"] == 2
+    with tarfile.open(tmp_path / "squadops-1.8.1-records.tar.gz") as tar:
+        assert not [n for n in tar.getnames() if n.endswith("replay.jsonl")]
+
+
+def test_a_withhold_entry_without_a_reason_is_refused(box, tmp_path, capsys):
+    """Error: a file left out of a public Release says why. Bug caught: an entry with no reason
+    accepted, so the package records a withholding nobody can explain."""
+    listed = tmp_path / "withhold.yaml"
+    listed.write_text(yaml.safe_dump([{"member": "var/verification_sets/*"}]))
+
+    assert _run(box, tmp_path, "--withhold", str(listed)) == 2
+
+    assert "entry 1 needs a member and a reason" in capsys.readouterr().out
+
+
+def _approved_with(box, tmp_path, monkeypatch, *args) -> str:
+    with monkeypatch.context() as m:
+        m.setattr(attach.subprocess, "run", lambda *a, **k: pytest.fail("preview acted"))
+        assert _run(box, tmp_path, *args) == 0
+    return hashlib.sha256((tmp_path / "squadops-1.8.1-records.tar.gz").read_bytes()).hexdigest()
