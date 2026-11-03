@@ -3878,6 +3878,44 @@ from the handler's. This section records what changed and what stays.
 case is named rather than built: counting it would put vault I/O into a pure estimator, and the agent-side guard
 already refuses the overflow.
 
+## 5aq. A repair's call is guarded agent-side, its anchored-edit retry included (2026-11-03, §5ao; SIP-0073; #2813; the owner's go on 2.5.1)
+
+**What changed.** The correction repairs (development, builder and qa) now refuse a prompt over the model's window by
+name, as `development.develop` and `qa.test` already did.
+- **How.** The guard is SIP-0073's `_guard_prompt_size`, called on the base handler's generic path when a handler
+  declares `_guards_prompt_window` (`_CycleTaskHandler.handle`). `_RepairPromptMixin` declares it.
+- **What it covers.** It runs on every call through that path. That includes the anchored-edit retry, whose refusal
+  lines §5ao named as uncounted, because those lines can't be computed from the envelope.
+- **What it reserves.** The completion budget the call actually sends (`max_tokens` in its kwargs). It reserves 0 when
+  none is sent, which is the most lenient bound, for a model with no registry entry.
+- **What it does with an overflow.** A prompt over the window fails the step with
+  `PROMPT_EXCEEDS_CONTEXT_WINDOW`. It is never sent.
+- **No truncation** (`truncatable=False`). Develop's guard cuts from the prior-analysis section to the end of the
+  prompt. A repair's template puts its `closing_instruction` (the output form) after `prior_outputs`, so that cut
+  would send the repair without being told what to produce.
+
+**Why the guard and not a bound in the count.** #2813 proposed either one:
+- a bound in the composer's count: the edits a response may carry × the longest refusal line;
+- or the guard.
+
+A bound would inflate every repair's binding budget by a worst case that a measured retry (about 400 tokens) never
+approaches. The guard is exact on the prompt actually built. With the guard in place, the composer's count is an
+estimate again, and no longer the only check on the call.
+
+**What it doesn't change:** a prompt that fits is sent byte for byte as before. Handlers riding the generic path that
+aren't repairs stay unguarded, as before.
+
+**Evidence:**
+- `test_repair_anchored_edits.py::test_a_retry_whose_refusal_lines_pass_the_window_is_refused_by_name_not_sent`
+  enters at `DevelopmentCorrectionRepairHandler.handle` with the real templates. The model is registered with a
+  window between the first call's prompt and the retry's, so the first call is sent and the retry is refused by name.
+  Without the change, the retry was sent: a second model call.
+- `…::test_a_repair_that_fits_its_window_is_sent_as_before` is the control.
+- The repair-prompt characterization goldens are unchanged.
+
+**Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2813. The choice of
+the guard over a bound is the supervisor's, for the reason above.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and

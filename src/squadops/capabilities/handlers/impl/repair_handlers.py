@@ -272,6 +272,9 @@ class _RepairPromptMixin:
     """
 
     _request_template_id = "request.cycle_repair_task"
+    #: #2813: a repair's call, its anchored-edit retry included, is refused by name over the
+    #: model's window rather than sent.
+    _guards_prompt_window = True
 
     def _build_render_variables(
         self,

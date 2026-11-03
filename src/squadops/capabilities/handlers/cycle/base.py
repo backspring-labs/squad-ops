@@ -17,6 +17,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.capabilities.prompt_budget import completion_reserve
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.cycles.acceptance_check_spec import (
@@ -252,6 +253,11 @@ class _CycleTaskHandler(CapabilityHandler):
     _role: str = ""
     _artifact_name: str = ""
     _request_template_id: str = "request.cycle_task_base"
+    #: #2813: whether this generic path refuses a prompt over the model's window by name
+    #: (``_guard_prompt_size``), as ``development.develop`` and ``qa.test`` do on their own
+    #: paths. The correction repairs set it: a repair's anchored-edit retry adds refusal lines
+    #: its binding budget never counted, so the composer's estimate alone doesn't bound the call.
+    _guards_prompt_window: bool = False
 
     @property
     def name(self) -> str:
@@ -1258,12 +1264,26 @@ class _CycleTaskHandler(CapabilityHandler):
         assembled = context.ports.prompt_service.get_system_prompt(context.role_id)
         system_prompt = assembled.content
 
+        chat_kwargs = self._build_chat_kwargs(inputs)
+        if self._guards_prompt_window:
+            model_name = chat_kwargs.get("model") or context.ports.llm.default_model
+            spec = get_model_spec(model_name)
+            try:
+                user_prompt = _guard_prompt_size(
+                    system_prompt,
+                    user_prompt,
+                    int(chat_kwargs.get("max_tokens") or 0),
+                    spec.context_window if spec is not None else None,
+                    model_name,
+                    truncatable=False,
+                )
+            except ValueError as exc:
+                return self._fail_result(start_time, inputs, str(exc))
+
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
-
-        chat_kwargs = self._build_chat_kwargs(inputs)
 
         # #929: the call and everything that must follow it. The generic path's
         # prompt-layer identity is passed rather than derived — its system layer is

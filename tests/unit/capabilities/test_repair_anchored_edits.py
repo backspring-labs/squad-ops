@@ -513,3 +513,58 @@ async def test_the_retry_shows_the_files_again():
     assert result.outputs["anchored_edits"]["accepted"] is True
     for call in (0, 1):
         assert f"`backend/routes.py`:\n```\n{_ROUTES}```" in _user_prompt(ctx, call)
+
+
+def _window_between(monkeypatch, fits: str, overflows: str, max_tokens: int) -> None:
+    """Register ``test-model`` with a window that holds ``fits`` (system and user prompt, as the
+    guard estimates them) and not ``overflows``."""
+    import squadops.capabilities.handlers.cycle.base as base
+    from squadops.capabilities.handlers.prompt_guard import _estimate_tokens
+
+    low = _estimate_tokens("system\n\n" + fits) + max_tokens
+    high = _estimate_tokens("system\n\n" + overflows) + max_tokens
+    assert low < high, "the second prompt must be the larger"
+    spec = MagicMock(context_window=(low + high) // 2)
+    monkeypatch.setattr(base, "get_model_spec", lambda name: spec if name == "test-model" else None)
+
+
+async def test_a_retry_whose_refusal_lines_pass_the_window_is_refused_by_name_not_sent(
+    monkeypatch,
+):
+    """#2813. The anchored-edit retry adds refusal lines the repair's binding budget never
+    counted, and a repair's call had no prompt guard, so a retry over the model's window went to
+    the model unchecked. Entered at ``DevelopmentCorrectionRepairHandler.handle``, the repair the
+    correction loop dispatches, with the real templates. Bug caught: the retry sent past the
+    window (a second model call), instead of refused naming the overflow."""
+    dry = _context(_AMBIGUOUS_EDIT, _GOOD_EDIT)
+    await DevelopmentCorrectionRepairHandler().handle(dry, _inputs())
+    max_tokens = (
+        DevelopmentCorrectionRepairHandler()._build_chat_kwargs(_inputs()).get("max_tokens", 0)
+    )
+    _window_between(monkeypatch, _user_prompt(dry, 0), _user_prompt(dry, 1), max_tokens)
+    ctx = _context(_AMBIGUOUS_EDIT, _GOOD_EDIT)
+
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+    assert result.success is False
+    assert '"error_code": "PROMPT_EXCEEDS_CONTEXT_WINDOW"' in result.error
+
+
+async def test_a_repair_that_fits_its_window_is_sent_as_before(monkeypatch):
+    """Edge: the guard must not refuse what fits. Bug caught: a guard that refuses every repair,
+    or rewrites a prompt it has no reason to touch."""
+    dry = _context(_GOOD_EDIT)
+    await DevelopmentCorrectionRepairHandler().handle(dry, _inputs())
+    max_tokens = (
+        DevelopmentCorrectionRepairHandler()._build_chat_kwargs(_inputs()).get("max_tokens", 0)
+    )
+    _window_between(
+        monkeypatch, _user_prompt(dry, 0), _user_prompt(dry, 0) + "x" * 4000, max_tokens
+    )
+    ctx = _context(_GOOD_EDIT)
+
+    result = await DevelopmentCorrectionRepairHandler().handle(ctx, _inputs())
+
+    assert _user_prompt(ctx, 0) == _user_prompt(dry, 0)
+    assert result.outputs["anchored_edits"]["accepted"] is True
