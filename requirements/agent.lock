@@ -246,7 +246,7 @@ starlette==1.6.0
     #   a2a-sdk
     #   fastapi
     #   sse-starlette
-tree-sitter==0.26.0
+tree-sitter==0.25.2
     # via
     #   -c /tmp/tmp.AnRHVfUu1I
     #   -r requirements/agent.txt

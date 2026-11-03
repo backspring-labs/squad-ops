@@ -339,3 +339,32 @@ class TestANativeFaultKillsTheWorkerNotTheAgent:
 
         monkeypatch.setattr(m, "_in_worker", lambda fn, *a: (False, None))
         assert read(m) == (m.PARSER_DIED if expected == "PARSER_DIED" else expected)
+
+
+def _long_module(functions: int) -> str:
+    """``functions`` five-line exported functions: 400 is 2,000 lines, the size a product's
+    module reaches and the sample applications' never did."""
+    return "\n".join(
+        f"export function f{i}(a) {{\n  const b = a + {i}\n  const c = b * 2\n"
+        f"  return c\n}}"
+        for i in range(functions)
+    )
+
+
+@pytest.mark.parametrize("path", ["src/long.ts", "src/long.js"])
+@pytest.mark.parametrize("functions", [52, 400], ids=["260 lines", "2000 lines"])
+def test_a_long_module_lists_every_entity(path, functions):
+    """#2814: tree-sitter 0.26.0 handed back nodes outside a file of more than about 257 lines,
+    or killed the worker, so a product's long module listed no entity and an anchored edit on
+    it couldn't resolve. Entered at ``jsx_entities``, the worker-hosted read the agent's
+    anchored-edit form calls. Bug caught: a tree-sitter that corrupts long files' trees, at
+    the version the agent image's lock pins (CI installs the same pin)."""
+    content = _long_module(functions)
+
+    entities = jsx_entities(content, path)
+
+    assert entities is not None, "the long module read as unparseable"
+    functions_read = [e.selector for e in entities if "#" not in e.selector]
+    assert functions_read == [f"function:f{i}" for i in range(functions)]
+    last = content.rindex("export function")
+    assert entities[-2].start == last and entities[-2].end == len(content)
