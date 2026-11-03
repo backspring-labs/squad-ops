@@ -274,3 +274,35 @@ def test_every_declared_rendering_is_counted_through_its_function(monkeypatch):
     )
     with pytest.raises(KeyError, match="unknown"):
         rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=_inputs()))
+
+
+async def test_the_monolithic_plan_is_the_first_of_its_name_shown_and_counted_alike():
+    """#2809 item 3. Two files carry the plan's name. The handler showed the first and the budget
+    counted both, through two copies of the rule. Bug caught: the count and the prompt choosing
+    different plans, or the budget over-counting a plan the prompt never shows."""
+    contents = {**_TREE, "plans/validation_plan_old.md": "An older plan, never shown.\n"}
+    inputs = _inputs(artifact_contents=contents)
+
+    prompt = await _composed(inputs)
+
+    assert "Check that the orbit starts." in prompt.user_prompt
+    assert "An older plan, never shown." not in prompt.user_prompt
+    counted = qa_test_prompt_contents(inputs)
+    assert "plans/validation_plan_old.md" not in counted
+    assert counted["plans/validation_plan.md"] == "Check that the orbit starts.\n"
+
+
+async def test_a_plan_that_is_also_a_source_is_counted_as_often_as_it_is_shown():
+    """#2809 item 1. A source file whose name carries the plan's is shown twice, as the plan and
+    among the sources. Bug caught: the dict merge counting it once, so the budget is short by
+    the file."""
+    plan_source = "orbit/validation_plan.py"
+    text = "STEPS = ['the orbit starts']\n"
+    contents = {plan_source: text, **{k: v for k, v in _TREE.items() if "validation" not in k}}
+    inputs = _inputs(artifact_contents=contents)
+
+    prompt = await _composed(inputs)
+    counted = qa_test_prompt_contents(inputs)
+
+    assert prompt.user_prompt.count(text.strip()) == 2
+    assert [content for content in counted.values() if content == text] == [text, text]

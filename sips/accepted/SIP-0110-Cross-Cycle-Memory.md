@@ -3834,6 +3834,50 @@ E.4.3's open question (§5an).
 **Who ruled it.** No new design ruling: §5ak names exact rendering as the next step once such a hold is seen, and §5an
 did it for one seam.
 
+## 5ap. `qa.test`'s monolithic count held to the focused path's standard (2026-11-03, §5an; #2809; the owner's go on 2.5.1)
+
+§5an's second reader found that the monolithic path, unlike the focused one, was counted by a rule that could drift
+from the handler's. This section records what changed and what stays.
+
+**What changed.**
+1. **One plan rule.** `qa_prompt_contents.validation_plan` chooses the plan: the first file, in the contents' order,
+   whose name carries `VALIDATION_PLAN`. Both the handler's monolithic prompt and the budget call it.
+   - Before, the handler had its own literal and a first-match rule (`_resolve_artifact_content`), and the budget
+     counted every file of the name.
+   - The handler falls back to the vault only when the function finds no plan.
+2. **Shown twice, counted twice.** A source file whose name carries the plan's is shown as the plan and again among
+   the sources. It is now counted under the plan section's name as well as its own. Before, a dict merge counted it
+   once.
+3. **§5an's wording is corrected.** "The validation plan and the stack's source and support files, never a test or a
+   document" now reads: never a file the stack names a test. The source and support files can include a
+   `tests/conftest.py` or an `index.html`, and the plan is itself a document. The module docstring is corrected to
+   match. §5an's table row "with every file whose name names the plan" now reads "with the plan the handler shows".
+
+**What stays, named** (#2809's items 2, 5, 6 and 7):
+- **A plan loaded from the vault is not counted.**
+  - When the executor's 512 KB resolution limit stops before the plan, the handler loads it from the vault (D3). The
+    estimate is pure and reads only `artifact_contents`, so it doesn't see the plan. The count is short by the plan.
+  - It doesn't overflow unchecked: `qa.test`'s prompt guard (`prompt_guard._guard_prompt_size`) runs on both prompt
+    paths and refuses a prompt over the window by name.
+  - The focused path, the one Campaigns take, loads no plan.
+- **A profile that doesn't resolve raises `ValueError` inside `_supply_the_dispatch`.** This is unreachable in
+  practice, because a develop task on the same profile fails first.
+- **The registry's names are checked by the guard test in CI, not when the module is imported.** That is
+  unchanged, since the issue made it optional.
+- **About 13 characters of framing per file** over JSON's count now rely on the slack of the templates a path doesn't
+  render. That is unchanged.
+
+**Evidence:**
+- `test_qa_prompt_contents.py::test_the_monolithic_plan_is_the_first_of_its_name_shown_and_counted_alike` and
+  `…::test_a_plan_that_is_also_a_source_is_counted_as_often_as_it_is_shown`. Each enters at the handler's step 1a
+  (`_compose_user_prompt`) and at the count's function. Both fail on §5an's rule.
+- §5an's characterization tests are unchanged and pass: the monolithic prompt's head, and the composer's count per
+  path.
+
+**Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2809. The vault
+case is named rather than built: counting it would put vault I/O into a pure estimator, and the agent-side guard
+already refuses the overflow.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
