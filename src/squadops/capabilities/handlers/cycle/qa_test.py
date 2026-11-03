@@ -102,7 +102,12 @@ from squadops.capabilities.handlers.test_runner import (
     failed_tests_pass_row,
     run_build_validation,
 )
-from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents, source_files
+from squadops.capabilities.qa_prompt_contents import (
+    VALIDATION_PLAN,
+    qa_test_prompt_contents,
+    source_files,
+    validation_plan,
+)
 from squadops.capabilities.qa_run_tree import suite_run_tree
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.verification_scaffold_fill import (
@@ -1966,8 +1971,11 @@ class QATestHandler(_CycleTaskHandler):
         else:
             # Legacy monolithic prompt path (unchanged)
 
-            # Resolve plan artifacts with vault fallback (D3)
-            val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+            # The plan the budget counted (#2809), else the vault's when the executor's 512 KB
+            # limit stopped before it (D3).
+            val_plan = validation_plan(inputs.get("artifact_contents") or {})
+            if val_plan is None:
+                val_plan = await self._resolve_with_vault_fallback(inputs, VALIDATION_PLAN)
             # What the prompt shows, apart from the tree the suite runs on (#2815).
             sources = self._get_source_artifacts(inputs)
 
