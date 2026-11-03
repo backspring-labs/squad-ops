@@ -195,6 +195,23 @@ def test_a_criterion_whose_paths_leave_the_footprint_or_no_runner_tests_is_refus
     assert "no runner's tests cover tools/build.py" in untested_verdict.refusals[0].detail
 
 
+def test_a_criterion_file_name_the_product_already_holds_elsewhere_is_refused_at_the_rails():
+    """#2860, entered where the proposal's rails run (``validate_proposal``), with the placements
+    the runtime reads from the head (``runner_placements``). Bug caught: the rails accept
+    ``checks/check_criterion_R1.py`` while the product holds a module of that name at another
+    path, and the runner's collection stops on the two (#2858)."""
+    tree = (*product_files(), "legacy/check_criterion_R1.py")
+    product = dataclasses.replace(
+        _PRODUCT, placements=runner_placements(_PROFILE.runners, _PROFILE.gaps, tree)
+    )
+
+    verdict = validate_proposal(_request(), _context(product=product))
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.UNPLACEABLE_CRITERION
+    assert "legacy/check_criterion_R1.py" in refusal.detail
+
+
 def test_a_sample_applications_request_still_refuses_a_footprint_and_criterion_paths():
     """The manifest rails are unchanged. Bug caught: the product's authored fields admitted on a
     sample application, whose footprint the stack's scaffold map derives."""

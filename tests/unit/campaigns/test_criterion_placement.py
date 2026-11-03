@@ -166,3 +166,23 @@ def test_a_runner_rooted_at_the_repository_places_beside_its_own_tests(tree, pla
     placements = runner_placements((root_pytest,), (), tree)
 
     assert place_criterion("T1", ("app/main.py",), placements) == placed
+
+
+@pytest.mark.parametrize(
+    "existing",
+    ["test_criterion_T1.py", "legacy/checks/test_criterion_T1.py"],
+    ids=["at the root", "deeper than the runner's tests"],
+)
+def test_a_criterion_whose_file_name_the_product_already_has_elsewhere_is_refused(existing):
+    """#2860. Campaign 4's accepted branch held the criterion files at the root
+    (``test_criterion_T1.py``), and a later Campaign's placement under ``tests/`` checked only
+    the same path. Bug caught: ``tests/test_criterion_T1.py`` placed beside a root module of the
+    same name, so pytest refuses collection (``import file mismatch``, #2858) on every build of
+    the increment. Another id still places."""
+    root_pytest = _runner("pytest", ("app/**",), (".",), "test_*.py", checks=("backend",))
+    tree = ("app/main.py", "tests/test_main.py", "tests/test_books.py", existing)
+    placements = runner_placements((root_pytest,), (), tree)
+
+    with pytest.raises(Unplaceable, match=f"share its file name with the product's {existing}"):
+        place_criterion("T1", ("app/main.py",), placements)
+    assert place_criterion("T2", ("app/main.py",), placements) == "tests/test_criterion_T2.py"
