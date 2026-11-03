@@ -32,6 +32,8 @@ def _guard_prompt_size(
     max_completion_tokens: int,
     context_window: int | None,
     model_name: str | None = None,
+    *,
+    truncatable: bool = True,
 ) -> str:
     """Guard prompt against context window overflow.
 
@@ -47,6 +49,10 @@ def _guard_prompt_size(
         model_name: The model the budget was resolved for, so a disabled guard can
             name which model is unregistered instead of leaving the reader to work
             it out (#1145). Optional: a caller with no model to name still warns.
+        truncatable: Whether the prior-analysis section may be cut to fit. A caller
+            whose prompt carries instructions after that section (a correction
+            repair's closing instruction, #2813) passes ``False``: an overflow is
+            refused rather than sent without them.
 
     Returns:
         The (possibly truncated) user_prompt.
@@ -96,7 +102,7 @@ def _guard_prompt_size(
         return user_prompt
 
     # Attempt truncation of prior analysis section
-    heading_pos = user_prompt.find(_PRIOR_ANALYSIS_HEADING)
+    heading_pos = user_prompt.find(_PRIOR_ANALYSIS_HEADING) if truncatable else -1
 
     if heading_pos < 0:
         # No truncatable section found
