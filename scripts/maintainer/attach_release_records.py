@@ -37,6 +37,17 @@ It does three things:
 
    A hit refuses the upload and names the file, the line and the kind of secret, never the
    value. A secret too short to search for without false hits is named as unscanned.
+
+   **And for held-out content** (#2830): every step value and every goal of each suite
+   ``SQUADOPS_HELDOUT_SUITES`` names (colon-separated, as the pre-push hook reads it), in each
+   form ``heldout_sweep.forms`` stores one. A hit refuses the upload by file, naming the marker's
+   keyed id, scenario and step, never the value. The variable unset refuses the run: a held-out
+   suite is only held out while its values stay unpublished (SIP-0113), and the 2.4.0 and 2.5.0
+   cuts each found such files by hand.
+
+   **A file is left out only through a withhold list** (``--withhold <yaml>``): entries of
+   ``member`` (a glob over the names in the tarball) and ``reason``. The preview prints each
+   member withheld and why, and the upload records them in the package.
 3. **Upload** (``--upload`` only) with ``gh release upload``, then write the asset's name,
    sha256, file count and size into the release package, so the page names what the Release
    carries. The upload requires ``--expect-sha256``, the checksum the preview printed and the
@@ -55,19 +66,22 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import re
 import subprocess
 import sys
 import tarfile
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from fnmatch import fnmatch
 from pathlib import Path
 
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
+import heldout_text_scan  # noqa: E402
 from checkouts import main_checkout  # noqa: E402
 
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev" / "ops"))
@@ -83,6 +97,8 @@ ENGINE_RECORDS = (Path("var") / "engine_replay", Path("var") / "engine_switch")
 #: UTC stamp, ``20261012T040023Z-to-ollama.jsonl``.
 _DAY = re.compile(r"(\d{4})-?(\d{2})-?(\d{2})")
 RELEASES = Path("site") / "content" / "releases"
+#: The held-out suites the records are scanned against, as the pre-push hook names them (#2830).
+HELDOUT_SUITES_ENV = "SQUADOPS_HELDOUT_SUITES"
 #: A variable whose NAME says it holds a secret. The value of anything else (a model name, a
 #: URL) appears in records legitimately and would bury a real hit.
 SECRET_NAME = re.compile(r"PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE|CREDENTIAL|DSN|SALT|_KEY$", re.I)
@@ -329,6 +345,62 @@ def scan(members: Sequence[tuple[str, Path]], secrets: Sequence[Secret]) -> list
     return hits
 
 
+def heldout_suites(environ: Mapping[str, str]) -> list[Path]:
+    """The suites ``SQUADOPS_HELDOUT_SUITES`` names, colon-separated; empty when it is unset."""
+    return [Path(p).expanduser() for p in environ.get(HELDOUT_SUITES_ENV, "").split(":") if p]
+
+
+def heldout_hits(
+    members: Sequence[tuple[str, Path]], markers: Mapping[str, Mapping[str, str]]
+) -> list[tuple[str, dict[str, str]]]:
+    """Each member holding a held-out marker, with the marker's id, scenario and step: never the
+    value (``heldout_text_scan.hits``, the pre-push scan's own reading)."""
+    found: list[tuple[str, dict[str, str]]] = []
+    for name, path in members:
+        text = path.read_bytes().decode("utf-8", errors="replace")
+        found += [(name, hit) for hit in heldout_text_scan.hits(dict(markers), text)]
+    return found
+
+
+@dataclass(frozen=True)
+class Withheld:
+    member: str
+    reason: str
+
+
+def read_withhold(path: Path) -> list[tuple[str, str]]:
+    """``(glob, reason)`` for each entry of a withhold list. Raises ``ValueError`` for an entry
+    with no member or no reason: a file left out of a Release says why."""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    entries = doc.get("withhold", []) if isinstance(doc, dict) else doc
+    out: list[tuple[str, str]] = []
+    for i, entry in enumerate(entries if isinstance(entries, list) else [None]):
+        member = entry.get("member") if isinstance(entry, dict) else None
+        reason = entry.get("reason") if isinstance(entry, dict) else None
+        if not (isinstance(member, str) and member and isinstance(reason, str) and reason.strip()):
+            raise ValueError(f"{path}: entry {i + 1} needs a member and a reason")
+        out.append((member, reason.strip()))
+    return out
+
+
+def withhold(
+    members: Sequence[tuple[str, Path]], entries: Sequence[tuple[str, str]]
+) -> tuple[list[tuple[str, Path]], list[Withheld], list[str]]:
+    """The members kept, those withheld with their reason, and each entry's glob that matched
+    nothing (a stale list, named)."""
+    kept: list[tuple[str, Path]] = []
+    withheld: list[Withheld] = []
+    used: set[str] = set()
+    for name, path in members:
+        match = next(((g, r) for g, r in entries if fnmatch(name, g)), None)
+        if match is None:
+            kept.append((name, path))
+            continue
+        used.add(match[0])
+        withheld.append(Withheld(name, match[1]))
+    return kept, withheld, [g for g, _ in entries if g not in used]
+
+
 def build_tarball(members: Sequence[tuple[str, Path]], out: Path, top: str) -> str:
     """Write the tarball; return its sha256. Owners are normalised, the members' mtimes kept
     (they are evidence of when each record was written), and the gzip header's own time pinned
@@ -368,11 +440,43 @@ def _print_carried(line: str, campaigns: CampaignRecords, engines: EngineRecords
         print(f"  not carried, its name begins with no day: {named}")
 
 
+def _heldout_markers(environ: Mapping[str, str]) -> dict[str, dict[str, str]]:
+    """Every step value and goal of the suites ``SQUADOPS_HELDOUT_SUITES`` names. Raises
+    ``ValueError`` when it names none, or a suite can't be read (named by file, never quoted)."""
+    suites = heldout_suites(environ)
+    if not suites:
+        raise ValueError(
+            f"{HELDOUT_SUITES_ENV} names no held-out suite, so the records can't be scanned for "
+            "held-out step values and goals before they go public (#2830). Set it to the line's "
+            "suites, colon-separated, every revision included."
+        )
+    return heldout_text_scan.suite_markers(suites, goals=True)
+
+
+def _refused(hits: Sequence[Hit], heldout: Sequence[tuple[str, dict[str, str]]]) -> bool:
+    """Print every hit, by file, never by value; ``True`` when there is one."""
+    if not hits and not heldout:
+        return False
+    print(
+        f"\nREFUSED — {len(hits)} credential hit(s), {len(heldout)} held-out hit(s); "
+        "nothing uploaded:"
+    )
+    for h in hits:
+        print(f"  ✗ {h.member}:{h.line}  {h.kind}")
+    for name, marker in heldout:
+        print(
+            f"  ✗ {name}  held-out marker {marker['marker']} "
+            f"({marker['scenario']}, {marker['where']})"
+        )
+    return True
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     deploy_pairs: Sequence | None = None,
     public_in: Callable[[str], list[str]] | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("version", help="the released version, e.g. 1.8.1")
@@ -382,6 +486,11 @@ def main(
         help="also take the line's records the worktree sweep archived there (cut step 8)",
     )
     ap.add_argument("--out-dir", type=Path, help="where the tarball is written (default: /tmp)")
+    ap.add_argument(
+        "--withhold",
+        type=Path,
+        help="a YAML list of {member: <glob over tarball names>, reason: …} left out (#2830)",
+    )
     ap.add_argument("--upload", action="store_true", help="upload to the Release and record it")
     ap.add_argument(
         "--expect-sha256",
@@ -394,14 +503,22 @@ def main(
             "printed, so what is uploaded is what was approved (#1732)"
         )
 
+    try:
+        markers = _heldout_markers(os.environ if environ is None else environ)
+        entries = read_withhold(args.withhold) if args.withhold else []
+    except (OSError, ValueError) as e:
+        print(f"REFUSED — {e}")
+        return 2
+
     line = line_of(args.version)
     tag = f"v{args.version}"
     main_path = main_checkout(REPO_ROOT)
     package = main_path / RELEASES / tag / "package.yaml"
     campaigns = collect_campaigns(main_path, tag)
     engines = collect_engine_records(main_path, tag)
-    members = (
-        collect_records(main_path, line, args.archive_root) + campaigns.members + engines.members
+    members, withheld, unmatched = withhold(
+        collect_records(main_path, line, args.archive_root) + campaigns.members + engines.members,
+        entries,
     )
     if not members:
         print(
@@ -420,6 +537,7 @@ def main(
         for source, path in public.items()
     ]
     hits = scan(members, secrets)
+    heldout = heldout_hits(members, markers)
 
     top = f"squadops-{args.version}-records"
     out = (args.out_dir or Path("/tmp")) / f"{top}.tar.gz"
@@ -432,12 +550,14 @@ def main(
     )
     for note in unscanned:
         print(f"  {note}")
-    if hits:
-        print(f"\nREFUSED — {len(hits)} credential hit(s); nothing uploaded:")
-        for h in hits:
-            print(f"  ✗ {h.member}:{h.line}  {h.kind}")
+    print(f"scanned against {len(markers)} held-out markers (step values and goals)")
+    for w in withheld:
+        print(f"  withheld: {w.member} — {w.reason}")
+    for glob in unmatched:
+        print(f"  a withhold entry matched no record: {glob}")
+    if _refused(hits, heldout):
         return 1
-    print("clean: no credential found")
+    print("clean: no credential and no held-out content found")
     if not args.upload:
         print(f"\npreview only; --upload attaches it to {tag} and records it in {package}")
         return 0
@@ -467,7 +587,12 @@ def main(
             "engine_records": engines.carried,
             "bytes": size,
             "attached_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "scanned": {"secret_values": len(secrets) - len(short), "patterns": list(PATTERNS)},
+            "scanned": {
+                "secret_values": len(secrets) - len(short),
+                "patterns": list(PATTERNS),
+                "heldout_markers": len(markers),
+            },
+            "withheld": [{"member": w.member, "reason": w.reason} for w in withheld],
         },
     )
     print(f"attached to {tag}; recorded in {package}")

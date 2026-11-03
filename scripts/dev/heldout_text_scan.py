@@ -49,9 +49,10 @@ def _sweep() -> Any:
     return module
 
 
-def suite_markers(paths: list[Path]) -> dict[str, dict[str, str]]:
-    """Every marker of every suite named, by its keyed id. Raises ``ValueError`` naming the file,
-    never quoting it, when one can't be read."""
+def suite_markers(paths: list[Path], *, goals: bool = False) -> dict[str, dict[str, str]]:
+    """Every marker of every suite named, by its keyed id, and with ``goals`` each scenario's goal
+    too (``heldout_sweep.goal_markers``: a public Release must carry neither, #2830). Raises
+    ``ValueError`` naming the file, never quoting it, when one can't be read."""
     import yaml
 
     from squadops.scenarios.models import parse_suite
@@ -63,7 +64,8 @@ def suite_markers(paths: list[Path]) -> dict[str, dict[str, str]]:
             suite = parse_suite(yaml.safe_load(path.read_text(encoding="utf-8")))
         except Exception as e:  # noqa: BLE001 — named by file, never by content
             raise ValueError(f"{path}: the suite doesn't parse ({type(e).__name__})") from None
-        for mid, marker in sweep.markers(suite).items():
+        found_here = {**sweep.markers(suite), **(sweep.goal_markers(suite) if goals else {})}
+        for mid, marker in found_here.items():
             found.setdefault(mid, marker)
     return found
 
