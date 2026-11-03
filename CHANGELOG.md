@@ -5,9 +5,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+**A patch on 2.5, an odd line that is feature-free by rule, carrying one addition by the owner's decision.**
+On 2026-11-03 the owner chose to acknowledge the one feature merged to main during the 2.6 plan's spikes. The tag is
+cut from the tree those spikes ran on, not from a branch of fixes only. #2854 is recorded as a fix: a ruling's notes
+were recorded and then dropped.
+
+### Added
+
+- **A registered product's file at the Project's integrated commit,** `GET /api/v1/projects/{id}/source-file?path=`
+  (#2855, #2856). It is read-only, so the crew's Campaign drafting reads the goals a Campaign will actually work from.
+  Spike 2 needed it, and it is the one feature this patch carries.
+
 ### Fixed
 
-The 2.6 plan's §0 spike found these on `prj-shelfnote` (D11: spike fixes are 2.5.1's).
+The 2.6 plan's §0 and §0a spikes found these on `prj-shelfnote` (D11: spike fixes are 2.5.1's).
 
 - **A product's `qa.test` failing only `tests_pass` in the qa image is judged on the product's own runner** (#2818,
   #2835). A product's suite is re-judged when the qa image fails it beside environment-sensitive checks, and a
@@ -21,6 +32,11 @@ The 2.6 plan's §0 spike found these on `prj-shelfnote` (D11: spike fixes are 2.
   counts toward no unaccepted limit (#2849, #2850; SIP-0109 §24ct).
 - **A busy engine serving only declared models is a quiet box,** so the crew's own model call on the shared
   TensorFold engine no longer blocks a Campaign launch or a run start (#2851, #2852; SIP-0109 §24cu, SIP-0111 §9n).
+- **The notes on an increment's approval reach its framing** as the reviewer's guidance. Before this, an
+  `approved_with_refinements` ruling's notes were recorded but never shown to a model (#2854, #2857; SIP-0109 §24cv).
+- **A product's criterion file sits beside its runner's own tests,** and the plan gate refuses a planned file that
+  shares a basename with a criterion file or a frozen verifier. A root `test_criterion_T1.py` and a qa test of the
+  same name under `tests/` had stopped pytest at collection (#2858, #2859; SIP-0109 §24cw).
 
 ### Security
 
