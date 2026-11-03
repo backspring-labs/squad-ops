@@ -625,9 +625,22 @@ def _surfaces(
     ):
         surfaces.append(Surface("command", argv=(str(name),)))
     surfaces += [Surface("package", name=PurePosixPath(p).name) for p in packages]
-    if node.get("name") and not node.get("private"):
+    if node.get("name") and _node_package_has_an_interface(node):
         surfaces.append(Surface("package", name=str(node["name"])))
     return tuple(surfaces)
+
+
+#: The ``package.json`` fields that declare a module interface: what a caller imports.
+_NODE_INTERFACE_FIELDS = ("main", "exports", "module")
+
+
+def _node_package_has_an_interface(node: Mapping[str, Any]) -> bool:
+    """Whether a root ``package.json`` is a package a criterion may name (SIP-0112 H.17).
+
+    ``private`` means only that npm won't publish it. An application's own ``package.json`` is
+    private and declares no module (a Next.js app at the root): its surfaces are its pages and
+    endpoints. A library that isn't published is private too, and declares what it exports."""
+    return not node.get("private") or any(node.get(f) for f in _NODE_INTERFACE_FIELDS)
 
 
 def _python_packages(tree: _Tree) -> list[str]:

@@ -2750,3 +2750,40 @@ of H.15 is corrected.
 
 **Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2817. The choice
 of the framework's configuration over neutralized options is the supervisor's, for the reason in point 1.
+
+## H.17 A private package that declares a module interface is a package surface (2026-11-03; H.7; #2875; the MacBook lane, for the owner's ruling in review)
+
+**What was found** (#2875). `battle-trainer` (`prj-battle-trainer`) is a Node library. Its first commit's `package.json`
+was `{"name": "battle-trainer", "private": true, …}` with no `main` or `exports`, so its derived profile listed no
+public surface. On the MacBook (2.5.0), campaign `cmp_c20d825c8131` had both increment proposals refused:
+"[unknown_surface] criterion C1: no command 'controller.tick' among the product's declared surfaces (it declares
+none of that kind)". The proposer had nothing it could name. The product's workaround (`1f9e195`) dropped `private`
+and added `main`.
+
+**What H.7 says, and why it was right in part.** H.7's public surfaces include "a `package.json` `name` that isn't
+private". The rule keeps an application's own `package.json` out of the surfaces: a Next.js app at the root is
+private and its surfaces are its pages and endpoints. But `private` means only that npm won't publish the package.
+Every unpublished library is private too, so the rule gave every repository-backed Node library that isn't published
+no surface at all.
+
+**What changed** (`profile_derivation._node_package_has_an_interface`). H.7's line now reads: **a root `package.json`
+`name` that isn't private, or that declares a module interface (`main`, `exports` or `module`).**
+- An application declares none of the three, so it stays out, as H.7 intended.
+- A library declares what it exports, published or not.
+- Nested `package.json` files are still not read for surfaces (`tree.json("package.json")` reads the root), so
+  continuum's and shelfnote's private frontends are unchanged.
+
+**On a tree that lacks a file.** The rule reads `package.json`'s fields and no file they name, so a `main` pointing at
+a missing file still declares the surface. A criterion on it fails at acceptance on the product's runner, as any
+criterion on missing code does.
+
+**The evidence:**
+- **Wiring:** `test_the_proposal_rails_read_a_private_librarys_package_from_its_profile` derives the profile and hands
+  its document to `planning.proposal.product_context`, the reading the proposal's `unknown_surface` refusal is decided
+  on (`ProductContext.serves`).
+- **Seams:** six `package.json` shapes, from a private app (no surface) to a private library with `main`, `exports` or
+  `module` (a surface), a public package, and one with no name.
+- **Mutant:** the old rule fails four of them.
+
+**Who ruled.** Proposed by the MacBook lane on 2026-11-03, under the owner's direction to fix the seams battle-trainer
+found. The owner rules on it in review.

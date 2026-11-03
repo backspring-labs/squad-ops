@@ -363,3 +363,58 @@ def test_each_vitest_runner_is_read_on_its_own_output_and_its_gap_is_confined_to
             "names a reporter" + _TAIL,
         ),
     ]
+
+
+# --- #2875: a private package that declares an interface is a package surface ---------------
+
+_BATTLE_CHECKS = (Check("contract_tests", ("npx", "vitest", "run")),)
+
+
+@pytest.mark.parametrize(
+    ("package_json", "surfaces"),
+    [
+        # battle-trainer's first commit: private, and no interface declared. An application's own
+        # package.json looks the same (a Next.js app at the root), so it offers no package.
+        (b'{"name": "battle-trainer", "private": true}', []),
+        # The same library declaring what it exports is a package, published or not.
+        (b'{"name": "battle-trainer", "private": true, "main": "src/controller.js"}',
+         [{"kind": "package", "name": "battle-trainer"}]),
+        (b'{"name": "battle-trainer", "private": true, "exports": {".": "./src/controller.js"}}',
+         [{"kind": "package", "name": "battle-trainer"}]),
+        (b'{"name": "battle-trainer", "private": true, "module": "src/controller.js"}',
+         [{"kind": "package", "name": "battle-trainer"}]),
+        # Not private: a package, as before.
+        (b'{"name": "battle-trainer"}', [{"kind": "package", "name": "battle-trainer"}]),
+        # No name: nothing a criterion could name.
+        (b'{"private": true, "main": "src/controller.js"}', []),
+    ],
+    ids=["private-app", "private-main", "private-exports", "private-module", "public", "no-name"],
+)  # fmt: skip
+def test_a_private_package_that_declares_an_interface_is_a_package_surface(package_json, surfaces):
+    files = {
+        "package.json": package_json,
+        "package-lock.json": b"{}",
+        "src/controller.js": b"",
+        "test/contract.test.js": b"",
+    }
+    profile = derive_profile(files, _configuration(_BATTLE_CHECKS), _baseline(_BATTLE_CHECKS))
+
+    assert [s.to_document() for s in profile.public_surfaces] == surfaces
+
+
+def test_the_proposal_rails_read_a_private_librarys_package_from_its_profile():
+    """Wiring, #2875: the derived profile's document is what a repository-backed proposal's rails
+    read (``planning.proposal.product_context``), and an ``unknown_surface`` refusal is decided on
+    ``ProductContext.serves``. Bug caught: cmp_c20d825c8131's two proposals refused because a
+    private library offered no package to name."""
+    from squadops.capabilities.handlers.planning.proposal import product_context
+
+    files = {
+        "package.json": b'{"name": "battle-trainer", "private": true, "main": "src/controller.js"}',
+        "src/controller.js": b"",
+        "test/contract.test.js": b"",
+    }
+    profile = derive_profile(files, _configuration(_BATTLE_CHECKS), _baseline(_BATTLE_CHECKS))
+
+    context = product_context({"profile": profile.to_document()})
+    assert context.serves("package") == ("battle-trainer",)
