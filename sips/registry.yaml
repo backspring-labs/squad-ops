@@ -1228,3 +1228,12 @@ sips:
   approver: null
   created_at: '2026-10-09T00:00:00Z'
   updated_at: '2026-10-09T14:35:13.751261Z'
+- sip_uid: '17937286241170930'
+  sip_number: null
+  title: Battle Training Squad Harness
+  path: sips/proposed/SIP-Battle-Training-Squad-Harness.md
+  status: proposed
+  author: Backspring Labs / SquadOps
+  approver: null
+  created_at: '2026-11-02T00:00:00Z'
+  updated_at: null
