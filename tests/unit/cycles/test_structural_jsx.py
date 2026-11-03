@@ -345,8 +345,7 @@ def _long_module(functions: int) -> str:
     """``functions`` five-line exported functions: 400 is 2,000 lines, the size a product's
     module reaches and the sample applications' never did."""
     return "\n".join(
-        f"export function f{i}(a) {{\n  const b = a + {i}\n  const c = b * 2\n"
-        f"  return c\n}}"
+        f"export function f{i}(a) {{\n  const b = a + {i}\n  const c = b * 2\n  return c\n}}"
         for i in range(functions)
     )
 
