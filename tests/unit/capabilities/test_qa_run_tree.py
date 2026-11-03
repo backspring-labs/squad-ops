@@ -133,3 +133,42 @@ def test_an_unknown_profile_is_refused():
     picks a default for it."""
     with pytest.raises(ValueError, match="Unknown development profile"):
         suite_run_tree(_inputs("cobol_mainframe"))
+
+
+@pytest.mark.parametrize(
+    ("runner", "kept", "dropped"),
+    [
+        # unittest's default pattern, rooted at tests: a source module outside the root keeps.
+        (
+            {"roots": ["tests"], "file_pattern": "test*.py"},
+            ["orchard/testing.py", "orchard/app.py"],
+            ["tests/testcases.py"],
+        ),
+        # A runner taking every .py under its root: the source tree outside it keeps.
+        (
+            {"roots": ["checks"], "file_pattern": "*.py"},
+            ["orchard/testing.py", "orchard/app.py", "conftest.py"],
+            ["checks/totals.py"],
+        ),
+        # Rooted at the repository: its pattern holds everywhere, as the product's runner does.
+        (
+            {"roots": ["."], "file_pattern": "test*.py"},
+            ["orchard/app.py"],
+            ["orchard/testing.py", "tests/testcases.py"],
+        ),
+    ],
+    ids=["a rooted test*.py", "a rooted *.py", "rooted at the repository"],
+)
+def test_a_runners_pattern_names_a_test_only_under_its_roots(runner, kept, dropped):
+    """#2817 item 2. A runner's declared ``file_pattern`` was matched by file name anywhere. Bugs
+    caught: unittest's ``test*.py`` rooted at ``tests`` dropping the source module
+    ``orchard/testing.py``, so the suite under test can't import it; a ``*.py`` runner dropping
+    every Python file of the product, ``conftest.py`` and source included."""
+    contents = {path: "x = 1\n" for path in (*kept, *dropped)}
+    repository = {**_REPOSITORY, "runners": [{"runner": "unittest", **runner}]}
+
+    tree = suite_run_tree(
+        _inputs("python_cli", artifact_contents=contents, source_repository=repository)
+    )
+
+    assert sorted(tree) == sorted(kept)

@@ -122,9 +122,16 @@ class Runner:
 
     def holds(self, path: str) -> bool:
         """Whether ``path`` (repository-relative) is one of this runner's test files."""
-        file = PurePosixPath(path)
-        under = any(r == "." or file.is_relative_to(r) for r in self.roots)
-        return under and fnmatch(file.name, self.file_pattern)
+        return runner_holds(self.roots, self.file_pattern, path)
+
+
+def runner_holds(roots: Iterable[str], file_pattern: str, path: str) -> bool:
+    """A runner's test file: ``path`` (repository-relative) under one of its ``roots`` (``.`` is
+    the whole tree), and its file name ``file_pattern``. The one rule, for a ``Runner`` and for a
+    task's view of one (the qa run tree, #2817)."""
+    file = PurePosixPath(path)
+    under = any(r == "." or file.is_relative_to(r) for r in roots)
+    return under and fnmatch(file.name, file_pattern)
 
 
 @dataclass(frozen=True)

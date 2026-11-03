@@ -16,12 +16,26 @@ one (the emission, the execute-only retest, the contract probes and the lint rea
   the product met: #2815's runtime discovered its plugins from manifests that weren't there.
 
 The product's own tests are left out, so the run judges the suite under test and nothing else. A
-test is a file any stack's conventions name one or any stack's runner collects
-(``test_file_patterns``, ``collected_test_patterns``), or one the product's own runners take as a
-test (their ``file_pattern``, SIP-0112 H.4 point 3). Every stack's, not only the cycle's: a product
-runs under its blueprint's profile or the default (H.13), which needn't be the stack its tests are
-written for. Support beside a test is kept: ``is_test_file``'s ``__tests__/`` clause, which
-over-matches on purpose to keep helpers out of a source set, isn't used here.
+test is either of two things:
+- a file any stack's conventions call a test, or that any stack's runner collects
+  (``test_file_patterns``, ``collected_test_patterns``). Every stack's counts, not only the cycle's,
+  because a product runs under its blueprint's profile or the default (H.13), and that needn't be
+  the stack its tests are written for;
+- a file one of the product's own runners holds as a test: its ``file_pattern``, matched **only
+  under that runner's roots** (``Runner.holds``, SIP-0112 H.4 point 3; #2817). Matched anywhere,
+  unittest's ``test*.py`` rooted at ``tests`` would drop a source module ``orchard/testing.py``,
+  and a runner's ``*.py`` would drop the whole Python tree.
+
+Support beside a test is kept. ``is_test_file``'s ``__tests__/`` clause, which over-matches on
+purpose to keep helpers out of a source set, isn't used here.
+
+**Known limits** (#2817 item 3, not built):
+- The stack patterns are path-blind. A product helper named like a test (``tests/test_utils.py``)
+  or a source named like one (``ab_test.py``) is left out, as the qa image's ``pytest .`` would
+  collect it.
+- A product with no derived profile has only the stacks' JavaScript extensions, so a ``.test.mjs``
+  stays in its run tree.
+- Past the executor's 512 KB ``artifact_contents`` limit, the run can lack a file the product holds.
 
 Pure: no I/O. The qa handler calls it.
 """
@@ -33,6 +47,7 @@ from typing import Any
 
 from squadops.capabilities.handlers.source_repository import source_backed
 from squadops.capabilities.qa_prompt_contents import source_files
+from squadops.projects.derived_profile import runner_holds
 from squadops.stacks.development_profiles import (
     DEVELOPMENT_PROFILES,
     effective_development_profile,
@@ -57,26 +72,29 @@ def suite_run_tree(inputs: Mapping[str, Any]) -> dict[str, str]:
     profile = get_development_profile(effective_development_profile(inputs.get("resolved_config")))
     if not source_backed(inputs):
         return source_files(inputs.get("artifact_contents", {}), profile)
-    return product_tree(inputs.get("artifact_contents") or {}, product_test_patterns(inputs))
+    return product_tree(inputs.get("artifact_contents") or {}, product_runners(inputs))
 
 
-def product_test_patterns(inputs: Mapping[str, Any]) -> tuple[str, ...]:
-    """What a test file is on a product's run: what any stack calls or collects as one, and each
-    file pattern the product's own runners take as a test."""
+def product_runners(inputs: Mapping[str, Any]) -> tuple[tuple[tuple[str, ...], str], ...]:
+    """Each of the product's own runners as ``(roots, file_pattern)``, from the task's
+    ``source_repository`` (``checkout.RunnerView``; contract 8 requires its roots)."""
     runners = (inputs.get("source_repository") or {}).get("runners") or ()
-    declared = tuple(
-        str(r["file_pattern"]) for r in runners if isinstance(r, Mapping) and r.get("file_pattern")
+    return tuple(
+        (tuple(str(r) for r in runner.get("roots") or ()), str(runner["file_pattern"]))
+        for runner in runners
+        if isinstance(runner, Mapping) and runner.get("file_pattern")
     )
-    return (*_STACK_TEST_PATTERNS, *declared)
 
 
 def product_tree(
-    artifact_contents: Mapping[str, str], test_patterns: tuple[str, ...]
+    artifact_contents: Mapping[str, str],
+    runners: tuple[tuple[tuple[str, ...], str], ...] = (),
 ) -> dict[str, str]:
-    """Every file of the product's workspace that ``test_patterns`` don't name a test, in its
-    order."""
+    """Every file of the product's workspace that is no test, in its order: no stack calls it
+    one, and none of ``runners`` (``(roots, file_pattern)``) holds it."""
     return {
         path: content
         for path, content in artifact_contents.items()
-        if not matches_test_file_patterns(path, test_patterns)
+        if not matches_test_file_patterns(path, _STACK_TEST_PATTERNS)
+        and not any(runner_holds(roots, pattern, path) for roots, pattern in runners)
     }
