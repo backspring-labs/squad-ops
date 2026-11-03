@@ -2787,3 +2787,67 @@ criterion on missing code does.
 
 **Who ruled.** Proposed by the MacBook lane on 2026-11-03, under the owner's direction to fix the seams battle-trainer
 found. The owner rules on it in review.
+
+## H.18 A product's suite that the qa image couldn't run is read on the product's own runner, whatever else failed (2026-11-03; E.4.3, H.15; #2877, and #2818 recorded; the MacBook lane, for the owner's ruling in review)
+
+**What was found** (#2877). `battle-trainer` (`prj-battle-trainer`) is a Node library whose derived profile names vitest
+as its only runner. On the MacBook (2.5.0, `d0ef8ed2`), its first increment `cyc_0fbf09b7b96e` (campaign
+`cmp_3efdd75b38dd`) and that increment's repair `cyc_9a6ba22faa37` both ended `plan_defect` on `qa.test`
+(`term_-qa.test_02`, `tighten_acceptance`).
+- **Every round's `tests_pass` came from the qa image,** whose pytest collects no `.test.js` file: "tests not run: no
+  pytest-discoverable test files — backend tests must be Python files named test_*.py", exit -1.
+- **The suite also had a real defect:** `vi` used without being imported (`acceptance:undefined_names`).
+- **The failure analysis** (`art_0a14df16615e`) told the repair "the test should be a Python file named according to
+  pytest conventions": the image's wording, passed on as guidance.
+
+**#2818 recorded.** 2.5.1 built a re-judging of this kind (`execution/product_suite`, PR #2835) and recorded it in
+no amendment. When a product's `qa.test` fails and `tests_pass` is its only failing check (beside checks that fail in
+the qa image for the same reason, #2838), the runtime runs the emitted suite again on the product's runner in the
+sandbox, after the Development Configuration's install and build steps. A pass there judges the task passed. Anything
+else leaves the agent's result for the correction loop.
+
+**The cause.** #2818's condition was built for a suite the image *ran* and failed, because a dependency the product
+installs was missing. A suite the image can't run at all gets the same treatment, so the product's runner was never
+consulted while a real defect stood beside it. Three readers then took the image's non-execution for a failure:
+- **the correction loop's progress signature,** where the "not run" row repeats every round as a carried failure;
+- **the failure analysis,** which reads the row, the validation summary, the task's error and the stored test report;
+- **#2818's own condition,** which waits for that row to be the only failure.
+
+**What changed** (`product_suite.why_not_reread`, `reread`; the router's hook in `_TaskOutcomeRouter.route`):
+1. **A product's `qa.test` whose `tests_pass` the qa image didn't execute** (its row reads `executed: false`) is run
+   on the product's runner, whatever else failed beside it.
+2. **Its reading replaces the image's** in every field the analysis reads: the `tests_pass` row (`judged_on:
+   product_runner`, the runner's failing test ids as `file::id`, the end of its output), the `test_result`, the
+   validation summary, the task's error, and the stored test report.
+   - The image's row and test result are kept as `agent_tests_pass_row` and `agent_test_result`, apart from the
+     evidence (`failure_evidence.build_failure_evidence` reads neither).
+3. **The task stays failed** unless #2818's condition also holds. The correction loop then reads the product runner's
+   result, and its signature moves when the suite does.
+4. **A suite the image ran is untouched,** as are a sample application's run, a test no product runner holds, and a
+   run that can't be judged.
+
+**The seams that evaluate a product's qa criteria** (H.15's table, the rows this changes):
+
+| seam | runs in | before | after |
+|---|---|---|---|
+| qa emission's `tests_pass`, routed (`_TaskOutcomeRouter.route`) | eve runs; the runtime-api re-reads | the image's reading, re-judged only when it was the only failure | on a run the image didn't execute: the product runner's reading, in the sandbox, on H.15's run tree plus the suite |
+| qa retest after a repair (`reexecute_repaired_suite`) | eve runs; the runtime-api re-reads | as above | as above, on the repaired files |
+| the qa task's own typed checks, a repair's, the runtime's verifier, the increment's acceptance | as in H.15 | unchanged | unchanged |
+
+**On a tree that lacks a file.** The run is H.15's tree with the emitted suite beside it. A file that tree doesn't
+hold is absent, the suite fails on the product's runner as the product would, and that failure is what the correction
+loop reads. A file no product runner holds is never run (`run_on_product_runner` returns nothing), and the agent's
+result stands.
+
+**The evidence:**
+- **Wiring:** `test_the_router_hands_the_correction_loop_the_products_reading` enters at `_TaskOutcomeRouter.route`, as
+  `cyc_0fbf09b7b96e`'s failed `qa.test` did. It asserts the correction loop is asked once, about the product runner's
+  reading, and that the patch is never accepted on it.
+- **The analysis:** `test_the_analysis_reads_the_products_runner_and_never_the_images_words` builds the evidence
+  `data.analyze_failure` receives and asserts no "pytest" in it.
+- **Seams:** four shapes (a defect beside a red or a green suite; a red or a green suite alone), and the two cases
+  left alone (a suite the image ran; a file no runner holds).
+- **Mutants:** the router not handing on the re-read, and the re-read removed. Each fails five tests.
+
+**Who ruled.** Proposed by the MacBook lane on 2026-11-03, under the owner's direction to fix the seams battle-trainer
+found ("proceed as far as you can on the line of fixes"). The owner rules on it in review.
