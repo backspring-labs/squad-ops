@@ -216,6 +216,29 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
                 outcome = await _commit(conn, campaign, transition, marks=None)
         return _result_or_raise(outcome)
 
+    async def refuse(
+        self, campaign_id: str, transition: CampaignTransition, refusal: RefusalReason
+    ) -> ControlLogEntry:
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                campaign = await _locked_campaign(conn, campaign_id)
+                seq = await conn.fetchval(
+                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM campaign_control_log "
+                    "WHERE campaign_id = $1",
+                    campaign_id,
+                )
+                entry = lifecycle.control_log_entry(
+                    campaign,
+                    transition,
+                    entry_id=lifecycle.new_entry_id(),
+                    seq=seq,
+                    committed_at=_now(),
+                    refusal=refusal,
+                    launch_id=None,
+                )
+                await _insert_entry(conn, entry)
+        return entry
+
     async def change_box_lease(
         self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]
     ) -> TransitionResult:

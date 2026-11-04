@@ -49,7 +49,8 @@ def _check_values(sql: str, column: str) -> set[str]:
         ("2001_campaign_review_pushed.sql", "operation", ControlOperation),
         # Replaced whole by 2000 (a superseded repair or retry, §24cd point 2).
         ("2000_campaign_branch_rebased.sql", "state", LaunchIntentState),
-        ("1690_box_lease.sql", "refusal", RefusalReason),
+        # Replaced whole by 2002 (a resume not delegated to the crew's supervisor, §24da).
+        ("2002_campaign_resume_not_delegated.sql", "refusal", RefusalReason),
         ("1690_box_lease.sql", "holder", LeaseHolder),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),
         ("1610_cycle_campaign_columns.sql", "kind", CycleKind),

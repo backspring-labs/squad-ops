@@ -26,6 +26,7 @@ from squadops.campaigns.models import (
     LaunchIntent,
     LaunchIntentNotFoundError,
     LaunchIntentState,
+    RefusalReason,
     TransitionResult,
 )
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
@@ -150,6 +151,23 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
             return self._commit(
                 campaign_id, transition, marks=None, runs_in_flight=tuple(runs_in_flight)
             )
+
+    async def refuse(
+        self, campaign_id: str, transition: CampaignTransition, refusal: RefusalReason
+    ) -> ControlLogEntry:
+        async with self._lock:
+            campaign = self._campaign(campaign_id)
+            entry = lifecycle.control_log_entry(
+                campaign,
+                transition,
+                entry_id=lifecycle.new_entry_id(),
+                seq=len(self._log[campaign_id]) + 1,
+                committed_at=_now(),
+                refusal=refusal,
+                launch_id=None,
+            )
+            self._log[campaign_id].append(entry)
+            return copy.deepcopy(entry)
 
     async def mark_launch_intent_launched(
         self, launch_id: str, cycle_id: str, *, actor: str

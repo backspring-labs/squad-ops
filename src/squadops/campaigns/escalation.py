@@ -15,6 +15,12 @@ its record. Pure, so the gate and the sweep write exactly what this decides.
 The queue holds two kinds (§24bw): a plan gate's, and a cycle held on its instruction bindings
 (``binding_hold``, ``campaigns.binding_hold``). They share the rows, the bound and the listing. A
 binding hold has no question, is never answered, and never parks its cycle.
+
+**The unattended resume (§24da; the 2.6 plan's D6).** Every escalation a campaign records has a
+class, read from the row that escalated it (``resumable_class``), or none. A campaign declares in
+``policy.unattended_resume`` the classes the crew's supervisor principal may resume on its own;
+``delegation_verdict`` is the one rule the resume route and the plan gate's answer path apply,
+and ``delegation_binding`` is what each resume or refusal records.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
+from squadops.campaigns.continuation import CycleEnding, PendingAction
 from squadops.campaigns.gate import EXECUTOR_ROLE, SWEEP_ROLE
 from squadops.campaigns.models import (
     Campaign,
@@ -35,6 +42,10 @@ from squadops.campaigns.models import (
     ControlLogEntry,
     ControlOperation,
     ControlOutcome,
+    CycleKind,
+    LaunchIntent,
+    LaunchIntentState,
+    ResumableClass,
 )
 from squadops.campaigns.plan_review_tier import TierVerdict
 
@@ -507,3 +518,254 @@ def uncarried(
                 )
             )
     return out
+
+
+# =============================================================================
+# The unattended resume (§24da; the 2.6 plan's D6, ruled 2026-11-03)
+# =============================================================================
+
+
+class DelegatedMove(StrEnum):
+    """What a delegated resume does, by its class (§24da): the resume route's ``repair`` and
+    ``retry`` (the §10 actions of those names), its resume with no action on a launch the box kept
+    refusing (``relaunch``), and a decision recorded on an escalated plan gate (``gate_answer``)."""
+
+    REPAIR = PendingAction.REPAIR.value
+    RETRY = PendingAction.RETRY.value
+    RELAUNCH = "relaunch"
+    GATE_ANSWER = "gate_answer"
+
+
+#: Each class and the moves it permits the crew's supervisor principal (§24da). A class is never
+#: resumed by any other move: a ``propose`` after an in-cycle failure abandons the increment, and
+#: only the owner abandons.
+PERMITTED_MOVES: dict[ResumableClass, frozenset[DelegatedMove]] = {
+    ResumableClass.PLAN_GATE: frozenset({DelegatedMove.GATE_ANSWER}),
+    ResumableClass.IN_CYCLE_FAILURE: frozenset({DelegatedMove.REPAIR, DelegatedMove.RETRY}),
+    ResumableClass.LAUNCH_BLOCKED: frozenset({DelegatedMove.RELAUNCH}),
+}
+
+#: The per-increment limit a delegated move spends against (§9.5, §10a): the cycle kind it
+#: launches, and the policy field that bounds it. Past the limit the resume is the owner's.
+_LIMITS: dict[DelegatedMove, tuple[CycleKind, str]] = {
+    DelegatedMove.REPAIR: (CycleKind.REPAIR, "max_repair_cycles_per_increment"),
+    DelegatedMove.RETRY: (CycleKind.RETRY, "max_retry_cycles_per_increment"),
+}
+
+#: An escalating decision row's class, by the ending it recorded. ``assessed`` is the cycle's own
+#: failure (§10 rows 9, 11 and 14: unverified, an environment failure, no verdict); ``held_input``
+#: (row 17) is an operator's input that can't be bound, and is nobody's to resume but the owner's.
+_DECISION_CLASSES: dict[str, ResumableClass] = {
+    CycleEnding.ASSESSED.value: ResumableClass.IN_CYCLE_FAILURE,
+}
+
+#: An opened escalation's class, by its kind (§24bw): a binding hold is released by re-supply.
+_QUEUE_CLASSES: dict[EscalationKind, ResumableClass] = {
+    EscalationKind.PLAN_REVIEW: ResumableClass.PLAN_GATE,
+}
+
+
+def resumable_class(entry: ControlLogEntry) -> ResumableClass | None:
+    """The class of the escalation ``entry`` recorded, or ``None`` for one no class covers: a
+    launch the cycle-create path or the rebase refused (an upstream conflict among them, §24cm),
+    a proposal that couldn't be built (``unbuilt``), an operator's input held, a binding hold, and
+    every pause. Read from the row's own vocabulary, never from the request."""
+    binding = entry.binding
+    if entry.operation is ControlOperation.ESCALATION_OPENED:
+        return _QUEUE_CLASSES.get(kind_of(binding))
+    if entry.operation is ControlOperation.DECIDE:
+        if binding.get("action") != PendingAction.ESCALATE or binding.get("unbuilt") is not None:
+            return None
+        return _DECISION_CLASSES.get(str(binding.get("ending")))
+    if entry.operation is ControlOperation.LAUNCH_BLOCKED:
+        return (
+            ResumableClass.LAUNCH_BLOCKED
+            if entry.next_state is CampaignState.ESCALATED
+            else None
+        )
+    return None
+
+
+def escalating_row(campaign: Campaign, log: Sequence[ControlLogEntry]) -> ControlLogEntry | None:
+    """The row that escalated ``campaign``, when it is escalated: the latest applied row that
+    moved it to ``escalated`` and wasn't the owner's resume out of a pause around it (the pause
+    and its lifting change nothing about what escalated). ``None`` for any other state."""
+    if campaign.state is not CampaignState.ESCALATED:
+        return None
+    return next(
+        (
+            e
+            for e in reversed(log)
+            if e.outcome is ControlOutcome.APPLIED
+            and e.next_state is CampaignState.ESCALATED
+            and e.operation is not ControlOperation.RESUME
+        ),
+        None,
+    )
+
+
+def pending_plan_gate_escalation(
+    log: Sequence[ControlLogEntry], campaign_state: CampaignState, *, run_id: str, gate_name: str
+) -> ControlLogEntry | None:
+    """The opened row of the plan-review escalation still pending on ``run_id``'s ``gate_name``,
+    or ``None``: a gate no escalation holds is answered as #2837 lets the supervisor answer it."""
+    pending = {
+        e.escalation_id
+        for e in escalations(log, campaign_state)
+        if e.kind is EscalationKind.PLAN_REVIEW
+        and e.state is EscalationState.PENDING
+        and e.run_id == run_id
+        and e.gate_name == gate_name
+    }
+    return next(
+        (
+            e
+            for e in log
+            if e.operation is ControlOperation.ESCALATION_OPENED
+            and e.outcome is ControlOutcome.APPLIED
+            and e.binding.get("escalation_id") in pending
+        ),
+        None,
+    )
+
+
+def requested_move(action: PendingAction | None) -> DelegatedMove | None:
+    """The move a resume request asks for: a named ``repair`` or ``retry``, or the relaunch when
+    it names none. Any other action is no delegated move."""
+    if action is None:
+        return DelegatedMove.RELAUNCH
+    try:
+        return DelegatedMove(action.value)
+    except ValueError:
+        return None
+
+
+def spent_on_increment(intents: Iterable[LaunchIntent]) -> dict[CycleKind, int]:
+    """The repair and retry cycles the current increment has spent (§9.5): each such intent
+    written since the latest increment's or calibration's, launched or still pending. One a rebase
+    superseded never launched, and counts for nothing."""
+    spent: dict[CycleKind, int] = {CycleKind.REPAIR: 0, CycleKind.RETRY: 0}
+    for intent in sorted(intents, key=lambda i: i.created_at):
+        if intent.cycle_kind in (CycleKind.INCREMENT, CycleKind.CALIBRATION):
+            spent = {CycleKind.REPAIR: 0, CycleKind.RETRY: 0}
+        elif intent.state is not LaunchIntentState.SUPERSEDED and intent.cycle_kind in spent:
+            spent[intent.cycle_kind] += 1
+    return spent
+
+
+def definition_hash(log: Sequence[ControlLogEntry]) -> str | None:
+    """The creation row's request hash: the campaign's definition as it was fixed at creation,
+    ``unattended_resume`` among it (§24da). ``None`` only on a log with no creation row."""
+    return next(
+        (
+            e.request_hash
+            for e in log
+            if e.operation is ControlOperation.CREATE and e.outcome is ControlOutcome.APPLIED
+        ),
+        None,
+    )
+
+
+def escalation_ref(entry: ControlLogEntry | None) -> dict:
+    """How an audit row names the escalation: its row, and the queue's id when it has one."""
+    if entry is None:
+        return {}
+    ref: dict = {"seq": entry.seq, "operation": str(entry.operation), "target": entry.target}
+    if entry.operation is ControlOperation.ESCALATION_OPENED:
+        ref["escalation_id"] = entry.binding.get("escalation_id")
+    return ref
+
+
+@dataclass(frozen=True)
+class DelegationVerdict:
+    """Whether the crew's supervisor principal may make this resume (§24da), and why."""
+
+    allowed: bool
+    escalation_class: ResumableClass | None
+    move: DelegatedMove | None
+    escalation: dict
+    why: str
+
+
+def delegation_verdict(
+    campaign: Campaign,
+    escalating: ControlLogEntry | None,
+    *,
+    held: str | None,
+    move: DelegatedMove | None,
+    spent: Mapping[CycleKind, int],
+) -> DelegationVerdict:
+    """The one rule (§24da). The resume is delegated only when every one of these holds:
+
+    - the campaign is not paused: the owner's pause revokes the delegation until the owner's
+      resume, and a limit's pause is never delegated (``held`` is ``owner_held``'s reading);
+    - the escalation has a class, declared in the campaign's ``unattended_resume``;
+    - ``move`` is one that class permits;
+    - a repair or retry is within the increment's limit (``spent`` is ``spent_on_increment``).
+
+    Otherwise it is refused, with the first reason that fails."""
+    declared = campaign.policy.unattended_resume
+    escalation_class = resumable_class(escalating) if escalating is not None else None
+    ref = escalation_ref(escalating)
+
+    def refused(why: str) -> DelegationVerdict:
+        return DelegationVerdict(False, escalation_class, move, ref, why)
+
+    if campaign.state is CampaignState.PAUSED:
+        return refused(
+            f"the campaign is {held or 'paused'}: a pause is never delegated, and the owner's "
+            "pause revokes every delegated resume until the owner's own resume"
+        )
+    if escalating is None or escalation_class is None:
+        what = (
+            f"the {escalating.operation} row (seq {escalating.seq})"
+            if escalating is not None
+            else "nothing"
+        )
+        return refused(
+            f"{what} escalated the campaign, and it is of no class the crew's supervisor may "
+            f"resume; the delegable classes are {[c.value for c in ResumableClass]}"
+        )
+    if escalation_class not in declared:
+        return refused(
+            f"the campaign's unattended_resume {[c.value for c in declared]} does not declare "
+            f"{escalation_class.value} ({escalation_class.covers})"
+        )
+    permitted = PERMITTED_MOVES[escalation_class]
+    if move not in permitted:
+        return refused(
+            f"{escalation_class.value} permits {sorted(m.value for m in permitted)}, not "
+            f"{move.value if move is not None else 'this resume'}"
+        )
+    limit = _LIMITS.get(move)
+    if limit is not None:
+        kind, bound = limit
+        allowed = int(getattr(campaign.policy, bound))
+        if spent.get(kind, 0) >= allowed:
+            return refused(
+                f"the increment has spent {spent.get(kind, 0)} {kind.value} cycle(s) of its "
+                f"{bound} {allowed}: a {move.value} past the limit is the owner's"
+            )
+    return DelegationVerdict(
+        True,
+        escalation_class,
+        move,
+        ref,
+        f"{escalation_class.value} is declared, and it permits {move.value}",
+    )
+
+
+def delegation_binding(verdict: DelegationVerdict, *, definition_hash: str | None) -> dict:
+    """What a delegated resume's row, or its refusal's, records (§24da): the class, the move,
+    the escalation and the definition hash. The principal is the row's actor, from the token.
+    ``delegated`` says which it is; a refusal carries ``why``."""
+    binding = {
+        "delegated": verdict.allowed,
+        "class": verdict.escalation_class.value if verdict.escalation_class else None,
+        "move": verdict.move.value if verdict.move else None,
+        "escalation": dict(verdict.escalation),
+        "definition_hash": definition_hash,
+    }
+    if not verdict.allowed:
+        binding["why"] = verdict.why
+    return binding

@@ -79,6 +79,10 @@ class CampaignPolicyDTO(BaseModel):
     #: §24bs (#2443): the stack every cycle the campaign launches builds on. Omitted, it is the
     #: campaign profiles' own.
     stack: str | None = None
+    #: §24da (the 2.6 plan's D6): the escalation classes the crew's supervisor principal may
+    #: resume on its own (``plan_gate``, ``in_cycle_failure``, ``launch_blocked``). Omitted or
+    #: empty, nothing is delegated. An unknown class is refused at creation.
+    unattended_resume: list[str] = []
 
 
 class CampaignDefinitionDTO(BaseModel):

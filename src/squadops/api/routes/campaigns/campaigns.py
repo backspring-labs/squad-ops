@@ -19,8 +19,10 @@ projection, carries completeness (§13).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from datetime import UTC, datetime
+from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -83,7 +85,20 @@ from squadops.campaigns.calibration_record import (
     recorded_calibration,
 )
 from squadops.campaigns.continuation import PendingAction
-from squadops.campaigns.escalation import Escalation, answer_refusal, answer_transition, escalations
+from squadops.campaigns.escalation import (
+    DelegatedMove,
+    Escalation,
+    answer_refusal,
+    answer_transition,
+    definition_hash,
+    delegation_binding,
+    delegation_verdict,
+    escalating_row,
+    escalations,
+    pending_plan_gate_escalation,
+    requested_move,
+    spent_on_increment,
+)
 from squadops.campaigns.gate import increment_sequence_refusal
 from squadops.campaigns.launch_blocking import (
     escalated_by_a_blocked_launch,
@@ -105,6 +120,8 @@ from squadops.campaigns.models import (
     ControlOperationRefused,
     ControlOutcome,
     ProposalClassification,
+    RefusalReason,
+    ResumeNotDelegated,
     ResumeReservedToOwner,
     StopWhen,
     TransitionResult,
@@ -214,6 +231,120 @@ async def apply_control(
         raise
     _project(request, result, identity)
     return result
+
+
+async def refuse_delegated_resume(
+    request: Request, campaign_id: str, transition: CampaignTransition, identity: Identity | None
+) -> NoReturn:
+    """§24da: a resume the campaign did not delegate to the crew's supervisor principal. The
+    refusal is recorded as ``transition``'s row (``resume_not_delegated``, its binding naming
+    the principal's claim and why), projected to the audit, and raised as the 403."""
+    entry = await _registry(request).refuse(
+        campaign_id, transition, RefusalReason.RESUME_NOT_DELEGATED
+    )
+    _project_to_audit(request, entry, identity)
+    raise ResumeNotDelegated(entry)
+
+
+async def delegated_plan_gate_answer(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None,
+    *,
+    run_id: str,
+    gate_name: str,
+) -> None:
+    """§24da, the ``plan_gate`` class, at the gate's answer path (#2837): a caller on
+    ``campaigns:supervise`` without ``campaigns:control`` answers a plan gate the tier escalated
+    only when the campaign declared ``plan_gate`` and the owner holds no pause. The answer is
+    recorded as a ``resume`` row that moves nothing, before the gate decision; the refusal as a
+    ``resume_not_delegated`` row, and the gate is not decided. A gate no escalation holds is the
+    supervisor's as #2837 made it, and records nothing here."""
+    if holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
+        return
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    log = await registry.control_log(campaign_id)
+    escalating = pending_plan_gate_escalation(
+        log, campaign.state, run_id=run_id, gate_name=gate_name
+    )
+    if escalating is None:
+        return
+    verdict = delegation_verdict(
+        campaign,
+        escalating,
+        held=owner_held(campaign, log),
+        move=DelegatedMove.GATE_ANSWER,
+        spent={},
+    )
+    actor, role = actor_from(identity)
+    escalation_id = str(escalating.binding.get("escalation_id"))
+    transition = CampaignTransition(
+        operation=ControlOperation.RESUME,
+        actor=actor,
+        actor_role=role,
+        reason=f"the plan gate {gate_name} on {run_id} ({escalation_id}) answered by {actor} "
+        "under the campaign's unattended_resume",
+        idempotency_key=f"unattended:{escalation_id}",
+        next_state=campaign.state,
+        expected_state=campaign.state,
+        target=run_id,
+        binding=delegation_binding(verdict, definition_hash=definition_hash(log)),
+    )
+    if not verdict.allowed:
+        await refuse_delegated_resume(request, campaign_id, transition, identity)
+    await apply_control(request, campaign_id, transition, identity)
+
+
+def _with_delegation(transition: CampaignTransition, delegated: dict | None) -> CampaignTransition:
+    """The resume's row carrying the delegation it was made under (§24da), when it was."""
+    if delegated is None:
+        return transition
+    return dataclasses.replace(transition, binding={**transition.binding, **delegated})
+
+
+async def _delegated_resume(
+    request: Request,
+    campaign: Campaign,
+    log: list[ControlLogEntry],
+    body: ResumeRequest,
+    identity: Identity | None,
+    *,
+    held: str,
+    action: PendingAction | None,
+) -> dict:
+    """§24da: the crew's supervisor principal, asking to resume what only the owner could. The
+    verdict reads the row that escalated the campaign, its declared classes, the move asked for
+    and the increment's spent repairs and retries. Allowed, the resume goes on by the owner's own
+    path and its row carries the returned binding; refused, the refusal is recorded and raised."""
+    registry = _registry(request)
+    verdict = delegation_verdict(
+        campaign,
+        escalating_row(campaign, log),
+        held=held,
+        move=requested_move(action),
+        spent=spent_on_increment(await registry.launch_intents(campaign.campaign_id)),
+    )
+    binding = delegation_binding(verdict, definition_hash=definition_hash(log))
+    if verdict.allowed:
+        return binding
+    actor, role = actor_from(identity)
+    await refuse_delegated_resume(
+        request,
+        campaign.campaign_id,
+        CampaignTransition(
+            operation=ControlOperation.RESUME,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            next_state=campaign.state,
+            expected_state=campaign.state,
+            target=verdict.escalation.get("target"),
+            binding=binding,
+        ),
+        identity,
+    )
 
 
 async def launch_pending(request: Request, result: TransitionResult) -> list[str]:
@@ -749,16 +880,22 @@ async def resume_campaign(
     body: ResumeRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
-    """The owner's word (§10, §17), or the supervisor's on its own pause (#1940, §24az).
+    """The owner's word (§10, §17), or the supervisor's on its own pause (#1940, §24az), or the
+    crew's supervisor principal's on an escalation the campaign delegated to it (§24da).
 
     Who may resume is read from the row that held the campaign (``owner_held``): an escalation,
-    a limit's pause and the owner's pause need ``campaigns:control``, and a supervisor asking is
-    refused 403 before anything is written.
+    a limit's pause and the owner's pause need ``campaigns:control``. A caller on
+    ``campaigns:supervise`` without it asks for a delegated resume (``_delegated_resume``): the
+    escalation's class must be in the campaign's ``unattended_resume``, the resume the move that
+    class permits within its limit, and the owner must hold no pause; otherwise it is refused
+    403 ``RESUME_NOT_DELEGATED``, and the refusal is a control-log row. Anyone else is refused
+    403 before anything is written.
 
     - **Paused by a limit:** the action the decision held is executed as recorded, never
       recomputed, and a launch action's intent is written in this row.
     - **Paused by the supervisor:** the campaign returns to the state it was paused from.
-    - **Escalated:** the action this ruling names is executed the same way.
+    - **Escalated:** the action this ruling names is executed the same way. A delegated resume's
+      row says so (``delegated``, the class, the escalation and the definition hash).
 
     Anything else refuses the resume as stale, and the refusal is recorded.
     """
@@ -767,9 +904,6 @@ async def resume_campaign(
     registry = _registry(request)
     log = await registry.control_log(campaign_id)
     campaign = await registry.get_campaign(campaign_id)
-    held_by_owner = owner_held(campaign, log)
-    if held_by_owner is not None and not holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
-        raise ResumeReservedToOwner(campaign_id, held_by_owner)
     held = held_action(log) if campaign.state is CampaignState.PAUSED else None
     named = None
     if body.action is not None:
@@ -777,6 +911,14 @@ async def resume_campaign(
             named = PendingAction(body.action)
         except ValueError as e:
             raise HTTPException(422, _validation(f"unknown action {body.action!r}")) from e
+    held_by_owner = owner_held(campaign, log)
+    delegated: dict | None = None
+    if held_by_owner is not None and not holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
+        if not holds_scopes(request, Scope.CAMPAIGNS_SUPERVISE):
+            raise ResumeReservedToOwner(campaign_id, held_by_owner)
+        delegated = await _delegated_resume(
+            request, campaign, log, body, identity, held=held_by_owner, action=named
+        )
 
     refused = escalated_by_a_refused_launch(campaign, log)
     if refused is not None:
@@ -801,7 +943,9 @@ async def resume_campaign(
             role,
             expected_state=CampaignState.ESCALATED,
         )
-        result = await apply_control(request, campaign_id, transition, identity)
+        result = await apply_control(
+            request, campaign_id, _with_delegation(transition, delegated), identity
+        )
         launched = await _retry_launch(request, launch_id, result)
         return await _after_drain(request, result, launched, launch_id=launch_id)
     if campaign.state is CampaignState.ESCALATED and named is None:
@@ -816,7 +960,11 @@ async def resume_campaign(
                 role,
                 expected_state=CampaignState.ESCALATED,
             )
-            return _result(await apply_control(request, campaign_id, transition, identity))
+            return _result(
+                await apply_control(
+                    request, campaign_id, _with_delegation(transition, delegated), identity
+                )
+            )
         raise HTTPException(422, _validation("an escalated campaign resumes on a named action"))
     if held is not None and named is not None and named is not held:
         raise HTTPException(
@@ -836,7 +984,9 @@ async def resume_campaign(
             )
         except CannotLaunch as e:
             raise HTTPException(422, _validation(str(e))) from e
-        result = await apply_control(request, campaign_id, transition, identity)
+        result = await apply_control(
+            request, campaign_id, _with_delegation(transition, delegated), identity
+        )
         return await _after_drain(request, result, await launch_pending(request, result))
     paused_from = _paused_from(log)
     target = (
@@ -850,7 +1000,9 @@ async def resume_campaign(
         role,
         expected_state=CampaignState.PAUSED,
     )
-    return _result(await apply_control(request, campaign_id, transition, identity))
+    return _result(
+        await apply_control(request, campaign_id, _with_delegation(transition, delegated), identity)
+    )
 
 
 @router.get("/{campaign_id}/lease")
