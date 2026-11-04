@@ -72,6 +72,7 @@ from squadops.api.runtime.deps import (
     get_review_requests,
     get_scenario_store,
     get_source_repository,
+    get_squad_profile_port,
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
@@ -120,6 +121,7 @@ from squadops.campaigns.repository_backed import creation_refusal
 from squadops.campaigns.review_push import ReviewPushRefused, push_review
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.models import CycleStatus, GoalSetNotFoundError, ProjectNotFoundError
+from squadops.execution.size_preflight import size_preflight
 from squadops.memory.pinning import pin_campaign
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.contribution import ContributionRefused
@@ -461,9 +463,21 @@ async def _calibration_record(request: Request, campaign: Campaign) -> Calibrati
         return None
     if campaign.state is not CampaignState.DRAFT:
         return recorded_calibration(await _registry(request).control_log(campaign.campaign_id))
-    return await record_for(
+    record = await record_for(
         get_project_registry(request), project, campaign_id=campaign.campaign_id
     )
+    # #2889: every task the Campaign dispatches is rendered on the product's tree at the record's
+    # commit, and one that can't fit its model's window refuses the start, before anything is
+    # written, as a blocking gap does.
+    await size_preflight(
+        campaign,
+        project,
+        record,
+        registry=get_project_registry(request),
+        repository=get_source_repository(request),
+        squad_profiles=get_squad_profile_port(request),
+    )
+    return record
 
 
 async def _pin_memory(request: Request, campaign) -> None:

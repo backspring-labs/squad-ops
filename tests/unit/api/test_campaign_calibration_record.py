@@ -20,14 +20,16 @@ import dataclasses
 import re
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from adapters.cycles.factory import create_squad_profile_port
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.tools.git_source import GitSourceRepository
 from squadops.api.campaign_launch import CampaignLaunchService
+from squadops.api.routes.campaigns import campaigns as campaign_routes
 from squadops.campaigns.calibration_record import BINDING_KEY
 from squadops.campaigns.campaign_branch import CampaignBranch, campaign_ref
 from squadops.campaigns.models import (
@@ -45,10 +47,15 @@ from squadops.cycles.models import (
 from squadops.projects.baseline import parse_baseline
 from squadops.projects.derived_profile import BLOCKING, Gap, parse_profile
 from squadops.projects.development_configuration import parse_configuration
-from squadops.projects.models import ProjectLifecycleStatus, ProjectSource
+from squadops.projects.models import (
+    CheckoutTree,
+    ProjectLifecycleStatus,
+    ProjectSource,
+    SourceUnavailable,
+)
 from squadops.projects.registration import LocatorPolicy
 from squadops.projects.workspaces import SEEDED, SourceMapping, capture_inherited_baseline
-from tests.fixtures.shared_contract.repository import build_repository, recorded
+from tests.fixtures.shared_contract.repository import build_repository, product_files, recorded
 from tests.unit.api.test_campaign_start import _World
 from tests.unit.campaigns.builders import campaign, policy, quiet_box
 from tests.unit.projects.test_workspaces import _LocalSandbox
@@ -155,6 +162,19 @@ def _recorded_projects(**project) -> _Projects:
     return projects
 
 
+class _Clone:
+    """The managed clone's one read the start makes (the size preflight, #2889): ``files`` as the
+    tree at any commit, or ``refusal`` raised as the read's."""
+
+    def __init__(self, files: dict[str, bytes], refusal: Exception | None = None) -> None:
+        self.files, self.refusal = files, refusal
+
+    async def tree_at(self, project_id: str, commit: str) -> CheckoutTree:
+        if self.refusal is not None:
+            raise self.refusal
+        return CheckoutTree(commit, dict(self.files), frozenset(), frozenset(), frozenset())
+
+
 def _never_assessed(cycle_id: str):
     raise AssertionError(f"a calibration record is never assessed as a cycle ({cycle_id})")
 
@@ -181,12 +201,21 @@ async def _world(
     campaigns: MemoryCampaignRegistry | None = None,
     branch: CampaignBranch | None = None,
     proposal_profile: str = "campaign-increment-source",
+    repository=None,
+    squad_profile: str = "full-38",
+    squad_profiles=None,
 ) -> _World:
+    """``repository`` is the managed clone the start's size preflight reads (#2889): the fixture's
+    product by default. A sample application's world is given none, so a start that reached the
+    preflight for it would fail."""
     world = _World(campaigns, project_registry=projects)
     world.progress = _progress(world, tmp_path / "vault", branch)
     world.client.app.state.campaign_progress = world.progress
     world.client.app.state.artifact_vault = FilesystemArtifactVault(tmp_path / "vault")
+    world.client.app.state.squad_profile = squad_profiles or create_squad_profile_port("config")
     repository_backed = isinstance(world.projects, _Projects)
+    if repository_backed:
+        world.client.app.state.source_repository = repository or _Clone(product_files())
     await world.campaigns.create_campaign(
         campaign(
             CID,
@@ -197,7 +226,7 @@ async def _world(
             ),
             policy=policy(
                 calibration_profile="validated-fullstack",
-                squad_profile="full-38",
+                squad_profile=squad_profile,
                 proposal_profile=proposal_profile,
             ),
         ),
@@ -242,7 +271,10 @@ async def test_a_start_writes_the_record_and_row_5_launches_a_proposal_on_the_br
         idempotency_key="b-1",
     )
     world = await _world(
-        projects, tmp_path, branch=CampaignBranch(projects=projects, repository=clones)
+        projects,
+        tmp_path,
+        branch=CampaignBranch(projects=projects, repository=clones),
+        repository=clones,
     )
 
     resp = world.start()
@@ -507,7 +539,11 @@ async def test_the_owners_word_and_the_ledger_read_a_records_decision(tmp_path):
     Since §24bv point 5 a record's proposal launches, so the escalation is a proposal profile the
     deploy doesn't hold."""
     world = await _world(_recorded_projects(), tmp_path, proposal_profile="no-such-profile")
-    world.start()
+    # #2889: the start's size preflight refuses a proposal profile it can't load
+    # (``test_a_proposal_profile_the_deploy_doesnt_hold_refuses_the_start``); the profile here is
+    # one the deploy stopped holding after the preflight read it, so the launch is what fails.
+    with patch.object(campaign_routes, "size_preflight", AsyncMock(return_value=())):
+        world.start()
 
     resumed = world.client.post(
         f"/api/v1/campaigns/{CID}/resume",
@@ -524,7 +560,9 @@ async def test_the_owners_word_and_the_ledger_read_a_records_decision(tmp_path):
 
 async def test_a_sample_applications_start_still_launches_its_calibration_cycle(tmp_path):
     """§11, unchanged by §24bv. Bug caught: a Project with no source taken down the record path,
-    so a sample application's campaign builds nothing and proposes on a tree it never built."""
+    so a sample application's campaign builds nothing and proposes on a tree it never built.
+    #2889: nor is it measured by the size preflight, which reads a product's tree: its world holds
+    no managed clone, so a start that reached the preflight would fail here."""
     world = await _world(None, tmp_path)
 
     resp = world.start()
@@ -536,3 +574,158 @@ async def test_a_sample_applications_start_still_launches_its_calibration_cycle(
     assert BINDING_KEY not in start.binding
     assert (await world.cycles.get_cycle(cycle_id)).kind == "calibration"
     assert (await world.campaigns.get_campaign(CID)).accepted is None
+
+
+# --- the size preflight (#2889, SIP-0109 §24db) -------------------------------------------------
+
+#: The squad on the 65,536-token window the 2.5 demonstrations ran on (#2805, #2810).
+_TF_SQUAD = "full-38-tf"
+
+
+def _module(name: str, tokens: int) -> bytes:
+    """An invented Python module of about ``tokens`` tokens (four characters each)."""
+    line = f"def {name}_total(entries):  # sums the entries of one account\n"
+    return (line * (tokens * 4 // len(line) + 1)).encode()
+
+
+def _product(**packages: int) -> dict[str, bytes]:
+    """Each named top-level package, holding four modules of the given total tokens."""
+    return {
+        f"{package}/part_{i}.py": _module(f"{package}_{i}", tokens // 4)
+        for package, tokens in packages.items()
+        for i in range(4)
+    }
+
+
+async def test_a_product_larger_than_the_window_whose_tasks_fit_starts_unaffected(tmp_path, caplog):
+    """The wiring for a product that fits (#2889), entered at the start route on the window #2805
+    and #2810 were found on: about 92,000 tokens of product in four packages beside Tally's own
+    small ones, larger than the 65,536-token window and inside 2.4's 384 KB limit. Every task the Campaign dispatches is
+    measured and fits, as #2807 and #2812 made it, so the start writes its record as it did.
+    Bugs caught: a preflight that counts the whole tree for a task that is shown a part of it
+    (the #2805 and #2810 class), refusing a product that fits; or one that measures nothing (no
+    binding logged) and passes every product."""
+    files = {
+        **product_files(),
+        **_product(ledger=23_000, notify=23_000, parse=23_000, server=23_000),
+    }
+    world = await _world(
+        _recorded_projects(), tmp_path, repository=_Clone(files), squad_profile=_TF_SQUAD
+    )
+
+    with caplog.at_level("INFO", logger="squadops.execution.size_preflight"):
+        resp = world.start()
+
+    measured = {r.args[1] for r in caplog.records if r.msg.startswith("size_preflight")}
+    assert resp.status_code == 200, resp.json()
+    assert {"qa.test", "development.develop", "development.correction_repair"} <= measured
+    assert BINDING_KEY in (await world.campaigns.control_log(CID))[1].binding
+
+
+async def test_a_task_that_cant_fit_on_the_product_is_a_blocking_gap_named_before_anything(
+    tmp_path,
+):
+    """A product whose source is one package of about 90,000 tokens: every plan's ``qa.test`` is
+    shown that package (``package_scoped``), which can't fit the 65,536-token window. The start is
+    refused (409) as a ``prompt_over_window`` blocking gap naming the binding, its size and its
+    window, and nothing is written. Bugs caught: the preflight not wired to the start, so the
+    Campaign learns it an hour into its first increment as #2805 did; a refusal that names no
+    task type or size; or one that writes the start and leaves the Campaign calibrating."""
+    files = {
+        **{p: c for p, c in product_files().items() if not p.endswith(".py")},
+        **_product(app=90_000),
+    }
+    world = await _world(
+        _recorded_projects(), tmp_path, repository=_Clone(files), squad_profile=_TF_SQUAD
+    )
+
+    resp = world.start()
+
+    error = resp.json()["detail"]["error"]
+    over = {b["task_type"]: b for b in error["details"]["bindings"]}
+    log = await world.campaigns.control_log(CID)
+    assert (resp.status_code, error["code"]) == (409, "CALIBRATION_REFUSED")
+    assert (error["details"]["cause"], error["details"]["gaps"]) == (
+        "blocking_gap",
+        ["prompt_over_window"],
+    )
+    qa = over["qa.test"]
+    assert (qa["role"], qa["model"], qa["window"]) == ("qa", "qwen3.8-27b-tf-nvfp4", 65_536)
+    assert qa["prompt_tokens"] + qa["completion_reserve"] > 65_536
+    assert qa["prompt_tokens"] > 90_000  # the package, shown whole
+    assert (
+        f"qa.test (qa, on qwen3.8-27b-tf-nvfp4): its prompt is {qa['prompt_tokens']}"
+        in (error["message"])
+    )
+    assert [e.operation for e in log] == [ControlOperation.CREATE]
+    assert await world.campaigns.launch_intents(CID) == []
+
+
+class _Squads:
+    """The squad profile port, serving ``full-38-tf`` with its qa agent on ``model``."""
+
+    def __init__(self, model: str | None) -> None:
+        self.model = model
+
+    async def get_profile(self, profile_id):
+        profile = await create_squad_profile_port("config").get_profile(_TF_SQUAD)
+        agents = [
+            dataclasses.replace(a, model=self.model) if a.agent_id == "eve" else a
+            for a in profile.agents
+        ]
+        return dataclasses.replace(profile, agents=type(profile.agents)(agents))
+
+
+@pytest.mark.parametrize(
+    ("squads", "repository", "proposal_profile", "named"),
+    [
+        (_Squads("a-model-nobody-registered"), None, "campaign-increment-source", "qa.test (qa"),
+        (_Squads(None), None, "campaign-increment-source", "on no model"),
+        (
+            None,
+            _Clone({**product_files(), **_product(app=120_000)}),
+            "campaign-increment-source",
+            "(too_large): 477 KB of source and config, past the 384 KB",
+        ),
+        (
+            None,
+            _Clone({}, SourceUnavailable("the clone timed out reading it", reason="timeout")),
+            "campaign-increment-source",
+            "(timeout): the clone timed out reading it",
+        ),
+        (None, None, "no-such-profile", "can't load proposal profile 'no-such-profile'"),
+    ],
+    ids=[
+        "window-unknown",
+        "no-model",
+        "tree-too-large-to-read",
+        "tree-unreadable",
+        "proposal-profile-not-held",
+    ],
+)
+async def test_a_size_nobody_could_measure_refuses_the_start(
+    tmp_path, squads, repository, proposal_profile, named
+):
+    """Require, don't default (#2889): a binding whose model has no window the registry knows, or
+    no model at all; a tree too large to read (past 2.4's limit, ``CheckoutTooLarge``) or one the
+    clone can't read; a proposal profile the deploy doesn't hold.
+    Each refuses the start (409 ``size_unmeasured``) naming what, and writes nothing. Bugs caught:
+    an unknown window or an unread tree read as fitting, so the Campaign starts on a size nobody
+    measured; or a crash (500) where the owner is owed a reason."""
+    world = await _world(
+        _recorded_projects(),
+        tmp_path,
+        repository=repository,
+        squad_profile=_TF_SQUAD,
+        squad_profiles=squads,
+        proposal_profile=proposal_profile,
+    )
+
+    resp = world.start()
+
+    error = resp.json()["detail"]["error"]
+    assert (resp.status_code, error["details"]["cause"]) == (409, "size_unmeasured")
+    assert named in error["message"]
+    assert [e.operation for e in await world.campaigns.control_log(CID)] == [
+        ControlOperation.CREATE
+    ]
