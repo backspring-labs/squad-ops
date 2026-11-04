@@ -36,6 +36,7 @@ from squadops.campaigns.calibration_record import (
 from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused
 from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
 from squadops.campaigns.continuation import (
+    UNCOUNTED_ABANDONMENT_ROWS,
     CampaignCounters,
     ContinuationDecision,
     CycleEnding,
@@ -45,6 +46,10 @@ from squadops.campaigns.continuation import (
     calibration_record_decision,
     campaign_continuation_decision,
     cycle_verdict,
+)
+from squadops.campaigns.criterion_head import (
+    CRITERION_HEAD_CHECK_ARTIFACT_TYPE,
+    already_met_on_head,
 )
 from squadops.campaigns.escalation import (
     PARK_REASON,
@@ -187,7 +192,10 @@ def cycle_ending(
     the control log by ``escalation.parked_run``); a run whose binding hold expired, cancelled for
     it, is ``held_store`` or ``held_input`` by the hold's cause class (§24bw;
     ``binding_hold.held_expiry``); a framing run stopped at its plan gate is
-    ``stopped_at_plan_gate`` (§24cb, #2704); everything else reached its assessment."""
+    ``stopped_at_plan_gate`` (§24cb, #2704); an implementation run that ended at its qa task
+    because a criterion's test already passes on the head is ``criteria_not_checkable`` (§24cz,
+    #2890; the completion boundary reads it from the run's terminal decision); everything else
+    reached its assessment."""
     if parked and last_run.status == RunStatus.CANCELLED.value:
         return CycleEnding.PARKED
     if held is not None and last_run.status == RunStatus.CANCELLED.value:
@@ -196,6 +204,8 @@ def cycle_ending(
             if held is binding_hold.HoldClass.STORE
             else CycleEnding.HELD_INPUT
         )
+    if stopped_because is CycleStopReason.CRITERIA_NOT_CHECKABLE:
+        return CycleEnding.CRITERIA_NOT_CHECKABLE
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE
@@ -446,10 +456,6 @@ def increment_verdict(
         return RunVerdict.BLOCKED_UNVERIFIED
 
 
-#: §10 row 16 (#2315): an increment rejected only for criteria the accepted application already meets.
-_ALREADY_MET_ROW = 16
-
-
 def already_met(evaluation: dict | None) -> tuple[str, ...]:
     """The new criteria an increment's evaluation found the accepted application already meets
     (#2315): each unmet only because its test passes on the accepted tree (``no_baseline_failure``,
@@ -566,8 +572,9 @@ def derive_counters(
             for e in applied
             if e.binding.get("action") == PendingAction.ABANDON_AND_PROPOSE
             and (e.operation != ControlOperation.DECIDE or e.binding.get("guard") == Guard.PROCEED)
-            # #2849 (§24ct): row 16's abandonment counts toward no unaccepted limit.
-            and e.binding.get("row") != _ALREADY_MET_ROW
+            # #2849 (§24ct), #2890 (§24cz): rows 16 and 19's abandonments (criteria the head
+            # already meets) count toward no unaccepted limit.
+            and e.binding.get("row") not in UNCOUNTED_ABANDONMENT_ROWS
         ),
         objective_met=objective_met,
     )
@@ -1628,10 +1635,17 @@ class CampaignProgress:
 
     async def _increment_evaluation(self, run: Run) -> dict | None:
         """The increment's evaluation (§8), as its implementation run wrote it, or ``None``."""
+        return await self._run_document(run, INCREMENT_EVALUATION_ARTIFACT_TYPE)
+
+    async def _criterion_head_check(self, run: Run) -> dict | None:
+        """The criterion head check's record (§24cz, #2890), as the run wrote it, or ``None``."""
+        return await self._run_document(run, CRITERION_HEAD_CHECK_ARTIFACT_TYPE)
+
+    async def _run_document(self, run: Run, artifact_type: str) -> dict | None:
+        """The latest JSON document of ``artifact_type`` the run stored, or ``None``."""
         refs = await self._vault.list_artifacts(run_id=run.run_id)
         written = sorted(
-            (r for r in refs if r.artifact_type == INCREMENT_EVALUATION_ARTIFACT_TYPE),
-            key=lambda r: str(r.created_at),
+            (r for r in refs if r.artifact_type == artifact_type), key=lambda r: str(r.created_at)
         )
         if not written:
             return None
@@ -1639,7 +1653,7 @@ class CampaignProgress:
         try:
             document = json.loads(content.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
-            logger.error("increment_evaluation_unreadable", extra={"run_id": run.run_id})
+            logger.error(f"{artifact_type}_unreadable", extra={"run_id": run.run_id})
             return None
         return document if isinstance(document, dict) else None
 
@@ -1699,12 +1713,17 @@ class CampaignProgress:
         """#2315: the criteria the abandoned increment's evaluation found the accepted application
         already meets, each with what it asserts, so the next proposal is told the application does
         this already. Read from its last run's stored evaluation and approved change request: a
-        function of stored data (#1943), so a read that fails raises and the re-hearing retries."""
+        function of stored data (#1943), so a read that fails raises and the re-hearing retries.
+
+        #2890 (§24cz): or the criteria the head check found the head already meets, read from its
+        record on the same run, for a cycle that ended before its evaluation (row 19)."""
         runs = await self._cycles.list_runs(cycle.cycle_id)
         if not runs:
             return []
         last = max(runs, key=lambda r: r.run_number)
-        ids = already_met(await self._increment_evaluation(last))
+        ids = already_met(await self._increment_evaluation(last)) or already_met_on_head(
+            await self._criterion_head_check(last)
+        )
         if not ids:
             return []
         stated = await self._criteria_stated(cycle, last)

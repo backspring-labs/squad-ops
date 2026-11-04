@@ -136,6 +136,7 @@ from squadops.events.types import EventType
 from squadops.execution.binding_holds import BindingFill, BindingHolds
 from squadops.execution.correction_repair import CorrectionRepair
 from squadops.execution.correction_runner import CorrectionRunner
+from squadops.execution.criterion_head_check import check_criteria_on_head
 from squadops.execution.cycle_completion import CycleCompletion
 from squadops.execution.execution_errors import (
     _CancellationError,
@@ -2342,6 +2343,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # collection, before the next dispatch — so the very next task binds.
         state.authored = await self._bind_authored_manifest(
             cycle, run_id, state.produced.stored_artifacts, state.authored
+        )
+
+        # #2890 (SIP-0109 §24cz): a repository-backed increment's criterion files, now stored as
+        # the qa task wrote them, run on the campaign branch's head before the run goes on to
+        # deliver. One that already passes there is met already: the run ends here, and the
+        # campaign proposes anew rather than spend the delivery, the acceptance and a repair.
+        await self._end_if_criteria_met_on_head(
+            envelope, cycle, run_id, state.produced.stored_artifacts
         )
 
         # ----------------------------------------------------------
@@ -4811,6 +4820,40 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             projects=self._project_registry,
             repository=self._source_repository,
             read_profile=self._derived_profile_for,
+        )
+
+    async def _end_if_criteria_met_on_head(
+        self,
+        envelope: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+    ) -> None:
+        """#2890 (SIP-0109 §24cz): the qa task's criterion files run on the campaign branch's
+        head (``criterion_head_check``). A criterion already met there ends the run with its own
+        terminal kind, which the completion boundary records as the cycle's ending. A check that
+        doesn't apply or can't run leaves the run to proceed as it did."""
+        check = await check_criteria_on_head(
+            task_type=envelope.task_type,
+            task_id=envelope.task_id,
+            cycle=cycle,
+            run_id=run_id,
+            stored_artifacts=stored_artifacts,
+            vault=self._artifact_vault,
+            sandbox=self._sandbox,
+            projects=self._project_registry,
+            repository=self._source_repository,
+            read_profile=self._derived_profile_for,
+        )
+        if check is None or not check.already_met:
+            return
+        raise _ExecutionError(
+            f"criteria already met on the campaign branch's head {check.head_commit[:12]}: "
+            f"{', '.join(check.already_met)}. Their tests pass with no change to the product, so "
+            "the increment can't be checked; the campaign proposes anew (SIP-0109 §24cz)",
+            terminal=RunTerminalDecision(
+                kind=TerminalKind.CRITERIA_NOT_CHECKABLE, task_id=envelope.task_id
+            ),
         )
 
     async def _derived_profile_for(self, cycle: Any) -> Any:

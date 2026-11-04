@@ -63,10 +63,15 @@ _SUCCESS = "success"
 ENVIRONMENT_SENSITIVE = frozenset({"acceptance:module_imports", "acceptance:command_exit_zero"})
 
 
-def suite_workspace_prefix(run_id: str, task_id: str) -> str:
-    """The workspace one task's re-judged suite seeds, apart from acceptance's (``acc-``), in the
+def sandbox_workspace_id(kind: str, run_id: str, task_id: str) -> str:
+    """The workspace one task's run of ``kind`` seeds, apart from acceptance's (``acc-``), in the
     sandbox's id alphabet (``[A-Za-z0-9_-]``): a task id carries its task type's ``.`` (#2845)."""
-    return re.sub(r"[^A-Za-z0-9_-]", "-", f"suite-{run_id}-{task_id}")
+    return re.sub(r"[^A-Za-z0-9_-]", "-", f"{kind}-{run_id}-{task_id}")
+
+
+def suite_workspace_prefix(run_id: str, task_id: str) -> str:
+    """The workspace one task's re-judged suite seeds."""
+    return sandbox_workspace_id("suite", run_id, task_id)
 
 
 def _failing(row: Any) -> bool:

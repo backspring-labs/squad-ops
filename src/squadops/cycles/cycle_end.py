@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import RunStatus
 from squadops.cycles.run_loop_summary import RunTerminalDecision
 
@@ -41,6 +42,10 @@ class CycleStopReason(StrEnum):
     GATE_DECISION_UNRECOGNIZED = "gate_decision_unrecognized"
     #: The inter-workload gate raised before any decision (#2213): a defect, never an approval.
     GATE_FAILED = "gate_failed"
+    #: #2890 (SIP-0109 §24cz): the implementation run ended at its qa task because a criterion's
+    #: test already passes on the campaign branch's head. The run declares it in its terminal
+    #: decision (``TerminalKind.CRITERIA_NOT_CHECKABLE``); the completion boundary reads it.
+    CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
 
 
 #: Why the sequence stops on a run that did not complete — every ``RunStatus`` but ``COMPLETED``
@@ -52,6 +57,25 @@ STOP_REASON_FOR_UNCOMPLETED_RUN: dict[RunStatus, CycleStopReason] = {
     RunStatus.QUEUED: CycleStopReason.RUN_NOT_TERMINAL,
     RunStatus.RUNNING: CycleStopReason.RUN_NOT_TERMINAL,
 }
+
+#: The endings a failed run declares for the cycle, by its terminal decision's kind (#2890). A
+#: failed run stops the sequence as ``run_failed``; one whose raise site declared an ending of the
+#: cycle's own (SIP-0108 §4.1) is recorded and heard as that ending, so the campaign reads what
+#: the run decided rather than an assessment of a build that never delivered.
+STOP_REASON_FOR_TERMINAL_KIND: dict[TerminalKind, CycleStopReason] = {
+    TerminalKind.CRITERIA_NOT_CHECKABLE: CycleStopReason.CRITERIA_NOT_CHECKABLE,
+}
+
+
+def declared_stop_reason(
+    stopped_because: CycleStopReason, terminal: RunTerminalDecision | None
+) -> CycleStopReason:
+    """``stopped_because``, or the cycle's ending the failed run's terminal decision declares
+    (``STOP_REASON_FOR_TERMINAL_KIND``). Any other stop, and a failed run that declared no ending
+    of the cycle's, is left as the sequence read it."""
+    if stopped_because is not CycleStopReason.RUN_FAILED or terminal is None:
+        return stopped_because
+    return STOP_REASON_FOR_TERMINAL_KIND.get(terminal.kind, stopped_because)
 
 
 @dataclass(frozen=True)
