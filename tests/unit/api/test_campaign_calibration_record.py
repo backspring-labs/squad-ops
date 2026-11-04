@@ -622,18 +622,26 @@ async def test_a_product_larger_than_the_window_whose_tasks_fit_starts_unaffecte
     assert BINDING_KEY in (await world.campaigns.control_log(CID))[1].binding
 
 
+@pytest.mark.parametrize(
+    "package_tokens",
+    [90_000, 40_000],
+    ids=["past-the-window", "inside-the-window-but-not-with-its-reserve"],
+)
 async def test_a_task_that_cant_fit_on_the_product_is_a_blocking_gap_named_before_anything(
-    tmp_path,
+    tmp_path, package_tokens
 ):
-    """A product whose source is one package of about 90,000 tokens: every plan's ``qa.test`` is
-    shown that package (``package_scoped``), which can't fit the 65,536-token window. The start is
-    refused (409) as a ``prompt_over_window`` blocking gap naming the binding, its size and its
-    window, and nothing is written. Bugs caught: the preflight not wired to the start, so the
-    Campaign learns it an hour into its first increment as #2805 did; a refusal that names no
-    task type or size; or one that writes the start and leaves the Campaign calibrating."""
+    """A product whose source is one package: every plan's ``qa.test`` is shown that package
+    (``package_scoped``). At about 90,000 tokens it is past the 65,536-token window; at about
+    40,000 the prompt (about 59,000 tokens, its JSON escapes counted) is inside it, but not with
+    the 12,288 tokens its completion reserves. The start is refused (409) as a
+    ``prompt_over_window`` blocking gap naming the binding, its size and its window, and nothing is
+    written. Bugs caught: the preflight not wired to the start, so
+    the Campaign learns it an hour into its first increment as #2805 did; the reserve left out of
+    the fit; a refusal that names no task type or size; or one that writes the start and leaves
+    the Campaign calibrating."""
     files = {
         **{p: c for p, c in product_files().items() if not p.endswith(".py")},
-        **_product(app=90_000),
+        **_product(app=package_tokens),
     }
     world = await _world(
         _recorded_projects(), tmp_path, repository=_Clone(files), squad_profile=_TF_SQUAD
@@ -652,7 +660,7 @@ async def test_a_task_that_cant_fit_on_the_product_is_a_blocking_gap_named_befor
     qa = over["qa.test"]
     assert (qa["role"], qa["model"], qa["window"]) == ("qa", "qwen3.8-27b-tf-nvfp4", 65_536)
     assert qa["prompt_tokens"] + qa["completion_reserve"] > 65_536
-    assert qa["prompt_tokens"] > 90_000  # the package, shown whole
+    assert qa["prompt_tokens"] > package_tokens  # the package, shown whole
     assert (
         f"qa.test (qa, on qwen3.8-27b-tf-nvfp4): its prompt is {qa['prompt_tokens']}"
         in (error["message"])
