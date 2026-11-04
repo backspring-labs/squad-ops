@@ -26,7 +26,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from squadops.api.campaign_schemas import (
     AcceptedTreeDTO,
+    BacklogItemResponse,
+    BacklogResponse,
     CampaignCreateRequest,
+    CampaignGoalsDTO,
     CampaignObjectiveDTO,
     CampaignPolicyDTO,
     CampaignResponse,
@@ -61,6 +64,7 @@ from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_cycle_event_bus,
     get_cycle_registry,
+    get_goal_set_registry,
     get_memory_records,
     get_memory_store,
     get_project_registry,
@@ -71,6 +75,7 @@ from squadops.api.runtime.deps import (
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
+from squadops.campaigns.backlog import campaign_backlog
 from squadops.campaigns.calibration_record import (
     CalibrationRecord,
     record_for,
@@ -88,6 +93,7 @@ from squadops.campaigns.ledger import ledger
 from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
+    CampaignGoals,
     CampaignObjective,
     CampaignOutcome,
     CampaignPolicy,
@@ -112,7 +118,7 @@ from squadops.campaigns.projection import project
 from squadops.campaigns.repository_backed import creation_refusal
 from squadops.campaigns.review_push import ReviewPushRefused, push_review
 from squadops.cycles.gate_attribution import compose_decided_by
-from squadops.cycles.models import CycleStatus, ProjectNotFoundError
+from squadops.cycles.models import CycleStatus, GoalSetNotFoundError, ProjectNotFoundError
 from squadops.memory.pinning import pin_campaign
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.contribution import ContributionRefused
@@ -256,6 +262,12 @@ async def create_campaign(
                 target_accepted_increments=body.objective.target_accepted_increments,
                 work_class=WorkClass(**body.objective.work_class.model_dump()),
                 requirements=body.objective.requirements,
+                goals=(
+                    CampaignGoals(**body.objective.goals.model_dump())
+                    if body.objective.goals
+                    else None
+                ),
+                stop_when=body.objective.stop_when,
             ),
             policy=CampaignPolicy(**body.policy.model_dump()),
             state=CampaignState.DRAFT,
@@ -307,9 +319,25 @@ async def _require_project_rules(request: Request, campaign: Campaign) -> None:
         project = await get_project_registry(request).get_project(campaign.project_id)
     except ProjectNotFoundError:
         return
-    refusal = creation_refusal(campaign, repository_backed=project.source is not None)
+    refusal = creation_refusal(
+        campaign,
+        repository_backed=project.source is not None,
+        latest_goal_set_revision=(
+            await _latest_goal_set_revision(request, campaign.project_id)
+            if campaign.objective.goals is not None
+            else None
+        ),
+    )
     if refusal:
         raise ValueError(refusal)
+
+
+async def _latest_goal_set_revision(request: Request, project_id: str) -> int | None:
+    """SIP-0115 §5.1: the Project's latest goal-set revision, or ``None`` when none is written."""
+    try:
+        return (await get_goal_set_registry(request).get_revision(project_id)).revision
+    except GoalSetNotFoundError:
+        return None
 
 
 async def _pinnable_scenario_store(request: Request, digest: str | None):
@@ -633,6 +661,58 @@ async def read_ledger(
             await registry.control_log(campaign_id), await registry.launch_intents(campaign_id)
         )
     ]
+
+
+@router.get("/{campaign_id}/backlog")
+async def read_backlog(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> BacklogResponse:
+    """A goal-set Campaign's backlog (SIP-0115 §4): each item's status derived from the control
+    log and the launch outbox at the revision the Campaign reads now, its pinned one or the
+    latest. Read like the ledger it is derived beside (``campaigns:read``). A Campaign naming no
+    goal set has none: 404 ``CAMPAIGN_HAS_NO_GOAL_SET``."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    goals = campaign.objective.goals
+    if goals is None:
+        raise http_error(
+            404,
+            "CAMPAIGN_HAS_NO_GOAL_SET",
+            f"campaign {campaign_id} names no goal set (objective.goals), so it has no backlog",
+        )
+    view, _revisions = await campaign_backlog(
+        campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
+    )
+    following = view.next_item
+    return BacklogResponse(
+        campaign_id=campaign_id,
+        project_id=campaign.project_id,
+        revision=view.revision,
+        reads="pinned" if goals.pinned is not None else "current",
+        next_item=following.item_id if following else None,
+        done=view.done,
+        items=[
+            BacklogItemResponse(
+                item_id=i.item_id,
+                title=i.title,
+                serves=list(i.serves),
+                status=i.status.value,
+                label=i.label,
+                position=i.position,
+                proposal_id=i.proposal_id,
+                version=i.version,
+                cycle_id=i.cycle_id,
+                revision=i.revision,
+                row=i.row,
+                reason=i.reason,
+                removed_in=i.removed_in,
+                results_changed_in=i.results_changed_in,
+            )
+            for i in view.items
+        ],
+    )
 
 
 @router.post("/{campaign_id}/pause")
@@ -1111,6 +1191,14 @@ def _campaign(c: Campaign) -> CampaignResponse:
                 else None
             ),
             requirements=c.objective.requirements,
+            goals=(
+                CampaignGoalsDTO(
+                    goal_set=c.objective.goals.goal_set, revision=c.objective.goals.revision
+                )
+                if c.objective.goals
+                else None
+            ),
+            stop_when=c.objective.stop_when,
         ),
         policy=CampaignPolicyDTO(
             **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}

@@ -20,6 +20,7 @@ from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
     CampaignExistsError,
+    CampaignGoals,
     CampaignNotFoundError,
     CampaignObjective,
     CampaignOutcome,
@@ -552,6 +553,9 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             work_class=WorkClass.from_stored(objective.get("work_class")),
             # SIP-0109 §24bv point 5: absent on a campaign stored before the field existed.
             requirements=objective.get("requirements"),
+            # SIP-0115 §5.1, §5.6: absent on a campaign stored before the fields existed.
+            goals=CampaignGoals.from_stored(objective.get("goals")),
+            stop_when=objective.get("stop_when"),
         ),
         policy=CampaignPolicy.from_stored(row["policy"]),
         state=CampaignState(row["state"]),
