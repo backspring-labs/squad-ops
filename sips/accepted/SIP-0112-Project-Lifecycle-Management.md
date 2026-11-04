@@ -133,7 +133,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | the qa plan proposer's worked example in its product's runner's terms (pytest, or vitest/jest) | **shipped** | 2.6.0, PR #2880, closes #2876 |
 | a product's suite that the qa image couldn't run read on the product's own runner, whatever else failed (H.18) | **shipped** | 2.6.0, PR #2878, closes #2877 |
 | a product's suite judged on its own runner on the product's tree at the pin, with the files a run's artifacts hold back (a lockfile) (H.19) | **shipped** | 2.6.0, PR #2902, closes #2900 |
-| a source-backed change that deletes a file | **placed** (the 2.6 plan's Track B, adopted 2026-11-03) | 2.6.0, #2612 |
+| a source-backed change that deletes a file | **shipped** (H.23): the `delete:<path>` form, judged against the task's view and grant, applied to the delivery candidate, named in `changed_paths` and absent from the capture | 2.6.0, PR #2923, closes #2612 |
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
 | a merged contribution syncs its Project, so the integrated commit includes the work | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2862 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.6.0, #2709 |
@@ -3069,3 +3069,104 @@ be named before the first cycle, not found in it.
 **Who ruled.** Placed in 2.6.0 by the 2.6 plan (Track A), adopted on the owner's rulings of 2026-11-03. The seam, the
 floor and the `size_unmeasured` cause are the Spark lane's design under the supervisor's brief for #2889, for the owner's
 ruling in review.
+
+## H.23 A source-backed change can remove a file: the deletion form (2026-11-04; E.4.3; #2612, #2484's deferred form; the Spark lane, for the owner's ruling in review)
+
+**What E.4.3 shipped, and what it deferred.** The capture side already round-tripped a removed file (`commit_tree`, tested in
+#2484), and the sandbox's patch took `None` for a path. The squad had no way to say it: every fence was a file written, so
+a change whose right shape removes a file could only empty it or leave it, the product's checks ran against both, and
+the contribution couldn't express the intent. The plan's Track B placed it in 2.6 (adopted 2026-11-03).
+
+**What changed:**
+1. **The form.** A strict fence whose language is `delete`, naming the path, with nothing inside:
+
+   ````
+   ```delete:tally/legacy_report.py
+   ```
+   ````
+
+   `extract_fenced_files` never reads it as a file. It wrote an empty file at the path before. `extract_fenced_deletions`
+   reads it; a body inside the fence or an unsafe path is malformed and named, never guessed into a removal.
+2. **It is judged where the emission is read** (`handlers/emitted_deletions.read_deletions`), against the task's
+   `source_repository` input, which gains `paths`, `held_back` and `deleted` as data no prompt renders (the map collapses
+   past 400 paths). Refused, by name, with the rest of the emission (all or nothing, as an anchored edit's transaction is):
+   - a step with no grant (`TaskType.deletion_grant`), or a run that changes no product;
+   - a path not in the product's tree at the commit, or one an earlier task removed;
+   - a binary file or a generated lockfile, which no task changes;
+   - a path the same emission writes;
+   - for a test step, a path none of the product's runners holds (`runner_holds`).
+3. **The grants.** `development.develop` and `development.correction_repair` may remove any text file of the product;
+   `qa.test` and `qa.test_repair` only a test a runner holds. A product with no runner holds none, so its test steps can
+   remove nothing and aren't shown the form.
+4. **It rides beside the artifacts, never among them.** A handler hands accepted removals on as `outputs["deletions"]`,
+   because every reader of a task's artifacts reads files, and a removal read as one is an empty file. Storage records
+   each as a `deletion` artifact, ordered among the writes, so a later write of the path brings it back
+   (`cycles/deletions.deleted_paths`).
+5. **Delivery applies it like a patch.** `squad_changes` gives a removed checkout file `None`; the candidate lacks the
+   path, the sandbox's patch removes it, the cut's identity is checked as before (a removed file's mode drops out with
+   it), `changed_paths` names it, and the capture and the `patch_export` contribution have it gone.
+6. **The product's own checks are its verdict.** Nothing inside the plan judges a removal. A removal that breaks a
+   check regresses like any change, and takes H.20's round.
+7. **A task that names the file it removes meets its expected artifacts.** A task names a file to be shown it, so the
+   removed path leaves the expected list for that emission's validation (`without_removed`).
+8. **The prompt.** The product's appendix gains `request.source_repository_deletion_product` or `_tests`, with a shown
+   fence, for a step that may use it. A test step's example is built from its product's first runner (#2876's concern).
+   Plan and framing authors see none. About 120 tokens.
+
+**Every handler that parses an emission:**
+
+| reader | step | handling |
+|---|---|---|
+| `develop.handle` | `development.develop` | reads and judges it; a refusal fails the emission by name |
+| `QATestHandler._settle_emission` | `qa.test` (its re-take too) | as above, under the test grant |
+| `_RepairPromptMixin._artifacts_from_response` | the dev and qa repairs | as above; a refusal returns no file, and reaches the round as a dropped write (#2521's channel) |
+| the same | `builder.assemble_repair` | refused by name: no grant |
+| `_self_evaluate` | a pass of develop or qa | refused: the first emission is where a removal is judged. Named in the task's evidence (`deletions_refused`), and the pass's files stand |
+| `builder`, `governance`, `_plan_authoring`, `_plan_authoring_service` | no grant | never a file; refused in the log by path. They author documents, and nothing on the task's record names it. The form is never shown to them |
+
+**Every path that applies an emission:**
+
+| path | runs in | handling |
+|---|---|---|
+| a succeeded task (`_collect_artifacts_and_checkpoint`) | runtime-api | stored after its files |
+| a failed task's own removal, its patch accepted (`_accept_patch`) | runtime-api | rides the corrected result, which is the failed one, and is stored |
+| the same, its repair kept (`_keep_progress`, #1522) | runtime-api | stored with the kept set, since the next round starts from a retest that carries none |
+| a repair's removal, inside the plan (`_route_correction_path`) | runtime-api | **refused**, by name (`REPAIR_REMOVAL_REFUSED_MARKER`): spent, not refunded, nothing applied. The verifier and the retest materialize the workspace overlaid with files, so an accepted round would rest on a verdict that read the file as present (SIP-0107 §20). The task's own emission is where it goes |
+| a repair's removal, in H.20's round (`_repair_source_regression`) | runtime-api | stored with its files; the next delivery is the verdict, and names it |
+| a repair's refused removal, in H.20's round | runtime-api | fails the run, naming the path and why |
+| the overlay and the retest (`overlay_artifacts`, `reexecute_repaired_suite`) | runtime-api, the qa image | never carry one: they read artifacts. Under the first row's rule the file stays in the tree they judge until the removal is accepted |
+
+**The seams that read a task's tree** (CLAUDE.md's typed-check table):
+
+| seam | runs in | tree it sees | on a tree that lacks the file |
+|---|---|---|---|
+| emission, typed checks (`_validated`) | the role's container | accepted workspace plus its own emission; its own removal not applied | a criterion naming the file reads the workspace copy until the removal is accepted |
+| a later task's typed checks and view (`_resolve_artifact_contents`, `task_source_repository`) | runtime-api, then the role's container | accepted workspace, the removed path gone; the map says `removed by this run` | absent, read as `file_not_found`, as a planner's check on a file the plan removed should |
+| agent-side repair | the repairing role's container | accepted workspace plus the failed task's files, the patch | as above |
+| the verifier (`verify_patched_artifacts`) | runtime-api | accepted workspace, the failed task's artifacts, the patch | as above; a failed task's unaccepted removal isn't applied |
+| the qa suite (`qa_run_tree`) | the qa image | `artifact_contents`, tests left out | absent once accepted, so the suite reads the product without it; a removed test was never in this tree |
+| the product runner's re-reading (`product_suite`) | the sandbox | `suite_run_tree`, the same | as above. **PR #2902 seeds this tree from the pin**, so after it merges an accepted removal returns here unless its patch passes `None` for `source_repository["deleted"]` |
+| delivery (`deliver_source_change`) | runtime-api, X-3a in the sandbox | the pinned commit plus the accepted changes and removals | absent; the product's checks read it so |
+| the increment's acceptance (`SandboxTree`) | the sandbox | the delivered candidate | absent: `content` drops a `None`, and the patch removes it |
+
+**Known limits, not built:**
+- A file the squad added earlier in the run isn't in the view, so it can't be removed: refused `not_in_view`.
+- A repair isn't taught the form. Its prompt doesn't render the appendix, and inside the plan the form would be refused.
+- A Campaign's allowed scope is read at the plan gate, on the footprint. It isn't read again on an emission, a write's or a removal's.
+- A plan's typed criterion that requires the removed file fails, as it should, but no plan form states a removal.
+
+**The evidence:**
+- **Wiring:** `test_a_removal_the_developer_emits_is_absent_from_the_captured_commit` enters at the task's dispatch
+  envelope, through the real develop handler, storage, `_execute_sequential`'s end of plan and delivery, to the real
+  managed clone. It asserts the captured tree lacks both files, `changed_paths` names them, and the patch removes them.
+  `test_a_removal_a_regressions_repair_makes_is_delivered_with_it` enters at the same end of plan through the real
+  correction runner and repair handler.
+- **Error cases:** a path outside the view, a held-back file, a path removed twice, one written and removed in one
+  emission, a test step outside its grant and inside it, a product with no runner, a malformed fence, a removal that
+  breaks a check, an executable file, a refused removal in H.20's round, a removal inside the plan.
+- **Mutants**, each committed and restored by commit: listed in the PR's Evidence.
+
+**Who ruled.** The shape is #2612's, written on 2026-10-21 and placed by the owner with the plan's Track B (2026-11-03).
+The fence's spelling, the two grants, all-or-nothing refusal, carrying removals outside the artifact list, refusing a
+repair's removal inside the plan, and refusing a self-evaluation pass's are this implementation's decisions, built by
+the Spark lane on 2026-11-04. The owner rules on them in review.
