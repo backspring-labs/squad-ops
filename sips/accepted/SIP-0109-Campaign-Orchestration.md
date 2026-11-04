@@ -5825,6 +5825,14 @@ settles of its own text.
      which §9.5 counts as rejected.
    - A supervisor's own return is left as asked. A pinned Campaign reads no later revision. An approved proposal keeps
      its revision.
+   - **A retry replays the ruling as committed** (added on the outside second review of PR #2901, its P2). The
+     ruling's row commits before its gate decision is recorded, and a process that dies between the two is retried
+     with the same key. The route first reads the applied `rule` row that key wrote on the run, and replays what it
+     committed, never reading the goal set again: a `goals_revised` return is returned again with its recorded reason,
+     and a committed approval or rejection is recorded as asked, whatever revision the owner wrote in between. A retry
+     asking a decision other than the row's `decision` (or `requested`, for a return) is a conflict, refused and
+     recorded by the registry (§12a). Before this, the retry read the goal set anew, built a different row, and the
+     key conflicted: the Campaign stood `building` with a ruling row and no gate decision.
 6. **`stop_when: backlog_done` at row 3 (§10).** Row 3's predicate is "the objective's measurement is met with this
    increment counted". `backlog_done` is a second reading of it, beside the target. The decision reads the goal set's
    revision then (the latest for `current`, never the one the increment was proposed under), and the measurement is
@@ -5841,6 +5849,16 @@ settles of its own text.
 7. **Nothing pending escalates (§10, §12b).** A goal-set Campaign whose backlog has no pending item (each accepted or
    abandoned, and no `backlog_done` to stop it) writes no proposal launch. Its decision escalates with the reason as
    `unbuilt`, as any launch that can't be built does. The owner revises the goal set or stops the Campaign.
+   - **Eligibility is read against the transition being prepared** (added on the outside second review of PR #2901,
+     its P2). The owner's word (`resume`, §10) and a rebase's supersession (§24cd point 2) build their proposal before
+     their row commits, and a continuation decision builds its launch before its row. So the backlog is read with that
+     row applied: the owner's `propose` returns the decided increment's item to `pending`, the owner's
+     `abandon_and_propose` reads it `abandoned` (so a lone abandoned item still has nothing pending, and the word is
+     refused), and a rebase reads the repair or retry it supersedes as `upstream_moved` leaves it, pending. The
+     rebase's proposal is told which launch its row supersedes (`ProposeAfterRebase` takes it). The proposal run reads
+     only committed rows: its intent is written in the row's transaction and drained after it. Before this, the
+     owner's `propose` on an escalated goal-set Campaign was refused as "no pending backlog item", and every upstream
+     move that superseded a repair escalated instead of proposing the item again.
 
 **Unchanged.** A sample application's Campaigns and every requirements Campaign: no field, row, rail or prompt of
 theirs changes. The decision table's other rows, the counters, and the guards are unchanged too.
@@ -5853,8 +5871,14 @@ theirs changes. The decision table's other rows, the counters, and the guards ar
   judged through `handle()`.
 - `tests/unit/cycles/test_increment_gate_wiring.py`: the submission's item and revision, and a `goals_revised` return
   that spends no revision.
-- `tests/unit/api/test_goals_revised_ruling.py`: the return at the ruling route.
-- `tests/unit/campaigns/test_progress.py`: `backlog_done` and the escalation, entered at `CycleCompletion.end`.
+- `tests/unit/api/test_goals_revised_ruling.py`: the return at the ruling route, and a retried ruling replaying what
+  its row committed (an approval, then a reorder; a `goals_revised` return, then the order restored), while a retry
+  asking another decision conflicts.
+- `tests/unit/campaigns/test_progress.py`: `backlog_done` and the escalation, entered at `CycleCompletion.end`; the
+  rebase's replacement proposal built with the superseded repair's item pending.
+- `tests/unit/api/test_campaign_owner_word.py`: the owner's `propose` and `abandon_and_propose` on an escalated
+  goal-set Campaign, through the resume route.
+- `tests/unit/campaigns/test_branch_rebase.py`: `before_launch` hands the proposal the launch it supersedes.
 
 **Who ruled it.** The owner accepted SIP-0115 as 2.6's headline and placed slice 2, with "a SIP-0109 amendment in
 the same PR", on 2026-11-03 (the 2.6 plan's D1). The shapes above are the implementer's under the supervisor's brief

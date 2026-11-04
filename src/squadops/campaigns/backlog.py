@@ -24,6 +24,12 @@ another Campaign, verified on this one's calibration tree) is not built (SIP-011
 
 **An abandoned item is skipped** by the next proposal (§5.3) until a later revision changes the
 item itself (its title, description, ``serves`` or size): that edit is the re-queue (§10b).
+
+**Eligibility is read against the transition being prepared** (SIP-0109 §24cy item 7, the outside
+second review of PR #2901). The owner's word and a rebase's supersession build their proposal
+before their row commits, so the view takes that row as ``pending_word`` (the owner's action on the
+decided cycle, read as ``_owners_word`` would read its ``resume`` row) or ``superseding`` (the
+launch a rebase supersedes, read as ``_superseded_versions`` would read its row).
 """
 
 from __future__ import annotations
@@ -144,6 +150,8 @@ def backlog_view(
     launches: Iterable[LaunchIntent] = (),
     *,
     leaving_out: tuple[str, int] | None = None,
+    pending_word: tuple[str, str] | None = None,
+    superseding: str | None = None,
 ) -> BacklogView:
     """The backlog of revision ``at`` of the goal set ``revisions`` hold, as the Campaign whose
     control log and launch outbox these are stands on it.
@@ -151,12 +159,16 @@ def backlog_view(
     ``leaving_out`` is a ``(proposal_id, version)`` read as if never submitted: the proposal a
     ruling is about to decide, so the item it names reads as it would for a fresh proposal.
 
+    ``pending_word`` is ``(cycle_id, action)``: the owner's word on that decided cycle, whose
+    ``resume`` row is being prepared and not yet committed, read as if it were. ``superseding`` is
+    the launch id a rebase is about to supersede, read as if its row were committed.
+
     Raises ``ValueError`` when ``revisions`` holds no revision ``at``."""
     by_number = {r.revision: r for r in revisions}
     if at not in by_number:
         raise ValueError(f"the goal set holds no revision {at}")
     read = by_number[at].goal_set
-    latest_named = _latest_named(log, list(launches), leaving_out)
+    latest_named = _latest_named(log, list(launches), leaving_out, pending_word, superseding)
     items = [_in_revision(item, n, latest_named.get(item.id), by_number, at)
              for n, item in enumerate(read.backlog, start=1)]  # fmt: skip
     present = {item.id for item in read.backlog}
@@ -215,6 +227,8 @@ def _latest_named(
     log: Sequence[ControlLogEntry],
     launches: list[LaunchIntent],
     leaving_out: tuple[str, int] | None,
+    pending_word: tuple[str, str] | None = None,
+    superseding: str | None = None,
 ) -> dict[str, _Named]:
     """Each item's last naming proposal version, by submission order, with its status."""
     applied = [e for e in log if e.outcome is ControlOutcome.APPLIED]
@@ -233,8 +247,11 @@ def _latest_named(
         for e in applied
         if e.operation is ControlOperation.PROMOTE and e.target is not None
     }
-    superseded = _superseded_versions(applied, launches)
+    superseded = _superseded_versions(applied, launches, superseding)
     owners_word = _owners_word(applied)
+    if pending_word is not None:
+        cycle_id, action = pending_word
+        owners_word[cycle_id] = (action, "abandoned by the owner's word, being written")
     ended = _campaign_end(applied)
     latest: dict[str, _Named] = {}
     for entry in ledger(list(log), launches):
@@ -312,14 +329,17 @@ def _owners_word(applied: list[ControlLogEntry]) -> dict[str, tuple[str, str]]:
 
 
 def _superseded_versions(
-    applied: list[ControlLogEntry], launches: list[LaunchIntent]
+    applied: list[ControlLogEntry], launches: list[LaunchIntent], superseding: str | None = None
 ) -> set[tuple[str, int]]:
-    """The proposal versions whose repair or retry a rebase superseded (``upstream_moved``)."""
+    """The proposal versions whose repair or retry a rebase superseded (``upstream_moved``), and
+    the one ``superseding`` is about to."""
     superseded = {
         str(e.binding["superseded_launch_id"])
         for e in applied
         if e.operation is ControlOperation.BRANCH_REBASED and e.binding.get("superseded_launch_id")
     }
+    if superseding is not None:
+        superseded.add(superseding)
     out: set[tuple[str, int]] = set()
     for intent in launches:
         if intent.launch_id in superseded:
@@ -450,10 +470,13 @@ async def campaign_backlog(
     goal_sets: GoalSetRegistryPort,
     campaigns: CampaignRegistryPort,
     leaving_out: tuple[str, int] | None = None,
+    pending_word: tuple[str, str] | None = None,
+    superseding: str | None = None,
 ) -> tuple[BacklogView, tuple[GoalSetRevision, ...]]:
     """The Campaign's backlog at the revision it reads now: its pinned one, or its goal set's
     latest (``current``, §5.5), with every revision read. The one reading the proposal's input,
-    the ruling, the continuation decision and the API share.
+    the ruling, the continuation decision and the API share. ``pending_word`` and ``superseding``
+    are ``backlog_view``'s: the transition being prepared.
 
     Raises:
         ValueError: The campaign names no goal set.
@@ -474,5 +497,7 @@ async def campaign_backlog(
         await campaigns.control_log(campaign.campaign_id),
         await campaigns.launch_intents(campaign.campaign_id),
         leaving_out=leaving_out,
+        pending_word=pending_word,
+        superseding=superseding,
     )
     return view, revisions

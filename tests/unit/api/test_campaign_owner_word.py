@@ -27,14 +27,20 @@ from squadops.campaigns.continuation import (
     Guard,
     PendingAction,
 )
+from squadops.campaigns.gate import ruling_transition, submission
 from squadops.campaigns.models import (
     AcceptedTree,
+    CampaignGoals,
+    CampaignObjective,
     CampaignState,
     ControlOperation,
     CycleKind,
+    ProposalBinding,
+    SubmittedProposal,
 )
 from squadops.campaigns.progress import CampaignProgress, decision_transition
-from squadops.cycles.models import ArtifactRef, Cycle, TaskFlowPolicy
+from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, TaskFlowPolicy
+from tests.fixtures.goal_set import GoalSetStore, backlog_document
 from tests.unit.campaigns.builders import campaign, move, policy
 
 CID = "cmp_owner0000001"
@@ -63,7 +69,7 @@ class _Vault:
 
 
 class _World:
-    def __init__(self) -> None:
+    def __init__(self, goal_sets=None) -> None:
         self.campaigns = MemoryCampaignRegistry()
         self.launch = AsyncMock()
         self.seat = Role.ADMIN
@@ -114,7 +120,7 @@ class _World:
             outcome_section=None,
             intervention_section=None,
             campaign_branch=None,
-            goal_sets=None,
+            goal_sets=goal_sets,
         )
         app.state.campaign_launch = self.launch
         app.state.authz_port = KeycloakAuthzAdapter()
@@ -267,3 +273,88 @@ async def test_an_owner_abandonment_counts_against_the_no_progress_rule(world):
         objective_met=False,
     )
     assert counters.unaccepted_increments == 1
+
+
+# --- SIP-0115 §5.3 (SIP-0109 §24cy item 7): the owner's word on a goal-set campaign ---
+
+
+async def _goal_set_world(*items: str) -> _World:
+    """A goal-set campaign whose first item's increment escalated: B-1 approved at the gate (its
+    submission naming it, under revision 1), built, and decided at row 9."""
+    store = GoalSetStore()
+    store.write("group_run", backlog_document(*items))
+    w = _World(goal_sets=store)
+    objective = CampaignObjective(
+        statement="work through the goal set", allowed_scope=("backend", "frontend"),
+        measurement="the backlog done", target_accepted_increments=9, work_class=None,
+        goals=CampaignGoals(goal_set="group_run", revision="current"),
+    )  # fmt: skip
+    await w.campaigns.create_campaign(
+        campaign(CID, policy=policy(proposal_profile="campaign-increment"), objective=objective),
+        actor="owner", actor_role="admin", reason="r", idempotency_key="create",
+    )  # fmt: skip
+    await w.campaigns.transition(CID, move(CampaignState.CALIBRATING, "cal"))
+    await w.campaigns.transition(
+        CID,
+        move(
+            CampaignState.CALIBRATING,
+            "promote",
+            operation=ControlOperation.PROMOTE,
+            accepted=AcceptedTree("sha-cal", "cyc_cal"),
+        ),
+    )
+    await w.campaigns.transition(CID, move(CampaignState.AT_PROPOSAL, "propose"))
+    binding = ProposalBinding("prop_1", 1, "hash-1", "sha-cal")
+    await w.campaigns.transition(
+        CID,
+        submission(
+            CampaignState.AT_PROPOSAL,
+            SubmittedProposal(binding, "cyc_inc", "run_1"),
+            {"backlog_item": "B-1", "goals_revision": 1},
+        ),
+    )
+    await w.campaigns.transition(
+        CID,
+        ruling_transition(
+            GateDecisionValue.APPROVED, binding, run_id="run_1", actor="supervisor",
+            actor_role="campaign-supervisor", reason="it serves B-1", idempotency_key="rule-1",
+        ),
+    )  # fmt: skip
+    await w.decided(ContinuationDecision("cyc_inc", 9, action=PendingAction.ESCALATE))
+    return w
+
+
+@pytest.mark.parametrize(
+    ("items", "action", "status", "why"),
+    [
+        (("B-1",), "propose", 200, None),
+        (("B-1", "B-2"), "abandon_and_propose", 200, None),
+        (("B-1",), "abandon_and_propose", 422, "no pending backlog item"),
+    ],
+    ids=["propose returns the item", "abandon, another pending", "abandon, nothing else"],
+)
+async def test_the_owners_word_reads_the_backlog_with_its_own_row_applied(
+    items, action, status, why
+):
+    """The outside review of PR #2901 (P2): the word's row isn't written when its launch is
+    built, so eligibility is read as that row will leave it. Bugs caught: the owner's ``propose``
+    refused as "no pending backlog item" though it returns the escalated increment's item to
+    pending, so an escalated goal-set campaign can never be resumed with a fresh proposal; or
+    the owner's abandonment reading the item as pending and proposing the abandoned item again."""
+    w = await _goal_set_world(*items)
+
+    resp = w.resume("word-1", action=action)
+
+    assert resp.status_code == status, resp.json()
+    if status == 200:
+        [launch] = await w.campaigns.launch_intents(CID)
+        block = launch.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+        assert (launch.cycle_kind, block["objective"]["goals"]) == (
+            CycleKind.INCREMENT,
+            {"goal_set": "group_run", "revision": "current"},
+        )
+        assert resp.json()["entry"]["binding"] == {"action": action, "executes": "ruling"}
+    else:
+        assert why in resp.json()["detail"]["error"]["message"]
+        assert await w.campaigns.launch_intents(CID) == []
+        assert (await w.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED

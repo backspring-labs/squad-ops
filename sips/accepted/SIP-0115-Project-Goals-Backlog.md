@@ -432,6 +432,15 @@ the owner reviews it in the slice's PR.
   - each read of the view.
 - **`goals_revised` applies to an approval or a rejection, not to the supervisor's own return,** and never to a
   pinned Campaign. Its return spends neither a rejection nor one of the proposal's revisions (SIP-0109 §24cy item 5).
+- **A retried ruling replays what its row committed** (added on the outside second review of PR #2901). The ruling's
+  row commits before its gate decision records; a retry with the same key replays the row's decision, or its
+  `goals_revised` return with its recorded reason, and never reads the goal set again. A retry asking another decision
+  conflicts (SIP-0109 §24cy item 5).
+- **Eligibility is read against the transition being prepared** (added on the outside second review of PR #2901). The
+  owner's word and a rebase's supersession build their proposal before their row is written, so the next eligible item
+  is read as that row will leave it: the owner's `propose` returns the escalated increment's item to `pending`, the
+  owner's `abandon_and_propose` reads it `abandoned`, and a rebase reads the repair it supersedes as `upstream_moved`
+  leaves it (SIP-0109 §24cy item 7). The proposal run, which shows the proposer the backlog, reads only committed rows.
 - **Narrowed: `backlog_done` is read just before the decision's row, not in its transaction.** The goal set has its
   own store (§10a), and the row records the revision it read (SIP-0109 §24cy item 6).
 - **Narrowed: `backlog_done` stops at row 3, which needs an accepted increment** (SIP-0109 §10). A backlog emptied

@@ -9,6 +9,7 @@ the campaign is read back.
 from __future__ import annotations
 
 import dataclasses
+from unittest.mock import patch
 
 import pytest
 
@@ -118,3 +119,72 @@ async def test_a_proposal_named_no_item_is_ruled_as_asked():
 
     assert world.rule().status_code == 200
     assert await world.gate_decisions() == [(gate_route.INCREMENT_RULING_GATE, "approved")]
+
+
+# --- SIP-0109 §24cy item 5: a retried ruling replays as committed (the outside second review of
+# PR #2901, its P2) ---
+
+
+def _dies_before_the_gate_decision():
+    """The process dies after the ruling's row commits and before its gate decision records."""
+    return patch(
+        "squadops.api.routes.cycles.runs.record_gate_decision",
+        side_effect=RuntimeError("the process died"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("before_first", "before_retry", "recorded", "state"),
+    [
+        ((), (backlog_document("B-2", "B-1"),), "approved", CampaignState.BUILDING),
+        (
+            (backlog_document("B-2", "B-1"),),
+            (backlog_document("B-1", "B-2"),),
+            "returned_for_revision",
+            CampaignState.AT_PROPOSAL,
+        ),
+    ],
+    ids=["an approval, then the goal set reordered", "a goals_revised return, then restored"],
+)
+async def test_a_retried_ruling_replays_what_its_row_committed_never_rereading_the_goal_set(
+    before_first, before_retry, recorded, state
+):
+    """The outside review of PR #2901 (P2). The row commits before the gate decision records; a
+    retry with the same key and request must finish what the first attempt started. Bugs caught:
+    the retry reading the goal set again, so a revision written in between turns the committed
+    approval into a return (or the committed return into an approval), the key conflicts, and
+    the campaign is stuck with a ruling row and no gate decision."""
+    world = await _world("current", *before_first)
+    store = world.client.app.state.goal_set_registry
+    with _dies_before_the_gate_decision(), pytest.raises(RuntimeError):
+        world.rule()
+    [first] = [e for e in await world.campaigns.control_log(CID) if e.operation == "rule"]
+    assert (first.binding["decision"], await world.gate_decisions()) == (recorded, [])
+    for doc in before_retry:
+        store.write("group_run", doc)
+
+    retry = world.rule()
+
+    assert retry.status_code == 200, retry.json()
+    rules = [e for e in await world.campaigns.control_log(CID) if e.operation == "rule"]
+    assert [(e.outcome, e.binding["decision"]) for e in rules] == [("applied", recorded)]
+    assert await world.gate_decisions() == [(gate_route.INCREMENT_RULING_GATE, recorded)]
+    run = await world.cycles.get_run("run_prop")
+    assert run.gate_decisions[0].notes == first.reason
+    assert (await world.campaigns.get_campaign(CID)).state is state
+
+
+async def test_a_retry_asking_another_decision_than_the_committed_one_conflicts():
+    """The replay is of the request as committed, not of any request under the key. Bug caught:
+    a key that approved replayed as the rejection a retry now asks for, or the other way."""
+    world = await _world("current")
+    assert world.rule().status_code == 200
+    world.client.app.state.goal_set_registry.write("group_run", backlog_document("B-2", "B-1"))
+
+    retry = world.rule(decision="rejected", classification="scope_too_large")
+
+    assert retry.status_code == 409, retry.json()
+    error = retry.json()["detail"]["error"]
+    assert error["details"]["refusal"] == "conflicting_idempotency_key"
+    assert await world.gate_decisions() == [(gate_route.INCREMENT_RULING_GATE, "approved")]
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.BUILDING

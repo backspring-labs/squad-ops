@@ -369,8 +369,8 @@ async def test_a_pending_repair_is_superseded_and_the_fresh_proposal_launches_on
     await world.reconciled(onto)
     proposed = []
 
-    async def propose(campaign, continued):
-        proposed.append((campaign.accepted.commit, continued))
+    async def propose(campaign, continued, superseding):
+        proposed.append((campaign.accepted.commit, continued, superseding))
         return _increment("prop_afterrebase")
 
     await world.service(propose=propose).drain()
@@ -384,7 +384,8 @@ async def test_a_pending_repair_is_superseded_and_the_fresh_proposal_launches_on
         {"kind": "repair", "abandoned_as": UPSTREAM_MOVED},
     )
     assert (rebased.prior_state, rebased.next_state) == (S.REPAIRING, S.AT_PROPOSAL)
-    assert proposed == [(rebased.binding["commit"], failed.cycle_id)]
+    # §24cy item 7: the proposal is told which launch the row supersedes, before the row commits.
+    assert proposed == [(rebased.binding["commit"], failed.cycle_id, repair)]
     assert (fresh.cycle_kind, fresh.state) == (CycleKind.INCREMENT, LaunchIntentState.LAUNCHED)
     cycle = await world.cycles.get_cycle(fresh.cycle_id)
     assert cycle.source_context.pinned_commit == rebased.binding["commit"]

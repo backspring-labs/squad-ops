@@ -35,8 +35,18 @@ from squadops.api.runtime.deps import (
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.backlog import BACKLOG_ITEM_KEY, GOALS_REVISION_KEY, campaign_backlog
 from squadops.campaigns.backlog import goals_revised as goals_revised_reason
-from squadops.campaigns.gate import GOALS_REVISED, INCREMENT_RULING_GATE, ruling_transition
-from squadops.campaigns.models import ControlOperation, ControlOutcome, ProposalBinding
+from squadops.campaigns.gate import (
+    GOALS_REVISED,
+    INCREMENT_RULING_GATE,
+    RETURNED_AS,
+    ruling_transition,
+)
+from squadops.campaigns.models import (
+    ControlLogEntry,
+    ControlOperation,
+    ControlOutcome,
+    ProposalBinding,
+)
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.gate_decisions import record_gate_decision
@@ -383,6 +393,33 @@ async def _goals_revised(
     )
 
 
+async def _committed_ruling(
+    request: Request, campaign_id: str, run_id: str, key: str
+) -> ControlLogEntry | None:
+    """The applied ``rule`` row ``key`` already wrote on ``run_id``'s gate, or ``None`` (SIP-0109
+    §24cy item 5). A ruling's row commits before its gate decision is recorded, and a process that
+    dies between the two is retried with the same key: the retry replays what the row committed,
+    and never reads the goal set again."""
+    log = await get_campaign_registry(request).control_log(campaign_id)
+    return next(
+        (
+            e
+            for e in reversed(log)
+            if e.operation is ControlOperation.RULE
+            and e.outcome is ControlOutcome.APPLIED
+            and e.target == run_id
+            and e.idempotency_key == key
+        ),
+        None,
+    )
+
+
+def _asked_of(committed: ControlLogEntry) -> str:
+    """The decision a committed ruling was asked for: the one it recorded, or the one a
+    ``goals_revised`` return stood in for (``requested``)."""
+    return str(committed.binding.get("requested") or committed.binding.get("decision"))
+
+
 async def _rule_increment(
     request: Request,
     registry,
@@ -426,19 +463,26 @@ async def _rule_increment(
 
     binding = ProposalBinding(**body.binding.model_dump())
     asked = GateDecisionValue(body.decision)
-    # SIP-0115 §5.5a: an approval or a rejection, never the supervisor's own return (nor a
-    # decision the gate refuses as illegal).
-    revised = (
-        await _goals_revised(request, cycle.campaign_id, binding)
-        if asked in (GateDecisionValue.APPROVED, GateDecisionValue.REJECTED)
-        else None
-    )
-    if revised is not None:
+    committed = await _committed_ruling(request, cycle.campaign_id, run_id, body.idempotency_key)
+    returned_as_revised: str | None = None
+    if committed is not None and _asked_of(committed) == asked.value:
+        # §24cy item 5: the key already ruled this gate. Replay the row as committed, whatever the
+        # goal set says now: a return keeps its recorded reason, a decision stands as asked. A
+        # retry asking another decision falls through, and the registry refuses it as a conflict.
+        if committed.binding.get(RETURNED_AS) == GOALS_REVISED:
+            returned_as_revised = committed.reason
+    elif asked in (GateDecisionValue.APPROVED, GateDecisionValue.REJECTED):
+        # SIP-0115 §5.5a: an approval or a rejection, never the supervisor's own return (nor a
+        # decision the gate refuses as illegal).
+        revised = await _goals_revised(request, cycle.campaign_id, binding)
+        if revised is not None:
+            returned_as_revised = f"{GOALS_REVISED}: {revised}"
+    if returned_as_revised is not None:
         # SIP-0115 §5.5a: returned with its reason, not ruled; the revision reads the new goals.
         body = body.model_copy(
             update={
                 "decision": GateDecisionValue.RETURNED_FOR_REVISION.value,
-                "notes": f"{GOALS_REVISED}: {revised}",
+                "notes": returned_as_revised,
                 "classification": None,
                 "classification_rationale": None,
                 "task_instructions": [],
@@ -455,12 +499,12 @@ async def _rule_increment(
                 run_id=run_id,
                 actor=actor,
                 actor_role=role,
-                reason=str(body.notes) if revised is not None else reason,
+                reason=returned_as_revised if returned_as_revised is not None else reason,
                 idempotency_key=body.idempotency_key,
                 classification=body.classification,
                 classification_rationale=body.classification_rationale,
                 instruction_ids=tuple(r.record_id for r in instructions),
-                goals_revised_from=asked if revised is not None else None,
+                goals_revised_from=asked if returned_as_revised is not None else None,
             )
         except ValueError as e:  # §24bi: a return names what went wrong, or it is refused
             raise ValidationError(str(e)) from e

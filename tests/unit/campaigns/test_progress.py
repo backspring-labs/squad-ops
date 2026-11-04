@@ -2961,3 +2961,58 @@ async def test_each_built_ending_is_evaluated_before_its_decision_against_the_tr
     assert cal.evaluated_tree_identity == promoted["cyc_cal"]
     assert inc.previous_accepted_tree_identity == promoted["cyc_cal"]
     assert [decided for _, decided in runner.calls] == [[], ["cyc_cal"]]
+
+
+async def test_a_rebase_that_supersedes_the_items_repair_proposes_the_item_again(
+    calibrating, stored
+):
+    """§24cd point 2 on a goal-set Campaign (§24cy item 7; the outside review of PR #2901, P2).
+    The fresh proposal is built before the rebase's row commits, so it is told which launch the
+    row supersedes. Entered at ``proposal_after_rebase``, as ``BranchRebase.before_launch`` calls
+    it. Bugs caught: the superseded repair's item read ``in_increment``, so the replacement
+    proposal has nothing pending and every upstream move escalates the campaign; or a proposal
+    that supersedes nothing reading a live repair's item as pending, and proposing it twice."""
+    import dataclasses
+
+    from squadops.campaigns.continuation import ContinuationDecision, Guard, PendingAction
+    from squadops.campaigns.models import CycleKind, LaunchRequest
+    from squadops.campaigns.progress import decision_transition
+    from tests.fixtures.goal_set import GoalSetStore, backlog_document
+
+    goal_sets = GoalSetStore()
+    goal_sets.write("group_run", backlog_document("B-1"))
+    w, run = await calibrating(
+        RunVerdict.ACCEPTED, objective=_goal_set_objective(None), goal_sets=goal_sets
+    )
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    await _approve_item(w, "B-1", 1, "cyc_inc")
+    await w.launched_cycle("increment", "cyc_inc", "implementation", "completed")
+    await w.campaigns.transition(CID, move(CampaignState.EVALUATING, "evaluate:cyc_inc"))
+    repair = LaunchRequest(
+        CycleKind.REPAIR,
+        {"body": {"execution_overrides": {"campaign_proposal": {
+            "proposal_id": "prop_cyc_inc", "version": 1, "continues": "cyc_inc"}}}},
+    )  # fmt: skip
+    decided = await w.campaigns.transition(
+        CID,
+        decision_transition(
+            await w.campaigns.get_campaign(CID),
+            ContinuationDecision("cyc_inc", 12, action=PendingAction.REPAIR, guard=Guard.PROCEED),
+            ending=CycleEnding.ASSESSED, verdict=RunVerdict.REJECTED, launch=repair,
+        ),
+    )  # fmt: skip
+    # The campaign at the rebased head, as ``before_launch`` hands it over.
+    moved = dataclasses.replace(
+        decided.campaign, accepted=dataclasses.replace(decided.campaign.accepted, commit="b" * 40)
+    )
+
+    built = await w.progress.proposal_after_rebase(moved, "cyc_inc", decided.intent.launch_id)
+    unaware = await w.progress.proposal_after_rebase(moved, "cyc_inc")
+
+    assert isinstance(built, LaunchRequest) and built.cycle_kind is CycleKind.INCREMENT
+    block = built.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (block["basis"], block["abandoned_increment"]["abandoned_as"]) == (
+        "campaign_branch",
+        "upstream_moved",
+    )
+    assert isinstance(unaware, str) and "no pending backlog item" in unaware
