@@ -380,7 +380,8 @@ the slice's PR.
   the goal set as JSONB beside its scalar columns. It is chosen by the Project registry's selector, and writes only
   under `postgres`: under `postgres_read_only` (SIP-0112 R3) and `config`, a write is `409 PROJECT_REGISTRY_READ_ONLY`.
 - **§7's sweep needs no change:** `heldout_sweep.py` dumps every table of the `squadops` database except the suite's
-  own store, so `project_goal_set_revisions` is searched already.
+  own store (`OWN_STORE`, `scripts/dev/heldout_sweep.py:81`; `--exclude-table` at `:294`), so
+  `project_goal_set_revisions` is searched already.
 - **The CLI's `show` prints YAML that `edit -f` takes back,** with the revision's author and reason as comments.
   `candidates`, `promote` and `drop` (§8.2) are slice 3's.
 
