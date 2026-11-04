@@ -148,8 +148,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
 | the operator's box lease outside Campaigns (§9.3) | **placed** (the 2.6 plan's Track C, adopted 2026-11-03) | 2.6.0, #2287 |
-| a Campaign that closes with accepted increments opens its contribution to the product | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2861 |
-| a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2863 |
+| a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
+| a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
@@ -6115,3 +6115,136 @@ what the preflight leaves out and its mutants.
 **Who ruled.** Placed in 2.6.0 by the 2.6 plan's Track A, adopted on the owner's rulings of 2026-11-03. The refusal's
 shape is the implementer's, for the owner's ruling in review. The delivery is tracked on SIP-0112's ledger, where #2889
 is placed.
+
+### 24dc. A Campaign's close records what contribution is due, the supervisor opens it, and the work not yet integrated is a signal (2026-11-04, §10, §12a, §14, §24ci (b), §24cn, §24cx; SIP-0112 E.4.3, E.4.4, H.22; #2861, #2863; the owner's ruling on the open, the implementer's design for the rest)
+
+**Why.** Campaigns 4 and 6 on `prj-shelfnote` closed with accepted increments that lived only on their campaign
+branches. Campaign 5 started without campaign 4's work, and the crew's next draft assumed campaign 6's had landed.
+Both were contributed by hand afterwards (z_shelfnote PRs #2 and #3), with the root criterion files renamed by hand
+(#2860's interim). The Nostromo crew asked for the close to open the contribution (#2861) and for a signal of
+accepted work not yet integrated, to gate a draft on (#2863).
+
+**The owner's ruling (2026-11-04): §24ci (b) stands.** PR #2920 first built an automatic open: at the close, with a
+token the deploy stored for the Project in `projects.review_request_tokens`. That reversed §24ci (b)'s "no automatic
+push from the deploy", so it went to the owner, and the owner chose to drop it. A close never pushes and never opens a
+review request, whatever the deploy holds. Only the supervisor's request opens one, with the supervisor's own token.
+#2861's "opens one contribution" narrows to item 1 and item 2 below.
+
+**What changed.**
+1. **The closing row says what is due, and that is all a close does** (§10, §12a). The row that completes a
+   repository-backed Campaign, its terminal decision or the abort, carries `contribution`:
+   - `{due: true, accepted: [<cycle>, …]}`, the increments accepted onto its branch; or
+   - `{due: false, reason: "no accepted increment: the Campaign opens no contribution"}`.
+
+   A sample application's closing row carries no key. Nothing else happens at the close: no push, no forge call, no
+   commit in the clone, and no `contribution_failed` row. Startup attempts nothing.
+2. **The supervisor opens it.** `POST /api/v1/campaigns/{id}/contributions` (`campaigns:manage`, 201, the contribution's
+   document; `token` required), or `squadops campaigns contribute <id> --token-from-gh`. The route honours a closing row
+   that says `due: true`, and refuses the rest with 409 `CONTRIBUTION_REFUSED`: a Campaign not closed, one with nothing
+   due, and one closed before this rule. `projects.review_request_tokens` isn't read on this path. It is serialized with
+   the Campaign's review pushes (§24cn item 6's lock).
+3. **The contribution is E.4.3's, through its path** (SIP-0112 H.22). `contribute_campaign` beside `contribute`, with
+   its checks (`_review_target`: a token, a forge, a base that is a branch) and its forge call:
+   - **the commit** is the branch's head with the criterion files its increments froze (every PROMOTE row's
+     `frozen_criteria[].test_path`, retired ones too) moved by #2860's interim, made the rule: `criterion_` in the
+     file name becomes `campaign_<hash>_`, the first 16 hex characters of the SHA-256 of the whole Campaign id, and a
+     file at the root moves under `tests/`. The runner's prefix and suffix stay. No later Campaign's placement finds the
+     name taken (§24cx). With no criterion file on the head it is the head itself. The move is one commit on the head,
+     kept at `refs/squadops/<campaign>/contribution`; a retry on the same head reuses it, so a branch a crash left pushed
+     is up to date. A moved name the head already holds is refused, never overwritten;
+   - **pushed** as `squadops/<campaign>`, never forced (`push_capture`). A branch a review push left there at an
+     ancestor fast-forwards, and the forge returns the open request rather than a second (the port's contract), so
+     the Campaign has one. A branch holding other history is refused, recorded, and the owner's;
+   - **recorded `pending`** as one of the Project's contributions, with the Campaign's id where a run's cycle id stands
+     and `campaign` where its run id does; the document carries `campaign_id`. Its parent is the branch's base, so a
+     sync reads the Campaign's whole change, and tracks its merge as any contribution's (E.4.4);
+   - **`patch_export`** records it and pushes nothing. `direct_push` is refused, as E.4.3 refuses it.
+
+   Opening the review request is the only outward act. Merging stays the owner's.
+4. **The moved criteria are run before anything leaves** (the review's finding 1). A move changes where a file runs: a
+   pytest criterion reading a sibling through `Path(__file__).with_name(...)` passes at the root and raises
+   `FileNotFoundError` under `tests/`. So `contribute_campaign` requires `verify`, and it runs before the commit:
+   - each live criterion the move touched is frozen from the moved tree (`freeze_product_bundle`) and run alone on its
+     runner in the sandbox (`frozen_on_runner`, `RunnerSetup`), the path a rebase's frozen criteria take (§24cd point 5).
+     Only `held` passes. So a criterion under a runner with no test-id reader is refused, by §24ci (a)'s rule;
+   - the runner's placement holds after the move: a moved file no runner holds, or another runner than the one that held
+     it, is refused;
+   - no sandbox wired, or no derived profile at the branch's base, is refused. Nothing is assumed verified;
+   - a retired criterion moves and isn't run: it may fail by design.
+5. **A failed attempt is recorded.** Each one (a refusal by the path, the verification, the product, the forge) writes a
+   `contribution_failed` row: a record, accepted on a completed Campaign (migration `2004`), with the error's class,
+   reason and message, never the token. The contribution stays due for the supervisor's next request. A refusal before
+   the attempt (item 2's) writes nothing.
+6. **The record is derived under the Campaign's lock** (the review's findings 3 and 4). A closing transition asks with
+   `repository_backed`; each registry derives `contribution` in its commit, from the log and intents the row commits on.
+   - **A promotion racing the close is on the record.** The abort route once read the log before its transaction, so a
+     PROMOTE between left `due: false` over accepted work, stranded. The terminal decision had the same gap.
+   - **It is outside the request's identity.** `repository_backed` and the derived key are left out of
+     `transition_request_hash`, so an abort stored before this rule, with no key, replays when its client retries,
+     unchanged, and a Campaign so closed stays one this rule doesn't contribute.
+   - **A Project that can't be found never blocks an abort** (the review's finding 6). A draft on an unknown Project
+     aborts. A Campaign with a branch is read as repository-backed from its log, whatever the lookup said.
+7. **The signal** (#2863). `GET /api/v1/projects/{id}/unintegrated-increments` (`cycles:read`) returns
+   `list[UnintegratedIncrementResponse]`, each `{campaign_id, campaign_state, cycle_id, title, commit, standing,
+   review_url}`, Campaign by Campaign, oldest first, in promotion order. `squadops projects unintegrated <project>`.
+   - **The set:** each accepted increment on a Campaign's branch, its commit followed through each rebase since
+     (`replayed`), unless the Project's `integrated_upstream_commit` carries it: the commit, or the merge commit a sync
+     recorded (a squash merge makes a new one), is in that commit's history in the managed clone. One a rebase dropped
+     is carried (upstream held its change). A running Campaign's increments are listed too.
+   - **Both kinds of contribution count** (the review's finding 2): each accepted cycle reads its own run's records
+     (`POST /api/v1/projects/{id}/contributions`) beside its Campaign's, and the furthest along says where it stands.
+   - **`standing`:** `not_contributed`; `contribution_pending`; `merged_not_synced` (a sync recorded it integrated, and
+     the integrated commit doesn't carry it until the Project is re-validated there, E.4.4); `contribution_closed` (its
+     review request closed unmerged, with that `review_url`, and it keeps blocking).
+   - **`title`:** the backlog item the increment's proposal served (SIP-0115), through the ledger for a repair or
+     retry; `null` otherwise.
+   - **Refusals:** an unknown Project is 404 `PROJECT_NOT_FOUND`; a sample application is 409 `NO_SOURCE_REPOSITORY`,
+     never an empty list a gate reads as integrated. A history the clone can't read reads as not carried (logged).
+
+**What remains.**
+- **Merged is known only by a sync.** The route reads no forge. A request merged on the forge stands
+  `contribution_pending` until `POST /api/v1/projects/{id}/syncs` records it: a sync after a merge is #2862.
+- **`contribution_closed` has one recovery, and it is the owner's on the forge:** reopen the request and merge it with a
+  merge commit, then re-validate the Project, so the integrated commit carries the increments. `squadops campaigns
+  contribute` can't do it: it answers the closed record and opens nothing (a test holds this). Two things are missing:
+  a sync reads only pending records, so a reopened request squash-merged stays `contribution_closed`; and no act
+  re-opens a closed contribution or declares its work abandoned, so a request the owner means to refuse blocks the
+  gate for good. Neither is built here.
+- **A contribution with moved criteria holds the request open while they run:** the setup and each file, one at a time.
+  The CLI takes the long timeout.
+
+**Unchanged.** The review push (§24cn) and its route. Campaigns 4 and 6 were contributed by hand.
+
+**The evidence.**
+- **Wiring:** `tests/unit/campaigns/test_close_contribution.py`, over `test_campaign_branch`'s world (a real managed
+  clone, real deliveries, the fixture's own repository as the product, and pytest really run in the sandbox service
+  with the deploy's reader):
+  - the close, entered at `CampaignProgress.cycle_ended` and at `POST …/abort`, on a deploy holding a token for the
+    Project: the row says due, the forge is never called, nothing is pushed or committed, and no failure row is written;
+  - the supervisor's request: one review request, whose branch holds the moved file, on the head, recorded pending;
+  - a request with no token is 422, and the stored one doesn't stand in.
+- **The review's findings, each failing first:**
+  - 1: a criterion reading its sibling opens nothing, and its row names it; no runner, no sandbox, no profile; a retired
+    criterion;
+  - 2: a per-run contribution squash-merged and synced reads integrated;
+  - 3: a PROMOTE injected just before the abort's row and before the terminal decision's;
+  - 4: an abort stored with no key, retried, replays unchanged (it answered 409 `conflicting_idempotency_key` before);
+  - 5: `cmp_product_feature_a` and `_b` take two names, each a valid module, each matching the runner's pattern;
+  - 6: a draft on an unknown Project aborts;
+  - 7: the fixture's repository sets `user.useConfigOnly`, which reproduces CI's exit 128 on any box, and stays as the
+    guard.
+- **The signal:** `tests/unit/api/test_unintegrated_increments.py` enters at the route over the same world: pending,
+  then `merged_not_synced`, then empty; `not_contributed`; `contribution_closed` with its address; the 404 and 409. On
+  the control log's rows: a repair's acceptance titled by its proposal's item, a partial merge, a squash merge.
+- **Postgres:** the closing row's derivation and `contribution_failed` on a completed Campaign, on a throwaway
+  `postgres:16` (`test_postgres_campaign_registry_integration.py`, 25 passed); `test_campaign_schema.py` holds migration
+  `2004`'s list to the enum.
+- **Mutations:** 19 on this review's fixes and the ruling, each on a commit and restored by commit, all caught. Four
+  survived the first run (blocked read as passing, another runner taking the file, a branch not read as
+  repository-backed, the least advanced record chosen), and each has a test now.
+
+**Who ruled.** The owner ruled the open on 2026-11-04 (the ruling above), and the owner's review of PR #2920 ruled the
+policy: a closed request keeps blocking, as `contribution_closed`. The supervisor briefed #2861 and #2863 from the
+crew's requests. The rest (the closing row's key, the rename's form, the standing's reading, the 409 for a sample
+application) is the implementer's, for the owner's review in the PR.
+

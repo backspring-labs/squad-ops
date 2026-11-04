@@ -31,6 +31,7 @@ from squadops.api.campaign_schemas import (
     AcceptedTreeDTO,
     BacklogItemResponse,
     BacklogResponse,
+    CampaignContributionRequest,
     CampaignCreateRequest,
     CampaignGoalsDTO,
     CampaignObjectiveDTO,
@@ -53,6 +54,7 @@ from squadops.api.campaign_schemas import (
     ReviewPushResponse,
     WorkClassDTO,
 )
+from squadops.api.cycle_schemas import ContributionResponse
 from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
@@ -62,6 +64,7 @@ from squadops.api.runtime.deps import (
     get_artifact_vault,
     get_audit_port,
     get_box_reader,
+    get_campaign_contribution,
     get_campaign_launch,
     get_campaign_progress,
     get_campaign_registry,
@@ -736,6 +739,33 @@ async def push_review_request(
     )
 
 
+@router.post("/{campaign_id}/contributions", status_code=201)
+async def open_campaign_contribution(
+    request: Request,
+    campaign_id: str,
+    body: CampaignContributionRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
+) -> ContributionResponse:
+    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc): the supervisor's
+    act, with its own token, when the Campaign's closing row says one is due. The close itself
+    opens nothing. One per Campaign, recorded as the Project's contribution, pending; a Campaign
+    already contributed is answered with it. Each failed attempt is a ``contribution_failed``
+    row on the Campaign. Merging stays the owner's."""
+    actor, role = actor_from(identity)
+    try:
+        contribution, replayed = await get_campaign_contribution(request).open(
+            campaign_id,
+            token=body.token.get_secret_value(),
+            actor=actor,
+            actor_role=role,
+        )
+    except ContributionRefused as e:
+        raise http_error(409, "CONTRIBUTION_REFUSED", str(e)) from e
+    except (SourceUnavailable, ReviewRequestFailed) as e:
+        raise http_error(502, "CONTRIBUTION_FAILED", str(e)) from e
+    return ContributionResponse(contribution=contribution.to_document(), replayed=replayed)
+
+
 @router.get("/{campaign_id}/escalations")
 async def list_escalations(
     request: Request,
@@ -1201,21 +1231,38 @@ async def abort_campaign(
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
     """Abort: terminal (§12a). Every cycle the campaign launched that has not ended is
-    cancelled by the existing cancel path, and no continuation follows."""
+    cancelled by the existing cancel path, and no continuation follows. A repository-backed
+    campaign's abort row records its contribution, as a terminal decision's does: derived under
+    the Campaign's lock, from the log as the row commits on it. It opens nothing (§24dc)."""
     actor, role = actor_from(identity)
-    transition = _transition(
-        ControlOperation.ABORT,
-        CampaignState.COMPLETED,
-        body,
-        actor,
-        role,
-        outcome=CampaignOutcome.ABORTED,
+    transition = dataclasses.replace(
+        _transition(
+            ControlOperation.ABORT,
+            CampaignState.COMPLETED,
+            body,
+            actor,
+            role,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+        repository_backed=await _repository_backed(request, campaign_id),
     )
     result = await apply_control(request, campaign_id, transition, identity)
     cancelled = await _cancel_launched_cycles(request, campaign_id)
     if not result.replayed:
         await _materialize_after_close(request, campaign_id)
     return _result(result, cancelled_cycles=cancelled)
+
+
+async def _repository_backed(request: Request, campaign_id: str) -> bool:
+    """Whether the abort's row says what is due (§24dc) though the Campaign has no branch yet: its
+    Project has a repository. A Project that can't be found has no contribution to name, and never
+    blocks the abort: a Campaign with a branch is read as repository-backed from its log."""
+    campaign = await _registry(request).get_campaign(campaign_id)
+    try:
+        project = await get_project_registry(request).get_project(campaign.project_id)
+    except ProjectNotFoundError:
+        return False
+    return project.source is not None
 
 
 @router.post("/{campaign_id}/package")

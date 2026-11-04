@@ -35,6 +35,7 @@ from squadops.campaigns.calibration_record import (
 )
 from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused
 from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
+from squadops.campaigns.close_contribution import INCREMENT_FAMILY
 from squadops.campaigns.continuation import (
     UNCOUNTED_ABANDONMENT_ROWS,
     CampaignCounters,
@@ -260,6 +261,10 @@ def decision_transition(
 
     ``promotion_refused`` names why an accepted cycle's tree wasn't promoted (§24ce), whatever
     the decision. Only a row that has one carries the key, so every other row hashes as before.
+
+    A terminal decision asks the registry to record the Campaign's contribution (§24dc): it is
+    derived under the Campaign's lock, from the log as the row commits on it, so a promotion
+    committing meanwhile is on the record. Only a repository-backed Campaign's row carries it.
     """
     binding: dict = {
         "cycle_id": decision.cycle_id,
@@ -283,6 +288,11 @@ def decision_transition(
         target=decision.cycle_id,
         binding=binding | decided,
         launch=launch if next_state in _LAUNCH_STATES.values() else None,
+        repository_backed=(
+            campaign.accepted is not None and campaign.accepted.commit is not None
+            if decision.terminal
+            else None
+        ),
     )
 
 
@@ -295,7 +305,8 @@ def record_decision_transition(
 ) -> CampaignTransition:
     """A calibration record's decision row (§24bv point 1, §24cc): as a cycle's, keyed by the
     record's id and naming it, never a cycle. Its ending is ``calibration_recorded``, and its
-    verdict ``accepted``: row 5 read the record as an accepted calibration."""
+    verdict ``accepted``: row 5 read the record as an accepted calibration. A terminal one asks for
+    ``contribution`` as a cycle's does (§24dc)."""
     decided, next_state, outcome = _decided(decision, unbuilt)
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
@@ -315,6 +326,7 @@ def record_decision_transition(
         }
         | decided,
         launch=launch if next_state in _LAUNCH_STATES.values() else None,
+        repository_backed=True if decision.terminal else None,
     )
 
 
@@ -618,7 +630,7 @@ def accepted_increments(log: list, intents: list) -> int:
 
 
 #: The kinds whose acceptance is an increment's: the increment itself, or its repair or retry.
-_INCREMENT_FAMILY = frozenset({CycleKind.INCREMENT, CycleKind.REPAIR, CycleKind.RETRY})
+_INCREMENT_FAMILY = INCREMENT_FAMILY
 
 
 #: Reads a cycle's assessment from the stores: ``squadops.execution.cycle_evidence.assess_cycle``.
@@ -1107,7 +1119,12 @@ class CampaignProgress:
             try:
                 result = await self._campaigns.transition(
                     campaign_id,
-                    record_decision_transition(record, decision, launch=launch, unbuilt=unbuilt),
+                    record_decision_transition(
+                        record,
+                        decision,
+                        launch=launch,
+                        unbuilt=unbuilt,
+                    ),
                 )
             except ControlOperationRefused as refused:
                 logger.error(

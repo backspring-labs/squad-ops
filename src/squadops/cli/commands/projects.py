@@ -384,6 +384,32 @@ def contribute(
     print_success(f"{contribution['mode']} {contribution['commit'][:12]}: {where}{again}")
 
 
+@app.command("unintegrated")
+def unintegrated(ctx: typer.Context, project_id: str = typer.Argument(...)):
+    """List the increments the Project's Campaigns accepted that its integrated commit doesn't
+    carry yet (SIP-0109 §24dc), and where each stands: not contributed, contribution pending, or
+    merged and not synced. Nothing listed means every accepted increment is integrated."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    try:
+        client = _get_client(ctx)
+        data = client.get(f"/api/v1/projects/{project_id}/unintegrated-increments")
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+    if fmt == "json":
+        print_json(data)
+        return
+    if not data:
+        print_success(f"{project_id}: every accepted increment is in its integrated commit")
+        return
+    rows = [
+        [i["campaign_id"], i["cycle_id"], i["title"] or "—", i["standing"], i["review_url"] or "—"]
+        for i in data
+    ]
+    print_table(["Campaign", "Cycle", "Title", "Standing", "Review request"], rows)
+
+
 @app.command("initialize")
 def initialize(
     ctx: typer.Context,

@@ -417,6 +417,41 @@ def push_review(
     )
 
 
+@app.command("contribute")
+def contribute(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Open it with your own GitHub access (`gh auth token`), for this act only: required",
+    ),
+):
+    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc). A close records what
+    is due and opens nothing, so this is the act that does. Its criterion files are moved and run
+    on the product's runner first. Once per Campaign: one already contributed is answered with its
+    record, and a failed attempt's reason is on its `contribution_failed` row. Merging stays the
+    owner's."""
+    if not token_from_gh:
+        print_error(
+            "a campaign's contribution is opened with your own token, for this act only: "
+            "pass --token-from-gh"
+        )
+        raise typer.Exit(code=2)
+    body = {"token": gh_token()}
+    data = _call(
+        ctx, "post", f"/api/v1/campaigns/{campaign_id}/contributions", long_wait=True, json=body
+    )
+    fmt, _quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(data)
+        return
+    c = data["contribution"]
+    where = c["review_url"] or f"{c['mode']}, nothing pushed"
+    again = " (already contributed)" if data.get("replayed") else ""
+    print_success(f"{campaign_id}: {c['commit'][:12]}, {c['state']}: {where}{again}")
+
+
 @app.command("start")
 def start(
     ctx: typer.Context,

@@ -15,6 +15,7 @@ import asyncpg
 
 from squadops.campaigns import box, lifecycle
 from squadops.campaigns.box import BoxLease, LeaseHolder
+from squadops.campaigns.close_contribution import closing_binding
 from squadops.campaigns.models import (
     AcceptedTree,
     Campaign,
@@ -308,6 +309,26 @@ async def _locked_campaign(conn: asyncpg.Connection, campaign_id: str) -> Campai
     return _row_to_campaign(row)
 
 
+async def _closing_binding(
+    conn: asyncpg.Connection, campaign_id: str, transition: CampaignTransition
+) -> dict:
+    """What a closing row records of its contribution (§24dc), read in the row's transaction under
+    the campaign's lock, which every control operation takes: no promotion commits past it."""
+    if transition.repository_backed is None:
+        return {}
+    log = await conn.fetch(
+        f"SELECT {_ENTRY_COLUMNS} FROM campaign_control_log WHERE campaign_id = $1 ORDER BY seq",
+        campaign_id,
+    )
+    intents = await conn.fetch(
+        f"SELECT {_INTENT_COLUMNS} FROM campaign_launch_intents WHERE campaign_id = $1",
+        campaign_id,
+    )
+    return closing_binding(
+        transition, [_row_to_entry(r) for r in log], [_row_to_intent(r) for r in intents]
+    )
+
+
 async def _commit(
     conn: asyncpg.Connection,
     campaign: Campaign,
@@ -389,6 +410,7 @@ async def _commit(
         committed_at=now,
         refusal=None,
         launch_id=intent.launch_id if intent is not None else None,
+        derived=await _closing_binding(conn, campaign.campaign_id, transition),
     )
     updated = lifecycle.applied_campaign(campaign, transition, now)
 

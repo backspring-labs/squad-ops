@@ -420,6 +420,24 @@ class ContributionResponse(BaseModel):
     replayed: bool = False
 
 
+class UnintegratedIncrementResponse(BaseModel):
+    """An increment a Campaign accepted that the Project's integrated commit doesn't carry yet
+    (SIP-0109 §24dc, #2863), and where it stands."""
+
+    campaign_id: str
+    campaign_state: str
+    cycle_id: str
+    #: The backlog item's title, for an increment that served one; ``null`` otherwise.
+    title: str | None
+    #: The commit that holds the increment on its Campaign's branch now.
+    commit: str
+    standing: Literal[
+        "not_contributed", "contribution_pending", "merged_not_synced", "contribution_closed"
+    ]
+    #: Its Campaign's review request, when its contribution opened one.
+    review_url: str | None
+
+
 class InitializationRequest(BaseModel):
     """Make a greenfield Project's first commit from an approved interface manifest (SIP-0112
     FR-01, E.4.6)."""

@@ -3070,6 +3070,47 @@ be named before the first cycle, not found in it.
 floor and the `size_unmeasured` cause are the Spark lane's design under the supervisor's brief for #2889, for the owner's
 ruling in review.
 
+## H.22 A Campaign's contribution is one of the Project's contributions, made through E.4.3's path (2026-11-04; E.4.3, E.4.4, FR-06; SIP-0109 §24dc; #2861, #2863; the implementer's design under the supervisor's brief, for the owner)
+
+E.4.3 contributes one run's captured change, keyed by its cycle and run. SIP-0109 §24dc has a closed Campaign
+contribute its branch's accepted state. What that changes here:
+1. **The record.** A Campaign's contribution is a row of `project_contributions` like a run's: the Campaign's id where
+   the cycle id stands and `campaign` where the run id does, one per Campaign. Its `commit` is the branch's head (with
+   the criterion files moved, item 2), its `parent_commit` the branch's base, its `state` `pending`. Its document
+   carries `campaign_id`, `null` on a run's. No migration: the table's shape and checks already hold it. A sync
+   (E.4.4) reads its standing as any contribution's: integrated when upstream's history holds its commit, or when its
+   review request merged and the merge is there; closed when the request closed unmerged.
+2. **The path.** `contribute_campaign` sits beside `contribute` in `projects/contribution.py` and shares its checks
+   (`_review_target`) and its forge call. Its push is `push_capture`'s, never forced, of the contribution commit kept at
+   `refs/squadops/<campaign>/contribution` (or the campaign branch's own ref, when nothing moved) to
+   `squadops/<campaign>`. The port is unchanged. The commit is the head with each criterion file renamed out of the
+   `criterion_` stem and moved off the root (#2860's interim, made the rule), committed whole by `commit_tree`; a tree
+   the clone can't commit whole (a symlink, a submodule) is refused, named.
+3. **The moved tree is verified first.** `contribute_campaign` requires `verify`, which holds the tree before the
+   commit: the runner's placement after the move, and each live criterion run on its runner in the sandbox. A failure,
+   or no sandbox or derived profile, opens nothing (SIP-0109 §24dc item 4).
+4. **The token comes with the supervisor's request, and only with it.** Unlike a run's contribution there is no fallback
+   to `projects.review_request_tokens`: the owner chose to drop that path on 2026-11-04, keeping SIP-0109 §24ci (b) as
+   ruled. A close opens nothing, so this path runs only at `POST /api/v1/campaigns/{id}/contributions`.
+5. **A run's contribution of an increment counts.** SIP-0109 §24dc's signal reads an accepted cycle's per-run records
+   beside its Campaign's, so an increment contributed through `POST /api/v1/projects/{id}/contributions`, squash-merged
+   and synced, isn't listed.
+
+**Unchanged.** `POST /api/v1/projects/{id}/contributions` and its record for a run; patch export; the refusal of
+`direct_push`.
+
+**The evidence.** `tests/unit/campaigns/test_close_contribution.py`, over a real managed clone and the fixture's own
+repository as the product: the pushed branch holds `tests/test_campaign_<hash>_T1.py` and not the root file, on the
+head, and the record's parent is the branch's base; a criterion the move breaks opens nothing.
+`tests/unit/api/test_unintegrated_increments.py` reads a recorded merge's standing as a sync leaves it, and a per-run
+record's.
+
+**What remains.** A closed contribution can't be re-opened through this path: `squadops campaigns contribute` answers
+the closed record. SIP-0109 §24dc names the owner's recovery on the forge and what's missing.
+
+**Who ruled.** The owner ruled the token (item 4) on 2026-11-04. The rest is the implementer's design under the
+supervisor's brief for #2861, for the owner's review in the PR.
+
 ## H.23 A source-backed change can remove a file: the deletion form (2026-11-04; E.4.3; #2612, #2484's deferred form; the Spark lane, for the owner's ruling in review)
 
 **What E.4.3 shipped, and what it deferred.** The capture side already round-tripped a removed file (`commit_tree`, tested in

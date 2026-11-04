@@ -162,6 +162,11 @@ def get_campaign_progress(request: Request):
     return _required(request, "campaign_progress", "CampaignProgress")
 
 
+def get_campaign_contribution(request: Request):
+    """Return the service that opens a closed Campaign's contribution (SIP-0109 §24dc)."""
+    return _required(request, "campaign_contribution", "CampaignContribution")
+
+
 def get_campaign_launch(request: Request):
     """Return the campaign launch service (SIP-0109 §12b)."""
     return _required(request, "campaign_launch", "CampaignLaunchService")

@@ -72,6 +72,7 @@ from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
 from squadops.campaigns.branch_rebase import BranchRebase, ProductRunnerFrozen
 from squadops.campaigns.campaign_branch import CampaignBranch
+from squadops.campaigns.close_contribution import CampaignContribution
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
 from squadops.config import config_fingerprint, load_config, redact_config
@@ -666,6 +667,15 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # #2414: a repository-backed cycle's captured commit and declared start.
         projects=project_registry,
         repository=state.source_repository,
+    )
+    # SIP-0109 §24dc (#2861): the supervisor's request opens a closed Campaign's contribution,
+    # with the supervisor's own token. Nothing the deploy runs calls this (§24ci (b)).
+    state.campaign_contribution = CampaignContribution(
+        campaigns=projected_campaigns,
+        projects=project_registry,
+        repository=state.source_repository,
+        forge=state.review_requests,
+        sandbox=sandbox_client,
     )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,

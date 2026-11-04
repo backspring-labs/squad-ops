@@ -511,6 +511,46 @@ def test_push_review_without_its_own_token_sends_nothing(get_client):
     get_client.assert_not_called()
 
 
+def _contributed(**overrides) -> dict:
+    return {
+        "contribution": {
+            "campaign_id": "cmp_1", "commit": "c" * 40, "state": "pending",
+            "mode": "review_request", "review_url": "https://forge.example.invalid/pull/9",
+        } | overrides,
+        "replayed": False,
+    }  # fmt: skip
+
+
+@patch("squadops.cli.commands.campaigns.gh_token", return_value="tok_invented_cli")
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_contribute_sends_the_callers_token_and_says_where_it_opened(get_client, _token):
+    """SIP-0109 §24dc. Bugs caught: the token dropped or printed; the review request's address not
+    said; the short timeout on a request that runs the criteria on the product's runner."""
+    client = _client(post=_contributed())
+    client.long_timeout = 600
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "contribute", "cmp_1", "--token-from-gh"])
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/contributions", json={"token": "tok_invented_cli"}, timeout=600
+    )
+    assert "cmp_1: cccccccccccc, pending: https://forge.example.invalid/pull/9" in result.output
+    assert "tok_invented_cli" not in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_contribute_without_its_own_token_sends_nothing(get_client):
+    """The owner's ruling: the token comes with the request. Bug caught: a request whose only way
+    to succeed would be a token stored in the deploy."""
+    result = runner.invoke(app, ["campaigns", "contribute", "cmp_1"])
+
+    assert result.exit_code == 2
+    assert "--token-from-gh" in result.output
+    get_client.assert_not_called()
+
+
 def _backlog(**overrides) -> dict:
     return {
         "campaign_id": "cmp_1", "project_id": "prj-x", "revision": 3, "reads": "current",

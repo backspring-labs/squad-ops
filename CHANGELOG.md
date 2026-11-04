@@ -101,6 +101,30 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   (no sandbox or clone, no profile at the pin, a runner with no test-id reader, a sandbox error) the cycle proceeds
   as before and the skip is logged with its reason; acceptance's own read stays the last line.
 
+- **A Campaign's close records what contribution is due, and the supervisor opens it** (#2861; SIP-0109 §24dc,
+  SIP-0112 H.22). The row that closes a repository-backed Campaign (its terminal decision, or the abort) records
+  `contribution`: `{due: true, accepted: [cycles]}`, or `{due: false, reason: "no accepted increment: …"}`, derived
+  under the Campaign's lock and outside the request's hash. A close pushes nothing and opens nothing, whatever the
+  deploy holds: the owner chose to drop the automatic open on 2026-11-04, keeping §24ci (b) as ruled. The supervisor
+  opens it: `POST /api/v1/campaigns/{id}/contributions` (`campaigns:manage`, `token` required) or `squadops campaigns
+  contribute <id> --token-from-gh`, through E.4.3's contribution path: the branch's head with the criterion files
+  its increments froze renamed out of the `criterion_` stem and moved off the root (`test_criterion_T1.py` →
+  `tests/test_campaign_<hash>_T1.py`, #2860's interim made the rule), each live one first run on the product's runner
+  in the sandbox where it moved, pushed as `squadops/<campaign>`, never forced, the review request opened, and
+  recorded `pending` as one of the Project's contributions under the Campaign's id (`campaign_id`, `run_id:
+  campaign`), so a sync tracks its merge as any contribution's. Merging stays the owner's. A failed attempt, a moved
+  criterion that doesn't hold among them, is a `contribution_failed` row on the closed Campaign (migration `2004`),
+  and the supervisor's next request tries again.
+- **A read-only signal for accepted Campaign work not yet in a Project's integrated commit** (#2863; SIP-0109 §24dc).
+  `GET /api/v1/projects/{id}/unintegrated-increments` (`cycles:read`) lists each accepted increment the Project's
+  `integrated_upstream_commit` doesn't carry: `campaign_id`, `campaign_state`, `cycle_id`, `title` (its backlog
+  item's, or null), `commit`, `standing` (`not_contributed`, `contribution_pending`, `merged_not_synced` or
+  `contribution_closed`) and `review_url`. A run's own contribution counts beside its Campaign's. An empty list means
+  every one is integrated; a sample application is refused (409 `NO_SOURCE_REPOSITORY`). A forge merge is read only
+  once a sync records it (#2862 isn't built), so until then it stands `contribution_pending`. A request closed
+  unmerged keeps blocking: the owner reopens it on the forge, merges it with a merge commit and re-validates, and
+  `campaigns contribute` can't do that for them. `squadops projects unintegrated <project>`.
+
 ### Fixed
 - **A suite that fails on the product's runner is read there, not in the qa image** (#2913, SIP-0112 H.24). When the
   runner ran a product's suite and it failed, the agent's result stood, so an image that died on a dependency it lacks

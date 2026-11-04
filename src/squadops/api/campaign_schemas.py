@@ -351,6 +351,18 @@ class ReviewPushResponse(BaseModel):
     replayed: bool
 
 
+class CampaignContributionRequest(BaseModel):
+    """Open a closed Campaign's contribution (SIP-0109 §24dc): the supervisor's act, with the
+    supervisor's own forge token. Once per Campaign: a Campaign already contributed is answered
+    with its record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The supervisor's own forge token, for this one attempt: used in memory, never stored,
+    #: logged or returned. Required: nothing in the deploy is read for it (§24ci (b)).
+    token: SecretStr = Field(min_length=1, max_length=512)
+
+
 class ControlResultResponse(BaseModel):
     """What an applied (or replayed) control operation left."""
 

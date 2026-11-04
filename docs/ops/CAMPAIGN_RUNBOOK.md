@@ -284,6 +284,18 @@ operation.
   cycle. Abort only when the campaign cannot continue by its own rules. Shakeout 3 was aborted on
   #1887: a partial accepted tree that no later cycle could converge on.
 
+### After a repository-backed campaign closes
+A close opens nothing (SIP-0109 §24dc, §24ci (b)). Its closing row records `contribution`, and the
+accepted work stays on the campaign branch until the supervisor opens it:
+- **Open it:** `squadops campaigns contribute <id> --token-from-gh`. The criterion files are moved and
+  run on the product's runner first, so it can take a while. A refusal or failure is a
+  `contribution_failed` row naming why, and the same command tries again.
+- **Read what isn't in yet:** `squadops projects unintegrated <project>`. Nothing listed means every
+  accepted increment is in the Project's integrated commit.
+- **`contribution_closed`:** the request was closed unmerged, and it keeps blocking. The command above
+  can't reopen it. The owner reopens it on the forge, merges it with a merge commit, and re-validates
+  the Project.
+
 ---
 
 ## 6. Triage during a campaign: the outer loop's first half

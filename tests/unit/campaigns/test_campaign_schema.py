@@ -45,8 +45,9 @@ def _check_values(sql: str, column: str) -> set[str]:
         # (the ruling bound), 1690 (the box lease and a blocked launch, #1802) and 1695 (a
         # launch the cycle-create path refused, #1971), and later by 1790 and 1791 (SIP-0110's
         # re-binding and instruction) and 2000 (a campaign branch's rebase, §24cd point 2).
-        # Replaced whole again by 2001 (the Campaign's review request pushed, §24ci (b)).
-        ("2001_campaign_review_pushed.sql", "operation", ControlOperation),
+        # Replaced whole again by 2001 (the Campaign's review request pushed, §24ci (b)), and by
+        # 2004 (a closed Campaign's contribution that couldn't be opened, §24dc).
+        ("2004_campaign_contribution_failed.sql", "operation", ControlOperation),
         # Replaced whole by 2000 (a superseded repair or retry, §24cd point 2).
         ("2000_campaign_branch_rebased.sql", "state", LaunchIntentState),
         # Replaced whole by 2002 (a resume not delegated to the crew's supervisor, §24da).
