@@ -123,17 +123,54 @@ def why_not_reread(task_type: str, inputs: Mapping[str, Any], result: TaskResult
     return None
 
 
+#: A retest's own suite (#2881): the failed task's test files, which
+#: ``CorrectionRunner.reexecute_repaired_suite`` carries beside ``retest_files``. A retest's
+#: ``retest_files`` are the repair's patched files, and a dev repair's are source, which no
+#: runner holds, so they can't be the suite on the product's runner.
+RETEST_SUITE_KEY = "retest_suite"
+
+
+def _by_path(files: Any, name_key: str) -> dict[str, str]:
+    return {
+        str(f[name_key]): str(f.get("content") or "")
+        for f in files or []
+        if isinstance(f, Mapping) and f.get(name_key)
+    }
+
+
 def emitted_tests(inputs: Mapping[str, Any], outputs: Mapping[str, Any]) -> dict[str, str]:
-    """The suite under judgement, by path: a repaired suite's retest runs its ``retest_files``
-    (``CorrectionRunner.reexecute_repaired_suite``); an emission, the test files it stored."""
+    """The test files an emission stored, by path, or a retest's ``retest_files`` when it
+    carries no suite of its own (an envelope from before #2881)."""
     retest = inputs.get("retest_files")
     if retest:
-        return {str(f["filename"]): str(f.get("content") or "") for f in retest}
-    return {
-        str(a["name"]): str(a.get("content") or "")
-        for a in outputs.get("artifacts") or []
-        if isinstance(a, Mapping) and a.get("type") == "test" and a.get("name")
-    }
+        return _by_path(retest, "filename")
+    return _by_path(
+        [
+            a
+            for a in outputs.get("artifacts") or []
+            if isinstance(a, Mapping) and a.get("type") == "test"
+        ],
+        "name",
+    )
+
+
+def suite_under_judgement(
+    inputs: Mapping[str, Any], outputs: Mapping[str, Any], profile: Any
+) -> tuple[dict[str, str], dict[str, str]]:
+    """The test files to run on the product's runner, and the files to lay over the tree first.
+
+    An emission's suite is the test files it stored. A retest's (#2881) is the failed task's own
+    suite (``RETEST_SUITE_KEY``), with each patched file a runner holds replacing its namesake,
+    while the patched files no runner holds (a dev repair's source) are overlaid on the tree, so
+    the suite runs against the repaired code, as the qa image's retest does
+    (``test_runner._effective_sources``)."""
+    suite = _by_path(inputs.get(RETEST_SUITE_KEY), "filename")
+    if not inputs.get("retest_files") or not suite:
+        return emitted_tests(inputs, outputs), {}
+    patched = _by_path(inputs.get("retest_files"), "filename")
+    held = {path: c for path, c in patched.items() if profile.runner_for(path) is not None}
+    overlay = {path: c for path, c in patched.items() if path not in held}
+    return {**suite, **held}, overlay
 
 
 @dataclasses.dataclass(frozen=True)
@@ -475,7 +512,7 @@ async def judge_on_product_runner(
     configuration = await projects.get_development_configuration(
         cycle.project_id, context.development_configuration_revision
     )
-    tests = emitted_tests(inputs, result.outputs or {})
+    tests, overlay = suite_under_judgement(inputs, result.outputs or {}, profile)
     if configuration is None or not tests:
         return None
     try:
@@ -483,7 +520,7 @@ async def judge_on_product_runner(
             sandbox=sandbox,
             profile=profile,
             setup=RunnerSetup.of(configuration.commands),
-            tree=suite_run_tree(inputs),
+            tree={**suite_run_tree(inputs), **overlay},
             tests=tests,
             workspace_id=suite_workspace_prefix(run_id, task_id),
         )

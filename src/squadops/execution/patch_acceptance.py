@@ -891,6 +891,8 @@ class PatchAcceptance:
                 profile=profile,
                 flow_run_id=flow_run_id,
                 budget_guard=budget_guard,
+                # #2881: the failed task's own suite, which the product's runner judges.
+                failed_suite=(result.outputs or {}).get("artifacts") or (),
             )
             retest_outputs = (retest_result.outputs or {}) if retest_result else {}
             fresh_test_result = retest_outputs.get("test_result")
