@@ -132,6 +132,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a private Node package that declares a module interface is a package surface (H.17) | **shipped** | 2.6.0, PR #2879, closes #2875 |
 | the qa plan proposer's worked example in its product's runner's terms (pytest, or vitest/jest) | **shipped** | 2.6.0, PR #2880, closes #2876 |
 | a product's suite that the qa image couldn't run read on the product's own runner, whatever else failed (H.18) | **shipped** | 2.6.0, PR #2878, closes #2877 |
+| a product's suite judged on its own runner on the product's tree at the pin, with the files a run's artifacts hold back (a lockfile) (H.19) | **shipped** | 2.6.0, PR #2902, closes #2900 |
 | a source-backed change that deletes a file | **placed** (the 2.6 plan's Track B, adopted 2026-11-03) | 2.6.0, #2612 |
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
 | a merged contribution syncs its Project, so the integrated commit includes the work | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2862 |
@@ -2859,6 +2860,59 @@ result stands.
 
 **Who ruled.** Proposed by the MacBook lane on 2026-11-03, under the owner's direction to fix the seams battle-trainer
 found ("proceed as far as you can on the line of fixes"). The owner rules on it in review.
+
+## H.19 The product runner's tree is the product's own at the pin, with what the run changed laid over it (2026-11-04; E.4.3, H.15, H.16, H.18; #2900; the MacBook lane, for the owner's ruling in review)
+
+**What was found** (#2900). With H.18 on the MacBook (main `2da8e096`), battle-trainer's suite was read on vitest as
+designed, and every run ended before a test started: `unexecuted: setup_failed`, four times in one increment
+(campaign `cmp_c59db96e4a87`, cycle `cyc_062ca03bd617`, implementation `run_a60bd2e2…`: the emission, two
+corrections and the retest). The product's install is `npm ci`, and `npm ci` installs nothing without
+`package-lock.json`. The product's own baseline passed at the same commit, because it reads the clone.
+
+**The cause.** A run's artifacts hold back what no task's view carries, binary files and generated lockfiles
+(`checkout.manifest_of`'s `held_back`; `source_checkout` stores no artifact for them, so a context resolution never
+spends its budget on them). Its comment says verification and capture read them from the clone, and they do. The
+product runner's tree did not: `judge_on_product_runner` built it from `suite_run_tree(inputs)`, which is
+`product_tree(artifact_contents)`, so the sandbox got the product's source without its lockfile. #2818's re-judge has
+the same base. It was hidden because, before H.18, an npm product's suite was rarely re-judged at all.
+
+**What changed** (`product_suite._product_tree_at_pin`, `judge_on_product_runner`):
+1. **The base is the product's tree at the cycle's pin,** read from the managed clone
+   (`SourceRepositoryPort.tree_at(project, source_context.pinned_commit)`), as bytes, through the same filter H.16
+   bounds (`qa_run_tree.product_tree`, now generic over text and bytes): its non-test files, the product's own tests
+   left out.
+2. **What the run has is laid over it:** `suite_run_tree(inputs)` (the run's accepted emissions), then a retest's
+   repaired files (#2881's overlay), with the suite beside them. A file the run changed reads as the run has it; a
+   file the run's artifacts hold back reads as the commit has it.
+3. **No tree at the pin judges nothing.** With no repository, or a clone that doesn't hold the pin, the agent's
+   result stands, as for every judgement that can't run (#2845). Falling back to the artifacts' tree would read
+   `setup_failed` in place of the suite's result.
+4. **No held-back file enters the vault or a view.** The prompt-budget rule stays as it is. The bytes go only to the
+   sandbox, which takes text or bytes per file (`SandboxPort.seed_workspace`, X-2).
+
+**The seams that evaluate a product's qa criteria** (H.18's table, the rows this changes):
+
+| seam | runs in | before | after |
+|---|---|---|---|
+| qa emission's `tests_pass`, re-judged or re-read (`_TaskOutcomeRouter.route`) | eve runs; the runtime-api re-reads | the run's artifacts' tree plus the suite: no held-back file | the product's tree at the pin, the run's tree over it, the suite beside it |
+| qa retest after a repair (`reexecute_repaired_suite`) | eve runs; the runtime-api re-reads | as above, with #2881's overlay | as above, with #2881's overlay on top |
+| the qa image's own run, the typed checks, the verifier, the increment's acceptance | as in H.18 | unchanged | unchanged |
+
+**On a tree that lacks a file.** A file the run deleted still reads from the pin, because a run's artifacts carry no
+deletion. That is the limit #2612 (Track B) carries for every source-backed tree, and this judgement has it too.
+
+**The evidence:**
+- **Wiring:** `test_the_products_suite_runs_on_the_pinned_tree_with_its_held_back_lockfile` enters at the executor's
+  `_judged_on_product_runner` with a product whose lockfile and a binary are held back. It asserts both reach the
+  sandbox byte for byte, the run's own `app/main.py` replaces the pin's, the product's own test stays out, and the
+  suite is judged.
+- **The error case:** `test_no_readable_tree_at_the_pin_judges_nothing` (no repository; a clone that refuses the
+  pin) asserts the agent's result stands and the sandbox is never asked.
+- **The mutant:** the tree built without the clone's base fails the wiring test (`KeyError: 'package-lock.json'`).
+
+**Who ruled.** Proposed by the MacBook lane on 2026-11-04. The Spark lane handed the issue over and chose the shape
+(the clone's tree as the base, for parity with the baseline and the acceptance, rather than stored artifacts no view
+shows). The owner rules on it in review.
 
 ## H.20 A regression found at a source-backed run's end of plan gets one repair round from the correction budget (2026-11-04; E.4.3; #2613, #2410's slice 2b point 3; the Spark lane, for the owner's ruling in review)
 
