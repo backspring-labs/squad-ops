@@ -14,10 +14,11 @@ supervisor at the Campaign's close or on request (SIP-0109 §24ci (b), ``push_ca
 with the token the request carries and none the deploy holds.
 
 A closed Campaign's accepted work is contributed through it too, at the supervisor's request and
-with its token (SIP-0109 §24dc, #2861, ``contribute_campaign``): its branch's head, with the criterion files its increments placed
-renamed out of the ``criterion_`` stem and moved off the root (#2860's interim, made the rule),
-pushed as ``squadops/<campaign>`` and recorded as one of the Project's contributions, under the
-Campaign's id and ``campaign`` where a run's cycle and run stand.
+with its token (SIP-0109 §24dc, #2861, ``contribute_campaign``): its branch's head, with the
+criterion files its increments placed renamed out of the ``criterion_`` stem and moved off the root
+(#2860's interim, made the rule) and run where they moved, pushed as ``squadops/<campaign>`` and
+recorded as one of the Project's contributions, under the Campaign's id and ``campaign`` where a
+run's cycle and run stand. No close does this, and no token the deploy holds is read for it.
 
 Either is recorded ``pending``. A review request opened is not integration (FR-06): the revision
 the product takes is recorded when it takes it (E.4.4). A direct push is integration, which 2.4

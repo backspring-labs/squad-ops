@@ -1,7 +1,7 @@
 -- 2004_campaign_contribution_failed.sql
 -- SIP-0109 §24dc (#2861): a closed Campaign's contribution to the product that could not be
 -- opened is a record-only control-log operation, 'contribution_failed', naming why; the
--- contribution stays due and the next attempt opens it. The CHECK list is the Python enum's
+-- contribution stays due for the supervisor's next request. The CHECK list is the Python enum's
 -- values (ControlOperation), held equal by test_campaign_schema.py; it is replaced whole, by name,
 -- so re-applying is a no-op. (2002 is PR #2914's and 2003 is held for another branch.)
 

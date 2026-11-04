@@ -60,8 +60,8 @@ _PUSHING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio
 
 
 def campaign_push_lock(campaign_id: str) -> asyncio.Lock:
-    """The one lock a Campaign's pushes take: the supervisor's review pushes, and its contribution
-    at its close (§24dc), so the two never push its branch at once."""
+    """The one lock a Campaign's pushes take: the supervisor's review pushes and its contribution
+    (§24dc), so the two never push its branch at once."""
     locks = _PUSHING.setdefault(asyncio.get_running_loop(), {})
     return locks.setdefault(campaign_id, asyncio.Lock())
 

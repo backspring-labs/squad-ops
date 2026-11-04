@@ -3086,18 +3086,30 @@ contribute its branch's accepted state. What that changes here:
    `squadops/<campaign>`. The port is unchanged. The commit is the head with each criterion file renamed out of the
    `criterion_` stem and moved off the root (#2860's interim, made the rule), committed whole by `commit_tree`; a tree
    the clone can't commit whole (a symlink, a submodule) is refused, named.
-3. **The token.** As a run's: the one the request carries, else the deploy's for the Project
-   (`projects.review_request_tokens`). SIP-0109 §24dc names the conflict this raises with its §24ci (b) for the owner.
+3. **The moved tree is verified first.** `contribute_campaign` requires `verify`, which holds the tree before the
+   commit: the runner's placement after the move, and each live criterion run on its runner in the sandbox. A failure,
+   or no sandbox or derived profile, opens nothing (SIP-0109 §24dc item 4).
+4. **The token comes with the supervisor's request, and only with it.** Unlike a run's contribution there is no fallback
+   to `projects.review_request_tokens`: the owner chose to drop that path on 2026-11-04, keeping SIP-0109 §24ci (b) as
+   ruled. A close opens nothing, so this path runs only at `POST /api/v1/campaigns/{id}/contributions`.
+5. **A run's contribution of an increment counts.** SIP-0109 §24dc's signal reads an accepted cycle's per-run records
+   beside its Campaign's, so an increment contributed through `POST /api/v1/projects/{id}/contributions`, squash-merged
+   and synced, isn't listed.
 
 **Unchanged.** `POST /api/v1/projects/{id}/contributions` and its record for a run; patch export; the refusal of
 `direct_push`.
 
 **The evidence.** `tests/unit/campaigns/test_close_contribution.py`, over a real managed clone and the fixture's own
-repository as the product: the pushed branch holds `tests/test_<campaign>_T1.py` and not the root file, on the head,
-and the record's parent is the branch's base. `tests/unit/api/test_unintegrated_increments.py` reads a recorded
-merge's standing as a sync leaves it.
+repository as the product: the pushed branch holds `tests/test_campaign_<hash>_T1.py` and not the root file, on the
+head, and the record's parent is the branch's base; a criterion the move breaks opens nothing.
+`tests/unit/api/test_unintegrated_increments.py` reads a recorded merge's standing as a sync leaves it, and a per-run
+record's.
 
-**Who ruled.** The implementer's design under the supervisor's brief for #2861; for the owner's review in the PR.
+**What remains.** A closed contribution can't be re-opened through this path: `squadops campaigns contribute` answers
+the closed record. SIP-0109 §24dc names the owner's recovery on the forge and what's missing.
+
+**Who ruled.** The owner ruled the token (item 4) on 2026-11-04. The rest is the implementer's design under the
+supervisor's brief for #2861, for the owner's review in the PR.
 
 ## H.23 A source-backed change can remove a file: the deletion form (2026-11-04; E.4.3; #2612, #2484's deferred form; the Spark lane, for the owner's ruling in review)
 

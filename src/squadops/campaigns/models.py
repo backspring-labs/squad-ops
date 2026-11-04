@@ -137,9 +137,9 @@ class ControlOperation(StrEnum):
     #: the commit, and the lease it was pushed under. A record, accepted on a completed campaign,
     #: since the push is made at the Campaign's close.
     REVIEW_PUSHED = "review_pushed"
-    #: A closed Campaign's contribution to the product could not be opened (§24dc, #2861): why,
+    #: A supervisor's attempt to open a closed Campaign's contribution failed (§24dc, #2861): why,
     #: as the contribution path refused it or the product or forge answered. A record, accepted
-    #: on a completed campaign. The contribution stays due, and the next attempt opens it.
+    #: on a completed campaign. The contribution stays due for the supervisor's next request.
     CONTRIBUTION_FAILED = "contribution_failed"
 
     @property
