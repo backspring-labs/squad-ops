@@ -43,6 +43,7 @@ from squadops.api.campaign_schemas import (
     ControlResultResponse,
     EscalationAnswerRequest,
     EscalationResponse,
+    GateGoalEvidenceResponse,
     GoalDelegationRequest,
     LeaseRequest,
     LeaseResponse,
@@ -853,13 +854,12 @@ async def read_ledger(
 
     registry = _registry(request)
     campaign = await registry.get_campaign(campaign_id)
-    evidence = (
-        await gate_goal_evidence(
+    evidence: dict[tuple[str, int], GateGoalEvidenceResponse] = {}
+    if campaign.objective.goals is not None:
+        read = await gate_goal_evidence(
             campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
         )
-        if campaign.objective.goals is not None
-        else {}
-    )
+        evidence = {key: GateGoalEvidenceResponse(**doc) for key, doc in read.items()}
     return [
         LedgerEntryResponse(
             **dataclasses.asdict(e), goal_evidence=evidence.get((e.proposal_id, e.version))

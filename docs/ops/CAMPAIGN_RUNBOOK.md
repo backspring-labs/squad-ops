@@ -53,6 +53,11 @@ squadops campaigns delegate <campaign_id> --reason "<why>" --source-ref <the con
 Until then each of those acts answers `403 NOT_DELEGATED`, naming this command. The grant needs `campaigns:control`,
 so the supervisor can't run it. The control log shows it as `goal_delegation_granted`.
 
+**The crew reports on a goal set without any grant** (SIP-0115 §5.7, §10d). Its assessment of an expected result is
+`POST /api/v1/projects/{id}/goal-set/assessments`, on a live or a completed Campaign, and it decides nothing. How each
+result stands is `GET /api/v1/campaigns/{id}/assessments`, which the console shows. At a gate, the ledger's row for the
+version names its backlog item and carries the goal and expected results it is judged against.
+
 **Start the log archive with the campaign** (#1710). The containers' logs are the triage
 evidence, and the next rebuild destroys them. The archive keeps each cycle's window under
 `var/campaigns/<campaign_id>/logs/<cycle_id>/`, with a manifest naming its window, each file's

@@ -69,7 +69,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | slice 3: candidates added, promoted or dropped, and a backlog item split, under Q41's rule for the crew (as built: §10c) | **shipped** | 2.6.0, PR #2908, closes #2886 |
 | §6's squad and system candidates: a cycle's or a proposal's findings recorded as candidates by the runtime, with no principal of its own | **unplaced**, deliberately: not built in slice 3 (§10c) | — |
 | slice 4: the console's goals panel: a panel of the Projects plugin, its edit a confirm-level command (`squadops.revise_goal_set`). §8.3's latest assessment of each expected result is not shown: no assessment record exists until slice 5 (§5.7), and showing it in the panel is that slice's | **shipped** | 2.6.0, PR #2916, closes #2887 |
-| slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2888 |
+| slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7), shown in the console (as built: §10d) | **shipped** | 2.6.0, closes #2888 |
 | slice 6: the repository export | **unplaced**, deliberately: not in 2.6 (the plan's D1, ruled 2026-11-03) | — |
 
 **What closes this SIP:** slices 1–5 shipped and read live on a Campaign whose backlog reached three accepted items,
@@ -573,3 +573,81 @@ permission matrix per action; the crew's promotion and the owner's split entered
 auth, asserting what reaches the store; the crew's 403 on the whole-document write),
 `tests/unit/api/test_campaign_backlog_route.py` (`split_into` in the view's body), `tests/unit/cli/test_commands_goals.py`
 and `tests/integration/cycles/test_postgres_goal_set_registry_integration.py` (`change` round-trips).
+
+### 10d. Slice 5 as built (2026-11-04)
+
+**What changed.** §3, §5.7, §6, §8.3 and §8.5 describe the crew's surface. Slice 5 builds it and settles what they
+leave open. Its SIP-0109 side, the ledger's rows, is SIP-0109 §24df. Decided by the implementer under the supervisor's
+brief for #2888; the owner reviews it in the slice's PR.
+- **The reads needed no scope change.** `campaign-supervisor` and `campaign-triage` both hold `cycles:read` and
+  `campaigns:read`, which is what the goal set's routes and `GET /api/v1/campaigns/{id}/backlog` need. The wiring test
+  reads each through the real authorization adapter.
+- **A gate's evidence is the ledger** (§8.5). What the crew's reviewer reads at a gate is the Campaign's
+  `GET /api/v1/campaigns/{id}/ledger`, whose rows its packet carries whole, so the row is extended and no new read is
+  added. Each row of a goal-set Campaign names `backlog_item` and `goals_revision`. The row an open gate can be on, its
+  item `proposed` (the increment gate) or `in_increment` (the plan gate), also carries `goal_evidence`:
+  `{goal, item: {id, title, description, serves, size?}, expected_results: [{id, statement, surface}]}`, in the goal
+  set's own document shape.
+  - **Read at the revision the proposal is bound to** (§5.5a), never a later one.
+  - **Narrowed: not on a decided row.** Such a row keeps its item's id. A reviewer's request is bounded, and on
+    2026-11-01 a request over its bound parked a Campaign, so the goal isn't repeated on each increment already judged.
+  - **A requirements Campaign's rows are exactly as they were.** The three fields are left out when unset, not sent as
+    nulls, and its ledger reads no goal set.
+- **An assessment has its own store on the goal set's seam** (§5.7, Q43). `GoalSetRegistryPort` gains
+  `record_assessment` and `list_assessments`; migration `2103_goal_set_assessments.sql` holds one row per assessment,
+  with `sequence` counted per goal set, and §5.7's rules as CHECKs. It writes no goal-set revision and adds nothing to
+  the Project Record. It writes only under `postgres`, as a revision does (`409 PROJECT_REGISTRY_READ_ONLY`). §7's
+  sweep needs no change, for §10a's reason.
+- **No grant** (§6). Recording one is a report, not curation: Q41's grant is about the order, which an assessment never
+  touches. Who may is `admin:write` (the owner) or `campaigns:supervise` (the crew's seat); triage reads, and nothing
+  else (`403`). A completed Campaign takes one, since the closing interpretation comes after the close.
+- **The write is `POST /api/v1/projects/{id}/goal-set/assessments`,** answering 201 with
+  `{assessment, idempotency_key, replayed}`. It carries `idempotency_key`, `campaign_id`, `expected_result`,
+  `goals_revision`, `reading`, `cause`, `issue`, `evidence`, `reason`, `source_ref` and `supersedes`.
+  - **`cause` is required with `not_met` and refused otherwise.** *Narrowed:* §5.7's "shortfall" is read as `not_met`,
+    so an `unclear` takes no cause.
+  - **`issue` is the squad-ops issue's number,** required with `framework_defect` or `framework_gap` and refused with
+    any other cause. The console builds the link.
+  - **`evidence` is `{cycles: [id], rulings: [id], evaluations: [{id, passed, failed}]}`,** with at least one id. Unknown
+    keys, and an id with a space in it, are refused, so a step or a value has nowhere to go (§7). *Not checked:* that a
+    cited id exists. It is a citation, and an assessment decides nothing.
+  - **`reason` is required** (§6: each action records its reason).
+  - **`source_ref` is required of the crew** (Q43; §8.5) **and optional for the owner** (§6: "where it came from a
+    conversation").
+  - **`goals_revision`** is a revision the goal set holds, and `expected_result` one that revision holds.
+  - **`supersedes`** names the `sequence` of earlier assessments of the same result in the same Campaign.
+  - **Refusals:** `422 GOAL_SET_INVALID` naming the field, as slice 3's do. An unknown Campaign, or another Project's, is
+    `404 CAMPAIGN_NOT_FOUND`, a requirements Campaign `404 CAMPAIGN_HAS_NO_GOAL_SET`, and a key reused for another body
+    `409 IDEMPOTENCY_KEY_CONFLICT`. A retry replays through the store: unlike slice 3's actions, nothing it checks can
+    have changed since the write.
+- **The reads are two.** `GET /api/v1/projects/{id}/goal-set/assessments` (`cycles:read`) is the history, in sequence,
+  paged, with `campaign_id` and `expected_result` filters. `GET /api/v1/campaigns/{id}/assessments` (`campaigns:read`)
+  is how each result stands: `{campaign_id, project_id, revision, results: [{expected_result, standing, assessments}]}`,
+  one per expected result of the revision the Campaign reads now, derived and never stored. It is the Campaign's for
+  §10b's reason: what makes one stale is this Campaign's acceptances. A result a later revision removed drops out.
+- **`standing`** is `current`, `stale`, `conflicting` or `unassessed`. `assessments` holds the latest alone, or, while
+  they conflict, each that disagrees, newest first.
+  - **Disagree** is read as a different `reading` or `cause`: the cause is whose work it is.
+  - **Stale is judged on the latest.** A latest that is stale reads `stale`, whatever older ones say, so a stale
+    assessment never reads current and never conflicts with the one that replaced it.
+  - **`log_seq`** is the Campaign's last control-log row at the write, compared only within that Campaign (§5.7).
+    *Narrowed:* it is when the assessment was written, not when the crew read. An acceptance between the two reads as
+    before the assessment.
+  - **"Changed"** is the result's statement or surface differing between the revision the assessment read and the one
+    the Campaign reads now, so a reorder stales nothing.
+- **The console** (§8.3). `squadops.campaigns` replaces its named placeholder with this view, and the goals panel shows
+  each expected result's standing, reading, cause and issue for the chosen Campaign. What a standing says lives once, in
+  `console/continuum-plugins/shared/assessments.js`.
+- **Not built: a CLI for assessments.** §8.2 names none. The crew is an API client, and the owner reads them in the
+  console.
+
+**Evidence.** `tests/unit/api/test_crew_surface_routes.py`, entered at the routes with the crew's real roles through the
+real authorization adapter: the goal set and backlog read back, the gate's row carries the item and results, a
+candidate added and promoted under the grant, an assessment written by the supervisor and read back by triage; each
+refusal by its field; the plan gate; the bound revision; a requirements row's exact fields; a retry after the close.
+`tests/unit/projects/test_goal_set_assessments.py` (each standing), `tests/unit/campaigns/test_backlog.py`
+(`acceptances`), `tests/integration/cycles/test_postgres_goal_set_assessments_integration.py` (the round trip,
+sequence per goal set, racing writers, replay, the write gate, each CHECK and foreign key, on Postgres),
+`console/continuum-plugins/squadops.campaigns/ui/src/campaigns.test.js` and
+`console/continuum-plugins/squadops.projects/ui/src/goals.test.js`. Thirty-eight mutants, each on a commit, each failed
+a test. One survived at first, the Campaign's view reading the goal set's whole history, and gained its test.
