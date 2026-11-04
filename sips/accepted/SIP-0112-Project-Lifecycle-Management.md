@@ -2887,7 +2887,12 @@ the same base. It was hidden because, before H.18, an npm product's suite was ra
 3. **No tree at the pin judges nothing.** With no repository, or a clone that doesn't hold the pin, the agent's
    result stands, as for every judgement that can't run (#2845). Falling back to the artifacts' tree would read
    `setup_failed` in place of the suite's result.
-4. **No held-back file enters the vault or a view.** The prompt-budget rule stays as it is. The bytes go only to the
+4. **The pin is seeded as the checkout it is** (`RevisionOrigin.GIT_CHECKOUT`, with its executable bits), and the
+   run's tree and the suite are a patch on it, as source delivery assembles a candidate. The sandbox refuses a
+   derived-state name (`package-lock.json`, `dist/`) from any origin but a checkout's tracked set (X-2), so the first
+   build, which seeded the whole tree as an acceptance assembly, was refused on the MacBook's live check:
+   `derived-state path is not revision content: 'package-lock.json'` (`run_1f672fe2…`, four times).
+5. **No held-back file enters the vault or a view.** The prompt-budget rule stays as it is. The bytes go only to the
    sandbox, which takes text or bytes per file (`SandboxPort.seed_workspace`, X-2).
 
 **The seams that evaluate a product's qa criteria** (H.18's table, the rows this changes):
@@ -2904,11 +2909,14 @@ deletion. That is the limit #2612 (Track B) carries for every source-backed tree
 **The evidence:**
 - **Wiring:** `test_the_products_suite_runs_on_the_pinned_tree_with_its_held_back_lockfile` enters at the executor's
   `_judged_on_product_runner` with a product whose lockfile and a binary are held back. It asserts both reach the
-  sandbox byte for byte, the run's own `app/main.py` replaces the pin's, the product's own test stays out, and the
-  suite is judged.
+  sandbox byte for byte, the pin is seeded as a checkout with the run's tree as a patch, the run's own `app/main.py`
+  replaces the pin's, the product's own test stays out, and the suite is judged. Its fake sandbox refuses paths by
+  the sandbox's own rule (`workspace._safe_relpath`), which the first build's fake did not, so the unit tests passed
+  while the live run was refused.
 - **The error case:** `test_no_readable_tree_at_the_pin_judges_nothing` (no repository; a clone that refuses the
   pin) asserts the agent's result stands and the sandbox is never asked.
-- **The mutant:** the tree built without the clone's base fails the wiring test (`KeyError: 'package-lock.json'`).
+- **The mutants:** the tree built without the clone's base fails the wiring test (`KeyError: 'package-lock.json'`),
+  and so does the pin seeded as an acceptance assembly (`'acceptance_assembly' == 'git_checkout'`).
 
 **Who ruled.** Proposed by the MacBook lane on 2026-11-04. The Spark lane handed the issue over and chose the shape
 (the clone's tree as the base, for parity with the baseline and the acceptance, rather than stored artifacts no view

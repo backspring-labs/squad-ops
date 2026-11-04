@@ -177,12 +177,20 @@ def suite_under_judgement(
     return {**suite, **held}, overlay
 
 
+@dataclasses.dataclass(frozen=True)
+class PinnedTree:
+    """The product's own non-test files at the cycle's pin, as bytes, and their executable bits."""
+
+    files: Mapping[str, bytes]
+    executable: frozenset[str]
+
+
 async def _product_tree_at_pin(
     repository: Any, cycle: Any, inputs: Mapping[str, Any], task_id: str
-) -> dict[str, Any] | None:
-    """The product's own non-test files at the cycle's pin, as bytes, from the managed clone, or
-    ``None`` when there is no clone to read: a tree without the files its artifacts hold back fails
-    the product's setup, so it judges nothing (#2900)."""
+) -> PinnedTree | None:
+    """The product's own non-test files at the cycle's pin, from the managed clone, or ``None``
+    when there is no clone to read: a tree without the files its artifacts hold back fails the
+    product's setup, so it judges nothing (#2900)."""
     context = cycle.source_context
     if repository is None:
         logger.info("product suite %s: not re-judged: no source repository", task_id)
@@ -197,7 +205,8 @@ async def _product_tree_at_pin(
             exc_info=True,
         )
         return None
-    return product_tree(clone.files, product_runners(inputs))
+    files = product_tree(clone.files, product_runners(inputs))
+    return PinnedTree(files, frozenset(clone.executable) & frozenset(files))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -244,19 +253,24 @@ async def run_on_product_runner(
     sandbox: Any,
     profile: Any,
     setup: RunnerSetup,
+    pinned: PinnedTree,
     tree: Mapping[str, str],
     tests: Mapping[str, str],
     workspace_id: str,
 ) -> list[SuiteRun] | None:
     """Run each of ``tests`` on its own runner's single-file command, read by that runner's
-    test-id reader, on ``tree`` with ``tests`` beside it. ``None`` when a test file is held by no
-    runner, or by one that can't be scoped to a file or has no test-id reader: the product names
-    no way to show that file's tests ran, so nothing here can judge it."""
+    test-id reader, on ``pinned`` with ``tree`` and ``tests`` laid over it. ``None`` when a test
+    file is held by no runner, or by one that can't be scoped to a file or has no test-id reader:
+    the product names no way to show that file's tests ran, so nothing here can judge it.
+
+    ``pinned`` is seeded as the checkout it is (``GIT_CHECKOUT``), so the sandbox takes a file its
+    derived-state rule would refuse from anything else, a tracked ``package-lock.json`` (X-2), and
+    the rest is a patch on it, as source delivery assembles a candidate (#2900)."""
     # deferred (pair): squadops.sandbox imports the campaigns package at load (its API's seed plan)
     from squadops.sandbox.findings import FindingsReading
 
     # deferred (pair): as above
-    from squadops.sandbox.models import CommandOutcome, RevisionOrigin
+    from squadops.sandbox.models import CommandOutcome, RevisionOrigin, WorkspaceRevision
 
     planned: list[tuple[str, Any]] = []
     for path in tests:
@@ -264,12 +278,21 @@ async def run_on_product_runner(
         if runner is None or runner.single_file_argv is None or not runner.test_ids:
             return None
         planned.append((path, runner))
-    files = {**tree, **tests}
     runs: list[SuiteRun] = []
     await sandbox.release_workspace(workspace_id)
     try:
-        revision = await sandbox.seed_workspace(
-            workspace_id, files, origin=RevisionOrigin.ACCEPTANCE_ASSEMBLY
+        seeded = await sandbox.seed_workspace(
+            workspace_id,
+            dict(pinned.files),
+            origin=RevisionOrigin.GIT_CHECKOUT,
+            executable=pinned.executable,
+        )
+        patched = await sandbox.apply_workspace_patch(base=seeded, files={**tree, **tests})
+        revision = WorkspaceRevision(
+            revision_id=patched.new_revision_id,
+            cycle_id=workspace_id,
+            origin=RevisionOrigin.AGENT_PATCH,
+            parent_revision_id=seeded.revision_id,
         )
         for path, runner in planned:
             argv = single_file_argv(runner, path)
@@ -543,15 +566,16 @@ async def judge_on_product_runner(
     tests, overlay = suite_under_judgement(inputs, result.outputs or {}, profile)
     if configuration is None or not tests:
         return None
-    base = await _product_tree_at_pin(repository, cycle, inputs, task_id)
-    if base is None:
+    pinned = await _product_tree_at_pin(repository, cycle, inputs, task_id)
+    if pinned is None:
         return None
     try:
         runs = await run_on_product_runner(
             sandbox=sandbox,
             profile=profile,
             setup=RunnerSetup.of(configuration.commands),
-            tree={**base, **suite_run_tree(inputs), **overlay},
+            pinned=pinned,
+            tree={**suite_run_tree(inputs), **overlay},
             tests=tests,
             workspace_id=suite_workspace_prefix(run_id, task_id),
         )

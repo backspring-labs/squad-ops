@@ -93,9 +93,29 @@ class _Sandbox:
     async def release_workspace(self, workspace_id: str) -> None:
         self.released.append(workspace_id)
 
-    async def seed_workspace(self, workspace_id, files, *, origin, **_):
-        self.seeded = dict(files)
+    async def seed_workspace(self, workspace_id, files, *, origin, executable=(), **_):
+        """Refuses a path as the sandbox does (``workspace._safe_relpath``): a derived-state name,
+        a ``package-lock.json``, is content only in a checkout's tracked set (X-2, #2900)."""
+        from squadops.sandbox.models import RevisionOrigin
+        from squadops.sandbox.workspace import _safe_relpath
+
+        self.origin = origin
+        tracked = None if origin in RevisionOrigin.TRACKED_TREE else ()
+        for path in files:
+            _safe_relpath(path, tracked=tracked)
+        self.seeded, self.executable = dict(files), frozenset(executable)
         return SimpleNamespace(revision_id="rev_1")
+
+    async def apply_workspace_patch(self, *, base, files, **_):
+        """``seeded`` is the tree the command runs on: the seed with the patch over it. A patch
+        may name a derived-state path only when its base holds it, as the sandbox's does."""
+        from squadops.sandbox.workspace import _safe_relpath
+
+        for path in files:
+            _safe_relpath(path, tracked=self.seeded)
+        self.patched = dict(files)
+        self.seeded = {**self.seeded, **files}
+        return SimpleNamespace(new_revision_id="rev_2")
 
     async def run_declared_command(self, *, revision, command, working_dir, setup, findings_reader):
         if self.raises:
@@ -146,7 +166,9 @@ class _Repository:
         self.read.append((project_id, commit))
         if self.raises:
             raise RuntimeError("the clone does not hold c0ffee")
-        return SimpleNamespace(files=dict(self.files))
+        return SimpleNamespace(files=dict(self.files), executable=frozenset({"bin/run"}))
+
+
 _PROJECTS = SimpleNamespace(
     get_development_configuration=lambda *_: _async(
         SimpleNamespace(commands=SimpleNamespace(working_directory=".", check_setup=_SETUP))
@@ -757,6 +779,7 @@ _CLONE = {
     "package-lock.json": _LOCK,
     "app/main.py": b"import plugins  # the pin's\n",
     "app/logo.png": b"\x89PNG\r\n\x1a\n",
+    "bin/run": b"#!/bin/sh\n",
     "tests/test_existing.py": b"def test_old(): ...\n",
 }
 
@@ -774,7 +797,13 @@ async def test_the_products_suite_runs_on_the_pinned_tree_with_its_held_back_loc
     )
 
     assert executor._source_repository.read == [("prj_x", "c0ffee")]
-    seeded = executor._sandbox.seeded
+    sandbox = executor._sandbox
+    # The pin is seeded as the checkout it is, so the sandbox takes its tracked lockfile, which
+    # its derived-state rule refuses from any other origin; the run's tree is a patch on it.
+    assert sandbox.origin == "git_checkout"
+    assert "package-lock.json" not in sandbox.patched
+    assert sandbox.executable == {"bin/run"}
+    seeded = sandbox.seeded
     # What the run's artifacts hold back comes from the clone, byte for byte.
     assert seeded["package-lock.json"] == _LOCK
     assert seeded["app/logo.png"] == _CLONE["app/logo.png"]
