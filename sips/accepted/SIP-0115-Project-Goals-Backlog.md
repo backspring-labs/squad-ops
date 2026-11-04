@@ -382,7 +382,11 @@ the slice's PR.
 - **§7's sweep needs no change:** `heldout_sweep.py` dumps every table of the `squadops` database except the suite's
   own store (`OWN_STORE`, `scripts/dev/heldout_sweep.py:81`; `--exclude-table` at `:294`), so
   `project_goal_set_revisions` is searched already.
-- **The CLI's `show` prints YAML that `edit -f` takes back,** with the revision's author and reason as comments.
+- **The CLI's `show` prints YAML that `edit -f` takes back,** with the revision's provenance as comments, every line
+  of each commented, and a `# base-revision: N` line. **`edit` writes against the revision its file was shown at,**
+  never against whatever is active when it runs, so an export submitted after another editor wrote is refused as
+  stale. It is not written over theirs, and a retry with the printed key and the same file replays. A file with no
+  `# base-revision` line needs `--expected-revision`. *Added on the outside second review of PR #2899 (its P1–P3).*
   `candidates`, `promote` and `drop` (§8.2) are slice 3's.
 
 **Evidence.** `tests/unit/projects/test_goal_set.py` (each refusal by its field), `tests/unit/api/test_goal_set_routes.py`
