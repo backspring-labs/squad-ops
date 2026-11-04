@@ -647,6 +647,26 @@ async def test_an_abort_stored_before_this_rule_replays_and_stays_as_it_was(tmp_
     assert asked.status_code == 409 and world.forge.calls == 0
 
 
+async def test_a_draft_on_an_unknown_project_stays_abortable(tmp_path):
+    """PR #2920's review, finding 6. A Campaign with no branch has no contribution, so nothing about
+    one can block its abort. Bug caught: the Project's lookup answering 404 for the abort."""
+    world = _World(tmp_path)
+    draft = campaign("cmp_orphan000001", project_id="prj-gone")
+    await world.campaigns.create_campaign(
+        draft, actor="owner", actor_role="admin", reason="r", idempotency_key="create-orphan"
+    )
+    client = world.client()
+    client.app.state.project_registry = create_project_registry("config")
+
+    aborted = client.post(
+        "/api/v1/campaigns/cmp_orphan000001/abort",
+        json={"reason": "stop", "idempotency_key": "a-orphan"},
+    )
+
+    assert aborted.status_code == 200, aborted.text
+    assert aborted.json()["campaign"]["state"] == "completed"
+
+
 async def test_a_running_campaign_and_an_unknown_one_are_refused(tmp_path):
     """Bugs caught: a contribution opened mid-Campaign, before its close; an unknown Campaign
     answered with anything but the standard 404."""

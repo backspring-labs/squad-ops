@@ -1258,7 +1258,10 @@ async def _repository_backed(request: Request, campaign_id: str) -> bool:
     Project has a repository. A Project that can't be found has no contribution to name, and never
     blocks the abort: a Campaign with a branch is read as repository-backed from its log."""
     campaign = await _registry(request).get_campaign(campaign_id)
-    project = await get_project_registry(request).get_project(campaign.project_id)
+    try:
+        project = await get_project_registry(request).get_project(campaign.project_id)
+    except ProjectNotFoundError:
+        return False
     return project.source is not None
 
 
