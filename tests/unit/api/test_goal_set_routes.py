@@ -17,6 +17,7 @@ from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 from squadops.api.routes.cycles.goal_sets import router
 from squadops.auth.models import ROLE_SCOPES, Identity, Role, TokenClaims
+from squadops.campaigns.models import CampaignOutcome, CampaignState, ControlOperation
 from squadops.cycles.models import (
     GateDecisionValue,
     GoalSetNotFoundError,
@@ -26,6 +27,7 @@ from squadops.cycles.models import (
 )
 from squadops.projects.goal_set import Change, ChangeKind, GoalSetRevision, parse_goal_set
 from tests.fixtures.goal_set import GoalSetStore, goal_set_document, proposed, started
+from tests.unit.campaigns.builders import move
 
 pytestmark = [pytest.mark.domain_api]
 
@@ -303,10 +305,19 @@ def store() -> GoalSetStore:
 
 @pytest.fixture
 def campaigns() -> MemoryCampaignRegistry:
-    """Two Campaigns on Lantern's goal set: one the owner started, one the crew's own."""
+    """Three Campaigns on Lantern's goal set: one the owner created, one the crew's broker
+    created, and one that has completed."""
     registry = MemoryCampaignRegistry()
     asyncio.run(started(registry, "cmp_owner", created_by="owner"))
     asyncio.run(started(registry, "cmp_crew", created_by="campaign-supervisor-principal"))
+    asyncio.run(started(registry, "cmp_done", created_by="owner"))
+    asyncio.run(
+        registry.transition(
+            "cmp_done",
+            move(CampaignState.COMPLETED, "end", operation=ControlOperation.ABORT,
+                 outcome=CampaignOutcome.ABORTED),
+        )
+    )  # fmt: skip
     return registry
 
 
@@ -324,8 +335,10 @@ class TestWhoMayAct:
             (Role.ADMIN, None, (201, None)),
             (Role.ADMIN, "cmp_owner", (201, None)),
             (Role.CAMPAIGN_SUPERVISOR, "cmp_owner", (201, None)),
+            (Role.CAMPAIGN_SUPERVISOR, "cmp_crew", (201, None)),
             (Role.CAMPAIGN_SUPERVISOR, None, (403, "NOT_DELEGATED")),
-            (Role.CAMPAIGN_SUPERVISOR, "cmp_crew", (403, "NOT_DELEGATED")),
+            (Role.CAMPAIGN_SUPERVISOR, "cmp_done", (403, "NOT_DELEGATED")),
+            (Role.ADMIN, "cmp_done", (403, "NOT_DELEGATED")),
             (Role.CAMPAIGN_SUPERVISOR, "cmp_none", (404, "CAMPAIGN_NOT_FOUND")),
             (Role.CAMPAIGN_TRIAGE, "cmp_owner", (403, "FORBIDDEN")),
             (Role.VIEWER, "cmp_owner", (403, "FORBIDDEN")),
@@ -335,8 +348,10 @@ class TestWhoMayAct:
             "the owner",
             "the owner naming a Campaign",
             "the crew within the owner's Campaign",
+            "the crew within its broker's Campaign",
             "the crew outside any Campaign",
-            "the crew within its own Campaign",
+            "the crew within a completed Campaign",
+            "the owner naming a completed Campaign",
             "the crew naming no Campaign that exists",
             "triage",
             "a viewer",
@@ -346,9 +361,10 @@ class TestWhoMayAct:
     def test_who_may_promote_drop_or_split(
         self, action, role, campaign, expected, projects, store, campaigns
     ):
-        """§6 and Q41 at each delegated route. Bugs caught: the crew acting with no Campaign, or
-        within one it started itself; triage (reads only, #1719), a viewer or an operator acting;
-        the owner asked for a Campaign; a refusal after the revision was written."""
+        """§6 and Q41 as §10c reads it, at each delegated route. Bugs caught: the crew acting
+        with no Campaign, or within one that has completed; the crew's broker's own Campaign
+        refused; triage (reads only, #1719), a viewer or an operator acting; the owner asked for
+        a Campaign; a refusal after the revision was written."""
         path, body = _action(action, **({"campaign_id": campaign} if campaign else {}))
 
         resp = _client(role, projects, store, campaigns).post(path, json=body)

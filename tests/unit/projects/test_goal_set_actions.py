@@ -4,6 +4,7 @@ actions, and recording them as revisions under §6's rule for who may. The goal 
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -299,31 +300,35 @@ def _write(actor: Actor, *, campaign_id: str | None = None, key: str = "k-1", **
 
 
 @pytest.mark.parametrize(
-    ("actor", "project_id", "goals", "created_by", "refused"),
+    ("project_id", "goals", "created_by", "completed", "refused"),
     [
-        (CREW, PROJECT, True, "owner", None),
-        (OWNER, PROJECT, True, "owner", None),
-        (CREW, "prj-other", True, "owner", "is on Project prj-other"),
-        (CREW, PROJECT, False, "owner", "names no goal set"),
-        (CREW, PROJECT, True, "campaign-supervisor-principal", "not a Campaign the owner started"),
-        (OWNER, PROJECT, True, "owner", None),
+        (PROJECT, True, "owner", False, None),
+        (PROJECT, True, "campaign-supervisor-principal", False, None),
+        ("prj-other", True, "owner", False, "is on Project prj-other"),
+        (PROJECT, False, "owner", False, "names no goal set"),
+        (PROJECT, True, "owner", True, "has completed (aborted)"),
     ],
     ids=[
-        "the crew within the owner's Campaign",
-        "the owner within their own",
+        "a live Campaign the owner created",
+        "a live Campaign the crew's broker created",
         "another Project's Campaign",
         "a requirements Campaign",
-        "a Campaign the crew itself created",
-        "the owner naming a Campaign they created",
+        "a completed Campaign",
     ],
 )
-def test_within_a_campaign_the_owner_started(actor, project_id, goals, created_by, refused):
-    """Q41's rule (§10c). Bugs caught: the crew promoting through a Campaign on another Project,
-    one reading a PRD (no goal set to act within), or one it created itself, which the owner
-    never started; the owner refused on their own Campaign."""
+def test_within_a_live_campaign_on_this_project_reading_this_goal_set(
+    project_id, goals, created_by, completed, refused
+):
+    """Q41's rule as §10c reads it (the supervisor's narrowing): a live Campaign on this Project
+    reading this goal set, whoever created it. Bugs caught: the crew promoting through a Campaign
+    on another Project, one reading a PRD (no goal set to act within), or one that has
+    completed, whose delegation ended with it; the crew's broker's own Campaign refused, which
+    locks the crew out of every Campaign it runs (the Nostromo flow)."""
     campaign = campaign_on(project_id, "cmp_1", created_by=created_by, goals=goals)
+    if completed:
+        campaign = replace(campaign, state=CampaignState.COMPLETED, outcome=CampaignOutcome.ABORTED)
 
-    reason = not_within(campaign, project_id=PROJECT, actor=actor)
+    reason = not_within(campaign, project_id=PROJECT)
 
     if refused is None:
         assert reason is None
@@ -387,20 +392,33 @@ class TestRecordPromotion:
         )
         assert _ids(written.goal_set) == ["B-1", "B-2", "C-1"]
 
-    async def test_the_crew_is_refused_within_a_campaign_it_created_and_nothing_is_written(
+    async def test_the_crew_acts_within_its_brokers_campaign_but_not_a_completed_one(
         self, projects, goal_sets, campaigns
     ):
-        """Q41: the owner started it. Bug caught: any Campaign on the Project accepted as the
-        delegation, so the crew's own Campaign delegates to itself."""
+        """§10c: the delegation lasts the Campaign's life. Bugs caught: the crew's broker's own
+        Campaign refused (the crew locked out of every Campaign it runs); a completed Campaign
+        still delegating, so the crew curates the backlog with no Campaign running."""
         await started(campaigns, "cmp_crew", created_by="campaign-supervisor-principal")
+        await started(campaigns, "cmp_done", created_by="owner")
+        await campaigns.transition(
+            "cmp_done",
+            move(CampaignState.COMPLETED, "end", operation=ControlOperation.ABORT,
+                 outcome=CampaignOutcome.ABORTED),
+        )  # fmt: skip
 
-        with pytest.raises(NotDelegated, match="not a Campaign the owner started"):
+        with pytest.raises(NotDelegated, match="cmp_done has completed \\(aborted\\)"):
             await record_drop(
-                PROJECT, "C-1", write=_write(CREW, campaign_id="cmp_crew"),
+                PROJECT, "C-1", write=_write(CREW, campaign_id="cmp_done"),
                 projects=projects, goal_sets=goal_sets, campaigns=campaigns,
             )  # fmt: skip
-
         assert (await goal_sets.get_revision(PROJECT)).revision == 1
+        written, _ = await record_drop(
+            PROJECT, "C-1", write=_write(CREW, campaign_id="cmp_crew"),
+            projects=projects, goal_sets=goal_sets, campaigns=campaigns,
+        )  # fmt: skip
+
+        assert (written.revision, written.author) == (2, "campaign-supervisor-principal")
+        assert written.change == Change(ChangeKind.CANDIDATE_DROPPED, "C-1", campaign_id="cmp_crew")
 
     async def test_a_retry_replays_and_the_same_key_with_another_request_conflicts(
         self, projects, goal_sets, campaigns

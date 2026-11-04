@@ -483,16 +483,16 @@ implementer under the supervisor's slice-3 brief (#2886); the owner reviews it i
   executor with no principal of its own, so nothing a cycle does can call these routes. The runtime recording a
   cycle's or a proposal's findings as candidates is a part of its own, unplaced (the ledger); until it is built, what
   a cycle finds reaches the goal set through the crew or the owner.
-- **The crew acts within a Campaign the owner started** (Q41). The request names `campaign_id`. The Campaign must
-  exist (`404 CAMPAIGN_NOT_FOUND`), be on this Project, name a goal set (`objective.goals`), and **have been created by
-  someone other than the acting principal:** "the owner started" is read as `created_by ≠ the actor`, since the
-  Campaign record holds who created it and nothing else about the owner's part. Otherwise `403 NOT_DELEGATED`, with
-  the reason. The Campaign is recorded on the revision (`change.campaign_id`). The owner needs no Campaign, and may
-  name one, which is then checked the same way (on this Project, reading a goal set) so the record is true.
-  *Consequences, named:* a Campaign the same supervisor principal created, as a broker's own Campaigns are (the
-  intake check's Nostromo flow), is not within the delegation: the owner acts on it, or starts the Campaign as the
-  owner; and a completed Campaign still counts, since the rule reads who started it, not whether it runs. Either is
-  the owner's to tighten.
+- **The crew acts within a Campaign** (Q41). The request names `campaign_id`. The Campaign must exist
+  (`404 CAMPAIGN_NOT_FOUND`), be on this Project, name this goal set (`objective.goals`), and **be live: its state is
+  not terminal** (`completed`, the lifecycle's one terminal state, however it ended: `aborted`, `exhausted`,
+  `failure` or `success` is its outcome). Otherwise `403 NOT_DELEGATED`, with the reason. No `created_by` check.
+  *The supervisor's narrowing, 2026-11-04, for the owner's review:* Q41's "a Campaign the owner started" is read as a
+  live Campaign on this Project reading this goal set, since the crew's broker creates the Campaigns the owner
+  approves in Buzz (the intake check's Nostromo flow) and SquadOps records no approval to read; the crew starts no
+  Campaign without that approval, so the delegation lasts the Campaign's life. The owner may tighten it. The
+  Campaign is recorded on the revision (`change.campaign_id`). The owner needs no Campaign, and may name one, which
+  is then checked the same way so the record is true.
 - **The crew appends; the owner places.** A promotion takes `position` (from 1; the end by default). The crew's
   `position` anywhere but the end is `403 NOT_DELEGATED`: a reorder is the owner's (Q41). The whole-document write,
   the only way to reorder, stays `admin:write`; a split changes no other item's place.
