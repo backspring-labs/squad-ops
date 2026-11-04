@@ -26,7 +26,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   was created under; at its ruling a later revision that moved its item or changed what it serves returns it as
   `goals_revised`, which spends neither a rejection nor a revision. `stop_when: backlog_done` stops a Campaign at
   §10 row 3 when every item of the revision read at the decision is accepted, and the decision's row records which.
-- **The console's goals panel** (SIP-0115 slice 4, #2887, PR #TBD-2887): a panel of the Projects plugin
+- **The console's goals panel** (SIP-0115 slice 4, #2887, PR #2916): a panel of the Projects plugin
   (`squadops-projects-goals`, in the Projects view) that follows the Project selected in the list, or a Campaign
   selected anywhere (`squadops:select-campaign`). It shows the goal, expected results with where each is observed,
   constraints and out of scope; the backlog in the goal set's order with each item's derived status and increment
