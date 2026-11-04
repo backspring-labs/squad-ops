@@ -752,6 +752,60 @@ Each plugin has unit tests for:
 
 ---
 
+## 14. Post-implementation amendment (2026-11-04): the Campaigns plugin is read-only in 2.6, and what stays off the console (#2834)
+
+**What changed.** §9's stability rule asks for exceptions to parity to be documented here, and D7 and AC-7 read
+"every CLI command has a UI equivalent". Since 2.0, `squadops campaigns`, the Project lifecycle and `squadops
+scenarios` shipped with no console surface at all (#2834). That was a silent break of D7. This amendment names what the
+console now covers, what it leaves off on purpose, and what is still owed.
+
+1. **The reads have a UI equivalent: a new plugin, `squadops.campaigns`,** with its own `campaigns` perspective
+   (`console/continuum-plugins/squadops.campaigns/`; the perspective is registered by `console/app/main.py`'s
+   `CUSTOM_PERSPECTIVES`). Rows added to §9's matrix:
+
+   | CLI Command | Plugin | UI Interaction |
+   |-------------|--------|----------------|
+   | `campaigns list` | `squadops.campaigns` | Campaign list: every Project's Campaigns with state, outcome, start and current increment |
+   | `campaigns show` | `squadops.campaigns` | Campaign view header (click row) |
+   | `campaigns log` | `squadops.campaigns` | The control log's latest rows, refusals included |
+   | `campaigns ledger` | `squadops.campaigns` | Ledger table, and the proposals waiting for a ruling |
+   | `campaigns digest` | `squadops.campaigns` | Digest, from the latest evidence package |
+   | `campaigns escalations` | `squadops.campaigns` | Open escalations, with a count of the closed |
+   | `campaigns backlog` | `squadops.projects` | The goals panel's backlog for a chosen Campaign (SIP-0115 slice 4), opened from a goal-set Campaign's view |
+
+2. **Off the console in 2.6, with the CLI and the crew's broker holding them:** the Campaign controls, which are
+   `create`, `start`, `pause`, `resume`, `abort`, `answer`, `classify` and `push-review`. The plugin registers no
+   `command` contribution, so none of them enters the command bus or the palette
+   (`tests/unit/console/test_campaigns_plugin.py` refuses one, and refuses a write). This is parity debt, not a
+   permanent exception: console controls are #2834's, for a later line.
+3. **Off the console permanently, by design:**
+   - **`scenarios draft` and `scenarios review`.** Held-out content stays with the supervisor and the owner, because
+     SIP-0113 requires the suite to be independent of the squad it judges. A general operator surface is the wrong
+     place for it. No plugin calls the scenario-suite routes, and only admin and the campaign supervisor hold
+     `scenarios:*`.
+   - **`campaigns lease acquire` and `campaigns lease release`** (the box lease), and with them `campaigns lease
+     show`. These are operator tools for a box, not views of a Campaign.
+4. **Still owed, and not an exception:** the Project lifecycle (`projects validate`, `configure`, `baseline`,
+   `contribute`, `initialize`, `sync`) and the other `scenarios` commands (`list`, `show`, `approve`, `evidence`,
+   `purge-evidence`). The 2.6 plan defers these (§2.7). Leaving them unlisted here would read as shipped, so they are
+   named.
+5. **Principle 5 holds.** There is no Continuum change: the console's pin stays at v1.0.2
+   (`docs/architecture/console-fit-check-2-6.md`). The one thing the pinned shell lacks for these views is a way for
+   a plugin to open another perspective. A goal-set Campaign's link to its goals panel is closed on the plugin side
+   by `console/continuum-plugins/shared/selection.js`, which keeps the selection until that panel mounts and opens
+   the Projects perspective through the shell's own nav entry.
+
+**Evidence.** The fit check (`docs/architecture/console-fit-check-2-6.md`, views 2 and 5). #2834's census of the
+three CLI groups. The plugin's tests: `campaigns.test.js` under node, and `test_campaigns_plugin.py`.
+
+**Who ruled.** The owner, 2026-11-03, on the 2.6 plan's decisions ("your recommendations on the other decisions"),
+which rules D13 as recommended: a read-only Campaigns plugin; controls stay with the crew and the CLI; held-out
+drafting and the lease tools are kept off the console by an amendment to this SIP.
+
+**AC-7** is read with items 2–4 of this section.
+
+---
+
 ## Appendix A: Backend API Surface Assumptions
 
 Every Runtime API endpoint the console depends on, with provenance. Endpoints marked "new" must be implemented before the plugin that uses them.

@@ -39,6 +39,21 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   posts `POST /api/v1/projects/{id}/goal-set/revisions` against the revision the edit began from. A revision
   written first by someone else (409 `STALE_GOAL_SET_REVISION`) is said plainly and the edit kept, never retried
   over. The panel's reads and write are `goals.js`, tested under node (`npm test` in the plugin's `ui/`, run in CI).
+- **The console's Campaigns plugin, read-only** (#2834, the 2.6 plan's Track G and D13): a new plugin,
+  `squadops.campaigns`, in its own Campaigns view. The list has every Project's Campaigns with state, outcome, start
+  and current increment (`#3 · repair`, read from each control log six at a time; a closed Campaign's is read once
+  per page). A Campaign's view shows its objective, what it works from, accepted increments against the target, the
+  current increment and cycle; its open escalations and the proposals waiting for a ruling; the ledger (ruling,
+  verdict, deciding row and each carrying cycle, as `squadops campaigns ledger`); the digest (`campaigns digest`);
+  and the control log's latest rows (`campaigns log`). An unknown Campaign (`CAMPAIGN_NOT_FOUND`), and one with no
+  ledger, escalations or package yet (`PACKAGE_NOT_FOUND`), read as such rather than as failures, and one unreadable
+  part never blanks the rest. It polls every 30 s while open and visible. A Campaign that names a goal set links to
+  the goals panel with that Campaign chosen: `squadops:select-campaign` is kept until the panel mounts, and the
+  Projects view is opened through the shell's own nav entry (`shared/selection.js`), since the pinned shell gives a
+  plugin no way to open another view. The crew's assessment of each expected result is a named placeholder until
+  SIP-0115 slice 5 (#2888) has a route. The plugin registers no command and writes nothing: launch, rule, pause,
+  resume and abort stay with the crew's broker and the CLI. SIP-0069 §14 records this and names what stays off the
+  console. The reads are `campaigns.js`, tested under node in CI.
 - **A regression at a source-backed run's end of plan gets one repair round** (#2613, SIP-0112 H.20). When the
   product's own checks read `regressed`, the run no longer fails there: the regression enters the plan's correction
   chain (analyze, decide, repair) through the same budget check and run counter as an in-plan failure, about the

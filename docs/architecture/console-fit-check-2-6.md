@@ -59,6 +59,16 @@ no router (§1 row 3). A plugin can keep its selection in `location.hash` itself
 `location`, `squadops.system/ui/src/SystemHost.svelte:74`) with no shell change; a real route per perspective is a
 Continuum release.
 
+**Found while building view 2 (2026-11-04, #2834): an event can't reach a panel in another perspective.** This read
+missed it. The shell mounts only the open perspective's panels (§1 row 2), so a `squadops:select-campaign` dispatched
+from the Campaigns view reaches no listener: the goals panel lives in `discovery` and isn't mounted. A plugin also has
+no call that opens a perspective. The fix is plugin-side, with no shell change.
+`console/continuum-plugins/shared/selection.js` records the selection before dispatching it. The goals panel takes it
+when it mounts. The Projects perspective is opened by clicking the shell's own `.nav-item` entry labelled
+`Projects`. That last step reads the shell's rendered markup, which is stable at the pin, and answers false when the
+entry isn't found, so the view can say so. A Continuum call to open a perspective would remove the markup read, and
+would be a Continuum release.
+
 ## 4. Not verified in this read
 
 - Live behaviour of the deployed console: this is a source read, with the shell taken from the tag's tarball.

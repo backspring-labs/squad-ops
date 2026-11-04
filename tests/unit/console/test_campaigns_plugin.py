@@ -54,7 +54,9 @@ def test_it_is_read_only_no_command_and_no_write():
 
     assert sorted(c["type"] for c in contributions) == ["nav", "panel"]
     assert "command" not in toml
-    sources = [p.read_text(encoding="utf-8") for p in _SRC.glob("*") if p.suffix in (".js", ".svelte")]
+    sources = [
+        p.read_text(encoding="utf-8") for p in _SRC.glob("*") if p.suffix in (".js", ".svelte")
+    ]
     writes = [s for s in sources if re.search(r"method:\s*['\"](POST|PUT|PATCH|DELETE)", s)]
     assert writes == []
     assert all("executeCommand" not in s for s in sources)
