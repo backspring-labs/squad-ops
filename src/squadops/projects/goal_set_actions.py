@@ -224,6 +224,7 @@ async def _base(
     """The revision the action is against: ``expected_revision`` itself, not the latest, so a
     retry recomputes the same result and the store replays it; a later writer is refused at the
     write (``StaleGoalSetRevisionError``)."""
+    # deferred (pair): squadops.cycles imports this package at load
     from squadops.cycles.models import GoalSetNotFoundError
 
     await projects.get_project(project_id)

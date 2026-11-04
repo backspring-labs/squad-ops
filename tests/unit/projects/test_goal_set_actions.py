@@ -127,7 +127,12 @@ class TestAddAndDrop:
         )
         kept = add_candidate(
             _goal_set(),
-            {"id": "C-2", "title": "t", "found_by": "crew", "found_at": "2026-11-01T00:00:00+00:00"},
+            {
+                "id": "C-2",
+                "title": "t",
+                "found_by": "crew",
+                "found_at": "2026-11-01T00:00:00+00:00",
+            },
             found_at=NOW,
         )
 
@@ -183,13 +188,33 @@ class TestSplit:
     @pytest.mark.parametrize(
         ("item", "into", "error", "field"),
         [
-            ("B-9", [{"id": "a", "title": "t"}, {"id": "b", "title": "t"}], BacklogItemNotFound, None),
+            (
+                "B-9",
+                [{"id": "a", "title": "t"}, {"id": "b", "title": "t"}],
+                BacklogItemNotFound,
+                None,
+            ),
             ("B-1", [{"id": "a", "title": "t"}], GoalSetInvalid, "into"),
             ("B-1", {"id": "a", "title": "t"}, GoalSetInvalid, "into"),
             ("B-1", [{"id": "a", "title": "t"}, {"id": "a", "title": "u"}], GoalSetInvalid, "into"),
-            ("B-1", [{"id": "a", "title": "t"}, {"id": "B-2", "title": "u"}], GoalSetInvalid, "into"),
-            ("B-1", [{"id": "a", "title": "t"}, {"id": "B-1", "title": "u"}], GoalSetInvalid, "into"),
-            ("B-1", [{"id": "a", "title": "t"}, {"id": "C-1", "title": "u"}], GoalSetInvalid, "into"),
+            (
+                "B-1",
+                [{"id": "a", "title": "t"}, {"id": "B-2", "title": "u"}],
+                GoalSetInvalid,
+                "into",
+            ),
+            (
+                "B-1",
+                [{"id": "a", "title": "t"}, {"id": "B-1", "title": "u"}],
+                GoalSetInvalid,
+                "into",
+            ),
+            (
+                "B-1",
+                [{"id": "a", "title": "t"}, {"id": "C-1", "title": "u"}],
+                GoalSetInvalid,
+                "into",
+            ),
             (
                 "B-1",
                 [{"id": "a", "title": "t"}, {"id": "b", "title": "u", "serves": ["ER-gone"]}],
@@ -460,16 +485,17 @@ class TestRecordSplit:
         new items); a returned proposal, or a completed Campaign's, still holding the split."""
         if history != "never proposed":
             await started(
-                campaigns, "cmp_1", created_by="owner", goals=history != "in a requirements campaign"
+                campaigns,
+                "cmp_1",
+                created_by="owner",
+                goals=history != "in a requirements campaign",
             )
         if history in ("proposed", "proposed in a completed campaign"):
             await proposed(campaigns, "cmp_1", "B-1")
         if history == "in_increment":
             await proposed(campaigns, "cmp_1", "B-1", ruled=GateDecisionValue.APPROVED)
         if history == "proposed then returned":
-            await proposed(
-                campaigns, "cmp_1", "B-1", ruled=GateDecisionValue.RETURNED_FOR_REVISION
-            )
+            await proposed(campaigns, "cmp_1", "B-1", ruled=GateDecisionValue.RETURNED_FOR_REVISION)
         if history == "proposed in a completed campaign":
             await campaigns.transition(
                 "cmp_1",

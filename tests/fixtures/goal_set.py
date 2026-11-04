@@ -120,7 +120,9 @@ class GoalSetStore:
         return list(reversed(self.revisions.get(project_id) or []))
 
 
-def campaign_on(project_id: str, campaign_id: str, *, created_by: str = "owner", goals: bool = True):
+def campaign_on(
+    project_id: str, campaign_id: str, *, created_by: str = "owner", goals: bool = True
+):
     """A draft Campaign on ``project_id`` reading its goal set at ``current`` (or, ``goals``
     false, a requirements Campaign), as ``create_campaign`` takes it. ``created_by`` is who
     started it: the owner, or a crew principal (SIP-0115 Q41)."""
@@ -156,10 +158,15 @@ async def started(registry, campaign_id: str, *, created_by: str = "owner", **ca
     project_id = campaign_fields.pop("project_id", "prj-lantern")
     held = campaign_on(project_id, campaign_id, created_by=created_by, **campaign_fields)
     await registry.create_campaign(
-        held, actor=created_by, actor_role="r", reason="a campaign", idempotency_key=f"c:{campaign_id}"
+        held,
+        actor=created_by,
+        actor_role="r",
+        reason="a campaign",
+        idempotency_key=f"c:{campaign_id}",
     )
     await registry.transition(
-        campaign_id, move(CampaignState.CALIBRATING, f"s:{campaign_id}", operation=ControlOperation.START)
+        campaign_id,
+        move(CampaignState.CALIBRATING, f"s:{campaign_id}", operation=ControlOperation.START),
     )
     await registry.transition(
         campaign_id,

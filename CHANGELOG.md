@@ -124,6 +124,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   once a sync records it (#2862 isn't built), so until then it stands `contribution_pending`. A request closed
   unmerged keeps blocking: the owner reopens it on the forge, merges it with a merge commit and re-validates, and
   `campaigns contribute` can't do that for them. `squadops projects unintegrated <project>`.
+- **Candidates promoted or dropped, and a backlog item split, each a goal-set revision naming its action**
+  (SIP-0115 slice 3, #2886; SIP-0115 §10c). `POST /api/v1/projects/{id}/goal-set/candidates` adds a candidate;
+  `…/candidates/{id}/promote` moves it into the backlog keeping its id, at a position or the end, serving the results
+  named; `…/candidates/{id}/drop` drops it with the reason; `…/backlog/{id}/split` puts two or more new items in its
+  place, inheriting what it served unless they say otherwise. Each is written against an expected revision, answers
+  201, and the revision carries `change` (`candidate_added | candidate_promoted | candidate_dropped | item_split`,
+  with the subject, the position taken, the parts a split produced and the Campaign the crew acted within; migration
+  `2101_goal_set_revision_change.sql`). The owner (`admin:write`) may do each; the crew's supervisor seat
+  (`campaigns:supervise`) adds freely and promotes, drops or splits only within a Campaign the owner started (named in
+  the request; created by someone other than the acting principal; `403 NOT_DELEGATED` otherwise), appending a
+  promoted candidate and never reordering (Q41). A split waits (`409 BACKLOG_ITEM_IN_PROGRESS`) while a live Campaign
+  reads the item `proposed` or `in_increment`; the derived backlog reads a split parent as `removed` with
+  `split_into`. `squadops goals candidates|promote|drop|split`.
 
 ### Fixed
 - **A suite that fails on the product's runner is read there, not in the qa image** (#2913, SIP-0112 H.24). When the

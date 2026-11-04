@@ -308,7 +308,9 @@ class TestActions:
         """P2's lesson for the actions: a retry resends the printed key and revision, so the
         server replays rather than reads a moved revision and refuses a key conflict."""
         client = MagicMock()
-        client.post.side_effect = CLIError("Error: forbidden — NOT_DELEGATED", exit_codes.AUTH_ERROR)
+        client.post.side_effect = CLIError(
+            "Error: forbidden — NOT_DELEGATED", exit_codes.AUTH_ERROR
+        )
 
         with patch(CLIENT, return_value=client):
             result = runner.invoke(

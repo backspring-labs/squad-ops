@@ -543,7 +543,9 @@ class TestPromotionAndSplit:
             (f"{PATH}/backlog/B-9/split", "BACKLOG_ITEM_NOT_FOUND"),
         ],
     )
-    def test_an_unknown_candidate_or_item_is_not_found(self, path, code, projects, store, campaigns):
+    def test_an_unknown_candidate_or_item_is_not_found(
+        self, path, code, projects, store, campaigns
+    ):
         action = "split" if path.endswith("split") else "promote" if "promote" in path else "drop"
         _, body = _action(action)
 

@@ -89,7 +89,9 @@ async def test_a_split_parent_reaches_the_body_removed_with_its_parts(world):
     into the response, so the console and the crew read a split as a plain removal."""
     _campaign(world)
     registry = world.campaigns
-    await registry.transition(CID, move(CampaignState.CALIBRATING, "s", operation=ControlOperation.START))
+    await registry.transition(
+        CID, move(CampaignState.CALIBRATING, "s", operation=ControlOperation.START)
+    )
     await registry.transition(
         CID,
         move(CampaignState.CALIBRATING, "p", operation=ControlOperation.PROMOTE,
