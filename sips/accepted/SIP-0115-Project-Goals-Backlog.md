@@ -64,7 +64,8 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | part | status | where |
 |---|---|---|
 | slice 1: the goal-set record, its revisions, the API and the CLI (as built: §10a) | **shipped** | 2.6.0, PR #2899, closes #2884 |
-| slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2885 |
+| slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment, §24cy; as built: §10b) | **shipped** | 2.6.0, PR #TBD, closes #2885 |
+| `accepted (carried)`: an item accepted in another Campaign, read as accepted here only when its frozen criteria pass on this Campaign's calibration tree (§4) | **unplaced**, deliberately: not built in slice 2 (§10b) | — |
 | slice 3: candidates, their promotion and drop | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2886 |
 | slice 4: the console's goals panel | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2887 |
 | slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2888 |
@@ -393,3 +394,58 @@ the slice's PR.
 (the write entered at the route, behind the runtime's auth, and each role's scope),
 `tests/integration/cycles/test_postgres_goal_set_registry_integration.py` (revisions, staleness, replay and racing
 writers against Postgres).
+
+### 10b. Slice 2 as built (2026-11-03)
+
+**What changed.** §4, §5.1–§5.6 and §8.1 describe a Campaign on a goal set. Slice 2 builds it. Its SIP-0109 side,
+the definition, the rail, `goals_revised` and `backlog_done`, is SIP-0109 §24cy. What it settles of this SIP's own
+text, and where it narrows it, is recorded here. Decided by the implementer under the supervisor's brief for #2885;
+the owner reviews it in the slice's PR.
+- **`goal_set` is the Project's id, required and checked** (§5.1, Q44). A Project has one goal set, so the field
+  names nothing the Project doesn't. It is kept so that a definition copied to another Project is refused at
+  creation, rather than read against that Project's goals.
+- **The derived view is the Campaign's, at `GET /api/v1/campaigns/{id}/backlog`** (§8.1 lists it under the goal set's
+  routes). Status is per Campaign (§4), so the view belongs to the Campaign. It is read like the ledger it is derived
+  beside, with `campaigns:read`, which every role holding `cycles:read` holds too. `squadops campaigns backlog <id>`
+  prints it. The view the goal set's console panel shows, one column per Campaign (§4), is slice 4's.
+- **Where a status comes from**, in the Campaign's control log and launch outbox:
+  - the item a proposal serves and the revision it was created under come from its submission row, written from the
+    change request (`backlog_item`, and the derived `goals_revision`);
+  - a version not yet ruled reads `proposed`, and an approved one `in_increment`;
+  - a promotion of any cycle that carried the version (its repair or retry included) reads `accepted`;
+  - a decision or an owner's word that abandoned its increment reads `abandoned`, with the row and reason. So does a
+    terminal decision or an abort that left it unaccepted;
+  - a rejection or a return leaves the item `pending`: no live proposal names it. So does a rebase that superseded its
+    repair or retry (SIP-0109 §24cd point 2's `upstream_moved`), since the squad's work didn't fail, and an owner's
+    word that answered an escalation with a fresh proposal rather than an abandonment.
+- **The re-queue (§5.3), settled.** An abandoned item is eligible again when a later revision edits the item itself:
+  its title, description, `serves` or size. A reorder alone doesn't re-queue it. Without this, "re-queues it by a
+  revision" left open which revisions do. An unrelated edit must not re-queue every abandoned item.
+- **An item a revision removed** reads `removed` when it was abandoned or never built, with its last abandonment kept.
+  It keeps `proposed` or `in_increment` while a proposal or increment for it is live (§5.5), and reads
+  `accepted (removed in rN)` once accepted. An item that was never proposed in this Campaign and is gone from the
+  revision read isn't listed.
+- **`current` is read at each use** and recorded there:
+  - each proposal run, a revision run after a return included: the change request's `goals_revision`;
+  - each ruling, for `goals_revised`: the `rule` row's reason;
+  - each `backlog_done` decision: the decision row's `goals_revision`;
+  - each read of the view.
+- **`goals_revised` applies to an approval or a rejection, not to the supervisor's own return,** and never to a
+  pinned Campaign. Its return spends neither a rejection nor one of the proposal's revisions (SIP-0109 §24cy item 5).
+- **Narrowed: `backlog_done` is read just before the decision's row, not in its transaction.** The goal set has its
+  own store (§10a), and the row records the revision it read (SIP-0109 §24cy item 6).
+- **Narrowed: `backlog_done` stops at row 3, which needs an accepted increment** (SIP-0109 §10). A backlog emptied
+  only by removals is not stopped there. A goal-set Campaign with nothing pending escalates instead of proposing,
+  stop rule or not (SIP-0109 §24cy item 7).
+- **No requirements document.** A goal-set Campaign's proposal is told to leave `prd_delta` out: the backlog item is
+  what its request delivers. A `prd_delta` it writes anyway is not refused.
+- **Not built: `accepted (carried)`** (§4: an item accepted in another Campaign, read as accepted here only when the
+  criterion bundle frozen at its acceptance passes on this Campaign's calibration tree). It needs that calibration
+  run and a cross-Campaign read. Neither exists, and slice 2's brief left it out. The ledger lists it as unplaced. Until
+  it is built, such an item reads `pending` here, as §4 says it does when unverified, and `backlog_done` reads only
+  this Campaign's acceptances.
+
+**Evidence.** `tests/unit/campaigns/test_backlog.py` (each status from the rows that make it, a later revision read
+against what the Campaign did, `backlog_done`, `goals_revised`), `tests/unit/api/test_campaign_backlog_route.py` (the
+route, pinned and current), `tests/unit/cli/test_commands_campaigns.py` (`campaigns backlog`), and SIP-0109 §24cy's
+evidence for the wiring.

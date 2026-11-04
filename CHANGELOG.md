@@ -13,6 +13,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   another was written first). Read with `cycles:read`, written with `admin:write` only. `squadops goals
   show|edit|history`; `show` prints YAML that `edit -f` takes back. Migration `2100_project_goal_sets.sql`, the first
   of SIP-0115's range `2100–2199`.
+- **A Campaign works through its Project's goal set, one backlog item per increment** (SIP-0115 slice 2, #2885;
+  SIP-0109 §24cy, SIP-0115 §10b). A repository-backed Campaign names `objective.goals: {goal_set: <its project>,
+  revision: <n> | current}` or `objective.requirements`, never both and never neither; a pinned revision the goal
+  set doesn't hold, a Project with no goal set, another Project's goal set, or `stop_when` without goals is refused at
+  creation. The proposer is shown the goal, expected results, constraints, out of scope and the backlog with each
+  item's status in this Campaign and the next item; its change request names it (`backlog_item`), and the rails
+  return one naming none or any other (`not_the_next_backlog_item`) before a cycle is spent. Each item's status
+  (`pending`, `proposed`, `in_increment`, `accepted`, `abandoned`, `removed`, and `accepted (removed in rN)` /
+  `accepted (results changed in rN)`) is derived from the control log, never stored, and read at
+  `GET /api/v1/campaigns/{id}/backlog` and `squadops campaigns backlog <id>`. A proposal is bound to the revision it
+  was created under; at its ruling a later revision that moved its item or changed what it serves returns it as
+  `goals_revised`, which spends neither a rejection nor a revision. `stop_when: backlog_done` stops a Campaign at
+  §10 row 3 when every item of the revision read at the decision is accepted, and the decision's row records which.
 
 ### Fixed
 - **A private Node package that declares a module interface is a package surface,** so a criterion on a product
