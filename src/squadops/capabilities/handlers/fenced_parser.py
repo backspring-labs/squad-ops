@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from squadops.capabilities.handlers.impl._json_extraction import _strip_think_blocks
@@ -437,23 +438,26 @@ class FencedDeletions:
         return bool(self.paths or self.malformed)
 
 
-def _fenced_blocks(response: str):
-    """Each closed (or #431 implicitly closed) block: ``(open_match, body, next_pos)``. An opener
-    whose close can't be found, or inferred, is skipped."""
+def _fenced_blocks(response: str) -> Iterator[tuple[re.Match[str], str]]:
+    """Each block of ``response`` as ``(open_match, body)``, closed or #431's implicit close at
+    EOF. An opener with no close, and none safe to infer, is abandoned."""
     pos = 0
     while pos < len(response):
         open_match = _OPEN_FENCE_RE.search(response, pos)
         if not open_match:
             return
-        body_start = open_match.end() + 1
+        body_start = open_match.end() + 1  # skip newline after header
         close_match = _find_block_close(response, body_start)
         if close_match:
-            yield open_match, response[body_start : close_match.start()], close_match.end()
+            yield open_match, response[body_start : close_match.start()]
             pos = close_match.end()
         elif _is_implicit_eof_close(response, body_start):
-            yield open_match, response[body_start:], len(response)
+            # #431: a single unterminated fence whose body runs cleanly to EOF: infer the dropped
+            # close rather than losing the whole file.
+            yield open_match, response[body_start:]
             pos = len(response)
         else:
+            # No closing fence and inferring one is unsafe: abandon this opener.
             pos = body_start
 
 
@@ -467,7 +471,7 @@ def extract_fenced_deletions(response: str) -> FencedDeletions:
         return FencedDeletions()
     paths: list[str] = []
     malformed: list[tuple[str, str, str]] = []
-    for open_match, body, _next in _fenced_blocks(_strip_think_blocks(response)):
+    for open_match, body in _fenced_blocks(_strip_think_blocks(response)):
         token = open_match.group(1)
         if not _is_deletion_token(token):
             continue
@@ -536,29 +540,9 @@ def extract_fenced_files(
     results: list[dict] = []
     unlabeled: list[dict] = []  # #566 fallback candidates: no strategy resolved a name
     saw_labeled = False  # any fence that DID resolve a name (safe or not)
-    pos = 0
     last_used_heading_pos = -1
 
-    while pos < len(response):
-        open_match = _OPEN_FENCE_RE.search(response, pos)
-        if not open_match:
-            break
-
-        body_start = open_match.end() + 1  # skip newline after header
-        close_match = _find_block_close(response, body_start)
-        if close_match:
-            body = response[body_start : close_match.start()]
-            next_pos = close_match.end()
-        elif _is_implicit_eof_close(response, body_start):
-            # #431: a single unterminated fence whose body runs cleanly to EOF —
-            # infer the dropped close rather than losing the whole file.
-            body = response[body_start:]
-            next_pos = len(response)
-        else:
-            # No closing fence and inferring one is unsafe — abandon this opener.
-            pos = body_start
-            continue
-
+    for open_match, body in _fenced_blocks(response):
         if _is_deletion_token(open_match.group(1)):
             # #2612: a removal, never a file. Read as one it was an empty file at the path.
             saw_labeled = True
@@ -568,7 +552,6 @@ def extract_fenced_files(
                     "file is neither removed nor emptied (#2612)",
                     open_match.group(1),
                 )
-            pos = next_pos
             continue
 
         filename, language, body, last_used_heading_pos = _resolve_block(
@@ -580,7 +563,6 @@ def extract_fenced_files(
                 unlabeled.append({"content": body, "language": language or "text"})
             else:
                 saw_labeled = True
-            pos = next_pos
             continue
 
         saw_labeled = True
@@ -591,7 +573,6 @@ def extract_fenced_files(
                 "language": language or "text",
             }
         )
-        pos = next_pos
 
     if not results:
         fallback = _single_expected_artifact_fallback(unlabeled, expected_artifacts, saw_labeled)

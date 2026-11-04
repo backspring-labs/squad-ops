@@ -20,13 +20,15 @@ from collections.abc import Iterable
 from typing import Any
 
 from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.models import ArtifactType
 
 #: The task outputs key that carries a step's accepted removals, as repository paths.
 DELETIONS_KEY = "deletions"
 #: The outputs key that names the removals a step's handler refused, each with why.
 DELETIONS_REFUSED_KEY = "deletions_refused"
-#: The stored record of one removal: no context filter selects it, so no prompt shows it as a file.
-DELETION_ARTIFACT_TYPE = "deletion"
+#: The stored record of one removal. A reader that selects by type never takes it, and one that
+#: selects by producer has it removed with the path (``deleted_paths``).
+DELETION_ARTIFACT_TYPE = ArtifactType.DELETION
 
 
 def deletion_record(path: str) -> dict[str, Any]:

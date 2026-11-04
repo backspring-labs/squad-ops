@@ -102,8 +102,9 @@ def read_deletions(
             refused=(*refused, *(DeletionRefusal(p, *why) for p in fenced.paths))
         )
     view = inputs["source_repository"]
+    emitted = frozenset(written)
     for path in fenced.paths:
-        refusal = _refusal(path, view, grant, frozenset(written))
+        refusal = _refusal(path, view, grant, emitted)
         if refusal is not None:
             refused.append(refusal)
     if refused:

@@ -246,6 +246,22 @@ def test_one_refused_removal_refuses_them_all():
     assert [r.path for r in reading.refused] == ["tally/ghost.py"]
 
 
+def test_each_removal_is_judged_against_everything_the_emission_writes():
+    """``written`` arrives as a generator from the handlers. Bug caught: the first path's check
+    consuming it, so the second is taken though the same emission writes it."""
+    reading = read_deletions(
+        _REMOVE + "```delete:tally/report.py\n```\n",
+        _inputs(),
+        "development.develop",
+        (name for name in ["tally/report.py"]),
+    )
+
+    assert reading.accepted == ()
+    assert [(r.path, r.reason) for r in reading.refused] == [
+        ("tally/report.py", REFUSED_WRITTEN_TOO)
+    ]
+
+
 def test_the_expected_list_gives_up_what_the_emission_removes():
     inputs = _inputs(expected_artifacts=["tally/old_report.py", "tally/report.py"])
     assert without_removed(inputs, ("tally/old_report.py",))["expected_artifacts"] == [
