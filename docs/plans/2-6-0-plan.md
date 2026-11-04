@@ -1,8 +1,28 @@
 # 2.6.0 plan — a multi-hour Campaign on the owner's own product
 
-**Status: §0 ADOPTED for the weekend spike (2026-10-30); everything else a DRAFT.** The owner: "merge both once
-appropriate", after two outside review passes, each applied in full. D1–D15 stay open, and §0's readings revise the
-plan after the spike. §8 lists what the outside reviewer was asked to challenge.
+**Status: ADOPTED 2026-11-03.** §0 was adopted for the weekend spike on 2026-10-30. The rest is adopted on the
+owner's rulings of 2026-11-03.
+- **The proving Project:** "Let's go with battle-trainer". That replaces the financial application in D2.
+- **Everything else:** "and then your recommendations on the other decisions", which are §7's recommendations as
+  written. D4 and D11 shipped in 2.5.1 (§7).
+
+The spikes (§0, §0a) and 2.5.1's validation Campaign revised this plan before adoption. §8 lists what the outside
+reviewer was asked to challenge.
+
+**Revised 2026-11-03 at adoption: battle-trainer is the proving Project** (D2, §2.6). It is
+`backspring-labs/battle-trainer`, a private Node library, tested with vitest: a tank controller for
+battle.training, whose campaigns the Nostromo crew steers. Its design is the owner's draft SIP *Battle Training Squad
+Harness* (PR #2872, under design review).
+- **Why it fits.** Whether it plays better is a fact outside the squad's own tests, which is what D8's held-out
+  threshold asks for. It needs no provisioning and holds no data (D10 is moot). It gives the game direction a product
+  that runs headless on Linux today.
+- **What it costs.** It is the first product off the framework's two sample stacks, and its first Campaigns on the
+  MacBook found the gaps Track A now carries: #2875, #2876, #2877 and #2881.
+- **Where it runs.** The counted Campaign runs on the Spark. The MacBook stays the crew's small-model trial box.
+- **The held-out suite in 2.6** is sealed fixture cases run by the product's own runner. Simulator-scored play waits
+  for #2872's acceptance (its Q49 and Q50).
+- **What moves off 2.6's critical path:** the financial application (Nebulus, PR #2848) and the game SIPs (#2405,
+  #2841).
 
 **Revised 2026-10-30, the same day:** the owner asked to incorporate the 2.5.1 fix line's assumptions. §1a names the
 ten defects 2.6 assumes 2.5.1 fixes, with a fallback rule if one slips; they leave §2's tracks, and D11 rules the split.
@@ -305,11 +325,17 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 
 ### 2.1 Track A: an increment accepted on a real product (the floor)
 
-2.5's unfinished half (#2827). Nothing else in 2.6 is measurable until this holds.
+2.5's unfinished half (#2827). Nothing else in 2.6 is measurable until this holds. battle-trainer, a Node product
+tested with vitest, is the first product off the sample stacks. Its first Campaigns on the MacBook (2026-11-03) found
+the rows marked **battle-trainer** below.
 
 | item | what | size |
 |---|---|---|
-| **#2818** | a product's in-cycle suite run and its retest run **on the product's own runner in the sandbox**, with its configured setup, as acceptance and the baseline already do (shape 1 in the issue; D4). This is also what makes a non-Python product possible without stack code in shared code: the product declares its commands, the sandbox runs them | M–L |
+| ~~**#2818**~~ | **shipped in 2.5.1** (#2835, #2840, #2846): a product's failed in-cycle suite is judged on its own runner in the sandbox (D4) | — |
+| **#2875** (battle-trainer) | a `"private": true` Node package that declares an entry point gets a package surface, so a criterion can name its interface. The MacBook lane's PR #2879 (SIP-0112 H.17) | S |
+| **#2876** (battle-trainer) | the qa plan prompt's worked example follows the product's runner (pytest, or vitest/jest). PR #2880 | S |
+| **#2877** (battle-trainer) | when the qa image could not run the product's suite, the result is re-read on the product's own runner, even beside other failures. PR #2878 (SIP-0112 H.18), merging after its MacBook proof | S–M |
+| **#2881** | a dev repair's retest is judged on the product's runner. Today its patched source is read as the suite, so `runs=no runner holds a test` (2.5.1's validation Campaign). The suite is the failed task's own tests, with the patched source overlaid on the tree. The Spark lane's | S–M |
 | **#2799** | a vitest page criterion for a page the change adds can fail as an assertion on a tree without it (a loader the bundle carries, as #2749 did for the Next.js sample stack) | M |
 | **#2827 item 2** | H.13's two unbuilt items: a product's repaired suite read by the product's runners, not the scaffold's `__tests__/` rule; a plan-less product cycle's test author shown the product | M |
 | **a size preflight** (new) | before a Campaign starts on a product, every task type the profile dispatches is rendered against the product's real tree at the pinned commit, and a binding that can't fit is a blocking gap, named before the first cycle. #2805 and #2810 were found one at a time, live, an hour in. The proving product will be larger than `z_continuum` | S–M |
@@ -390,8 +416,8 @@ this repository. Until slice 1 lands, phase 1 drafts them as text to load.
 
 | item | what | size |
 |---|---|---|
-| **the financial application** (D2) | the counted proving Project. If it doesn't exist yet, it is created greenfield from the `fullstack_fastapi_react` blueprint (SIP-0105), the stack the framework knows best and the path `z_shelfnote` proved (IR-7). Its requirements file carries the backlog (§2.4) and is the owner's. **Synthetic data only** (D10): no real accounts, statements or credentials in the repository, a prompt, the suite or a record | S to set up |
-| **its held-out suite** | drafted, reviewed and approved as 2.5's demonstration suites were (2.5 plan D11), so the yardstick reads whether the product improved, not only whether the squad's tests passed | M |
+| **battle-trainer** (D2, the owner, 2026-11-03) | the counted proving Project: `backspring-labs/battle-trainer`, a Node library tested with vitest (`src/controller.js` answers `hello`, `draft` and `tick`). The MacBook lane registers its charter, Development Configuration and Campaign definition. It is registered on the Spark as a repository-backed Project, and its first goal set is the charter, loaded as a goal set once slice 1 lands (§2.4). The provider's SDK is fetched by pinned digest, never committed. No credentials until publication, which the owner authorizes separately. **Registered on the Spark after #2879 is deployed there,** or at `1f9e195`, where the package isn't private. At the MacBook's baseline `4d1d0b0`, the Spark's derivation would find no surface, and every proposal would be refused `unknown_surface` (as `cmp_c20d825c8131` was) | S to set up |
+| **its held-out suite** | **sealed fixture cases:** an observation and the properties the controller's orders must have (one order per living unit, a throttle and steer in range, holding still when every objective is owned). They are run by the product's own vitest, outside the squad, in SquadOps' custody, never in the repository. Drafted, reviewed and approved as 2.5's demonstration suites were (2.5 plan D11). **Built from real observations:** the repository's `test/fixtures/` were written by hand from a summary of the provider's contract, with no raw bytes and no hashes. A suite built on guesses can pass while the controller does nothing, so each case starts from a captured observation, recorded with its digest. **Blocked until the owner acts:** on 2026-11-03, `api.battle.training` and `battle.training` resolved but refused TLS from both the Spark and the MacBook (curl exit 35). The home gateway's security filter blocks the domain, which was registered on 2026-10-26, and the owner allows it in the gateway's app. **Not in 2.6:** a simulator-scored cohort (#2872's A01.2). Its Q49 (Eve running the sealed cohort, against SIP-0113 §4.1) and Q50 (SIP-0113 has no simulation step) are ruled with that SIP | M |
 | **a Roblox spike** (D3, no box time) | can a Rojo project's Luau tests run headless on Linux inside the sandbox from declared commands? **Unverified:** which runner (a standalone Luau runtime, or a test framework that needs Roblox's own APIs) and what it can't exercise. If yes, a Roblox game is an ordinary repository-backed Project once Track A lands, and its game-specific skills come from PR #2405. If it needs Roblox Studio, it is #2405's remote worker, not 2.6 | S |
 
 ### 2.7 Track G: the console, so the owner drives a Campaign off the terminal (#2834)
@@ -431,6 +457,9 @@ proving run reads, or lands before phase 3. (#2830, #2765 and #2402 are 2.5.1's,
   Campaign meets (an outside push mid-run) is already IR-3's and shipped.
 - **Held-out suite revision 7** (#2723) and any other re-cut of the sample applications' yardstick.
 - **#2421's secrets half:** a live financial data source waits until a synthetic-data Campaign has held (D10).
+- **The financial application** (Nebulus, PR #2848, N1–N4): replaced as the proving Project by battle-trainer
+  (D2, 2026-11-03). Its provisioning (#2847) waits for its own placement.
+- **Simulator-scored play** for battle-trainer: #2872's sealed simulation cohort, after that SIP's acceptance.
 - **Game-specific capability** (#2405): its placement is its own decision, after the spike.
 - **#1965, #1039:** unplaced, as before.
 
@@ -445,8 +474,8 @@ what it finds may reorder everything after it.
 
 The Spark is one GPU and one deploy.
 
-0. **2.5.1** (§0, step 1): its seven fixes, each replayed against the envelope or record that found it, the regression suite,
-   and the patch cut. About 1 box-hour for the replays and the deploy, as a guide. 2.6's builds start beside it.
+0. **2.5.1: shipped 2026-11-03** (`v2.5.1` at `60a4498e`). Before the tag it was validated on its final deploy
+   (`var/verification_sets/2-5-1-validation/`).
 1. **No box time.** The owner rules §7. The proving Project's requirements and backlog are written, its Development
    Configuration recorded, its suite drafted. The Roblox spike runs on the CPU, and Track G's Continuum fit check runs
    beside it.
@@ -460,7 +489,8 @@ The Spark is one GPU and one deploy.
    reading) before the proving product's time is spent. It is also **the live reading of 2.5.1's product-path fixes**
    (#2824, #2817, #2814), which the patch read only by replay. Its exit rule: one Campaign with an accepted increment and no
    new seam finding.
-5. **The proving Campaign** on the owner's product, first attended, then unattended overnight under D6's policy.
+5. **The proving Campaign** on battle-trainer, on the Spark, first attended, then unattended overnight under D6's
+   policy.
 6. **The cut.**
 
 **What invalidates earlier evidence:** 2.5's rule carries. A merge that changes a path an earlier run executed voids
@@ -494,7 +524,9 @@ The predictions are mechanisms, not rates: at this N a rate reads nothing.
 
 ## 5. Lanes and roles
 
-**One lane, the Spark's,** as from 2026-10-28. The owner's second review on a shared contract goes through the owner's
+**The Spark's lane builds the line,** as from 2026-10-28. **The MacBook's battle-trainer session** fixes what the
+product's own Campaigns find there (#2875–#2877), on the same terms, and runs the crew's small-model trials. The
+counted runs are the Spark's. The owner's second review on a shared contract goes through the owner's
 outside reviewer (a self-contained packet on the PR). **2.5's terms carry** (D12): the supervisor builds, merges on
 green with main's run read, and runs the deploys and uncounted runs. The owner keeps compose, security (D7 among it),
 lesson approvals, the Release and the tag.
@@ -512,10 +544,17 @@ the first attended proving run. Track D is build time, not box time: the proving
 
 ## 7. Decisions for the owner
 
+**Ruled 2026-11-03.** The owner: "Let's go with battle-trainer and then your recommendations on the other decisions".
+- **D2 is battle-trainer,** not the financial application this table recommended.
+- **Every other row is ruled as recommended,** Q42–Q44 among them (D15 rules Q41).
+- **D10 is moot:** battle-trainer holds no data.
+- **Shipped in 2.5.1:** D4 (#2835, #2840, #2846) and D11.
+- **D12 renews 2.5's terms** for this line.
+
 | # | decision | recommendation |
 |---|---|---|
 | D1 | **the headline and its SIP** | **Project Goals and Backlog (PR #2833), accepted and its slices 1–5 built.** Slice 5, the crew's minimum surface (reads, the backlog item in gate evidence, assessments), is **required**: the console's assessments, rung 3 and the SIP's close depend on it. Only slice 6, the repository export, is not in 2.6. Tracks A to C are its floor, built as the completion of SIP-0109 and SIP-0112 with numbered amendments for the escalation policy (§2.3) and the criterion check (§2.2). Its design review is in its own PR, and its Q41–Q44 are yours. **The alternative:** no new SIP, the backlog as a SIP-0109 amendment over a requirements file, which keeps the goals in a file edited from a terminal, which your direction rules out |
-| D2 | **the proving Project** | **the financial application,** greenfield from the `fullstack_fastapi_react` blueprint if it doesn't exist. It sits on the stacks the framework reads best, so a stop there is the Campaign's, not the stack's. **The alternatives:** a Roblox game first (blocked on D3), or another existing repository of yours |
+| D2 | **the proving Project** | **ruled 2026-11-03: battle-trainer** (§2.6). The recommendation was **the financial application,** greenfield from the `fullstack_fastapi_react` blueprint if it doesn't exist. It sits on the stacks the framework reads best, so a stop there is the Campaign's, not the stack's. **The alternatives:** a Roblox game first (blocked on D3), or another existing repository of yours |
 | D3 | **Roblox in 2.6** | **the spike only,** in phase 1. If its tests run headless on Linux, a Roblox Project is a second, uncounted Campaign late in the line. #2405's placement is decided after the spike |
 | D4 | **#2818's shape** | **shape 1, the sandbox's product runner,** as §24bv point 3 judges a product: on its own runner. It costs a sandbox round trip per suite run, and it's the only shape that covers a non-Python product |
 | D5 | **who authors the backlog** | **you order it; the squad proposes from it** and records what it finds as candidates, which you, or the crew if Q41 delegates it, promote or drop. The strategy role ordering its own features waits for a later line, once a Campaign has lasted hours on yours |
