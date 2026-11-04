@@ -106,6 +106,13 @@ jobs:
         working-directory: console/continuum-plugins/shared
         run: npm test
 
+      # SIP-0115 slice 4 (#2887): the goals panel's reads and its write (`goals.js`), under node's
+      # own runner as the shared helpers are. No install: the tests import only plain modules.
+      - name: The Projects plugin's goals panel
+        if: needs.changes.outputs.code == 'true'
+        working-directory: console/continuum-plugins/squadops.projects/ui
+        run: npm test
+
       # Runs `ruff check .` + `ruff format --check .` (lint + format, fail-stop) +
       # the test-quality lint + the full unit regression suite. The repo-wide
       # format sweep landed in #196, so the format check is now gated here.

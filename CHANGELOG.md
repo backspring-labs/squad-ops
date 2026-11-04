@@ -26,6 +26,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   was created under; at its ruling a later revision that moved its item or changed what it serves returns it as
   `goals_revised`, which spends neither a rejection nor a revision. `stop_when: backlog_done` stops a Campaign at
   §10 row 3 when every item of the revision read at the decision is accepted, and the decision's row records which.
+- **The console's goals panel** (SIP-0115 slice 4, #2887, PR #2916): a panel of the Projects plugin
+  (`squadops-projects-goals`, in the Projects view) that follows the Project selected in the list, or a Campaign
+  selected anywhere (`squadops:select-campaign`). It shows the goal, expected results with where each is observed,
+  constraints and out of scope; the backlog in the goal set's order with each item's derived status and increment
+  (proposal, version, cycle) in a chosen Campaign of the Project, read from `GET /api/v1/campaigns/{id}/backlog`,
+  and the revision that Campaign reads; the candidates waiting, read-only; and the revision history. A Project with
+  no goal set and a Campaign naming none (`CAMPAIGN_HAS_NO_GOAL_SET`) read as such, not as failures. A viewer
+  holding `admin:write` can edit the goal, expected results' statements, constraints, out of scope and the backlog
+  (reorder, retitle, change what an item serves, add, remove), and with a reason the edit is written as the next
+  revision through the command bus: the new confirm-level `squadops.revise_goal_set`, whose console-app handler
+  posts `POST /api/v1/projects/{id}/goal-set/revisions` against the revision the edit began from. A revision
+  written first by someone else (409 `STALE_GOAL_SET_REVISION`) is said plainly and the edit kept, never retried
+  over. The panel's reads and write are `goals.js`, tested under node (`npm test` in the plugin's `ui/`, run in CI).
 
 ### Fixed
 - **The backlog says which limit ended a Campaign on an item** (#2911). The ledger's projection of a decision left

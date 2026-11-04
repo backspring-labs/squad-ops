@@ -121,9 +121,9 @@ def _load_main():
 class TestCommandHandlerRegistry:
     """Verify COMMAND_HANDLERS maps all expected command IDs."""
 
-    def test_registry_has_11_handlers(self):
+    def test_registry_has_12_handlers(self):
         main = _load_main()
-        assert len(main.COMMAND_HANDLERS) == 11
+        assert len(main.COMMAND_HANDLERS) == 12
 
     def test_registry_contains_all_expected_keys(self):
         main = _load_main()
@@ -139,6 +139,7 @@ class TestCommandHandlerRegistry:
             "squadops.set_baseline",
             "squadops.download_artifact",
             "squadops.set_active_profile",
+            "squadops.revise_goal_set",
         }
         assert set(main.COMMAND_HANDLERS.keys()) == expected
 
@@ -311,6 +312,28 @@ class TestSetActiveProfileHandler:
         assert result == {"profile_id": "full"}
         call_args = mock_req.call_args
         assert "/api/v1/squad-profiles/active" in call_args[0][1]
+
+
+class TestReviseGoalSetHandler:
+    """SIP-0115 slice 4 (#2887): the goals panel's edit. Bug caught: the API's 409, a revision
+    written first by someone else, reaching the panel as anything but that refusal with its
+    status and its envelope, so the panel can't say plainly what happened."""
+
+    async def test_a_stale_revision_is_relayed_with_the_apis_status_and_envelope(self):
+        main = _load_main()
+        envelope = (
+            '{"detail": {"error": {"code": "STALE_GOAL_SET_REVISION", "message": '
+            "\"Project p-1's goal set is at revision 3; revision 3 doesn't follow it\", "
+            '"details": null}}}'
+        )
+        mock_resp = MagicMock(status_code=409, text=envelope)
+
+        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp):
+            result = await main.squadops_revise_goal_set(
+                {"project_id": "p-1", "expected_revision": 2, "reason": "r", "goal_set": {}}, {}
+            )
+
+        assert result == {"error": envelope, "status_code": 409}
 
 
 class TestCreateCycleBodyCleaning:
@@ -645,6 +668,13 @@ class TestTheBodyThePluginsPost:
     #: The args each plugin sends, verbatim from its source.
     GATE = {"project_id": "p-1", "cycle_id": "c-1", "run_id": "r-1", "gate_name": "plan_review"}
     GATE_PATH = "/api/v1/projects/p-1/cycles/c-1/runs/r-1/gates/plan_review"
+    #: The goals panel's revision body: every key of the API's ``GoalSetRevisionRequest``.
+    GOAL_SET_REVISION = {
+        "expected_revision": 2,
+        "reason": "Move the export item first",
+        "idempotency_key": "console-goals-k-1",
+        "goal_set": {"goal": "A reading log", "backlog": []},
+    }
 
     @staticmethod
     def _danger_levels() -> dict[str, str]:
@@ -764,8 +794,14 @@ class TestTheBodyThePluginsPost:
                 {"profile_id": "full"},
                 ("POST", "/api/v1/squad-profiles/active", {"profile_id": "full"}),
             ),
+            (
+                # GoalsPanel's edit, as `goals.js`'s `revisionArgs` builds it.
+                "squadops.revise_goal_set",
+                {"project_id": "p-1", **GOAL_SET_REVISION},
+                ("POST", "/api/v1/projects/p-1/goal-set/revisions", GOAL_SET_REVISION),
+            ),
         ],
-        ids=["GateDecisionCard-reject", "ProjectsProfiles"],
+        ids=["GateDecisionCard-reject", "ProjectsProfiles", "GoalsPanel"],
     )
     def test_a_confirm_level_command_runs_only_on_the_re_post_with_confirmed(
         self, command_id, args, sent

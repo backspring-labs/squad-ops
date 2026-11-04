@@ -41,9 +41,9 @@ class TestProjectsPluginRegistration:
     """Verify register(ctx) produces expected contributions."""
 
     def test_total_contributions(self, mock_ctx):
-        """1 nav + 2 panels + 1 command = 4 contributions."""
+        """1 nav + 3 panels + 2 commands = 6 contributions."""
         register(mock_ctx)
-        assert mock_ctx.register_contribution.call_count == 4
+        assert mock_ctx.register_contribution.call_count == 6
 
     def test_nav_contribution(self, mock_ctx):
         register(mock_ctx)
