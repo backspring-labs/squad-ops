@@ -463,6 +463,7 @@ async def _rule_increment(
 
     binding = ProposalBinding(**body.binding.model_dump())
     asked = GateDecisionValue(body.decision)
+    assert body.idempotency_key is not None  # ``missing`` refused a ruling without one above
     committed = await _committed_ruling(request, cycle.campaign_id, run_id, body.idempotency_key)
     returned_as_revised: str | None = None
     if committed is not None and _asked_of(committed) == asked.value:
