@@ -132,10 +132,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   201, and the revision carries `change` (`candidate_added | candidate_promoted | candidate_dropped | item_split`,
   with the subject, the position taken, the parts a split produced and the Campaign the crew acted within; migration
   `2101_goal_set_revision_change.sql`). The owner (`admin:write`) may do each; the crew's supervisor seat
-  (`campaigns:supervise`) adds freely and promotes, drops or splits only within a Campaign (named in the request; a
-  live Campaign on this Project reading this goal set, SIP-0115 §10c's reading of Q41's "the owner started";
-  `403 NOT_DELEGATED` otherwise), appending a
-  promoted candidate and never reordering (Q41). A split waits (`409 BACKLOG_ITEM_IN_PROGRESS`) while a live Campaign
+  (`campaigns:supervise`) adds freely and promotes, drops or splits only within a Campaign the owner has granted it
+  (named in the request; live, on this Project, reading this goal set; `403 NOT_DELEGATED` otherwise), appending a
+  promoted candidate and never reordering (Q41). **The grant** is the owner's, on each Campaign the crew should curate,
+  whoever created it (the owner's ruling of 2026-11-04): `POST /api/v1/campaigns/{id}/goal-delegation`, `squadops
+  campaigns delegate <id> --reason …`, `campaigns:control`, so the supervisor can't grant itself. It is a
+  `goal_delegation_granted` control-log row for the Campaign's life, which a completed Campaign refuses (migration
+  `2102_campaign_goal_delegation.sql`; SIP-0109 §24dd). A split waits (`409 BACKLOG_ITEM_IN_PROGRESS`) while a live Campaign
   reads the item `proposed` or `in_increment`; the derived backlog reads a split parent as `removed` with
   `split_into`. `squadops goals candidates|promote|drop|split`.
 

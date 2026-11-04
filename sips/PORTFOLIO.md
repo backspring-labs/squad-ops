@@ -214,7 +214,7 @@ Raised by the draft's intake on 2026-10-30. **Ruled as recommended on 2026-11-03
 
 | # | decision | ruling | recorded in |
 |---|---|---|---|
-| Q41 | the crew's authority over a Project's backlog: reorder, split, promote a candidate | promote and split within a Campaign the owner started, each with its reason; never reorder | the draft's §6 |
+| Q41 | the crew's authority over a Project's backlog: reorder, split, promote a candidate | promote and split within a Campaign the owner started, each with its reason; never reorder. Built, on the owner's ruling of 2026-11-04, as the owner's grant recorded on the Campaign | the draft's §6; §10c |
 | Q42 | `objective.requirements` beside `objective.goals` | keep both: the sample applications read PRDs; a product Campaign names one, never both | the draft's §5.1 |
 | Q43 | where the crew's assessment of an expected result lives: a SquadOps record, or only the crew's signed closing interpretation in Buzz | a SquadOps record on the goal set, with the signed statement as its `source_ref` | the draft's §5.7 and §8.5 |
 | Q44 | one goal set per Project, or several | one active, with revisions | the draft's §4 |

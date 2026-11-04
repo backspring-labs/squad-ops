@@ -42,6 +42,17 @@ squadops campaigns start <campaign_id> --reason "<why>"      # the calibration c
 python scripts/dev/campaign_log_archive.py <campaign_id> --follow   # beside it, until it closes
 ```
 
+**A Campaign the crew should curate needs the owner's grant** (SIP-0115 Q41, §10c). On a Campaign that names a goal
+set, the crew may add candidates freely, but may promote or drop one, or split a backlog item, only after the owner
+records the grant, whoever created the Campaign. It lasts the Campaign's life, and a completed Campaign refuses it:
+
+```bash
+squadops campaigns delegate <campaign_id> --reason "<why>" --source-ref <the conversation's link>
+```
+
+Until then each of those acts answers `403 NOT_DELEGATED`, naming this command. The grant needs `campaigns:control`,
+so the supervisor can't run it. The control log shows it as `goal_delegation_granted`.
+
 **Start the log archive with the campaign** (#1710). The containers' logs are the triage
 evidence, and the next rebuild destroys them. The archive keeps each cycle's window under
 `var/campaigns/<campaign_id>/logs/<cycle_id>/`, with a manifest naming its window, each file's
@@ -412,6 +423,7 @@ What the supervisor (the crew, or whoever holds the seat, §24al) does alone, an
 |---|---|
 | rule increment gates and answer plan gates; pause a campaign; classify a proposal; take the lease at an open gate with no run in flight (all `campaigns:supervise`, which the `campaign-supervisor` role holds) | a pre-registration, or any material change to one (a policy value, a prediction, the set's size or frame) |
 | create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone), except the classes a campaign declares in `policy.unattended_resume` (§24da) |
+| add goal-set candidates; promote or drop one, or split a backlog item, within a Campaign the owner has granted (`campaigns:supervise`; a promotion appends) | granting a Campaign's goal-set curation (`campaigns delegate`; `campaigns:control`, the admin role alone), and any reorder of the backlog |
 | file findings; fix them on branches; merge on full green, reading main's run | an unexplained red on main |
 | rebuild between campaigns, verifying the new code is loaded | a fix needed while a counted set is open: it voids the set |
 | run the reference scenario and the recovery diagnostics outside a counted set | anything touching security, and any public Release (tag, Release notes, records upload) |

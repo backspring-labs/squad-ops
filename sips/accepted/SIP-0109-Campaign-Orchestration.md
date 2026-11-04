@@ -154,6 +154,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
 | a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
+| the owner's goal delegation (SIP-0115 slice 3): `goal_delegation_granted`, the first record a completed Campaign refuses (§24dd) | **shipped** | 2.6.0, PR #2908 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -6248,3 +6249,27 @@ policy: a closed request keeps blocking, as `contribution_closed`. The superviso
 crew's requests. The rest (the closing row's key, the rename's form, the standing's reading, the 409 for a sample
 application) is the implementer's, for the owner's review in the PR.
 
+### 24dd. The owner's goal delegation: a record a completed Campaign refuses (2026-11-04, §13, §17; SIP-0115 Q41, §10c; #2886; the owner's ruling)
+
+**What changed.** The control log gains an operation, and the record-only kind gains an exception.
+- **`goal_delegation_granted`** is the owner's grant of a Campaign's goal-set curation to the crew. The crew's
+  promotion, drop and split within a Campaign read it (SIP-0115 §10c). Written at
+  `POST /api/v1/campaigns/{id}/goal-delegation` with `campaigns:control`, which only the admin role holds, so the
+  supervisor seat can't write it, although it can create a Campaign. Its row names who granted it and why, and its
+  binding is `{goal_set, source_ref?}`. It moves no state. Migration `2102` replaces the operation CHECK list whole.
+- **A record that only a live Campaign takes.** A record is otherwise accepted on a completed Campaign, because it says
+  something that already happened. A grant is for the Campaign's life, and a completed Campaign has none left. So
+  `ControlOperation.needs_a_live_campaign` sends it through the completed and stale-state checks a move takes, and it
+  is refused and recorded as `campaign_completed`. The idempotency check still comes first, so a committed grant
+  replays after the close.
+- **It isn't an intervention** (SIP-0113 §4.3). It isn't in `outcomes.ledger._ACTED`: like an approval, it is the
+  design at work, a standing delegation made once, and it changes nothing the squad is doing. *The implementer's
+  reading, for the owner's review.*
+
+**Evidence.** The owner's review of PR #2908 (SIP-0115 §10c). `tests/unit/campaigns/test_goal_delegation.py` (the row
+through the registry), `tests/unit/api/test_goal_delegation_routes.py` (the routes, with the real authorization
+adapter), `tests/integration/cycles/test_postgres_campaign_registry_integration.py` (migration 2102, the refusal and
+the replay after the close).
+
+**Who ruled.** The owner, 2026-11-04: the owner chose the one-step grant, on Q41's "within a Campaign the owner
+started". The row's shape and the exception to the record-only kind are the implementer's, under the supervisor's brief.

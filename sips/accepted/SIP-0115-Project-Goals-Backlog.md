@@ -284,9 +284,9 @@ the owner reads the latest per expected result in the console beside the backlog
 | action | the owner | the crew (the `campaign-supervisor` principals) | the squad (the strategy role) | the system |
 |---|---|---|---|---|
 | write the goal, expected results, constraints, out of scope | yes | no | no | no |
-| reorder the backlog, add or split an item | yes | **only if the owner delegates it** (Q41) | no | no |
+| reorder the backlog, add or split an item | yes | **split only, by the owner's grant on the Campaign** (Q41, §10c); never reorder | no | no |
 | add a candidate | yes | yes | yes, from a cycle or proposal | yes, from a finding it records |
-| promote or drop a candidate | yes | **only if delegated** (Q41) | no | no |
+| promote or drop a candidate | yes | **only by the owner's grant on the Campaign** (Q41, §10c) | no | no |
 | record an assessment (§5.7) | yes | yes | no | no |
 | write an item's status | no | no | no | derived only |
 
@@ -344,7 +344,7 @@ recommendations on the other decisions"; Q41 is the plan's D15). Slices 1 and 3 
 
 | # | question | recommendation |
 |---|---|---|
-| Q41 | **the crew's authority over the order** (to be ruled before slice 1 is built, the 2.6 plan's D15): may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** **A promoted candidate is appended at the end of the backlog;** putting it anywhere else is a reorder, the owner's. A split's items take the split item's place, which changes no other item's priority. The order is where the owner steers |
+| Q41 | **the crew's authority over the order** (to be ruled before slice 1 is built, the 2.6 plan's D15): may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** **A promoted candidate is appended at the end of the backlog;** putting it anywhere else is a reorder, the owner's. A split's items take the split item's place, which changes no other item's priority. The order is where the owner steers. *The owner's ruling of 2026-11-04 (§10c): "a Campaign the owner started" is built as the owner's grant, recorded on the Campaign* |
 | Q42 | **`requirements` beside `goals`:** keep both sources for a Campaign? | **keep both.** The sample applications' Campaigns read PRDs, and their yardstick is built on them. A product Campaign names one or the other |
 | Q43 | **where the crew's assessment lives:** a SquadOps record (§5.7), or only the crew's signed closing interpretation in Buzz, as today? | **a SquadOps record,** with the signed statement as its `source_ref`. The owner then reads the goal, the backlog and whether each expected result is met in one place, and a framework finding is linked to the result it blocked |
 | Q44 | **one goal set per Project, or several** (one per Campaign theme)? | **one active,** with revisions. Two goal sets on one Project would compete for the same tree |
@@ -476,26 +476,41 @@ implementer under the supervisor's slice-3 brief (#2886); the owner reviews it i
   before it and on every whole-document edit. So the history, and the derived view, tell an action from an edit.
 - **Who may, by scope** (§6; Q41, ruled 2026-11-03). The owner is `admin:write`, as in §10a. **The crew's seat is
   `campaigns:supervise`:** §6 names the crew as the campaign-supervisor principals, and Q41 frames each delegated act
-  as within a Campaign. No new scope: the delegation is per Campaign, which no scope can carry, and a scope is a
-  realm change (`keycloak_realm_sync`) for no finer distinction. Triage reads, and nothing else (#1719): `403`.
+  as within a Campaign. No new scope: the delegation is per Campaign, which no scope can carry, so it is a row on the
+  Campaign (below). Triage reads, and nothing else (#1719): `403`.
   The owner and the crew may add a candidate with no Campaign named. **Not built: §6's squad and system
   candidates.** The agent service account holds `agents:write` alone, and the proposer runs inside the runtime's
   executor with no principal of its own, so nothing a cycle does can call these routes. The runtime recording a
   cycle's or a proposal's findings as candidates is a part of its own, unplaced (the ledger); until it is built, what
   a cycle finds reaches the goal set through the crew or the owner.
-- **The crew acts within a Campaign** (Q41). The request names `campaign_id`. The Campaign must exist
-  (`404 CAMPAIGN_NOT_FOUND`), be on this Project, name this goal set (`objective.goals`), and **be live: its state is
-  not terminal** (`completed`, the lifecycle's one terminal state, however it ended: `aborted`, `exhausted`,
-  `failure` or `success` is its outcome). Otherwise `403 NOT_DELEGATED`, with the reason. No `created_by` check.
-  *The supervisor's narrowing, 2026-11-04, for the owner's review:* Q41's "a Campaign the owner started" is read as a
-  live Campaign on this Project reading this goal set, since the crew's broker creates the Campaigns the owner
-  approves in Buzz (the intake check's Nostromo flow) and SquadOps records no approval to read; the crew starts no
-  Campaign without that approval, so the delegation lasts the Campaign's life. **Open, for the owner's ruling:** the
-  owner's review of PR #2908 found this is broader than Q41: `campaign-supervisor` holds `campaigns:manage`, so it can
-  create a Campaign and act within it, which authorizes itself. Nothing here reads who started a Campaign. Until the
-  owner rules, this PR doesn't merge. The
-  Campaign is recorded on the revision (`change.campaign_id`). The owner needs no Campaign, and may name one, which
-  is then checked the same way so the record is true.
+- **The crew acts only within a Campaign the owner has granted it** (Q41; the owner's ruling of 2026-11-04). The
+  request names `campaign_id`. The Campaign must exist (`404 CAMPAIGN_NOT_FOUND`), be on this Project, name this goal
+  set (`objective.goals`), **be live** (its state isn't `completed`, the lifecycle's one terminal state, however it
+  ended), and **hold the owner's grant.** Otherwise `403 NOT_DELEGATED`, with the reason; with no grant, the reason
+  names the command that records one. The Campaign is recorded on the revision (`change.campaign_id`). The owner needs
+  no Campaign and no grant, and a Campaign the owner names is checked for the first three, so the record is true. Adding
+  a candidate needs neither.
+  - **The grant** is `POST /api/v1/campaigns/{id}/goal-delegation` (`squadops campaigns delegate <id> --reason …
+    [--source-ref …]`), with `reason`, `idempotency_key`, and optional `source_ref` and `expected_state`. It writes a
+    control-log row, `goal_delegation_granted`: who granted it, why, and `binding: {goal_set, source_ref?}`. It moves no
+    state and answers 201 with the control result; a retry with its key replays. A Campaign naming no goal set is
+    `404 CAMPAIGN_HAS_NO_GOAL_SET`.
+  - **Only the owner writes it:** the route needs `campaigns:control`, which only the admin role holds. The
+    `campaign-supervisor` role holds `campaigns:manage`, not `campaigns:control`, so it is refused `403 FORBIDDEN` and
+    no row is written.
+  - **Only an applied row of the Campaign's own log counts.** Who created the Campaign is not read, and neither is any
+    binding on another row or any field of a definition. A refused attempt grants nothing.
+  - **It lasts the Campaign's life.** There is no revocation. A completed Campaign refuses a grant
+    (`409 CONTROL_OPERATION_REFUSED`, `campaign_completed`, recorded), though a record is otherwise the one kind a
+    completed Campaign accepts (`ControlOperation.needs_a_live_campaign`; SIP-0109 §24dd). A committed grant still
+    replays after the close.
+  - **Evidence.** The owner's review of PR #2908 found that the reading first built, a live Campaign on this Project
+    reading this goal set, was broader than Q41: nothing read who started a Campaign, and `campaign-supervisor` holds
+    `campaigns:manage`, so the crew could create a Campaign and act within it, authorizing itself. `created_by` can't
+    settle it either, because the crew's broker creates the Campaigns the owner approves in Buzz, and SquadOps holds no
+    record of that approval. **The owner chose the one-step grant over accepting the broader reading,** so the approval
+    becomes a row SquadOps can read. A Campaign the crew should curate needs this step, whoever created it (the
+    runbook's §1).
 - **The crew appends; the owner places.** A promotion takes `position` (from 1; the end by default). The crew's
   `position` anywhere but the end is `403 NOT_DELEGATED`: a reorder is the owner's (Q41). The whole-document write,
   the only way to reorder, stays `admin:write`; a split changes no other item's place.
@@ -532,6 +547,17 @@ implementer under the supervisor's slice-3 brief (#2886); the owner reviews it i
   refuses a write another editor got in front of. A refused write prints the key and the revision for the retry.
 - **Not in slice 3:** the squad's automatic candidate extraction (above), the console's goals panel (slice 4), the
   crew's assessments (slice 5).
+
+**Evidence (the owner's ruling).** `tests/unit/api/test_goal_delegation_routes.py`, entered at the routes with the
+real authorization adapter: the supervisor creates a Campaign, is refused its promotion and its own grant (403, no row
+applied), the owner grants, and the promotion lands naming the Campaign; each role; a replay, also after the close; a
+completed Campaign, another Project's, an unknown one, a requirements one. `tests/unit/campaigns/test_goal_delegation.py`:
+the row through the registry, and neither a refused grant nor another row's binding standing in.
+`tests/integration/cycles/test_postgres_campaign_registry_integration.py`: migration 2102 on Postgres. Mutants, each on
+a commit: the route on `campaigns:manage`; the crew's check removed; the owner made to need a grant; the reader taking a
+refused row, or another row's binding; a completed Campaign taking a grant; the Project unchecked; a crew act naming no
+Campaign let through; a promotion's Campaign check moved before its replay; the CHECK list lacking the value (on a
+fresh database, where the migration runs). Each failed a test.
 
 **Evidence (the review's fixes).** `tests/unit/projects/test_goal_set_actions.py`: a retry replays after its Campaign
 completed, for each of promote, drop and split, and a new key is refused; a proposal arriving during a split lands after
