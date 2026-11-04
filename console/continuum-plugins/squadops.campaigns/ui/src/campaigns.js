@@ -81,17 +81,19 @@ export async function loadControlLog(apiFetch, apiBase, campaignId) {
 /**
  * Each listed Campaign's current increment, `{campaign_id: increment | {error}}`. A closed
  * Campaign's is read once and kept in `cache` while its `updated_at` stands; an open one's is
- * read on every call, which is what the list's poll is for.
+ * read on every call, which is what the list's poll is for. At most `concurrency` logs are read
+ * at once: a deploy holds a hundred closed Campaigns and more, each read once on first open.
  */
-export async function loadIncrements(apiFetch, apiBase, campaigns, cache = new Map()) {
+export async function loadIncrements(apiFetch, apiBase, campaigns, cache = new Map(), { concurrency = 6 } = {}) {
   const out = {};
-  await Promise.all(
-    campaigns.map(async (c) => {
-      const kept = cache.get(c.campaign_id);
-      if (isClosed(c) && kept && kept.updated_at === c.updated_at) {
-        out[c.campaign_id] = kept.increment;
-        return;
-      }
+  const queue = [];
+  for (const c of campaigns) {
+    const kept = cache.get(c.campaign_id);
+    if (isClosed(c) && kept && kept.updated_at === c.updated_at) out[c.campaign_id] = kept.increment;
+    else queue.push(c);
+  }
+  async function worker() {
+    for (let c = queue.shift(); c; c = queue.shift()) {
       try {
         const increment = currentIncrement(await loadControlLog(apiFetch, apiBase, c.campaign_id));
         out[c.campaign_id] = increment;
@@ -99,8 +101,9 @@ export async function loadIncrements(apiFetch, apiBase, campaigns, cache = new M
       } catch (err) {
         out[c.campaign_id] = { error: err.message };
       }
-    }),
-  );
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
   return out;
 }
 
@@ -171,6 +174,16 @@ export function incrementText(increment) {
     ? ` · ${increment.cycle_kind && increment.cycle_kind !== 'proposal' ? `${increment.cycle_kind} ` : ''}${increment.cycle_id}`
     : '';
   return `#${increment.number} ${what}${cycle}`;
+}
+
+/** The list's short form: `#3 · repair`, `#2 · proposing`, `calibration`, `none yet`. */
+export function incrementShort(increment) {
+  if (!increment) return '';
+  if (increment.error) return 'unreadable';
+  if (increment.number === 0) return increment.cycle_id ? 'calibration' : 'none yet';
+  if (!increment.proposal_id) return `#${increment.number} · proposing`;
+  const kind = increment.cycle_kind && increment.cycle_kind !== 'proposal' ? ` · ${increment.cycle_kind}` : '';
+  return `#${increment.number}${kind}`;
 }
 
 // --- one Campaign ---

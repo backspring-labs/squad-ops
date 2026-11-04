@@ -19,6 +19,7 @@ import {
   acceptedCount,
   currentIncrement,
   goalsSelection,
+  incrementShort,
   incrementText,
   ledgerRows,
   loadCampaignView,
@@ -107,6 +108,11 @@ test('the current increment: a repair continues the increment in hand, a proposa
   });
   assert.equal(incrementText(currentIncrement(log.slice(0, 9))), '#1 prop_a v1 · repair cyc_r1');
   assert.equal(incrementText(currentIncrement(log.slice(0, 11))), '#2 proposing · cyc_p2');
+  // The list's short form.
+  assert.deepEqual(
+    [log.slice(0, 9), log.slice(0, 11), log].map((l) => incrementShort(currentIncrement(l))),
+    ['#1 · repair', '#2 · proposing', '#2'],
+  );
 });
 
 test('the current increment before any: none yet, or the calibration cycle a start launched', () => {
@@ -126,6 +132,10 @@ test('the current increment before any: none yet, or the calibration cycle a sta
   });
   assert.equal(incrementText(currentIncrement(calibrating)), 'calibration · cyc_cal');
   assert.equal(incrementText({ error: 'boom' }), 'unreadable');
+  assert.deepEqual(
+    [currentIncrement(draft), currentIncrement(calibrating), { error: 'boom' }].map(incrementShort),
+    ['none yet', 'calibration', 'unreadable'],
+  );
 });
 
 const BASE = '/api/v1/campaigns/cmp_one';
@@ -338,7 +348,7 @@ test('the list\'s increments: a closed Campaign\'s log is read once while it sta
     { campaign_id: 'cmp_bad', state: 'building', updated_at: 't1' },
   ];
   const cache = new Map();
-  const first = await loadIncrements(apiFetch, '', listed, cache);
+  const first = await loadIncrements(apiFetch, '', listed, cache, { concurrency: 2 });
   assert.equal(incrementText(first.cmp_open), '#2 prop_b v1 · cyc_p2');
   assert.equal(incrementText(first.cmp_done), '#1 prop_a v1 · repair cyc_r1');
   assert.deepEqual(first.cmp_bad, { error: "cmp_bad's control log: request req_9 failed" });
@@ -351,4 +361,23 @@ test('the list\'s increments: a closed Campaign\'s log is read once while it sta
   calls.length = 0;
   await loadIncrements(apiFetch, '', [{ ...listed[1], updated_at: 't2' }], cache);
   assert.deepEqual(calls, ['/api/v1/campaigns/cmp_done/control-log']);
+});
+
+test('the list reads at most `concurrency` control logs at once, and every one of them', async () => {
+  let inFlight = 0;
+  let most = 0;
+  const read = [];
+  const apiFetch = async (url) => {
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    await new Promise((r) => setTimeout(r, 5));
+    inFlight -= 1;
+    read.push(url);
+    return { ok: true, status: 200, json: async () => [], text: async () => '[]' };
+  };
+  const listed = Array.from({ length: 10 }, (_, i) => ({ campaign_id: `cmp_${i}`, state: 'completed', updated_at: 't' }));
+  const got = await loadIncrements(apiFetch, '', listed, new Map(), { concurrency: 3 });
+  assert.equal(most, 3);
+  assert.equal(read.length, 10);
+  assert.equal(Object.keys(got).length, 10);
 });

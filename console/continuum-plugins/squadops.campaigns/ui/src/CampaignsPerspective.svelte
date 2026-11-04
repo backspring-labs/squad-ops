@@ -14,12 +14,18 @@
   (`squadops:select-campaign`, kept until that panel mounts: shared/selection.js).
 -->
 
+<script module>
+  // Kept across mounts: a closed Campaign's increment is read once per page, not once per visit.
+  const incrementCache = new Map();
+</script>
+
 <script>
   import { onDestroy, onMount } from 'svelte';
   import {
     acceptedCount,
     currentIncrement,
     goalsSelection,
+    incrementShort,
     incrementText,
     isClosed,
     ledgerRows,
@@ -50,7 +56,6 @@
   let listError = $state(null);
   let listLoading = $state(true);
   let projectFilter = $state('');
-  const incrementCache = new Map();
 
   // one Campaign
   let selectedId = $state(null);
@@ -121,6 +126,10 @@
   });
 
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString() : '--');
+  const fmtShort = (iso) =>
+    iso
+      ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '--';
 
   let projects = $derived([...new Set(campaigns.map((c) => c.project_id))].sort());
   let shown = $derived(projectFilter ? campaigns.filter((c) => c.project_id === projectFilter) : campaigns);
@@ -175,8 +184,8 @@
                 <td>{c.project_id}</td>
                 <td><span class="state state-{c.state}">{c.state}</span></td>
                 <td>{#if c.outcome}<span class="outcome outcome-{c.outcome}">{c.outcome}</span>{/if}</td>
-                <td class="small">{fmtDate(c.created_at)}</td>
-                <td class="small mono">{incrementText(increments[c.campaign_id])}</td>
+                <td class="small" title={fmtDate(c.created_at)}>{fmtShort(c.created_at)}</td>
+                <td class="small mono" title={incrementText(increments[c.campaign_id])}>{incrementShort(increments[c.campaign_id])}</td>
               </tr>
             {/each}
           </tbody>
@@ -392,9 +401,11 @@
     flex: 1;
     align-items: flex-start;
     overflow: hidden;
+    /* The shell gives a panel no fixed height, so each pane is bounded by the viewport. */
+    max-height: calc(100vh - 110px);
   }
   .list {
-    flex: 1;
+    flex: 0 1 auto;
     align-self: stretch;
     max-height: 100%;
     overflow-y: auto;
@@ -402,11 +413,15 @@
   .list tbody tr {
     cursor: pointer;
   }
+  .list td {
+    white-space: nowrap;
+  }
   .list tr.active {
     background: var(--continuum-bg-secondary, #1e293b);
   }
   .detail {
-    flex: 1.5;
+    flex: 1 1 0;
+    min-width: 0;
     align-self: stretch;
     max-height: 100%;
     overflow-y: auto;
