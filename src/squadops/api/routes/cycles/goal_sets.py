@@ -9,11 +9,18 @@ Slice 3's actions are each a revision too, with who may do what from §6 and Q41
 (``campaigns:supervise``) may add a candidate, and may promote, drop or split only within a
 Campaign the owner has granted it (``POST /api/v1/campaigns/{id}/goal-delegation``), named in the
 request. Triage reads, and nothing else (#1719).
+
+Slice 5's assessments (§5.7, §6) are the crew's report, not curation: the same two seats may record
+one, with no grant and on a completed Campaign, and it writes no revision. Reading them is
+``cycles:read``, as reading the goal set is.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from squadops.api.cycle_schemas import (
+    AssessmentRecordedResponse,
+    AssessmentRequest,
+    AssessmentResponse,
     BacklogItemSplitRequest,
     CandidateDropRequest,
     CandidatePromotionRequest,
@@ -25,6 +32,7 @@ from squadops.api.cycle_schemas import (
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
+from squadops.api.paging import Page, page
 from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_goal_set_registry,
@@ -47,6 +55,11 @@ from squadops.projects.goal_set_actions import (
     record_drop,
     record_promotion,
     record_split,
+)
+from squadops.projects.goal_set_assessments import (
+    Assessment,
+    CampaignHasNoGoalSet,
+    record_assessment,
 )
 
 router = APIRouter(prefix="/api/v1/projects", tags=["goal-sets"])
@@ -252,6 +265,86 @@ async def split_backlog_item(
     except (GoalSetInvalid, BacklogItemNotFound, NotDelegated, BacklogItemInProgress) as e:
         raise _refused(e) from e
     return _recorded(written, body)
+
+
+# --- slice 5's assessments (§5.7, §6, Q43) ---
+
+
+def assessment_response(assessment: Assessment) -> AssessmentResponse:
+    return AssessmentResponse(
+        project_id=assessment.project_id,
+        sequence=assessment.sequence,
+        campaign_id=assessment.campaign_id,
+        expected_result=assessment.expected_result,
+        goals_revision=assessment.goals_revision,
+        reading=assessment.reading.value,
+        cause=assessment.cause.value if assessment.cause is not None else None,
+        issue=assessment.issue,
+        evidence=assessment.evidence.to_document(),
+        supersedes=list(assessment.supersedes),
+        log_seq=assessment.log_seq,
+        reason=assessment.reason,
+        source_ref=assessment.source_ref,
+        author=assessment.author,
+        created_at=assessment.created_at,
+    )
+
+
+@router.post("/{project_id}/goal-set/assessments", status_code=201)
+async def add_assessment(
+    request: Request,
+    project_id: str,
+    body: AssessmentRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CYCLES_READ)),
+) -> AssessmentRecordedResponse:
+    """Record an assessment of one expected result at a point in a Campaign (§5.7): the owner or
+    the crew's supervisor seat (§6), with no Campaign grant. Append-only, and it writes no
+    revision. A retry under its key replays; the key with another body is a conflict."""
+    actor = _actor(request, identity)
+    try:
+        assessment, replayed = await record_assessment(
+            project_id,
+            body.model_dump(exclude={"idempotency_key"}),
+            actor=actor,
+            idempotency_key=body.idempotency_key,
+            projects=get_project_registry(request),
+            goal_sets=get_goal_set_registry(request),
+            campaigns=get_campaign_registry(request),
+        )
+    except GoalSetInvalid as e:
+        raise _refused(e) from e
+    except CampaignHasNoGoalSet as e:
+        raise http_error(404, "CAMPAIGN_HAS_NO_GOAL_SET", str(e)) from e
+    return AssessmentRecordedResponse(
+        assessment=assessment_response(assessment),
+        idempotency_key=body.idempotency_key,
+        replayed=replayed,
+    )
+
+
+@router.get(
+    "/{project_id}/goal-set/assessments",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
+async def list_assessments(
+    request: Request,
+    project_id: str,
+    campaign_id: str | None = None,
+    expected_result: str | None = None,
+    paged: Page = Depends(page),
+) -> list[AssessmentResponse]:
+    """The goal set's assessments in sequence, the superseded and the removed included: the
+    history. How each result stands now is the Campaign's view,
+    ``GET /api/v1/campaigns/{id}/assessments``."""
+    await get_project_registry(request).get_project(project_id)
+    held = await get_goal_set_registry(request).list_assessments(
+        project_id,
+        campaign_id=campaign_id,
+        expected_result=expected_result,
+        limit=paged.limit,
+        offset=paged.offset,
+    )
+    return [assessment_response(a) for a in held]
 
 
 @router.get("/{project_id}/goal-set", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
