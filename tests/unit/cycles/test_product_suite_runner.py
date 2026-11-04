@@ -577,3 +577,153 @@ async def test_the_router_hands_the_correction_loop_the_products_reading():
     assert row["judged_on"] == PRODUCT_RUNNER and row["executed"] is True
     assert router.held["result"] is asked[0]
     assert state.correction.accepted_repair_task_ids == set()
+
+
+# #2881: a dev repair's retest. Its ``retest_files`` are the repaired source, which no runner holds,
+# so before this the product's runner judged nothing (``runs=no runner holds a test``, four times in
+# 2.5.1's validation Campaign ``cmp_5d8e8b9de6db``) and the qa image's reading stood.
+
+_REPAIRED = "import plugins  # repaired\n"
+
+
+def _dev_repair_retest(*, carries_suite: bool = True):
+    """The retest a dev repair of ``app/main.py`` sends, built by the correction runner from the
+    failed task's result, whose suite is ``tests/test_t1.py``."""
+    executor = _executor()
+    runner = object.__new__(CorrectionRunner)
+    runner._judge_suite = lambda result, envelope, cycle, run_id: (
+        executor._judged_on_product_runner(result, envelope, envelope, cycle, run_id)
+    )
+    dispatched: list[TaskEnvelope] = []
+
+    async def dispatch(envelope, *_a, **_k):
+        dispatched.append(envelope)
+        # The qa image can't run the product's suite: its own reading is a failure.
+        return _failed(_TESTS_PASS_RED, tests=())
+
+    runner._dispatch_protocol_step = dispatch
+    cycle = SimpleNamespace(**vars(_CYCLE), cycle_id="cyc_x", prd_ref=None)
+    failed = _failed(_TESTS_PASS_RED)
+    return (
+        executor,
+        dispatched,
+        runner.reexecute_repaired_suite(
+            "run_1",
+            cycle,
+            _envelope(_INPUTS),
+            [{"name": "app/main.py", "content": _REPAIRED, "type": "source"}],
+            1,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=squad(),
+            failed_suite=failed.outputs["artifacts"] if carries_suite else (),
+        ),
+    )
+
+
+async def test_a_dev_repairs_retest_runs_the_failed_suite_against_the_repaired_source():
+    """Wiring, entering at ``CorrectionRunner.reexecute_repaired_suite`` with the executor's own
+    judgement. Bug caught: the repaired ``app/main.py`` read as the suite, held by no runner, so
+    the product's runner never judged the repair and the qa image's failure stood."""
+    executor, dispatched, retest = _dev_repair_retest()
+    result = await retest
+
+    assert [c["command"] for c in executor._sandbox.commands] == [
+        ("pytest", "-q", "tests/test_t1.py")
+    ]
+    # The suite ran against the repaired code, not the tree the failed task saw.
+    assert executor._sandbox.seeded["app/main.py"] == _REPAIRED
+    assert result.status == TaskResultStatus.SUCCEEDED
+    # The qa image's own retest still gets the repaired files as it always has.
+    assert dispatched[0].inputs["retest_files"] == [
+        {"filename": "app/main.py", "content": _REPAIRED}
+    ]
+
+
+async def test_a_retest_carrying_no_suite_of_its_own_is_not_judged():
+    """An envelope from before #2881 has only the repaired source. Bug caught: a guess at the
+    suite (every test in the tree, say) judged in its place. The agent's reading stands."""
+    executor, _, retest = _dev_repair_retest(carries_suite=False)
+    result = await retest
+
+    assert executor._sandbox.commands == []
+    assert result.status == TaskResultStatus.FAILED
+
+
+@pytest.mark.parametrize(
+    ("patched", "expected_tests", "expected_overlay"),
+    [
+        # A qa repair: the repaired test replaces its namesake.
+        ({"tests/test_t1.py": "fixed"}, {"tests/test_t1.py": "fixed"}, {}),
+        # A repair that adds a test file and changes source: both reach the run.
+        (
+            {"tests/test_t2.py": "new", "app/main.py": "src"},
+            {"tests/test_t1.py": "old", "tests/test_t2.py": "new"},
+            {"app/main.py": "src"},
+        ),
+    ],
+    ids=["qa repair", "dev and qa repair"],
+)
+def test_a_retests_suite_is_the_failed_suite_with_the_repair_laid_in(
+    patched, expected_tests, expected_overlay
+):
+    """Bug caught: a repaired test run beside its stale namesake, or a repaired source file
+    handed to the runner as a test instead of placed on the tree."""
+    from squadops.execution.product_suite import RETEST_SUITE_KEY, suite_under_judgement
+
+    inputs = {
+        "retest_files": [{"filename": p, "content": c} for p, c in patched.items()],
+        RETEST_SUITE_KEY: [{"filename": "tests/test_t1.py", "content": "old"}],
+    }
+
+    assert suite_under_judgement(inputs, {}, _Profile()) == (expected_tests, expected_overlay)
+
+
+async def test_patch_acceptance_hands_the_retest_the_failed_tasks_suite():
+    """Wiring, from ``PatchAcceptance``, the caller the live correction loop uses. Bug caught: the
+    retest dispatched without the failed task's suite, so the product's runner has nothing to
+    judge after any dev repair."""
+    from squadops.execution.patch_acceptance import PatchAcceptance, _PatchSubject
+
+    handed: dict[str, Any] = {}
+
+    async def retest(*_args, **kwargs):
+        handed.update(kwargs)
+
+    acceptance = PatchAcceptance(
+        reexecute_repaired_suite=retest,
+        enforce_frozen_ownership=lambda *a, **k: ([], []),
+        emit_integrity_evidence=lambda *a: None,
+        enforce_compliance_budget=lambda *a, **k: None,
+    )
+    failed = _failed(_TESTS_PASS_RED)
+    await acceptance._retest_patched_suite(
+        _envelope(_INPUTS),
+        failed,
+        _PatchSubject(
+            resolved_config={},
+            criteria=[],
+            patched_artifacts=[{"name": "app/main.py", "content": _REPAIRED, "type": "source"}],
+            workspace_files={},
+            file_owned=[],
+        ),
+        run_id="run_1",
+        cycle=SimpleNamespace(**vars(_CYCLE), cycle_id="cyc_x", prd_ref=None),
+        correction_attempts=1,
+        round_seq=0,
+        prior_outputs=None,
+        all_artifact_refs=None,
+        stored_artifacts=None,
+        completed_task_ids=None,
+        plan_delta_refs=None,
+        profile=squad(),
+        flow_run_id=None,
+        enriched_envelope=None,
+        budget_guard=None,
+        repair_rejection_carry={},
+    )
+
+    assert handed["failed_suite"] == failed.outputs["artifacts"]

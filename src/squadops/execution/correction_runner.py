@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -99,6 +99,7 @@ from squadops.events.types import EventType
 from squadops.execution.correction_ids import correction_task_id
 from squadops.execution.correction_repair import OWNERSHIP_DROPPED_KEY, CorrectionRepair
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.product_suite import RETEST_SUITE_KEY
 from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import TaskType
@@ -1736,6 +1737,7 @@ class CorrectionRunner:
         profile: Any,
         flow_run_id: str | None = None,
         budget_guard: Callable[[], None] | None = None,
+        failed_suite: Sequence[Mapping[str, Any]] = (),
     ) -> TaskResult | None:
         """Re-execute a repaired qa.test suite in the QA agent's environment (#456).
 
@@ -1747,6 +1749,10 @@ class CorrectionRunner:
         task_type back to the QA agent in execute-only mode (``retest_files``
         set, no generation): same workspace, same runner, honestly fresh
         evidence for §6.5 final-state resolution to supersede with.
+
+        ``failed_suite`` is the failed task's own artifacts. Its test files ride the retest as
+        ``RETEST_SUITE_KEY``, the suite the product's runner judges (#2881): after a dev repair,
+        ``retest_files`` hold only the repaired source. The qa image's run doesn't read them.
 
         Returns the retest ``TaskResult`` (its Prefect task_run, events,
         artifacts and checkpoint are handled by ``_dispatch_protocol_step``),
@@ -1791,6 +1797,15 @@ class CorrectionRunner:
             "agent_config_overrides": resolved.config_overrides,
             **retest_forwarded_inputs(failed_inputs),
         }
+        retest_suite = [
+            {"filename": art["name"], "content": art.get("content", "")}
+            for art in failed_suite
+            if isinstance(art, Mapping)
+            and art.get("type") == "test"
+            and isinstance(art.get("name"), str)
+        ]
+        if retest_suite:
+            retest_inputs[RETEST_SUITE_KEY] = retest_suite
 
         retest_envelope = TaskEnvelope(
             task_id=correction_task_id(
