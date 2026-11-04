@@ -39,6 +39,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: Which of an increment's contributions says where it stands: the furthest along.
+_ORDER = {"integrated": 0, "pending": 1, "closed": 2}
+
 
 class Standing(StrEnum):
     NOT_CONTRIBUTED = "not_contributed"
@@ -73,7 +76,13 @@ async def unintegrated_increments(
     # deferred (pair): squadops.projects imports this package at load
     from squadops.projects.contribution import CLOSED, INTEGRATED
 
-    by_campaign = {c.campaign_id: c for c in contributions if c.campaign_id}
+    by_campaign: dict[str, Any] = {}
+    by_cycle: dict[str, list[Any]] = {}
+    for c in contributions:
+        if c.campaign_id:
+            by_campaign[c.campaign_id] = c
+        else:
+            by_cycle.setdefault(c.cycle_id, []).append(c)
     listed = sorted(await campaigns.list_campaigns(project.project_id), key=lambda c: c.created_at)
     out = []
     for campaign in listed:
@@ -82,14 +91,17 @@ async def unintegrated_increments(
         accepted = accepted_on_branch(log, intents)
         if not accepted:
             continue
-        contribution = by_campaign.get(campaign.campaign_id)
+        whole = by_campaign.get(campaign.campaign_id)
         titles = await _titles(campaign, log, intents, campaigns, goal_sets)
         for cycle_id, commit in accepted:
             if commit is None or await _carried(project, commit, repository):
                 continue
-            merged = contribution.integrated_commit if contribution is not None else None
-            if merged and await _carried(project, merged, repository):
+            # Its own run's records, and its Campaign's: the furthest along says where it stands.
+            held = [*by_cycle.get(cycle_id, ()), *([whole] if whole is not None else ())]
+            merges = [c.integrated_commit for c in held if c.integrated_commit]
+            if any([await _carried(project, m, repository) for m in merges]):
                 continue
+            contribution = min(held, key=lambda c: _ORDER[c.state], default=None)
             if contribution is None or contribution.state == CLOSED:
                 standing = Standing.NOT_CONTRIBUTED
             elif contribution.state == INTEGRATED:

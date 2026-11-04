@@ -272,6 +272,43 @@ async def test_each_increment_stands_by_its_contribution_and_the_integrated_comm
     assert [(i.cycle_id, i.title, i.standing.value) for i in listed] == expected
 
 
+def _per_run(cycle_id: str, state: str, integrated: str | None = None) -> Contribution:
+    """A contribution through ``POST /api/v1/projects/{id}/contributions``: one run's change."""
+    return Contribution(
+        project_id=PROJECT, cycle_id=cycle_id, run_id="run_x", commit="r9", parent_commit="c0",
+        mode="review_request", state=state, branch=f"squadops/{cycle_id}",
+        review_url=f"https://forge.example.invalid/pull/{cycle_id}", contributed_by="owner",
+        contributed_at=NOW, integrated_commit=integrated,
+    )  # fmt: skip
+
+
+async def test_an_increment_contributed_by_its_own_run_stands_by_that_record():
+    """PR #2920's review, finding 2. The per-run route is a contribution too: an increment
+    contributed through it, squash-merged and synced, is integrated, and another pending there
+    is pending. Bugs caught: per-run records dropped by the campaign filter, so integrated work
+    reads ``not_contributed`` and the gate never opens; a record matched to the wrong cycle."""
+    _held, log, goal_sets = _goal_set_world()
+    project = Project(
+        project_id=PROJECT, name="Tally", description="", created_at=T0,
+        integrated_upstream_commit="u" * 40,
+    )  # fmt: skip
+
+    listed = await unintegrated_increments(
+        project,
+        campaigns=log,
+        contributions=[
+            _per_run("cyc_rep1", "integrated", "squash1"),
+            _per_run("cyc_inc2", "pending"),
+        ],
+        repository=_Clone({"squash1"}),
+        goal_sets=goal_sets,
+    )
+
+    assert [(i.cycle_id, i.standing.value, i.review_url) for i in listed] == [
+        ("cyc_inc2", "contribution_pending", "https://forge.example.invalid/pull/cyc_inc2")
+    ]
+
+
 @pytest.mark.parametrize(
     ("project_id", "status", "code"),
     [
