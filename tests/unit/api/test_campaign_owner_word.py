@@ -200,13 +200,17 @@ async def test_a_held_action_is_executed_once_by_the_resume_as_recorded(world):
 
 @pytest.mark.parametrize(
     ("decision", "named", "held"),
-    [(_HELD, None, "paused by a limit"), (_ESCALATED, "propose", "escalated")],
+    [
+        (_HELD, None, "paused by a limit"),
+        (_ESCALATED, "propose", "does not declare in_cycle_failure"),
+    ],
     ids=["limit-pause", "escalation"],
 )
 async def test_the_supervisor_cannot_give_the_owners_word(world, decision, named, held):
     """#1940, the owner's rulings of 2026-10-03: "keep escalations with me", "keep limit pauses
     with me". Bugs caught: the manage scope letting the supervisor execute a held launch or rule
-    an escalation. The refusal writes nothing, and the owner's word then proceeds."""
+    an escalation. With nothing delegated (§24da) the refusal is recorded and moves nothing, and
+    the owner's word then proceeds."""
     await world.decided(decision)
     rows = len(await world.campaigns.control_log(CID))
     world.seat = Role.CAMPAIGN_SUPERVISOR
@@ -214,9 +218,10 @@ async def test_the_supervisor_cannot_give_the_owners_word(world, decision, named
     refused = world.resume("sup-1", **({"action": named} if named else {}))
 
     error = refused.json()["detail"]["error"]
-    assert (refused.status_code, error["code"]) == (403, "OWNER_AUTHORITY_REQUIRED")
+    assert (refused.status_code, error["code"]) == (403, "RESUME_NOT_DELEGATED")
     assert held in error["message"]
-    assert len(await world.campaigns.control_log(CID)) == rows
+    log = await world.campaigns.control_log(CID)
+    assert (len(log), log[-1].outcome) == (rows + 1, "refused")
     assert await world.campaigns.launch_intents(CID) == []
     world.seat = Role.ADMIN
     assert world.resume("owner-1", **({"action": named} if named else {})).status_code == 200

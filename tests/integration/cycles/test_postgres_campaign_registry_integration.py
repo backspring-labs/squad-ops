@@ -348,6 +348,44 @@ async def test_a_refusal_row_survives_the_refusal(campaigns):
     )
 
 
+async def test_a_refused_resume_persists_moves_nothing_and_leaves_its_key_free(pool, campaigns):
+    """§24da on Postgres, against migration 2002: ``refuse`` writes the row the route's refusal
+    names, the state stays, and a later resume with the same key applies. Bugs caught: the CHECK
+    list missing ``resume_not_delegated``, so the refusal itself fails and nothing is recorded; a
+    refusal moving the state; a refused key read as used, so the answer the owner's resume made
+    legal is refused as a conflict (a plan gate's answer retries on one key)."""
+    await campaigns.transition(CID, move(S.ESCALATED, "k-escalate"))
+    binding = {
+        "delegated": False, "class": None, "move": "repair", "escalation": {"seq": 3},
+        "definition_hash": "h", "why": "undeclared",
+    }  # fmt: skip
+    refused = move(
+        S.ESCALATED, "k-crew", operation=ControlOperation.RESUME, actor="crew",
+        actor_role="campaign-supervisor", expected_state=S.ESCALATED, binding=binding,
+    )  # fmt: skip
+
+    entry = await campaigns.refuse(CID, refused, RefusalReason.RESUME_NOT_DELEGATED)
+
+    restarted = PostgresCampaignRegistry(pool=pool)
+    assert (await restarted.get_campaign(CID)).state is S.ESCALATED
+    *_, row = await restarted.control_log(CID)
+    assert (row.entry_id, row.outcome, row.refusal) == (
+        entry.entry_id, ControlOutcome.REFUSED, RefusalReason.RESUME_NOT_DELEGATED,
+    )  # fmt: skip
+    assert (row.operation, row.actor, row.binding) == (ControlOperation.RESUME, "crew", binding)
+
+    applied = await restarted.transition(
+        CID,
+        move(
+            S.CALIBRATING, "k-crew", operation=ControlOperation.RESUME, actor="owner",
+            actor_role="admin", expected_state=S.ESCALATED,
+        ),
+    )  # fmt: skip
+
+    assert applied.entry.outcome is ControlOutcome.APPLIED
+    assert (await restarted.get_campaign(CID)).state is S.CALIBRATING
+
+
 async def test_a_failure_inside_the_transaction_leaves_no_partial_write(campaigns, monkeypatch):
     """§13: the state change, its row and its intent commit together or not at all. The intent's
     insert fails after the row and the state are written; nothing of the three may remain."""

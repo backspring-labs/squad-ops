@@ -18,6 +18,7 @@ from squadops.campaigns.models import (
     CampaignTransition,
     ControlLogEntry,
     LaunchIntent,
+    RefusalReason,
     TransitionResult,
 )
 
@@ -80,6 +81,21 @@ class CampaignRegistryPort(ABC):
             ControlOperationRefused: If the operation is refused. The refusal is recorded as a
                 control-log row before this is raised.
             ValueError: If the operation changes the box lease: ``change_box_lease`` commits it.
+        """
+
+    @abstractmethod
+    async def refuse(
+        self, campaign_id: str, transition: CampaignTransition, refusal: RefusalReason
+    ) -> ControlLogEntry:
+        """Record a refusal the caller decided (§24da): the row of ``transition`` with
+        ``outcome = refused`` and ``refusal``, committed under the campaign's lock, the state
+        unchanged and no key consumed. It is the resume route's way of recording a resume the
+        campaign did not delegate; the registry's own refusals are decided in ``transition``.
+
+        Returns the row, raising nothing: the caller raises what its surface names.
+
+        Raises:
+            CampaignNotFoundError: If the campaign_id is not found.
         """
 
     @abstractmethod

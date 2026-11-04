@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 import yaml
 
-from squadops.campaigns.models import ControlOperation
+from squadops.campaigns.models import ControlOperation, RefusalReason
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
 from squadops.cli.forge_token import gh_token
@@ -40,7 +40,15 @@ def _call(ctx: typer.Context, method: str, path: str, *, long_wait: bool = False
         data = getattr(client, method)(path, **kwargs)
         client.close()
     except CLIError as e:
-        print_error(str(e))
+        detail = e.detail if isinstance(e.detail, dict) else {}
+        if detail.get("refusal") == RefusalReason.RESUME_NOT_DELEGATED:
+            # SIP-0109 §24da: the crew's resume refused by the campaign's declaration, which the
+            # 403's "authentication failed" would misname: the reason, and the row recording it.
+            print_error(
+                f"resume not delegated (recorded as {detail.get('entry_id')}): {detail.get('why')}"
+            )
+        else:
+            print_error(str(e))
         raise typer.Exit(code=e.exit_code) from e
     return data
 

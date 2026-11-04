@@ -180,6 +180,7 @@ def digest(doc: dict) -> str:
     lines += ["", "## Escalations", ""] + (
         _escalation_lines(c, rows) or ["- the plan-review tier escalated nothing"]
     )
+    lines += ["", "## Unattended resumes", ""] + _unattended_lines(c, rows)
     asks = _questions(c, rows) + _escalation_asks(c, rows) + _over_bound(doc)
     lines += ["", "## For the owner", ""] + ([f"- {q}" for q in asks] or ["- nothing is waiting"])
     return "\n".join(lines) + "\n"
@@ -208,6 +209,38 @@ def _escalations_of(campaign: dict, rows: list[dict]):
         if r["operation"] in ops
     ]
     return escalations(entries, CampaignState(campaign["state"]))
+
+
+def _unattended_lines(campaign: dict, rows: list[dict]) -> list[str]:
+    """§24da: every resume the crew's supervisor principal made under the campaign's
+    ``unattended_resume``, and every one refused, from the control log: who, the class, the
+    escalation and the definition hash it was judged against."""
+    declared = campaign["policy"].get("unattended_resume") or []
+    head = f"Declared: {', '.join(f'`{c}`' for c in declared) if declared else 'nothing'}."
+    audited = [
+        r
+        for r in rows
+        if r["operation"] == ControlOperation.RESUME and "delegated" in (r["binding"] or {})
+    ]
+    resumed = [r for r in audited if r["outcome"] == ControlOutcome.APPLIED]
+    refused = [r for r in audited if r["outcome"] == ControlOutcome.REFUSED]
+    lines = [head, f"{len(resumed)} delegated resume(s), {len(refused)} refused.", ""]
+    for r in audited:
+        b = r["binding"]
+        esc = b.get("escalation") or {}
+        which = esc.get("escalation_id") or (
+            f"{esc.get('operation')} row {esc.get('seq')}" if esc else "no escalation"
+        )
+        what = "resumed" if r["outcome"] == ControlOutcome.APPLIED else "refused"
+        line = (
+            f"- seq {r['seq']}: {what} by {r['actor']} ({r['actor_role']}), class "
+            f"`{b.get('class') or 'none'}`, move `{b.get('move') or 'none'}`, on {which}; "
+            f"definition `{str(b.get('definition_hash') or '')[:12]}`"
+        )
+        if b.get("why"):
+            line += f". Why: {b['why']}"
+        lines.append(line)
+    return lines
 
 
 def _escalation_lines(campaign: dict, rows: list[dict]) -> list[str]:

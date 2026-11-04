@@ -28,7 +28,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.gate_promotion import promote_run_artifacts
-from squadops.cycles.models import APPROVING_DECISIONS, GateDecision, Run
+from squadops.cycles.lifecycle import GATE_REJECTED_STATES
+from squadops.cycles.models import (
+    APPROVING_DECISIONS,
+    GateAlreadyDecidedError,
+    GateDecision,
+    Run,
+    RunStatus,
+    RunTerminalError,
+    ValidationError,
+)
 from squadops.events.types import EventType
 
 if TYPE_CHECKING:
@@ -49,6 +58,31 @@ def gate_decided_payload(decision: GateDecision) -> dict[str, Any]:
     if decision.waived_checks:
         payload["waived_checks"] = list(decision.waived_checks)
     return payload
+
+
+async def refuse_undecidable(
+    registry: CycleRegistryPort, run_id: str, decision: GateDecision
+) -> None:
+    """Raise what ``CycleRegistryPort.record_gate_decision`` would raise for ``decision``, without
+    recording it: for a caller that must write something else first and can't write it for a
+    decision the registry would refuse (SIP-0109 §24da: a delegated answer's audit row). The same
+    decision again passes, as the registry's no-op does. A read, so a decision that lands between
+    this and the record can still refuse it. The registry stays the one enforcement point (T11),
+    and ``test_gate_decision_preflight.py`` holds the two to the same answers."""
+    run = await registry.get_run(run_id)
+    status = RunStatus(run.status)
+    if status in GATE_REJECTED_STATES:
+        raise RunTerminalError(
+            f"Cannot record gate decision on gate-rejected run (status={status.value})"
+        )
+    cycle = await registry.get_cycle(run.cycle_id)
+    if decision.gate_name not in {g.name for g in cycle.task_flow_policy.gates}:
+        raise ValidationError(f"Gate {decision.gate_name!r} not found in TaskFlowPolicy")
+    for existing in run.gate_decisions:
+        if existing.gate_name == decision.gate_name and existing.decision != decision.decision:
+            raise GateAlreadyDecidedError(
+                f"Gate {decision.gate_name!r} already decided as {existing.decision!r}"
+            )
 
 
 async def record_gate_decision(

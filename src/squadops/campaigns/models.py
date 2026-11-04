@@ -176,6 +176,36 @@ class ProposalClassification(StrEnum):
     SOUND_PROPOSAL_BUILT_BADLY = "sound_proposal_built_badly"
 
 
+class ResumableClass(StrEnum):
+    """An escalation class a Campaign may delegate to the crew's supervisor principal (§24da; the
+    2.6 plan's D6, ruled 2026-11-03). Declared in ``policy.unattended_resume``; a class absent
+    from this table is never declarable: an upstream conflict, a limit's pause, a security
+    finding and the owner's pause stay the owner's."""
+
+    #: A plan gate the plan-review tier escalated (§24bj, §24bk): resumed by answering the gate.
+    PLAN_GATE = "plan_gate"
+    #: A cycle's own failure the decision escalated (§10 rows 9, 11 and 14): resumed by a repair
+    #: or a retry, within the policy's per-increment limits.
+    IN_CYCLE_FAILURE = "in_cycle_failure"
+    #: A launch the box kept refusing past ``launch_blocked_attempts`` (§9.3): resumed by the
+    #: relaunch, once the box is quiet.
+    LAUNCH_BLOCKED = "launch_blocked"
+
+    @property
+    def covers(self) -> str:
+        """The escalation this class covers, in words."""
+        return _COVERS[self]
+
+
+_COVERS: dict[ResumableClass, str] = {
+    ResumableClass.PLAN_GATE: "a plan gate the plan-review tier escalated, answered at the gate",
+    ResumableClass.IN_CYCLE_FAILURE: (
+        "a repair or retry after a cycle's own failure, within the per-increment limits"
+    ),
+    ResumableClass.LAUNCH_BLOCKED: "the relaunch after the box refused past the policy's count",
+}
+
+
 class ControlOutcome(StrEnum):
     """Whether a control operation took effect. A refused operation is recorded too (§12a)."""
 
@@ -207,6 +237,11 @@ class RefusalReason(StrEnum):
     RUN_IN_FLIGHT = "run_in_flight"
     BOX_HELD = "box_held"
     NOT_LEASE_HOLDER = "not_lease_holder"
+    #: The crew's supervisor principal asked to resume an escalation the campaign did not delegate
+    #: to it (§24da): a class outside ``policy.unattended_resume``, a never-class, a move the class
+    #: doesn't permit or past its limit, or a campaign the owner holds. The route decides it and
+    #: records it; the row's binding says which.
+    RESUME_NOT_DELEGATED = "resume_not_delegated"
 
 
 class LaunchIntentState(StrEnum):
@@ -259,6 +294,16 @@ class ControlOperationRefused(CampaignError):
         super().__init__(
             f"{entry.operation} on campaign {entry.campaign_id} refused: {entry.refusal}"
         )
+
+
+class ResumeNotDelegated(ControlOperationRefused):
+    """A resume the crew's supervisor principal asked for that the campaign did not delegate to
+    it (§24da), refused and recorded: ``entry`` is the ``resume_not_delegated`` row, and its
+    binding's ``why`` is the message."""
+
+    def __init__(self, entry: ControlLogEntry) -> None:
+        self.entry = entry
+        CampaignError.__init__(self, str(entry.binding.get("why") or entry.refusal))
 
 
 # =============================================================================
@@ -546,6 +591,11 @@ class CampaignPolicy:
     # stack, as a cycle that overrides none runs its profile's; a policy stored before it was
     # declarable reads as that.
     stack: str | None = None
+    # §24da (the 2.6 plan's D6): the escalation classes the crew's supervisor principal may
+    # resume on its own, fixed at creation and part of the creation hash when set. Empty, nothing
+    # is delegated: every escalation waits for the owner, as before; a policy stored before it
+    # was declarable reads as that.
+    unattended_resume: tuple[ResumableClass, ...] = ()
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
@@ -557,8 +607,7 @@ class CampaignPolicy:
         if "ruling_bound_s" not in values and "crew_ruling_bound_s" in values:
             values["ruling_bound_s"] = values.pop("crew_ruling_bound_s")
             values.pop("owner_ruling_bound_s", None)
-        if "plan_gate" not in values:
-            values["plan_gate"] = PlanGate.SUPERVISED
+        values.setdefault("plan_gate", PlanGate.SUPERVISED)
         return cls(**values)
 
     def __post_init__(self) -> None:
@@ -591,6 +640,31 @@ class CampaignPolicy:
                 f"CampaignPolicy.stack {self.stack!r} is not a stack a campaign can run on: it "
                 "needs a scaffold that declares where a criterion's test file lives (§8.1)"
             )
+        object.__setattr__(self, "unattended_resume", _resumable_classes(self.unattended_resume))
+
+
+def _resumable_classes(declared: Any) -> tuple[ResumableClass, ...]:
+    """``policy.unattended_resume`` read (§24da): each entry a resumable class, named once. A
+    class outside the table is refused by name, with the table; a never-class is just such a
+    name, since it is not in the table."""
+    if isinstance(declared, str) or not isinstance(declared, (list, tuple)):
+        raise ValueError(
+            "CampaignPolicy.unattended_resume is a list of escalation classes, one of "
+            f"{[c.value for c in ResumableClass]}, got {declared!r}"
+        )
+    classes: list[ResumableClass] = []
+    for entry in declared:
+        try:
+            cls = ResumableClass(entry)
+        except ValueError:
+            raise ValueError(
+                f"CampaignPolicy.unattended_resume: {entry!r} is not an escalation class the "
+                f"crew's supervisor may resume; the classes are {[c.value for c in ResumableClass]}"
+            ) from None
+        if cls in classes:
+            raise ValueError(f"CampaignPolicy.unattended_resume names {cls.value!r} twice")
+        classes.append(cls)
+    return tuple(classes)
 
 
 @dataclass(frozen=True)

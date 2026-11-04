@@ -174,13 +174,19 @@ def creation_request_hash(
     plan gate (§24bj) enters only when it is not ``supervised``: a creation stored before it existed
     ran supervised and was hashed without it, so its retry still replays. The stack (§24bs) enters
     only when declared, for the same reason, and so do the objective's work class (SIP-0113
-    §4.6, #2418), its requirements source (SIP-0109 §24bv point 5), and its goal set and
-    ``stop_when`` (SIP-0115 §5.1, §5.6)."""
+    §4.6, #2418), its requirements source (SIP-0109 §24bv point 5), its goal set and
+    ``stop_when`` (SIP-0115 §5.1, §5.6), and the policy's ``unattended_resume`` (§24da): a
+    declared class is part of the definition the hash names, and an empty one is today's
+    behaviour, hashed as before."""
     policy = dataclasses.asdict(campaign.policy)
     if policy["plan_gate"] is PlanGate.SUPERVISED:
         del policy["plan_gate"]
     if policy["stack"] is None:
         del policy["stack"]
+    if not policy["unattended_resume"]:
+        del policy["unattended_resume"]
+    else:
+        policy["unattended_resume"] = [str(c) for c in policy["unattended_resume"]]
     objective = dataclasses.asdict(campaign.objective)
     for key in ("work_class", "requirements", "goals", "stop_when"):
         if objective[key] is None:

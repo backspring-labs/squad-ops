@@ -72,6 +72,16 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   reserve and window, and nothing is written. A model with no known window, a squad or proposal profile that can't
   be read, and a tree that can't be read or is past 2.4's limits refuse it as `size_unmeasured`. A product that fits
   starts as before, and a sample application's Campaign is never measured.
+- **Unattended resume** (SIP-0109 §24da, #2891; the 2.6 plan's D6 and D7). A Campaign declares
+  `policy.unattended_resume`: the escalation classes the crew's `campaign-supervisor` principal may resume on its own,
+  `plan_gate` (a plan gate the tier escalated, answered at the gate), `in_cycle_failure` (a `repair` or `retry` after
+  the cycle's own failure, within the per-increment limits) and `launch_blocked` (the relaunch). It is fixed at
+  creation and part of the creation hash when set; an unknown class, including the never-classes (an upstream
+  conflict, a limit's pause, a security finding, the owner's pause), is refused at creation. Anything else the crew
+  asks is refused 403 `RESUME_NOT_DELEGATED` with its reason; every delegated resume and every refusal is a
+  control-log row naming the principal, the class, the escalation and the definition hash (refusal
+  `resume_not_delegated`, migration `2002`), and the digest lists them. The owner's pause revokes the grant until the
+  owner resumes. The supervisor seat's refused resume is now recorded rather than refused unwritten.
 
 ### Fixed
 - **The console's API proxies forward the query string** (#2915). `/api/v1/*` and the two chat proxies forwarded the
