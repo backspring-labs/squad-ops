@@ -41,6 +41,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   over. The panel's reads and write are `goals.js`, tested under node (`npm test` in the plugin's `ui/`, run in CI).
 
 ### Fixed
+- **The console's API proxies forward the query string** (#2915). `/api/v1/*` and the two chat proxies forwarded the
+  path alone, so through the console's own port `?project_id=` reached the runtime API missing (a 422) and `?limit=`/
+  `?offset=` read as the default page. Hidden on the Spark, where Caddy sends `/api/v1/*` to the runtime API directly.
 - **The backlog says which limit ended a Campaign on an item** (#2911). The ledger's projection of a decision left
   out its `cause`, so an item a Campaign ended on read "the campaign ended at §10 row 4 (None)"; the ledger's
   outcome now carries `cause` and the backlog names it. Seen on the Shelfnote Campaign `cmp_5947cfb57197`.
