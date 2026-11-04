@@ -47,7 +47,7 @@ class LedgerEntry:
 
 
 #: The decision fields a cycle's entry shows, in the order the ledger reads them.
-_DECISION_FIELDS = ("row", "ending", "verdict", "action", "outcome", "unbuilt")
+_DECISION_FIELDS = ("row", "ending", "verdict", "action", "outcome", "cause", "unbuilt")
 _CONTINUATIONS = (CycleKind.REPAIR, CycleKind.RETRY)
 
 

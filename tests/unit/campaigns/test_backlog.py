@@ -252,6 +252,22 @@ def test_an_abandoned_item_names_its_row_and_reason():
     assert b1.reason == "§10 row 13: its increment was abandoned (assessed, rejected)"
 
 
+def test_an_item_the_campaign_ended_on_names_the_rows_cause():
+    """A terminal decision's cause reaches the reason. Bug caught (#2911): the ledger's decision
+    projection dropped ``cause``, so an item a Campaign failed on read "§10 row 4 (None)" and
+    nobody could tell which limit ended it."""
+    log = _approved(_Log(), "B-1", "c1").decide(
+        "c1", 4, outcome="failure", cause="unaccepted_increments", verdict="rejected"
+    )
+
+    [b1, *_] = backlog_view([_revision(1)], 1, log.rows, log.launches).items
+
+    assert (b1.status, b1.row) == (ItemStatus.ABANDONED, 4)
+    assert b1.reason == (
+        "the campaign ended at §10 row 4 (unaccepted_increments) with its increment unaccepted"
+    )
+
+
 def _without(item_id: str) -> dict:
     doc = _document()
     doc["backlog"] = [b for b in doc["backlog"] if b["id"] != item_id]

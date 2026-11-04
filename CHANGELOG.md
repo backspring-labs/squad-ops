@@ -28,6 +28,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   §10 row 3 when every item of the revision read at the decision is accepted, and the decision's row records which.
 
 ### Fixed
+- **The backlog says which limit ended a Campaign on an item** (#2911). The ledger's projection of a decision left
+  out its `cause`, so an item a Campaign ended on read "the campaign ended at §10 row 4 (None)"; the ledger's
+  outcome now carries `cause` and the backlog names it. Seen on the Shelfnote Campaign `cmp_5947cfb57197`.
 - **The console's write buttons execute** (#2903, #2904). Every plugin posted `{command_id, params}` to the shell's
   command route, whose body is `{command_id, args, dry_run, confirmed}` (Continuum v1.0.2), so each handler got `{}`
   and the bus's 200 `status: failed` passed as success; and no plugin sent `confirmed`, so a confirm-level command
