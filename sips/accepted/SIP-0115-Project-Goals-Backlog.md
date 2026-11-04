@@ -69,7 +69,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | slice 3: candidates added, promoted or dropped, and a backlog item split, under Q41's rule for the crew (as built: §10c) | **shipped** | 2.6.0, PR #2908, closes #2886 |
 | §6's squad and system candidates: a cycle's or a proposal's findings recorded as candidates by the runtime, with no principal of its own | **unplaced**, deliberately: not built in slice 3 (§10c) | — |
 | slice 4: the console's goals panel: a panel of the Projects plugin, its edit a confirm-level command (`squadops.revise_goal_set`). §8.3's latest assessment of each expected result is not shown: no assessment record exists until slice 5 (§5.7), and showing it in the panel is that slice's | **shipped** | 2.6.0, PR #2916, closes #2887 |
-| slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7), shown in the console (as built: §10d) | **shipped** | 2.6.0, closes #2888 |
+| slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7), shown in the console (as built: §10d) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 | slice 6: the repository export | **unplaced**, deliberately: not in 2.6 (the plan's D1, ruled 2026-11-03) | — |
 
 **What closes this SIP:** slices 1–5 shipped and read live on a Campaign whose backlog reached three accepted items,
