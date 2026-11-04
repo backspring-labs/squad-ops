@@ -37,26 +37,12 @@ class TestEdit:
     """Bugs caught: a write sent against no revision, so the server can't refuse a concurrent
     edit; the file's goal set altered or wrapped on its way into the body."""
 
-    @pytest.mark.parametrize(
-        ("active", "expected_revision"),
-        [
-            (_revision(3), 3),
-            # no goal set yet: the first write is against revision 0
-            (CLIError("Error: not found — no goal set", exit_codes.NOT_FOUND), 0),
-        ],
-    )
-    def test_the_active_revision_is_read_and_sent_as_the_expected_one(
-        self, active, expected_revision, tmp_path
-    ):
+    def test_the_files_goal_set_is_sent_against_the_revision_it_names(self, tmp_path):
         spec = tmp_path / "goals.yaml"
-        spec.write_text(yaml.safe_dump(goal_set_document()))
+        spec.write_text("# base-revision: 3\n" + yaml.safe_dump(goal_set_document()))
         client = MagicMock()
-        if isinstance(active, Exception):
-            client.get.side_effect = active
-        else:
-            client.get.return_value = active
         client.post.return_value = {
-            "revision": _revision(expected_revision + 1),
+            "revision": _revision(4),
             "idempotency_key": "g-1",
             "replayed": False,
         }
@@ -83,14 +69,36 @@ class TestEdit:
         assert client.post.call_args.args[0] == "/api/v1/projects/prj-lantern/goal-set/revisions"
         assert client.post.call_args.kwargs["json"] == {
             "idempotency_key": "g-1",
-            "expected_revision": expected_revision,
+            "expected_revision": 3,
             "reason": "the owner added the weekly total",
             "source_ref": "https://chat.example.invalid/thread/42",
             "goal_set": goal_set_document(),
         }
-        assert f"revision {expected_revision + 1} (2 backlog item(s)" in " ".join(
-            result.output.split()
-        )
+        assert "revision 4 (2 backlog item(s)" in " ".join(result.output.split())
+
+    @pytest.mark.parametrize(
+        ("header", "flag", "why"),
+        [
+            ("", None, "names no revision it replaces"),
+            ("# base-revision: 2\n", "3", "was shown at revision 2"),
+        ],
+        ids=["a hand-written file with no revision", "the file and the flag disagree"],
+    )
+    def test_an_edit_that_doesnt_say_which_revision_it_replaces_is_refused_before_any_call(
+        self, header, flag, why, tmp_path
+    ):
+        """Bug caught: the active revision read and used instead, so a stale file is written
+        over whatever another editor wrote since (the second review of PR #2899, P1)."""
+        spec = tmp_path / "goals.yaml"
+        spec.write_text(header + yaml.safe_dump(goal_set_document()))
+        args = ["goals", "edit", "prj-lantern", "-f", str(spec), "--reason", "r"]
+
+        with patch(CLIENT) as get_client:
+            result = runner.invoke(app, args + (["--expected-revision", flag] if flag else []))
+
+        assert result.exit_code == 2
+        assert why in " ".join(result.output.split())
+        get_client.assert_not_called()
 
     def test_a_given_expected_revision_is_sent_without_reading_the_active_one(self, tmp_path):
         spec = tmp_path / "goals.json"
@@ -107,8 +115,9 @@ class TestEdit:
 
         client.get.assert_not_called()
         assert client.post.call_args.kwargs["json"]["expected_revision"] == 4
-        # a refused write names the key, so a retry can replay it
+        # a refused write names the key and the revision, so a retry can resend the same request
         assert result.exit_code == exit_codes.CONFLICT
+        assert "expected revision 4" in " ".join(result.output.split())
         assert "idempotency key cli-" in " ".join(result.output.split())
 
     def test_a_hand_written_time_reaches_the_server_in_its_iso_form(self, tmp_path):
@@ -168,7 +177,8 @@ class TestShow:
 
         assert result.exit_code == 0, result.output
         assert client.get.call_args.args[0] == "/api/v1/projects/prj-lantern/goal-set"
-        assert "revision 2, by owner" in result.output
+        assert "# base-revision: 2" in result.output
+        assert "# written by: owner" in result.output
         assert parse_goal_set(yaml.safe_load(result.output)) == parse_goal_set(goal_set_document())
 
     def test_json_prints_the_revision_as_answered_and_a_revision_is_read_by_number(self):
@@ -214,3 +224,118 @@ class TestHistory:
 
         assert result.exit_code == 0
         assert "prj-lantern has no goal set yet" in result.output
+
+
+class _Server:
+    """The write route's rules, as ``revise_goal_set`` and the store keep them: a write must name
+    the active revision, and a key resent with the same request replays what it wrote."""
+
+    def __init__(self, revision: int) -> None:
+        self.revision = revision
+        self.by_key: dict[str, tuple[dict, dict]] = {}
+        self.lose_next_response = False
+
+    def get(self, path: str) -> dict:
+        return _revision(self.revision)
+
+    def post(self, path: str, *, json: dict) -> dict:
+        body = {k: v for k, v in json.items() if k != "idempotency_key"}
+        if json["idempotency_key"] in self.by_key:
+            sent, written = self.by_key[json["idempotency_key"]]
+            if sent != body:
+                raise CLIError("Error: conflict — IDEMPOTENCY_KEY_CONFLICT", exit_codes.CONFLICT)
+            return {
+                "revision": written,
+                "idempotency_key": json["idempotency_key"],
+                "replayed": True,
+            }
+        if json["expected_revision"] != self.revision:
+            raise CLIError(
+                f"Error: conflict — STALE_GOAL_SET_REVISION: at {self.revision}",
+                exit_codes.CONFLICT,
+            )
+        self.revision += 1
+        written = _revision(self.revision, goal_set=json["goal_set"])
+        self.by_key[json["idempotency_key"]] = (body, written)
+        if self.lose_next_response:
+            self.lose_next_response = False
+            raise CLIError("Error: the request timed out", exit_codes.NETWORK_ERROR)
+        return {"revision": written, "idempotency_key": json["idempotency_key"], "replayed": False}
+
+    def close(self) -> None: ...
+
+
+def _show_to_file(server: _Server, path, **extra) -> None:
+    server_revision = _revision(server.revision, **extra)
+    client = MagicMock()
+    client.get.return_value = server_revision
+    with patch(CLIENT, return_value=client):
+        shown = runner.invoke(app, ["goals", "show", "prj-lantern"])
+    assert shown.exit_code == 0, shown.output
+    path.write_text(shown.output)
+
+
+def _edit(server: _Server, path, *extra: str):
+    with patch(CLIENT, return_value=server):
+        return runner.invoke(
+            app, ["goals", "edit", "prj-lantern", "-f", str(path), "--reason", "r", *extra]
+        )
+
+
+class TestTheRoundTripAgainstAnotherEditor:
+    """The second review of PR #2899: ``show > f; edit -f f`` as two editors and a lost response
+    meet it."""
+
+    def test_a_file_shown_before_another_editor_wrote_is_refused_not_written_over_them(
+        self, tmp_path
+    ):
+        """P1. Bug caught: editor A's export from revision 1, submitted after editor B wrote
+        revision 2, written as revision 3, so B's change is silently gone."""
+        server = _Server(revision=1)
+        mine, theirs = tmp_path / "a.yaml", tmp_path / "b.yaml"
+        _show_to_file(server, mine)
+        _show_to_file(server, theirs)
+        assert _edit(server, theirs).exit_code == 0
+        assert server.revision == 2
+
+        result = _edit(server, mine)
+
+        assert result.exit_code == exit_codes.CONFLICT
+        assert "STALE_GOAL_SET_REVISION" in result.output
+        assert server.revision == 2
+
+    def test_a_write_whose_response_was_lost_replays_on_a_retry_with_its_key(self, tmp_path):
+        """P2. Bug caught: the retry re-reads the active revision (the one it just wrote), so it
+        sends a different request under the same key and is refused as a key conflict."""
+        server = _Server(revision=1)
+        spec = tmp_path / "goals.yaml"
+        _show_to_file(server, spec)
+        server.lose_next_response = True
+
+        first = _edit(server, spec, "--idempotency-key", "k-1")
+        retry = _edit(server, spec, "--idempotency-key", "k-1")
+
+        assert first.exit_code != 0
+        assert "expected revision 1" in " ".join(first.output.split())
+        assert retry.exit_code == 0, retry.output
+        assert "replayed: prj-lantern goal set revision 2" in " ".join(retry.output.split())
+        assert server.revision == 2
+
+    def test_a_multi_line_reason_and_link_still_round_trip(self, tmp_path):
+        """P3. Bug caught: only the first line of a reason commented, so its second line is
+        plain text above the document and the file no longer reads as the goal set."""
+        server = _Server(revision=1)
+        spec = tmp_path / "goals.yaml"
+        _show_to_file(
+            server,
+            spec,
+            reason="Added item\nAfter owner review\n# base-revision: 9",
+            source_ref="https://chat.example.invalid/t/7\nsecond line",
+        )
+
+        assert parse_goal_set(yaml.safe_load(spec.read_text())) == parse_goal_set(
+            goal_set_document()
+        )
+        result = _edit(server, spec)
+        assert result.exit_code == 0, result.output
+        assert server.revision == 2
