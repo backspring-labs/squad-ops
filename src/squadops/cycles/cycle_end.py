@@ -71,9 +71,12 @@ def declared_stop_reason(
     stopped_because: CycleStopReason, terminal: RunTerminalDecision | None
 ) -> CycleStopReason:
     """``stopped_because``, or the cycle's ending the failed run's terminal decision declares
-    (``STOP_REASON_FOR_TERMINAL_KIND``). Any other stop, and a failed run that declared no ending
-    of the cycle's, is left as the sequence read it."""
-    if stopped_because is not CycleStopReason.RUN_FAILED or terminal is None:
+    (``STOP_REASON_FOR_TERMINAL_KIND``). Any other stop, a failed run that declared no ending of
+    the cycle's, and a summary whose terminal is not a decision, are left as the sequence read
+    them."""
+    if stopped_because is not CycleStopReason.RUN_FAILED or not isinstance(
+        terminal, RunTerminalDecision
+    ):
         return stopped_because
     return STOP_REASON_FOR_TERMINAL_KIND.get(terminal.kind, stopped_because)
 
