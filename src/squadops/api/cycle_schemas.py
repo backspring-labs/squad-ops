@@ -431,7 +431,9 @@ class UnintegratedIncrementResponse(BaseModel):
     title: str | None
     #: The commit that holds the increment on its Campaign's branch now.
     commit: str
-    standing: Literal["not_contributed", "contribution_pending", "merged_not_synced"]
+    standing: Literal[
+        "not_contributed", "contribution_pending", "merged_not_synced", "contribution_closed"
+    ]
     #: Its Campaign's review request, when its contribution opened one.
     review_url: str | None
 

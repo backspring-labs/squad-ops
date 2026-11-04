@@ -134,6 +134,27 @@ async def test_an_increment_never_contributed_stands_not_contributed(tmp_path):
     ]
 
 
+async def test_a_closed_request_keeps_the_gate_and_says_which_and_a_retry_cant_reopen_it(tmp_path):
+    """The review's policy. A review request closed unmerged keeps blocking, with its address, so
+    the supervisor can say what it waits on. And the recorded gap: ``campaigns contribute`` answers
+    the closed record and opens nothing. Reopening is the forge's, by the owner (§24dc). Bugs
+    caught: a closed request reading ``not_contributed`` with no address; a second request opened
+    beside a closed one the owner refused."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted_with_criterion()
+    client = world.client()
+    assert client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": "t"}).is_success
+    world.book.recorded[0] = dataclasses.replace(world.book.recorded[0], state="closed")
+
+    [item] = client.get(PATH).json()
+    again = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": "t"})
+
+    assert (item["standing"], item["review_url"]) == ("contribution_closed", URL)
+    assert (again.json()["replayed"], again.json()["contribution"]["state"]) == (True, "closed")
+    assert world.forge.calls == 1
+
+
 async def test_a_campaign_with_no_accepted_increment_lists_nothing(tmp_path):
     """The empty set a gate reads. Bug caught: a calibration's promotion read as an increment, so
     a Campaign that accepted nothing blocks every draft."""
@@ -228,9 +249,9 @@ def _goal_set_world():
         # nothing contributed: both listed, each titled by the item its proposal served
         (None, set(), [("cyc_rep1", "Item B-1", "not_contributed"),
                        ("cyc_inc2", "Item B-2", "not_contributed")]),
-        # closed on the forge without merging: the work isn't in, so not contributed
-        ("closed", set(), [("cyc_rep1", "Item B-1", "not_contributed"),
-                           ("cyc_inc2", "Item B-2", "not_contributed")]),
+        # closed on the forge without merging: not in, and the gate says what it waits on
+        ("closed", set(), [("cyc_rep1", "Item B-1", "contribution_closed"),
+                           ("cyc_inc2", "Item B-2", "contribution_closed")]),
         # the integrated commit carries the first only, as a merge of part of the branch would
         ("pending", {"a1"}, [("cyc_inc2", "Item B-2", "contribution_pending")]),
         # a squash merge: the increments' commits are never ancestors, the merge commit is

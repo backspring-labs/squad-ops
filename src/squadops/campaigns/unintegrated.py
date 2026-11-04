@@ -5,13 +5,17 @@ Campaign accepted that the commit doesn't carry yet is work the draft can't see,
 gates on this set: a draft waits while it is non-empty. Each accepted increment on a Campaign's
 branch (``close_contribution.accepted_on_branch``) is listed unless the integrated commit carries
 it, and stands as one of:
-- ``not_contributed``: no contribution of its Campaign is recorded, or the one recorded was closed
-  on its forge without merging. A running Campaign's increments stand here too;
-- ``contribution_pending``: its Campaign's contribution is recorded, pending. A merge on the forge
-  is read only by a sync (``POST /api/v1/projects/{id}/syncs``), so a merged request reads pending
-  until one runs (#2862 would sync after a merge, and isn't built);
-- ``merged_not_synced``: a sync recorded the contribution integrated, and the Project's integrated
-  commit doesn't carry it yet: the Project is re-validated at the new commit (E.4.4) to move it.
+- ``not_contributed``: no contribution of it is recorded, by its Campaign or its own run. A running
+  Campaign's increments stand here too;
+- ``contribution_pending``: one is recorded, pending. A merge on the forge is read only by a sync
+  (``POST /api/v1/projects/{id}/syncs``), so a merged request reads pending until one runs (#2862
+  would sync after a merge, and isn't built);
+- ``merged_not_synced``: a sync recorded one integrated, and the Project's integrated commit
+  doesn't carry it yet: the Project is re-validated at the new commit (E.4.4) to move it;
+- ``contribution_closed``: its review request was closed unmerged, and ``review_url`` names it. The
+  work still isn't in, so it keeps blocking. Recovery is the owner's on the forge: reopen the
+  request and merge it with a merge commit, then sync and re-validate.
+  ``squadops campaigns contribute`` can't do this: it answers the closed record (SIP-0109 §24dc).
 
 "Carries" is read in the managed clone: the increment's commit, or the merge commit a sync
 recorded (a squash merge makes a new one), is in the integrated commit's history. An increment a
@@ -47,6 +51,7 @@ class Standing(StrEnum):
     NOT_CONTRIBUTED = "not_contributed"
     CONTRIBUTION_PENDING = "contribution_pending"
     MERGED_NOT_SYNCED = "merged_not_synced"
+    CONTRIBUTION_CLOSED = "contribution_closed"
 
 
 @dataclass(frozen=True)
@@ -102,8 +107,10 @@ async def unintegrated_increments(
             if any([await _carried(project, m, repository) for m in merges]):
                 continue
             contribution = min(held, key=lambda c: _ORDER[c.state], default=None)
-            if contribution is None or contribution.state == CLOSED:
+            if contribution is None:
                 standing = Standing.NOT_CONTRIBUTED
+            elif contribution.state == CLOSED:
+                standing = Standing.CONTRIBUTION_CLOSED
             elif contribution.state == INTEGRATED:
                 standing = Standing.MERGED_NOT_SYNCED
             else:

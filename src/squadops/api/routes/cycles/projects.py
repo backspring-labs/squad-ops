@@ -313,9 +313,13 @@ async def list_unintegrated_increments(
 ) -> list[UnintegratedIncrementResponse]:
     """The increments the Project's Campaigns accepted that its integrated commit doesn't carry
     yet (SIP-0109 §24dc, #2863), each with where it stands: ``not_contributed``,
-    ``contribution_pending`` or ``merged_not_synced``. Empty when every one is integrated, so a
-    supervisor can gate a draft on it. Read-only: the managed clone reads the history, and nothing
-    reaches the forge, so a merge reads as pending until a sync records it."""
+    ``contribution_pending``, ``merged_not_synced`` or ``contribution_closed``. Empty when every
+    one is integrated, so a supervisor can gate a draft on it. Read-only: the managed clone reads
+    the history, and nothing reaches the forge, so a merge reads as pending until a sync records it.
+
+    ``contribution_closed`` keeps blocking, with the closed request's ``review_url``. Its recovery
+    is the owner's on the forge: reopen the request and merge it with a merge commit, then sync and
+    re-validate. ``squadops campaigns contribute`` answers the closed record and opens nothing."""
     registry = get_project_registry(request)
     project = await registry.get_project(project_id)
     if project.source is None:
