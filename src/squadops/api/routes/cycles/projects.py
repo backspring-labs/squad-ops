@@ -27,11 +27,14 @@ from squadops.api.cycle_schemas import (
     SourceFileResponse,
     SourceSyncRequest,
     SourceSyncResponse,
+    UnintegratedIncrementResponse,
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import project_to_response
 from squadops.api.runtime.deps import (
+    get_campaign_registry,
+    get_goal_set_registry,
     get_project_locator_policy,
     get_project_registry,
     get_review_request_tokens,
@@ -40,6 +43,7 @@ from squadops.api.runtime.deps import (
     get_source_repository,
 )
 from squadops.auth.models import Identity, Scope
+from squadops.campaigns.unintegrated import unintegrated_increments
 from squadops.cycles.models import DerivedProfileNotFoundError
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.configuration import configure_project
@@ -298,6 +302,48 @@ async def list_contributions(request: Request, project_id: str) -> list[Contribu
     """A Project's contributions, oldest first: pending until the product takes them."""
     contributions = await get_project_registry(request).contributions(project_id)
     return [ContributionResponse(contribution=c.to_document()) for c in contributions]
+
+
+@router.get(
+    "/{project_id}/unintegrated-increments",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
+async def list_unintegrated_increments(
+    request: Request, project_id: str
+) -> list[UnintegratedIncrementResponse]:
+    """The increments the Project's Campaigns accepted that its integrated commit doesn't carry
+    yet (SIP-0109 §24dc, #2863), each with where it stands: ``not_contributed``,
+    ``contribution_pending`` or ``merged_not_synced``. Empty when every one is integrated, so a
+    supervisor can gate a draft on it. Read-only: the managed clone reads the history, and nothing
+    reaches the forge, so a merge reads as pending until a sync records it."""
+    registry = get_project_registry(request)
+    project = await registry.get_project(project_id)
+    if project.source is None:
+        raise http_error(
+            409,
+            "NO_SOURCE_REPOSITORY",
+            f"{project_id} is a sample application: it has no integrated commit, and its "
+            "Campaigns contribute nothing",
+        )
+    increments = await unintegrated_increments(
+        project,
+        campaigns=get_campaign_registry(request),
+        contributions=await registry.contributions(project_id),
+        repository=get_source_repository(request),
+        goal_sets=get_goal_set_registry(request),
+    )
+    return [
+        UnintegratedIncrementResponse(
+            campaign_id=i.campaign_id,
+            campaign_state=i.campaign_state,
+            cycle_id=i.cycle_id,
+            title=i.title,
+            commit=i.commit,
+            standing=i.standing.value,
+            review_url=i.review_url,
+        )
+        for i in increments
+    ]
 
 
 @router.post("/{project_id}/initializations", status_code=201)

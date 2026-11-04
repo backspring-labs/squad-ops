@@ -406,3 +406,57 @@ class TestBaselineCaptureBound:
         assert result.exit_code == exit_codes.NETWORK_ERROR
         assert "timed out after 1234s: it may still complete on the server" in said
         assert said.count("cap-2") == 1
+
+
+class TestProjectsUnintegrated:
+    """SIP-0109 §24dc (#2863): the supervisor's gate on a draft, read from the CLI."""
+
+    @patch("squadops.cli.commands.projects.print_table")
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_each_increment_is_a_row_with_where_it_stands(self, mock_get_client, table):
+        """Bugs caught: the route's path wrong; a standing or review request dropped from the
+        row, so the supervisor can't say why it waits; a title that isn't one printed as null."""
+        client = _mock_client(
+            [
+                {"campaign_id": "cmp_a", "campaign_state": "completed", "cycle_id": "cyc_1",
+                 "title": "Tags", "commit": "c" * 40, "standing": "contribution_pending",
+                 "review_url": "https://forge.example.invalid/pull/3"},
+                {"campaign_id": "cmp_b", "campaign_state": "building", "cycle_id": "cyc_2",
+                 "title": None, "commit": "d" * 40, "standing": "not_contributed",
+                 "review_url": None},
+            ]
+        )  # fmt: skip
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["projects", "unintegrated", "prj-shelfnote"])
+
+        assert result.exit_code == 0, result.output
+        client.get.assert_called_once_with("/api/v1/projects/prj-shelfnote/unintegrated-increments")
+        headers, rows = table.call_args.args
+        assert headers == ["Campaign", "Cycle", "Title", "Standing", "Review request"]
+        assert rows == [
+            ["cmp_a", "cyc_1", "Tags", "contribution_pending", "https://forge.example.invalid/pull/3"],
+            ["cmp_b", "cyc_2", "—", "not_contributed", "—"],
+        ]  # fmt: skip
+
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_an_empty_set_says_everything_is_integrated(self, mock_get_client):
+        """The edge a gate reads. Bug caught: an empty table read as a failed read."""
+        mock_get_client.return_value = _mock_client([])
+
+        result = runner.invoke(app, ["projects", "unintegrated", "prj-shelfnote"])
+
+        assert result.exit_code == 0
+        assert "every accepted increment is in its integrated commit" in result.output
+
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_a_refusal_is_an_error_exit(self, mock_get_client):
+        """Bug caught: a sample application's 409 printed as an empty, passing gate."""
+        mock = MagicMock()
+        mock.get.side_effect = CLIError("NO_SOURCE_REPOSITORY: a sample application", 1)
+        mock_get_client.return_value = mock
+
+        result = runner.invoke(app, ["projects", "unintegrated", "group_run"])
+
+        assert result.exit_code == 1
+        assert "every accepted increment" not in result.output

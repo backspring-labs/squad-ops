@@ -22,6 +22,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.campaigns import campaigns_router
+from squadops.api.routes.cycles.projects import router as projects_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.campaigns.calibration_record import record_for
 from squadops.campaigns.close_contribution import (
@@ -56,6 +57,7 @@ from squadops.projects.contribution import (
 )
 from squadops.projects.source_context import parse_source_context
 from squadops.projects.workspaces import capture_inherited_baseline
+from tests.fixtures.goal_set import GoalSetStore
 from tests.fixtures.shared_contract.repository import _git, recorded, tracked_files
 from tests.unit.api.test_campaign_calibration_record import PROJECT
 from tests.unit.campaigns.builders import T0, campaign, move, policy
@@ -120,6 +122,7 @@ class _World(_BranchWorld):
     def __init__(self, tmp_path, *, tokens: dict[str, str] | None = None) -> None:
         self.forge = _Forge()
         self.book = _Contributions()
+        self.goal_sets = GoalSetStore()
         super().__init__(tmp_path)
         self.projects.contributions = self.book.contributions
         self.projects.record_contribution = self.book.record_contribution
@@ -144,7 +147,7 @@ class _World(_BranchWorld):
             outcome_section=None,
             intervention_section=None,
             campaign_branch=progress._campaign_branch,
-            goal_sets=None,
+            goal_sets=self.goal_sets,
             contribute_at_close=lambda campaign_id: self.contribution.at_close(campaign_id),
         )
 
@@ -289,7 +292,9 @@ class _World(_BranchWorld):
 
         app.add_middleware(InjectIdentity)
         app.include_router(campaigns_router)
+        app.include_router(projects_router)
         register_domain_error_handlers(app)
+        app.state.goal_set_registry = self.goal_sets
         app.state.campaign_registry = self.campaigns
         app.state.cycle_registry = self.cycles
         app.state.project_registry = self.projects
