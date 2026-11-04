@@ -34,8 +34,8 @@ SIP-0069 principle 5 (`sips/implemented/SIP-0069-SquadOps-Console-Control-Plane.
 
 **None required.** Every mechanism above is in the pinned shell or in this repository's plugins and console app.
 
-Two defects in the console's existing write path were found while tracing the bus, and the goals panel's edit would
-inherit them. They are plugin-side, not shell changes. Traced in source; not reproduced on a deploy (no box time), and
+Two defects in the console's existing write path were found while tracing the bus (filed as #2903 and #2904), and
+the goals panel's edit would inherit them. They are plugin-side, not shell changes. Traced in source; not reproduced on a deploy (no box time), and
 no unit test posts to `/api/commands/execute` (grep of `tests/`: none; `test_console_main.py:22-24` stubs `continuum`):
 
 - **The body key.** The plugins send `{command_id, params}` (`GateDecisionCard.svelte:31`, `CycleCreateModal.svelte:38`,
