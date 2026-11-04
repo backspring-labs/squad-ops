@@ -188,6 +188,18 @@ retry, as `build_profile` and `development_profile`. Leave it out and the campai
 profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
 creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
 
+**Which escalations the crew may resume on its own is the campaign's declaration too**
+(`policy.unattended_resume`, SIP-0109 §24da; the 2.6 plan's D6). Leave it out and nothing is delegated: every
+escalation waits for you, as before. Each class you list lets the crew's `campaign-supervisor` principal make one
+move: `plan_gate` (answer a plan gate the tier escalated, at the gate), `in_cycle_failure` (`resume --action repair`
+or `retry` after the cycle's own failure, within the per-increment limits) and `launch_blocked` (`resume` with no
+action, once the box kept refusing). An upstream conflict, a limit's pause, a security finding and your own pause
+can't be declared. The list is fixed at creation and is part of the definition's hash, so widening it is a new
+campaign. Every crew resume and every refusal (403 `RESUME_NOT_DELEGATED`, with the reason) is a control-log row
+naming who, the class, the escalation and that hash, and the digest's **Unattended resumes** section lists them.
+**Your pause revokes the grant:** while you hold the campaign, the crew's resumes are refused, and your resume
+restores it.
+
 **Who decides a plan gate is the campaign's declaration** (`policy.plan_gate`, §24bj). Every new
 definition declares it; one that does not is refused at creation:
 - `supervised`: as above. A design that asks nothing passes on its own (#807), and a question waits
@@ -387,7 +399,7 @@ What the supervisor (the crew, or whoever holds the seat, §24al) does alone, an
 | alone | stops for the owner |
 |---|---|
 | rule increment gates and answer plan gates; pause a campaign; classify a proposal; take the lease at an open gate with no run in flight (all `campaigns:supervise`, which the `campaign-supervisor` role holds) | a pre-registration, or any material change to one (a policy value, a prediction, the set's size or frame) |
-| create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone) |
+| create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone), except the classes a campaign declares in `policy.unattended_resume` (§24da) |
 | file findings; fix them on branches; merge on full green, reading main's run | an unexplained red on main |
 | rebuild between campaigns, verifying the new code is loaded | a fix needed while a counted set is open: it voids the set |
 | run the reference scenario and the recovery diagnostics outside a counted set | anything touching security, and any public Release (tag, Release notes, records upload) |

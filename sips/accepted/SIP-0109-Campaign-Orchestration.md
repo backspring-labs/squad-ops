@@ -146,7 +146,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, read live, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co): the calibration record and its baseline reading, the proposal from the product's tree, the instruction binding at each cycle's own commit, the launch, the refusal at a moved upstream and the rebase onto the reconciled commit, increments judged at delivery on the product's runners, and the anchored page | **shipped**, read on the 2.5 cut's final deploy (the cut's pre-registration §14b): IR-2, IR-3 (a)–(e), IR-4, IR-6's calibration half, IR-7 and IR-8 hold. Narrowed by the owner (2026-10-29: "Narrow the claim, go to cut"): no product increment was accepted, so the row below carries the rest | 2.5.0, PRs #2820 and #2825 with the release PR, closes #2619 |
 | a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading); waits on #2799. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.6.0, #2827 |
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; a numbered amendment in its PR) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2890 |
-| unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; a numbered amendment in its PR) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2891 |
+| unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #TBD, closes #2891 |
 | the operator's box lease outside Campaigns (§9.3) | **placed** (the 2.6 plan's Track C, adopted 2026-11-03) | 2.6.0, #2287 |
 | a Campaign that closes with accepted increments opens its contribution to the product | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2861 |
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2863 |
@@ -5884,6 +5884,95 @@ theirs changes. The decision table's other rows, the counters, and the guards ar
 the same PR", on 2026-11-03 (the 2.6 plan's D1). The shapes above are the implementer's under the supervisor's brief
 for #2885, for the owner's review in the PR: the `goal_set` field kept and checked, `objective_met` rather than a new
 cause, the escalation in item 7, and the revision budget's exception in item 5.
+
+### 24da. The unattended resume: the escalation classes a Campaign delegates to the crew's supervisor principal, enforced at the resume route, audited, and revoked by the owner's pause (2026-11-04, §9.3, §10, §12, §13, §24az, §24bj, §24bk, §24cs; #2837; #2891; the 2.6 plan's D6 and D7, the owner's rulings of 2026-11-03)
+
+**Why.** Since §24az only `campaigns:control` (the owner's admin role) resumes an escalation, a limit's pause or the
+owner's pause, and the crew's broker principals deliberately hold no admin role. So every overnight escalation waited
+for the owner. D6 rules which escalations the crew's `campaign-supervisor` principal may resume on its own, and D7
+that the grant goes to the crew's existing broker principals: no new identity is built.
+
+**What changed.**
+1. **The declaration (§15).** `policy.unattended_resume: [<class>, …]`, optional. Empty or absent, nothing is
+   delegated: today's behaviour. It is fixed at creation and enters the creation hash only when set, so every
+   campaign stored before keeps its hash (`lifecycle.creation_request_hash`). Its values are the **resumable
+   classes** (`models.ResumableClass`), one table mapping each to the escalation it covers and the move it permits
+   (`escalation.PERMITTED_MOVES`):
+
+   | class | the escalation it covers, read from the row that escalated | the move it permits |
+   |---|---|---|
+   | `plan_gate` | an `escalation_opened` row of kind `plan_review` (§24bj, §24bk): a plan gate the tier escalated | a decision on that gate, at the gate route (#2837's path) |
+   | `in_cycle_failure` | a `decide` row whose action is `escalate` with the ending `assessed` (§10 rows 9, 11, 14: the cycle's own failure) | `repair` or `retry`, within `max_repair_cycles_per_increment` / `max_retry_cycles_per_increment`, counted from the increment's launch intents |
+   | `launch_blocked` | a `launch_blocked` row that escalated (§9.3: the box refused past `launch_blocked_attempts`) | the relaunch: a resume with no action, back to `launch_blocked` |
+
+   **The never-classes are not in the table, so a definition can't declare them** (creation refuses an unknown class,
+   422): an upstream conflict (a launch the rebase or the cycle-create path refused, §24ba, §24cm), a limit's pause, a
+   security finding, and the owner's pause. Every other escalating row reads as no class too: a proposal that couldn't
+   be built (`unbuilt`), an operator's input held (row 17, `held_input`), a binding hold (§24bw). Classification is
+   `escalation.resumable_class`, a pure function of the row's own vocabulary.
+2. **Enforcement (§12, §13).** When a caller holding `campaigns:supervise` and not `campaigns:control` asks to resume
+   what `owner_held` reserves to the owner, the route applies `escalation.delegation_verdict`. The resume is allowed
+   only when the campaign isn't paused (a pause is never delegated), the escalating row has a class the campaign
+   declared, the requested move is the one that class permits (a `propose` or `abandon_and_propose` is the owner's:
+   only the owner abandons), and a repair or retry is within its per-increment limit. Anything else is refused **403
+   `RESUME_NOT_DELEGATED`** with its reason. The owner's path is unchanged. A caller with neither scope is refused as
+   before (`OWNER_AUTHORITY_REQUIRED`).
+   - **`plan_gate` at the gate route.** #2837 lets `campaigns:supervise` answer a campaign cycle's plan gate. Where the
+     tier escalated that gate and the escalation is pending, the answer is now this class's delegated resume: recorded
+     before the gate decision, or refused and the gate left undecided. **This narrows #2837** for escalated gates only:
+     a campaign that doesn't declare `plan_gate` no longer has its escalated plan gates answered by the supervisor
+     seat. A plan gate no escalation holds is answered as before, with nothing recorded here.
+3. **The audit (§13).** Every delegated resume is the `resume` row it always was, its binding carrying `delegated:
+   true`, `class`, `move`, `escalation` (the escalating row's `seq`, operation and target, and the queue's
+   `escalation_id` for a plan gate) and `definition_hash` (the creation row's request hash). The principal is the row's
+   actor, from the token. **Every refusal is a `resume` row with outcome `refused` and the new refusal reason
+   `resume_not_delegated`** (migration `2002`), with the same fields, `delegated: false` and `why`. It is written by
+   the registry's new `refuse` (the caller decides the refusal; the row commits under the campaign's lock, the state
+   unchanged and no idempotency key consumed), and projected to the security audit like any refused row. The plan
+   gate's answer row is keyed `unattended:<escalation_id>`, so a retried answer replays it.
+4. **The digest (§14)** has an **Unattended resumes** section, read from the control log: what the campaign declared,
+   the counts of delegated resumes and refusals, and one line per row with the principal, the class, the move, the
+   escalation, the definition hash and, for a refusal, why.
+5. **Revocation.** The owner's pause revokes the grant: while the campaign is paused, every crew resume is refused
+   and recorded, its reason naming the pause. The owner's resume returns the campaign where it was, and the grant
+   applies again. (A limit's pause was never delegable; a supervisor's own pause is still the supervisor's to lift,
+   §24az, and nothing here changes that.)
+6. **The CLI.** `squadops campaigns resume` is unchanged; a refused crew resume prints `resume not delegated
+   (recorded as <entry>): <why>` instead of the client's generic "authentication failed".
+
+**A behaviour change beside the grant.** Before this, a supervisor's resume of an owner-held campaign was refused 403
+`OWNER_AUTHORITY_REQUIRED` before anything was written. D6 requires every refusal to be a control-log row, so the
+supervisor seat's refusal is now `RESUME_NOT_DELEGATED` and recorded, whether or not the campaign declared anything.
+The tests that pinned the old shape (`test_campaign_routes.py`'s owner's pause, `test_campaign_owner_word.py`'s
+escalation and limit pause) were updated to the recorded refusal.
+
+**Not here** (D6's scope): the box lease (#2287), notices (the crew's watcher reads the control log), any new
+identity (D7), and resuming an escalation whose cycle-create launch was refused (an upstream conflict among them).
+
+**The evidence.**
+- `tests/unit/api/test_unattended_resume_route.py`, entered at `POST /api/v1/campaigns/{id}/resume` behind the
+  Keycloak authorization adapter over the memory registry and the real `CampaignProgress`: a declared
+  `in_cycle_failure` resumed by the crew writes a retry bound to the increment through `owner_action`; an undeclared
+  class, a `propose` or `abandon_and_propose`, an upstream conflict, a limit's pause and an unbuilt proposal are each
+  refused, recorded with the principal, class, escalation and definition hash, and change neither the state nor the
+  outbox; the owner's pause revokes and the owner's resume restores; a third retry past a limit of 2 is refused; the
+  relaunch; the owner's path and a reader's refusal.
+- `tests/unit/api/test_increment_gate_route.py`: the crew's answer to an escalated plan gate, declared, undeclared and
+  under the owner's pause, entered at the gate route; a gate no escalation holds is unchanged.
+- `tests/unit/campaigns/test_unattended_resume.py`: the classifier over each escalating row, the declaration's
+  refusals, the creation hash (unchanged without the field, pinned to main's), the spent count, the verdict, and the
+  digest section.
+- Mutations, each run and restored: reading a `launch_refused` row (an upstream conflict) as `in_cycle_failure`
+  fails the classifier test and the route's upstream-conflict refusal; dropping the verdict's pause check lets the
+  crew decide an escalated plan gate under the owner's pause (the gate test fails) and fails the revocation test;
+  dropping it and reading the escalation beneath the owner's pause fails the same three.
+
+**Who ruled it.** The owner's rulings D6 and D7 of 2026-11-03 (the 2.6 plan, PR #2883): the classes, the never-classes,
+enforcement at the resume route against the definition hash and the caller's principal, the audit rows, the digest,
+and the revocation by the owner's pause; and that the grant goes to the crew's existing broker principals. The shapes
+above (the class names, the permitted moves, the refusal reason, the gate route's narrowing of #2837, and the recorded
+refusal replacing `OWNER_AUTHORITY_REQUIRED` for the supervisor seat) are the implementer's, for the owner's review in
+the PR.
 
 ### 24db. A repository-backed start is also refused on a task that can't fit its model's window, or on a size nobody could measure (2026-11-04, §24bv point 1, §24cc; SIP-0112 H.21; #2889; the Spark lane's design under the supervisor's brief, for the owner)
 
