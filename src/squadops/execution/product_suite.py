@@ -13,6 +13,14 @@ on the product's runner, after the Development Configuration's install and build
 is judged passed on it, and the agent's run is kept beside it as a disclosed reading. If it fails,
 or can't run, the agent's result stands and the correction loop sees it as before.
 
+#2877: when the qa image couldn't run the suite at all (its ``tests_pass`` row reads not executed:
+a vitest product's suite, which the image's pytest can't collect), the product's runner runs it
+whatever else failed, and its reading replaces the image's before the correction loop sees the
+result. Otherwise the image's "not run" repeats every round as a carried failure, and its words
+(``backend tests must be Python files``) reach the analysis and the repair as advice. A pass there
+still judges the task only when nothing else failed; a re-read result otherwise stays failed, on
+the product runner's evidence.
+
 The tree is the one the agent ran: ``qa_run_tree.suite_run_tree`` over the dispatched inputs, the
 product's non-test files, with the task's emitted test files beside it. A sample application's run
 is never re-judged: its suite already runs where its stack's toolchain lives.
@@ -90,6 +98,31 @@ def rejudgeable(task_type: str, inputs: Mapping[str, Any], result: TaskResult) -
     return why_not_rejudged(task_type, inputs, result) is None
 
 
+def _tests_pass_row(result: TaskResult) -> Mapping[str, Any] | None:
+    checks = ((result.outputs or {}).get("validation_result") or {}).get("checks") or []
+    return next(
+        (c for c in checks if isinstance(c, Mapping) and c.get("check") == _TESTS_PASS), None
+    )
+
+
+def why_not_reread(task_type: str, inputs: Mapping[str, Any], result: TaskResult) -> str | None:
+    """#2877: why the product's runner's reading can't replace the image's, or ``None`` when it
+    can: a product's ``qa.test`` whose ``tests_pass`` the qa image didn't execute, whatever else
+    failed beside it."""
+    if result.status == TaskResultStatus.SUCCEEDED:
+        return "the task succeeded"
+    if not authors_qa_suite(task_type):
+        return f"{task_type} doesn't author the qa suite"
+    if not source_backed(inputs):
+        return "a sample application's run"
+    row = _tests_pass_row(result)
+    if row is None or not _failing(row):
+        return "tests_pass didn't fail"
+    if row.get("executed") is not False:
+        return "the qa image ran the suite"
+    return None
+
+
 def emitted_tests(inputs: Mapping[str, Any], outputs: Mapping[str, Any]) -> dict[str, str]:
     """The suite under judgement, by path: a repaired suite's retest runs its ``retest_files``
     (``CorrectionRunner.reexecute_repaired_suite``); an emission, the test files it stored."""
@@ -117,6 +150,10 @@ class SuiteRun:
     collected: int | None = None
     #: Why nothing exited, when nothing did: the sandbox's own words.
     unexecuted: str | None = None
+    #: The failing tests' ids, as the test-id reader keyed them, and the end of the run's output:
+    #: what a re-read result shows the correction loop in place of the image's (#2877).
+    failing: tuple[str, ...] = ()
+    output_tail: str = ""
 
     @property
     def passed(self) -> bool:
@@ -131,7 +168,11 @@ class SuiteRun:
         )
 
     def as_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self) | {"argv": list(self.argv), "passed": self.passed}
+        return dataclasses.asdict(self) | {
+            "argv": list(self.argv),
+            "failing": list(self.failing),
+            "passed": self.passed,
+        }
 
 
 async def run_on_product_runner(
@@ -188,6 +229,8 @@ async def run_on_product_runner(
                     exit_code=result.exit_code if exited else None,
                     tests_passed=reading.passed if reading is not None else None,
                     collected=reading.collected if reading is not None else None,
+                    failing=tuple(sorted(reading.counts)) if reading is not None else (),
+                    output_tail=_output_tail(result),
                     unexecuted=None
                     if exited
                     else (
@@ -201,6 +244,136 @@ async def run_on_product_runner(
         except Exception:
             logger.warning("suite workspace %s not released", workspace_id, exc_info=True)
     return runs
+
+
+#: How much of a run's output a re-read result carries: the end, where a runner's summary is.
+_OUTPUT_TAIL_LIMIT = 2000
+_FAILING_CASES_LIMIT = 40
+
+
+def _output_tail(result: Any) -> str:
+    text = "\n".join(
+        t for t in (getattr(result, "stdout_tail", ""), getattr(result, "stderr_tail", "")) if t
+    )
+    return text[-_OUTPUT_TAIL_LIMIT:]
+
+
+def _runner_summary(runs: list[SuiteRun], still_failing: list[str]) -> str:
+    runners = ", ".join(sorted({r.runner for r in runs}))
+    if all(r.passed for r in runs):
+        verdict = f"the suite passed on the product's runner ({runners})"
+    else:
+        failed = [r.path for r in runs if not r.passed]
+        verdict = f"the suite failed on the product's runner ({runners}): {', '.join(failed)}"
+    return verdict + (f"; also failing: {', '.join(still_failing)}" if still_failing else "")
+
+
+def _runner_row(runs: list[SuiteRun]) -> dict[str, Any]:
+    """The ``tests_pass`` row the product's runner gives, in ``failed_tests_pass_row``'s shape, so
+    the correction loop's signature and the repair brief read it as they read the image's."""
+    passed = all(r.passed for r in runs)
+    exited = all(r.unexecuted is None for r in runs)
+    row: dict[str, Any] = {
+        "check": _TESTS_PASS,
+        "executed": exited,
+        "exit_code": next((r.exit_code for r in runs if r.exit_code), 0 if exited else None),
+        "tests_passed": passed,
+        "passed": passed,
+        "judged_on": PRODUCT_RUNNER,
+        "runner": ",".join(r.runner for r in runs),
+    }
+    if passed:
+        return row
+    cases = [
+        {"file": r.path, "title": test_id, "line": None, "failing_line": None, "message": ""}
+        for r in runs
+        for test_id in r.failing
+    ][:_FAILING_CASES_LIMIT]
+    return row | {
+        # A file that ran nothing it could read (a syntax or import error) is a broken suite,
+        # which the locus classifier reads as the qa role's, as it reads the image's.
+        "suite_broken": any(not r.passed and not r.failing for r in runs),
+        # ``file::title``, as the signature partitions an identity (``correction_signature``).
+        "failing_tests": sorted({f"{c['file']}::{c['title']}" for c in cases}),
+        "suite_defects": [],
+        "failing_cases": cases,
+        "runner_output": {r.path: r.output_tail for r in runs if not r.passed and r.output_tail},
+    }
+
+
+def _runner_report(runs: list[SuiteRun], summary: str) -> str:
+    lines = ["# Test Execution Report", "", f"**Result:** {summary}", ""]
+    for r in runs:
+        lines += [
+            f"## {r.path}",
+            "",
+            f"- command: `{' '.join(r.argv)}`",
+            f"- exit code: {r.exit_code if r.unexecuted is None else 'not run: ' + r.unexecuted}",
+            f"- passed: {r.tests_passed} of {r.collected}",
+        ]
+        if r.failing:
+            lines += ["- failing:", *(f"  - {t}" for t in r.failing)]
+        if not r.passed and r.output_tail:
+            lines += ["", "```", r.output_tail, "```"]
+        lines.append("")
+    return "\n".join(lines)
+
+
+def reread(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
+    """#2877: ``result`` with the product runner's reading of its suite in place of the qa image's
+    "not run". It stays failed: either the suite failed on the product's runner, or another check
+    did. The image's row and test result are kept apart from what the analysis reads."""
+    outputs = dict(result.outputs or {})
+    vr = dict(outputs.get("validation_result") or {})
+    passed = all(r.passed for r in runs)
+    checks, agent_row = [], None
+    for row in vr.get("checks") or []:
+        if isinstance(row, Mapping) and row.get("check") == _TESTS_PASS:
+            agent_row, row = dict(row), _runner_row(runs)
+        elif passed and isinstance(row, Mapping) and row.get("check") in ENVIRONMENT_SENSITIVE:
+            if _failing(row):
+                row = {
+                    "check": row["check"],
+                    "status": ResultStatus.SKIPPED,
+                    "reason": "agent_environment: the suite passed on the product's runner",
+                    "agent_reading": dict(row),
+                }
+        checks.append(row)
+    still_failing = [
+        str(c.get("check")) for c in checks if _failing(c) and c.get("check") != _TESTS_PASS
+    ]
+    summary = _runner_summary(runs, still_failing)
+    missing = [m for m in vr.get("missing_components") or [] if _TESTS_PASS not in m]
+    vr.update(
+        checks=checks,
+        missing_components=missing if passed else [*missing, _TESTS_PASS],
+        summary=summary,
+    )
+    agent_test = outputs.get("test_result")
+    outputs.update(
+        validation_result=vr,
+        agent_tests_pass_row=agent_row,
+        test_result={
+            "executed": all(r.unexecuted is None for r in runs),
+            "exit_code": _runner_row(runs)["exit_code"],
+            "tests_passed": passed,
+            "test_file_count": len(runs),
+            "source_file_count": (agent_test or {}).get("source_file_count"),
+            "summary": summary,
+            "judged_on": PRODUCT_RUNNER,
+        },
+        summary=f"[qa] {summary}",
+    )
+    if agent_test is not None:
+        outputs["agent_test_result"] = agent_test
+    outputs[PRODUCT_SUITE_KEY] = [r.as_dict() for r in runs]
+    outputs["artifacts"] = [
+        {**a, "content": _runner_report(runs, summary)}
+        if isinstance(a, Mapping) and a.get("type") == "test_report"
+        else a
+        for a in outputs.get("artifacts") or []
+    ]
+    return dataclasses.replace(result, outputs=outputs, error=summary)
 
 
 def judged_passed(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
@@ -273,15 +446,27 @@ async def judge_on_product_runner(
     projects: Any,
     read_profile: Callable[[Any], Any],
 ) -> TaskResult | None:
-    """The result judged passed on the product's runner, or ``None`` when the agent's result
-    stands: not a product's ``qa.test`` failing only ``tests_pass``, no sandbox, no profile or
-    configuration at the pin, a test no runner holds, or a run that didn't pass."""
+    """The result judged on the product's runner, or ``None`` when the agent's result stands.
+
+    Judged passed (``SUCCEEDED``): a product's ``qa.test`` failing only ``tests_pass`` (beside
+    ``ENVIRONMENT_SENSITIVE`` checks) whose suite passes there. Re-read (still ``FAILED``, #2877):
+    one whose ``tests_pass`` the qa image didn't execute, and which isn't judged passed. ``None``:
+    neither applies, no sandbox, no profile or configuration at the pin, a test no runner holds,
+    or a run that can't be judged."""
     if result.status == TaskResultStatus.SUCCEEDED or not authors_qa_suite(task_type):
         return None
-    why = "no sandbox" if sandbox is None else why_not_rejudged(task_type, inputs, result)
-    if why is not None:
+    why_judge: str | None
+    why_reread: str | None
+    if sandbox is None:
+        why_judge = why_reread = "no sandbox"
+    else:
+        why_judge = why_not_rejudged(task_type, inputs, result)
+        why_reread = why_not_reread(task_type, inputs, result)
+    if why_judge is not None and why_reread is not None:
         # #2838: a product's failed suite the runner didn't re-judge says why, in the log.
-        logger.info("product suite %s: not re-judged: %s", task_id, why)
+        logger.info(
+            "product suite %s: not re-judged: %s; not re-read: %s", task_id, why_judge, why_reread
+        )
         return None
     context = getattr(cycle, "source_context", None)
     profile = await read_profile(cycle)
@@ -314,6 +499,10 @@ async def judge_on_product_runner(
         task_id,
         [r.as_dict() for r in runs] if runs is not None else "no runner holds a test",
     )
-    if not runs or not all(r.passed for r in runs):
+    if not runs:
         return None
-    return judged_passed(result, runs)
+    if why_judge is None and all(r.passed for r in runs):
+        return judged_passed(result, runs)
+    if why_reread is None:
+        return reread(result, runs)
+    return None

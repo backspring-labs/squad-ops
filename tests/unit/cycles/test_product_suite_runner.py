@@ -393,3 +393,187 @@ async def test_a_product_suite_not_rejudged_says_why_in_the_log(caplog):
     caplog.set_level("INFO", logger="squadops.execution.product_suite")
     assert await _judge(_failed(_TESTS_PASS_RED, _AUTHENTICITY_RED), _Sandbox()) is None
     assert "not re-judged: other checks failed: ['no_stub_fallback_tests']" in caplog.text
+
+
+# --- #2877: the qa image couldn't run the suite ---------------------------------------------
+
+_NOT_RUN_WORDS = "no pytest-discoverable test files — backend tests must be Python files"
+_TESTS_PASS_NOT_RUN = {
+    "check": "tests_pass",
+    "passed": False,
+    "executed": False,
+    "exit_code": -1,
+    "tests_passed": False,
+    "suite_broken": True,
+    "runner": "pytest",
+}
+_UNDEFINED_VI = {
+    "check": "acceptance:undefined_names",
+    "status": "failed",
+    "passed": False,
+    "reason": "undefined name(s): vi (line 9)",
+}
+_VITEST_FILE = "test/criterion_T1.test.js"
+_VITEST = _Runner(name="vitest", root="test/", argv=("npx", "vitest", "run"), test_ids="vitest")
+_RED_KEY = f"FAILED {_VITEST_FILE} > steers toward the objective"
+
+
+def _not_run(*others: dict[str, Any]) -> TaskResult:
+    result = _failed(_TESTS_PASS_NOT_RUN, *others, tests=(_VITEST_FILE,))
+    outputs = dict(result.outputs)
+    outputs["artifacts"] = [
+        {**a, "content": f"tests not run: {_NOT_RUN_WORDS}"} if a["type"] == "test_report" else a
+        for a in outputs["artifacts"]
+    ]
+    outputs["summary"] = f"[qa] Generated 1 test file(s), tests not run: {_NOT_RUN_WORDS}"
+    outputs["validation_result"] = {
+        **outputs["validation_result"],
+        "summary": f"tests not run: {_NOT_RUN_WORDS}",
+    }
+    return TaskResult(
+        task_id=result.task_id,
+        status=result.status,
+        error=f"tests not run: {_NOT_RUN_WORDS}",
+        outputs=outputs,
+    )
+
+
+def _vitest_reading(passed: int, collected: int, *failing: str) -> dict[str, Any]:
+    return {
+        "reader": "vitest",
+        "version": 1,
+        "readable": True,
+        "passed": passed,
+        "collected": collected,
+        "counts": {k: 1 for k in failing},
+    }
+
+
+@pytest.mark.parametrize(
+    ("others", "exit_code", "reading", "status", "tests_pass_passed", "still_failing"),
+    [
+        # The cycle's shape: a real defect beside the image's "not run". The suite's own result,
+        # failing, replaces the image's; the defect stays.
+        (
+            (_UNDEFINED_VI,),
+            1,
+            _vitest_reading(0, 1, _RED_KEY),
+            TaskResultStatus.FAILED,
+            False,
+            True,
+        ),
+        # The suite passes on the product's runner, and the defect still fails the task.
+        ((_UNDEFINED_VI,), 0, _vitest_reading(1, 1), TaskResultStatus.FAILED, True, True),
+        # Nothing else failed and the suite fails there: re-read, not judged.
+        ((), 1, _vitest_reading(0, 1, _RED_KEY), TaskResultStatus.FAILED, False, False),
+        # Nothing else failed and it passes there: judged passed, as #2835 already did.
+        ((), 0, _vitest_reading(1, 1), TaskResultStatus.SUCCEEDED, True, False),
+    ],
+    ids=["defect-and-red", "defect-and-green", "red-only", "green-only"],
+)
+async def test_a_suite_the_qa_image_could_not_run_is_read_on_the_products_runner(
+    others, exit_code, reading, status, tests_pass_passed, still_failing
+):
+    sandbox = _Sandbox(exits={_VITEST_FILE: exit_code}, readings={_VITEST_FILE: reading})
+    judged = await _judge(_not_run(*others), sandbox, profile=_Profile(_VITEST))
+
+    assert judged is not None and judged.status == status
+    assert sandbox.commands[0]["command"] == ("npx", "vitest", "run", _VITEST_FILE)
+    rows = {r["check"]: r for r in judged.outputs["validation_result"]["checks"]}
+    assert rows["tests_pass"]["judged_on"] == PRODUCT_RUNNER
+    assert rows["tests_pass"]["passed"] is tests_pass_passed
+    assert ("acceptance:undefined_names" in rows) is still_failing
+    if not tests_pass_passed:
+        assert rows["tests_pass"]["failing_tests"] == [f"{_VITEST_FILE}::{_RED_KEY}"]
+        assert rows["tests_pass"]["exit_code"] == 1
+
+
+async def test_the_analysis_reads_the_products_runner_and_never_the_images_words():
+    """Bug caught (cyc_0fbf09b7b96e): the image's "must be Python files" reached the failure
+    analysis through the row, the summary, the error and the test report, and the analysis told
+    the repair to rename a vitest suite to pytest. The image's reading is kept, apart."""
+    from squadops.cycles.failure_evidence import build_failure_evidence
+
+    sandbox = _Sandbox(
+        exits={_VITEST_FILE: 1}, readings={_VITEST_FILE: _vitest_reading(0, 1, _RED_KEY)}
+    )
+    judged = await _judge(_not_run(_UNDEFINED_VI), sandbox, profile=_Profile(_VITEST))
+
+    evidence = build_failure_evidence(_envelope(_INPUTS), judged, prior_plan_deltas_count=0)
+    assert "pytest" not in repr(evidence)
+    assert judged.outputs["agent_tests_pass_row"] == _TESTS_PASS_NOT_RUN
+    assert judged.error == (
+        "the suite failed on the product's runner (vitest): "
+        f"{_VITEST_FILE}; also failing: acceptance:undefined_names"
+    )
+
+
+@pytest.mark.parametrize(
+    ("tests_pass", "profile"),
+    [
+        # The image ran the suite and it failed beside another check: the agent's result stands,
+        # as before #2877.
+        ({**_TESTS_PASS_NOT_RUN, "executed": True, "exit_code": 1}, _Profile(_VITEST)),
+        # No runner of the product's holds the file: nothing can read it, so nothing runs.
+        (_TESTS_PASS_NOT_RUN, _Profile(_Runner(root="spec/"))),
+    ],
+    ids=["image-ran-it", "no-runner-holds-it"],
+)
+async def test_a_suite_the_image_ran_or_no_runner_holds_is_not_reread(tests_pass, profile):
+    sandbox = _Sandbox()
+    result = _failed(tests_pass, _UNDEFINED_VI, tests=(_VITEST_FILE,))
+    assert await _judge(result, sandbox, profile=profile) is None
+    assert sandbox.commands == []
+
+
+async def test_the_router_hands_the_correction_loop_the_products_reading():
+    """Wiring, #2877: enters at ``_TaskOutcomeRouter.route``, as cyc_0fbf09b7b96e's failed
+    ``qa.test`` did, and asserts the correction loop is asked about the product runner's reading,
+    and the patch is never accepted on it."""
+    executor = _executor()
+    executor._sandbox = _Sandbox(
+        exits={_VITEST_FILE: 1}, readings={_VITEST_FILE: _vitest_reading(0, 1, _RED_KEY)}
+    )
+    executor._derived_profile_for = _profile_of(_Profile(_VITEST))
+
+    async def admit(result, *_a, **_k):
+        return result
+
+    executor._admit_failed_emission = admit
+    asked: list[TaskResult] = []
+
+    async def next_action(result, *_args):
+        asked.append(result)
+        return "fail"
+
+    envelope = _envelope(_INPUTS)
+    state = SimpleNamespace(
+        produced=SimpleNamespace(all_artifact_refs=[]),
+        ownership=SimpleNamespace(bound_record=None, compliance_counter={}),
+        correction=SimpleNamespace(accepted_repair_task_ids=set()),
+    )
+    router = _TaskOutcomeRouter(
+        executor=executor,
+        state=state,
+        envelope=envelope,
+        enriched=envelope,
+        cycle=_CYCLE,
+        run_id="run_1",
+        flow_run_id=None,
+        profile=None,
+        interface_manifest=None,
+        budget_guard=lambda: None,
+        ledger=None,
+    )
+    object.__setattr__(router, "next_action", next_action)
+    object.__setattr__(router, "record_evidence", lambda _r: None)
+
+    await router.route(_not_run(_UNDEFINED_VI))
+
+    assert len(asked) == 1
+    row = next(
+        r for r in asked[0].outputs["validation_result"]["checks"] if r["check"] == "tests_pass"
+    )
+    assert row["judged_on"] == PRODUCT_RUNNER and row["executed"] is True
+    assert router.held["result"] is asked[0]
+    assert state.correction.accepted_repair_task_ids == set()
