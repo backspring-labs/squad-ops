@@ -55,7 +55,7 @@ from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.execution.product_suite import PRODUCT_RUNNER
-from squadops.projects.baseline import InheritedBaseline
+from squadops.projects.baseline import FAIL, InheritedBaseline
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.contribution import capture_ref
@@ -207,9 +207,18 @@ def regression_failure(task_id: str, verification: SourceVerification) -> TaskRe
             row["read"] = dict(check.read)
         rows.append(row)
     environment = ", ".join(f"{k} {v}" for k, v in sorted(verification.environment.items()))
+    inherited = [
+        c.id for c in verification.checks if c.result == FAIL and c.id not in verification.blocking
+    ]
     summary = (
         f"the product's own checks, on its runner ({environment}), after the plan: "
-        f"{verification.summary()}. The run changed: {', '.join(verification.changed_paths)}"
+        f"{verification.summary()}"
+        + (
+            f"; failing before the run too, not its to repair: {', '.join(inherited)}"
+            if inherited
+            else ""
+        )
+        + f". The run changed: {', '.join(verification.changed_paths)}"
     )
     return TaskResult(
         task_id=task_id,

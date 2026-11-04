@@ -760,6 +760,8 @@ async def test_a_regression_is_repaired_in_one_round_from_the_product_runners_re
         }
         assert runner["exit_code"] == 1 and "FAIL" in runner["stderr_tail"]
         assert "image python:3.12-slim" in evidence["error"]
+        # parse failed at the baseline too: named, and never a row the repair is aimed at
+        assert "failing before the run too, not its to repair: parse." in evidence["error"]
     assert dispatched[2].inputs["max_correction_attempts"] == 2
     # The repaired candidate is verified again, owing a passing run of what regressed.
     assert second["repair_of"] == {"ref": first_id, "checks": ["report"]}
