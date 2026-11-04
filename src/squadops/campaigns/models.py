@@ -607,8 +607,7 @@ class CampaignPolicy:
         if "ruling_bound_s" not in values and "crew_ruling_bound_s" in values:
             values["ruling_bound_s"] = values.pop("crew_ruling_bound_s")
             values.pop("owner_ruling_bound_s", None)
-        if "plan_gate" not in values:
-            values["plan_gate"] = PlanGate.SUPERVISED
+        values.setdefault("plan_gate", PlanGate.SUPERVISED)
         return cls(**values)
 
     def __post_init__(self) -> None:
