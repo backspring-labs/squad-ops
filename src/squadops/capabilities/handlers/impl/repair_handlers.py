@@ -273,6 +273,8 @@ class _RepairPromptMixin:
     context to the LLM. Used by both repair handlers below.
     """
 
+    #: Each handler declares its own, on `_CycleTaskHandler`'s field.
+    _task_type: str
     _request_template_id = "request.cycle_repair_task"
     #: #2813: a repair's call, its anchored-edit retry included, is refused by name over the
     #: model's window rather than sent.

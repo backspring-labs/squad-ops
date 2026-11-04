@@ -107,7 +107,6 @@
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tattr-defined\t\"_RepairPromptMixin\" has no attribute \"_format_prior_outputs\"": 1,
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tattr-defined\t\"_RepairPromptMixin\" has no attribute \"_handler_name\"": 3,
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tattr-defined\t\"_RepairPromptMixin\" has no attribute \"_role\"": 10,
-"src/squadops/capabilities/handlers/impl/repair_handlers.py\tattr-defined\t\"_RepairPromptMixin\" has no attribute \"_task_type\"": 2,
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tmisc\t\"handle\" undefined in superclass": 2,
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tunion-attr\tItem \"None\" of \"TransactionOutcome | None\" has no attribute \"changed_files\"": 1,
 "src/squadops/capabilities/handlers/planning/base.py\toverride\tArgument 3 of \"_build_user_prompt\" is incompatible with supertype \"squadops.capabilities.handlers.cycle.base._CycleTaskHandler\"; supertype defines the argument type as \"dict[str, Any] | None\"": 1,
