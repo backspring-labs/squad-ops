@@ -66,6 +66,9 @@ GAPS: Mapping[str, Mapping[str, str]] = {
     "lint_without_reader": {DISCLOSED: "per_finding_comparison"},
 }
 RUNNERS = ("pytest", "unittest", "vitest", "jest", "other")
+#: The runners whose test files are JavaScript: a product tested only by these is shown its
+#: authoring examples in JavaScript (#2876).
+JAVASCRIPT_RUNNERS = frozenset({"vitest", "jest"})
 #: A public surface a criterion may assert on (§24bv point 5): a base URL the start declaration
 #: serves, a command-line entry point, or a package's public interface.
 SURFACES: Mapping[str, str] = {

@@ -539,7 +539,7 @@ class TestPromptRegistryIntegration:
         (StrategyProposePlanGuidanceHandler, "request.strategy_propose_plan_guidance"),
     ],
 )
-def test_proposer_provides_every_required_template_variable(handler_cls, template_id):
+async def test_proposer_provides_every_required_template_variable(handler_cls, template_id):
     # #484: the strategy template requires `guidance_id`, which the handler never provided
     # -> TemplateMissingVariableError crashed every multi-role cycle before the merge.
     # Guard the whole proposer family: each handler must supply every variable its template
@@ -559,6 +559,117 @@ def test_proposer_provides_every_required_template_variable(handler_cls, templat
     header, _ = read_frontmatter(template_path.read_text(encoding="utf-8"))
     required = set(header.get("required_variables", []))
 
-    provided = set(handler_cls()._build_render_variables("PRD", None, {}))
+    class _Renderer:
+        async def render(self, template_id, variables):
+            return type("Rendered", (), {"content": template_id})()
+
+    handler = handler_cls()
+    provided = set(handler._build_render_variables("PRD", None, {}))
+    # #2876: the worked example is rendered from a managed asset, so it joins asynchronously.
+    provided |= set(await handler._task_example_variables(_Renderer(), {}))
     missing = required - provided
     assert not missing, f"{handler_cls.__name__} misses required template vars: {sorted(missing)}"
+
+
+# --- #2876: the qa proposer's worked example is in the product's runner's terms -------------
+
+
+def _product_inputs(*runners: str) -> dict:
+    return {
+        "source_repository": {
+            "commit": "c" * 40,
+            "map": "",
+            "runners": [{"runner": r} for r in runners],
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("inputs", "example"),
+    [
+        # battle-trainer: vitest alone. Bug caught: cyc_0fbf09b7b96e's qa proposer copied the
+        # pytest example onto a vitest product ("pytest suite", a Python-only check on .test.js).
+        (_product_inputs("vitest"), "javascript"),
+        (_product_inputs("jest"), "javascript"),
+        # A product with a Python runner too (shelfnote: pytest and vitest) keeps the pytest one.
+        (_product_inputs("pytest", "vitest"), "python"),
+        # A product with no runner, and a sample application, keep it as well.
+        (_product_inputs(), "python"),
+        ({}, "python"),
+    ],
+    ids=["vitest", "jest", "pytest-and-vitest", "no-runner", "sample-application"],
+)
+async def test_the_qa_proposer_is_shown_its_products_runner_in_the_example(inputs, example):
+    from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    renderer = RequestTemplateRenderer(
+        create_prompt_asset_source("filesystem", templates_path=DEFAULT_TEMPLATES_PATH)
+    )
+    shown = await QaProposePlanTasksHandler()._task_example_variables(renderer, inputs)
+    expected = await renderer.render(f"request.qa_propose_plan_task_example_{example}", {})
+
+    assert shown == {"qa_task_example": expected.content}
+    assert ("pytest" in shown["qa_task_example"]) is (example == "python")
+
+
+async def test_a_sample_applications_qa_request_is_byte_identical_to_the_example_inline():
+    """The control: the pytest example moved into an asset renders the request a sample
+    application got before #2876, byte for byte, so the Spark's counted runs see no change."""
+    from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    renderer = RequestTemplateRenderer(
+        create_prompt_asset_source("filesystem", templates_path=DEFAULT_TEMPLATES_PATH)
+    )
+    variables = {
+        "brief_content": "B",
+        "planning_content": "P",
+        "proposal_id": "prop_1",
+        "source_brief_id": "brief_1",
+        **await QaProposePlanTasksHandler()._task_example_variables(renderer, {}),
+    }
+    rendered = (await renderer.render("request.qa_propose_plan_tasks", variables)).content
+
+    assert (
+        "tasks:\n"
+        "  - task_type: qa.test\n"
+        "    role: qa\n"
+        '    focus: "Backend user-CRUD pytest suite"\n'
+    ) in rendered
+    assert '      - "dev:user crud routes"\nbrief_conflicts: []' in rendered
+
+
+async def test_a_vitest_products_qa_proposer_is_sent_the_javascript_example():
+    """Wiring, #2876: enters at ``QaProposePlanTasksHandler.handle``, the call framing makes,
+    with the real renderer, and reads the user prompt the model was sent."""
+    from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    ctx = _make_context(_DEV_PROPOSAL_RESPONSE)
+    ctx.role_id = "qa"
+    ctx.ports.request_renderer = RequestTemplateRenderer(
+        create_prompt_asset_source("filesystem", templates_path=DEFAULT_TEMPLATES_PATH)
+    )
+    runner = {
+        "runner": "vitest",
+        "checks": ["contract_tests"],
+        "file_pattern": "*.test.js",
+        "roots": ["test"],
+        "covers": ["src/**"],
+    }
+    inputs = {
+        **_seeded_inputs(),
+        "source_repository": {
+            "commit": "c" * 40,
+            "map": "src/controller.js\ntest/contract.test.js",
+            "checks": [{"id": "contract_tests", "argv": ["npx", "vitest", "run"]}],
+            "runners": [runner],
+        },
+    }
+
+    await QaProposePlanTasksHandler().handle(ctx, inputs)
+
+    sent = repr(ctx.ports.llm.chat_stream_with_usage.call_args)
+    assert '"test/users.test.js"' in sent
+    assert "Backend user-CRUD pytest suite" not in sent

@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from squadops.projects.derived_profile import JAVASCRIPT_RUNNERS
 from squadops.stacks.development_profiles import (
     effective_development_profile,
     get_development_profile,
@@ -67,6 +68,18 @@ async def source_repository_section(renderer: Any, inputs: dict[str, Any]) -> st
         variables["existing_files"] = block.content
     rendered = await renderer.render("request.source_repository_appendix", variables)
     return rendered.content
+
+
+def suite_language(inputs: Mapping[str, Any]) -> str:
+    """The language a run's worked suite examples are written in (#2876): ``"javascript"`` for a
+    source-backed run whose product tests only with JavaScript runners, else ``"python"``. A
+    sample application's run, a product with no runner, or one with any other runner keeps the
+    prompt it had."""
+    if source_backed(inputs):
+        runners = {str(r.get("runner")) for r in inputs["source_repository"].get("runners") or ()}
+        if runners and runners <= JAVASCRIPT_RUNNERS:
+            return "javascript"
+    return "python"
 
 
 def product_conventions_template(inputs: Mapping[str, Any]) -> str:

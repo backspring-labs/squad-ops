@@ -30,6 +30,7 @@ from squadops.capabilities.handlers._plan_authoring import (
     retry_yaml_call,
 )
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.capabilities.handlers.source_repository import suite_language
 from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
 from squadops.cycles.plan_guidance import PlanGuidance
 from squadops.cycles.proposal_failure import ProposalFailure
@@ -180,6 +181,13 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             "typed_acceptance_vocabulary": render_typed_acceptance_vocabulary(),
         }
 
+    async def _task_example_variables(
+        self, renderer: Any, inputs: dict[str, Any]
+    ) -> dict[str, str]:
+        """The worked example a proposer's request shows, by the product's runners: none here.
+        The qa proposer's shows a suite (#2876)."""
+        return {}
+
     async def _bind_criteria_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
         """The *bind, don't author* instruction + contract criteria index, or ""
         (SIP-0098 98.3).
@@ -290,6 +298,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         # #686: the plan-shape rules the deterministic validators enforce. No input
         # to key on — they hold for every plan, so this one renders unconditionally.
         variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)
+        variables.update(await self._task_example_variables(renderer, inputs))
         # #669: on a framing re-roll, the prior attempt's rejection — revise,
         # don't re-dice. Data-driven and managed-asset prose, exactly like the
         # sections above; a first-roll framing has no input and renders nothing.
@@ -495,6 +504,19 @@ class QaProposePlanTasksHandler(_ProposeBaseHandler):
     _success_artifact_name = "proposed_plan_tasks.yaml"
     _success_artifact_type = "proposed_plan_tasks"
     _proposer_role = "qa"
+
+    async def _task_example_variables(
+        self, renderer: Any, inputs: dict[str, Any]
+    ) -> dict[str, str]:
+        """#2876: the example task in the product's runner's terms. The only example was a
+        pytest suite, and lite-14b copied it onto a vitest product (cyc_0fbf09b7b96e: a
+        "pytest suite" focus and a Python-only check on a ``.test.js`` file). A product whose
+        runners are all JavaScript is shown a JavaScript suite; every other run is shown the
+        pytest one, as before."""
+        example = await renderer.render(
+            f"request.qa_propose_plan_task_example_{suite_language(inputs)}", {}
+        )
+        return {"qa_task_example": example.content}
 
     def _parse_and_validate(
         self,
