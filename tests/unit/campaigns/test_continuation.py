@@ -416,3 +416,34 @@ def test_a_rejection_only_for_already_met_criteria_is_abandoned_for_a_new_propos
     )
 
     assert shape(decision) == expected
+
+
+@pytest.mark.parametrize(
+    ("count_overrides", "expected"),
+    [
+        ({}, (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        # No repair: nothing built can make a test that passes on the head fail there.
+        (dict(repair_cycles=1), (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        # Counted toward no unaccepted limit (§24ct): one more of these at the limit's edge
+        # proposes again rather than ending the campaign at row 4.
+        (dict(unaccepted_increments=1), (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        # Nor toward the rejected-in-a-row pause: its proposal was approved and built.
+        (dict(rejected_proposals_in_row=1), (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+    ],
+    ids=["fresh", "repairs-spent", "at-the-unaccepted-limit", "after-a-rejection"],
+)
+def test_a_cycle_ended_for_criteria_already_met_on_the_head_is_abandoned_uncounted(
+    count_overrides, expected
+):
+    """#2890 (§24cz, row 19). Bugs caught: the ending read as a failed build (row 8's repair, or
+    row 14's escalation, on a run that delivered nothing); or its abandonment counted toward
+    ``max_unaccepted_increments``, so the 2.6 spike's two already-met increments still end the
+    campaign at row 4, only sooner."""
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        counters(**count_overrides),
+        EndedCycle(CYCLE, CycleKind.INCREMENT, CycleEnding.CRITERIA_NOT_CHECKABLE),
+        assessment(None),
+    )
+
+    assert shape(decision) == expected

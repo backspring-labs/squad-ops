@@ -323,6 +323,13 @@ class TestThePrimaryIsTheTerminalEvidence:
                 AttributionClass.INPUT_CONTRACT_FAILURE,
                 [],
             ),
+            # #2890: a criterion already met on the head ended the run; the criteria were the
+            # fault, not the work (SIP-0109 §24ct, §24cz).
+            (
+                TerminalEvidence(kind=TerminalKind.CRITERIA_NOT_CHECKABLE),
+                AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
+                [],
+            ),
             (
                 TerminalEvidence(kind=TerminalKind.OTHER),
                 AttributionClass.UNATTRIBUTED,
