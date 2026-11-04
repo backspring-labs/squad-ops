@@ -113,6 +113,13 @@ jobs:
         working-directory: console/continuum-plugins/squadops.projects/ui
         run: npm test
 
+      # #2834 (the 2.6 plan's Track G): the Campaigns plugin's reads (`campaigns.js`), under node's
+      # own runner as the goals panel's are. No install: the tests import only plain modules.
+      - name: The Campaigns plugin's reads
+        if: needs.changes.outputs.code == 'true'
+        working-directory: console/continuum-plugins/squadops.campaigns/ui
+        run: npm test
+
       # Runs `ruff check .` + `ruff format --check .` (lint + format, fail-stop) +
       # the test-quality lint + the full unit regression suite. The repo-wide
       # format sweep landed in #196, so the format check is now gated here.

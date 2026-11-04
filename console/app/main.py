@@ -331,6 +331,12 @@ CUSTOM_PERSPECTIVES = (
         "/memory",
         "Memory records: their sources, revisions, uses and, apart, their effect (SIP-0110 §A.3.11)",
     ),
+    (
+        "campaigns",
+        "Campaigns",
+        "/campaigns",
+        "Campaigns: state, increment, ledger, digest and escalations; read-only (SIP-0069 §14)",
+    ),
 )
 
 

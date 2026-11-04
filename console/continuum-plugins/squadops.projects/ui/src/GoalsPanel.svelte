@@ -29,6 +29,9 @@
     revisionArgs,
     submitRevision,
   } from './goals.js';
+  import { takeAnnounced } from '../../../shared/selection.js';
+
+  const SELECT_CAMPAIGN = 'squadops:select-campaign';
 
   const POLL_MS = 30000;
   const config = window.__SQUADOPS_CONFIG__ || {};
@@ -140,21 +143,27 @@
   }
 
   // A Campaign's link to its goal set: the Project it belongs to, with that Campaign chosen.
+  // Taken here too, so the record `announce` left for a panel not yet mounted isn't applied again.
   function onSelectCampaign(e) {
+    takeAnnounced(SELECT_CAMPAIGN);
     const d = e.detail ?? {};
     if (d.project_id && d.campaign_id) selectProject(d.project_id, null, d.campaign_id);
   }
 
   onMount(async () => {
     window.addEventListener('squadops:select-project', onSelectProject);
-    window.addEventListener('squadops:select-campaign', onSelectCampaign);
+    window.addEventListener(SELECT_CAMPAIGN, onSelectCampaign);
+    // The Campaigns view's link opens this perspective after announcing its Campaign, so the
+    // event fired before this panel was mounted: take what it left (shared/selection.js).
+    const held = takeAnnounced(SELECT_CAMPAIGN);
+    if (held) onSelectCampaign({ detail: held });
     pollTimer = setInterval(refreshAll, POLL_MS);
     canWrite = await canWriteGoalSet(apiFetch, apiBase);
   });
 
   onDestroy(() => {
     window.removeEventListener('squadops:select-project', onSelectProject);
-    window.removeEventListener('squadops:select-campaign', onSelectCampaign);
+    window.removeEventListener(SELECT_CAMPAIGN, onSelectCampaign);
     if (pollTimer) clearInterval(pollTimer);
   });
 
