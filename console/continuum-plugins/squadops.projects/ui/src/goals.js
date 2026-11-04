@@ -19,6 +19,7 @@
 // Slice 3's candidate actions (promote, drop, split) are not here: candidates are read-only.
 
 import { CommandDeclined, CommandError, executeCommand } from '../../../shared/commands.js';
+import { errorFromText } from '../../../shared/errors.js';
 import { fetchAllPages } from '../../../shared/paging.js';
 
 export const REVISE_COMMAND = 'squadops.revise_goal_set';
@@ -31,22 +32,6 @@ export class GoalsReadError extends Error {
     this.status = status;
     this.code = code;
   }
-}
-
-// The API's error body, `{"detail": {"error": {code, message, details}}}` (squadops.api.errors),
-// from its text: `{code, message}`, or the text itself when it isn't that shape.
-export function errorFromText(text, status) {
-  try {
-    const body = JSON.parse(text);
-    const err = body?.detail?.error ?? body?.error;
-    if (err && typeof err === 'object') {
-      return { code: err.code ?? null, message: err.message ?? text, details: err.details ?? null };
-    }
-    if (typeof body?.detail === 'string') return { code: null, message: body.detail, details: null };
-  } catch {
-    // not JSON: the text is the message
-  }
-  return { code: null, message: text || `the API answered ${status}`, details: null };
 }
 
 async function refusal(resp, what) {
