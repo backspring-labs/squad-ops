@@ -847,7 +847,7 @@ def _increment_evaluation(
 
 
 def _increment_evaluation_steps(
-    workload_type: str, resolved_config: Mapping[str, Any], change_request: str | None
+    workload_type: str | None, resolved_config: Mapping[str, Any], change_request: str | None
 ) -> tuple[tuple[str, str], ...]:
     """The evaluation step an increment's run ends in (SIP-0109 §8), or none: the plan's reading
     and :func:`dispatched_task_steps`'."""
