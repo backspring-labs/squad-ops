@@ -48,6 +48,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   regressed must execute and pass. A spent budget, a round that repairs nothing, or a second regression fails the run
   as before, the verification naming the checks. One round only, whatever budget remains. Runs with no pinned source
   are unchanged.
+- **A size preflight at a repository-backed Campaign's start** (#2889; SIP-0112 H.21, SIP-0109 §24db). Before its
+  calibration record is written, every task type the Campaign's increments dispatch (`dispatched_task_steps`, the
+  reading the #2810 guard now shares) is composed on the product's tree at the record's commit and counted by the
+  composer's own estimate with its completion reserve, against the window of the model its squad binds the role to.
+  A binding that can't fit, measured at the least its prompt can be on that tree, refuses the start (409
+  `CALIBRATION_REFUSED`, cause `blocking_gap`, gap `prompt_over_window`), naming each task type, role, model, size,
+  reserve and window, and nothing is written. A model with no known window, a squad or proposal profile that can't
+  be read, and a tree that can't be read or is past 2.4's limits refuse it as `size_unmeasured`. A product that fits
+  starts as before, and a sample application's Campaign is never measured.
 
 ### Fixed
 - **The console's API proxies forward the query string** (#2915). `/api/v1/*` and the two chat proxies forwarded the

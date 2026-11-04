@@ -66,8 +66,21 @@ class RefusalCause(StrEnum):
     #: derived at another commit or revision is never read in its place (SIP-0112 H.8's ``at=``).
     NO_PROFILE = "no_profile"
     #: A blocking gap stands: ``no_check_ran``, a blocking ``missing_toolchain``, or
-    #: ``test_files_unclassed``, which H.6 makes a stop for ``campaigns``.
+    #: ``test_files_unclassed``, which H.6 makes a stop for ``campaigns``; or the size preflight's
+    #: ``prompt_over_window`` (#2889), a task the Campaign dispatches whose prompt, rendered on the
+    #: product's tree, can't fit its model's window.
     BLOCKING_GAP = "blocking_gap"
+    #: The size preflight couldn't measure (#2889): the squad profile can't be read, a binding's
+    #: model has no context window the registry knows, or the product's tree can't be read. A
+    #: Campaign doesn't start on a size nobody measured.
+    SIZE_UNMEASURED = "size_unmeasured"
+
+
+#: The size preflight's blocking gap (#2889, SIP-0109 §24db): a binding, a task type the Campaign
+#: dispatches on the model its squad binds it to, whose prompt rendered on the product's tree at the
+#: pinned commit and its completion reserve exceed the model's context window. Not a derived
+#: profile's gap (contract 8): it is read from the Campaign's squad and profiles, not the product.
+PROMPT_OVER_WINDOW = "prompt_over_window"
 
 
 class CalibrationRecordRefused(CampaignError):

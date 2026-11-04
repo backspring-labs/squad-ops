@@ -115,6 +115,30 @@ class ArtifactFilter:
             spec["by_type_fallback"] = list(self.by_type_fallback)
         return spec
 
+    @classmethod
+    def from_spec(cls, spec: Mapping[str, Any]) -> ArtifactFilter:
+        return cls(
+            by_producing_task=tuple(spec.get("by_producing_task") or ()),
+            by_type=tuple(spec.get("by_type") or ()),
+            by_type_fallback=tuple(spec.get("by_type_fallback") or ()),
+        )
+
+    def selects(self, producing_task: str, artifact_type: str) -> bool:
+        """Whether a stored artifact is selected: produced by one of ``by_producing_task``, or of
+        one of ``by_type`` whoever produced it, or, with no producing task recorded, of one of
+        ``by_type_fallback``. The one rule, for the executor's resolution and the size preflight's
+        (#2889)."""
+        if producing_task and producing_task in self.by_producing_task:
+            return True
+        if not producing_task and artifact_type in self.by_type_fallback:
+            return True
+        return artifact_type in self.by_type
+
+
+#: D3: how many bytes of stored content an ``artifact_contents`` resolution reads before it stops.
+#: The executor's resolution and the size preflight's (#2889) both stop here.
+ARTIFACT_CONTENTS_LIMIT_BYTES = 512 * 1024
+
 
 @dataclass(frozen=True)
 class ContextAssemblyContract:

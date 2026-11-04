@@ -127,7 +127,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **shipped**: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), a blueprint's conventions without its test placement (H.13), a product's qa suite run on the product's tree (H.15, #2815), with SIP-0109 §24bv point 5's proposal input and point 6's `qa.evaluate_increment` drop shipped there; read live on the 2.5 cut's final deploy on `z_shelfnote` and `z_continuum` (the cut's pre-registration §14b). Narrowed by the owner (2026-10-29): no product increment was accepted, and H.13's two unbuilt items remain, so the row below carries them | 2.5.0, closes #2619 with the release PR |
 | H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), waiting on #2799 (#2818 shipped in 2.5.1; the 2.6 spikes' accepted increments are uncounted); and H.13's two items not built (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing) | 2.6.0, #2827 |
-| a size preflight: before a Campaign starts on a product, every task type it dispatches rendered against the product's tree at the pinned commit, a binding that can't fit named as a blocking gap | **placed** (the 2.6 plan's Track A, adopted 2026-11-03) | 2.6.0, #2889 |
+| a size preflight: before a Campaign starts on a product, every task type it dispatches rendered against the product's tree at the pinned commit, a binding that can't fit named as a blocking gap (H.21) | **shipped** (H.21): measured at the start route on the live path's own counter, a floor, `prompt_over_window` and `size_unmeasured` | 2.6.0, PR #2919, closes #2889 |
 | a dev repair's retest of a product's qa suite judged on the product's runner: the failed task's own tests, with the patched source overlaid on the tree | **shipped** | 2.6.0, PR #2898, closes #2881 |
 | a private Node package that declares a module interface is a package surface (H.17) | **shipped** | 2.6.0, PR #2879, closes #2875 |
 | the qa plan proposer's worked example in its product's runner's terms (pytest, or vitest/jest) | **shipped** | 2.6.0, PR #2880, closes #2876 |
@@ -2925,3 +2925,85 @@ repaired one.
 in 2.6 with the plan's Track B (2026-11-03). Points 2 and 5 (which task the round is about, and the owed passing run)
 and "one round, even with budget left" are this implementation's decisions, built by the Spark lane on 2026-11-04.
 The owner rules on them in review.
+
+## H.21 A size preflight at a repository-backed Campaign's start: a task that can't fit its model's window is a blocking gap, named before the first cycle (2026-11-04; E.4.3, H.4 point 4; SIP-0109 §24bv point 1, §24db; SIP-0110 §3.6; #2889, with #2805 and #2810 recorded; the Spark lane, for the owner's ruling in review)
+
+**What was found.** #2805 and #2810 were each found live, one at a time, an hour into a Campaign on `z_continuum`:
+a task whose prompt, as the composer counts it (SIP-0110 §3.6, `capabilities.prompt_budget`), left no room on the
+65,536-token window for a 1,330-token binding instruction, so it was held on its binding and the Campaign escalated.
+Each was an estimate that counted a product-sized input whole where the handler shows a part of it. The 2.6 plan's
+Track A placed a preflight (#2889): the proving product will be larger than `z_continuum`, and the next such task should
+be named before the first cycle, not found in it.
+
+**What was built.**
+1. **Where it runs.** At the start of a Campaign on a repository-backed Project, after its calibration record is read
+   and before anything is written (`api.routes.campaigns`'s `_calibration_record`, then
+   `squadops.execution.size_preflight`). It is the one place every such Campaign passes before its first cycle, and the
+   one that already refuses a start on a blocking gap (SIP-0109 §24bv point 1, 409 `CALIBRATION_REFUSED`). A sample
+   application's Campaign has no record and no product tree, and is never measured.
+2. **What it measures.** Each task type the Campaign's increments can dispatch, read by
+   `cycles.task_plan.dispatched_task_steps` (each workload's steps, its plan's build types, the correction steps, every
+   repair the tables route a failure to, the pulse chain), which the #2810 guard
+   (`tests/unit/cycles/test_product_cycle_budgets.py`) now reads too. Each is measured on the model its squad binds the
+   role to, with:
+   - the envelope the increment's run composes from the product: the tree at the record's commit and its manifest
+     (`source_checkout.checkout_of`, `seeded_files`, split from the run's seeding), its curated contents and acceptance
+     workspace selected and capped by the executor's own rule (`ArtifactFilter.selects`,
+     `ARTIFACT_CONTENTS_LIMIT_BYTES`, which `_resolve_artifact_contents` now reads), the `source_repository` view, and a
+     repair's forwarded tree and failed files (`repair_forwarded_inputs`);
+   - the first increment's resolved config, from the request `launch_requests.increment_launch` builds once the record
+     is promoted;
+   - counted by `prompt_without_memory_tokens`, with `completion_reserve`, against the model's window from the model
+     registry. The composer's own estimate is what holds a task live, so it is what the preflight reads.
+3. **A floor, so it refuses only what can't fit.** What a cycle hasn't produced yet is left out: the squad's own
+   outputs, the plan, a failure's evidence, and memory's sections. A task that names files (a build step, a repair) is
+   measured naming the smallest file of one top-level directory, and its size is the least over the product's
+   directories. A plan naming only root-level files is left out: `qa.test` would be shown those files alone
+   (`package_scoped`), and every product would fit. A binding over its window at the floor can't fit on a plan that
+   names files in the product's directories. One under it can still be held by a larger plan, and the composer still
+   holds it then.
+4. **The refusals**, each 409 `CALIBRATION_REFUSED` with nothing written:
+   - **`blocking_gap`, gap `prompt_over_window`**: each binding over its window, by task type, role, model, prompt
+     tokens, completion reserve and window, in the message and in `details.bindings`. It closes by binding the role to
+     a model with a larger window, or by a smaller product. It isn't a derived profile's gap (contract 8): it is read
+     from the Campaign's squad and profiles as well as the product.
+   - **`size_unmeasured`** (new, SIP-0109 §24db): a binding whose model the registry has no window for, or that has no
+     model; a squad or proposal profile that can't be read; a tree that can't be read (`SourceUnavailable`, by its
+     reason), one a run can't carry, or one past 2.4's limits on what a run takes on (`CheckoutTooLarge`, reason
+     `too_large`). Require, don't default: none is read as fitting.
+
+**What it doesn't do.**
+- It doesn't count the binding instructions. A task that fits with no room for its project instructions is still held
+  live, as §3.6 holds it. Reading them would need the Campaign's memory snapshot, which is pinned after the start's row
+  is written.
+- It doesn't measure `qa.evaluate_increment`: a repository-backed increment is judged at delivery (SIP-0109 §24cd
+  point 6), so its plan doesn't carry one.
+- A plan task's role is the build table's (`development.develop` on dev, `qa.test` on qa, `builder.assemble` on
+  builder). A plan that gives a build type to another role is measured on the table's role's model.
+- The sizes are logged (`size_preflight campaign=… <task type> prompt=… reserve=… window=…`) and are not kept in the
+  calibration record, whose id is derived from its content.
+
+**The evidence:**
+- **Wiring:** entered at `POST /api/v1/campaigns/{id}/start` over the real launch service and completion path
+  (`tests/unit/api/test_campaign_calibration_record.py`), on `full-38-tf` (the 65,536-token window #2805 and #2810 were
+  found on):
+  - a product of about 92,000 tokens in four packages, larger than the window, starts as before, every binding
+    measured;
+  - a product whose source is one package is refused, naming `qa.test` on `qwen3.8-27b-tf-nvfp4`, its size and its
+    window, with only the create row in the log: at about 90,000 tokens, past the window; at about 40,000, a prompt of
+    about 59,000 tokens inside it but over it with the 12,288 its completion reserves;
+  - five unmeasurable cases (an unregistered model, no model, a tree past 384 KB, an unreadable tree, a proposal
+    profile the deploy doesn't hold) are each refused as `size_unmeasured`;
+  - the wiring test that captures Tally's baseline in a real managed clone starts unaffected, and a sample
+    application's start is never measured (its world holds no clone).
+- **Mutants**, each run against a commit and restored by commit. Killed: the route not calling the preflight (7
+  tests), root files read as a plan's named file (1), an unknown window skipped (2), a plan task's named files dropped
+  so its contents count whole (1, the #2805 class), `CheckoutTooLarge` not caught (1), the completion reserve left out
+  of the fit (1, after a case was added for it), and the enumeration dropping repairs (2). One survives, equivalently:
+  the 512 KB resolution cap not applied. 2.4's 384 KB limit on a checkout's source and config refuses every tree that
+  could reach it, so on this path it can't bind; it is kept so the preflight and the executor stop at the same place
+  if the limit moves.
+
+**Who ruled.** Placed in 2.6.0 by the 2.6 plan (Track A), adopted on the owner's rulings of 2026-11-03. The seam, the
+floor and the `size_unmeasured` cause are the Spark lane's design under the supervisor's brief for #2889, for the owner's
+ruling in review.

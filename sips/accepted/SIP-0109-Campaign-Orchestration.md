@@ -5884,3 +5884,27 @@ theirs changes. The decision table's other rows, the counters, and the guards ar
 the same PR", on 2026-11-03 (the 2.6 plan's D1). The shapes above are the implementer's under the supervisor's brief
 for #2885, for the owner's review in the PR: the `goal_set` field kept and checked, `objective_met` rather than a new
 cause, the escalation in item 7, and the revision budget's exception in item 5.
+
+### 24db. A repository-backed start is also refused on a task that can't fit its model's window, or on a size nobody could measure (2026-11-04, §24bv point 1, §24cc; SIP-0112 H.21; #2889; the Spark lane's design under the supervisor's brief, for the owner)
+
+**What changed.** §24bv point 1 refuses a repository-backed Campaign's start, before anything is written, when its
+calibration record can't be written: the Project not ready, drift unreconciled, no baseline, no profile at the pin, or a
+blocking gap in the derived profile. The start now also runs a size preflight after the record is read
+(`squadops.execution.size_preflight`, SIP-0112 H.21): every task type the Campaign's increments dispatch, composed on
+the product's tree at the record's commit and counted as the composer counts it, on the model its squad binds the role
+to. Two refusals are added to the record's (`CalibrationRecordRefused`, 409 `CALIBRATION_REFUSED`, nothing written):
+- **`blocking_gap`, gap `prompt_over_window`**: a binding whose prompt and completion reserve exceed its model's window,
+  at the least its prompt can be on that tree. Named by task type, role, model, size, reserve and window. It is not one
+  of contract 8's gaps, because it reads the Campaign's squad and profiles as well as the product.
+- **`size_unmeasured`**, a new `RefusalCause`: a model with no window the registry knows, or no model; a squad or
+  proposal profile that can't be read; a tree that can't be read, or that is past 2.4's limits.
+
+A sample application's start is unchanged: it writes no record and is never measured.
+
+**Evidence.** #2805 and #2810, each found an hour into a Campaign on `z_continuum`. The preflight's wiring tests enter at
+`POST /api/v1/campaigns/{id}/start` (`tests/unit/api/test_campaign_calibration_record.py`); SIP-0112 H.21 records them,
+what the preflight leaves out and its mutants.
+
+**Who ruled.** Placed in 2.6.0 by the 2.6 plan's Track A, adopted on the owner's rulings of 2026-11-03. The refusal's
+shape is the implementer's, for the owner's ruling in review. The delivery is tracked on SIP-0112's ledger, where #2889
+is placed.

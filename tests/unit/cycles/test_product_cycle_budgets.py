@@ -34,18 +34,12 @@ from adapters.noop.ports import NoOpProposalEvidence
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.cycle.validation import _classify_file
 from squadops.contracts.cycle_request_profiles import load_profile
-from squadops.cycles import pulse_verification
-from squadops.cycles.agent_config import served_roles
 from squadops.cycles.failure_evidence import FailureLocus
-from squadops.cycles.implementation_plan import planner_build_task_types
 from squadops.cycles.models import WorkloadType
 from squadops.cycles.task_plan import (
-    _BUILD_TASK_TYPES,
     _CHANGE_REQUEST_WORKLOADS,
-    _increment_evaluation,
-    _resolve_workload_steps,
-    builder_assembles,
-    correction_task_steps,
+    DISPATCHED_BY_WORKLOAD,
+    dispatched_task_steps,
     generate_task_plan,
     repair_steps_for,
 )
@@ -118,40 +112,14 @@ def _dispatched(defaults: dict[str, Any]) -> dict[str, tuple]:
     """Every task type a product increment cycle on ``defaults`` can dispatch, each with how it is
     dispatched: ``("workload", w)``, a step of workload ``w``'s plan; ``("correction",)``, a step
     of every correction round; ``("repair",)``, a repair the tables route a failure to; and
-    ``("pulse",)``, the pulse-check repair chain. Read from the profile and the executor's tables."""
+    ``("pulse",)``, the pulse-check repair chain. Read by the production enumeration the size
+    preflight reads too (``dispatched_task_steps``, #2889)."""
     cycle = dataclasses.replace(increment_cycle(), applied_defaults=dict(defaults))
-    config = cycle.resolved_config()
-    roster = squad()
-    found: dict[str, tuple] = {}
-    for entry in config["workload_sequence"]:
-        workload = entry["type"]
-        steps, _builder = _resolve_workload_steps(
-            workload, roster, served_roles(roster), config, source_backed=True
-        )
-        types = [t for t, _role in steps]
-        if config.get("implementation_plan") and any(t in _BUILD_TASK_TYPES for t in types):
-            # A build workload's steps are the approved plan's tasks (SIP-0086): any build task
-            # type the plan author may be offered on this squad.
-            types += sorted(
-                planner_build_task_types(
-                    offer_builder=builder_assembles(roster, config, source_backed=True)
-                )
-            )
-        change = STORED if workload in _CHANGE_REQUEST_WORKLOADS else None
-        types += [t for t, _ in _increment_evaluation(run(workload), config, change, None).steps]
-        for task_type in types:
-            found.setdefault(str(task_type), ("workload", workload))
-    failing = [t for t in found if not fails_without_correction(t)]
-    for task_type, _role in correction_task_steps(config):
-        found.setdefault(str(task_type), ("correction",))
-    for failed_type in failing:
-        for locus in (None, *_loci()):
-            for task_type, _role in repair_steps_for(failed_type, locus):
-                found.setdefault(str(task_type), ("repair",))
-    if config.get("pulse_checks"):
-        for task_type, _role in pulse_verification.REPAIR_TASK_STEPS:
-            found.setdefault(str(task_type), ("pulse",))
-    return found
+    steps = dispatched_task_steps(cycle.resolved_config(), squad(), source_backed=True)
+    return {
+        t: (s.origin, s.workload) if s.origin == DISPATCHED_BY_WORKLOAD else (s.origin,)
+        for t, s in steps.items()
+    }
 
 
 _DISPATCHED = _dispatched(load_profile(_PROFILE).defaults)
