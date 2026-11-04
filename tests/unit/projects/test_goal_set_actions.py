@@ -4,6 +4,7 @@ actions, and recording them as revisions under §6's rule for who may. The goal 
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
@@ -443,6 +444,41 @@ class TestRecordPromotion:
                 projects=projects, goal_sets=goal_sets, campaigns=campaigns,
             )  # fmt: skip
 
+    @pytest.mark.parametrize("action", ["promote", "drop", "split"])
+    async def test_a_retry_replays_though_its_campaign_has_since_completed(
+        self, action, projects, goal_sets, campaigns
+    ):
+        """The retry contract outlives the Campaign (the review of PR #2908). Bug caught: the
+        delegated act committed, its response was lost, the Campaign completed, and the retry was
+        refused 403 at the eligibility check, so the crew reads a write that happened as refused.
+        A new key on the same Campaign is still refused."""
+        await started(campaigns, "cmp_1", created_by="owner")
+        stores = dict(projects=projects, goal_sets=goal_sets, campaigns=campaigns)
+        into = [{"id": "B-1a", "title": "the book"}, {"id": "B-1b", "title": "the minutes"}]
+
+        def act(write):
+            if action == "promote":
+                return record_promotion(
+                    PROJECT, "C-1", serves=["ER-week"], position=None, write=write, **stores
+                )
+            if action == "drop":
+                return record_drop(PROJECT, "C-1", write=write, **stores)
+            return record_split(PROJECT, "B-1", into, write=write, **stores)
+
+        first, _ = await act(_write(CREW, campaign_id="cmp_1"))
+        await campaigns.transition(
+            "cmp_1",
+            move(CampaignState.COMPLETED, "end", operation=ControlOperation.ABORT,
+                 outcome=CampaignOutcome.ABORTED),
+        )  # fmt: skip
+
+        again, replayed = await act(_write(CREW, campaign_id="cmp_1"))
+
+        assert (again, replayed) == (first, True)
+        assert len(goal_sets.revisions[PROJECT]) == 2
+        with pytest.raises(NotDelegated, match="has completed"):
+            await act(_write(CREW, campaign_id="cmp_1", key="k-2", expected_revision=2))
+
     @pytest.mark.parametrize(
         ("expected_revision", "error"),
         [(0, GoalSetNotFoundError), (2, GoalSetNotFoundError), (1, StaleGoalSetRevisionError)],
@@ -538,6 +574,41 @@ class TestRecordSplit:
                 ChangeKind.ITEM_SPLIT, "B-1", split_into=("B-1a", "B-1b")
             )
             assert _ids(written.goal_set) == ["B-1a", "B-1b", "B-2"]
+
+    async def test_a_proposal_arriving_during_a_split_lands_after_its_revision(
+        self, projects, goal_sets, campaigns
+    ):
+        """§5.5a across the two stores (the review of PR #2908). Bug caught: the guard read the
+        Campaign's log and the revision was written separately, so a proposal submitted between
+        them read ``proposed`` on an item the split had just removed, and nothing would tell the
+        ruling. Held, the submission waits; once it lands the item is gone, which is what
+        ``goals_revised`` returns it for."""
+        await started(campaigns, "cmp_1", created_by="owner")
+        into = [{"id": "B-1a", "title": "the book"}, {"id": "B-1b", "title": "the minutes"}]
+        written = goal_sets.record_revision
+        submission: list[asyncio.Task] = []
+
+        async def racing(revision, **kwargs):
+            submission.append(asyncio.create_task(proposed(campaigns, "cmp_1", "B-1")))
+            for _ in range(20):
+                await asyncio.sleep(0)
+            assert not submission[0].done()
+            assert [e.operation for e in await campaigns.control_log("cmp_1")][-1] != (
+                ControlOperation.SUBMIT
+            )
+            return await written(revision, **kwargs)
+
+        goal_sets.record_revision = racing
+        revision, _ = await record_split(
+            PROJECT, "B-1", into, write=_write(OWNER),
+            projects=projects, goal_sets=goal_sets, campaigns=campaigns,
+        )  # fmt: skip
+        await submission[0]
+
+        assert _ids(revision.goal_set) == ["B-1a", "B-1b", "B-2"]
+        assert [e.operation for e in await campaigns.control_log("cmp_1")][-1] is (
+            ControlOperation.SUBMIT
+        )
 
     async def test_the_crew_splits_within_the_owners_campaign_and_the_revision_names_it(
         self, projects, goal_sets, campaigns

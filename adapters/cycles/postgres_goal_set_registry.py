@@ -108,6 +108,18 @@ class PostgresGoalSetRegistry(GoalSetRegistryPort):
             )
         return revision, False
 
+    async def revision_under_key(
+        self, idempotency_key: str, request_hash: str
+    ) -> GoalSetRevision | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"SELECT {_COLUMNS} FROM project_goal_set_revisions "
+                "WHERE idempotency_key = $1 AND request_hash = $2",
+                idempotency_key,
+                request_hash,
+            )
+        return _row_to_revision(row) if row is not None else None
+
     async def get_revision(self, project_id: str, revision: int | None = None) -> GoalSetRevision:
         async with self._pool.acquire() as conn:
             if revision is None:

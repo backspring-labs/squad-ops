@@ -87,6 +87,10 @@ class GoalSetStore:
         self.by_key[idempotency_key] = (request_hash, revision)
         return revision, False
 
+    async def revision_under_key(self, idempotency_key: str, request_hash: str):
+        written_hash, written = self.by_key.get(idempotency_key, (None, None))
+        return written if written_hash == request_hash else None
+
     def write(self, project_id: str, doc: dict, *, change=None) -> int:
         """``change`` is the action the revision was (``Change``), when it was one."""
         from datetime import UTC, datetime

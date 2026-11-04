@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from squadops.campaigns import box, lifecycle
@@ -44,6 +47,8 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         self._intents: dict[str, LaunchIntent] = {}
         self._lease: BoxLease | None = None
         self._lock = asyncio.Lock()
+        #: ``transitions_held``'s, per Project. Apart from ``_lock``, which the body's reads take.
+        self._held: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     # --- reads ---
 
@@ -140,8 +145,13 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
     ) -> TransitionResult:
         if transition.operation.changes_the_lease:
             raise ValueError(f"{transition.operation} is committed by change_box_lease")
-        async with self._lock:
+        async with self._held[self._campaign(campaign_id).project_id], self._lock:
             return self._commit(campaign_id, transition, marks=None)
+
+    @asynccontextmanager
+    async def transitions_held(self, project_id: str) -> AsyncIterator[None]:
+        async with self._held[project_id]:
+            yield
 
     async def change_box_lease(
         self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]

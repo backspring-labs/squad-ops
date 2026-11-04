@@ -386,6 +386,27 @@ async def test_a_refused_resume_persists_moves_nothing_and_leaves_its_key_free(p
     assert (await restarted.get_campaign(CID)).state is S.CALIBRATING
 
 
+async def test_a_held_project_holds_its_live_campaigns_transitions_and_not_their_reads(
+    pool, campaigns
+):
+    """SIP-0115 §5.5a on Postgres: the row lock ``transitions_held`` takes is the one a transition
+    waits on. Bugs caught: a hold that a transition on another connection walks past, so a split's
+    guard goes stale before its write; a hold that blocks reads, so the guard deadlocks on the
+    view it reads inside it."""
+    async with campaigns.transitions_held(PROJECT):
+        moving = asyncio.create_task(
+            PostgresCampaignRegistry(pool=pool).transition(CID, _launching("k-held"))
+        )
+        await asyncio.sleep(0.3)
+        assert not moving.done()
+        assert (await campaigns.get_campaign(CID)).state is S.CALIBRATING
+        assert len(await campaigns.control_log(CID)) == 2
+
+    result = await asyncio.wait_for(moving, timeout=5)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
+
+
 async def test_a_failure_inside_the_transaction_leaves_no_partial_write(campaigns, monkeypatch):
     """§13: the state change, its row and its intent commit together or not at all. The intent's
     insert fails after the row and the state are written; nothing of the three may remain."""

@@ -4,8 +4,9 @@ Q41; #2886): a candidate added, promoted or dropped, and a backlog item split.
 Each reads the revision the action is against, applies the goal set's own action
 (``goal_set.add_candidate`` and its siblings), and records the result as the next revision with
 the acting principal as its author, the reason given, and the action named on it (``Change``).
-A retry under its key replays what was written: the action is recomputed against the same base
-revision, and the store answers the first write.
+A retry under its key replays what was written, and is answered first: by then the Campaign it
+was within may have completed, or the item moved on, and neither undoes the write. The caller's
+scope is still the route's to check.
 
 **Who may** (§6, Q41, ruled 2026-11-03). The owner, holding ``admin:write``, may do each. The
 crew's supervisor seat may add a candidate; and may promote, drop or split **only within a
@@ -19,7 +20,8 @@ delegated act was within is recorded on the revision.
 
 **A split waits** (§5.5a) while any live Campaign on the Project reads the item ``proposed`` or
 ``in_increment``, read with slice 2's derived view per Campaign; a completed Campaign doesn't
-count.
+count. The read and the write are one step to those Campaigns (``transitions_held``): a proposal
+that arrives during it lands after the revision, and the ruling returns it as ``goals_revised``.
 """
 
 from __future__ import annotations
@@ -119,13 +121,16 @@ async def record_candidate(
         StaleGoalSetRevisionError, RegistrationKeyConflictError: the store's refusals.
     """
     base = await _base(project_id, write, projects=projects, goal_sets=goal_sets)
+    request = _request(
+        project_id, write, ChangeKind.CANDIDATE_ADDED, {"candidate": dict(candidate)}
+    )
+    if (written := await goal_sets.revision_under_key(write.idempotency_key, request)) is not None:
+        return written, True
     when = write.now or datetime.now(UTC)
     goal_set = add_candidate(base.goal_set, candidate, found_at=when)
     added = goal_set.candidates[-1]
     change = Change(ChangeKind.CANDIDATE_ADDED, added.id, campaign_id=write.campaign_id)
-    return await _record(
-        base, goal_set, change, write, goal_sets=goal_sets, inputs={"candidate": dict(candidate)}
-    )
+    return await _record(base, goal_set, change, write, goal_sets=goal_sets, request=request)
 
 
 async def record_promotion(
@@ -151,6 +156,10 @@ async def record_promotion(
         RegistrationKeyConflictError: as ``record_candidate``.
     """
     base = await _base(project_id, write, projects=projects, goal_sets=goal_sets)
+    inputs = {"candidate_id": candidate_id, "serves": list(serves), "position": position}
+    request = _request(project_id, write, ChangeKind.CANDIDATE_PROMOTED, inputs)
+    if (written := await goal_sets.revision_under_key(write.idempotency_key, request)) is not None:
+        return written, True
     await _within(project_id, write, campaigns, what="promote a candidate")
     end = len(base.goal_set.backlog) + 1
     if not write.actor.owner and position is not None and position != end:
@@ -162,8 +171,7 @@ async def record_promotion(
     change = Change(
         ChangeKind.CANDIDATE_PROMOTED, candidate_id, position=at, campaign_id=write.campaign_id
     )
-    inputs = {"candidate_id": candidate_id, "serves": list(serves), "position": position}
-    return await _record(base, goal_set, change, write, goal_sets=goal_sets, inputs=inputs)
+    return await _record(base, goal_set, change, write, goal_sets=goal_sets, request=request)
 
 
 async def record_drop(
@@ -181,11 +189,14 @@ async def record_drop(
     Raises: as ``record_promotion``, less ``GoalSetInvalid``.
     """
     base = await _base(project_id, write, projects=projects, goal_sets=goal_sets)
+    inputs = {"candidate_id": candidate_id}
+    request = _request(project_id, write, ChangeKind.CANDIDATE_DROPPED, inputs)
+    if (written := await goal_sets.revision_under_key(write.idempotency_key, request)) is not None:
+        return written, True
     await _within(project_id, write, campaigns, what="drop a candidate")
     goal_set = drop_candidate(base.goal_set, candidate_id)
     change = Change(ChangeKind.CANDIDATE_DROPPED, candidate_id, campaign_id=write.campaign_id)
-    inputs = {"candidate_id": candidate_id}
-    return await _record(base, goal_set, change, write, goal_sets=goal_sets, inputs=inputs)
+    return await _record(base, goal_set, change, write, goal_sets=goal_sets, request=request)
 
 
 async def record_split(
@@ -209,13 +220,17 @@ async def record_split(
         StaleGoalSetRevisionError, RegistrationKeyConflictError: as ``record_promotion``.
     """
     base = await _base(project_id, write, projects=projects, goal_sets=goal_sets)
+    inputs = {"item_id": item_id, "into": [dict(part) for part in into]}
+    request = _request(project_id, write, ChangeKind.ITEM_SPLIT, inputs)
+    if (written := await goal_sets.revision_under_key(write.idempotency_key, request)) is not None:
+        return written, True
     await _within(project_id, write, campaigns, what="split a backlog item")
     goal_set = split_item(base.goal_set, item_id, into)
-    await _not_in_progress(project_id, item_id, goal_sets=goal_sets, campaigns=campaigns)
     parts = tuple(str(part["id"]) for part in into)
     change = Change(ChangeKind.ITEM_SPLIT, item_id, split_into=parts, campaign_id=write.campaign_id)
-    inputs = {"item_id": item_id, "into": [dict(part) for part in into]}
-    return await _record(base, goal_set, change, write, goal_sets=goal_sets, inputs=inputs)
+    async with campaigns.transitions_held(project_id):
+        await _not_in_progress(project_id, item_id, goal_sets=goal_sets, campaigns=campaigns)
+        return await _record(base, goal_set, change, write, goal_sets=goal_sets, request=request)
 
 
 # --- the steps the actions share ---
@@ -294,10 +309,9 @@ async def _record(
     write: ActionWrite,
     *,
     goal_sets: GoalSetRegistryPort,
-    inputs: Mapping[str, Any],
+    request: str,
 ) -> tuple[GoalSetRevision, bool]:
-    """Record ``goal_set`` as the revision after ``base``, under the key, hashed over the action
-    as it was asked (its inputs against ``base``), so a retry with the same request replays."""
+    """Record ``goal_set`` as the revision after ``base``, under the key and ``_request``'s hash."""
     revision = GoalSetRevision(
         project_id=base.project_id,
         revision=base.revision + 1,
@@ -309,17 +323,22 @@ async def _record(
         change=change,
     )
     return await goal_sets.record_revision(
-        revision,
-        idempotency_key=write.idempotency_key,
-        request_hash=submission_digest(
-            {
-                "project_id": base.project_id,
-                "expected_revision": write.expected_revision,
-                "reason": write.reason,
-                "source_ref": write.source_ref,
-                "campaign_id": write.campaign_id,
-                "action": change.kind.value,
-                "inputs": dict(inputs),
-            }
-        ),
+        revision, idempotency_key=write.idempotency_key, request_hash=request
+    )
+
+
+def _request(
+    project_id: str, write: ActionWrite, kind: ChangeKind, inputs: Mapping[str, Any]
+) -> str:
+    """The action as it was asked, hashed: what a retry repeats, whatever has changed since."""
+    return submission_digest(
+        {
+            "project_id": project_id,
+            "expected_revision": write.expected_revision,
+            "reason": write.reason,
+            "source_ref": write.source_ref,
+            "campaign_id": write.campaign_id,
+            "action": kind.value,
+            "inputs": dict(inputs),
+        }
     )

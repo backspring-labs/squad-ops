@@ -156,6 +156,9 @@ class ProjectingCampaignRegistry(CampaignRegistryPort):
         project(self._audit, None, entry=entry, result=None, actor_type=SYSTEM_ACTOR_TYPE)
         return entry
 
+    def transitions_held(self, project_id: str):
+        return self._inner.transitions_held(project_id)
+
     async def box_lease(self):
         return await self._inner.box_lease()
 

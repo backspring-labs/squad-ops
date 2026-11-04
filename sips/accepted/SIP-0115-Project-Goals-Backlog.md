@@ -490,7 +490,10 @@ implementer under the supervisor's slice-3 brief (#2886); the owner reviews it i
   *The supervisor's narrowing, 2026-11-04, for the owner's review:* Q41's "a Campaign the owner started" is read as a
   live Campaign on this Project reading this goal set, since the crew's broker creates the Campaigns the owner
   approves in Buzz (the intake check's Nostromo flow) and SquadOps records no approval to read; the crew starts no
-  Campaign without that approval, so the delegation lasts the Campaign's life. The owner may tighten it. The
+  Campaign without that approval, so the delegation lasts the Campaign's life. **Open, for the owner's ruling:** the
+  owner's review of PR #2908 found this is broader than Q41: `campaign-supervisor` holds `campaigns:manage`, so it can
+  create a Campaign and act within it, which authorizes itself. Nothing here reads who started a Campaign. Until the
+  owner rules, this PR doesn't merge. The
   Campaign is recorded on the revision (`change.campaign_id`). The owner needs no Campaign, and may name one, which
   is then checked the same way so the record is true.
 - **The crew appends; the owner places.** A promotion takes `position` (from 1; the end by default). The crew's
@@ -499,6 +502,16 @@ implementer under the supervisor's slice-3 brief (#2886); the owner reviews it i
 - **A promotion keeps the candidate's id** (§10a), its title and description, and takes `serves` from the request
   (a candidate names what it found, not what it serves; at least one result of the same revision). The result is
   validated whole again, as a submitted document is.
+- **A retry is answered before anything that can have changed since the write** (the owner's review of PR #2908). A
+  delegated act that committed, whose response was lost, and whose Campaign then completed, was refused 403 at the
+  check above. Each action now reads its key first (`GoalSetRegistryPort.revision_under_key`, the key and the request's
+  hash) and replays. The route's scope check still comes first. A new key on that Campaign is refused as before.
+- **A split's guard and its write are one step to the Campaigns it reads** (the owner's review of PR #2908). The guard
+  read the Campaign logs and the revision was written after, so a proposal submitted between them named an item the
+  split removed. `CampaignRegistryPort.transitions_held` now holds the row lock every transition takes first, on each
+  live Campaign of the Project, across the guard and the write. A proposal that arrives then lands after the revision,
+  and its ruling returns it as `goals_revised` (§5.5a). A Campaign created during the hold isn't held: its calibration
+  comes before any proposal. The goal set and the Campaign stay separate stores: this is a lock, not one transaction.
 - **A split's shape** (§5.5a). The document holds the result: the parent gone from `backlog`, the parts in its place
   in order; the revision names it: `change: {kind: item_split, subject: <parent>, split_into: [<parts>]}`. *Narrowed:*
   §5.5a's "the item is `removed` with `split_into`" is the derived view's wording, not a field on a backlog item,
@@ -519,6 +532,13 @@ implementer under the supervisor's slice-3 brief (#2886); the owner reviews it i
   refuses a write another editor got in front of. A refused write prints the key and the revision for the retry.
 - **Not in slice 3:** the squad's automatic candidate extraction (above), the console's goals panel (slice 4), the
   crew's assessments (slice 5).
+
+**Evidence (the review's fixes).** `tests/unit/projects/test_goal_set_actions.py`: a retry replays after its Campaign
+completed, for each of promote, drop and split, and a new key is refused; a proposal arriving during a split lands after
+its revision. `tests/integration/cycles/`: on Postgres, a held Project blocks a transition on another connection and
+not its reads, and the key read answers only this request. Mutants, each on a commit: the hold removed from the split;
+the memory transition ignoring the hold; the replay removed from each action; `FOR UPDATE` removed; the key read
+ignoring the hash. Each failed a test.
 
 **Evidence.** `tests/unit/projects/test_goal_set_actions.py` (each action and refusal by its field; Q41's rule; the
 split's wait per Campaign history; replay and staleness), `tests/unit/campaigns/test_backlog.py` (a split parent

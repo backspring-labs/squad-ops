@@ -142,6 +142,9 @@ async def test_a_stale_write_is_refused_and_a_retry_replays_what_was_written(poo
 
     assert (replayed, was_replay) == (_revision(2), True)
     assert [r.revision for r in await store.list_revisions(PROJECT)] == [2, 1]
+    assert await store.revision_under_key("it-2", "h2") == _revision(2)
+    assert await store.revision_under_key("it-2", "other") is None
+    assert await store.revision_under_key("it-9", "h2") is None
 
 
 async def test_writers_racing_for_one_revision_write_it_once(pool):
