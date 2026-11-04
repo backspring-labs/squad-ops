@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 import yaml
 
 from adapters.prompts.factory import create_prompt_asset_source, create_prompt_repository
@@ -325,3 +326,125 @@ async def test_an_added_page_reusing_a_pinned_views_anchor_is_returned_and_revis
     assert result.success, result.error
     [artifact] = result.outputs["artifacts"]
     assert yaml.safe_load(artifact["content"])["criteria"][0]["anchor"] == "totals-view"
+
+
+# --- SIP-0115 §5.2, §5.3: a goal-set Campaign's proposal (SIP-0109 §24cy) ---
+
+#: The ``goals`` input ``execution.product_proposal`` composes, for an invented goal set on Tally:
+#: the first item accepted, the second abandoned, so the third is next.
+_GOALS = {
+    "revision": 4,
+    "reads": "current",
+    "goal": "Tally tells a reader what their ledger adds up to",
+    "expected_results": [
+        {
+            "id": "ER-total",
+            "statement": "The report ends in the total of its amounts",
+            "surface": {"kind": "package_interface", "ref": "tally.report"},
+        },
+        {
+            "id": "ER-plain",
+            "statement": "The report reads plainly",
+            "surface": {"kind": "none", "reason": "judged by the owner"},
+        },
+    ],
+    "constraints": ["No network access"],
+    "out_of_scope": ["Currencies"],
+    "backlog": [
+        {"id": "B-1", "title": "Parse amounts", "description": "", "serves": ["ER-total"],
+         "status": "accepted"},
+        {"id": "B-2", "title": "Round totals", "description": "", "serves": ["ER-total"],
+         "status": "abandoned", "reason": "§10 row 13: its increment was abandoned"},
+        {"id": "B-3", "title": "Report totals", "description": "The report's last line totals it.",
+         "serves": ["ER-total"], "status": "pending"},
+    ],
+    "next_item": "B-3",
+}  # fmt: skip
+
+
+def _on_goals() -> dict:
+    inputs = _inputs()
+    product = inputs["product_proposal"]
+    del product["requirements"]
+    product["goals"] = _GOALS
+    objective = inputs["resolved_config"]["campaign_proposal"]["objective"]
+    del objective["requirements"]
+    objective["goals"] = {"goal_set": "prj-tally", "revision": "current"}
+    return inputs
+
+
+def _naming(item: str | None) -> str:
+    request = yaml.safe_load(_REQUEST)
+    del request["prd_delta"]
+    if item is not None:
+        request["backlog_item"] = item
+    return _fenced(yaml.safe_dump(request, sort_keys=False))
+
+
+async def test_a_goal_set_proposal_is_shown_the_goal_set_and_names_the_next_item():
+    """Wiring (anti-pattern 6a), entered at ``handle()`` with the input the run composes. Bugs
+    caught: the goal set composed and never rendered, so the proposer is shown no requirements at
+    all; the abandoned item's reason or an item's status dropped (§5.2); the next item computed
+    and not shown, so the proposer guesses; the stored request without its item or its revision,
+    so the submission binds the proposal to nothing (§5.5a)."""
+    ctx = _ctx(_naming("B-3"))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _on_goals())
+
+    assert result.success, result.error
+    [prompt] = _prompts(ctx)
+    assert "### The product's goal set, revision 4" in prompt
+    assert "**The goal:** Tally tells a reader what their ledger adds up to" in prompt
+    assert "- `ER-total`: The report ends in the total of its amounts (package_interface " in prompt
+    assert "- `ER-plain`: The report reads plainly (not observed: judged by the owner)" in prompt
+    assert "- No network access" in prompt and "- Currencies" in prompt
+    assert "1. `B-1` Parse amounts: **accepted** (serves ER-total)" in prompt
+    assert "2. `B-2` Round totals: **abandoned** (serves ER-total). §10 row 13: its" in prompt
+    assert "**Your proposal serves B-3, and only it:** Report totals." in prompt
+    assert "backlog_item: B-3" in prompt
+    assert "requirements, as `repo:file" not in prompt  # no requirements source is named
+    [artifact] = result.outputs["artifacts"]
+    stored = yaml.safe_load(artifact["content"])
+    assert (stored["backlog_item"], stored["goals_revision"]) == ("B-3", 4)
+
+
+@pytest.mark.parametrize(
+    ("named", "why"),
+    [
+        (None, "names no backlog item"),
+        ("B-2", "names backlog_item 'B-2', which is abandoned"),
+        ("B-1", "names backlog_item 'B-1', which is accepted"),
+        ("B-9", "names backlog_item 'B-9', which the backlog doesn't hold"),
+    ],
+    ids=["names none", "names the abandoned item", "names an accepted item", "names no such item"],
+)
+async def test_a_proposal_naming_any_but_the_next_item_is_returned_before_a_cycle_is_spent(
+    named, why
+):
+    """§5.3's rail, judged in the proposal task by the real rails on the real input. Bugs caught:
+    a proposal naming no item, or an earlier, abandoned or unknown one, reaching the increment
+    gate and spending a ruling and a cycle; the refusal not naming the item to propose, so the
+    revision guesses again."""
+    ctx = _ctx(_naming(named), _naming("B-3"))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _on_goals())
+
+    _first, second = _prompts(ctx)
+    assert "[not_the_next_backlog_item]" in second
+    assert why in second and "backlog_item: B-3" in second
+    assert result.success, result.error
+    [artifact] = result.outputs["artifacts"]
+    assert yaml.safe_load(artifact["content"])["backlog_item"] == "B-3"
+
+
+async def test_a_requirements_campaigns_proposal_naming_an_item_is_returned():
+    """The edge: no goal set. Bug caught: a ``backlog_item`` stored on a Campaign with no backlog,
+    so a submission binds it to an item nothing reads."""
+    ctx = _ctx(_naming("B-3"), _fenced(_REQUEST))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _inputs())
+
+    _first, second = _prompts(ctx)
+    assert "this Campaign works from no goal set" in second
+    assert result.success, result.error
+    assert "backlog_item" not in yaml.safe_load(result.outputs["artifacts"][0]["content"])

@@ -213,6 +213,7 @@ if TYPE_CHECKING:
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.ports.outcomes import ProposalEvidencePort
+    from squadops.ports.projects.goal_sets import GoalSetRegistryPort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
@@ -793,6 +794,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         source_repository: SourceRepositoryPort | None = None,
         sandbox: ExecutionSandboxPort | None = None,
         route_renderer: RouteRenderer | None = None,
+        # SIP-0115 §5.2: the goal sets a goal-set Campaign's proposal reads. Required at the
+        # factory, the roots' seam. ``None``: such a proposal's run fails, naming it.
+        goal_set_registry: GoalSetRegistryPort | None = None,
         run_completion: RunCompletion | None = None,
         correction_runner: CorrectionRunner | None = None,
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
@@ -806,6 +810,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
         # campaign cycle run by an executor without one fails at that gate, loudly.
         self._campaign_registry = campaign_registry
+        self._goal_set_registry = goal_set_registry
         # SIP-0109 §10: what a campaign does when one of its cycles ends (CycleCompletion).
         self._campaign_progress = campaign_progress
         # SIP-0109 §9.3 (#1802, #1928): whether a launch is allowed now, which a run start

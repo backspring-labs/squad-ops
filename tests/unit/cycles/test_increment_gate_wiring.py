@@ -598,3 +598,71 @@ async def test_the_plan_gate_stops_for_the_injected_question(executor):
 
     assert await _decide_framing_gate(executor, injected)
     assert _questions_asked(executor) == [INJECTED_QUESTION]
+
+
+# --- SIP-0115 §5.5a (SIP-0109 §24cy): a goal-set Campaign's proposal at the gate ---
+
+
+def _goal_set_change_request() -> tuple:
+    """The reference request as a goal-set Campaign's rails store it: naming its item, with the
+    revision it was created under."""
+    from squadops.campaigns.change_request import content_hash, stored_change_request
+
+    named = dataclasses.replace(_REQUEST, backlog_item="B-2", goals_revision=3)
+    named = dataclasses.replace(named, content_hash=content_hash(named))
+    return named, stored_change_request(named)
+
+
+async def test_the_submission_records_the_item_and_the_revision_the_proposal_serves(
+    executor, campaigns
+):
+    """Wiring: the derived backlog reads a proposal's item and revision from its submission row
+    (§4, §5.5a), so the gate must write them from the stored request. Bugs caught: the row
+    written without them, so every goal-set item reads pending forever and the rail lets the
+    squad propose the same item again; or a request's hash computed without them, so a ruling
+    binds to a proposal whose item could be changed after it."""
+    request, document = _goal_set_change_request()
+    executor._artifact_vault.stored["art_cr"] = _ref(
+        "art_cr", "change_request", "change_request.yaml", document
+    )
+
+    await _reach_the_gate(executor, _cycle(CID))
+
+    [submitted] = [e for e in await campaigns.control_log(CID) if e.operation == "submit"]
+    assert (submitted.binding["backlog_item"], submitted.binding["goals_revision"]) == ("B-2", 3)
+    assert submitted.binding["content_hash"] == request.content_hash != _REQUEST.content_hash
+
+
+async def test_a_goals_revised_return_spends_none_of_the_revision_budget(revising, campaigns):
+    """§5.5a: a ``goals_revised`` return is not a rejection. Bug caught: the framework's return
+    counted as a supervisor's, so with the budget spent the cycle stops as
+    ``revision_unavailable``, which §9.5 counts as rejected toward
+    ``max_rejected_proposals_in_row``."""
+    from squadops.campaigns.gate import ruling_transition
+    from squadops.execution.workload_gate import GateOutcome
+
+    async def returned_as_goals_revised(*_args):
+        await campaigns.transition(
+            CID,
+            ruling_transition(
+                GateDecisionValue.RETURNED_FOR_REVISION,
+                ProposalBinding("prop_cap", 1, _REQUEST.content_hash, "sha-accepted"),
+                run_id="run_prop",
+                actor="crew-supervisor",
+                actor_role="campaign-supervisor",
+                reason="goals_revised: B-2 is no longer the next item",
+                idempotency_key="rule-goals",
+                goals_revised_from=GateDecisionValue.APPROVED,
+            ),
+        )
+        return _returned("goals_revised: B-2 is no longer the next item")
+
+    revising._poll_inter_workload_gate.side_effect = returned_as_goals_revised
+    superseded = dataclasses.replace(_PROPOSAL_RUN, run_id="run_prop0", status="cancelled")
+    revising._cycle_registry.list_runs.return_value = [superseded, _PROPOSAL_RUN]
+
+    step = await _reach_the_gate(revising, _cycle(CID))
+
+    assert step.outcome is GateOutcome.RE_EXECUTE
+    revised = step.forwarding_overrides["campaign_proposal"]
+    assert revised["supervisor_note"] == "goals_revised: B-2 is no longer the next item"

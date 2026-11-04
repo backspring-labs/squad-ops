@@ -565,6 +565,9 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.proposal_judged_routes",
             "request.proposal_previous_verification",
             "request.proposal_requirements_source",
+            # SIP-0115 §5.2: a goal-set Campaign's goal set and its next item, in place of it.
+            "request.proposal_goal_set",
+            "request.proposal_next_backlog_item",
             "request.proposal_product_tree",
             "request.proposal_approved_manifest",
             "request.source_repository_instructions_block",

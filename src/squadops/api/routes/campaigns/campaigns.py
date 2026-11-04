@@ -105,6 +105,7 @@ from squadops.campaigns.models import (
     ControlOutcome,
     ProposalClassification,
     ResumeReservedToOwner,
+    StopWhen,
     TransitionResult,
     WorkClass,
 )
@@ -1192,13 +1193,13 @@ def _campaign(c: Campaign) -> CampaignResponse:
             ),
             requirements=c.objective.requirements,
             goals=(
-                CampaignGoalsDTO(
-                    goal_set=c.objective.goals.goal_set, revision=c.objective.goals.revision
+                CampaignGoalsDTO.model_validate(
+                    {"goal_set": c.objective.goals.goal_set, "revision": c.objective.goals.revision}
                 )
                 if c.objective.goals
                 else None
             ),
-            stop_when=c.objective.stop_when,
+            stop_when="backlog_done" if c.objective.stop_when == StopWhen.BACKLOG_DONE else None,
         ),
         policy=CampaignPolicyDTO(
             **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}

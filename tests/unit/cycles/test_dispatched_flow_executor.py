@@ -1373,6 +1373,7 @@ class TestRunCompletionActivityWiring:
             proposal_evidence=NoOpProposalEvidence(),
             binding_fill=None,
             route_renderer=None,
+            goal_set_registry=None,
             focus_lease_port=focus_lease_port,
         )
 

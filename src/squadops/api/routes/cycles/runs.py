@@ -24,15 +24,19 @@ from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
 from squadops.api.runtime.deps import (
     get_artifact_vault,
+    get_campaign_registry,
     get_cycle_event_bus,
     get_cycle_registry,
     get_flow_executor,
+    get_goal_set_registry,
     get_memory_records,
     get_reference_resolvers,
 )
 from squadops.auth.models import Identity, Scope
-from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
-from squadops.campaigns.models import ProposalBinding
+from squadops.campaigns.backlog import BACKLOG_ITEM_KEY, GOALS_REVISION_KEY, campaign_backlog
+from squadops.campaigns.backlog import goals_revised as goals_revised_reason
+from squadops.campaigns.gate import GOALS_REVISED, INCREMENT_RULING_GATE, ruling_transition
+from squadops.campaigns.models import ControlOperation, ControlOutcome, ProposalBinding
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.gate_decisions import record_gate_decision
@@ -338,6 +342,47 @@ async def _store_ruling_instructions(request: Request, records: tuple) -> None:
             continue  # the ruling was repeated: its first attempt stored this one
 
 
+async def _goals_revised(
+    request: Request, campaign_id: str, binding: ProposalBinding
+) -> str | None:
+    """SIP-0115 §5.5a: why the proposal ``binding`` names is returned as ``goals_revised`` at its
+    ruling, or ``None``. Only a ``current`` Campaign reads a later revision; a pinned one never
+    does. The backlog is read at the latest revision with this proposal left out, so its item
+    reads as it would for a fresh proposal."""
+    campaigns = get_campaign_registry(request)
+    campaign = await campaigns.get_campaign(campaign_id)
+    goals = campaign.objective.goals
+    if goals is None or goals.pinned is not None:
+        return None
+    submitted = [
+        e.binding
+        for e in await campaigns.control_log(campaign_id)
+        if e.operation is ControlOperation.SUBMIT
+        and e.outcome is ControlOutcome.APPLIED
+        and e.binding.get("proposal_id") == binding.proposal_id
+        and e.binding.get("version") == binding.version
+    ]
+    if not submitted or not submitted[-1].get(BACKLOG_ITEM_KEY):
+        return None
+    view, revisions = await campaign_backlog(
+        campaign,
+        goal_sets=get_goal_set_registry(request),
+        campaigns=campaigns,
+        leaving_out=(binding.proposal_id, binding.version),
+    )
+    by_number = {r.revision: r for r in revisions}
+    recorded = submitted[-1].get(GOALS_REVISION_KEY)
+    bound = by_number.get(int(recorded)) if recorded is not None else None
+    if bound is None:
+        return None
+    return goals_revised_reason(
+        item_id=str(submitted[-1][BACKLOG_ITEM_KEY]),
+        bound=bound,
+        latest=by_number[view.revision],
+        view_at_latest=view,
+    )
+
+
 async def _rule_increment(
     request: Request,
     registry,
@@ -345,13 +390,15 @@ async def _rule_increment(
     run_id: str,
     body: GateDecisionRequest,
     identity: Identity | None,
-) -> bool:
+) -> tuple[bool, GateDecisionRequest]:
     """SIP-0109 §9.2: the ruling's control-log row first, checked in its own transaction
     against the proposal at the gate and the accepted tree; the gate decision follows it.
 
     A stale, conflicting or illegal ruling is refused there and recorded (409), and decides
     nothing. Returns whether the gate decision is still to be recorded: a repeated ruling
-    replays its row, and records the decision only if the first attempt never did.
+    replays its row, and records the decision only if the first attempt never did. And the
+    decision to record: the one asked for, or (SIP-0115 §5.5a) a return as ``goals_revised``,
+    whose notes are its reason, when the goal set was revised past the proposal's item.
     """
     # deferred (cycle): api.routes.campaigns.campaigns loads this module
     from squadops.api.routes.campaigns.campaigns import actor_from, apply_control
@@ -379,27 +426,46 @@ async def _rule_increment(
 
     # #2545: the ruling's task instructions are checked against the cycle's dispatches and stored
     # in the unit's dispatch turn, so none of its dispatches composes between the two.
+    binding = ProposalBinding(**body.binding.model_dump())
+    asked = GateDecisionValue(body.decision)
+    revised = (
+        await _goals_revised(request, cycle.campaign_id, binding)
+        if asked is not GateDecisionValue.RETURNED_FOR_REVISION
+        else None
+    )
+    if revised is not None:
+        # SIP-0115 §5.5a: returned with its reason, not ruled; the revision reads the new goals.
+        body = body.model_copy(
+            update={
+                "decision": GateDecisionValue.RETURNED_FOR_REVISION.value,
+                "notes": f"{GOALS_REVISED}: {revised}",
+                "classification": None,
+                "classification_rationale": None,
+                "task_instructions": [],
+            }
+        )
     async with dispatch_turn(request, turn_of(cycle) if body.task_instructions else None):
         instructions = await _ruling_instructions(request, cycle, run_id, body, actor)
         try:
             transition = ruling_transition(
                 GateDecisionValue(body.decision),
-                ProposalBinding(**body.binding.model_dump()),
+                binding,
                 run_id=run_id,
                 actor=actor,
                 actor_role=role,
-                reason=reason,
+                reason=str(body.notes) if revised is not None else reason,
                 idempotency_key=body.idempotency_key,
                 classification=body.classification,
                 classification_rationale=body.classification_rationale,
                 instruction_ids=tuple(r.record_id for r in instructions),
+                goals_revised_from=asked if revised is not None else None,
             )
         except ValueError as e:  # §24bi: a return names what went wrong, or it is refused
             raise ValidationError(str(e)) from e
         await apply_control(request, cycle.campaign_id, transition, identity)
         await _store_ruling_instructions(request, instructions)
     run = await registry.get_run(run_id)
-    return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions)
+    return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions), body
 
 
 @router.post("/{run_id}/gates/{gate_name}")
@@ -418,7 +484,8 @@ async def gate_decision(
         await _supervisor_answers_a_campaign_plan_gate(request, registry, cycle_id)
 
     if gate_name == INCREMENT_RULING_GATE:
-        if not await _rule_increment(request, registry, cycle_id, run_id, body, identity):
+        record, body = await _rule_increment(request, registry, cycle_id, run_id, body, identity)
+        if not record:
             return run_to_response(await registry.get_run(run_id))
     elif (
         any(

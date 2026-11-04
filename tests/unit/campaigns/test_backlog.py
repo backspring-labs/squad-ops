@@ -174,6 +174,20 @@ def _approved(log: _Log, item: str, cycle: str) -> _Log:
             "B-2",
         ),
         (
+            lambda log: (
+                _approved(log, "B-1", "c1").decide("c1", 9, action="escalate").resume("propose")
+            ),
+            ["pending", "pending", "pending"],
+            "B-1",
+        ),
+        (
+            lambda log: (
+                _approved(log, "B-1", "c1").decide("c1", 9, action="escalate").resume("repair")
+            ),
+            ["in_increment", "pending", "pending"],
+            "B-2",
+        ),
+        (
             lambda log: _approved(log, "B-1", "c1").abort(),
             ["abandoned", "pending", "pending"],
             "B-2",
@@ -204,6 +218,8 @@ def _approved(log: _Log, item: str, cycle: str) -> _Log:
         "abandoned at row 13",
         "accepted by its repair",
         "abandoned by the owner's word",
+        "the owner proposes afresh instead",
+        "the owner repairs it",
         "the campaign aborted mid-increment",
         "abandoned then skipped",
     ],
@@ -212,8 +228,9 @@ def test_each_items_status_is_read_from_the_control_log(history, statuses, next_
     """§4's statuses, each from the rows that make it. Bugs caught: a rejection or a return read
     as a live proposal, so the next proposal skips the item it should retry; a repair's promotion
     not credited to the increment it continues (read by its launch's binding); an abandoned item
-    still eligible, so one stuck item holds the Campaign (§5.3); or an owner's abandonment or an
-    abort leaving the item ``in_increment`` forever."""
+    still eligible, so one stuck item holds the Campaign (§5.3); or an owner's word (an
+    abandonment, or a fresh proposal in its place) or an abort leaving the item ``in_increment``
+    forever."""
     log = history(_Log())
 
     view = backlog_view([_revision(1)], 1, log.rows, log.launches)

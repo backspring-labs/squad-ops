@@ -118,6 +118,7 @@ class _World:
             outcome_section=None,
             intervention_section=None,
             campaign_branch=CampaignBranch(projects=self.projects, repository=repository),
+            goal_sets=None,
         )
 
     async def _assess(self, cycle_id):

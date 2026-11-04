@@ -177,6 +177,9 @@ def create_flow_executor(
     # SIP-0109 §24co: required, as ``binding_fill`` is, so the root says what renders a product's
     # routes. ``None``: nothing, and each route a profile names reads blocked.
     route_renderer: RouteRenderer | None,
+    # SIP-0115 §5.2: required, so the root says where a goal-set Campaign's proposal reads its
+    # goal set. ``None``: nowhere, and such a proposal's run fails naming it.
+    goal_set_registry: GoalSetRegistryPort | None,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -231,4 +234,5 @@ def create_flow_executor(
         source_repository=source_repository,
         sandbox=sandbox,
         route_renderer=route_renderer,
+        goal_set_registry=goal_set_registry,
     )

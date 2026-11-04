@@ -121,7 +121,9 @@ class _Vault:
 
 
 class _World:
-    def __init__(self, verdict: RunVerdict | None, evaluator=None, branch=None) -> None:
+    def __init__(
+        self, verdict: RunVerdict | None, evaluator=None, branch=None, goal_sets=None
+    ) -> None:
         from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         self.campaigns = MemoryCampaignRegistry()
@@ -142,6 +144,7 @@ class _World:
             outcome_section=None,
             intervention_section=None,
             campaign_branch=branch,
+            goal_sets=goal_sets,
             clock=lambda: self.now,
         )
         self.executor = DispatchedFlowExecutor(
@@ -219,9 +222,10 @@ async def calibrating() -> _World:
         overrides=None,
         workload="implementation",
         branch=None,
+        goal_sets=None,
         **policy_overrides,
     ):
-        w = _World(verdict, evaluator, branch)
+        w = _World(verdict, evaluator, branch, goal_sets)
         draft = campaign(
             CID,
             policy=policy(
@@ -2336,6 +2340,125 @@ async def test_an_accepted_increment_that_meets_the_target_ends_the_campaign_in_
             CampaignOutcome.SUCCESS,
             "objective_met",
         )
+
+
+# --- SIP-0115 §5.5a, §5.6 (SIP-0109 §24cy): ``stop_when: backlog_done`` ---
+
+
+async def _approve_item(w, item: str, revision: int, cycle_id: str) -> None:
+    """The proposal for ``item`` submitted and approved at the increment gate, as the executor
+    and the ruling route write them, on the campaign's accepted tree."""
+    from squadops.campaigns.gate import ruling_transition, submission
+    from squadops.campaigns.models import ProposalBinding, SubmittedProposal
+    from squadops.cycles.models import GateDecisionValue
+
+    now = await w.campaigns.get_campaign(CID)
+    binding = ProposalBinding(f"prop_{cycle_id}", 1, f"hash-{cycle_id}", now.accepted.identity)
+    await w.campaigns.transition(
+        CID,
+        submission(
+            now.state,
+            SubmittedProposal(binding, cycle_id, f"run_p_{cycle_id}"),
+            {"backlog_item": item, "goals_revision": revision},
+        ),
+    )
+    await w.campaigns.transition(
+        CID,
+        ruling_transition(
+            GateDecisionValue.APPROVED, binding, run_id=f"run_p_{cycle_id}", actor="supervisor",
+            actor_role="campaign-supervisor", reason="it serves the item", idempotency_key=f"r-{cycle_id}",
+        ),
+    )  # fmt: skip
+
+
+def _goal_set_objective(stop_when: str | None):
+    from squadops.campaigns.models import CampaignGoals, CampaignObjective
+
+    return CampaignObjective(
+        statement="work through the goal set",
+        allowed_scope=("backend", "frontend"),
+        measurement="the backlog done",
+        # The target stays read as today (§5.6); set past the backlog so only it can stop here.
+        target_accepted_increments=9,
+        work_class=None,
+        goals=CampaignGoals(goal_set="group_run", revision="current"),
+        stop_when=stop_when,
+    )
+
+
+@pytest.mark.parametrize(
+    ("added_mid_increment", "row", "state", "read"),
+    [(False, 3, CampaignState.COMPLETED, 1), (True, 7, CampaignState.AT_PROPOSAL, 2)],
+    ids=["its last item accepted", "an item added during the increment"],
+)
+async def test_backlog_done_is_read_at_the_decision_from_the_current_revision(
+    calibrating, stored, added_mid_increment, row, state, read
+):
+    """§5.5a: decided at the continuation decision, reading the goal set's current revision and
+    recording which. Entered at ``CycleCompletion.end`` as the live loop calls it. Bugs caught:
+    the backlog read at the revision the increment was proposed under, so work the owner added
+    during it is never built and the Campaign stops ``success``; the revision read not recorded,
+    so nobody can say which goal set the stop was judged against; or ``backlog_done`` never read,
+    so a done backlog proposes until a limit stops it."""
+    from tests.fixtures.goal_set import GoalSetStore, backlog_document
+
+    goal_sets = GoalSetStore()
+    goal_sets.write("group_run", backlog_document("B-1"))
+    w, run = await calibrating(
+        RunVerdict.ACCEPTED, objective=_goal_set_objective("backlog_done"), goal_sets=goal_sets
+    )
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    await _approve_item(w, "B-1", 1, "cyc_inc")
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        _evaluation("accepted"),
+    )
+    increment_run = await w.launched_cycle("increment", "cyc_inc", "implementation", "completed")
+    if added_mid_increment:
+        goal_sets.write("group_run", backlog_document("B-1", "B-2"))
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    final = await w.campaigns.get_campaign(CID)
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert (decision.binding["row"], final.state) == (row, state)
+    assert decision.binding["goals_revision"] == read
+    if row == 3:
+        assert (final.outcome, decision.binding["cause"]) == (
+            CampaignOutcome.SUCCESS,
+            "objective_met",
+        )
+
+
+async def test_a_goal_set_campaign_with_nothing_pending_escalates_rather_than_propose(
+    calibrating, stored
+):
+    """§5.3: a Campaign that doesn't stop on ``backlog_done`` and has accepted every item has no
+    item for a proposal to name. Bug caught: a proposal launched anyway, refused by the one-item
+    rail at every attempt and counted as failed until a limit pauses it; or the decision row not
+    reading the goal set (no ``goals_revision``) when nothing asked it to stop."""
+    from tests.fixtures.goal_set import GoalSetStore, backlog_document
+
+    goal_sets = GoalSetStore()
+    goal_sets.write("group_run", backlog_document("B-1"))
+    w, run = await calibrating(
+        RunVerdict.ACCEPTED, objective=_goal_set_objective(None), goal_sets=goal_sets
+    )
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    await _approve_item(w, "B-1", 1, "cyc_inc")
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        _evaluation("accepted"),
+    )
+    increment_run = await w.launched_cycle("increment", "cyc_inc", "implementation", "completed")
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    final = await w.campaigns.get_campaign(CID)
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert (decision.binding["row"], final.state) == (7, CampaignState.ESCALATED)
+    assert "has no pending backlog item" in decision.binding["unbuilt"]
+    assert "goals_revision" not in decision.binding
 
 
 def test_the_accepted_increments_count_each_increment_family_cycle_once():

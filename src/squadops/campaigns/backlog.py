@@ -29,9 +29,9 @@ item itself (its title, description, ``serves`` or size): that edit is the re-qu
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.continuation import PendingAction
 from squadops.campaigns.ledger import ledger
@@ -46,9 +46,9 @@ from squadops.cycles.models import GateDecisionValue, GoalSetNotFoundError
 
 if TYPE_CHECKING:
     # Annotations only: ``projects`` imports ``campaigns`` at module level (#1985's direction).
-    from squadops.projects.goal_set import BacklogItem, GoalSet, GoalSetRevision
     from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
     from squadops.ports.projects.goal_sets import GoalSetRegistryPort
+    from squadops.projects.goal_set import BacklogItem, GoalSet, GoalSetRevision
 
 #: The submission binding's keys for the item a proposal serves and the revision it was created
 #: under (written by ``gate.submission`` from the change request's own fields).
@@ -234,7 +234,7 @@ def _latest_named(
         if e.operation is ControlOperation.PROMOTE and e.target is not None
     }
     superseded = _superseded_versions(applied, launches)
-    abandoned_by_owner = _owner_abandonments(applied)
+    owners_word = _owners_word(applied)
     ended = _campaign_end(applied)
     latest: dict[str, _Named] = {}
     for entry in ledger(list(log), launches):
@@ -242,14 +242,14 @@ def _latest_named(
         if key not in named_by:
             continue
         item_id, revision = named_by[key]
-        status, row, reason = _status(entry, promoted, superseded, abandoned_by_owner, ended)
+        status, row, reason = _status(entry, promoted, superseded, owners_word, ended)
         latest[item_id] = _Named(
             entry.proposal_id, entry.version, item_id, revision, entry.cycle_id, status, row, reason
         )
     return latest
 
 
-def _status(entry, promoted, superseded, abandoned_by_owner, ended):
+def _status(entry, promoted, superseded, owners_word, ended):
     """``(status, row, reason)`` of one proposal version, from its ruling and its cycles."""
     ruling = entry.ruling
     cycles = [c["cycle_id"] for c in entry.cycles] or [entry.cycle_id]
@@ -270,9 +270,15 @@ def _status(entry, promoted, superseded, abandoned_by_owner, ended):
             f"§10 row {outcome.get('row')}: its increment was abandoned "
             f"({outcome.get('ending')}, {outcome.get('verdict')})",
         )
-    owner = abandoned_by_owner.get(cycles[-1])
-    if owner is not None:
-        return ItemStatus.ABANDONED, None, owner
+    word = owners_word.get(cycles[-1])
+    if word is not None:
+        action, said = word
+        if action == PendingAction.ABANDON_AND_PROPOSE.value:
+            return ItemStatus.ABANDONED, None, said
+        if action == PendingAction.PROPOSE.value:
+            # The owner moved on to a fresh proposal without abandoning the increment: it ended
+            # unaccepted, and nothing live names the item.
+            return ItemStatus.PENDING, None, None
     if (entry.proposal_id, entry.version) in superseded:
         return ItemStatus.PENDING, None, None
     if outcome.get("outcome"):
@@ -287,20 +293,21 @@ def _status(entry, promoted, superseded, abandoned_by_owner, ended):
     return ItemStatus.IN_INCREMENT, None, None
 
 
-def _owner_abandonments(applied: list[ControlLogEntry]) -> dict[str, str]:
-    """The cycle each owner's ``abandon_and_propose`` abandoned: the one the decision before it
-    decided (``progress._last_decided_cycle``), with the owner's reason."""
-    out: dict[str, str] = {}
+def _owners_word(applied: list[ControlLogEntry]) -> dict[str, tuple[str, str]]:
+    """The owner's word on each decided cycle: the action a ``resume`` executed after the decision
+    that decided it (``progress._last_decided_cycle``), with what it said. A later word on the same
+    cycle replaces an earlier one; a repair or retry continues the increment, and is read from its
+    own cycle's decision."""
+    out: dict[str, tuple[str, str]] = {}
     last_decided: str | None = None
     for e in applied:
         if e.operation is ControlOperation.DECIDE and "row" in e.binding:
             last_decided = e.binding.get("cycle_id") or None
-        elif (
-            e.operation is ControlOperation.RESUME
-            and e.binding.get("action") == PendingAction.ABANDON_AND_PROPOSE.value
-            and last_decided is not None
-        ):
-            out[last_decided] = f"abandoned by {e.actor}'s word: {e.reason}"
+        elif e.operation is ControlOperation.RESUME and e.binding.get("action") and last_decided:
+            out[last_decided] = (
+                str(e.binding["action"]),
+                f"abandoned by {e.actor}'s word: {e.reason}",
+            )
     return out
 
 
@@ -392,10 +399,8 @@ def _dropped(
     )
 
 
-def _with(view: ItemView, named: _Named, **changes) -> ItemView:
-    from dataclasses import replace
-
-    values = {
+def _with(view: ItemView, named: _Named, **changes: Any) -> ItemView:
+    values: dict[str, Any] = {
         "status": named.status,
         "proposal_id": named.proposal_id,
         "version": named.version,

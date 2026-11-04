@@ -194,7 +194,7 @@ class _World:
         )
         envelopes = await with_product_proposal(
             envelopes, cycle=self.cycle, read_profile=_profile, repository=repository(self.tree),
-            vault=self.vault, projects=projects(),
+            vault=self.vault, projects=projects(), goal_sets=None, campaigns=None,
         )  # fmt: skip
         envelopes = await with_blocked_paths(_profile, envelopes, cycle=self.cycle)
         envelopes = await checked_or_held(

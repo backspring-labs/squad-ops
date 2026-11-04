@@ -26,6 +26,7 @@ import yaml
 
 from squadops.campaigns.change_request import (
     PRODUCT_PROPOSAL_INPUT,
+    BacklogRail,
     IncrementBasis,
     ProductContext,
     ProposalContext,
@@ -109,6 +110,13 @@ def proposal_context_from(
             f"the proposal is on a campaign branch and was given no {PRODUCT_PROPOSAL_INPUT}: "
             "the product's head, profile and requirements are the run's input (§24bv point 5)"
         )
+    if isinstance(product, dict) and ("requirements" in product) == ("goals" in product):
+        raise ProposalContextMissing(
+            f"the {PRODUCT_PROPOSAL_INPUT} input carries "
+            + ("both requirements and goals" if "goals" in product else "no requirements")
+            + ": a repository-backed proposal reads its requirements source or its goal set, "
+            "exactly one (SIP-0115 §5.1)"
+        )
     try:
         objective = block["objective"]
         return ProposalContext(
@@ -122,6 +130,7 @@ def proposal_context_from(
             shown_goals=shown_goals,
             shown_goal_statements=shown_goal_statements,
             product=None if basis.has_manifest else product_context(product or {}),
+            backlog=backlog_rail((product or {}).get("goals")),
         )
     except (KeyError, TypeError, ValueError) as e:
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
@@ -141,6 +150,18 @@ def product_context(product: dict) -> ProductContext:
         test_files=tuple(str(g) for g in profile.get("test_files") or ()),
         judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
         route_anchors=_route_anchors(product.get("approved_manifest")),
+    )
+
+
+def backlog_rail(goals: Any) -> BacklogRail | None:
+    """The one-item rail's reading of a goal-set Campaign's ``goals`` input (SIP-0115 §5.3): the
+    revision the proposal read, the next item, each item's status. ``None`` for every other."""
+    if not isinstance(goals, dict):
+        return None
+    return BacklogRail(
+        revision=int(goals["revision"]),
+        next_item=goals.get("next_item"),
+        statuses=tuple((str(i["id"]), str(i["status"])) for i in goals.get("backlog") or ()),
     )
 
 
@@ -446,7 +467,6 @@ async def product_sections(
     assets'."""
     profile = product["profile"]
     verification = product["previous_verification"]
-    requirements = product["requirements"]
     profile_variables = {
         "surface_lines": "\n".join(_surface_line(s) for s in profile.get("public_surfaces") or ())
         or "- none: the product declares no start, command or package",
@@ -505,16 +525,88 @@ async def product_sections(
                 },
             )
         ).content,
-        "requirements_section": (
+        **await _source_section(renderer, product),
+    }
+
+
+async def _source_section(renderer: Any, product: dict[str, Any]) -> dict[str, str]:
+    """The product's requirements as the proposal is shown them: its goal set (SIP-0115 §5.2), or
+    its requirements source (§24bv point 5), whichever the Campaign names."""
+    goals = product.get("goals")
+    if goals is not None:
+        return {"goal_set_section": await goal_set_section(renderer, goals)}
+    requirements = product["requirements"]
+    rendered = await renderer.render(
+        "request.proposal_requirements_source",
+        {
+            "requirements_ref": str(requirements["ref"]),
+            "requirements": str(requirements["content"]).strip(),
+        },
+    )
+    return {"requirements_section": rendered.content}
+
+
+async def goal_set_section(renderer: Any, goals: dict[str, Any]) -> str:
+    """SIP-0115 §5.2: the goal, its expected results, the constraints and out of scope, and the
+    backlog with each item's status in this Campaign and why any was abandoned, then the next item
+    the proposal must name. The lines are data; the prose is the assets'."""
+    results = {str(r["id"]): r for r in goals.get("expected_results") or ()}
+    following = next(
+        (i for i in goals.get("backlog") or () if i["id"] == goals.get("next_item")), None
+    )
+    next_section = ""
+    if following is not None:
+        next_section = (
             await renderer.render(
-                "request.proposal_requirements_source",
+                "request.proposal_next_backlog_item",
                 {
-                    "requirements_ref": str(requirements["ref"]),
-                    "requirements": str(requirements["content"]).strip(),
+                    "item_id": str(following["id"]),
+                    "item_title": str(following["title"]),
+                    "item_description": str(following.get("description") or "").strip(),
+                    "serves_lines": "\n".join(
+                        _result_line(results[s]) if s in results else f"- `{s}`"
+                        for s in following.get("serves") or ()
+                    ),
                 },
             )
-        ).content,
-    }
+        ).content
+    rendered = await renderer.render(
+        "request.proposal_goal_set",
+        {
+            "revision": str(goals["revision"]),
+            "goal": str(goals["goal"]),
+            "expected_result_lines": "\n".join(_result_line(r) for r in results.values())
+            or "- none written",
+            "constraint_lines": "\n".join(f"- {c}" for c in goals.get("constraints") or ())
+            or "- none",
+            "out_of_scope_lines": "\n".join(f"- {c}" for c in goals.get("out_of_scope") or ())
+            or "- none",
+            "backlog_lines": "\n".join(
+                _backlog_line(n, i) for n, i in enumerate(goals.get("backlog") or (), start=1)
+            )
+            or "- empty",
+            "next_item_section": next_section,
+        },
+    )
+    return rendered.content
+
+
+def _result_line(result: dict[str, Any]) -> str:
+    surface = result.get("surface") or {}
+    where = (
+        f"not observed: {surface.get('reason')}"
+        if surface.get("kind") == "none"
+        else f"{surface.get('kind')} `{surface.get('ref')}`"
+    )
+    return f"- `{result['id']}`: {result['statement']} ({where})"
+
+
+def _backlog_line(n: int, item: dict[str, Any]) -> str:
+    line = f"{n}. `{item['id']}` {item['title']}: **{item['status']}**"
+    line += f" (serves {', '.join(item.get('serves') or ())})"
+    if item.get("reason"):
+        line += f". {item['reason']}"
+    return line
 
 
 async def _tree_section(renderer: Any, inputs: dict[str, Any], head: str) -> str:
