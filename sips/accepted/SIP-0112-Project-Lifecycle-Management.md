@@ -3164,7 +3164,11 @@ the contribution couldn't express the intent. The plan's Track B placed it in 2.
 - **Error cases:** a path outside the view, a held-back file, a path removed twice, one written and removed in one
   emission, a test step outside its grant and inside it, a product with no runner, a malformed fence, a removal that
   breaks a check, an executable file, a refused removal in H.20's round, a removal inside the plan.
-- **Mutants**, each committed and restored by commit: listed in the PR's Evidence.
+- **Mutants**, each against the committed tree and restored by commit: 22, each failing at least one test. Among them:
+  the removal never reaching the candidate; the candidate keeping a removed file's mode; the fence read as a file; each
+  refusal removed; a repair handed no view; a repair's removal accepted inside the plan; storage dropping one; H.20's
+  round dropping one; a kept round losing one; a `None` in an increment's tree. One survived first, the view keeping a
+  removed file, and found that only the instruction files read past the focus filter; it has its test.
 
 **Who ruled.** The shape is #2612's, written on 2026-10-21 and placed by the owner with the plan's Track B (2026-11-03).
 The fence's spelling, the two grants, all-or-nothing refusal, carrying removals outside the artifact list, refusing a

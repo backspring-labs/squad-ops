@@ -1335,6 +1335,21 @@ async def test_the_tasks_after_a_removal_are_shown_a_tree_without_the_file(world
     assert "tally/report.py" in enriched.inputs["acceptance_workspace_files"]
 
 
+async def test_a_removed_instruction_file_is_no_instruction_to_the_tasks_after_it(world):
+    """The instructions are read by path, apart from the files a task names. Bug caught: the
+    removal's empty record read as the file's content, so a later task is shown a blank
+    CONTRIBUTING.md as the product's instructions."""
+    _repo, vault, executor, cycle, run = world
+    seeded = await _seed(executor, cycle, run)
+    art_id, removal = _stored("art_rm", "CONTRIBUTING.md", DELETION_ARTIFACT_TYPE)
+    vault.stored[art_id] = (removal, b"")
+    stored = [*((i, vault.stored[i][0]) for i in seeded), (art_id, removal)]
+
+    enriched = await executor._enrich_envelope(_envelope(cycle, []), {}, [*seeded, art_id], stored)
+
+    assert enriched.inputs["source_repository"]["instructions"] == {}
+
+
 def _squad_repairs_with(executor, reply: str):
     """The correction steps as ``_squad_answers``, the repair read by the real repair handler
     from the model's ``reply`` and the envelope the runner built."""
