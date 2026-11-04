@@ -9,6 +9,8 @@ is ``squadops.campaigns.lifecycle``'s; this adapter only stores.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import asyncpg
@@ -205,6 +207,19 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
                 return TransitionResult(entry=recorded, campaign=stored, intent=None, replayed=True)
             await _insert_entry(conn, entry)
         return TransitionResult(entry=entry, campaign=campaign, intent=None, replayed=False)
+
+    @asynccontextmanager
+    async def transitions_held(self, project_id: str) -> AsyncIterator[None]:
+        """The row lock every transition takes first (``_locked_campaign``), held on each live
+        Campaign of the Project until the body ends, in one order so two holders can't deadlock."""
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.fetch(
+                "SELECT campaign_id FROM campaigns WHERE project_id = $1 AND state <> $2 "
+                "ORDER BY campaign_id FOR UPDATE",
+                project_id,
+                CampaignState.COMPLETED.value,
+            )
+            yield
 
     async def transition(
         self, campaign_id: str, transition: CampaignTransition

@@ -49,8 +49,8 @@ class Scope:
     ADMIN_WRITE = "admin:write"
     # SIP-0109 §13: read a campaign and its control log; supervise it (rule, lease, pause);
     # manage it (create, start, abort, package, resume the supervisor's pause; #1940, §24az);
-    # control it (resume an escalation, a limit's pause or the owner's pause) — the last is the
-    # owner's alone.
+    # control it (resume an escalation, a limit's pause or the owner's pause; grant the crew a
+    # Campaign's goal-set curation, SIP-0115 Q41) — the last is the owner's alone.
     CAMPAIGNS_READ = "campaigns:read"
     CAMPAIGNS_SUPERVISE = "campaigns:supervise"
     CAMPAIGNS_MANAGE = "campaigns:manage"

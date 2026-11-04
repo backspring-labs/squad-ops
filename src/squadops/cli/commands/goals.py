@@ -1,4 +1,5 @@
-"""A Project's goal set (SIP-0115 §8.2, slice 1, #2884): show it, edit it, read its history.
+"""A Project's goal set (SIP-0115 §8.2; slice 1, #2884; slice 3, #2886): show it, edit it, read
+its history; list its candidates, promote or drop one, split a backlog item.
 
 ``show`` prints the goal set as YAML, its revision's provenance as comments above it, so
 ``squadops goals show <project> > goals.yaml`` is a file ``goals edit`` takes back as the next
@@ -8,6 +9,11 @@ revision. Each edit, a reorder included, writes a revision; none is changed in p
 against that revision, never against whatever is active when it runs: an export from revision 1
 submitted after someone else wrote revision 2 is refused as stale, not written over it (the second
 review of PR #2899). A file without the line needs ``--expected-revision``.
+
+**An action names the revision it acts on too** (``promote``, ``drop``, ``split``): the active one,
+read just before, unless ``--expected-revision`` says which. The server computes the result
+against that revision and refuses a write another editor got in front of. A refused write prints
+the key and the revision, so a retry resends the same request and replays, never repeats.
 """
 
 from __future__ import annotations
@@ -208,3 +214,208 @@ def history(ctx: typer.Context, project_id: str = typer.Argument(...)):
         for r in data
     ]
     print_table(["Revision", "Written", "Author", "Reason", "Source", "Backlog"], rows, quiet=quiet)
+
+
+# --- slice 3: candidates, and splits (§5.4, §5.5a) ---
+
+_GOAL_SET = "/api/v1/projects/{project_id}/goal-set"
+_ACTION_REASON = typer.Option(..., "--reason", help="Why: recorded on the revision")
+_ACTION_REVISION = typer.Option(
+    None,
+    "--expected-revision",
+    help="The revision this acts on. Default: the active one, read first",
+)
+_ACTION_SOURCE = typer.Option(
+    None, "--source-ref", help="Where the decision came from: a conversation's or issue's link"
+)
+_ACTION_KEY = typer.Option(None, "--idempotency-key", help="Resend the printed key to retry safely")
+_ACTION_CAMPAIGN = typer.Option(
+    None,
+    "--campaign",
+    help="The Campaign this is within: required of the crew, one the owner granted (Q41)",
+)
+
+
+@app.command("candidates")
+def candidates(ctx: typer.Context, project_id: str = typer.Argument(...)):
+    """A Project's candidates (SIP-0115 §5.4): what was found and nobody has ordered yet, from
+    the active revision."""
+    quiet = ctx.obj.get("quiet", False) if ctx.obj else False
+    try:
+        client = _get_client(ctx)
+        data = client.get(_GOAL_SET.format(project_id=project_id))
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+    if _format(ctx) == "json":
+        print_json(data["goal_set"]["candidates"])
+        return
+    found = data["goal_set"]["candidates"]
+    if not found:
+        typer.echo(f"{project_id} has no candidates at revision {data['revision']}")
+        return
+    rows = [
+        [c["id"], c["title"], c["found_by"], c["found_at"], ", ".join(c["evidence"]) or "—"]
+        for c in found
+    ]
+    print_table(["Candidate", "Title", "Found by", "Found at", "Evidence"], rows, quiet=quiet)
+
+
+@app.command("promote")
+def promote(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    candidate_id: str = typer.Argument(...),
+    serves: list[str] = typer.Option(
+        ..., "--serves", help="An expected result the item serves (repeat for each)"
+    ),
+    position: int | None = typer.Option(
+        None, "--position", help="Its place in the backlog, from 1. Default: the end"
+    ),
+    reason: str = _ACTION_REASON,
+    campaign: str | None = _ACTION_CAMPAIGN,
+    expected_revision: int | None = _ACTION_REVISION,
+    source_ref: str | None = _ACTION_SOURCE,
+    idempotency_key: str | None = _ACTION_KEY,
+):
+    """Promote a candidate into the backlog (SIP-0115 §5.4), keeping its id. The crew acts within
+    a Campaign the owner granted (--campaign) and appends; a position is the owner's (Q41)."""
+    body: dict[str, Any] = {"serves": serves}
+    if position is not None:
+        body["position"] = position
+    if campaign is not None:
+        body["campaign_id"] = campaign
+    _act(
+        ctx,
+        project_id,
+        f"/candidates/{candidate_id}/promote",
+        body,
+        reason=reason,
+        expected_revision=expected_revision,
+        source_ref=source_ref,
+        idempotency_key=idempotency_key,
+        said=f"promoted {candidate_id}",
+    )
+
+
+@app.command("drop")
+def drop(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    candidate_id: str = typer.Argument(...),
+    reason: str = _ACTION_REASON,
+    campaign: str | None = _ACTION_CAMPAIGN,
+    expected_revision: int | None = _ACTION_REVISION,
+    source_ref: str | None = _ACTION_SOURCE,
+    idempotency_key: str | None = _ACTION_KEY,
+):
+    """Drop a candidate (SIP-0115 §5.4), with the reason. The crew acts within a Campaign the
+    owner granted (--campaign)."""
+    body: dict[str, Any] = {}
+    if campaign is not None:
+        body["campaign_id"] = campaign
+    _act(
+        ctx,
+        project_id,
+        f"/candidates/{candidate_id}/drop",
+        body,
+        reason=reason,
+        expected_revision=expected_revision,
+        source_ref=source_ref,
+        idempotency_key=idempotency_key,
+        said=f"dropped {candidate_id}",
+    )
+
+
+@app.command("split")
+def split(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    item_id: str = typer.Argument(...),
+    into: Path = typer.Option(
+        ...,
+        "--into",
+        help="The parts, YAML or JSON: a list of items (id, title, description, serves, size), "
+        "or a mapping with `into:`. `serves` defaults to the split item's",
+    ),
+    reason: str = _ACTION_REASON,
+    campaign: str | None = _ACTION_CAMPAIGN,
+    expected_revision: int | None = _ACTION_REVISION,
+    source_ref: str | None = _ACTION_SOURCE,
+    idempotency_key: str | None = _ACTION_KEY,
+):
+    """Split a backlog item into two or more (SIP-0115 §5.5a), which take its place. Refused
+    while a live Campaign has it proposed or in an increment."""
+    try:
+        parts = _as_written(yaml.safe_load(into.read_text()))
+    except (OSError, yaml.YAMLError) as e:
+        print_error(f"cannot read {into}: {e}")
+        raise typer.Exit(code=2) from e
+    if isinstance(parts, dict):
+        parts = parts.get("into")
+    if not isinstance(parts, list) or len(parts) < 2 or not all(isinstance(p, dict) for p in parts):
+        print_error(
+            f"{into} holds no split: a list of two or more items (id, title, serves), or a mapping "
+            "with `into:`"
+        )
+        raise typer.Exit(code=2)
+    body: dict[str, Any] = {"into": parts}
+    if campaign is not None:
+        body["campaign_id"] = campaign
+    _act(
+        ctx,
+        project_id,
+        f"/backlog/{item_id}/split",
+        body,
+        reason=reason,
+        expected_revision=expected_revision,
+        source_ref=source_ref,
+        idempotency_key=idempotency_key,
+        said=f"split {item_id} into {', '.join(str(p.get('id')) for p in parts)}",
+    )
+
+
+def _act(
+    ctx: typer.Context,
+    project_id: str,
+    action: str,
+    body: dict[str, Any],
+    *,
+    reason: str,
+    expected_revision: int | None,
+    source_ref: str | None,
+    idempotency_key: str | None,
+    said: str,
+) -> None:
+    """Post one action against the revision it acts on: the one given, or the active one read
+    first. A refused write names the key and the revision, so a retry resends the same request."""
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        if expected_revision is None:
+            expected_revision = int(client.get(_GOAL_SET.format(project_id=project_id))["revision"])
+        data = client.post(
+            _GOAL_SET.format(project_id=project_id) + action,
+            json={
+                "idempotency_key": key,
+                "expected_revision": expected_revision,
+                "reason": reason,
+                **({"source_ref": source_ref} if source_ref is not None else {}),
+                **body,
+            },
+        )
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key}, expected revision {expected_revision})")
+        raise typer.Exit(code=e.exit_code) from e
+    if _format(ctx) == "json":
+        print_json(data)
+        return
+    written = data["revision"]
+    verb = "replayed" if data["replayed"] else "written"
+    print_success(
+        f"{verb}: {project_id} goal set revision {written['revision']}, {said} "
+        f"({len(written['goal_set']['backlog'])} backlog item(s), "
+        f"{len(written['goal_set']['candidates'])} candidate(s); key {data['idempotency_key']})"
+    )

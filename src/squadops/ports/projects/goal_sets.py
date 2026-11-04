@@ -28,6 +28,14 @@ class GoalSetRegistryPort(ABC):
         """
 
     @abstractmethod
+    async def revision_under_key(
+        self, idempotency_key: str, request_hash: str
+    ) -> GoalSetRevision | None:
+        """The revision ``idempotency_key`` wrote for this request, as it was first written, or
+        ``None``: nothing written under it, or another request was (``record_revision`` refuses
+        that). A retry's answer, read before anything that may have changed since the write."""
+
+    @abstractmethod
     async def get_revision(self, project_id: str, revision: int | None = None) -> GoalSetRevision:
         """``revision`` of the Project's goal set, or its latest: the active goal set (Q44).
 

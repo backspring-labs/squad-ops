@@ -30,6 +30,28 @@ def _client(**returns):
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
+def test_delegate_posts_the_owners_grant_with_where_it_came_from(get_client):
+    """SIP-0115 Q41. Bugs caught: the command posting to another route, or the conversation's link
+    not reaching the row."""
+    client = _client(post=_RESULT)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app,
+        ["campaigns", "delegate", "cmp_a", "--reason", "the owner approved it"]
+        + ["--source-ref", "https://chat.example.invalid/t/7", "--idempotency-key", "k-1"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.post.call_args.args[0] == "/api/v1/campaigns/cmp_a/goal-delegation"
+    assert client.post.call_args.kwargs["json"] == {
+        "reason": "the owner approved it",
+        "idempotency_key": "k-1",
+        "source_ref": "https://chat.example.invalid/t/7",
+    }
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
 def test_a_control_command_sends_its_reason_key_and_expected_state(get_client):
     """Bug caught: the key or the expected state dropped on the way, so a retry acts twice or
     a stale operation applies."""

@@ -66,7 +66,8 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | slice 1: the goal-set record, its revisions, the API and the CLI (as built: §10a) | **shipped** | 2.6.0, PR #2899, closes #2884 |
 | slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment, §24cy; as built: §10b) | **shipped** | 2.6.0, PR #2901, closes #2885 |
 | `accepted (carried)`: an item accepted in another Campaign, read as accepted here only when its frozen criteria pass on this Campaign's calibration tree (§4) | **unplaced**, deliberately: not built in slice 2 (§10b) | — |
-| slice 3: candidates, their promotion and drop | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2886 |
+| slice 3: candidates added, promoted or dropped, and a backlog item split, under Q41's rule for the crew (as built: §10c) | **shipped** | 2.6.0, PR #2908, closes #2886 |
+| §6's squad and system candidates: a cycle's or a proposal's findings recorded as candidates by the runtime, with no principal of its own | **unplaced**, deliberately: not built in slice 3 (§10c) | — |
 | slice 4: the console's goals panel: a panel of the Projects plugin, its edit a confirm-level command (`squadops.revise_goal_set`). §8.3's latest assessment of each expected result is not shown: no assessment record exists until slice 5 (§5.7), and showing it in the panel is that slice's | **shipped** | 2.6.0, PR #2916, closes #2887 |
 | slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2888 |
 | slice 6: the repository export | **unplaced**, deliberately: not in 2.6 (the plan's D1, ruled 2026-11-03) | — |
@@ -283,9 +284,9 @@ the owner reads the latest per expected result in the console beside the backlog
 | action | the owner | the crew (the `campaign-supervisor` principals) | the squad (the strategy role) | the system |
 |---|---|---|---|---|
 | write the goal, expected results, constraints, out of scope | yes | no | no | no |
-| reorder the backlog, add or split an item | yes | **only if the owner delegates it** (Q41) | no | no |
+| reorder the backlog, add or split an item | yes | **split only, by the owner's grant on the Campaign** (Q41, §10c); never reorder | no | no |
 | add a candidate | yes | yes | yes, from a cycle or proposal | yes, from a finding it records |
-| promote or drop a candidate | yes | **only if delegated** (Q41) | no | no |
+| promote or drop a candidate | yes | **only by the owner's grant on the Campaign** (Q41, §10c) | no | no |
 | record an assessment (§5.7) | yes | yes | no | no |
 | write an item's status | no | no | no | derived only |
 
@@ -343,7 +344,7 @@ recommendations on the other decisions"; Q41 is the plan's D15). Slices 1 and 3 
 
 | # | question | recommendation |
 |---|---|---|
-| Q41 | **the crew's authority over the order** (to be ruled before slice 1 is built, the 2.6 plan's D15): may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** **A promoted candidate is appended at the end of the backlog;** putting it anywhere else is a reorder, the owner's. A split's items take the split item's place, which changes no other item's priority. The order is where the owner steers |
+| Q41 | **the crew's authority over the order** (to be ruled before slice 1 is built, the 2.6 plan's D15): may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** **A promoted candidate is appended at the end of the backlog;** putting it anywhere else is a reorder, the owner's. A split's items take the split item's place, which changes no other item's priority. The order is where the owner steers. *The owner's ruling of 2026-11-04 (§10c): "a Campaign the owner started" is built as the owner's grant, recorded on the Campaign* |
 | Q42 | **`requirements` beside `goals`:** keep both sources for a Campaign? | **keep both.** The sample applications' Campaigns read PRDs, and their yardstick is built on them. A product Campaign names one or the other |
 | Q43 | **where the crew's assessment lives:** a SquadOps record (§5.7), or only the crew's signed closing interpretation in Buzz, as today? | **a SquadOps record,** with the signed statement as its `source_ref`. The owner then reads the goal, the backlog and whether each expected result is met in one place, and a framework finding is linked to the result it blocked |
 | Q44 | **one goal set per Project, or several** (one per Campaign theme)? | **one active,** with revisions. Two goal sets on one Project would compete for the same tree |
@@ -458,3 +459,117 @@ the owner reviews it in the slice's PR.
 against what the Campaign did, `backlog_done`, `goals_revised`), `tests/unit/api/test_campaign_backlog_route.py` (the
 route, pinned and current), `tests/unit/cli/test_commands_campaigns.py` (`campaigns backlog`), and SIP-0109 §24cy's
 evidence for the wiring.
+
+### 10c. Slice 3 as built (2026-11-04)
+
+**What changed.** §5.4, §5.5a, §6, §8.1, §8.2 and Q41 describe candidates, splits and who may act. Slice 3 builds
+them as four actions on the goal-set resource, each a revision, and settles what they leave open. Decided by the
+implementer under the supervisor's slice-3 brief (#2886); the owner reviews it in the slice's PR.
+- **An action is a revision that names itself.** `POST …/goal-set/candidates` adds a candidate,
+  `…/candidates/{id}/promote` and `…/candidates/{id}/drop` promote or drop one, `…/backlog/{id}/split` splits an
+  item. Each carries `expected_revision` (never 0: an action is on a written goal set), `reason`, an optional
+  `source_ref` and an `idempotency_key`, as the whole-document write does (§10a), answers 201 with the revision
+  written, and is computed against `expected_revision` itself, not the latest, so a retry under its key replays the
+  first write rather than being refused as stale. The revision carries a typed, additive **`change`**:
+  `{kind: candidate_added | candidate_promoted | candidate_dropped | item_split, subject, position?, split_into?,
+  campaign_id?}` (migration `2101_goal_set_revision_change.sql`, a nullable column), absent on every revision written
+  before it and on every whole-document edit. So the history, and the derived view, tell an action from an edit.
+- **Who may, by scope** (§6; Q41, ruled 2026-11-03). The owner is `admin:write`, as in §10a. **The crew's seat is
+  `campaigns:supervise`:** §6 names the crew as the campaign-supervisor principals, and Q41 frames each delegated act
+  as within a Campaign. No new scope: the delegation is per Campaign, which no scope can carry, so it is a row on the
+  Campaign (below). Triage reads, and nothing else (#1719): `403`.
+  The owner and the crew may add a candidate with no Campaign named. **Not built: §6's squad and system
+  candidates.** The agent service account holds `agents:write` alone, and the proposer runs inside the runtime's
+  executor with no principal of its own, so nothing a cycle does can call these routes. The runtime recording a
+  cycle's or a proposal's findings as candidates is a part of its own, unplaced (the ledger); until it is built, what
+  a cycle finds reaches the goal set through the crew or the owner.
+- **The crew acts only within a Campaign the owner has granted it** (Q41; the owner's ruling of 2026-11-04). The
+  request names `campaign_id`. The Campaign must exist (`404 CAMPAIGN_NOT_FOUND`), be on this Project, name this goal
+  set (`objective.goals`), **be live** (its state isn't `completed`, the lifecycle's one terminal state, however it
+  ended), and **hold the owner's grant.** Otherwise `403 NOT_DELEGATED`, with the reason; with no grant, the reason
+  names the command that records one. The Campaign is recorded on the revision (`change.campaign_id`). The owner needs
+  no Campaign and no grant, and a Campaign the owner names is checked for the first three, so the record is true. Adding
+  a candidate needs neither.
+  - **The grant** is `POST /api/v1/campaigns/{id}/goal-delegation` (`squadops campaigns delegate <id> --reason …
+    [--source-ref …]`), with `reason`, `idempotency_key`, and optional `source_ref` and `expected_state`. It writes a
+    control-log row, `goal_delegation_granted`: who granted it, why, and `binding: {goal_set, source_ref?}`. It moves no
+    state and answers 201 with the control result; a retry with its key replays. A Campaign naming no goal set is
+    `404 CAMPAIGN_HAS_NO_GOAL_SET`.
+  - **Only the owner writes it:** the route needs `campaigns:control`, which only the admin role holds. The
+    `campaign-supervisor` role holds `campaigns:manage`, not `campaigns:control`, so it is refused `403 FORBIDDEN` and
+    no row is written.
+  - **Only an applied row of the Campaign's own log counts.** Who created the Campaign is not read, and neither is any
+    binding on another row or any field of a definition. A refused attempt grants nothing.
+  - **It lasts the Campaign's life.** There is no revocation. A completed Campaign refuses a grant
+    (`409 CONTROL_OPERATION_REFUSED`, `campaign_completed`, recorded), though a record is otherwise the one kind a
+    completed Campaign accepts (`ControlOperation.needs_a_live_campaign`; SIP-0109 §24dd). A committed grant still
+    replays after the close.
+  - **Evidence.** The owner's review of PR #2908 found that the reading first built, a live Campaign on this Project
+    reading this goal set, was broader than Q41: nothing read who started a Campaign, and `campaign-supervisor` holds
+    `campaigns:manage`, so the crew could create a Campaign and act within it, authorizing itself. `created_by` can't
+    settle it either, because the crew's broker creates the Campaigns the owner approves in Buzz, and SquadOps holds no
+    record of that approval. **The owner chose the one-step grant over accepting the broader reading,** so the approval
+    becomes a row SquadOps can read. A Campaign the crew should curate needs this step, whoever created it (the
+    runbook's §1).
+- **The crew appends; the owner places.** A promotion takes `position` (from 1; the end by default). The crew's
+  `position` anywhere but the end is `403 NOT_DELEGATED`: a reorder is the owner's (Q41). The whole-document write,
+  the only way to reorder, stays `admin:write`; a split changes no other item's place.
+- **A promotion keeps the candidate's id** (§10a), its title and description, and takes `serves` from the request
+  (a candidate names what it found, not what it serves; at least one result of the same revision). The result is
+  validated whole again, as a submitted document is.
+- **A retry is answered before anything that can have changed since the write** (the owner's review of PR #2908). A
+  delegated act that committed, whose response was lost, and whose Campaign then completed, was refused 403 at the
+  check above. Each action now reads its key first (`GoalSetRegistryPort.revision_under_key`, the key and the request's
+  hash) and replays. The route's scope check still comes first. A new key on that Campaign is refused as before.
+- **A split's guard and its write are one step to the Campaigns it reads** (the owner's review of PR #2908). The guard
+  read the Campaign logs and the revision was written after, so a proposal submitted between them named an item the
+  split removed. `CampaignRegistryPort.transitions_held` now holds the row lock every transition takes first, on each
+  live Campaign of the Project, across the guard and the write. A proposal that arrives then lands after the revision,
+  and its ruling returns it as `goals_revised` (§5.5a). A Campaign created during the hold isn't held: its calibration
+  comes before any proposal. The goal set and the Campaign stay separate stores: this is a lock, not one transaction.
+- **A split's shape** (§5.5a). The document holds the result: the parent gone from `backlog`, the parts in its place
+  in order; the revision names it: `change: {kind: item_split, subject: <parent>, split_into: [<parts>]}`. *Narrowed:*
+  §5.5a's "the item is `removed` with `split_into`" is the derived view's wording, not a field on a backlog item,
+  which isn't in the document once split. The view reads the dropping revision's `change`, so a split parent reads
+  `removed` with `split_into` and a removal reads `removed` alone; one the Campaign never proposed isn't listed, as
+  §10b reads any removed item it never proposed. Two or more parts, each with an id the goal set doesn't hold (never
+  the parent's: a part with its id would read as the parent continuing); `serves` defaults to the parent's; `size` as
+  given. **The split waits** (`409 BACKLOG_ITEM_IN_PROGRESS`) while any live Campaign on the Project reads the item
+  `proposed` or `in_increment`, read with slice 2's view per Campaign; a completed Campaign doesn't hold it.
+- **Refusals name what they refuse:** `404 CANDIDATE_NOT_FOUND`, `404 BACKLOG_ITEM_NOT_FOUND`, `403 NOT_DELEGATED`,
+  `409 BACKLOG_ITEM_IN_PROGRESS`, and `422 GOAL_SET_INVALID` naming the field (`serves`, `position`, `into`,
+  `into[1].serves`, `candidate`). A candidate submitted with no `found_at` is found at the write, and the key's hash is
+  over the request, so a retry replays that time rather than minting another.
+- **The CLI** (§8.2): `goals candidates <project>`, `goals promote <project> <candidate> --serves ER-1 [--position N]
+  --reason …`, `goals drop …`, `goals split <project> <item> --into <yaml|json> --reason …`, each with `--campaign`
+  for the crew. An action's `--expected-revision` defaults to the active revision, read just before: unlike `edit`,
+  it has no file to carry the revision it was shown at, and the server computes the result against that revision and
+  refuses a write another editor got in front of. A refused write prints the key and the revision for the retry.
+- **Not in slice 3:** the squad's automatic candidate extraction (above), the console's goals panel (slice 4), the
+  crew's assessments (slice 5).
+
+**Evidence (the owner's ruling).** `tests/unit/api/test_goal_delegation_routes.py`, entered at the routes with the
+real authorization adapter: the supervisor creates a Campaign, is refused its promotion and its own grant (403, no row
+applied), the owner grants, and the promotion lands naming the Campaign; each role; a replay, also after the close; a
+completed Campaign, another Project's, an unknown one, a requirements one. `tests/unit/campaigns/test_goal_delegation.py`:
+the row through the registry, and neither a refused grant nor another row's binding standing in.
+`tests/integration/cycles/test_postgres_campaign_registry_integration.py`: migration 2102 on Postgres. Mutants, each on
+a commit: the route on `campaigns:manage`; the crew's check removed; the owner made to need a grant; the reader taking a
+refused row, or another row's binding; a completed Campaign taking a grant; the Project unchecked; a crew act naming no
+Campaign let through; a promotion's Campaign check moved before its replay; the CHECK list lacking the value (on a
+fresh database, where the migration runs). Each failed a test.
+
+**Evidence (the review's fixes).** `tests/unit/projects/test_goal_set_actions.py`: a retry replays after its Campaign
+completed, for each of promote, drop and split, and a new key is refused; a proposal arriving during a split lands after
+its revision. `tests/integration/cycles/`: on Postgres, a held Project blocks a transition on another connection and
+not its reads, and the key read answers only this request. Mutants, each on a commit: the hold removed from the split;
+the memory transition ignoring the hold; the replay removed from each action; `FOR UPDATE` removed; the key read
+ignoring the hash. Each failed a test.
+
+**Evidence.** `tests/unit/projects/test_goal_set_actions.py` (each action and refusal by its field; Q41's rule; the
+split's wait per Campaign history; replay and staleness), `tests/unit/campaigns/test_backlog.py` (a split parent
+`removed` with its parts, the parts `pending` in its place), `tests/unit/api/test_goal_set_routes.py` (the
+permission matrix per action; the crew's promotion and the owner's split entered at the route behind the runtime's
+auth, asserting what reaches the store; the crew's 403 on the whole-document write),
+`tests/unit/api/test_campaign_backlog_route.py` (`split_into` in the view's body), `tests/unit/cli/test_commands_goals.py`
+and `tests/integration/cycles/test_postgres_goal_set_registry_integration.py` (`change` round-trips).

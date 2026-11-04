@@ -241,12 +241,14 @@ def adjudicate(
         if applied_with_key.request_hash == transition_request_hash(transition):
             return Adjudication(replay=applied_with_key)
         return Adjudication(refusal=RefusalReason.CONFLICTING_IDEMPOTENCY_KEY)
-    if transition.operation.records_only:
+    if transition.operation.records_only and not transition.operation.needs_a_live_campaign:
         return Adjudication()
     if campaign.state is CampaignState.COMPLETED:
         return Adjudication(refusal=RefusalReason.CAMPAIGN_COMPLETED)
     if transition.expected_state is not None and transition.expected_state is not campaign.state:
         return Adjudication(refusal=RefusalReason.STALE_STATE)
+    if transition.operation.records_only:
+        return Adjudication()
     assert transition.next_state is not None  # guaranteed by CampaignTransition for non-record ops
     if transition.next_state not in LEGAL_TRANSITIONS[campaign.state]:
         return Adjudication(refusal=RefusalReason.ILLEGAL_TRANSITION)

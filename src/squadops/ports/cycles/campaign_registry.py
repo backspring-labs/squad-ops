@@ -9,6 +9,7 @@ every adapter.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import AbstractAsyncContextManager
 
 from squadops.campaigns.box import BoxLease
 from squadops.campaigns.models import (
@@ -96,6 +97,15 @@ class CampaignRegistryPort(ABC):
 
         Raises:
             CampaignNotFoundError: If the campaign_id is not found.
+        """
+
+    @abstractmethod
+    def transitions_held(self, project_id: str) -> AbstractAsyncContextManager[None]:
+        """Hold every transition of the Project's live Campaigns for the ``async with`` body, so
+        what the body reads of their logs is still true when it writes (SIP-0115 §5.5a: a split's
+        guard and its revision). Reads aren't held. A Campaign created inside the body isn't
+        either: it can't reach a proposal before the body ends, its calibration comes first. The
+        body is short and writes nothing to the Campaign registry.
         """
 
     @abstractmethod

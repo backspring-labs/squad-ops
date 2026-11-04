@@ -26,7 +26,7 @@ from squadops.cycles.models import (
     RegistrationKeyConflictError,
     StaleGoalSetRevisionError,
 )
-from squadops.projects.goal_set import GoalSetRevision, parse_goal_set
+from squadops.projects.goal_set import Change, ChangeKind, GoalSetRevision, parse_goal_set
 from tests.fixtures.goal_set import goal_set_document
 from tests.integration.conftest import integration_postgres_dsn
 
@@ -91,12 +91,19 @@ def _revision(n: int, *, reason: str = "the owner's edit", project_id: str = PRO
         reason=reason,
         created_at=datetime(2026, 11, 3, 12, n, tzinfo=UTC),
         source_ref=f"https://chat.example.invalid/thread/{n}" if n == 2 else None,
+        # Slice 3 (#2886, migration 2101): revision 2 was an action; 1 a whole-document edit.
+        change=(
+            Change(ChangeKind.ITEM_SPLIT, "B-0", split_into=("B-1", "B-2"), campaign_id="cmp_1")
+            if n == 2
+            else None
+        ),
     )
 
 
 async def test_revisions_follow_one_another_and_read_back_whole_newest_first(pool):
     """Bugs caught: a field lost in the JSONB round trip (a candidate's time, a surface's
-    reason); the active read returning the first revision; the history oldest first."""
+    reason, an action's ``change`` with the ids a split produced); the active read returning the
+    first revision; the history oldest first."""
     store = PostgresGoalSetRegistry(pool)
     with pytest.raises(GoalSetNotFoundError):
         await store.get_revision(PROJECT)
@@ -135,6 +142,9 @@ async def test_a_stale_write_is_refused_and_a_retry_replays_what_was_written(poo
 
     assert (replayed, was_replay) == (_revision(2), True)
     assert [r.revision for r in await store.list_revisions(PROJECT)] == [2, 1]
+    assert await store.revision_under_key("it-2", "h2") == _revision(2)
+    assert await store.revision_under_key("it-2", "other") is None
+    assert await store.revision_under_key("it-9", "h2") is None
 
 
 async def test_writers_racing_for_one_revision_write_it_once(pool):

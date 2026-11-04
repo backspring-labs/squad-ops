@@ -8,13 +8,16 @@ import pytest
 
 from squadops.auth.models import Role
 from squadops.campaigns.models import (
+    AcceptedTree,
     CampaignState,
     CampaignTransition,
     ControlOperation,
     ProposalBinding,
     SubmittedProposal,
 )
-from tests.fixtures.goal_set import GoalSetStore, backlog_document
+from squadops.cycles.models import GateDecisionValue
+from squadops.projects.goal_set import Change, ChangeKind
+from tests.fixtures.goal_set import ACCEPTED_TREE, GoalSetStore, backlog_document, proposed
 from tests.unit.api.test_campaign_repository_creation import _objective, _on, _Projects
 from tests.unit.api.test_campaign_routes import _identity, _World
 from tests.unit.campaigns.builders import move
@@ -79,6 +82,40 @@ async def test_the_backlog_reads_the_latest_revision_and_the_campaigns_own_log(w
         ("B-3", "pending", 3),
     ]
     assert body["next_item"] == "B-1"
+
+
+async def test_a_split_parent_reaches_the_body_removed_with_its_parts(world):
+    """Slice 3 (#2886), §5.5a at the route. Bug caught: ``split_into`` derived but not mapped
+    into the response, so the console and the crew read a split as a plain removal."""
+    _campaign(world)
+    registry = world.campaigns
+    await registry.transition(
+        CID, move(CampaignState.CALIBRATING, "s", operation=ControlOperation.START)
+    )
+    await registry.transition(
+        CID,
+        move(CampaignState.CALIBRATING, "p", operation=ControlOperation.PROMOTE,
+             accepted=AcceptedTree(ACCEPTED_TREE, "cyc_cal")),
+    )  # fmt: skip
+    await registry.transition(CID, move(CampaignState.AT_PROPOSAL, "d"))
+    await proposed(registry, CID, "B-1", revision=2, ruled=GateDecisionValue.RETURNED_FOR_REVISION)
+    store = world.client.app.state.goal_set_registry
+    store.write(
+        "prj-tally",
+        backlog_document("B-2", "B-1a", "B-1b", "B-3"),
+        change=Change(ChangeKind.ITEM_SPLIT, "B-1", split_into=("B-1a", "B-1b")),
+    )
+
+    body = world.client.get(f"/api/v1/campaigns/{CID}/backlog").json()
+
+    assert body["revision"] == 3
+    assert [(i["item_id"], i["status"], i["position"], i["split_into"]) for i in body["items"]] == [
+        ("B-2", "pending", 1, []),
+        ("B-1a", "pending", 2, []),
+        ("B-1b", "pending", 3, []),
+        ("B-3", "pending", 4, []),
+        ("B-1", "removed", None, ["B-1a", "B-1b"]),
+    ]
 
 
 def test_a_pinned_campaign_reads_its_revision_not_the_latest(world):

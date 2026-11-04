@@ -18,9 +18,11 @@ from squadops.cycles.models import (
     StaleGoalSetRevisionError,
 )
 from squadops.ports.projects.goal_sets import GoalSetRegistryPort
-from squadops.projects.goal_set import GoalSetRevision, parse_goal_set
+from squadops.projects.goal_set import GoalSetRevision, parse_change, parse_goal_set
 
-_COLUMNS = "project_id, revision, document, reason, source_ref, author, created_at"
+#: ``change`` (migration 2101, slice 3): the action that wrote the revision, or NULL for a whole
+#: document.
+_COLUMNS = "project_id, revision, document, reason, source_ref, author, created_at, change"
 #: Two-key advisory locks, class 115 (SIP-0115): a Project's writes, and a key's, each serialized
 #: apart from SIP-0112's class 112 and the migrations' single-key lock.
 _LOCK_PROJECT = 115
@@ -36,6 +38,7 @@ def _row_to_revision(row: asyncpg.Record) -> GoalSetRevision:
         reason=row["reason"],
         created_at=row["created_at"],
         source_ref=row["source_ref"],
+        change=parse_change(row["change"]) if row["change"] is not None else None,
     )
 
 
@@ -90,8 +93,8 @@ class PostgresGoalSetRegistry(GoalSetRegistryPort):
                 )
             await conn.execute(
                 "INSERT INTO project_goal_set_revisions (project_id, revision, document, reason, "
-                "source_ref, author, created_at, idempotency_key, request_hash) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                "source_ref, author, created_at, idempotency_key, request_hash, change) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                 project_id,
                 revision.revision,
                 revision.goal_set.to_document(),
@@ -101,8 +104,21 @@ class PostgresGoalSetRegistry(GoalSetRegistryPort):
                 revision.created_at,
                 idempotency_key,
                 request_hash,
+                revision.change.to_document() if revision.change is not None else None,
             )
         return revision, False
+
+    async def revision_under_key(
+        self, idempotency_key: str, request_hash: str
+    ) -> GoalSetRevision | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"SELECT {_COLUMNS} FROM project_goal_set_revisions "
+                "WHERE idempotency_key = $1 AND request_hash = $2",
+                idempotency_key,
+                request_hash,
+            )
+        return _row_to_revision(row) if row is not None else None
 
     async def get_revision(self, project_id: str, revision: int | None = None) -> GoalSetRevision:
         async with self._pool.acquire() as conn:

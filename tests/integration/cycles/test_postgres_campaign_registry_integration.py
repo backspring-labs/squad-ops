@@ -24,11 +24,13 @@ from adapters.persistence.transient import TransientRetry
 from squadops.campaigns.branch_rebase import RebasedHead, rebase_transition
 from squadops.campaigns.campaign_branch import BranchBase, CampaignHead
 from squadops.campaigns.gate import ruling_transition, submission
+from squadops.campaigns.goal_delegation import goal_delegation
 from squadops.campaigns.launcher import CampaignLauncher
 from squadops.campaigns.models import (
     AcceptedTree,
     CampaignOutcome,
     CampaignState,
+    CampaignTransition,
     ControlOperation,
     ControlOperationRefused,
     ControlOutcome,
@@ -384,6 +386,27 @@ async def test_a_refused_resume_persists_moves_nothing_and_leaves_its_key_free(p
 
     assert applied.entry.outcome is ControlOutcome.APPLIED
     assert (await restarted.get_campaign(CID)).state is S.CALIBRATING
+
+
+async def test_a_held_project_holds_its_live_campaigns_transitions_and_not_their_reads(
+    pool, campaigns
+):
+    """SIP-0115 §5.5a on Postgres: the row lock ``transitions_held`` takes is the one a transition
+    waits on. Bugs caught: a hold that a transition on another connection walks past, so a split's
+    guard goes stale before its write; a hold that blocks reads, so the guard deadlocks on the
+    view it reads inside it."""
+    async with campaigns.transitions_held(PROJECT):
+        moving = asyncio.create_task(
+            PostgresCampaignRegistry(pool=pool).transition(CID, _launching("k-held"))
+        )
+        await asyncio.sleep(0.3)
+        assert not moving.done()
+        assert (await campaigns.get_campaign(CID)).state is S.CALIBRATING
+        assert len(await campaigns.control_log(CID)) == 2
+
+    result = await asyncio.wait_for(moving, timeout=5)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
 
 
 async def test_a_failure_inside_the_transaction_leaves_no_partial_write(campaigns, monkeypatch):
@@ -788,6 +811,55 @@ async def test_a_rebase_supersedes_its_repair_and_writes_its_proposal_in_one_tra
     )
     assert again.value.entry.refusal is RefusalReason.STALE_STATE
     assert (await campaigns.control_log(CID))[-1].outcome is ControlOutcome.REFUSED
+
+
+async def test_the_owners_goal_delegation_is_a_row_a_live_campaign_alone_takes(campaigns):
+    """SIP-0115 §10c, migration 2102: ``goal_delegation_granted`` is in the schema, reads back as
+    applied, and replays; a completed campaign refuses a new one and keeps the refusal, and still
+    replays the one it committed. Bugs caught: the value added in Python and not in the CHECK
+    list, so the owner's grant answers 500; the grant accepted after the close, as every other
+    record is; or a retry of a committed grant refused once the Campaign closed."""
+
+    def grant(key: str) -> CampaignTransition:
+        return CampaignTransition(
+            operation=ControlOperation.GOAL_DELEGATION_GRANTED, actor="owner", actor_role="admin",
+            reason="the owner approved it in Buzz", idempotency_key=key, next_state=None,
+            target="campaign_it", binding={"goal_set": "campaign_it"},
+        )  # fmt: skip
+
+    first = await campaigns.transition(CID, grant("grant-1"))
+    assert first.entry.outcome is ControlOutcome.APPLIED
+    assert first.campaign.state is S.CALIBRATING
+    found = goal_delegation(await campaigns.control_log(CID))
+    assert found is not None
+    assert (found.entry_id, found.actor, found.reason, found.binding) == (
+        first.entry.entry_id,
+        "owner",
+        "the owner approved it in Buzz",
+        {"goal_set": "campaign_it"},
+    )
+    assert (await campaigns.transition(CID, grant("grant-1"))).replayed is True
+
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+
+    with pytest.raises(ControlOperationRefused) as refused:
+        await campaigns.transition(CID, grant("grant-2"))
+    assert refused.value.entry.refusal is RefusalReason.CAMPAIGN_COMPLETED
+    log = await campaigns.control_log(CID)
+    assert (log[-1].operation, log[-1].outcome) == (
+        ControlOperation.GOAL_DELEGATION_GRANTED,
+        ControlOutcome.REFUSED,
+    )
+    replay = await campaigns.transition(CID, grant("grant-1"))
+    assert (replay.replayed, replay.entry.entry_id) == (True, first.entry.entry_id)
 
 
 async def test_a_review_push_is_recorded_on_a_completed_campaign(campaigns):
