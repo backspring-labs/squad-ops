@@ -456,6 +456,22 @@ async def test_a_conflict_reads_at_the_route_and_a_new_assessment_naming_both_en
     assert [a["sequence"] for a in history.json()] == [1, 2, 3]
 
 
+async def test_a_campaigns_view_reads_only_its_own_assessments(world):
+    """§5.7: the latest is "in a Campaign", and a log position means nothing in another. Bug
+    caught: the view reading the goal set's whole history, so another Campaign's judgement reads
+    as this one's, and conflicts with it."""
+    await _on_goals(world)
+    await started(world.campaigns, "cmp_api000000002", project_id="prj-tally")
+    world.as_(SUPERVISOR)
+    assert _assess(world, key="a-1", campaign_id="cmp_api000000002").status_code == 201
+
+    assert _result(world) == {
+        "expected_result": "ER-week",
+        "standing": "unassessed",
+        "assessments": [],
+    }
+
+
 async def test_the_history_pages_and_filters_before_the_page(world):
     """The lanes' rule (`api-route-lanes.md`, "Paging a list"). Bug caught: a filter applied after
     the page, so a Campaign's first assessments are hidden behind another's."""
