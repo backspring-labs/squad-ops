@@ -4772,6 +4772,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run_id=run_id,
             sandbox=self._sandbox,
             projects=self._project_registry,
+            repository=self._source_repository,
             read_profile=self._derived_profile_for,
         )
 

@@ -86,12 +86,13 @@ def product_runners(inputs: Mapping[str, Any]) -> tuple[tuple[tuple[str, ...], s
     )
 
 
-def product_tree(
-    artifact_contents: Mapping[str, str],
+def product_tree[C: (str, bytes)](
+    artifact_contents: Mapping[str, C],
     runners: tuple[tuple[tuple[str, ...], str], ...] = (),
-) -> dict[str, str]:
+) -> dict[str, C]:
     """Every file of the product's workspace that is no test, in its order: no stack calls it
-    one, and none of ``runners`` (``(roots, file_pattern)``) holds it."""
+    one, and none of ``runners`` (``(roots, file_pattern)``) holds it. Text from a run's artifacts,
+    or bytes from the product's clone (the product runner's base tree, #2900)."""
     return {
         path: content
         for path, content in artifact_contents.items()
