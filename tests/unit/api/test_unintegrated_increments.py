@@ -303,6 +303,28 @@ def _per_run(cycle_id: str, state: str, integrated: str | None = None) -> Contri
     )  # fmt: skip
 
 
+async def test_of_two_records_the_furthest_along_says_where_it_stands():
+    """A run's request closed unmerged, and its Campaign's contribution pending, which carries the
+    same increment. Bug caught: the dead request read over the live one, so the gate names a
+    closed request nobody needs to reopen."""
+    _held, log, goal_sets = _goal_set_world()
+    project = Project(project_id=PROJECT, name="Tally", description="", created_at=T0)
+    whole = dataclasses.replace(_per_run(CID, "pending"), run_id=CAMPAIGN_RUN)
+
+    listed = await unintegrated_increments(
+        project,
+        campaigns=log,
+        contributions=[_per_run("cyc_inc2", "closed"), whole],
+        repository=_Clone(set()),
+        goal_sets=goal_sets,
+    )
+
+    assert [(i.cycle_id, i.standing.value) for i in listed] == [
+        ("cyc_rep1", "contribution_pending"),
+        ("cyc_inc2", "contribution_pending"),
+    ]
+
+
 async def test_an_increment_contributed_by_its_own_run_stands_by_that_record():
     """PR #2920's review, finding 2. The per-run route is a contribution too: an increment
     contributed through it, squash-merged and synced, is integrated, and another pending there

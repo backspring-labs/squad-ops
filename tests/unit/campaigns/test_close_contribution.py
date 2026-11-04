@@ -34,6 +34,7 @@ from squadops.campaigns.close_contribution import (
     NO_ACCEPTED_INCREMENT,
     CampaignContribution,
     accepted_on_branch,
+    closing_binding,
     closing_row,
 )
 from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
@@ -514,6 +515,70 @@ async def test_a_moved_file_no_runner_holds_opens_nothing(tmp_path):
     [failure] = await world.failures()
     assert "no runner" in failure.binding["message"] and MOVED in failure.binding["message"]
     assert world.forge.calls == 0 and world.remote() is None
+
+
+async def test_a_moved_file_another_runner_would_take_opens_nothing(tmp_path):
+    """The placement requirement's other half: a runner rooted at ``tests`` takes the file the root
+    runner placed. Bug caught: a criterion judged by another runner than the one that accepted it."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted_with_criterion()
+    held = world.projects.profile
+    document = _with_pytest_runner(recorded("derived_profile", "valid"))
+    document["commit"] = held.commit
+    document["development_configuration_revision"] = held.development_configuration_revision
+    rooted = document["test_runners"][-1]
+    document["test_runners"] = [
+        document["test_runners"][0],
+        {**rooted, "runner": "jest", "roots": ["tests"]},
+        {**rooted, "roots": ["."]},
+    ]
+    world.projects.profile = parse_profile(document)
+
+    refused = world.client().post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert refused.status_code == 409, refused.text
+    assert world.forge.calls == 0 and world.remote() is None
+
+
+async def test_a_criterion_no_reader_can_read_opens_nothing(tmp_path):
+    """Only ``held`` passes: §24ci (a)'s rule. Under a runner with no test-id reader a clean exit
+    is ``blocked_unverified``, never evidence. Bug caught: anything short of broken let through."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted_with_criterion()
+    held = world.projects.profile
+    document = _with_pytest_runner(recorded("derived_profile", "valid"))
+    document["commit"] = held.commit
+    document["development_configuration_revision"] = held.development_configuration_revision
+    document["test_runners"][-1].update(roots=["."], test_ids=None)
+    world.projects.profile = parse_profile(document)
+
+    refused = world.client().post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert refused.status_code == 409, refused.text
+    [failure] = await world.failures()
+    assert "blocked_unverified" in failure.binding["message"]
+    assert world.forge.calls == 0 and world.remote() is None
+
+
+def test_a_campaign_with_a_branch_is_repository_backed_whatever_the_caller_read():
+    """Finding 6's other side. The abort's Project lookup found nothing, and the log says a branch
+    exists. Bug caught: accepted work closed with no record of what is due, because of a lookup."""
+    log = [
+        _row(1, ControlOperation.PROMOTE, {
+            "calibration_record_id": "rec", "commit": "c0", "development_configuration_revision": 1,
+        }),
+        _row(2, ControlOperation.PROMOTE, {"cycle_id": "cyc_a", "commit": "a1"}),
+    ]  # fmt: skip
+    closing = move(
+        CampaignState.COMPLETED, "k", operation=ControlOperation.ABORT,
+        outcome=CampaignOutcome.ABORTED, repository_backed=False,
+    )  # fmt: skip
+
+    assert closing_binding(closing, log, [_intent("cyc_a", CycleKind.INCREMENT)]) == {
+        "contribution": {"due": True, "accepted": ["cyc_a"]}
+    }
 
 
 @pytest.mark.parametrize("missing", ["sandbox", "profile"])
