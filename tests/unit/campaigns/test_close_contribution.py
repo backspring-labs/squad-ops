@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import time
 
 import pytest
 from fastapi import FastAPI, Request
@@ -377,7 +378,7 @@ async def test_a_campaign_closed_by_its_decision_opens_one_contribution_with_its
 
 
 async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry_opens_it(
-    tmp_path,
+    tmp_path, monkeypatch
 ):
     """The forge refuses at the close; the owner's abort closed the Campaign (the route the
     live loop takes). Bugs caught:
@@ -411,6 +412,9 @@ async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry
     first_push = world.remote()  # the push landed before the forge refused
 
     world.forge.refuse = False
+    # A minute later: a commit made again would differ from the first by its committer date.
+    later = time.time() + 60
+    monkeypatch.setattr("adapters.tools.git_source.time.time", lambda: later)
     retried = client.post(f"/api/v1/campaigns/{CID}/contributions", json={})
     again = client.post(f"/api/v1/campaigns/{CID}/contributions", json={})
 
