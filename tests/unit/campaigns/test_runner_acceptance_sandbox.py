@@ -269,6 +269,27 @@ async def test_a_criterion_that_asserts_the_change_discriminates_and_its_bundle_
     assert runs[1].reading is not None and runs[1].reading.collected == 1
 
 
+async def test_a_file_the_squad_removed_is_absent_from_the_candidate_its_criteria_run_on(sandbox):
+    """#2612, on the sandbox: an increment's candidate is the checkout and the squad's changes, a
+    removal's being ``None``. Bugs caught: ``None`` read as a file's bytes, so the candidate's
+    identity can't be taken; the file still in the tree the criterion runs on, so the criterion's
+    revision isn't the one delivery verified."""
+    _accepted, changed = _trees()
+    removed = "shelf/legacy.py"
+    head = {**HEAD, removed: b"LEGACY = True\n"}
+    accepted = SandboxTree(head)
+    candidate = SandboxTree(head, changes={**changed.changes, removed: None})
+
+    assert removed not in candidate.content
+    assert candidate.file_tree.identity != accepted.file_tree.identity
+
+    _evaluation, _runs, document = await _evaluate(sandbox, accepted, candidate)
+
+    assert document["verdict"] == "accepted"
+    seen = [files for _revision, _argv, files in sandbox.backend.ran]
+    assert any(CRITERION in files and removed not in files for files in seen)
+
+
 @pytest.mark.parametrize(
     ("criterion", "change", "reason", "verdict"),
     [

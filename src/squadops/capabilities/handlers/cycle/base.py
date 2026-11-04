@@ -79,7 +79,12 @@ from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.fault_injection import held_through_pass, planted_rows
 from squadops.capabilities.handlers.fault_injection import hold as hold_fault
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
-from squadops.capabilities.handlers.fenced_parser import cut_final_block, extract_fenced_files
+from squadops.capabilities.handlers.fenced_parser import (
+    cut_final_block,
+    extract_fenced_deletions,
+    extract_fenced_files,
+)
+from squadops.cycles.deletions import DELETIONS_KEY, DELETIONS_REFUSED_KEY
 from squadops.cycles.emission_integrity import (
     SIGNATURE_CAP_EXHAUSTED,
     classify_empty_emission,
@@ -1081,6 +1086,14 @@ class _CycleTaskHandler(CapabilityHandler):
             source, artifacts = followup.absorb(
                 followup_content, artifacts, evidence_extra, self_eval_count
             )
+            # #2612: a pass revises the files it was shown, and its removals are refused by name:
+            # the task's first emission is where a removal is read and judged.
+            refused = extract_fenced_deletions(source)
+            if refused.found:
+                evidence_extra.setdefault(DELETIONS_REFUSED_KEY, []).extend(
+                    {"path": path, "reason": "self_eval_pass", "pass": self_eval_count + 1}
+                    for path in (*refused.paths, *(m[0] for m in refused.malformed))
+                )
             if offered:
                 new_artifacts, edit_record = self._pass_edits(
                     context, source, artifacts, offered, followup
@@ -1364,7 +1377,12 @@ class _CycleTaskHandler(CapabilityHandler):
 
         Moved from ``handle`` (#1994).
         """
-        if (not content.strip() or not artifacts) and "emission_failure" not in outputs:
+        # #2612: a response whose one act is a removal emitted no file, and is not contentless.
+        if (
+            (not content.strip() or not artifacts)
+            and "emission_failure" not in outputs
+            and not outputs.get(DELETIONS_KEY)
+        ):
             # #998: an EMPTY emission on the generic path — which every repair handler
             # rides — carried no marker at all, so the correction loop could refund the
             # round (#1053) but never say what kind of nothing it was. Three of the

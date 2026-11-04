@@ -43,6 +43,7 @@ from squadops.cycles.correction_signature import (
     render_signature,
     retest_reduction_or_refusal,
 )
+from squadops.cycles.deletions import DELETIONS_KEY
 from squadops.cycles.failure_evidence import build_failure_evidence
 from squadops.cycles.implementation_plan import resolve_criteria_for_files
 from squadops.cycles.patch_verification import (
@@ -478,6 +479,7 @@ class PatchAcceptance:
                 retest.failed_retest,
                 patched_result_holder,
                 correction_attempts=correction_attempts,
+                deletions=(result.outputs or {}).get(DELETIONS_KEY) or (),
             )
 
         patched_artifacts, spine_rows = self._settle_patch_evidence(
@@ -1183,8 +1185,12 @@ class PatchAcceptance:
         patched_result_holder: dict[str, Any],
         *,
         correction_attempts: int,
+        deletions: Sequence[str] = (),
     ) -> str:
         """#1522: keep a repair whose retest made progress on its round and broke nothing (#2306).
+
+        ``deletions`` are the failed task's own removals (#2612): part of the candidate kept, and
+        stored with it, since the next round starts from the retest's result, which carries none.
 
         The kept set is the candidate that was verified, proven as an accepted patch is
         (SIP-0107 §20), less the failed attempt's evidence: the re-dispatch writes its own, and a
@@ -1222,6 +1228,7 @@ class PatchAcceptance:
         patched_result_holder[KEPT_OUTPUTS_KEY] = {
             "artifacts": artifacts,
             "validation_result": {"persisted_revision_id": persisted_revision_id},
+            DELETIONS_KEY: list(deletions),
         }
         # The retest ran as its own task id; the next round is about the failed task. Its
         # artifacts are the next round's base, and its copies of the kept files keep their

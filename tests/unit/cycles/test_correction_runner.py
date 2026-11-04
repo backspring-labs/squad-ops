@@ -489,6 +489,8 @@ class TestCorrectionPatch:
                     "validation_result": {
                         "persisted_revision_id": candidate_revision_id(None, [kept])
                     },
+                    # #2612: the failed task's removal, kept with the candidate.
+                    "deletions": ["src/app_old.py"],
                 }
                 holder[KEPT_NEXT_FAILURE_KEY] = TaskResult(
                     task_id=envelope.task_id,
@@ -520,6 +522,7 @@ class TestCorrectionPatch:
             for c in mock_vault.store.call_args_list
         ]
         assert ("src/app_fix.py", "development.develop") in stored
+        assert ("src/app_old.py", "development.develop") in stored
         # ...and the next round verified against the tree that includes it.
         workspace = calls[1]["enriched_envelope"].inputs["acceptance_workspace_files"]
         assert workspace["src/app_fix.py"] == "fixed = True\n"
@@ -8044,6 +8047,133 @@ class TestARepairWriteAuthorizationDroppedIsSpent:
             ]
         }
         # #1129/#1658: the terminal reads this round as one whose repair never reached the tree.
+        assert repair_not_applied_in_round(carry[envelope.task_id], 1) is True
+
+
+class TestARepairsRemovalIsCarriedAndRefusedInsideThePlan:
+    """#2612 (SIP-0112 H.23): a repair's removal rides beside its files, out of the overlay. Inside
+    the plan it can't be verified, so the round is refused by name; at a source-backed run's end
+    of plan the delivery judges it (``test_source_backed_run``)."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    @staticmethod
+    def _repair_outputs(outputs):
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        return responder
+
+    async def _round(self, cycle, outputs):
+        runner, _r, _v, bus = self._make_runner(self._repair_outputs(outputs))
+        protocol = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            correction_budget=3,
+        )
+        return protocol
+
+    async def test_a_round_whose_one_act_is_a_removal_is_not_an_empty_emission(self, cycle):
+        """Entry point: `run_correction_protocol`. Bug caught: the round refunded as having
+        emitted nothing, and re-taken unchanged until the budget is spent (#2521's shape)."""
+        protocol = await self._round(cycle, {"artifacts": [], "deletions": ["lib/old.py"]})
+
+        assert protocol.repair_deletions == ("lib/old.py",)
+        assert protocol.emission_empty is False and protocol.repair_dropped == ()
+
+    async def test_a_refused_removal_is_a_dropped_write_and_the_round_is_spent(self, cycle):
+        """Bug caught: a refused removal refunded as an empty emission, its reason lost."""
+        refused = {"path": "lib/ghost.py", "reason": "not_in_view", "detail": "no such file"}
+        protocol = await self._round(
+            cycle,
+            {
+                "artifacts": [],
+                "deletions_refused": [refused],
+                "emission_failure": {"reason": "deletion_refused"},
+            },
+        )
+
+        assert protocol.emission_empty is False and protocol.repair_deletions == ()
+        assert protocol.repair_dropped == (
+            {
+                "path": "lib/ghost.py",
+                "producer_task_type": "development.correction_repair",
+                "reason": "removal refused: no such file (not_in_view)",
+            },
+        )
+
+    async def test_inside_the_plan_the_round_is_refused_by_name(self, executor, cycle):
+        """Entry point: `_route_correction_path`. Bugs caught: the repair's files accepted on a
+        verdict that read the file as present while the removal goes unapplied, or applied on no
+        verdict; the next round told nothing."""
+        from squadops.cycles.correction_signature import repair_not_applied_in_round
+        from squadops.execution.correction_runner import CorrectionProtocolResult
+        from squadops.execution.dispatched_flow_executor import _CorrectionRound
+
+        executor._try_accept_patch = AsyncMock(return_value="accept_patch")
+        envelope = TestProgressAwareTermination._envelope()
+        counter = {"n": 1, "empty_refunds": 0}
+        carry: dict = {}
+        action = await executor._route_correction_path(
+            _CorrectionRound(
+                protocol=CorrectionProtocolResult(
+                    correction_path="patch",
+                    repair_artifacts=[{"name": "lib/a.py", "content": "x\n"}],
+                    repair_deletions=("lib/old.py",),
+                ),
+                attempt=1,
+                max_attempts=3,
+            ),
+            TaskResult(task_id=envelope.task_id, status="FAILED", error="suite failed"),
+            envelope,
+            "run_001",
+            cycle=cycle,
+            correction_counter=counter,
+            patched_result_holder=None,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            budget_guard=None,
+            interface_manifest=None,
+            repair_rejection_carry=carry,
+            bound_record=None,
+            compliance_counter=None,
+        )
+
+        assert action == "continue"
+        executor._try_accept_patch.assert_not_awaited()
+        assert counter == {"n": 1, "empty_refunds": 0}
+        [entry] = carry[envelope.task_id]
+        assert entry.startswith(
+            "correction attempt 1: the repair removes a file, which no in-plan verdict can judge "
+            "(lib/old.py)"
+        )
         assert repair_not_applied_in_round(carry[envelope.task_id], 1) is True
 
 

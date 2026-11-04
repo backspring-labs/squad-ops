@@ -248,18 +248,24 @@ class SuiteRun:
         }
 
 
+def _removed(inputs: Mapping[str, Any]) -> dict[str, None]:
+    """What earlier tasks of the run removed, as a patch names a removal (H.23)."""
+    return dict.fromkeys(inputs["source_repository"].get("deleted") or ())
+
+
 async def run_on_product_runner(
     *,
     sandbox: Any,
     profile: Any,
     setup: RunnerSetup,
     pinned: PinnedTree,
-    tree: Mapping[str, str],
+    tree: Mapping[str, str | None],
     tests: Mapping[str, str],
     workspace_id: str,
 ) -> list[SuiteRun] | None:
     """Run each of ``tests`` on its own runner's single-file command, read by that runner's
-    test-id reader, on ``pinned`` with ``tree`` and ``tests`` laid over it. ``None`` when a test
+    test-id reader, on ``pinned`` with ``tree`` and ``tests`` laid over it (a ``None`` in ``tree``
+    removes that path: H.23). ``None`` when a test
     file is held by no runner, or by one that can't be scoped to a file or has no test-id reader:
     the product names no way to show that file's tests ran, so nothing here can judge it.
 
@@ -575,7 +581,8 @@ async def judge_on_product_runner(
             profile=profile,
             setup=RunnerSetup.of(configuration.commands),
             pinned=pinned,
-            tree={**suite_run_tree(inputs), **overlay},
+            # H.23: the pin still holds what the run removed. A file written since wins.
+            tree={**_removed(inputs), **suite_run_tree(inputs), **overlay},
             tests=tests,
             workspace_id=suite_workspace_prefix(run_id, task_id),
         )

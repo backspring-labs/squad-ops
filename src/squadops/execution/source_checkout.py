@@ -22,6 +22,7 @@ from typing import Any
 from uuid import uuid4
 
 from squadops.capabilities.handlers.cycle.validation import _classify_file
+from squadops.cycles.deletions import deleted_paths
 from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
 from squadops.cycles.models import ArtifactRef, Cycle, DerivedProfileNotFoundError
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
@@ -176,7 +177,8 @@ async def task_source_repository(
 ) -> dict[str, Any] | None:
     """The ``source_repository`` input for one task of a source-backed run, or ``None`` for
     any other run. A path's current content is the squad's latest accepted emission for it, or
-    the checkout's when the squad hasn't touched it."""
+    the checkout's when the squad hasn't touched it. A path an earlier task removed (#2612) has
+    none, and the view names it as removed."""
     manifest_id = next(
         (i for i, ref in stored_artifacts if ref.artifact_type == CHECKOUT_MANIFEST_TYPE), None
     )
@@ -185,6 +187,7 @@ async def task_source_repository(
     _ref, raw = await vault.retrieve(manifest_id)
     manifest = CheckoutManifest.from_json(raw)
     wanted = set(named) | set(manifest.instruction_paths)
+    deleted = deleted_paths(stored_artifacts, skip_producers=REPAIR_TASK_TYPES)
     latest: dict[str, str] = {}
     for art_id, ref in stored_artifacts:
         if ref.filename not in wanted or ref.filename in manifest.held_back:
@@ -196,8 +199,10 @@ async def task_source_repository(
         if ref.metadata.get("producing_task_type", "") in REPAIR_TASK_TYPES:
             continue
         latest[ref.filename] = art_id
+    for path in deleted:
+        latest.pop(path, None)
     current = {}
     for path, art_id in latest.items():
         _ref, content = await vault.retrieve(art_id)
         current[path] = content.decode("utf-8", errors="replace")
-    return source_repository_input(manifest, current, named)
+    return source_repository_input(manifest, current, named, deleted=deleted)

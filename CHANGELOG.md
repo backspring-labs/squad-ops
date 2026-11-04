@@ -54,6 +54,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   SIP-0115 slice 5 (#2888) has a route. The plugin registers no command and writes nothing: launch, rule, pause,
   resume and abort stay with the crew's broker and the CLI. SIP-0069 §14 records this and names what stays off the
   console. The reads are `campaigns.js`, tested under node in CI.
+- **A source-backed change can remove a file** (#2612, SIP-0112 H.23). A step removes a file with a `delete:<path>` fence
+  with nothing inside, shown to the steps that may use it. `development.develop` and its repair may remove any text
+  file of the product; `qa.test` and its repair only a test one of the product's runners holds. A path outside the
+  product's tree, a binary or generated file, one the same emission writes, or one outside the step's grant is refused
+  by name, and the emission with it. A removal is stored in order among the writes, later tasks are shown the tree
+  without the file, and delivery patches it out of the candidate: `changed_paths` names it, the product's own checks
+  run without it, and the captured commit and its patch lack it. A repair's removal is taken in the end-of-plan round
+  (H.20) and refused inside the plan, where the verifier can't hold one. A fence reading `delete:` wrote an empty file
+  before. Runs with no pinned source refuse the form.
 - **A regression at a source-backed run's end of plan gets one repair round** (#2613, SIP-0112 H.20). When the
   product's own checks read `regressed`, the run no longer fails there: the regression enters the plan's correction
   chain (analyze, decide, repair) through the same budget check and run counter as an in-plan failure, about the

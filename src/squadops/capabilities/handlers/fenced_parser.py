@@ -52,6 +52,17 @@ guard is deliberate: if any fence remains, a close may merely be missing
 *between* two files, and abandoning the opener is safer than swallowing the next
 file's content into this one.
 
+**The deletion form** (#2612, SIP-0112 H.23): a strict fence whose language slot is ``delete``,
+naming the path to remove, with nothing inside::
+
+    ```delete:tally/legacy_report.py
+    ```
+
+It is never a file: :func:`extract_fenced_files` leaves it out, so no caller writes an empty file
+for it, and says so in its log unless the caller takes deletions (``deletions_taken``). A caller
+that takes them reads them with :func:`extract_fenced_deletions`, which reads a body under the
+fence, or an unsafe path, as malformed and names it rather than guessing.
+
 Part of SIP-Enhanced-Agent-Build-Capabilities, Phase 1.
 """
 
@@ -59,10 +70,18 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterator
+from dataclasses import dataclass
 
 from squadops.capabilities.handlers.impl._json_extraction import _strip_think_blocks
 
 logger = logging.getLogger(__name__)
+
+#: The fence language that marks a deletion (``delete:<path>``, #2612).
+DELETION_FENCE_LANGUAGE = "delete"
+#: Why a deletion fence could not be read.
+MALFORMED_DELETION_UNSAFE_PATH = "unsafe_path"
+MALFORMED_DELETION_WITH_CONTENT = "deletion_with_content"
 
 # Strict format header: ```<lang>:<path>
 _STRICT_HEADER_RE = re.compile(r"^```(\w+):(\S+)\s*$", re.MULTILINE)
@@ -401,9 +420,84 @@ def cut_final_block(response: str) -> int | None:
             pos = body_start
 
 
+def _is_deletion_token(token: str) -> bool:
+    language, colon, _path = token.partition(":")
+    return bool(colon) and language == DELETION_FENCE_LANGUAGE
+
+
+@dataclass(frozen=True)
+class FencedDeletions:
+    """The deletion fences of a response (#2612): each path it removes, in emission order, and
+    each fence that couldn't be read as one, as ``(path, reason, detail)``."""
+
+    paths: tuple[str, ...] = ()
+    malformed: tuple[tuple[str, str, str], ...] = ()
+
+    @property
+    def found(self) -> bool:
+        return bool(self.paths or self.malformed)
+
+
+def _fenced_blocks(response: str) -> Iterator[tuple[re.Match[str], str]]:
+    """Each block of ``response`` as ``(open_match, body)``, closed or #431's implicit close at
+    EOF. An opener with no close, and none safe to infer, is abandoned."""
+    pos = 0
+    while pos < len(response):
+        open_match = _OPEN_FENCE_RE.search(response, pos)
+        if not open_match:
+            return
+        body_start = open_match.end() + 1  # skip newline after header
+        close_match = _find_block_close(response, body_start)
+        if close_match:
+            yield open_match, response[body_start : close_match.start()]
+            pos = close_match.end()
+        elif _is_implicit_eof_close(response, body_start):
+            # #431: a single unterminated fence whose body runs cleanly to EOF: infer the dropped
+            # close rather than losing the whole file.
+            yield open_match, response[body_start:]
+            pos = len(response)
+        else:
+            # No closing fence and inferring one is unsafe: abandon this opener.
+            pos = body_start
+
+
+def extract_fenced_deletions(response: str) -> FencedDeletions:
+    """The deletion form's fences in ``response`` (#2612). A path named twice is one removal.
+
+    A fence with anything but whitespace inside is malformed, never a removal: it reads as a file
+    the model meant to write under the wrong language as much as a removal, and guessing either
+    loses the other. So is an unsafe path (absolute, ``..``, a colon)."""
+    if not response:
+        return FencedDeletions()
+    paths: list[str] = []
+    malformed: list[tuple[str, str, str]] = []
+    for open_match, body in _fenced_blocks(_strip_think_blocks(response)):
+        token = open_match.group(1)
+        if not _is_deletion_token(token):
+            continue
+        path = _strip_path_label(token.partition(":")[2])
+        if not _path_is_safe(path):
+            malformed.append(
+                (path, MALFORMED_DELETION_UNSAFE_PATH, "an absolute path, `..` or a colon")
+            )
+        elif body.strip():
+            malformed.append(
+                (
+                    path,
+                    MALFORMED_DELETION_WITH_CONTENT,
+                    f"the fence carries {len(body.strip())} characters; a removal carries none",
+                )
+            )
+        elif path not in paths:
+            paths.append(path)
+    return FencedDeletions(tuple(paths), tuple(malformed))
+
+
 def extract_fenced_files(
     response: str,
     expected_artifacts: list[str] | None = None,
+    *,
+    deletions_taken: bool = False,
 ) -> list[dict]:
     """Parse fenced code blocks into structured file records.
 
@@ -427,6 +521,9 @@ def extract_fenced_files(
         response: Raw LLM response text.
         expected_artifacts: The task envelope's expected output paths, used
             only by the #566 fallback. ``None``/empty disables the fallback.
+        deletions_taken: The caller reads the response's deletion fences itself
+            (``extract_fenced_deletions``). Either way a deletion fence is never a
+            file; a caller that doesn't take them has each one logged as refused.
 
     Returns:
         List of dicts with keys ``filename``, ``content``, ``language``.
@@ -443,27 +540,18 @@ def extract_fenced_files(
     results: list[dict] = []
     unlabeled: list[dict] = []  # #566 fallback candidates: no strategy resolved a name
     saw_labeled = False  # any fence that DID resolve a name (safe or not)
-    pos = 0
     last_used_heading_pos = -1
 
-    while pos < len(response):
-        open_match = _OPEN_FENCE_RE.search(response, pos)
-        if not open_match:
-            break
-
-        body_start = open_match.end() + 1  # skip newline after header
-        close_match = _find_block_close(response, body_start)
-        if close_match:
-            body = response[body_start : close_match.start()]
-            next_pos = close_match.end()
-        elif _is_implicit_eof_close(response, body_start):
-            # #431: a single unterminated fence whose body runs cleanly to EOF —
-            # infer the dropped close rather than losing the whole file.
-            body = response[body_start:]
-            next_pos = len(response)
-        else:
-            # No closing fence and inferring one is unsafe — abandon this opener.
-            pos = body_start
+    for open_match, body in _fenced_blocks(response):
+        if _is_deletion_token(open_match.group(1)):
+            # #2612: a removal, never a file. Read as one it was an empty file at the path.
+            saw_labeled = True
+            if not deletions_taken:
+                logger.warning(
+                    "deletion form refused: %r names a removal, and this step takes none; the "
+                    "file is neither removed nor emptied (#2612)",
+                    open_match.group(1),
+                )
             continue
 
         filename, language, body, last_used_heading_pos = _resolve_block(
@@ -475,7 +563,6 @@ def extract_fenced_files(
                 unlabeled.append({"content": body, "language": language or "text"})
             else:
                 saw_labeled = True
-            pos = next_pos
             continue
 
         saw_labeled = True
@@ -486,7 +573,6 @@ def extract_fenced_files(
                 "language": language or "text",
             }
         )
-        pos = next_pos
 
     if not results:
         fallback = _single_expected_artifact_fallback(unlabeled, expected_artifacts, saw_labeled)

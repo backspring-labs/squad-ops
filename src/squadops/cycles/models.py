@@ -98,6 +98,8 @@ class ArtifactType:
     #: deterministic contracts do not already supply.
     ASSEMBLY_NOTES = "assembly_notes"
     CONTROL_IMPLEMENTATION_PLAN = "control_implementation_plan"
+    #: #2612: one removal of a product file by a source-backed run's step (``cycles.deletions``).
+    DELETION = "deletion"
 
 
 class RunInitiator:

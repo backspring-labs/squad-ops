@@ -363,6 +363,10 @@ class CorrectionProtocolResult:
     #: dropped a failing assertion's subject, each naming the slot and the subject. Such a round
     #: is spent: the repair failed a gate, it did not emit nothing.
     repair_subject_dropped: tuple[dict[str, Any], ...] = ()
+    #: #2612: the product files the repair removed, beside its files. Inside the plan the round is
+    #: refused for them (``REPAIR_REMOVAL_REFUSED_MARKER``); at a source-backed run's end of plan
+    #: they are stored with the repair and judged by the next delivery (SIP-0112 H.20, H.23).
+    repair_deletions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1236,6 +1240,7 @@ class CorrectionRunner:
             ),
             repair_dropped=repair_dropped,
             repair_subject_dropped=repair_subject_dropped,
+            repair_deletions=tuple(repair.deletions),
         )
 
     async def _diagnose(

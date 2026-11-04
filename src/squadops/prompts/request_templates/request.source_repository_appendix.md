@@ -1,6 +1,6 @@
 ---
 template_id: request.source_repository_appendix
-version: "3"
+version: "4"
 required_variables:
   - commit
   - repository_map
@@ -9,6 +9,7 @@ optional_variables:
   - checks
   - instructions
   - existing_files
+  - deletion
 ---
 
 ## THE PRODUCT YOU ARE CHANGING
@@ -31,3 +32,5 @@ Every file it holds at that commit:
 A file you emit replaces that path whole, so emit each file you change in full, with your change,
 at its own path exactly as the map writes it. A path you don't emit keeps its content at that
 commit. A new file goes where the product's own layout would put it.
+
+{{deletion}}

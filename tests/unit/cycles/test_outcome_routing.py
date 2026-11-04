@@ -777,6 +777,8 @@ class TestAcceptPatch:
         from squadops.cycles.verification_normalize import normalize_task_checks
 
         failed = self._failed_builder_result_1318()
+        # #2612: the corrected result is the failed one, so a removal it made is stored with it.
+        failed.outputs["deletions"] = ["old_start.sh"]
         holder: dict = {}
         action = await executor._try_accept_patch(
             self._builder_envelope_1318(),
@@ -786,6 +788,7 @@ class TestAcceptPatch:
         )
         assert action == "accept_patch"
         corrected = holder["patched_result"]
+        assert corrected.outputs["deletions"] == ["old_start.sh"]
         rows = corrected.outputs["validation_result"]["checks"]
 
         # The spine row is re-derived from the PATCHED set, and it passes.
@@ -1170,6 +1173,29 @@ class TestAcceptPatchRetest:
         assert entry.startswith(
             "correction attempt 0: repaired suite retest cleared 2 of 3 failure(s) and added none"
         )
+
+    async def test_a_kept_repair_keeps_the_failed_tasks_removals(self, executor, cycle):
+        """#2612. The next round starts from the retest, whose result carries no removal. Bug
+        caught: a removal the failed task made lost with a kept round, so the file stays in a
+        candidate the task's author meant to drop it from."""
+        from squadops.execution.patch_acceptance import KEPT_OUTPUTS_KEY
+
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest_failing("c")
+        )
+        failed = self._round_failing("a", "b", "c")
+        failed.outputs["deletions"] = ["tests/test_old.py"]
+        holder: dict = {}
+        await executor._try_accept_patch(
+            self._qa_envelope(),
+            failed,
+            self._repair(),
+            holder,
+            repair_rejection_carry={},
+            **self._kwargs(cycle),
+        )
+
+        assert holder[KEPT_OUTPUTS_KEY]["deletions"] == ["tests/test_old.py"]
 
     @pytest.mark.parametrize(
         "round_titles, retest_titles, round_extra",

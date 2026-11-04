@@ -37,6 +37,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _estimate_min_artifacts,
 )
+from squadops.capabilities.handlers.emitted_deletions import read_deletions, without_removed
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.source_containment import assess_source_containment
@@ -384,7 +385,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             variables["disputed_checks_section"] = disputes
         # The shared context slots: the prior cycle, the product, the instructions and the
         # lessons (context_sections).
-        variables.update(await context_sections(renderer, inputs))
+        variables.update(await context_sections(renderer, inputs, task_type=self._task_type))
         rendered = await renderer.render(
             "request.development_develop.focused_build_task", variables
         )
@@ -560,10 +561,20 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         # Parse fenced code blocks
         extracted = extract_fenced_files(
-            content, expected_artifacts=inputs.get("expected_artifacts")
+            content, expected_artifacts=inputs.get("expected_artifacts"), deletions_taken=True
         )
+        # #2612: the removals the emission makes, each judged against the task's view and grant.
+        # One refused fails the emission, named.
+        removals = read_deletions(
+            content, inputs, self._task_type, (f["filename"] for f in extracted)
+        )
+        if removals.refused:
+            return self._fail_result(
+                start_time, inputs, removals.error(), outputs=removals.outputs()
+            )
+        inputs = without_removed(inputs, removals.accepted)
 
-        if not extracted:
+        if not extracted and not removals.found:
             return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
 
         # Build artifact list from extracted files
@@ -628,6 +639,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             "role": self._role,
             "artifacts": artifacts,
             "prompt_provenance": self._prompt_provenance(assembled, rendered),
+            **removals.outputs(),
         }
         self._attach_outcome(outputs, validation, evidence_extra)
 
@@ -688,7 +700,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             # source-backed run changes, the failed cycle a retry continues, this task's
             # instructions and its project's, then the lessons. None handed renders the prompt
             # unchanged.
-            variables.update(await context_sections(renderer, inputs or {}))
+            variables.update(
+                await context_sections(renderer, inputs or {}, task_type=self._task_type)
+            )
             rendered = await renderer.render(
                 "request.development_develop.code_generate",
                 variables,

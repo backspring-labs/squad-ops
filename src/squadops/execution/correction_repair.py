@@ -36,6 +36,7 @@ from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPE
 from squadops.cycles.acceptance_check_spec import is_frontend_source
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
+from squadops.cycles.deletions import DELETIONS_KEY, DELETIONS_REFUSED_KEY
 from squadops.cycles.failure_evidence import (
     OWN_ARTIFACT_FROM_TESTS_PASS_ROW,
     FailureLocus,
@@ -365,6 +366,23 @@ def _emitted_content(artifacts: list[dict[str, Any]]) -> bool:
         for a in artifacts
         if isinstance(a, dict) and not a.get("emission_fallback")
     )
+
+
+def _removals(result: Any, task_type: str) -> tuple[list[str], list[dict[str, str]]]:
+    """A repair step's accepted removals, and its refused ones as dropped writes (#2612): each
+    names its path, the step whose grant or view excluded it, and why."""
+    outputs = getattr(result, "outputs", None) or {}
+    removed = [str(p) for p in outputs.get(DELETIONS_KEY) or () if p]
+    refused = [
+        {
+            "path": str(r.get("path") or ""),
+            "producer_task_type": str(task_type),
+            "reason": f"removal refused: {r.get('detail')} ({r.get('reason')})",
+        }
+        for r in outputs.get(DELETIONS_REFUSED_KEY) or ()
+        if isinstance(r, dict)
+    ]
+    return removed, refused
 
 
 def _anchored_edits_refused(result: Any) -> bool:
@@ -945,6 +963,9 @@ class RepairOutcome:
     #: dropped a failing assertion's subject. The repair handed back nothing, but it emitted a
     #: repair that failed a gate, so the round is spent, never refunded as empty.
     subject_dropped: list[dict[str, Any]] = field(default_factory=list)
+    #: #2612: the product files the round's repair steps removed, each accepted by its handler
+    #: against the view and the repairing step's grant. Not a file: the overlay never carries one.
+    deletions: list[str] = field(default_factory=list)
 
 
 class CorrectionRepair:
@@ -1028,6 +1049,7 @@ class CorrectionRepair:
         repair_disputes: list[dict[str, Any]] = []
         repair_dropped: list[dict[str, str]] = []
         repair_subject_dropped: list[dict[str, Any]] = []
+        repair_deletions: list[str] = []
         anchored_edits_refused = False
         repair_steps_ran = False
         empty_signatures: list[str] = []
@@ -1206,6 +1228,11 @@ class CorrectionRepair:
                 )
                 repair_dropped.extend(_ownership_dropped(repair_result))
                 repair_subject_dropped.extend(_slot_subject_dropped(repair_result))
+                # #2612: a removal rides beside the files, and a refused one is a write the
+                # grant or the view excluded: the round is spent, and the next one told why.
+                removed, refused = _removals(repair_result, task_type)
+                repair_deletions.extend(p for p in removed if p not in repair_deletions)
+                repair_dropped.extend(refused)
                 # #507: re-home repair files onto the failed task's expected
                 # paths before they reach the overlay — a repair emitted under
                 # the wrong directory otherwise lands as a net-new file, patch
@@ -1259,6 +1286,7 @@ class CorrectionRepair:
             offered_scoped=offered_scoped,
             dropped=repair_dropped,
             subject_dropped=repair_subject_dropped,
+            deletions=repair_deletions,
         )
 
     @staticmethod
@@ -1283,7 +1311,12 @@ class CorrectionRepair:
         anchored edit. Its round is spent, and the next one is told which paths were dropped and
         whose grant excluded them. Empty when content survived: that repair is verified as any.
         """
-        if not repair.steps_ran or not repair.dropped or _emitted_content(repair.artifacts):
+        if (
+            not repair.steps_ran
+            or not repair.dropped
+            or _emitted_content(repair.artifacts)
+            or repair.deletions
+        ):
             return ()
         return tuple(repair.dropped)
 
@@ -1312,11 +1345,13 @@ class CorrectionRepair:
         # #2521: so are files write authorization dropped — the repair emitted them, and a
         # refund re-took the round unchanged until the budget was spent (cyc_0df8d7215ef2).
         # #2664: and so is a repair whose merge refused a slot revision for dropping its subject.
+        # #2612: and a repair whose one act was a removal emitted one.
         emission_empty = (
             repair_steps_ran
             and not repair.anchored_edits_refused
             and not repair.dropped
             and not repair.subject_dropped
+            and not repair.deletions
             and not _emitted_content(repair_artifacts)
         )
         if emission_empty:

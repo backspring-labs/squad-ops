@@ -89,6 +89,11 @@ from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
     _detect_stubs,
 )
+from squadops.capabilities.handlers.emitted_deletions import (
+    DeletionReading,
+    read_deletions,
+    without_removed,
+)
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
 from squadops.capabilities.handlers.stub_detection import (
@@ -589,6 +594,8 @@ class _QAEmission:
     artifacts: list[dict[str, Any]]
     evidence_extra: dict[str, Any]
     retake_form: dict[str, Any] | None
+    #: #2612: the removals the emission makes, each judged against the view and the qa grant.
+    removals: DeletionReading = DeletionReading()
 
 
 class QATestHandler(_CycleTaskHandler):
@@ -1170,7 +1177,7 @@ class QATestHandler(_CycleTaskHandler):
         body = strip_edit_blocks(content) if parse.found else content
         whole = [
             art
-            for f in extract_fenced_files(shape.split(body))
+            for f in extract_fenced_files(shape.split(body), deletions_taken=True)
             if (art := shape.artifact_for(f)) is not None
         ]
         edited: list[dict] = []
@@ -1218,7 +1225,9 @@ class QATestHandler(_CycleTaskHandler):
         produced = {str(a["name"]) for a in edited} | {
             f["filename"]
             for f in extract_fenced_files(
-                shape.split(body), expected_artifacts=inputs.get("expected_artifacts")
+                shape.split(body),
+                expected_artifacts=inputs.get("expected_artifacts"),
+                deletions_taken=True,
             )
         }
         carried = (
@@ -1855,6 +1864,7 @@ class QATestHandler(_CycleTaskHandler):
         if isinstance(emission, HandlerResult):
             return emission
         evidence_extra = emission.evidence_extra
+        inputs = without_removed(inputs, emission.removals.accepted)
 
         # SIP-0086: Output validation + self-evaluation
         output_validation_enabled = resolved_config.get("output_validation", False)
@@ -1942,7 +1952,7 @@ class QATestHandler(_CycleTaskHandler):
                 user_prompt = f"{user_prompt}\n{prior_section}"
             # SIP-0112 E.4.3: a source-backed run's test author is shown the product it changes.
             repository_section = await source_repository_section(
-                getattr(context.ports, "request_renderer", None), inputs
+                getattr(context.ports, "request_renderer", None), inputs, task_type=self._task_type
             )
             if repository_section:
                 user_prompt = f"{user_prompt}\n{repository_section}"
@@ -2133,8 +2143,19 @@ class QATestHandler(_CycleTaskHandler):
                 start_time, inputs, "the re-take's edits were refused", outputs=retake_refused
             )
         extracted = extract_fenced_files(
-            shape.split(content), expected_artifacts=inputs.get("expected_artifacts")
+            shape.split(content),
+            expected_artifacts=inputs.get("expected_artifacts"),
+            deletions_taken=True,
         )
+        # #2612: a qa step removes only a test the product's runners hold; one refused fails the
+        # emission, named.
+        removals = read_deletions(
+            shape.split(content), inputs, self._task_type, (f["filename"] for f in extracted)
+        )
+        if removals.refused:
+            return self._fail_result(
+                start_time, inputs, removals.error(), outputs=removals.outputs()
+            )
         # #924: the three outcomes below are indistinguishable afterwards, and P3 renders
         # a REJECTED fill as the same failing state as a MISSING one — so "the author
         # emitted nothing", "the author emitted fills that were refused", and "the author
@@ -2151,7 +2172,7 @@ class QATestHandler(_CycleTaskHandler):
             inputs.get("expected_artifacts"),
             shape.scaffold_bound,
         )
-        if not extracted and not shape.has_fills() and not retake_edited:
+        if not extracted and not shape.has_fills() and not retake_edited and not removals.found:
             return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
 
         artifacts = [
@@ -2176,6 +2197,7 @@ class QATestHandler(_CycleTaskHandler):
             artifacts=artifacts,
             evidence_extra=evidence_extra,
             retake_form=retake_form,
+            removals=removals,
         )
 
     async def _validate_suite(
@@ -2401,6 +2423,7 @@ class QATestHandler(_CycleTaskHandler):
                 "summary": test_result.summary,
             },
             "prompt_provenance": self._prompt_provenance(assembled, rendered),
+            **emission.removals.outputs(),
         }
 
         # Phase 6: outcome classification, and the validation evidence on BOTH branches

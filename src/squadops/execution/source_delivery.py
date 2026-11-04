@@ -26,8 +26,10 @@ A second regression, a round that repairs nothing, or a spent budget fails the r
 verification's summary.
 
 The squad's change is the files its source and test authors produced, at their latest accepted
-content, that differ from the checkout's. A file it rewrites keeps the checkout's CRLF line
-endings when the original used them throughout. A run's own documents (plans, reports) are
+content, that differ from the checkout's, and the checkout's files they removed (#2612, SIP-0112
+H.23). A removal is applied to the candidate as the patch's ``None`` for its path, and named in
+the verification's ``changed_paths`` like a write. A file it rewrites keeps the checkout's CRLF
+line endings when the original used them throughout. A run's own documents (plans, reports) are
 never part of the product.
 """
 
@@ -46,6 +48,7 @@ from typing import Any
 from uuid import uuid4
 
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.cycles.deletions import is_deletion
 from squadops.cycles.delivered_tree import WORKSPACE_ARTIFACT_TYPES
 from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
 from squadops.cycles.models import ArtifactRef, Cycle
@@ -100,19 +103,22 @@ class SourceDelivery:
     captured_commit: str | None = None
     #: The pinned commit's tree the candidate was built on, and the squad's changes to it: the
     #: two trees a repository-backed increment's acceptance is judged on (SIP-0109 §24cd point 6).
+    #: A removed file's change is ``None`` (#2612).
     head: CheckoutTree | None = None
-    changes: Mapping[str, bytes] = field(default_factory=dict)
+    changes: Mapping[str, bytes | None] = field(default_factory=dict)
 
 
 def squad_changes(
     stored_artifacts: list[tuple[str, ArtifactRef]],
     contents: Mapping[str, bytes],
     checkout: Mapping[str, bytes],
-) -> tuple[dict[str, bytes], tuple[str, ...]]:
-    """The product files the squad changed or added: each path's latest accepted content from a
-    source or test author, where it differs from the checkout's. ``contents`` maps artifact ID
+) -> tuple[dict[str, bytes | None], tuple[str, ...]]:
+    """The product files the squad changed, added or removed: each path's latest accepted content
+    from a source or test author, where it differs from the checkout's, and ``None`` for a
+    checkout file whose latest accepted entry is a removal (#2612). ``contents`` maps artifact ID
     to its bytes. Also the paths an author emitted that aren't the product's files, which the
-    candidate leaves out and the verification record names."""
+    candidate leaves out and the verification record names. A removal of a path the checkout
+    doesn't hold removes only what the squad wrote there, and is named with them."""
     directories = {str(parent) for path in checkout for parent in PurePosixPath(path).parents}
     directories.discard(".")
     latest: dict[str, str] = {}
@@ -131,12 +137,23 @@ def squad_changes(
         # squad's evidence, never the product's files (FR-19).
         if ref.artifact_type in EVIDENCE_ARTIFACT_TYPES:
             continue
+        if is_deletion(ref):
+            if ref.filename in checkout:
+                latest[ref.filename] = art_id
+            else:
+                latest.pop(ref.filename, None)
+                left_out.add(ref.filename)
+            continue
         if _is_product_file(ref, checkout, directories):
             latest[ref.filename] = art_id
         else:
             left_out.add(ref.filename)
-    changes = {}
+    removed = {art_id for art_id, ref in stored_artifacts if is_deletion(ref)}
+    changes: dict[str, bytes | None] = {}
     for path, art_id in sorted(latest.items()):
+        if art_id in removed:
+            changes[path] = None
+            continue
         content = _line_endings_of(checkout.get(path), contents[art_id])
         if checkout.get(path) != content:
             changes[path] = content
@@ -284,13 +301,19 @@ async def deliver_source_change(
     if not changes:
         named = f"; it left out what isn't the product's: {', '.join(left_out)}" if left_out else ""
         raise SourceDeliveryRefused(f"the run changed no file of the product{named}")
-    binary = sorted(p for p in changes if _is_binary(checkout.files.get(p)))
+    binary = sorted(
+        p for p, c in changes.items() if c is not None and _is_binary(checkout.files.get(p))
+    )
     if binary:
         raise SourceDeliveryRefused(
             f"the run wrote text over binary files, which 2.4 doesn't edit: {', '.join(binary)}"
         )
 
-    candidate_files = {**checkout.files, **changes}
+    # #2612: a removed file is absent from the candidate, as the sandbox's patch leaves it.
+    candidate_files = {
+        **{p: c for p, c in checkout.files.items() if changes.get(p, c) is not None},
+        **{p: c for p, c in changes.items() if c is not None},
+    }
     tree_identity = FileTree.of(candidate_files).identity
     workspace_id = delivery_workspace(run_id, tree_identity)
     # A resumed run delivers again: an earlier attempt's workspace, its head already that
@@ -319,7 +342,8 @@ async def deliver_source_change(
             cycle_id=workspace_id,
             origin=RevisionOrigin.AGENT_PATCH,
             files=candidate_files,
-            executable=checkout.executable,
+            # a removed file's mode drops out with it, as the sandbox's patch drops it
+            executable=frozenset(checkout.executable) & candidate_files.keys(),
         )
         if candidate.revision_id != expected.revision_id:
             raise SourceDeliveryRefused(
