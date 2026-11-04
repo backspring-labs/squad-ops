@@ -31,7 +31,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 
 ---
 
-## 1. Accepted SIPs (14: 9 after the v2.0.0 sweep and SIP-0107's promotion after the tag, then SIP-0110 accepted 2026-10-06, SIP-0111 accepted 2026-10-09, SIP-0112 and SIP-0113 accepted 2026-10-17, and SIP-0114 accepted 2026-10-19)
+## 1. Accepted SIPs (15: 9 after the v2.0.0 sweep and SIP-0107's promotion after the tag, then SIP-0110 accepted 2026-10-06, SIP-0111 accepted 2026-10-09, SIP-0112 and SIP-0113 accepted 2026-10-17, SIP-0114 accepted 2026-10-19, and SIP-0115 accepted 2026-11-03)
 
 | SIP | shipped | remaining, and where it is placed | promote? | ledger |
 |---|---|---|---|---|
@@ -49,6 +49,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 | **0112** Project Lifecycle Management (2.4's MacBook-lane feature; accepted 2026-10-17, PR #2401) | nothing | **2.4.0:** the shared fixture #2407, E.4.1 #2408, E.4.2 #2409, E.4.3 #2410, E.4.4 #2411 and greenfield E.4.6 #2412 (shipped by the cut, G6). E.4.5 (lifecycle completeness) unplaced, deliberately: required before close, not in 2.4. E.4.7 (direct attachment) unplaced, deliberately: optional. Q30–Q36 and Q40 ruled; seven contracts shared with Outcome Evaluation (§8, cluster 15) | no | added at acceptance |
 | **0113** Outcome Evaluation (2.4's Spark-lane feature; accepted 2026-10-17, PR #2406) | phase 0 (#1959, #1960, #1937; v2.1.0) | **2.4.0, phase 1:** the scenario store #2413, the runner #2414, the evaluation record #2415, the quality baselines #2416, the intervention ledger #2417, contribution and the derived metrics #2418. **After the window:** §10j's seeded quality reading, #2562, and §10k's browser runner with page scenarios, #2564, split from #2414 (both proposed). **Phase 2** unplaced until D4 rules on the window's record. A1 to A4 ruled (A4 through Q40); seven contracts shared with SIP-0112 (cluster 15) | no | added at acceptance |
 | **0114** Cycle Request-Profile Naming Taxonomy (accepted 2026-10-19, after the MacBook lane's review, PR #2494) | **2.4.0:** the rename, #316, PR #2500, narrowed to the operator profiles (§11a). Q13 ruled: pinned definitions resolve old names indefinitely | nothing | **yes**, at the 2.4 cut's sweep | added at acceptance |
+| **0115** Project Goals and Backlog (2.6's headline; accepted 2026-11-03 on the owner's rulings of the 2.6 plan, D1; Q41–Q44 ruled as recommended) | nothing | **2.6.0:** slices 1–5, #2884–#2888. Slice 6, the repository export, is unplaced, deliberately: not in 2.6 | no: slices 1–5 open | added 2026-11-03 |
 
 **Implemented SIPs promoted with open items.** Each needs a text amendment, not a status change. The
 items go to each SIP's next touch, with Q22 for the decisions.
@@ -81,7 +82,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Memory Entry Points (epic #2173; drafted 2026-10-09 on the owner's direction) | **accepted 2026-10-09 and absorbed into SIP-0110** (§5g, Appendix A); the proposal file is **deprecated** with a pointer there | 2.3.0 (#2174, #2175, #2176), 2.4.0 (#2177–#2183), 2.5.0 (#2184): SIP-0110's ledger | Q25–Q29, ruled |
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (the A/B in 2.4.0, the 2.4 plan's D6) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
-| Project Goals and Backlog (`SIP-Project-Goals-Backlog`; the owner's direction, drafted 2026-10-30) | live | **2.6.0's headline,** by the 2.6 plan adopted 2026-11-03 (D1). Slices 1–5 are in 2.6, and slice 6, the repository export, is not. Accepted, with its slices placed, in the PR that files their issues | ruled 2026-11-03 |
+| SIP-0115 Project Goals and Backlog (the owner's direction, drafted 2026-10-30; accepted 2026-11-03) | live | **2.6.0's headline,** by the 2.6 plan adopted 2026-11-03 (D1). Slices 1–5 are placed in 2.6.0 (#2884–#2888), and slice 6, the repository export, is not | ruled 2026-11-03 |
 | Campaign Self-Improvement and Test Bay (`SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements`) | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
 | Capability-Backed Agents | **deferred to 3.x**; premise to correct (#400/#401) | 3.x | ruled |
 | Agent Embodiment Runtime | **deferred to 3.x** | 3.x | ruled |
