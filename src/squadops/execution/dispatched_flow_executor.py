@@ -34,10 +34,12 @@ from squadops.campaigns.runner_acceptance import CandidateNotDelivered
 from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
+    ARTIFACT_CONTENTS_LIMIT_BYTES,
     INCREMENT_CANDIDATE_FILTER,
     LANDING_PRIOR_OUTPUTS,
     PRIOR_SLOT_FAILURES_KEY,
     RETAKE_CURRENT_FILES_KEY,
+    ArtifactFilter,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
@@ -1854,26 +1856,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if ref.metadata.get("producing_task_type", "") not in REPAIR_TASK_TYPES
             ]
 
-        producing_tasks = set(filter_spec.get("by_producing_task", []))
-        type_filter = set(filter_spec.get("by_type", []))
-        type_fallback = set(filter_spec.get("by_type_fallback", []))
-
-        selected_ids: list[str] = []
-        for art_id, ref in stored_artifacts:
-            producing_task = ref.metadata.get("producing_task_type", "")
-            if producing_task and producing_task in producing_tasks:
-                selected_ids.append(art_id)
-            elif producing_task and producing_task in type_filter:
-                # by_type filter applies to all artifacts with matching type
-                pass  # handled below
-            elif not producing_task and ref.artifact_type in type_fallback:
-                # Fallback for artifacts without provenance (e.g., injected plan refs)
-                selected_ids.append(art_id)
-
-            # by_type: match artifact_type regardless of producing_task
-            if type_filter and ref.artifact_type in type_filter:
-                if art_id not in selected_ids:
-                    selected_ids.append(art_id)
+        # The selection rule is the filter's own (``ArtifactFilter.selects``), which the size
+        # preflight reads too (#2889). Fallback types reach artifacts with no provenance
+        # (e.g., injected plan refs).
+        selection = ArtifactFilter.from_spec(filter_spec)
+        selected_ids = [
+            art_id
+            for art_id, ref in stored_artifacts
+            if selection.selects(ref.metadata.get("producing_task_type", ""), ref.artifact_type)
+        ]
 
         # Resolve content (D3: 512KB limit). Per filename, later-in-order wins
         # (RC3: the latest correction attempt supersedes earlier ones) with ONE
@@ -1886,7 +1877,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         contents: dict[str, str] = {}
         seeded_holder: set[str] = set()
         total_bytes = 0
-        limit = 512 * 1024
+        limit = ARTIFACT_CONTENTS_LIMIT_BYTES
 
         for art_id in selected_ids:
             try:

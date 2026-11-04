@@ -35,6 +35,7 @@ from squadops.projects.checkout import (
     source_repository_input,
 )
 from squadops.projects.configuration import baseline_tree
+from squadops.projects.models import CheckoutTree
 from squadops.projects.source_context import ProjectSourceContext
 
 
@@ -50,31 +51,8 @@ async def seed_checkout_artifacts(
     context = cycle.source_context
     if context is None:
         return []
-    if repository is None:
-        raise SourceCheckoutRefused("this runtime has no managed clone to read the source from")
-    project = await registry.get_project(cycle.project_id)
-    configuration = await registry.get_development_configuration(
-        cycle.project_id, context.development_configuration_revision
-    )
-    tree = await baseline_tree(
-        repository,
-        cycle.project_id,
-        context.repo_uri,
-        project.source.base_ref,
-        context.pinned_commit,
-    )
-    if tree.capability_gaps:
-        raise SourceCheckoutRefused(
-            "capability gap: the run cannot carry " + "; ".join(tree.capability_gaps)
-        )
-    manifest = manifest_of(
-        context.pinned_commit,
-        tree.files,
-        tree.executable,
-        [s.path for s in configuration.instruction_sources],
-        classify=lambda path: _classify_file(path)[0],
-        checks=[(c.id, c.argv) for c in configuration.commands.checks],
-        runners=await _runners(registry, cycle.project_id, context),
+    tree, manifest = await checkout_of(
+        cycle.project_id, context, repository=repository, registry=registry
     )
     provenance = {
         "producing_task_type": SOURCE_CHECKOUT,
@@ -92,17 +70,59 @@ async def seed_checkout_artifacts(
             provenance,
         )
     ]
-    for path, content in sorted(tree.files.items()):
-        # A binary file or a generated lockfile reaches no task: every view of the tree is
-        # text a squad reads, and a context resolution would spend its 512 KB on it. The
-        # manifest lists it, and verification and capture read it from the clone.
-        if path in manifest.held_back:
-            continue
-        artifact_type, media_type = _classify_file(path)
+    for path, content, artifact_type, media_type in seeded_files(tree, manifest):
         ids.append(
             await _store(vault, cycle, run_id, path, content, artifact_type, media_type, provenance)
         )
     return ids
+
+
+def seeded_files(
+    tree: CheckoutTree, manifest: CheckoutManifest
+) -> list[tuple[str, bytes, str, str]]:
+    """The checkout's files a run is seeded with, in the order it stores them: each path, its
+    content, its artifact type and its media type. Read for the seeding and for the size preflight
+    (#2889), which measures what the run's tasks will be handed.
+
+    A binary file or a generated lockfile reaches no task: every view of the tree is text a squad
+    reads, and a context resolution would spend its 512 KB on it. The manifest lists it, and
+    verification and capture read it from the clone."""
+    return [
+        (path, content, *_classify_file(path))
+        for path, content in sorted(tree.files.items())
+        if path not in manifest.held_back
+    ]
+
+
+async def checkout_of(
+    project_id: str, context: ProjectSourceContext, *, repository: Any, registry: Any
+) -> tuple[CheckoutTree, CheckoutManifest]:
+    """The product's tree at ``context``'s pinned commit and its checkout manifest, as a run is
+    seeded with them: read here for the run's seeding and for a Campaign's size preflight (#2889).
+    Refused (:class:`SourceCheckoutRefused`) with no clone to read, or a tree a run can't carry."""
+    if repository is None:
+        raise SourceCheckoutRefused("this runtime has no managed clone to read the source from")
+    project = await registry.get_project(project_id)
+    configuration = await registry.get_development_configuration(
+        project_id, context.development_configuration_revision
+    )
+    tree = await baseline_tree(
+        repository, project_id, context.repo_uri, project.source.base_ref, context.pinned_commit
+    )
+    if tree.capability_gaps:
+        raise SourceCheckoutRefused(
+            "capability gap: the run cannot carry " + "; ".join(tree.capability_gaps)
+        )
+    manifest = manifest_of(
+        context.pinned_commit,
+        tree.files,
+        tree.executable,
+        [s.path for s in configuration.instruction_sources],
+        classify=lambda path: _classify_file(path)[0],
+        checks=[(c.id, c.argv) for c in configuration.commands.checks],
+        runners=await _runners(registry, project_id, context),
+    )
+    return tree, manifest
 
 
 async def _runners(
