@@ -8,6 +8,9 @@
 --
 -- The idempotency key is the write's own, kept on its row: the goal set adds nothing to the
 -- Project Record, so its writes are not project_record_events.
+--
+-- Not the held-out suite's store: the sweep (scripts/dev/heldout_sweep.py) searches this table
+-- with every other table of the database (§7). A goal set never holds a scenario's steps or values.
 
 CREATE TABLE IF NOT EXISTS project_goal_set_revisions (
     project_id       TEXT NOT NULL REFERENCES project_records (project_id),

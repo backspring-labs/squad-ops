@@ -14,8 +14,9 @@ author and reason (as a Development Configuration revision is, SIP-0112 §B.5). 
 active goal set: its latest revision (Q44).
 
 Ids are the author's, never minted or renumbered here, so an item keeps its id, and its history,
-when it moves. Each list's ids are unique, and a backlog item and a candidate never share one: a
-promoted candidate keeps its id (slice 3), so a shared one would name two things.
+when it moves. Each list's ids are unique, and a backlog item and a candidate never share one, so a
+candidate can keep its id when it is promoted (slice 3) and no id names two things (SIP-0115
+§10a).
 
 Nothing derived is stored: an item's status is read from each Campaign's control log (§4,
 slice 2), and no field here holds one.
