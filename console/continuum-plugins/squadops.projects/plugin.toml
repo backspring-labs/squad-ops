@@ -2,7 +2,7 @@
 id = "squadops.projects"
 name = "Projects"
 version = "0.1.0"
-description = "Project browsing and squad profile management."
+description = "Project browsing, goal sets and squad profile management."
 required = false
 
 [plugin.ui]
@@ -25,6 +25,14 @@ perspective = "discovery"
 component = "squadops-projects-list"
 priority = 800
 
+# SIP-0115 §8.3 (slice 4, #2887): the selected Project's goal set, its backlog as a chosen
+# Campaign stands on it, the candidates waiting and the revision history.
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "discovery"
+component = "squadops-projects-goals"
+priority = 700
+
 [[contributions.panel]]
 slot = "ui.slot.main"
 perspective = "discovery"
@@ -35,4 +43,11 @@ priority = 600
 id = "squadops.set_active_profile"
 label = "Set Active Profile"
 action = "squadops.set_active_profile"
+danger_level = "confirm"
+
+# The goals panel's edit: the Project's next goal-set revision, written through the runtime API.
+[[contributions.command]]
+id = "squadops.revise_goal_set"
+label = "Write Goal-Set Revision"
+action = "squadops.revise_goal_set"
 danger_level = "confirm"

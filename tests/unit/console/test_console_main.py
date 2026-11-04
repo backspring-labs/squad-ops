@@ -73,6 +73,7 @@ class TestConsoleMain:
             "squadops.set_baseline",
             "squadops.download_artifact",
             "squadops.set_active_profile",
+            "squadops.revise_goal_set",
         }
         assert set(COMMAND_HANDLERS.keys()) == expected_keys
 

@@ -280,6 +280,20 @@ async def squadops_set_active_profile(args: dict, context: dict) -> dict:
     return resp.json()
 
 
+async def squadops_revise_goal_set(args: dict, context: dict) -> dict:
+    """Write a Project's next goal-set revision (SIP-0115 §8.3, slice 4, #2887): the goals panel's
+    edit. ``expected_revision`` is the revision the edit began from, so a revision written first
+    by someone else is the API's 409 ``STALE_GOAL_SET_REVISION``, relayed to the panel as is."""
+    project_id = args["project_id"]
+    body = {k: v for k, v in args.items() if k != "project_id"}
+    resp = await _api_request(
+        "POST", f"/api/v1/projects/{project_id}/goal-set/revisions", json=body
+    )
+    if resp.status_code >= 400:
+        return {"error": resp.text, "status_code": resp.status_code}
+    return resp.json()
+
+
 # ── Command handler registry ────────────────────────────────────────────────
 
 COMMAND_HANDLERS = {
@@ -294,6 +308,7 @@ COMMAND_HANDLERS = {
     "squadops.set_baseline": squadops_set_baseline,
     "squadops.download_artifact": squadops_download_artifact,
     "squadops.set_active_profile": squadops_set_active_profile,
+    "squadops.revise_goal_set": squadops_revise_goal_set,
 }
 
 # ── Application lifecycle ───────────────────────────────────────────────────
