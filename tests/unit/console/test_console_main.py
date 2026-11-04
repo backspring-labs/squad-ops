@@ -262,6 +262,42 @@ class TestChatProxy:
         assert turn.text == 'data: {"text": "hi"}\n\n'
 
 
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/campaigns"),
+        ("POST", "/api/v1/projects/p1/goal-set/revisions"),
+        ("GET", "/api/v1/chat/sessions"),
+        ("POST", "/api/v1/chat/sessions/s1/captures"),
+    ],
+    ids=["passthrough GET", "passthrough POST", "chat GET", "chat POST"],
+)
+async def test_the_proxies_forward_the_query_string(monkeypatch, method, path):
+    """#2915. Bug caught: the console's ``/api/v1`` proxies forwarded the path alone, so through
+    the console's port ``?project_id=`` reached the runtime API missing (a 422) and ``?limit=`` and
+    ``?offset=`` read as the default page. A repeated key keeps every value, in order."""
+    import httpx
+    import main as console_main
+
+    seen: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.query.decode())
+        return httpx.Response(200, json={})
+
+    async def no_session(request):
+        return None
+
+    upstream = httpx.AsyncClient(transport=httpx.MockTransport(answer), base_url="http://api")
+    monkeypatch.setattr(console_main, "_api_client", upstream)
+    monkeypatch.setattr(console_main, "_authorization_for", no_session)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        await client.request(method, f"{path}?project_id=p1&limit=5&tag=a&tag=b", json={})
+        await client.request(method, path, json={})
+
+    assert seen == ["project_id=p1&limit=5&tag=a&tag=b", ""]
+
+
 def test_every_plugins_nav_opens_a_perspective_the_shell_knows():
     """The second read of PR #2524. Bug caught: a plugin's nav entry opening a perspective neither
     Continuum ships nor this console registers at boot, so the entry opens nothing (the Memory

@@ -518,6 +518,7 @@ async def proxy_chat_stream(path: str, request: Request):
         _api_client.build_request(
             "POST",
             f"/api/v1/chat/{path}",
+            params=request.query_params.multi_items(),
             content=body if body else None,
             headers=headers,
         ),
@@ -570,7 +571,9 @@ async def proxy_chat_get(path: str, request: Request):
         headers["Authorization"] = authorization
 
     assert _api_client is not None
-    resp = await _api_client.get(f"/api/v1/chat/{path}", headers=headers)
+    resp = await _api_client.get(
+        f"/api/v1/chat/{path}", params=request.query_params.multi_items(), headers=headers
+    )
 
     return FastAPIResponse(
         content=resp.content,
@@ -619,6 +622,7 @@ async def proxy_runtime_api(path: str, request: Request):
     resp = await _api_client.request(
         request.method,
         f"/api/v1/{path}",
+        params=request.query_params.multi_items(),
         content=body if body else None,
         headers=headers,
     )
