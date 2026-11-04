@@ -25,10 +25,14 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from functools import partial
 from typing import Any
 
-from squadops.campaigns.campaign_branch import branch_base, head
+from squadops.campaigns.acceptance import Held
+from squadops.campaigns.acceptance_run import FrozenCriterion
+from squadops.campaigns.campaign_branch import BranchBase, branch_base, head
+from squadops.campaigns.evaluator_trees import BundleIncomplete
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -44,6 +48,14 @@ from squadops.campaigns.review_push import (
     campaign_push_lock,
     review_body,
     review_title,
+)
+from squadops.campaigns.runner_acceptance import (
+    ProductTestSurface,
+    RunnerAcceptance,
+    RunnerSetup,
+    SandboxTree,
+    freeze_product_bundle,
+    frozen_on_runner,
 )
 
 logger = logging.getLogger(__name__)
@@ -145,6 +157,20 @@ def criterion_paths(log: Iterable[ControlLogEntry]) -> tuple[str, ...]:
     return tuple(paths)
 
 
+def live_criteria(log: Iterable[ControlLogEntry]) -> dict[str, str]:
+    """Each criterion the Campaign's promotions froze and none retired, by id, with its test file:
+    what its branch must still hold (§8.1)."""
+    live: dict[str, str] = {}
+    for e in log:
+        if e.operation is ControlOperation.PROMOTE and e.outcome is ControlOutcome.APPLIED:
+            for criterion_id in e.binding.get("retired_criteria") or ():
+                live.pop(criterion_id, None)
+            for criterion in e.binding.get("frozen_criteria") or ():
+                if criterion.get("test_path"):
+                    live[criterion["criterion_id"]] = criterion["test_path"]
+    return live
+
+
 class CampaignContribution:
     """Opens a closed Campaign's contribution, after its close commits (§24dc)."""
 
@@ -155,11 +181,15 @@ class CampaignContribution:
         projects: Any,
         repository: Any,
         forge: Any,
+        #: Where the moved criteria are run before anything leaves. ``None`` where the runtime has
+        #: no sandbox: a contribution that moved a file is then refused, named.
+        sandbox: Any | None,
     ) -> None:
         self._campaigns = campaigns
         self._projects = projects
         self._repository = repository
         self._forge = forge
+        self._sandbox = sandbox
 
     async def open(
         self, campaign_id: str, *, token: str, actor: str, actor_role: str
@@ -213,10 +243,109 @@ class CampaignContribution:
                 token=token,
                 actor=actor,
                 idempotency_key=f"campaign-contribution:{campaign_id}",
+                verify=partial(
+                    self._criteria_held,
+                    campaign_id,
+                    campaign.project_id,
+                    base,
+                    live_criteria(log),
+                ),
             )
         except (ContributionRefused, SourceUnavailable, ReviewRequestFailed) as e:
             await self._failed(campaign_id, e, actor, actor_role)
             raise
+
+    async def _criteria_held(
+        self,
+        campaign_id: str,
+        project_id: str,
+        base: BranchBase,
+        criteria: Mapping[str, str],
+        moved: Any,
+    ) -> None:
+        """Each live criterion the move touched, run alone on the product's runner in the sandbox,
+        on the moved tree: the acceptance path a rebase's frozen criteria take (§24cd point 5). A
+        move changes where a test file runs, so a file that passed at the root may not pass under
+        ``tests/``. A retired criterion moves and isn't run.
+
+        Raises:
+            squadops.projects.contribution.ContributionRefused: No sandbox; no derived profile at
+                the branch's base; a moved file no runner holds, or a runner other than the one
+                that held it; a bundle that can't be frozen; or one not held, each named.
+        """
+        # deferred (pair): squadops.cycles imports this package at load
+        from squadops.cycles.models import DerivedProfileNotFoundError
+
+        # deferred (pair): squadops.projects imports this package at load
+        from squadops.projects.contribution import ContributionRefused
+
+        if self._sandbox is None:
+            raise ContributionRefused(
+                "this runtime has no sandbox to run the moved criterion files in, so they can't "
+                "be verified and nothing leaves"
+            )
+        try:
+            profile = await self._projects.get_derived_profile(
+                project_id, at=(base.commit, base.revision)
+            )
+        except DerivedProfileNotFoundError as e:
+            raise ContributionRefused(
+                f"no derived profile at {base.commit[:12]}, revision {base.revision}, names the "
+                "product's runners, so the moved criterion files can't be verified"
+            ) from e
+        tree = SandboxTree(dict(moved.files), moved.executable)
+        surface = ProductTestSurface.of(profile, moved.moves.values())
+        frozen = []
+        for criterion_id, old in criteria.items():
+            new = moved.moves.get(old)
+            if new is None:
+                continue
+            runner = profile.runner_for(new)
+            before = profile.runner_for(old)
+            if runner is None or (before is not None and before.runner != runner.runner):
+                raise ContributionRefused(
+                    f"criterion {criterion_id} moved to {new}, where no runner of the product "
+                    f"that held {old} reads it"
+                )
+            try:
+                bundle = freeze_product_bundle(criterion_id, tree.file_tree, new, surface, runner)
+            except (BundleIncomplete, ValueError) as e:
+                raise ContributionRefused(
+                    f"criterion {criterion_id} can't be run at {new}: {e}"
+                ) from e
+            frozen.append(FrozenCriterion(criterion_id, new, bundle))
+        configuration = await self._projects.get_development_configuration(
+            project_id, base.revision
+        )
+        try:
+            results, _runs = await frozen_on_runner(
+                RunnerAcceptance(
+                    sandbox=self._sandbox,
+                    profile=profile,
+                    setup=RunnerSetup.of(configuration.commands),
+                    workspace_prefix=f"contribution-{campaign_id}-",
+                ),
+                subject_id=campaign_id,
+                tree=tree,
+                frozen=frozen,
+                surface=surface,
+            )
+        except Exception as e:
+            logger.exception("campaign_contribution_unverified", extra={"campaign": campaign_id})
+            raise ContributionRefused(
+                f"the sandbox couldn't run the moved criterion files ({type(e).__name__})"
+            ) from e
+        paths = {f.criterion_id: f.test_path for f in frozen}
+        failed = [
+            f"{r.criterion_id} at {paths[r.criterion_id]}: {r.held} ({r.detail})"
+            for r in results
+            if r.held is not Held.HELD
+        ]
+        if failed:
+            raise ContributionRefused(
+                "a moved criterion doesn't hold where it moved, so nothing leaves: "
+                + "; ".join(failed)
+            )
 
     def _refuse_unless_due(self, campaign: Campaign, log: list[ControlLogEntry]) -> None:
         # deferred (pair): squadops.projects imports this package at load

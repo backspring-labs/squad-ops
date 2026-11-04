@@ -27,7 +27,7 @@ doesn't delegate, so a ``direct_push`` Project is refused by name.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -53,6 +53,16 @@ CRITERION_DIRECTORY = "tests"
 
 class ContributionRefused(RuntimeError):
     """A contribution that can't be made, with the reason. Nothing left the deploy."""
+
+
+@dataclass(frozen=True)
+class MovedTree:
+    """A Campaign's head with its criterion files moved, before it is committed (SIP-0109 §24dc):
+    the whole tree, its executable files, and each move, old path to new."""
+
+    files: Mapping[str, bytes]
+    executable: frozenset[str]
+    moves: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -329,13 +339,16 @@ async def contribute_campaign(
     token: str,
     actor: str,
     idempotency_key: str,
+    verify: Callable[[MovedTree], Awaitable[None]],
 ) -> tuple[Contribution, bool]:
     """Contribute a closed Campaign's branch through the Project's mode, and record it pending
     (SIP-0109 §24dc, #2861).
 
     The commit is ``head`` with ``criterion_paths`` moved (``relocated_criterion_files``), as one
-    commit on it, or ``head`` itself when none of them is on it. ``base`` is the branch's base, so
-    the contribution's change is ``base..commit``.
+    commit on it, or ``head`` itself when none of them is on it. A move changes where a file runs,
+    so ``verify`` is given the moved tree before anything is committed or leaves, and refuses by
+    raising ``ContributionRefused``. ``base`` is the branch's base, so the contribution's change is
+    ``base..commit``.
     - ``review_request``: pushed as ``squadops/<campaign>``, never forced, and the review request
       opened. An open one a review push made is returned by the forge rather than duplicated
       (the port's contract), so the Campaign has one.
@@ -377,7 +390,7 @@ async def contribute_campaign(
             ),
         )
     commit, moved = await _with_criteria_moved(
-        project_id, campaign_id, head, criterion_paths, repository
+        project_id, campaign_id, head, criterion_paths, repository, verify
     )
     branch = review_url = None
     if source is not None:
@@ -424,11 +437,12 @@ async def _with_criteria_moved(
     head: str,
     criterion_paths: Iterable[str],
     repository: Any,
+    verify: Callable[[MovedTree], Awaitable[None]],
 ) -> tuple[str, dict[str, str]]:
     """The commit a Campaign contributes, and the files it moved: ``head`` when none of its
-    criterion files is on it, or one commit on ``head`` with them moved. A retry reuses the commit
-    an earlier attempt made at the contribution ref on this head, so a branch a crash left pushed
-    is up to date rather than refused."""
+    criterion files is on it, or one commit on ``head`` with them moved, which ``verify`` holds
+    first. A retry reuses the commit an earlier attempt made at the contribution ref on this
+    head, so a branch a crash left pushed is up to date rather than refused."""
     tree = await repository.tree_at(project_id, head)
     moves = {
         old: new
@@ -448,6 +462,9 @@ async def _with_criteria_moved(
             "the branch's tree can't be committed whole with its criterion files moved: "
             + "; ".join(tree.capability_gaps)
         )
+    files = {moves.get(path, path): content for path, content in tree.files.items()}
+    executable = frozenset(moves.get(path, path) for path in tree.executable)
+    await verify(MovedTree(files, executable, moves))
     ref = campaign_contribution_ref(campaign_id)
     held = await repository.ref_commit(project_id, ref)
     if held is not None and held != head and await repository.is_ancestor(project_id, head, held):
@@ -455,8 +472,8 @@ async def _with_criteria_moved(
     commit = await repository.commit_tree(
         project_id,
         parent=head,
-        files={moves.get(path, path): content for path, content in tree.files.items()},
-        executable={moves.get(path, path) for path in tree.executable},
+        files=files,
+        executable=executable,
         ref=ref,
         message=_moves_stated(
             f"SquadOps campaign {campaign_id}: its criterion files, renamed for the product\n\n"

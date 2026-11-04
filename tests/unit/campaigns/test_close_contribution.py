@@ -63,14 +63,20 @@ from squadops.projects.contribution import (
     contribute_campaign,
     relocated_criterion_files,
 )
+from squadops.projects.derived_profile import parse_profile
 from squadops.projects.source_context import parse_source_context
 from squadops.projects.workspaces import capture_inherited_baseline
+from squadops.sandbox.evidence import OperationEvidenceJournal
+from squadops.sandbox.service import SandboxService
+from squadops.sandbox.workspace import WorkspaceStore
 from tests.fixtures.goal_set import GoalSetStore
 from tests.fixtures.shared_contract.repository import _git, recorded, tracked_files
 from tests.unit.api.test_campaign_calibration_record import PROJECT
 from tests.unit.campaigns.builders import T0, campaign, move, policy
+from tests.unit.campaigns.test_branch_rebase import _with_pytest_runner
 from tests.unit.campaigns.test_campaign_branch import CID, NOW, REPORT, _added
 from tests.unit.campaigns.test_campaign_branch import _World as _BranchWorld
+from tests.unit.campaigns.test_runner_acceptance_sandbox import _ReadingBackend
 from tests.unit.projects.test_workspaces import _LocalSandbox
 
 TOKEN = "github_pat_inventedForTheTest0002"
@@ -145,11 +151,22 @@ class _World(_BranchWorld):
         _git(self.repo.path, "config", "user.useConfigOnly", "true")
         self.projects.contributions = self.book.contributions
         self.projects.record_contribution = self.book.record_contribution
-        self.contribution = CampaignContribution(
+        store = WorkspaceStore(tmp_path / "reading-sandbox")
+        self.reading_sandbox = SandboxService(
+            store=store,
+            journal=OperationEvidenceJournal(tmp_path / "reading-sandbox"),
+            backend=_ReadingBackend(store),
+        )
+        self.contribution = self.contributing(sandbox=self.reading_sandbox)
+
+    def contributing(self, *, sandbox) -> CampaignContribution:
+        """The service as ``main`` wires it."""
+        return CampaignContribution(
             campaigns=self.campaigns,
             projects=self.projects,
             repository=self.clones,
             forge=self.forge,
+            sandbox=sandbox,
         )
 
     def progress_on(self, repository) -> CampaignProgress:
@@ -206,8 +223,25 @@ class _World(_BranchWorld):
             ),
         )
         await self.progress.calibration_recorded(CID)
+        self.runner_rooted_at(".")
 
-    async def accepted_with_criterion(self, cycle_id: str = "cyc_inc000000001") -> str:
+    def runner_rooted_at(self, *roots: str) -> None:
+        """The derived profile at the pin, with a pytest runner under ``roots`` beside Tally's
+        unittest one, reading its tests by id."""
+        held = self.projects.profile
+        document = _with_pytest_runner(recorded("derived_profile", "valid"))
+        document["test_runners"][-1]["roots"] = list(roots)
+        document["commit"] = held.commit
+        document["development_configuration_revision"] = held.development_configuration_revision
+        self.projects.profile = parse_profile(document)
+
+    async def accepted_with_criterion(
+        self,
+        cycle_id: str = "cyc_inc000000001",
+        *,
+        criterion: bytes = b"def test_t1():\n    pass\n",
+        beside: dict[str, bytes] | None = None,
+    ) -> str:
         """An increment that adds a function to the report module and its criterion's own test
         file at the product's root, as campaign 4's were placed: delivered for real, its
         evaluation freezing the criterion at that path. Its end is heard. Returns its capture."""
@@ -252,7 +286,8 @@ class _World(_BranchWorld):
         original = tracked_files(self.repo.path, self.repo.second_commit)[REPORT]
         emitted = [
             await self._stored(cycle, run, REPORT, "source", original + _added("total")),
-            await self._stored(cycle, run, CRITERION, "source", b"def test_t1():\n    pass\n"),
+            await self._stored(cycle, run, CRITERION, "source", criterion),
+            *[await self._stored(cycle, run, p, "source", c) for p, c in (beside or {}).items()],
         ]
         delivery = await deliver_source_change(
             cycle,
@@ -434,6 +469,95 @@ async def test_the_supervisors_request_opens_one_contribution_with_its_criteria_
     assert "Opened by the campaign's supervisor after its close" in request["body"]
     assert await world.failures() == []
     assert TOKEN not in repr(await world.campaigns.control_log(CID)) + caplog.text + opened.text
+
+
+#: A criterion that reads a file beside it: at the root it passes, and moved under ``tests/`` the
+#: fixture isn't beside it any more (the review's finding 1).
+_READS_ITS_SIBLING = b"""from pathlib import Path
+
+
+def test_t1():
+    assert Path(__file__).with_name("seed.json").read_text() == "{}"
+"""
+
+
+async def test_a_criterion_the_move_breaks_opens_nothing_and_says_which(tmp_path):
+    """PR #2920's review, finding 1. Moving a root criterion under ``tests/`` changes where it
+    runs, so the moved tree is run on the product's runner before anything leaves. Bugs caught:
+    the moved tree pushed unverified, so the review request fails on the owner's desk; a failure
+    written nowhere; the branch left pushed."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted_with_criterion(criterion=_READS_ITS_SIBLING, beside={"seed.json": b"{}"})
+
+    refused = world.client().post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["error"]["code"] == "CONTRIBUTION_REFUSED"
+    [failure] = await world.failures()
+    assert "T1" in failure.binding["message"] and MOVED in failure.binding["message"]
+    assert world.forge.calls == 0 and world.remote() is None and world.book.recorded == []
+
+
+async def test_a_moved_file_no_runner_holds_opens_nothing(tmp_path):
+    """The runner's placement requirements hold after the move. The product's runner is rooted at
+    ``crit``, so nothing would collect a file under ``tests/``. Bug caught: a criterion contributed
+    where the product never runs it, which reads as a green suite."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted_with_criterion()
+    world.runner_rooted_at("crit")
+
+    refused = world.client().post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert refused.status_code == 409, refused.text
+    [failure] = await world.failures()
+    assert "no runner" in failure.binding["message"] and MOVED in failure.binding["message"]
+    assert world.forge.calls == 0 and world.remote() is None
+
+
+@pytest.mark.parametrize("missing", ["sandbox", "profile"])
+async def test_with_nothing_to_run_them_on_the_moved_criteria_open_nothing(tmp_path, missing):
+    """Require, don't default. Bugs caught: no sandbox wired, or no derived profile at the pin,
+    read as nothing to verify, so the moved tree leaves unverified."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted_with_criterion()
+    if missing == "sandbox":
+        world.contribution = world.contributing(sandbox=None)
+    else:
+        world.projects.profile = None
+
+    refused = world.client().post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert refused.status_code == 409, refused.text
+    [failure] = await world.failures()
+    assert missing in failure.binding["message"]
+    assert world.forge.calls == 0 and world.remote() is None and world.book.recorded == []
+
+
+async def test_a_retired_criterion_moves_and_isnt_run(tmp_path):
+    """A retired criterion stays on the branch, and may fail by design: a later increment replaced
+    what it asserted. Bug caught: it refusing the contribution forever."""
+    world = _World(tmp_path)
+    await world.started(target=2)
+    await world.accepted_with_criterion(criterion=b"def test_t1():\n    assert False\n")
+    held = await world.campaigns.get_campaign(CID)
+    await world.campaigns.transition(
+        CID,
+        move(
+            held.state, "k-retire", operation=ControlOperation.PROMOTE, accepted=held.accepted,
+            binding={"cycle_id": "cyc_inc000000001", "commit": held.accepted.commit,
+                     "identity": held.accepted.identity, "retired_criteria": ["T1"]},
+        ),
+    )  # fmt: skip
+    client = world.client()
+    client.post(f"/api/v1/campaigns/{CID}/abort", json={"reason": "s", "idempotency_key": "a-r"})
+
+    opened = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert opened.status_code == 201, opened.text
+    assert MOVED in tracked_files(world.repo.path, world.remote())
 
 
 async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry_opens_it(
@@ -704,6 +828,7 @@ async def test_a_sample_application_has_nothing_to_contribute_to():
             token=TOKEN,
             actor="squadops",
             idempotency_key="k",
+            verify=None,
         )
     assert forge.calls == 0 and book.recorded == []
 

@@ -675,6 +675,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         projects=project_registry,
         repository=state.source_repository,
         forge=state.review_requests,
+        sandbox=sandbox_client,
     )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,
