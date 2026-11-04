@@ -137,19 +137,32 @@ async def test_a_stale_write_is_refused_and_a_retry_replays_what_was_written(poo
     assert [r.revision for r in await store.list_revisions(PROJECT)] == [2, 1]
 
 
-async def test_two_writers_racing_for_one_revision_write_it_once(pool):
-    """Bug caught: two edits read the same latest revision and both write the next one; the
-    loser must be refused as stale, not answered 500 by the primary key."""
-    store = PostgresGoalSetRegistry(pool)
+async def test_writers_racing_for_one_revision_write_it_once(pool):
+    """Bug caught: edits that read the same latest revision each write the next one; every
+    loser must be refused as stale, not answered 500 by the primary key. A warm pool of its own,
+    one connection per writer: on a cold one, opening each connection serializes the writers and
+    the race never happens (checked: without the Project's lock this fails, UniqueViolation)."""
+    racing = await create_pool(POSTGRES_URL, min_size=8, max_size=8)
+    store = PostgresGoalSetRegistry(racing)
+    try:
+        results = await asyncio.gather(
+            *[
+                store.record_revision(
+                    _revision(1, reason=f"writer {i}"),
+                    idempotency_key=f"it-{i}",
+                    request_hash=str(i),
+                )
+                for i in range(8)
+            ],
+            return_exceptions=True,
+        )
+    finally:
+        await racing.close()
 
-    results = await asyncio.gather(
-        store.record_revision(_revision(1, reason="a"), idempotency_key="it-a", request_hash="a"),
-        store.record_revision(_revision(1, reason="b"), idempotency_key="it-b", request_hash="b"),
-        return_exceptions=True,
-    )
-
-    assert sorted(type(r).__name__ for r in results) == ["StaleGoalSetRevisionError", "tuple"]
-    assert len(await store.list_revisions(PROJECT)) == 1
+    assert sorted(type(r).__name__ for r in results) == ["StaleGoalSetRevisionError"] * 7 + [
+        "tuple"
+    ]
+    assert len(await PostgresGoalSetRegistry(pool).list_revisions(PROJECT)) == 1
 
 
 async def test_an_unknown_project_and_a_closed_gate_write_nothing(pool):
