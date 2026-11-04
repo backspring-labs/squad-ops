@@ -424,13 +424,13 @@ async def _rule_increment(
     # deferred (cycle): as _ruling_instructions' own import
     from squadops.api.routes.memory.interventions import dispatch_turn, turn_of
 
-    # #2545: the ruling's task instructions are checked against the cycle's dispatches and stored
-    # in the unit's dispatch turn, so none of its dispatches composes between the two.
     binding = ProposalBinding(**body.binding.model_dump())
     asked = GateDecisionValue(body.decision)
+    # SIP-0115 §5.5a: an approval or a rejection, never the supervisor's own return (nor a
+    # decision the gate refuses as illegal).
     revised = (
         await _goals_revised(request, cycle.campaign_id, binding)
-        if asked is not GateDecisionValue.RETURNED_FOR_REVISION
+        if asked in (GateDecisionValue.APPROVED, GateDecisionValue.REJECTED)
         else None
     )
     if revised is not None:
@@ -444,6 +444,8 @@ async def _rule_increment(
                 "task_instructions": [],
             }
         )
+    # #2545: the ruling's task instructions are checked against the cycle's dispatches and stored
+    # in the unit's dispatch turn, so none of its dispatches composes between the two.
     async with dispatch_turn(request, turn_of(cycle) if body.task_instructions else None):
         instructions = await _ruling_instructions(request, cycle, run_id, body, actor)
         try:
