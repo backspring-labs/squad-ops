@@ -5,6 +5,21 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **A private Node package that declares a module interface is a package surface,** so a criterion on a product
+  like battle-trainer can name its interface (#2875, PR #2879; SIP-0112 H.17).
+- **The qa plan proposer's worked example is in its product's runner's terms,** pytest or vitest/jest (#2876,
+  PR #2880).
+- **A product's suite the qa image couldn't run is read on the product's own runner,** whatever else failed
+  (#2877, PR #2878; SIP-0112 H.18).
+- **A dev repair's retest is judged on the product's runner:** the failed task's own suite, with the repaired source
+  on the tree, where before the repaired source was read as the suite and nothing was judged (#2881, PR #2898).
+
+### Documentation
+- **The 2.6 plan adopted** on the owner's rulings of 2026-11-03: battle-trainer is the proving Project (PR #2883).
+- **SIP-0115 Project Goals and Backlog accepted** as 2.6's headline, and the plan's new items filed and placed
+  (PR #2897).
+
 ## [2.5.1] — 2026-11-03
 
 **A patch on 2.5, an odd line that is feature-free by rule, carrying one addition by the owner's decision.**
