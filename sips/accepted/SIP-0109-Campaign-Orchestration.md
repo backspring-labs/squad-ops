@@ -153,7 +153,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
-| a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #TBD, closes #2885 |
+| a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
