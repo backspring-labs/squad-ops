@@ -24,6 +24,7 @@ import pytest
 
 from adapters.noop.ports import NoOpProposalEvidence
 from squadops.campaigns.criterion_head import CRITERION_HEAD_CHECK_ARTIFACT_TYPE
+from squadops.cycles.deletions import DELETIONS_KEY
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.run_ledger import RunLedger
@@ -32,6 +33,7 @@ from squadops.execution.binding_holds import BindingHolds
 from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
 from squadops.execution.source_checkout import seed_checkout_artifacts
 from squadops.projects.derived_profile import parse_profile
+from squadops.sandbox.models import RevisionOrigin
 from squadops.tasks.models import TaskResult
 from tests.fixtures.shared_contract.repository import recorded
 from tests.unit.campaigns.test_product_increment_seams import STORED
@@ -79,10 +81,12 @@ _FAILS_ON_HEAD = {
 
 
 class _Squad:
-    """The dispatcher: the developer writes the report, the qa author the criterion's file."""
+    """The dispatcher: the developer writes the report and removes ``removes``, the qa author
+    writes the criterion's file."""
 
-    def __init__(self) -> None:
+    def __init__(self, removes: tuple[str, ...] = ()) -> None:
         self.sent: list[Any] = []
+        self.removes = removes
 
     async def dispatch_task(self, envelope, run_id, **_kwargs) -> TaskResult:
         self.sent.append(envelope)
@@ -101,6 +105,11 @@ class _Squad:
                 "artifacts": artifacts,
                 "validation_result": {"passed": True, "checks": []},
                 "test_result": {"executed": True, "exit_code": 0, "tests_passed": True},
+                **(
+                    {DELETIONS_KEY: list(self.removes)}
+                    if envelope.task_type == "development.develop"
+                    else {}
+                ),
             },
         )
 
@@ -108,7 +117,9 @@ class _Squad:
         return None
 
 
-async def _increment(sandbox, profile=_READ_PROFILE, *, with_repository: bool = True):
+async def _increment(
+    sandbox, profile=_READ_PROFILE, *, with_repository: bool = True, tree=None, removes=()
+):
     """The Tally increment composed as the live run composes it, ready to run its plan: the
     change request forwarded to the cycle, the tree seeded, the executor over a fake sandbox."""
     vault = Vault()
@@ -128,14 +139,14 @@ async def _increment(sandbox, profile=_READ_PROFILE, *, with_repository: bool = 
     registry = projects()
     registry.get_derived_profile.side_effect = None
     registry.get_derived_profile.return_value = profile
-    repo = repository(product_tree())
+    repo = repository(tree if tree is not None else product_tree())
     seeded = await seed_checkout_artifacts(
         cycle, implementation.run_id, vault=vault, repository=repo, registry=registry
     )
     cycles = AsyncMock()
     cycles.get_run.return_value = implementation
     cycles.get_latest_checkpoint.return_value = None
-    dispatcher = _Squad()
+    dispatcher = _Squad(removes)
     built = DispatchedFlowExecutor(
         cycle_registry=cycles, artifact_vault=vault, queue=AsyncMock(),
         squad_profile=AsyncMock(), project_registry=registry, campaign_registry=None,
@@ -203,6 +214,8 @@ async def test_a_criterion_passing_on_the_head_ends_the_run_before_it_delivers()
     assert sandbox.seeded[NAMED] == product_tree()[NAMED]
     assert sandbox.seeded[SUITE] == _CRITERION
     assert "tally/ledger_00.py" in sandbox.seeded
+    # The product's own tests are left out, by the runners in the dispatched inputs (H.19).
+    assert "checks/check_area_0.py" not in sandbox.seeded
     [command] = sandbox.commands
     assert command["command"] == ("python3", "-m", "pytest", "-q", SUITE)
     assert command["reader"] == "pytest"
@@ -237,9 +250,9 @@ async def test_a_criterion_failing_on_the_head_proceeds_to_delivery_with_its_rea
     ("sandbox", "profile", "with_repository", "logged"),
     [
         (None, _READ_PROFILE, True, "no sandbox"),
-        (_Sandbox(), _READ_PROFILE, False, "no managed clone"),
+        (_Sandbox(), _READ_PROFILE, False, "no source repository"),
         (_Sandbox(), _UNREAD_PROFILE, True, "no runner holds a criterion file one by one"),
-        (_Sandbox(raises=True), _READ_PROFILE, True, "the head or the sandbox run failed"),
+        (_Sandbox(raises=True), _READ_PROFILE, True, "its reads or the sandbox run failed"),
     ],
     ids=["no-sandbox", "no-clone", "no-test-id-reader", "sandbox-error"],
 )
@@ -253,7 +266,7 @@ async def test_where_the_check_cant_run_the_run_proceeds_and_says_why(
         sandbox, profile, with_repository=with_repository
     )
 
-    with caplog.at_level(logging.INFO, logger="squadops.execution.criterion_head_check"):
+    with caplog.at_level(logging.INFO, logger="squadops.execution"):
         await _run_plan(built, cycle, implementation, envelopes, seeded)
 
     built._deliver_source_change.assert_awaited_once()
@@ -262,3 +275,109 @@ async def test_where_the_check_cant_run_the_run_proceeds_and_says_why(
         "criterion head check" in r.getMessage() and logged in r.getMessage()
         for r in caplog.records
     ), [r.getMessage() for r in caplog.records]
+
+
+def _break_the_clone(built, _vault):
+    built._source_repository.tree_at.side_effect = RuntimeError("the clone refused the pin")
+
+
+def _lose_the_change_request(_built, vault):
+    del vault.stored["art_cr"]
+
+
+@pytest.mark.parametrize(
+    ("breaks", "logged"),
+    [
+        (_break_the_clone, "is unreadable"),
+        (_lose_the_change_request, "its reads or the sandbox run failed"),
+    ],
+    ids=["clone-refuses-the-pin", "change-request-unreadable"],
+)
+async def test_a_read_that_fails_skips_the_check_and_never_the_run(caplog, breaks, logged):
+    """§24cz item 5. Bug caught: a read outside the sandbox call raising through ``_after_task_
+    success``, so a check that couldn't run fails a run that would have delivered."""
+    built, _dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
+        _Sandbox()
+    )
+    breaks(built, vault)
+
+    with caplog.at_level(logging.INFO, logger="squadops.execution"):
+        await _run_plan(built, cycle, implementation, envelopes, seeded)
+
+    built._deliver_source_change.assert_awaited_once()
+    assert any(
+        r.getMessage().startswith("criterion head check") and logged in r.getMessage()
+        for r in caplog.records
+    ), [r.getMessage() for r in caplog.records]
+
+
+#: A Node product as battle-trainer is: its lockfile tracked, its runner vitest. The check's run is
+#: read by vitest's reader, and the file sits under the runner's root.
+_NODE_TREE = {
+    "package.json": b'{"name": "tally", "scripts": {"test": "vitest run"}}\n',
+    "package-lock.json": b'{"lockfileVersion": 3}\n',
+    "tally/report.py": b"def render(entries):\n    return ''\n",
+    "scripts/run.sh": b"#!/bin/sh\n",
+}
+_NODE_PROFILE = parse_profile(
+    {
+        **recorded("derived_profile", "valid"),
+        "test_runners": [
+            {
+                **recorded("derived_profile", "valid")["test_runners"][0],
+                "runner": "vitest",
+                "single_file_argv": ["npx", "vitest", "run", "{path}"],
+                "test_ids": "vitest",
+            }
+        ],
+    }
+)
+
+
+async def test_a_node_products_tracked_lockfile_doesnt_turn_the_check_into_a_skip():
+    """#2902 (H.19) on this seam. Bug caught: the head seeded as plain revision content, which the
+    sandbox refuses for a tracked ``package-lock.json`` (X-2), or built from the run's artifacts,
+    which hold it back so ``npm ci`` installs nothing. Either way the check reads nothing on every
+    Node product, skipping with a log line, and battle-trainer spends the cycle row 16 would."""
+    sandbox = _Sandbox(readings={SUITE: {**_reading(1, 1), "reader": "vitest"}})
+    built, _dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
+        sandbox, _NODE_PROFILE, tree=_NODE_TREE
+    )
+
+    with pytest.raises(_ExecutionError) as ended:
+        await _run_plan(built, cycle, implementation, envelopes, seeded)
+
+    assert ended.value.terminal is not None
+    assert ended.value.terminal.kind is TerminalKind.CRITERIA_NOT_CHECKABLE
+    assert sandbox.origin == RevisionOrigin.GIT_CHECKOUT
+    assert sandbox.seeded["package-lock.json"] == _NODE_TREE["package-lock.json"]
+    # The pin is the seed; the only thing patched on it is the criterion's file.
+    assert sandbox.patched == {SUITE: _CRITERION}
+    [command] = sandbox.commands
+    assert (command["command"], command["reader"]) == (
+        ("npx", "vitest", "run", SUITE),
+        "vitest",
+    )
+    record = _record(vault)
+    assert record is not None
+    assert record["criteria"][0]["reading"] == "no_baseline_failure"
+
+
+async def test_a_file_development_removed_is_still_on_the_head():
+    """H.23 read the other way from the re-judged suite: that tree is the run's, this one is the
+    head's, and a removal is development's work. Bug caught: ``_removed`` applied here too, so a
+    criterion that a file is gone passes on "the head" and an increment that discriminates ends
+    ``criteria_not_checkable``."""
+    gone = "tally/ledger_00.py"
+    sandbox = _Sandbox(exits={SUITE: 1}, readings={SUITE: _FAILS_ON_HEAD})
+    built, dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
+        sandbox, removes=(gone,)
+    )
+
+    await _run_plan(built, cycle, implementation, envelopes, seeded)
+
+    # The removal reached the qa task's view: the case is live, not vacuous.
+    assert dispatcher.sent[-1].inputs["source_repository"]["deleted"] == [gone]
+    assert sandbox.seeded[gone] == product_tree()[gone]
+    assert sandbox.patched == {SUITE: _CRITERION}
+    built._deliver_source_change.assert_awaited_once()

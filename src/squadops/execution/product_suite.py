@@ -192,21 +192,27 @@ class PinnedTree:
     executable: frozenset[str]
 
 
-async def _product_tree_at_pin(
-    repository: Any, cycle: Any, inputs: Mapping[str, Any], task_id: str
+async def product_tree_at_pin(
+    repository: Any,
+    cycle: Any,
+    inputs: Mapping[str, Any],
+    task_id: str,
+    *,
+    unread: str = "product suite %s: not re-judged",
 ) -> PinnedTree | None:
     """The product's own non-test files at the cycle's pin, from the managed clone, or ``None``
     when there is no clone to read: a tree without the files its artifacts hold back fails the
-    product's setup, so it judges nothing (#2900)."""
+    product's setup, so it judges nothing (#2900). ``unread`` opens the log line that says so, for
+    the caller it stops (``%s`` is the task): the re-judged suite, or the head check (#2890)."""
     context = cycle.source_context
     if repository is None:
-        logger.info("product suite %s: not re-judged: no source repository", task_id)
+        logger.info(unread + ": no source repository", task_id)
         return None
     try:
         clone = await repository.tree_at(cycle.project_id, context.pinned_commit)
     except Exception:
         logger.warning(
-            "product suite %s: not re-judged: the product's tree at %s is unreadable",
+            unread + ": the product's tree at %s is unreadable",
             task_id,
             getattr(context, "pinned_commit", None),
             exc_info=True,
@@ -581,7 +587,7 @@ async def judge_on_product_runner(
     tests, overlay = suite_under_judgement(inputs, result.outputs or {}, profile)
     if configuration is None or not tests:
         return None
-    pinned = await _product_tree_at_pin(repository, cycle, inputs, task_id)
+    pinned = await product_tree_at_pin(repository, cycle, inputs, task_id)
     if pinned is None:
         return None
     try:

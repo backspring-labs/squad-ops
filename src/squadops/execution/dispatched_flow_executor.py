@@ -2242,6 +2242,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         await self._after_task_success(
             state,
             envelope,
+            enriched,
             result,
             task_idx=task_idx,
             plan=plan,
@@ -2306,6 +2307,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         self,
         state: RunState,
         envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
         result: TaskResult,
         *,
         task_idx: int,
@@ -2350,7 +2352,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # deliver. One that already passes there is met already: the run ends here, and the
         # campaign proposes anew rather than spend the delivery, the acceptance and a repair.
         await self._end_if_criteria_met_on_head(
-            envelope, cycle, run_id, state.produced.stored_artifacts
+            envelope, enriched, cycle, run_id, state.produced.stored_artifacts
         )
 
         # ----------------------------------------------------------
@@ -4825,6 +4827,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     async def _end_if_criteria_met_on_head(
         self,
         envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
         cycle: Any,
         run_id: str,
         stored_artifacts: list[tuple[str, ArtifactRef]],
@@ -4836,6 +4839,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         check = await check_criteria_on_head(
             task_type=envelope.task_type,
             task_id=envelope.task_id,
+            inputs=enriched.inputs,
             cycle=cycle,
             run_id=run_id,
             stored_artifacts=stored_artifacts,

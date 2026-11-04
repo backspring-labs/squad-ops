@@ -5898,10 +5898,16 @@ abandoned the increment (§24bq, §24ct). The 2.6 plan's D9 ruled the check move
    each of the increment's criterion files the run has stored (`criterion_files`, read as delivery reads the squad's
    change: the path's latest accepted content from a test author) is run alone on its runner's one-file command in
    the sandbox (`product_suite.run_on_product_runner`, #2818's run), read by the runner's test-id reader, against
-   **the head**: the pinned commit's tree, which is the accepted workspace the run was seeded from, with no
-   development emission on it. The criterion files are the only files of the squad's laid on it. A file that runs and
-   passes whole there is **already met**. Code: `execution/criterion_head_check.py`, entered from the executor's
-   `_after_task_success`.
+   **the head**: the pinned commit's tree from the managed clone, seeded as a checkout and read as the re-judged
+   suite reads it (`product_suite.product_tree_at_pin`, SIP-0112 H.19), with the criterion files patched on it. So a
+   tracked lockfile is content there and a Node product's setup installs (X-2, #2900): seeded as plain revision
+   content the sandbox refuses it, and the check would skip on every such product. No development emission is on the
+   tree. **That includes a removal** (SIP-0112 H.23): the re-judged suite lays the run's removals over the pin
+   because it judges the run's tree, and this check judges the head, which still holds the file. Laid here, a test
+   that a file is gone would pass on "the head" and end an increment that discriminates. A file that runs and passes
+   whole there is **already met**. Code: `execution/criterion_head_check.py`, entered from the executor's
+   `_after_task_success` with the task's dispatched inputs, whose product runners say which of the pin's files are
+   tests.
 2. **The record.** The run's `criterion_head_check` artifact (`campaigns/criterion_head.py`): the increment, the head
    commit, each criterion's reading and each file's run. A met criterion's reading is `no_baseline_failure`, the word
    acceptance's `discriminations` row carries for the same finding, so either record reads to the next proposal's
@@ -5920,8 +5926,8 @@ abandoned the increment (§24bq, §24ct). The 2.6 plan's D9 ruled the check move
 5. **Where it can't run, the cycle proceeds as today, and the skip is logged with its reason** (as
    `judge_on_product_runner` logs "not re-judged"): no sandbox, no managed clone, no derived profile or configuration
    at the pin, a criterion file the request placed nowhere, a file no runner holds one by one or no test-id reader
-   can read (§24ci (a): Tally's unittest is such a runner), a sandbox run that failed, or a record that can't be
-   stored. Nothing here fails a run.
+   can read (§24ci (a): Tally's unittest is such a runner), or any read, sandbox run or store that failed. Nothing
+   here fails a run.
 
 **Narrowed: the check spends the development task too.** The plan's D9 row says the check "spends one framing and
 one QA task". As built it spends the implementation workload's development task as well: the workload's order is the
@@ -5937,8 +5943,8 @@ sees, and the outcome on a tree that lacks the file):
 | seam | where | the tree | the file absent |
 |---|---|---|---|
 | the emission | the qa role's container (`qa.test`) | the accepted workspace as the task sees it, development's emission, its own emission | the task's expected artifact is absent: a failed emission, the correction loop's |
-| **this check** | runtime-api, at the qa task's collection | the pinned commit's tree, the stored criterion files laid on it, no other emission | not checked ("no criterion file in this task's stored emission", logged); the cycle proceeds |
-| the re-judged suite (#2818, #2877) | runtime-api, the sandbox, on a failed `qa.test` | the suite's run tree (the product's non-test files as the task saw them, development's emission among them) with the emitted tests beside it | not re-judged: `run_on_product_runner` returns none for a file no runner holds |
+| **this check** | runtime-api, the sandbox, at the qa task's collection | the product's non-test files at the pin, seeded as a checkout, the stored criterion files patched on it, nothing else of the run's (no emission, no removal) | not checked ("no criterion file in this task's stored emission", logged); the cycle proceeds |
+| the re-judged suite (#2818, #2877) | runtime-api, the sandbox, on a failed `qa.test` | the same pin seeded as a checkout, with the run's tree patched on it (development's emission and its removals, H.19, H.23) and the emitted tests beside it | not re-judged: `run_on_product_runner` returns none for a file no runner holds |
 | a repair's retest (#2881) | runtime-api, the sandbox | the failed task's own suite with the repaired source on the tree | unchanged by this amendment |
 | acceptance (§24cl) | runtime-api, the sandbox, at delivery | the head and the candidate, the criterion's bundle frozen from the candidate on each | `BundleIncomplete`: the criterion reads `not_run`, blocked, never met |
 
@@ -5959,7 +5965,11 @@ cycle and its repair). Tests:
   dispatched and collected by the executor, a fake sandbox answering the one-file command. A criterion passing on the
   head ends the run after the qa task with the declared kind, nothing delivered, the head seeded without the
   developer's report and the record written; one failing on the head proceeds to delivery with `fails_on_head`
-  recorded; no sandbox, no clone, no test-id reader and a sandbox error each proceed, with the reason logged.
+  recorded; no sandbox, no clone, no test-id reader, a sandbox error, a clone that refuses the pin and an unreadable
+  change request each proceed, with the reason logged. A Node product's tracked `package-lock.json` is seeded
+  `git_checkout` and the check runs and ends the increment, on the fake sandbox that applies `_safe_relpath`, the
+  sandbox's own rule. A file development removed is still on the head, with the removal shown reaching the qa task's
+  view.
 - `tests/unit/campaigns/test_progress.py`: entered at `CycleCompletion.end` on a failed implementation run whose
   loop summary declares the kind, with the record stored: the ending recorded `criteria_not_checkable`, row 19
   `abandon_and_propose`, the next proposal's `already_met` naming the criterion with its statement; the ending read
