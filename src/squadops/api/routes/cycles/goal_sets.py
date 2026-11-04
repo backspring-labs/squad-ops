@@ -7,7 +7,8 @@ reorder included) is the owner's alone, with the scope that writes a Development
 Slice 3's actions are each a revision too, with who may do what from §6 and Q41 (ruled
 2026-11-03): the owner (``admin:write``) may do each; the crew's supervisor seat
 (``campaigns:supervise``) may add a candidate, and may promote, drop or split only within a
-Campaign the owner started, named in the request. Triage reads, and nothing else (#1719).
+Campaign the owner has granted it (``POST /api/v1/campaigns/{id}/goal-delegation``), named in the
+request. Triage reads, and nothing else (#1719).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -104,7 +105,7 @@ def _actor(request: Request, identity: Identity | None) -> Actor:
             403,
             "FORBIDDEN",
             "acting on a goal set needs admin:write (the owner) or campaigns:supervise (the "
-            "crew's supervisor seat, within a Campaign the owner started) (SIP-0115 §6)",
+            "crew's supervisor seat, within a Campaign the owner has granted it) (SIP-0115 §6)",
         )
     return Actor(identity.user_id if identity is not None else "anonymous", owner)
 
@@ -185,8 +186,8 @@ async def promote_candidate(
     identity: Identity | None = Depends(require_scopes(Scope.CYCLES_READ)),
 ) -> GoalSetRecordedResponse:
     """Promote a candidate into the backlog (§5.4), keeping its id: at ``position``, or the end.
-    The owner may put it anywhere; the crew, within a Campaign the owner started (``campaign_id``),
-    appends (Q41): ``403 NOT_DELEGATED`` otherwise."""
+    The owner may put it anywhere; the crew, within a Campaign the owner has granted it
+    (``campaign_id``), appends (Q41): ``403 NOT_DELEGATED`` otherwise."""
     try:
         written = await record_promotion(
             project_id,

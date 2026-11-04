@@ -232,7 +232,7 @@ _ACTION_KEY = typer.Option(None, "--idempotency-key", help="Resend the printed k
 _ACTION_CAMPAIGN = typer.Option(
     None,
     "--campaign",
-    help="The Campaign this is within: required of the crew, one the owner started (Q41)",
+    help="The Campaign this is within: required of the crew, one the owner granted (Q41)",
 )
 
 
@@ -280,7 +280,7 @@ def promote(
     idempotency_key: str | None = _ACTION_KEY,
 ):
     """Promote a candidate into the backlog (SIP-0115 §5.4), keeping its id. The crew acts within
-    a Campaign the owner started (--campaign) and appends; a position is the owner's (Q41)."""
+    a Campaign the owner granted (--campaign) and appends; a position is the owner's (Q41)."""
     body: dict[str, Any] = {"serves": serves}
     if position is not None:
         body["position"] = position
@@ -311,7 +311,7 @@ def drop(
     idempotency_key: str | None = _ACTION_KEY,
 ):
     """Drop a candidate (SIP-0115 §5.4), with the reason. The crew acts within a Campaign the
-    owner started (--campaign)."""
+    owner granted (--campaign)."""
     body: dict[str, Any] = {}
     if campaign is not None:
         body["campaign_id"] = campaign

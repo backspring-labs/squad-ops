@@ -8,15 +8,15 @@ A retry under its key replays what was written, and is answered first: by then t
 was within may have completed, or the item moved on, and neither undoes the write. The caller's
 scope is still the route's to check.
 
-**Who may** (§6, Q41, ruled 2026-11-03). The owner, holding ``admin:write``, may do each. The
-crew's supervisor seat may add a candidate; and may promote, drop or split **only within a
-Campaign:** the request names the Campaign, which is on this Project, names this goal set, and is
-live (not ``completed``, the lifecycle's one terminal state). Q41's "a Campaign the owner
-started" is read so (§10c, the supervisor's narrowing for the owner's review): the crew's broker
-creates the Campaigns the owner approves in Buzz, and SquadOps records no approval to read, so
-the delegation lasts the Campaign's life. A promotion by the crew is appended at the end of the
-backlog: a position anywhere else is a reorder, which stays the owner's (Q41). The Campaign a
-delegated act was within is recorded on the revision.
+**Who may** (§6; Q41, ruled 2026-11-03; the owner's ruling of 2026-11-04, §10c). The owner,
+holding ``admin:write``, may do each. The crew's supervisor seat may add a candidate; and may
+promote, drop or split **only within a Campaign the owner has granted it:** the request names the
+Campaign, which is on this Project, names this goal set, is live (not ``completed``, the
+lifecycle's one terminal state), and holds the owner's grant, an applied row of its control log
+(``campaigns.goal_delegation``). Who created the Campaign is not read: the crew can create one, so
+it says nothing about the owner. A promotion by the crew is appended at the end of the backlog: a
+position anywhere else is a reorder, which stays the owner's (Q41). The Campaign a delegated act
+was within is recorded on the revision.
 
 **A split waits** (§5.5a) while any live Campaign on the Project reads the item ``proposed`` or
 ``in_increment``, read with slice 2's derived view per Campaign; a completed Campaign doesn't
@@ -26,13 +26,14 @@ that arrives during it lands after the revision, and the ruling returns it as ``
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.backlog import ItemStatus, campaign_backlog
-from squadops.campaigns.models import Campaign, CampaignState
+from squadops.campaigns.goal_delegation import goal_delegation
+from squadops.campaigns.models import Campaign, CampaignState, ControlLogEntry
 from squadops.projects.development_configuration import submission_digest
 from squadops.projects.goal_set import (
     Change,
@@ -54,8 +55,9 @@ if TYPE_CHECKING:
 
 class NotDelegated(PermissionError):
     """The crew acted outside what Q41 delegates: not within a live Campaign on this Project
-    reading this goal set (none named, another Project's, a requirements Campaign, or one that
-    has completed), or a promotion anywhere but the end of the backlog."""
+    reading this goal set that the owner has granted it (none named, another Project's, a
+    requirements Campaign, one that has completed, or one with no grant), or a promotion anywhere
+    but the end of the backlog."""
 
 
 class BacklogItemInProgress(RuntimeError):
@@ -84,12 +86,14 @@ class ActionWrite:
     now: datetime | None = None
 
 
-def not_within(campaign: Campaign, *, project_id: str) -> str | None:
-    """Why ``campaign`` is not one an action may be within on ``project_id``'s goal set (Q41,
-    §10c), or ``None``: it is on this Project, names a goal set, and is live. The same for the
-    owner and the crew: the owner needs no Campaign, and one named is checked so the record on
+def not_within(
+    campaign: Campaign, *, project_id: str, actor: Actor, log: Iterable[ControlLogEntry]
+) -> str | None:
+    """Why ``actor`` may not act within ``campaign`` on ``project_id``'s goal set (Q41, §10c), or
+    ``None``. For anyone: it is on this Project, names a goal set, and is live, so the record on
     the revision is true. ``completed`` is the lifecycle's one terminal state (no legal move
-    leaves it); how it ended is its ``outcome``."""
+    leaves it); how it ended is its ``outcome``. For the crew, also: ``log``, the Campaign's
+    control log, holds the owner's grant. The owner grants, and needs none."""
     if campaign.project_id != project_id:
         return (
             f"campaign {campaign.campaign_id} is on Project {campaign.project_id}, not {project_id}"
@@ -101,6 +105,12 @@ def not_within(campaign: Campaign, *, project_id: str) -> str | None:
         return (
             f"campaign {campaign.campaign_id} has completed ({ended}): the delegation lasted its "
             "life (SIP-0115 Q41, §10c)"
+        )
+    if not actor.owner and goal_delegation(log) is None:
+        return (
+            f"the owner hasn't granted campaign {campaign.campaign_id} to the crew: the owner "
+            f"records it with `squadops campaigns delegate {campaign.campaign_id} --reason …` "
+            "(SIP-0115 Q41, §10c)"
         )
     return None
 
@@ -148,7 +158,7 @@ async def record_promotion(
     its id, as the next revision (§5.4, §10a).
 
     Raises:
-        NotDelegated: the crew outside a Campaign the owner started, or not at the end.
+        NotDelegated: the crew outside a Campaign the owner granted it, or not at the end.
         CandidateNotFound: the revision holds no such candidate.
         CampaignNotFoundError: the Campaign named doesn't exist.
         GoalSetInvalid: ``serves`` or ``position``, naming it.
@@ -264,17 +274,21 @@ async def _within(
     project_id: str, write: ActionWrite, campaigns: CampaignRegistryPort, *, what: str
 ) -> Campaign | None:
     """The Campaign the action is within, checked (Q41): required of the crew, optional of the
-    owner, and when named it is a live Campaign on this Project reading a goal set, so the record
-    on the revision is true."""
+    owner, and when named it is one ``not_within`` passes for the actor."""
     if write.campaign_id is None:
         if write.actor.owner:
             return None
         raise NotDelegated(
-            f"{write.actor.principal} may {what} only within a live Campaign on this Project: "
-            "name campaign_id (SIP-0115 Q41)"
+            f"{write.actor.principal} may {what} only within a Campaign the owner has granted "
+            "it: name campaign_id (SIP-0115 Q41, §10c)"
         )
     campaign = await campaigns.get_campaign(write.campaign_id)
-    refusal = not_within(campaign, project_id=project_id)
+    refusal = not_within(
+        campaign,
+        project_id=project_id,
+        actor=write.actor,
+        log=await campaigns.control_log(campaign.campaign_id),
+    )
     if refusal is not None:
         raise NotDelegated(refusal)
     return campaign

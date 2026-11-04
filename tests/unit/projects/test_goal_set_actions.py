@@ -5,7 +5,6 @@ actions, and recording them as revisions under §6's rule for who may. The goal 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -44,7 +43,7 @@ from squadops.projects.goal_set_actions import (
     record_promotion,
     record_split,
 )
-from tests.fixtures.goal_set import GoalSetStore, campaign_on, goal_set_document, proposed, started
+from tests.fixtures.goal_set import GoalSetStore, goal_set_document, proposed, started
 from tests.unit.campaigns.builders import move
 
 NOW = datetime(2026, 11, 4, 9, 0, tzinfo=UTC)
@@ -301,35 +300,56 @@ def _write(actor: Actor, *, campaign_id: str | None = None, key: str = "k-1", **
 
 
 @pytest.mark.parametrize(
-    ("project_id", "goals", "created_by", "completed", "refused"),
+    ("actor", "project_id", "goals", "created_by", "grant", "completed", "refused"),
     [
-        (PROJECT, True, "owner", False, None),
-        (PROJECT, True, "campaign-supervisor-principal", False, None),
-        ("prj-other", True, "owner", False, "is on Project prj-other"),
-        (PROJECT, False, "owner", False, "names no goal set"),
-        (PROJECT, True, "owner", True, "has completed (aborted)"),
+        (CREW, PROJECT, True, "owner", True, False, None),
+        (CREW, PROJECT, True, CREW.principal, True, False, None),
+        (CREW, PROJECT, True, CREW.principal, False, False, "the owner hasn't granted"),
+        (CREW, PROJECT, True, "owner", False, False, "the owner hasn't granted"),
+        (OWNER, PROJECT, True, "owner", False, False, None),
+        (CREW, "prj-other", True, "owner", True, False, "is on Project prj-other"),
+        (OWNER, "prj-other", True, "owner", False, False, "is on Project prj-other"),
+        (CREW, PROJECT, False, "owner", False, False, "names no goal set"),
+        (CREW, PROJECT, True, "owner", True, True, "has completed (aborted)"),
+        (OWNER, PROJECT, True, "owner", False, True, "has completed (aborted)"),
     ],
     ids=[
-        "a live Campaign the owner created",
-        "a live Campaign the crew's broker created",
-        "another Project's Campaign",
+        "the crew, granted, on the owner's Campaign",
+        "the crew, granted, on its broker's Campaign",
+        "the crew on a Campaign it created, no grant",
+        "the crew on the owner's Campaign, no grant",
+        "the owner needs no grant",
+        "the crew, granted, on another Project's Campaign",
+        "the owner naming another Project's Campaign",
         "a requirements Campaign",
-        "a completed Campaign",
+        "the crew, granted, on a completed Campaign",
+        "the owner naming a completed Campaign",
     ],
 )
-def test_within_a_live_campaign_on_this_project_reading_this_goal_set(
-    project_id, goals, created_by, completed, refused
+async def test_who_may_act_within_a_campaign(
+    actor, project_id, goals, created_by, grant, completed, refused, campaigns
 ):
-    """Q41's rule as §10c reads it (the supervisor's narrowing): a live Campaign on this Project
-    reading this goal set, whoever created it. Bugs caught: the crew promoting through a Campaign
-    on another Project, one reading a PRD (no goal set to act within), or one that has
-    completed, whose delegation ended with it; the crew's broker's own Campaign refused, which
-    locks the crew out of every Campaign it runs (the Nostromo flow)."""
-    campaign = campaign_on(project_id, "cmp_1", created_by=created_by, goals=goals)
+    """Q41 as the owner ruled it on 2026-11-04 (§10c). Bugs caught: the crew acting within a
+    Campaign it created for itself with no grant, the defect the owner's review of PR #2908 found;
+    a Campaign the owner created read as a grant; the crew refused on its broker's Campaign once
+    granted; the owner asked for a grant; a grant carrying across Projects, or past the
+    Campaign's life."""
+    await started(
+        campaigns, "cmp_1", created_by=created_by, granted=grant, project_id=project_id, goals=goals
+    )
     if completed:
-        campaign = replace(campaign, state=CampaignState.COMPLETED, outcome=CampaignOutcome.ABORTED)
+        await campaigns.transition(
+            "cmp_1",
+            move(CampaignState.COMPLETED, "end", operation=ControlOperation.ABORT,
+                 outcome=CampaignOutcome.ABORTED),
+        )  # fmt: skip
 
-    reason = not_within(campaign, project_id=PROJECT)
+    reason = not_within(
+        await campaigns.get_campaign("cmp_1"),
+        project_id=PROJECT,
+        actor=actor,
+        log=await campaigns.control_log("cmp_1"),
+    )
 
     if refused is None:
         assert reason is None
@@ -368,7 +388,7 @@ class TestRecordPromotion:
     ):
         """Q41. Bugs caught: the crew promoting with no Campaign named; or putting the item
         anywhere but the end, which reorders the owner's backlog; the Campaign not recorded."""
-        await started(campaigns, "cmp_owner", created_by="owner")
+        await started(campaigns, "cmp_owner", created_by="owner", granted=True)
 
         with pytest.raises(NotDelegated, match="name campaign_id"):
             await record_promotion(
@@ -393,14 +413,17 @@ class TestRecordPromotion:
         )
         assert _ids(written.goal_set) == ["B-1", "B-2", "C-1"]
 
-    async def test_the_crew_acts_within_its_brokers_campaign_but_not_a_completed_one(
+    async def test_a_grant_lets_the_crew_act_within_its_brokers_campaign_for_that_campaigns_life(
         self, projects, goal_sets, campaigns
     ):
-        """§10c: the delegation lasts the Campaign's life. Bugs caught: the crew's broker's own
-        Campaign refused (the crew locked out of every Campaign it runs); a completed Campaign
-        still delegating, so the crew curates the backlog with no Campaign running."""
-        await started(campaigns, "cmp_crew", created_by="campaign-supervisor-principal")
-        await started(campaigns, "cmp_done", created_by="owner")
+        """§10c: the grant lasts the Campaign's life. Bugs caught: the crew's broker's own
+        Campaign refused once granted (the crew locked out of every Campaign it runs); a
+        completed Campaign still delegating, so the crew curates the backlog with no Campaign
+        running."""
+        await started(
+            campaigns, "cmp_crew", created_by="campaign-supervisor-principal", granted=True
+        )
+        await started(campaigns, "cmp_done", created_by="owner", granted=True)
         await campaigns.transition(
             "cmp_done",
             move(CampaignState.COMPLETED, "end", operation=ControlOperation.ABORT,
@@ -452,7 +475,7 @@ class TestRecordPromotion:
         delegated act committed, its response was lost, the Campaign completed, and the retry was
         refused 403 at the eligibility check, so the crew reads a write that happened as refused.
         A new key on the same Campaign is still refused."""
-        await started(campaigns, "cmp_1", created_by="owner")
+        await started(campaigns, "cmp_1", created_by="owner", granted=True)
         stores = dict(projects=projects, goal_sets=goal_sets, campaigns=campaigns)
         into = [{"id": "B-1a", "title": "the book"}, {"id": "B-1b", "title": "the minutes"}]
 
@@ -583,7 +606,7 @@ class TestRecordSplit:
         them read ``proposed`` on an item the split had just removed, and nothing would tell the
         ruling. Held, the submission waits; once it lands the item is gone, which is what
         ``goals_revised`` returns it for."""
-        await started(campaigns, "cmp_1", created_by="owner")
+        await started(campaigns, "cmp_1", created_by="owner", granted=True)
         into = [{"id": "B-1a", "title": "the book"}, {"id": "B-1b", "title": "the minutes"}]
         written = goal_sets.record_revision
         submission: list[asyncio.Task] = []
@@ -613,7 +636,7 @@ class TestRecordSplit:
     async def test_the_crew_splits_within_the_owners_campaign_and_the_revision_names_it(
         self, projects, goal_sets, campaigns
     ):
-        await started(campaigns, "cmp_owner", created_by="owner")
+        await started(campaigns, "cmp_owner", created_by="owner", granted=True)
         into = [{"id": "B-1a", "title": "the book"}, {"id": "B-1b", "title": "the minutes"}]
 
         with pytest.raises(NotDelegated):

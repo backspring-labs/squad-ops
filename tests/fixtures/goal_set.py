@@ -153,9 +153,17 @@ def campaign_on(
     )
 
 
-async def started(registry, campaign_id: str, *, created_by: str = "owner", **campaign_fields):
+async def started(
+    registry,
+    campaign_id: str,
+    *,
+    created_by: str = "owner",
+    granted: bool = False,
+    **campaign_fields,
+):
     """``campaign_on``'s Campaign, created in ``registry``, its calibration tree accepted and
-    the Campaign at its proposal."""
+    the Campaign at its proposal. ``granted``: the owner's goal delegation recorded on it."""
+    from squadops.campaigns.goal_delegation import goal_delegation_transition
     from squadops.campaigns.models import AcceptedTree, CampaignState, ControlOperation
     from tests.unit.campaigns.builders import move
 
@@ -178,6 +186,17 @@ async def started(registry, campaign_id: str, *, created_by: str = "owner", **ca
              accepted=AcceptedTree(ACCEPTED_TREE, "cyc_cal")),
     )  # fmt: skip
     await registry.transition(campaign_id, move(CampaignState.AT_PROPOSAL, f"d:{campaign_id}"))
+    if granted:
+        await registry.transition(
+            campaign_id,
+            goal_delegation_transition(
+                held,
+                actor="owner",
+                actor_role="admin",
+                reason="the owner approved it",
+                idempotency_key=f"grant:{campaign_id}",
+            ),
+        )
     return held
 
 
