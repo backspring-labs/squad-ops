@@ -158,7 +158,13 @@ from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
 from squadops.execution.source_checkout import seed_checkout_artifacts, task_source_repository
-from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_source_change
+from squadops.execution.source_delivery import (
+    SourceDelivery,
+    SourceDeliveryRefused,
+    deliver_source_change,
+    regression_failure,
+    regression_subject,
+)
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
@@ -168,6 +174,8 @@ from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.projects.models import SourceUnavailable
 from squadops.projects.source_context import ProjectSourceContext
+from squadops.projects.verification import REGRESSED as VERIFICATION_REGRESSED
+from squadops.projects.verification import RepairOf
 from squadops.projects.workspaces import SandboxUnavailable
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 from squadops.stacks.scaffold import (
@@ -2128,7 +2136,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if cycle.source_context is not None and any(
             authors_source(e.task_type) or authors_qa_suite(e.task_type) for e in plan
         ):
-            await self._deliver_source_change(cycle, run_id, state.produced)
+            await self._deliver_source_change(
+                cycle,
+                run_id,
+                state,
+                plan=plan,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                interface_manifest=interface_manifest,
+                budget_guard=_budget_guard,
+                ledger=ledger,
+            )
 
     async def _execute_task(
         self,
@@ -2565,30 +2583,39 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             registry=self._project_registry,
         )
 
-    async def _deliver_source_change(self, cycle: Cycle, run_id: str, produced: Any) -> None:
+    async def _deliver_source_change(
+        self,
+        cycle: Cycle,
+        run_id: str,
+        state: RunState,
+        *,
+        plan: list[TaskEnvelope],
+        profile: SquadProfile | None,
+        flow_run_id: str | None,
+        interface_manifest: Any,
+        budget_guard: Callable[[], None],
+        ledger: RunLedger,
+    ) -> None:
         """Verify the run's change against the inherited baseline and capture it when accepted
-        (``source_delivery``). Its evidence is the run's whether or not it is accepted; a
-        candidate that regressed or that nothing verified fails the run with it."""
-        try:
-            delivery = await deliver_source_change(
+        (``source_delivery``). Its evidence is the run's whether or not it is accepted. A
+        candidate that regressed gets one repair round from the run's correction budget, and is
+        delivered again (#2613); one that regressed after it, or that nothing verified, fails the
+        run with it."""
+        produced = state.produced
+        delivery = await self._verify_source_change(cycle, run_id, produced)
+        if delivery.verification.verdict == VERIFICATION_REGRESSED:
+            delivery = await self._repair_source_regression(
+                delivery,
                 cycle,
                 run_id,
-                produced.stored_artifacts,
-                vault=self._artifact_vault,
-                registry=self._project_registry,
-                repository=self._source_repository,
-                sandbox=self._sandbox,
+                state,
+                plan=plan,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                interface_manifest=interface_manifest,
+                budget_guard=budget_guard,
+                ledger=ledger,
             )
-        except (
-            SourceDeliveryRefused,
-            SourceUnavailable,
-            SandboxUnavailable,
-            InheritedBaselineNotFoundError,
-        ) as e:
-            raise _ExecutionError(f"source delivery: {e}") from e
-        produced.all_artifact_refs.extend(delivery.artifact_ids)
-        if self._cycle_registry is not None:
-            await self._cycle_registry.append_artifact_refs(run_id, delivery.artifact_ids)
         if delivery.captured_commit is None:
             raise _ExecutionError(
                 f"source delivery: the product's own checks: {delivery.verification.summary()}"
@@ -2616,6 +2643,141 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             produced.all_artifact_refs.append(evaluation)
             if self._cycle_registry is not None:
                 await self._cycle_registry.append_artifact_refs(run_id, (evaluation,))
+
+    async def _verify_source_change(
+        self, cycle: Cycle, run_id: str, produced: Any, *, repair_of: RepairOf | None = None
+    ) -> SourceDelivery:
+        """One delivery of the run's candidate, its evidence appended to the run's."""
+        try:
+            delivery = await deliver_source_change(
+                cycle,
+                run_id,
+                produced.stored_artifacts,
+                vault=self._artifact_vault,
+                registry=self._project_registry,
+                repository=self._source_repository,
+                sandbox=self._sandbox,
+                repair_of=repair_of,
+            )
+        except (
+            SourceDeliveryRefused,
+            SourceUnavailable,
+            SandboxUnavailable,
+            InheritedBaselineNotFoundError,
+        ) as e:
+            raise _ExecutionError(f"source delivery: {e}") from e
+        produced.all_artifact_refs.extend(delivery.artifact_ids)
+        if self._cycle_registry is not None:
+            await self._cycle_registry.append_artifact_refs(run_id, delivery.artifact_ids)
+        return delivery
+
+    async def _repair_source_regression(
+        self,
+        delivery: SourceDelivery,
+        cycle: Cycle,
+        run_id: str,
+        state: RunState,
+        *,
+        plan: list[TaskEnvelope],
+        profile: SquadProfile | None,
+        flow_run_id: str | None,
+        interface_manifest: Any,
+        budget_guard: Callable[[], None],
+        ledger: RunLedger,
+    ) -> SourceDelivery:
+        """#2613 (SIP-0112 H.20): one repair round for a regressed candidate, then its delivery.
+
+        The round is the plan's own correction chain, entered where an in-plan failure enters it
+        (``_dispatch_correction_protocol``): the same budget check, the same counter, the same
+        analyze, decide and repair. Its failed result is the regression as the product's runner
+        read it (``regression_failure``), on the plan's last source author. A ``patch`` whose
+        repair wrote files is stored as that task's own, and the candidate built from it is
+        delivered again: verified, and captured when accepted. That verification is the round's
+        verdict, so the in-plan verifier (``_try_accept_patch``) doesn't run here.
+
+        Raises:
+            _ExecutionError: The budget is spent; the round decided anything but a patch, or its
+                repair wrote nothing. Each names the regressed verification's checks. A
+                repaired candidate that regresses again, or that can't run a check it owes
+                (``RepairOf``), is returned uncaptured, and fails the run there.
+        """
+        verification = delivery.verification
+        regressed = f"source delivery: the product's own checks: {verification.summary()}"
+        subject = regression_subject(plan)
+        max_corrections = cycle.resolved_config().get("max_correction_attempts", 2)
+        counter = state.correction.counter
+        if subject is None or counter["n"] >= max_corrections:
+            raise _ExecutionError(
+                f"{regressed}; no repair round: the run's correction budget "
+                f"({max_corrections}) is spent"
+            )
+        produced = state.produced
+        authored_contract, authored_manifest = state.authored
+        enriched = await self._enrich_envelope(
+            subject,
+            produced.prior_outputs,
+            produced.all_artifact_refs,
+            produced.stored_artifacts,
+            interface_manifest=interface_manifest or authored_manifest,
+            run_derived_contract=authored_contract,
+        )
+        # Not recorded on the ledger as a task's rows: the verification records are the evidence,
+        # and a passing re-verification writes no row that would supersede them.
+        failure = regression_failure(subject.task_id, verification)
+        round_ = await self._dispatch_correction_protocol(
+            failure,
+            subject,
+            cycle,
+            run_id,
+            correction_counter=counter,
+            correction_signature_state=state.correction.signature_state,
+            scaffold_enforcement_carry=state.ownership.enforcement_carry,
+            prior_outputs=produced.prior_outputs,
+            all_artifact_refs=produced.all_artifact_refs,
+            stored_artifacts=produced.stored_artifacts,
+            completed_task_ids=state.checkpoint.completed_task_ids,
+            plan_delta_refs=state.checkpoint.plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            enriched_envelope=enriched,
+            interface_manifest=interface_manifest,
+            budget_guard=budget_guard,
+            repair_rejection_carry=state.correction.rejection_carry,
+            repair_dispute_carry=state.correction.dispute_carry,
+            accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
+            ledger=ledger,
+        )
+        protocol = round_.protocol
+        if protocol.correction_path != "patch":
+            raise _ExecutionError(
+                f"{regressed}; the repair round decided {protocol.correction_path!r}"
+            )
+        if protocol.emission_empty or protocol.repair_dropped or not protocol.repair_artifacts:
+            raise _ExecutionError(f"{regressed}; the repair round wrote no file of the product")
+        await self._store_accepted_artifacts(
+            protocol.repair_artifacts,
+            None,
+            subject,
+            cycle,
+            run_id,
+            produced.all_artifact_refs,
+            produced.stored_artifacts,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+        )
+        logger.info(
+            "source regression repaired in correction round %d of %d (task %s): delivering the "
+            "repaired candidate again (#2613)",
+            round_.attempt + 1,
+            max_corrections,
+            subject.task_id,
+        )
+        return await self._verify_source_change(
+            cycle,
+            run_id,
+            produced,
+            repair_of=RepairOf(delivery.artifact_ids[0], tuple(verification.blocking)),
+        )
 
     async def _seed_verification_scaffold_artifacts(
         self,

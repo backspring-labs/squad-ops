@@ -17,6 +17,14 @@ three steps:
    from Git to the same tree identity. It is mapped ``captured``, and the commit's patch is
    kept as the run's ``patch_export`` contribution.
 
+**A regressed candidate gets one repair round** (#2613, SIP-0112 H.20). The executor routes it
+into the correction chain the plan's own failures take (analyze, decide, repair), spending the
+run's correction budget, with ``regression_failure`` as the failed result: the blocking checks as
+the product's runner read them. The repaired candidate is delivered again, and its verification
+names the one it repairs (``RepairOf``): each check that blocked there must now execute and pass.
+A second regression, a round that repairs nothing, or a spent budget fails the run with the
+verification's summary.
+
 The squad's change is the files its source and test authors produced, at their latest accepted
 content, that differ from the checkout's. A file it rewrites keeps the checkout's CRLF line
 endings when the original used them throughout. A run's own documents (plans, reports) are
@@ -29,7 +37,7 @@ import json
 import logging
 import posixpath
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -42,8 +50,11 @@ from squadops.cycles.delivered_tree import WORKSPACE_ARTIFACT_TYPES
 from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
+from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.cycles.verification_integrity import ResultStatus
+from squadops.execution.product_suite import PRODUCT_RUNNER
 from squadops.projects.baseline import InheritedBaseline
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
@@ -51,12 +62,15 @@ from squadops.projects.contribution import capture_ref
 from squadops.projects.models import CheckoutTree
 from squadops.projects.verification import (
     ACCEPTED,
+    REGRESSED,
     SOURCE_VERIFICATION_FILENAME,
     SOURCE_VERIFICATION_TYPE,
     RegressionBaselineInvalid,
+    RepairOf,
     SourceVerification,
     attributed,
     previous_verification_baseline,
+    why_blocking,
 )
 from squadops.projects.workspaces import (
     CAPTURED,
@@ -66,6 +80,7 @@ from squadops.projects.workspaces import (
     seed_project_tree,
 )
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision, content_bytes
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import authors_qa_suite, authors_source
 
 logger = logging.getLogger(__name__)
@@ -146,6 +161,75 @@ def _line_endings_of(original: bytes | None, emitted: bytes) -> bytes:
     return emitted.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
 
 
+def regression_subject(plan: Sequence[TaskEnvelope]) -> TaskEnvelope | None:
+    """The task a regression's repair round is about (#2613): the plan's last source author,
+    whose envelope carries the write grant and workspace a repair of the product's code works
+    under; in a plan that authors only tests, its last suite author. ``None`` for a plan that
+    authors neither, which delivers nothing."""
+    for authors in (authors_source, authors_qa_suite):
+        found = [e for e in plan if authors(e.task_type)]
+        if found:
+            return found[-1]
+    return None
+
+
+def regression_failure(task_id: str, verification: SourceVerification) -> TaskResult:
+    """A regressed verification as the failed result the correction chain reads (#2613, H.20).
+
+    Each blocking check is a failed row as the product's own runner read it, in the sandbox after
+    the Development Configuration's setup: its id, exit code and output tails, and why it blocks.
+    Nothing here is read again in an agent's image, which lacks the product's dependencies
+    (#2913). An inherited failure isn't the run's to repair, and is named only in the summary.
+
+    Raises:
+        ValueError: ``verification`` didn't regress, so there is nothing to repair.
+    """
+    if verification.verdict != REGRESSED:
+        raise ValueError(f"verification reads {verification.verdict!r}: there's no regression")
+    rows = []
+    for check in verification.checks:
+        if check.id not in verification.blocking:
+            continue
+        evidence = check.evidence or {}
+        row: dict[str, Any] = {
+            "check": check.id,
+            "passed": False,
+            "executed": True,
+            "status": ResultStatus.FAILED,
+            "judged_on": PRODUCT_RUNNER,
+            "attribution": check.attribution,
+            "reason": why_blocking(check),
+            "exit_code": evidence.get("exit_code"),
+            "stdout_tail": evidence.get("stdout_tail") or "",
+            "stderr_tail": evidence.get("stderr_tail") or "",
+        }
+        if check.read:
+            row["read"] = dict(check.read)
+        rows.append(row)
+    environment = ", ".join(f"{k} {v}" for k, v in sorted(verification.environment.items()))
+    summary = (
+        f"the product's own checks, on its runner ({environment}), after the plan: "
+        f"{verification.summary()}. The run changed: {', '.join(verification.changed_paths)}"
+    )
+    return TaskResult(
+        task_id=task_id,
+        status=TaskResultStatus.FAILED,
+        outputs={
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "summary": summary,
+            "validation_result": {
+                "passed": False,
+                "summary": summary,
+                "missing_components": [],
+                "checks": rows,
+            },
+            "artifacts": [],
+        },
+        error=summary,
+        outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+    )
+
+
 async def deliver_source_change(
     cycle: Cycle,
     run_id: str,
@@ -155,8 +239,11 @@ async def deliver_source_change(
     registry: Any,
     repository: Any,
     sandbox: Any,
+    repair_of: RepairOf | None = None,
 ) -> SourceDelivery:
-    """Verify the run's change against the inherited baseline, and capture it when accepted."""
+    """Verify the run's change against the inherited baseline, and capture it when accepted.
+    ``repair_of`` is a repaired candidate's regressed verification, whose blocking checks it must
+    run and pass (#2613)."""
     context = cycle.source_context
     if context is None:
         raise ValueError(f"cycle {cycle.cycle_id} pins no source: it is not source-backed")
@@ -245,6 +332,7 @@ async def deliver_source_change(
             environment=environment,
             checks=attributed(results, baseline),
             regression_baseline_ref=context.previous_verification_ref,
+            repair_of=repair_of,
         )
         ids = [
             await _store(

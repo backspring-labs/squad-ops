@@ -52,6 +52,17 @@ class RegressionBaselineInvalid(ValueError):
 
 
 @dataclass(frozen=True)
+class RepairOf:
+    """The regressed verification a repaired candidate answers (#2613, SIP-0112 H.20), and the
+    checks that blocked it. The repaired candidate owes each of them a run that executed and
+    passed: a check that regressed and then couldn't run is not repaired, since missing evidence
+    grants no waiver."""
+
+    ref: str
+    checks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SourceVerification:
     project_id: str
     #: ``None`` for a campaign branch's rebased head (SIP-0109 §24bv point 4), which no run made.
@@ -75,10 +86,19 @@ class SourceVerification:
     #: campaign, the branch's base and head before it, and the commits it replayed and dropped.
     #: ``None`` for a run's candidate. ``baseline_commit`` is then the commit rebased onto.
     rebase: Mapping[str, Any] | None = None
+    #: A repaired candidate's: the regressed verification it answers (#2613). ``None`` otherwise.
+    repair_of: RepairOf | None = None
 
     @property
     def blocking(self) -> list[str]:
-        return [c.id for c in self.checks if c.result == FAIL and c.attribution != INHERITED]
+        owed = self.repair_of.checks if self.repair_of is not None else ()
+        ran = {c.id for c in self.checks}
+        return [
+            c.id
+            for c in self.checks
+            if (c.result == FAIL and c.attribution != INHERITED)
+            or (c.id in owed and c.result != PASS)
+        ] + [check for check in owed if check not in ran]
 
     @property
     def verdict(self) -> str:
@@ -89,8 +109,14 @@ class SourceVerification:
     def summary(self) -> str:
         """One line a reader can act on: the verdict, and the checks that decided it."""
         if self.verdict == REGRESSED:
+            ran = {c.id for c in self.checks}
             return "regressed: " + "; ".join(
-                _why_blocking(c) for c in self.checks if c.id in self.blocking
+                [why_blocking(c) for c in self.checks if c.id in self.blocking]
+                + [
+                    f"{i} wasn't run on the repaired candidate"
+                    for i in self.blocking
+                    if i not in ran
+                ]
             )
         inherited = [c.id for c in self.checks if c.result == FAIL]
         passed = [c.id for c in self.checks if c.result == PASS]
@@ -101,6 +127,11 @@ class SourceVerification:
 
     def to_document(self) -> dict[str, Any]:
         rebase = {"rebase": dict(self.rebase)} if self.rebase is not None else {}
+        if self.repair_of is not None:
+            rebase["repair_of"] = {
+                "ref": self.repair_of.ref,
+                "checks": list(self.repair_of.checks),
+            }
         return rebase | {
             "schema": SOURCE_VERIFICATION_SCHEMA,
             "project_id": self.project_id,
@@ -126,8 +157,15 @@ class SourceVerification:
         }
 
 
-def _why_blocking(check: CheckResult) -> str:
-    """One blocking check, said as what a reader acts on (#2609)."""
+def why_blocking(check: CheckResult) -> str:
+    """One blocking check, said as what a reader acts on (#2609): in the run's summary, and as
+    the reason its regression's repair round is handed (#2613)."""
+    if check.result != FAIL:
+        # Only a check a repaired candidate owes blocks without failing (``RepairOf``).
+        return (
+            f"{check.id} regressed, and the repaired candidate's run of it is "
+            f"{check.result}: {check.reason or 'no reason given'}"
+        )
     read = check.read or {}
     if read.get("grown"):
         found = ", ".join(read["grown"])

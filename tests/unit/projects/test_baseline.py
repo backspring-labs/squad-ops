@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from squadops.execution.source_delivery import regression_failure
 from squadops.projects.baseline import (
     FAIL,
     INHERITED,
@@ -21,7 +22,7 @@ from squadops.projects.baseline import (
     result_of,
 )
 from squadops.projects.development_configuration import Check
-from squadops.projects.verification import SourceVerification
+from squadops.projects.verification import RepairOf, SourceVerification
 from squadops.sandbox.findings import FindingsReading, read
 from tests.fixtures.shared_contract.repository import recorded
 
@@ -154,6 +155,46 @@ def test_2_4s_acceptance_policy(results, verdict):
     )
 
     assert verification.verdict == verdict
+
+
+def _repaired(*checks: CheckResult, owed: tuple[str, ...] = ("report",)) -> SourceVerification:
+    return SourceVerification(
+        project_id="p", cycle_id="c", run_id="r", baseline_commit="0" * 40,
+        development_configuration_revision=1, candidate_revision_id="x",
+        candidate_tree_identity="t", changed_paths=("a.py",), environment={}, checks=checks,
+        repair_of=RepairOf("art_first", owed),
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("report", "verdict", "why"),
+    [
+        (CheckResult("report", PASS), "accepted", None),
+        (
+            CheckResult("report", UNVERIFIED, UNVERIFIED_ATTRIBUTION, reason="timed out"),
+            "regressed",
+            "report regressed, and the repaired candidate's run of it is UNVERIFIED: timed out",
+        ),
+        (None, "regressed", "report wasn't run on the repaired candidate"),
+    ],
+    ids=["passed", "couldnt-run", "absent"],
+)
+def test_a_repaired_candidate_owes_its_regressed_checks_a_passing_run(report, verdict, why):
+    """#2613. Bug caught: a regression "repaired" into a check that couldn't run, accepted because
+    an UNVERIFIED check blocks nothing on its own while another passes."""
+    checks = (CheckResult("build", PASS),) + ((report,) if report is not None else ())
+
+    verification = _repaired(*checks)
+
+    assert verification.verdict == verdict
+    if why is not None:
+        assert verification.summary() == f"regressed: {why}"
+    assert verification.to_document()["repair_of"] == {"ref": "art_first", "checks": ["report"]}
+
+
+def test_only_a_regressed_verification_has_a_failure_to_repair():
+    with pytest.raises(ValueError, match="verification reads 'accepted': there's no regression"):
+        regression_failure("task_dev", _repaired(CheckResult("report", PASS)))
 
 
 FINDINGS = Path(__file__).resolve().parents[2] / "fixtures" / "findings"

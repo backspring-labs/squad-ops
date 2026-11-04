@@ -41,13 +41,16 @@ from squadops.campaigns.evaluator_trees import FileTree
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
 from squadops.capabilities.handlers.source_repository import source_repository_section
+from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.models import (
+    AgentProfileEntry,
     ArtifactRef,
     Cycle,
     DerivedProfileNotFoundError,
     Project,
     Run,
+    SquadProfile,
     TaskFlowPolicy,
 )
 from squadops.cycles.run_ledger import RunLedger
@@ -70,7 +73,7 @@ from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.models import CommandOutcome, CommandResult, OperationName, OperationStatus
 from squadops.sandbox.service import SandboxService
 from squadops.sandbox.workspace import WorkspaceStore
-from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from tests.fixtures.shared_contract.repository import build_repository, recorded, tracked_files
 
 NOW = datetime(2026, 10, 18, tzinfo=UTC)
@@ -411,12 +414,27 @@ def summary_line(ledger):
 """
 
 
-async def _end_of_plan(executor, cycle, run, vault, changes, task_type="development.develop"):
+async def _end_of_plan(
+    executor,
+    cycle,
+    run,
+    vault,
+    changes,
+    task_type="development.develop",
+    *,
+    profile=None,
+    rounds_spent=0,
+):
     """The run's plan done, with ``changes`` the developer's accepted emissions: the point at
     which ``_execute_sequential`` delivers. The emissions arrive as the run's stored artifacts
     do, through the seed set the loop restores. The plan's one task is ``task_type``, already
-    run: dispatch is out of this seam."""
-    executor._execute_task = AsyncMock()
+    run: dispatch is out of this seam. ``rounds_spent`` is the correction rounds the plan's own
+    failures spent, on the run's counter, as a task's correction loop bills them."""
+
+    async def _task(state, *_args, **_kwargs):
+        state.correction.counter["n"] += rounds_spent
+
+    executor._execute_task = AsyncMock(side_effect=_task)
     seeded = await _seed(executor, cycle, run)
     emitted = []
     for path, content in changes.items():
@@ -459,7 +477,12 @@ async def _end_of_plan(executor, cycle, run, vault, changes, task_type="developm
         emitted.append(ref.artifact_id)
     plan = [dataclasses.replace(_envelope(cycle, list(changes)), task_type=task_type)]
     await executor._execute_sequential(
-        plan, run.run_id, cycle, seed_artifact_refs=[*seeded, *emitted], ledger=RunLedger()
+        plan,
+        run.run_id,
+        cycle,
+        seed_artifact_refs=[*seeded, *emitted],
+        ledger=RunLedger(),
+        profile=profile,
     )
 
 
@@ -596,14 +619,23 @@ async def test_a_failed_delivery_reports_its_own_error_when_the_release_fails_to
     assert release.await_count == 2  # before seeding, and at the teardown that failed
 
 
-async def test_a_change_that_breaks_a_passing_check_fails_the_run_and_is_never_captured(
+async def test_a_change_that_breaks_a_passing_check_fails_the_run_once_the_budget_is_spent(
     world, tmp_path
 ):
+    """#2613: a regression's repair round spends the run's correction budget, so once the plan's
+    own rounds spent it the run fails as before, its record naming the check, with no round."""
     repo, vault, executor, cycle, run = world
     broken = b"def summarize(ledger):\n    return {}\n"
+    executor._task_dispatcher.dispatch_task = AsyncMock()
 
-    with pytest.raises(_ExecutionError, match="regressed: report failed where the baseline"):
-        await _end_of_plan(executor, cycle, run, vault, {"tally/report.py": broken})
+    with pytest.raises(
+        _ExecutionError,
+        match=r"regressed: report failed where the baseline did not; no repair round: the run's "
+        r"correction budget \(2\) is spent",
+    ):
+        await _end_of_plan(executor, cycle, run, vault, {"tally/report.py": broken}, rounds_spent=2)
+
+    executor._task_dispatcher.dispatch_task.assert_not_awaited()
 
     [(_ref, raw)] = _of_type(vault, SOURCE_VERIFICATION_TYPE)
     report = next(c for c in json.loads(raw)["checks"] if c["id"] == "report")
@@ -620,6 +652,200 @@ async def test_a_change_that_breaks_a_passing_check_fails_the_run_and_is_never_c
         c.args[0].direction for c in executor._project_registry.record_source_mapping.call_args_list
     ]
     assert directions == ["seeded"]
+
+
+# --- #2613 (SIP-0112 H.20): a regression found at the end of the plan gets one repair round ----
+
+_BROKEN_REPORT = b"def summarize(ledger):\n    return {}\n"
+_SQUAD = SquadProfile(
+    profile_id="full",
+    name="Full",
+    description="",
+    version=1,
+    agents=tuple(
+        AgentProfileEntry(agent_id=a, role=r, model="m", enabled=True, serves_roles=(r,))
+        for a, r in (("neo", "dev"), ("eve", "qa"), ("data", "data"), ("max", "lead"))
+    ),
+    created_at=NOW,
+)
+
+
+def _implementation(cycle):
+    """The cycle on the `implementation` request profile's own defaults: its declared correction
+    steps (analyze, decide, repair) and its budget of two rounds."""
+    return dataclasses.replace(
+        cycle, applied_defaults=dict(load_profile("implementation").defaults)
+    )
+
+
+def _squad_answers(executor, repaired: bytes | None, *, decision: str = "patch"):
+    """The squad's correction steps, answered as the agents would, each envelope kept. The repair
+    rewrites ``tally/report.py`` to ``repaired`` (``None``: it writes nothing)."""
+    dispatched: list[TaskEnvelope] = []
+
+    async def _dispatch(envelope, run_id, **_kw):
+        dispatched.append(envelope)
+        outputs = {
+            "data.analyze_failure": {"classification": "work_product", "analysis_summary": "x"},
+            "governance.correction_decision": {
+                "correction_path": decision,
+                "decision_rationale": "the report's summary lost its fields",
+                "affected_task_types": ["development.develop"],
+            },
+        }.get(envelope.task_type)
+        if outputs is None:
+            artifacts = (
+                [{"name": "tally/report.py", "content": repaired.decode(), "type": "source"}]
+                if repaired is not None
+                else []
+            )
+            outputs = {"artifacts": artifacts, "summary": "repaired"}
+        return TaskResult(
+            task_id=envelope.task_id, status=TaskResultStatus.SUCCEEDED, outputs=outputs
+        )
+
+    executor._task_dispatcher.dispatch_task = _dispatch
+    executor._task_dispatcher.create_task_run_if_enabled = AsyncMock(return_value=None)
+    return dispatched
+
+
+def _verifications(vault):
+    stored = sorted(_of_type(vault, SOURCE_VERIFICATION_TYPE), key=lambda rc: rc[0].created_at)
+    return [(ref.artifact_id, json.loads(raw)) for ref, raw in stored]
+
+
+async def test_a_regression_is_repaired_in_one_round_from_the_product_runners_reading(
+    world, tmp_path
+):
+    """The wiring test (anti-pattern 6a), entered at ``_execute_sequential``'s end of plan, the
+    live delivery, through the real correction runner to the agents' queue. Bugs caught: a
+    regression that ends the run with budget left; the analysis or the repair handed anything but
+    the product runner's reading of the failing check (#2913: never an agent image's); a round
+    outside the run's budget; the repaired candidate captured unverified, or the regressed one
+    captured at all."""
+    repo, vault, executor, cycle, run = world
+    report = tracked_files(repo.path, repo.second_commit)["tally/report.py"]
+    dispatched = _squad_answers(executor, report + _SUMMARY_LINE)
+
+    await _end_of_plan(
+        executor, _implementation(cycle), run, vault, {"tally/report.py": _BROKEN_REPORT},
+        profile=_SQUAD, rounds_spent=1,
+    )  # fmt: skip
+
+    (first_id, first), (_second_id, second) = _verifications(vault)
+    assert (first["verdict"], second["verdict"]) == ("regressed", "accepted")
+    # One round: analyze, decide, repair, each once, on the plan's developer task.
+    assert [e.task_type for e in dispatched] == [
+        "data.analyze_failure",
+        "governance.correction_decision",
+        "development.correction_repair",
+    ]
+    # What the analysis and the repair read is the product's runner's reading, as stored.
+    runner = first["evidence"]["report"]
+    for envelope in (dispatched[0], dispatched[2]):
+        evidence = envelope.inputs["failure_evidence"]
+        assert evidence["failed_task_id"] == "task_dev"
+        [row] = evidence["validation_result"]["checks"]
+        assert row == {
+            "check": "report",
+            "passed": False,
+            "executed": True,
+            "status": "failed",
+            "judged_on": "product_runner",
+            "attribution": "introduced/regressed",
+            "reason": "report failed where the baseline did not",
+            "exit_code": runner["exit_code"],
+            "stdout_tail": runner["stdout_tail"],
+            "stderr_tail": runner["stderr_tail"],
+        }
+        assert runner["exit_code"] == 1 and "FAIL" in runner["stderr_tail"]
+        assert "image python:3.12-slim" in evidence["error"]
+    assert dispatched[2].inputs["max_correction_attempts"] == 2
+    # The repaired candidate is verified again, owing a passing run of what regressed.
+    assert second["repair_of"] == {"ref": first_id, "checks": ["report"]}
+    assert next(c for c in second["checks"] if c["id"] == "report")["result"] == "PASS"
+    [(patch_ref, _patch)] = _of_type(vault, SOURCE_PATCH_TYPE)
+    captured = patch_ref.metadata["captured_commit"]
+    clone = tmp_path / "cache" / "prj-tally.git"
+    assert tracked_files(clone, captured)["tally/report.py"] == report + _SUMMARY_LINE
+
+
+async def test_a_repair_that_regresses_again_fails_the_run_after_its_one_round(world):
+    """Bugs caught: a second round (the budget has room for one more), or a regressed repair
+    captured. The record of each delivery names the check."""
+    _repo, vault, executor, cycle, run = world
+    dispatched = _squad_answers(executor, b"def summarize(ledger):\n    return None\n")
+
+    with pytest.raises(_ExecutionError, match="regressed: report failed where the baseline"):
+        await _end_of_plan(
+            executor, _implementation(cycle), run, vault, {"tally/report.py": _BROKEN_REPORT},
+            profile=_SQUAD,
+        )  # fmt: skip
+
+    assert [d["verdict"] for _id, d in _verifications(vault)] == ["regressed", "regressed"]
+    assert sum(e.task_type == "development.correction_repair" for e in dispatched) == 1
+    assert _of_type(vault, SOURCE_PATCH_TYPE) == []
+
+
+async def test_a_regressed_check_the_repaired_candidate_cant_run_is_not_repaired(world):
+    """Bug caught: a repair that makes the regressed check time out (UNVERIFIED blocks nothing on
+    its own) accepted and captured. Missing evidence grants no waiver."""
+    repo, vault, executor, cycle, run = world
+    report = tracked_files(repo.path, repo.second_commit)["tally/report.py"]
+    _squad_answers(executor, report + _SUMMARY_LINE)
+    backend = executor._sandbox._backend
+    real = backend.run_declared_command
+    runs = {"report": 0}
+
+    async def _times_out_on_the_repaired_candidate(*, revision, command, **kw):
+        if "check_report.py" in command:
+            runs["report"] += 1
+            if runs["report"] == 2:
+                return CommandResult(
+                    operation=OperationName.RUN_DECLARED_COMMAND,
+                    workspace_revision_id=revision.revision_id,
+                    status=OperationStatus.FAILED,
+                    ran=True,
+                    command=tuple(command),
+                    outcome=CommandOutcome.TIMEOUT,
+                )
+        return await real(revision=revision, command=command, **kw)
+
+    backend.run_declared_command = _times_out_on_the_repaired_candidate
+
+    with pytest.raises(
+        _ExecutionError,
+        match="report regressed, and the repaired candidate's run of it is UNVERIFIED: timed out",
+    ):
+        await _end_of_plan(
+            executor, _implementation(cycle), run, vault, {"tally/report.py": _BROKEN_REPORT},
+            profile=_SQUAD,
+        )  # fmt: skip
+
+    assert [d["verdict"] for _id, d in _verifications(vault)] == ["regressed", "regressed"]
+    assert _of_type(vault, SOURCE_PATCH_TYPE) == []
+
+
+@pytest.mark.parametrize(
+    ("decision", "repaired", "said"),
+    [
+        ("abort", None, "the repair round decided 'abort'"),
+        ("patch", None, "the repair round wrote no file of the product"),
+    ],
+)
+async def test_a_round_that_repairs_nothing_fails_the_run_naming_the_checks(
+    world, decision, repaired, said
+):
+    _repo, vault, executor, cycle, run = world
+    _squad_answers(executor, repaired, decision=decision)
+
+    with pytest.raises(_ExecutionError, match=f"regressed: report failed .*; {said}"):
+        await _end_of_plan(
+            executor, _implementation(cycle), run, vault, {"tally/report.py": _BROKEN_REPORT},
+            profile=_SQUAD,
+        )  # fmt: skip
+
+    assert [d["verdict"] for _id, d in _verifications(vault)] == ["regressed"]
 
 
 async def test_a_run_that_changed_nothing_delivers_nothing(world):
@@ -732,7 +958,8 @@ async def test_an_increment_on_a_head_is_compared_with_the_verification_that_mad
 
     if verdict is None:
         with pytest.raises(_ExecutionError, match="regressed: parse failed where the baseline"):
-            await _end_of_plan(executor, cycle, run, vault, changes)
+            # The plan's rounds spent the budget, so the undo fails as it reads (#2613).
+            await _end_of_plan(executor, cycle, run, vault, changes, rounds_spent=2)
     else:
         await _end_of_plan(executor, cycle, run, vault, changes)
 
