@@ -63,7 +63,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 
 | part | status | where |
 |---|---|---|
-| slice 1: the goal-set record, its revisions, the API and the CLI | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2884 |
+| slice 1: the goal-set record, its revisions, the API and the CLI (as built: §10a) | **shipped** | 2.6.0, PR #2899, closes #2884 |
 | slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2885 |
 | slice 3: candidates, their promotion and drop | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2886 |
 | slice 4: the console's goals panel | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2887 |
@@ -346,3 +346,50 @@ recommendations on the other decisions"; Q41 is the plan's D15). Slices 1 and 3 
 | Q42 | **`requirements` beside `goals`:** keep both sources for a Campaign? | **keep both.** The sample applications' Campaigns read PRDs, and their yardstick is built on them. A product Campaign names one or the other |
 | Q43 | **where the crew's assessment lives:** a SquadOps record (§5.7), or only the crew's signed closing interpretation in Buzz, as today? | **a SquadOps record,** with the signed statement as its `source_ref`. The owner then reads the goal, the backlog and whether each expected result is met in one place, and a framework finding is linked to the result it blocked |
 | Q44 | **one goal set per Project, or several** (one per Campaign theme)? | **one active,** with revisions. Two goal sets on one Project would compete for the same tree |
+
+## 10. Post-acceptance amendments
+
+### 10a. Slice 1 as built (2026-11-03)
+
+**What changed.** §4, §8.1 and §8.2 name the fields and the surfaces. Slice 1 settles what they leave open and
+narrows four of them. Decided by the implementer under the supervisor's slice-1 brief (#2884); the owner reviews it in
+the slice's PR.
+- **A surface is `{kind, ref}`, or `{kind: none, reason}`.** The kinds are `http_endpoint`, `page`, `command`,
+  `package_interface` and `none`. `ref` names what is observed there (`POST /api/sessions`, `/week`). A kind with no
+  `ref`, or `none` with no reason, is refused. *Narrowed:* §4 names where a result is observed without saying it
+  must be named.
+- **A backlog item serves at least one expected result,** and each id it names is one in the same revision.
+  *Narrowed:* §1 says each item names the results it serves; an item that serves none is refused.
+- **Ids are the author's,** of letters, digits, `.`, `_` and `-`, up to 64 characters, and unique in their list.
+  Nothing mints or renumbers them. *Narrowed:* **a backlog item and a candidate never share an id.** So slice 3 can
+  keep a candidate's id when it is promoted, and nothing the slice derives by id names two things.
+- **Unknown fields are refused,** at every level, naming the field: a misspelt list silently dropped would read as an
+  emptied one.
+- **The write is `POST /api/v1/projects/{id}/goal-set/revisions`.** It carries `expected_revision` (0 for the
+  first), `reason`, an optional `source_ref` and an `idempotency_key`, as a Development Configuration's write does
+  (SIP-0112 §D.2). A stale revision is `409 STALE_GOAL_SET_REVISION`; a key reused for another body is
+  `409 IDEMPOTENCY_KEY_CONFLICT`; an invalid goal set is `422 GOAL_SET_INVALID` naming its field. `GET …/goal-set` is
+  the active revision (`404 GOAL_SET_NOT_FOUND` before the first), and `GET …/goal-set/revisions[/{n}]` the history,
+  newest first, or one revision.
+- **Who may:** reading needs `cycles:read`, as reading a Project does. Writing needs `admin:write`, as writing a
+  Development Configuration does. The crew's principals hold `cycles:read`, so they can already read the goal set; the
+  derived backlog view they need is slice 2's and slice 5's. They hold no write scope here (§6; delegated reorders and
+  promotions are slice 3's, under Q41).
+- **Its own store,** beside the Project registry, not in it: the goal set adds nothing to the Project Record (the
+  intake check). Migration `2100_project_goal_sets.sql` (SIP-0115's range, `2100–2199`) holds one row per revision,
+  the goal set as JSONB beside its scalar columns. It is chosen by the Project registry's selector, and writes only
+  under `postgres`: under `postgres_read_only` (SIP-0112 R3) and `config`, a write is `409 PROJECT_REGISTRY_READ_ONLY`.
+- **§7's sweep needs no change:** `heldout_sweep.py` dumps every table of the `squadops` database except the suite's
+  own store (`OWN_STORE`, `scripts/dev/heldout_sweep.py:81`; `--exclude-table` at `:294`), so
+  `project_goal_set_revisions` is searched already.
+- **The CLI's `show` prints YAML that `edit -f` takes back,** with the revision's provenance as comments, every line
+  of each commented, and a `# base-revision: N` line. **`edit` writes against the revision its file was shown at,**
+  never against whatever is active when it runs, so an export submitted after another editor wrote is refused as
+  stale. It is not written over theirs, and a retry with the printed key and the same file replays. A file with no
+  `# base-revision` line needs `--expected-revision`. *Added on the outside second review of PR #2899 (its P1–P3).*
+  `candidates`, `promote` and `drop` (§8.2) are slice 3's.
+
+**Evidence.** `tests/unit/projects/test_goal_set.py` (each refusal by its field), `tests/unit/api/test_goal_set_routes.py`
+(the write entered at the route, behind the runtime's auth, and each role's scope),
+`tests/integration/cycles/test_postgres_goal_set_registry_integration.py` (revisions, staleness, replay and racing
+writers against Postgres).

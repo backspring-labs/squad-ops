@@ -330,6 +330,39 @@ class DevelopmentConfigurationRecordedResponse(BaseModel):
     replayed: bool
 
 
+class GoalSetRevisionRequest(BaseModel):
+    """Write a Project's next goal-set revision (SIP-0115 §4, §8.1). ``expected_revision`` is
+    the latest one (0 for the first), so a concurrent edit is refused rather than silently
+    superseded. ``goal_set`` is validated by the domain, which names the field it refuses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=2000)
+    #: Where the change came from, when a conversation (§6): a link, never its content.
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+    goal_set: dict[str, Any]
+
+
+class GoalSetRevisionResponse(BaseModel):
+    """One goal-set revision: who wrote it, why, and the goal set as stored."""
+
+    project_id: str
+    revision: int
+    author: str
+    reason: str
+    source_ref: str | None
+    created_at: datetime
+    goal_set: dict[str, Any]
+
+
+class GoalSetRecordedResponse(BaseModel):
+    revision: GoalSetRevisionResponse
+    idempotency_key: str
+    replayed: bool
+
+
 class InheritedBaselineRequest(BaseModel):
     """Capture a Project's inherited baseline (SIP-0112 FR-20, E.4.2)."""
 

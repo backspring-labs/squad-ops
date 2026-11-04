@@ -5,6 +5,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **A Project's goal set** (SIP-0115 slice 1, #2884, PR #2899): the goal, expected results with where each is
+  observed, constraints, out of scope, the ordered backlog and candidates, written as immutable numbered revisions
+  with author, reason and `source_ref`. `/api/v1/projects/{id}/goal-set` reads the active revision, `/revisions`
+  the history and one by number, and `POST /revisions` writes the next against an expected revision (409 when
+  another was written first). Read with `cycles:read`, written with `admin:write` only. `squadops goals
+  show|edit|history`; `show` prints YAML that `edit -f` takes back. Migration `2100_project_goal_sets.sql`, the first
+  of SIP-0115's range `2100–2199`.
+
 ### Fixed
 - **A private Node package that declares a module interface is a package surface,** so a criterion on a product
   like battle-trainer can name its interface (#2875, PR #2879; SIP-0112 H.17).

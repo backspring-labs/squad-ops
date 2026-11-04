@@ -214,6 +214,15 @@ class StaleConfigurationRevisionError(CycleError):
     the current one: another revision was recorded first (§D.2's version precondition)."""
 
 
+class GoalSetNotFoundError(CycleError):
+    """Raised when a Project has no goal set yet, or not the revision asked for (SIP-0115 §4)."""
+
+
+class StaleGoalSetRevisionError(CycleError):
+    """Raised when a goal-set revision is written against one that is no longer the latest:
+    another revision was written first (SIP-0115 §4, as a Development Configuration's is)."""
+
+
 class ProjectIdTakenError(CycleError):
     """Raised when a registration names a Project ID the registry already holds."""
 
