@@ -3174,3 +3174,22 @@ the contribution couldn't express the intent. The plan's Track B placed it in 2.
 The fence's spelling, the two grants, all-or-nothing refusal, carrying removals outside the artifact list, refusing a
 repair's removal inside the plan, and refusing a self-evaluation pass's are this implementation's decisions, built by
 the Spark lane on 2026-11-04. The owner rules on them in review.
+
+## H.24 A suite that fails on the product's runner is read there, not in the qa image (2026-11-04; H.6, #2835, #2877, #2913; the Spark lane)
+
+**What changed.** A product's `qa.test` is run again on the product's runner. A pass there judged the task, and #2877 replaced the
+image's reading when the image didn't execute the suite. A **failure** there left the agent's result, so an image that
+*did* execute and failed for its own reasons stayed the evidence. Now, when every run exited, the task stays failed on
+the runner's reading (`product_suite.reread`), with the image's row kept beside it. A run that didn't exit is no reading:
+the agent's result stands, as before.
+
+**The evidence.** Shelfnote's `cmp_5947cfb57197` (2026-11-04), SN-6, cycles `cyc_e175b361d33f` and `cyc_4aa34f8b2bc6`. The qa
+image lacked the declared `python-slugify` and died at `conftest.py` (exit 4). The runner read `PATCH /books/{id}` answering
+400. The analysis read the first and called it an environment issue, the repair changed nothing, and correction ended as
+`plan_defect` twice, which ended the Campaign at SIP-0109 §10 row 4. `tests/unit/cycles/test_product_suite_runner.py`:
+`test_the_image_failing_on_a_dependency_it_lacks_never_reaches_the_analysis`, and `test_a_run_that_never_exited_leaves_the_agents_result`.
+
+**What remains.** The runner runs only when `tests_pass` fails beside nothing but `ENVIRONMENT_SENSITIVE` checks. An image failure
+beside another failing check is still the image's reading. Not seen live, so not built.
+
+**Who ruled.** The Spark lane, under the 2.6 merge grant: the fix follows #2877's rule, and #2913 records the defect.

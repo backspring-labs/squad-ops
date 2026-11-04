@@ -93,6 +93,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   owner resumes. The supervisor seat's refused resume is now recorded rather than refused unwritten.
 
 ### Fixed
+- **A suite that fails on the product's runner is read there, not in the qa image** (#2913, SIP-0112 H.24). When the
+  runner ran a product's suite and it failed, the agent's result stood, so an image that died on a dependency it lacks
+  (Shelfnote's `slugify`, exit 4) stayed the evidence: the analysis called it an environment issue, the repair changed
+  nothing, and the real failure (`PATCH /books/{id}` answering 400) reached neither, which ended the Campaign. The
+  runner's reading now replaces the image's, which stays beside it; a run that didn't exit leaves the agent's result.
 - **The console's API proxies forward the query string** (#2915). `/api/v1/*` and the two chat proxies forwarded the
   path alone, so through the console's own port `?project_id=` reached the runtime API missing (a 422) and `?limit=`/
   `?offset=` read as the default page. Hidden on the Spark, where Caddy sends `/api/v1/*` to the runtime API directly.
