@@ -20,14 +20,22 @@ candidate can keep its id when it is promoted (slice 3) and no id names two thin
 
 Nothing derived is stored: an item's status is read from each Campaign's control log (§4,
 slice 2), and no field here holds one.
+
+**Candidates and splits** (slice 3, #2886; §5.4, §5.5a). A candidate is added, promoted into the
+backlog or dropped, and a backlog item is split, each as the next revision like any edit. The
+document holds the result; the revision names the action that wrote it (``Change``: its kind,
+what it acted on, and the ids a split produced), so a reader of the history, and the derived
+view, know a split parent from an item the owner removed. The pure actions here take a goal set
+and give the next; ``goal_set_actions`` reads the stores and applies §6's rule for who may.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from squadops.projects.development_configuration import submission_digest
@@ -63,6 +71,77 @@ class GoalSetInvalid(ValueError):
     def __init__(self, field: str, message: str) -> None:
         super().__init__(f"{field}: {message}")
         self.field = field
+
+
+class CandidateNotFound(LookupError):
+    """An action named a candidate the revision it acts on doesn't hold (§5.4)."""
+
+
+class BacklogItemNotFound(LookupError):
+    """An action named a backlog item the revision it acts on doesn't hold (§5.5a)."""
+
+
+class ChangeKind(StrEnum):
+    """The actions slice 3 writes as revisions, named on the revision (§5.4, §5.5a)."""
+
+    CANDIDATE_ADDED = "candidate_added"
+    CANDIDATE_PROMOTED = "candidate_promoted"
+    CANDIDATE_DROPPED = "candidate_dropped"
+    ITEM_SPLIT = "item_split"
+
+
+_CHANGE_KEYS = frozenset({"kind", "subject", "position", "split_into", "campaign_id"})
+
+
+@dataclass(frozen=True)
+class Change:
+    """What a revision did, when it was one of slice 3's actions rather than an edit: the kind,
+    the candidate's or item's id it acted on (``subject``), the position a promoted candidate
+    took, the ids a split produced in the parent's place, and the Campaign the crew acted
+    within (Q41), when it did. Absent on a revision written as a whole document."""
+
+    kind: ChangeKind
+    subject: str
+    position: int | None = None
+    split_into: tuple[str, ...] = ()
+    campaign_id: str | None = None
+
+    def to_document(self) -> dict[str, Any]:
+        doc: dict[str, Any] = {"kind": self.kind.value, "subject": self.subject}
+        if self.position is not None:
+            doc["position"] = self.position
+        if self.split_into:
+            doc["split_into"] = list(self.split_into)
+        if self.campaign_id is not None:
+            doc["campaign_id"] = self.campaign_id
+        return doc
+
+
+def parse_change(doc: Any) -> Change:
+    """A stored change, refused naming its field rather than read loosely: a revision whose
+    action is misread would tell the derived view the wrong thing about a removed item."""
+    if not isinstance(doc, Mapping):
+        raise GoalSetInvalid("change", "a mapping")
+    _known_keys(doc, _CHANGE_KEYS, "change")
+    kind = doc.get("kind")
+    if kind not in {k.value for k in ChangeKind}:
+        raise GoalSetInvalid("change.kind", f"one of {[k.value for k in ChangeKind]}, not {kind!r}")
+    position = doc.get("position")
+    if position is not None and (isinstance(position, bool) or not isinstance(position, int)):
+        raise GoalSetInvalid("change.position", "a position in the backlog's order, from 1")
+    split_into = doc.get("split_into", [])
+    if not isinstance(split_into, list) or not all(isinstance(i, str) for i in split_into):
+        raise GoalSetInvalid("change.split_into", "the ids of the items a split produced")
+    campaign_id = doc.get("campaign_id")
+    if campaign_id is not None and not isinstance(campaign_id, str):
+        raise GoalSetInvalid("change.campaign_id", "a Campaign's id, or absent")
+    return Change(
+        kind=ChangeKind(kind),
+        subject=_text(doc, "subject", "change"),
+        position=position,
+        split_into=tuple(split_into),
+        campaign_id=campaign_id,
+    )
 
 
 @dataclass(frozen=True)
@@ -160,6 +239,9 @@ class GoalSetRevision:
     #: Where the change came from, when it came from a conversation (§6): a Buzz statement's
     #: link, an issue, a review.
     source_ref: str | None = None
+    #: The action that wrote it, when it was one of slice 3's (a candidate added, promoted or
+    #: dropped; an item split); ``None`` on a revision written as a whole document.
+    change: Change | None = None
 
 
 # --- reading a submitted or stored goal set ---
@@ -392,3 +474,118 @@ async def revise_goal_set(
             }
         ),
     )
+
+
+# --- slice 3's actions on one goal set (§5.4, §5.5a) ---
+#
+# Each takes a goal set and gives the next, validated as a whole again, so every invariant a
+# submitted document meets, the result of an action meets: unique ids, no id shared by a backlog
+# item and a candidate, every ``serves`` naming a result of the same revision.
+
+
+def add_candidate(goal_set: GoalSet, candidate: Any, *, found_at: datetime) -> GoalSet:
+    """``goal_set`` with ``candidate`` added, as submitted (§4's fields). A submission naming no
+    ``found_at`` is found at ``found_at``: the time of the write, which a retry replays rather than
+    re-mints. A candidate is never added to the order (§5.4): promotion is its own action."""
+    doc = dict(candidate) if isinstance(candidate, Mapping) else candidate
+    if isinstance(doc, dict) and doc.get("found_at") is None:
+        doc["found_at"] = found_at
+    parsed = _candidate(doc, "candidate")
+    return _validated(replace(goal_set, candidates=(*goal_set.candidates, parsed)))
+
+
+def promote_candidate(
+    goal_set: GoalSet,
+    candidate_id: str,
+    *,
+    serves: Sequence[str],
+    position: int | None = None,
+) -> tuple[GoalSet, int]:
+    """``goal_set`` with the candidate moved into the backlog at ``position`` (from 1; the end
+    when ``None``), keeping its id, title and description (§10a), and the position it took.
+    ``serves`` is the item's: a candidate names what it found, not what it serves."""
+    candidate = _find_candidate(goal_set, candidate_id)
+    end = len(goal_set.backlog) + 1
+    at = end if position is None else position
+    if isinstance(at, bool) or not isinstance(at, int) or not 1 <= at <= end:
+        raise GoalSetInvalid("position", f"from 1 to {end}, the end of the backlog, not {at!r}")
+    item = _backlog_item(
+        {
+            "id": candidate.id,
+            "title": candidate.title,
+            "description": candidate.description,
+            "serves": list(serves) if isinstance(serves, (list, tuple)) else serves,
+        },
+        "promote",
+    )
+    _serves_known(item.serves, goal_set, "serves")
+    backlog = list(goal_set.backlog)
+    backlog.insert(at - 1, item)
+    candidates = tuple(c for c in goal_set.candidates if c.id != candidate_id)
+    return _validated(replace(goal_set, backlog=tuple(backlog), candidates=candidates)), at
+
+
+def drop_candidate(goal_set: GoalSet, candidate_id: str) -> GoalSet:
+    """``goal_set`` without the candidate. Why is the revision's reason (§5.4)."""
+    _find_candidate(goal_set, candidate_id)
+    return replace(
+        goal_set, candidates=tuple(c for c in goal_set.candidates if c.id != candidate_id)
+    )
+
+
+def split_item(goal_set: GoalSet, item_id: str, into: Any) -> GoalSet:
+    """§5.5a: ``goal_set`` with the item gone and the parts of ``into`` in its place, in order,
+    each serving what it says or, saying nothing, what the parent served. Two or more parts,
+    each with an id the goal set doesn't hold: the parent's id is retired with it, so a part
+    can't read as the parent continuing."""
+    parent = _find_item(goal_set, item_id)
+    if isinstance(into, (str, bytes, Mapping)) or not isinstance(into, Sequence) or len(into) < 2:
+        raise GoalSetInvalid("into", "two or more items, which take the split item's place")
+    parts: list[BacklogItem] = []
+    for i, part in enumerate(into):
+        at = f"into[{i}]"
+        if not isinstance(part, Mapping):
+            raise GoalSetInvalid(at, "a mapping")
+        doc = dict(part)
+        if doc.get("serves") is None:
+            doc["serves"] = list(parent.serves)
+        parsed = _backlog_item(doc, at)
+        _serves_known(parsed.serves, goal_set, f"{at}.serves")
+        parts.append(parsed)
+    ids = [p.id for p in parts]
+    _unique(ids, "into")
+    held = {i.id for i in goal_set.backlog} | {c.id for c in goal_set.candidates}
+    taken = sorted(set(ids) & held)
+    if taken:
+        raise GoalSetInvalid(
+            "into", f"{taken} name an item or candidate this goal set holds: a part's id is new"
+        )
+    where = next(n for n, item in enumerate(goal_set.backlog) if item.id == item_id)
+    backlog = (*goal_set.backlog[:where], *parts, *goal_set.backlog[where + 1 :])
+    return _validated(replace(goal_set, backlog=backlog))
+
+
+def _find_candidate(goal_set: GoalSet, candidate_id: str) -> Candidate:
+    found = next((c for c in goal_set.candidates if c.id == candidate_id), None)
+    if found is None:
+        raise CandidateNotFound(f"the goal set holds no candidate {candidate_id!r}")
+    return found
+
+
+def _find_item(goal_set: GoalSet, item_id: str) -> BacklogItem:
+    found = next((i for i in goal_set.backlog if i.id == item_id), None)
+    if found is None:
+        raise BacklogItemNotFound(f"the goal set holds no backlog item {item_id!r}")
+    return found
+
+
+def _serves_known(serves: Sequence[str], goal_set: GoalSet, at: str) -> None:
+    known = {r.id for r in goal_set.expected_results}
+    unknown = [s for s in serves if s not in known]
+    if unknown:
+        raise GoalSetInvalid(at, f"{unknown} name no expected result in this goal set")
+
+
+def _validated(goal_set: GoalSet) -> GoalSet:
+    """The goal set as its document reads back: every invariant checked once more."""
+    return parse_goal_set(goal_set.to_document())

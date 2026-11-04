@@ -292,6 +292,8 @@ class BacklogItemResponse(BaseModel):
     reason: str | None = None
     removed_in: int | None = None
     results_changed_in: int | None = None
+    #: Dropped by a split (SIP-0115 §5.5a): the items that took its place; empty otherwise.
+    split_into: list[str] = []
 
 
 class BacklogResponse(BaseModel):

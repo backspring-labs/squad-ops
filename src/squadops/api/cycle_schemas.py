@@ -346,7 +346,10 @@ class GoalSetRevisionRequest(BaseModel):
 
 
 class GoalSetRevisionResponse(BaseModel):
-    """One goal-set revision: who wrote it, why, and the goal set as stored."""
+    """One goal-set revision: who wrote it, why, and the goal set as stored. ``change`` names the
+    action that wrote it when it was one of slice 3's (``{"kind": candidate_added |
+    candidate_promoted | candidate_dropped | item_split, "subject", "position"?, "split_into"?,
+    "campaign_id"?}``), and is absent on a revision written as a whole document."""
 
     project_id: str
     revision: int
@@ -355,12 +358,58 @@ class GoalSetRevisionResponse(BaseModel):
     source_ref: str | None
     created_at: datetime
     goal_set: dict[str, Any]
+    change: dict[str, Any] | None = None
 
 
 class GoalSetRecordedResponse(BaseModel):
     revision: GoalSetRevisionResponse
     idempotency_key: str
     replayed: bool
+
+
+class GoalSetActionRequest(BaseModel):
+    """What every action on a goal set carries (SIP-0115 §6, slice 3): the revision it acts on
+    (never 0: an action is on a written goal set), why, where it came from, and its key. The
+    content it adds is validated by the domain, which names the field it refuses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=2000)
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
+class CandidateRequest(GoalSetActionRequest):
+    """Add a candidate (§5.4): ``id``, ``title``, ``description``, ``found_by``, ``found_at``
+    (the time of the write when absent) and ``evidence``, as §4 names them."""
+
+    candidate: dict[str, Any]
+
+
+class CandidatePromotionRequest(GoalSetActionRequest):
+    """Promote a candidate into the backlog (§5.4, Q41), keeping its id: at ``position`` (from 1;
+    the end when absent) serving ``serves``. The crew names the Campaign it acts within and may
+    only append."""
+
+    serves: list[str] = Field(min_length=1)
+    position: int | None = Field(default=None, ge=1)
+    campaign_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class CandidateDropRequest(GoalSetActionRequest):
+    """Drop a candidate (§5.4), with the reason. The crew names the Campaign it acts within."""
+
+    campaign_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class BacklogItemSplitRequest(GoalSetActionRequest):
+    """Split a backlog item (§5.5a) into ``into``, two or more parts (``id``, ``title``,
+    ``description``, ``serves`` defaulting to the parent's, ``size``) that take its place in
+    order. The crew names the Campaign it acts within."""
+
+    into: list[dict[str, Any]]
+    campaign_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class InheritedBaselineRequest(BaseModel):

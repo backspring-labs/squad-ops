@@ -95,6 +95,9 @@ class ItemView:
     removed_in: int | None = None
     #: Accepted only: the first later revision that changed an expected result it serves.
     results_changed_in: int | None = None
+    #: Dropped by a split (§5.5a): the items that took its place, read from that revision's
+    #: ``change``; empty for an item the owner removed.
+    split_into: tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
@@ -392,7 +395,8 @@ def _dropped(
 ) -> ItemView:
     """An item this Campaign proposed that revision ``at`` doesn't hold. An accepted one stays
     accepted, naming the revision that dropped it; a running one keeps running (§5.5); any other
-    reads ``removed``, with its last abandonment kept."""
+    reads ``removed``, with its last abandonment kept. One a split dropped names the items that
+    took its place (§5.5a), from the dropping revision's ``change``."""
     since = named.revision or 0
     removed_in = next(
         (n for n in sorted(revisions) if since < n <= at and _item(revisions[n].goal_set, item_id) is None),
@@ -416,7 +420,20 @@ def _dropped(
         named,
         status=status,
         removed_in=removed_in,
+        split_into=_split_into(item_id, revisions.get(removed_in)),
     )
+
+
+def _split_into(item_id: str, revision: GoalSetRevision | None) -> tuple[str, ...]:
+    """The items a split of ``item_id`` in ``revision`` produced, or none: the revision's
+    ``change`` is an ``item_split`` of it."""
+    # deferred (pair): squadops.projects imports this package at load (workspaces' FileTree)
+    from squadops.projects.goal_set import ChangeKind
+
+    change = revision.change if revision is not None else None
+    if change is None or change.kind is not ChangeKind.ITEM_SPLIT or change.subject != item_id:
+        return ()
+    return change.split_into
 
 
 def _with(view: ItemView, named: _Named, **changes: Any) -> ItemView:

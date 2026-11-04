@@ -893,6 +893,7 @@ async def read_backlog(
                 reason=i.reason,
                 removed_in=i.removed_in,
                 results_changed_in=i.results_changed_in,
+                split_into=list(i.split_into),
             )
             for i in view.items
         ],
