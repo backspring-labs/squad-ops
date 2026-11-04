@@ -257,8 +257,9 @@ async def record_assessment(
     """Record the assessment ``submission`` holds (``campaign_id``, ``expected_result``,
     ``goals_revision``, ``reading``, ``cause``, ``issue``, ``evidence``, ``reason``,
     ``source_ref``, ``supersedes``), as the goal set's next in sequence. Returns it and whether
-    this replayed an earlier write under its key, which is answered before the Campaign and the
-    goal set are read: neither undoes what was written.
+    this replayed an earlier write under its key. Nothing checked here can have changed since
+    that write (revisions and assessments are immutable, and a Campaign is never deleted), so a
+    retry passes them and the store replays it.
 
     Raises:
         ProjectNotFoundError: no such Project.
@@ -300,9 +301,6 @@ async def record_assessment(
             "supersedes": list(supersedes),
         }
     )
-    written = await goal_sets.assessment_under_key(idempotency_key, request)
-    if written is not None:
-        return written, True
 
     campaign = await campaigns.get_campaign(campaign_id)
     if campaign.project_id != project_id:

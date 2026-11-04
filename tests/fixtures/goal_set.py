@@ -143,10 +143,6 @@ class GoalSetStore:
         self.assessment_by_key[idempotency_key] = (request_hash, recorded)
         return recorded, False
 
-    async def assessment_under_key(self, idempotency_key: str, request_hash: str):
-        written_hash, written = self.assessment_by_key.get(idempotency_key, (None, None))
-        return written if written_hash == request_hash else None
-
     async def list_assessments(
         self, project_id, *, campaign_id=None, expected_result=None, limit=None, offset=0
     ):

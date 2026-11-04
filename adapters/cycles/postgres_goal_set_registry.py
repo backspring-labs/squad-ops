@@ -246,18 +246,6 @@ class PostgresGoalSetRegistry(GoalSetRegistryPort):
             )
         return replace(assessment, sequence=sequence), False
 
-    async def assessment_under_key(
-        self, idempotency_key: str, request_hash: str
-    ) -> Assessment | None:
-        async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                f"SELECT {_ASSESSMENT_COLUMNS} FROM project_goal_set_assessments "
-                "WHERE idempotency_key = $1 AND request_hash = $2",
-                idempotency_key,
-                request_hash,
-            )
-        return _row_to_assessment(row) if row is not None else None
-
     async def list_assessments(
         self,
         project_id: str,

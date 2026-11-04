@@ -169,8 +169,6 @@ async def test_an_assessment_reads_back_whole_and_in_sequence_per_goal_set(pool)
     assert await store.list_assessments(PROJECT, expected_result="ER-log") == [second]
     assert await store.list_assessments(PROJECT, campaign_id=CAMPAIGNS[OTHER]) == []
     assert await store.list_assessments(PROJECT, limit=1, offset=1) == [second]
-    assert await store.assessment_under_key("k-1", "h-1") == first
-    assert await store.assessment_under_key("k-1", "another request") is None
 
 
 async def test_a_retry_replays_and_another_body_under_its_key_is_refused(pool):

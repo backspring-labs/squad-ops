@@ -64,13 +64,6 @@ class GoalSetRegistryPort(ABC):
         """
 
     @abstractmethod
-    async def assessment_under_key(
-        self, idempotency_key: str, request_hash: str
-    ) -> Assessment | None:
-        """The assessment ``idempotency_key`` wrote for this request, or ``None``, as
-        ``revision_under_key`` answers for a revision."""
-
-    @abstractmethod
     async def list_assessments(
         self,
         project_id: str,
