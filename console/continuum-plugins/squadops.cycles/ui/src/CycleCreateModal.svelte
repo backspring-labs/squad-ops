@@ -19,6 +19,7 @@
 -->
 <script>
   import { onMount } from 'svelte';
+  import { CommandDeclined, executeCommand } from '../../../shared/commands.js';
   import ProfileParamRenderer from './ProfileParamRenderer.svelte';
 
   let { onCreated = null, onClose = null } = $props();
@@ -29,21 +30,6 @@
   async function apiFetch(url, opts) {
     if (window.squadops?.apiFetch) return window.squadops.apiFetch(url, opts);
     return fetch(url, opts);
-  }
-
-  async function executeCommand(commandId, params) {
-    const resp = await apiFetch(`${apiBase}/api/commands/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command_id: commandId, params }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text();
-      const err = new Error(body || `Command failed: ${resp.status}`);
-      err.status = resp.status;
-      throw err;
-    }
-    return resp.json();
   }
 
   // ── Data loading state ──────────────────────────────────────────────
@@ -281,18 +267,15 @@
       const values = requestValues();
       await resolveRequest(selectedRequestProfile.name, selectedSquadProfileId, values);
 
-      // Step 1: Ingest PRD text as artifact
-      const ingestResult = await executeCommand('squadops.ingest_artifact', {
+      // Step 1: Ingest PRD text as artifact. The bus answers the handler's result (#2903); a
+      // refusal rejects.
+      const ingestResult = await executeCommand(apiFetch, 'squadops.ingest_artifact', {
         project_id: selectedProjectId,
         filename: 'prd.md',
         artifact_type: 'documentation',
         media_type: 'text/markdown',
         content: prdText,
       });
-
-      if (ingestResult.error) {
-        throw new Error(ingestResult.error);
-      }
 
       const prdRef = ingestResult.artifact_id;
 
@@ -305,14 +288,10 @@
       );
 
       // Step 3: Create cycle via command bus
-      const result = await executeCommand('squadops.create_cycle', {
+      const result = await executeCommand(apiFetch, 'squadops.create_cycle', {
         project_id: selectedProjectId,
         ...body,
       });
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
 
       // Step 4: Notify parent with new selection
       onCreated?.({
@@ -321,6 +300,8 @@
         run_id: result.run_id,
       });
     } catch (err) {
+      // The user said no to the bus's question: the form stays as it was.
+      if (err instanceof CommandDeclined) return;
       submitError = err.message;
     } finally {
       submitting = false;
