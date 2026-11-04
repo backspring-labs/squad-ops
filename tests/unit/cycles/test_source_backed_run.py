@@ -19,7 +19,9 @@ Bugs caught:
   squad already changed it;
 - a task from an operator's plan, with no framing documents, refused before any model call for
   want of them (cyc_50354cfc8dbb, live);
-- the delivered tree losing every file the squad didn't touch.
+- the delivered tree losing every file the squad didn't touch;
+- a removal the squad emits (#2612) that leaves the file in the captured commit, goes unnamed in
+  ``changed_paths``, or stays in the views of the tasks after it.
 """
 
 from __future__ import annotations
@@ -36,12 +38,17 @@ import pytest
 
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
+from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+from squadops.capabilities.handlers.impl.repair_handlers import (
+    DevelopmentCorrectionRepairHandler,
+)
 from squadops.capabilities.handlers.source_repository import source_repository_section
 from squadops.contracts.cycle_request_profiles import load_profile
+from squadops.cycles.deletions import DELETION_ARTIFACT_TYPE, deleted_paths
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -54,6 +61,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.run_ledger import RunLedger
+from squadops.execution import source_delivery
 from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
 from squadops.execution.run_provisioning import RunProvisioning
 from squadops.execution.source_delivery import (
@@ -61,6 +69,7 @@ from squadops.execution.source_delivery import (
     SOURCE_VERIFICATION_TYPE,
     squad_changes,
 )
+from squadops.llm.models import ChatMessage
 from squadops.projects.baseline import parse_baseline
 from squadops.projects.checkout import CHECKOUT_MANIFEST_TYPE, SOURCE_CHECKOUT
 from squadops.projects.derived_profile import parse_profile
@@ -1025,3 +1034,378 @@ async def test_a_head_whose_verification_cant_be_its_baseline_is_refused_before_
         )  # fmt: skip
     executor._project_registry.get_inherited_baseline.assert_not_awaited()
     executor._project_registry.record_source_mapping.assert_not_awaited()  # nothing was seeded
+
+
+# --- a removal (#2612, SIP-0112 H.23) -------------------------------------------------------------
+
+_PROMPTS = DEFAULT_TEMPLATES_PATH.parent
+#: notify has no reader but its own check, which reads UNVERIFIED either way, so removing the pair
+#: regresses nothing the product's checks can see.
+_REMOVE_NOTIFY = "```delete:tally/notify.py\n```\n```delete:checks/check_notify.py\n```\n"
+
+
+def _answering(reply: str) -> MagicMock:
+    """An execution context whose model answers ``reply``, through the real prompt assets."""
+    ctx = MagicMock()
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+        return_value=ChatMessage(role="assistant", content=reply, completion_tokens=40)
+    )
+    ctx.ports.llm.default_model = "test-model"
+    ctx.ports.prompt_service.get_system_prompt.return_value = MagicMock(
+        content="system", assembly_hash="h"
+    )
+    ctx.ports.llm_observability = None
+    ctx.ports.request_renderer = RequestTemplateRenderer(
+        FilesystemPromptAssetAdapter(_PROMPTS / "fragments", DEFAULT_TEMPLATES_PATH)
+    )
+    ctx.correlation_context = None
+    ctx.disputed_checks = []
+    ctx.task_id = "task_dev"
+    ctx.role_id = "dev"
+    return ctx
+
+
+async def _the_developer_answers(executor, cycle, run, emission, *, named=(), profile=None):
+    """The plan's one task, run as a live one is from its dispatch: enriched, read by the real
+    develop handler from the model's ``emission``, and collected. The plan ends there, at the
+    point ``_execute_sequential`` delivers."""
+
+    async def _task(state, envelope, **_kwargs):
+        produced = state.produced
+        enriched = await executor._enrich_envelope(
+            envelope,
+            produced.prior_outputs,
+            produced.all_artifact_refs,
+            produced.stored_artifacts,
+        )
+        handled = await DevelopmentDevelopHandler().handle(
+            _answering(emission), {**enriched.inputs, "prd": cycle.prd_ref}
+        )
+        assert handled.success, handled.error
+        await executor._collect_artifacts_and_checkpoint(
+            TaskResult(
+                task_id=envelope.task_id,
+                status=TaskResultStatus.SUCCEEDED,
+                outputs=handled.outputs,
+            ),
+            enriched,
+            cycle,
+            run.run_id,
+            produced.prior_outputs,
+            produced.all_artifact_refs,
+            produced.stored_artifacts,
+            state.checkpoint.completed_task_ids,
+            state.checkpoint.plan_delta_refs,
+        )
+
+    executor._execute_task = AsyncMock(side_effect=_task)
+    seeded = await _seed(executor, cycle, run)
+    await executor._execute_sequential(
+        [_envelope(cycle, list(named))],
+        run.run_id,
+        cycle,
+        seed_artifact_refs=list(seeded),
+        ledger=RunLedger(),
+        profile=profile,
+    )
+
+
+async def test_a_removal_the_developer_emits_is_absent_from_the_captured_commit(world, tmp_path):
+    """The wiring test (anti-pattern 6a), entered where the live run does: the task's dispatch
+    envelope, through the real develop handler, storage, ``_execute_sequential``'s end of plan and
+    source delivery, to the commit in the real managed clone. Bugs caught: a removal that never
+    reaches the candidate, leaves the file in the capture, goes unnamed in ``changed_paths``, or
+    takes a file the emission never named with it."""
+    repo, vault, executor, cycle, run = world
+    report = tracked_files(repo.path, repo.second_commit)["tally/report.py"]
+    written = (report + _SUMMARY_LINE).decode()
+
+    await _the_developer_answers(
+        executor,
+        cycle,
+        run,
+        f"```python:tally/report.py\n{written}```\n{_REMOVE_NOTIFY}",
+        named=("tally/report.py", "tally/notify.py"),
+    )
+
+    [(_ref, raw)] = _of_type(vault, SOURCE_VERIFICATION_TYPE)
+    verification = json.loads(raw)
+    assert verification["verdict"] == "accepted"
+    assert verification["changed_paths"] == [
+        "checks/check_notify.py",
+        "tally/notify.py",
+        "tally/report.py",
+    ]
+    [(patch_ref, patch)] = _of_type(vault, SOURCE_PATCH_TYPE)
+    captured = patch_ref.metadata["captured_commit"]
+    clone = tmp_path / "cache" / "prj-tally.git"
+    expected = tracked_files(repo.path, repo.second_commit)
+    del expected["tally/notify.py"], expected["checks/check_notify.py"]
+    expected["tally/report.py"] = report + _SUMMARY_LINE
+    assert tracked_files(clone, captured) == expected
+    assert FileTree.of(expected).identity == verification["candidate_tree_identity"]
+    # The contribution says so too: the patch applied to the pinned commit removes both.
+    applied = tmp_path / "applied"
+    subprocess.run(["git", "clone", "-q", str(repo.path), str(applied)], check=True)
+    subprocess.run(["git", "apply", "-"], cwd=applied, input=patch, check=True)
+    assert not (applied / "tally/notify.py").exists()
+    assert not (applied / "checks/check_notify.py").exists()
+    # Each removal is on the run's record, under the task that made it.
+    removals = _of_type(vault, DELETION_ARTIFACT_TYPE)
+    assert sorted(r.filename for r, _c in removals) == ["checks/check_notify.py", "tally/notify.py"]
+    assert {r.metadata["producing_task_type"] for r, _c in removals} == {"development.develop"}
+
+
+async def test_a_run_whose_one_change_is_a_removal_is_delivered(world, tmp_path):
+    """Bug caught: a removal counted as no change, so the run is refused as having changed no
+    file of the product, or the emission refused as having no fence."""
+    repo, vault, executor, cycle, run = world
+
+    await _the_developer_answers(executor, cycle, run, _REMOVE_NOTIFY)
+
+    [(patch_ref, _patch)] = _of_type(vault, SOURCE_PATCH_TYPE)
+    clone = tmp_path / "cache" / "prj-tally.git"
+    captured = tracked_files(clone, patch_ref.metadata["captured_commit"])
+    assert "tally/notify.py" not in captured and "tally/report.py" in captured
+
+
+async def test_a_removal_that_breaks_a_check_regresses_like_any_change(world):
+    """The product's own checks judge the tree without the file. Bug caught: a candidate verified
+    with the file still in it, so removing a module a check needs is captured."""
+    _repo, vault, executor, cycle, run = world
+    _squad_answers(executor, None)
+
+    with pytest.raises(_ExecutionError, match="report failed where the baseline did not"):
+        await _the_developer_answers(
+            executor,
+            _implementation(cycle),
+            run,
+            "```delete:tally/report.py\n```\n",
+            profile=_SQUAD,
+        )
+
+    [(_ref, raw)] = _of_type(vault, SOURCE_VERIFICATION_TYPE)
+    assert json.loads(raw)["changed_paths"] == ["tally/report.py"]
+    assert _of_type(vault, SOURCE_PATCH_TYPE) == []
+
+
+async def test_a_removed_executable_file_is_the_candidate_the_sandbox_cut(world, monkeypatch):
+    """A patch drops a removed file's mode with it. Bug caught: the run's own reckoning of the
+    candidate keeping that mode, so every removal of an executable script is refused as a tree
+    the sandbox didn't cut."""
+    _repo, vault, executor, cycle, run = world
+    real = source_delivery.baseline_tree
+
+    async def _with_a_script(*args, **kwargs):
+        tree = await real(*args, **kwargs)
+        return dataclasses.replace(tree, executable=frozenset({"tally/notify.py"}))
+
+    monkeypatch.setattr(source_delivery, "baseline_tree", _with_a_script)
+
+    await _the_developer_answers(executor, cycle, run, _REMOVE_NOTIFY)
+
+    [(_ref, raw)] = _of_type(vault, SOURCE_VERIFICATION_TYPE)
+    assert json.loads(raw)["verdict"] == "accepted"
+
+
+async def test_a_refused_removal_stores_nothing_and_never_reaches_delivery(world):
+    """A path the view doesn't hold, entered at the dispatch envelope the live run builds: the
+    view the handler judges against is the one enrichment hands it. Bug caught: the judgment
+    reading the map, which collapses past its limit, or nothing at all."""
+    _repo, vault, executor, cycle, run = world
+    seeded = await _seed(executor, cycle, run)
+    enriched = await executor._enrich_envelope(
+        _envelope(cycle, []), {}, list(seeded), [(i, vault.stored[i][0]) for i in seeded]
+    )
+
+    handled = await DevelopmentDevelopHandler().handle(
+        _answering("```delete:tally/absent.py\n```\n"), {**enriched.inputs, "prd": cycle.prd_ref}
+    )
+
+    assert handled.success is False
+    assert "tally/absent.py" in handled.error and "no such file" in handled.error
+    assert _of_type(vault, DELETION_ARTIFACT_TYPE) == []
+
+
+def _stored(artifact_id, path, artifact_type, producer="development.develop", **metadata):
+    ref = ArtifactRef(
+        artifact_id=artifact_id,
+        project_id="prj-tally",
+        cycle_id="cyc_x",
+        run_id="run_x",
+        artifact_type=artifact_type,
+        filename=path,
+        content_hash="h",
+        size_bytes=0,
+        media_type="text/plain",
+        created_at=NOW,
+        metadata={"producing_task_type": producer, **metadata},
+    )
+    return artifact_id, ref
+
+
+_CHECKOUT = {"tally/notify.py": b"old\n", "tally/report.py": b"r\n"}
+_REMOVED = _stored("art_rm", "tally/notify.py", DELETION_ARTIFACT_TYPE)
+_REWRITTEN = _stored("art_w", "tally/notify.py", "source")
+
+
+@pytest.mark.parametrize(
+    ("entries", "changes", "left_out"),
+    [
+        ([_REMOVED], {"tally/notify.py": None}, ()),
+        ([_REWRITTEN, _REMOVED], {"tally/notify.py": None}, ()),
+        # a later write brings it back: the list is a log, and the latest entry stands
+        ([_REMOVED, _REWRITTEN], {"tally/notify.py": b"new\n"}, ()),
+        # a repair's candidate is unaccepted until it is re-stored as the task's own
+        ([_stored("art_rm", "tally/notify.py", DELETION_ARTIFACT_TYPE, "qa.test_repair")], {}, ()),
+        (
+            [
+                _stored(
+                    "art_rm",
+                    "tally/notify.py",
+                    DELETION_ARTIFACT_TYPE,
+                    emission_status="failed",
+                )
+            ],
+            {},
+            (),
+        ),
+        # what the checkout doesn't hold isn't removed from the product, and is named
+        (
+            [_stored("art_rm", "tally/ghost.py", DELETION_ARTIFACT_TYPE)],
+            {},
+            ("tally/ghost.py",),
+        ),
+    ],
+    ids=[
+        "removed",
+        "written-then-removed",
+        "removed-then-written",
+        "repair-candidate",
+        "failed-emission",
+        "not-the-products",
+    ],
+)
+def test_the_change_is_each_paths_latest_accepted_entry(entries, changes, left_out):
+    contents = {"art_rm": b"", "art_w": b"new\n"}
+
+    assert squad_changes(entries, contents, _CHECKOUT) == (changes, left_out)
+
+
+@pytest.mark.parametrize(
+    ("entries", "gone"),
+    [
+        ([_REMOVED], {"tally/notify.py"}),
+        ([_REMOVED, _REWRITTEN], set()),
+        ([_REWRITTEN, _REMOVED], {"tally/notify.py"}),
+        (
+            [
+                _stored(
+                    "art_rm", "tally/notify.py", DELETION_ARTIFACT_TYPE, emission_status="failed"
+                )
+            ],
+            set(),
+        ),
+    ],
+    ids=["removed", "brought-back", "removed-last", "failed-emission"],
+)
+def test_a_paths_removal_stands_until_something_writes_it_again(entries, gone):
+    assert deleted_paths(entries) == gone
+
+
+async def test_the_tasks_after_a_removal_are_shown_a_tree_without_the_file(world):
+    """Entered at dispatch-time enrichment, what every task passes. Bugs caught: the next task
+    shown the removed file's content as current, handed it in its workspace, or told it can be
+    removed again."""
+    _repo, vault, executor, cycle, run = world
+    seeded = await _seed(executor, cycle, run)
+    art_id, removal = _stored("art_rm", "tally/notify.py", DELETION_ARTIFACT_TYPE)
+    vault.stored[art_id] = (removal, b"")
+    stored = [*((i, vault.stored[i][0]) for i in seeded), (art_id, removal)]
+
+    enriched = await executor._enrich_envelope(
+        _envelope(cycle, ["tally/notify.py"]), {}, [*seeded, art_id], stored
+    )
+
+    repository = enriched.inputs["source_repository"]
+    assert repository["existing_files"] == {}
+    assert repository["deleted"] == ["tally/notify.py"]
+    assert "- `tally/notify.py` (removed by this run)" in repository["map"]
+    assert "tally/notify.py" not in enriched.inputs["acceptance_workspace_files"]
+    assert "tally/report.py" in enriched.inputs["acceptance_workspace_files"]
+
+
+def _squad_repairs_with(executor, reply: str):
+    """The correction steps as ``_squad_answers``, the repair read by the real repair handler
+    from the model's ``reply`` and the envelope the runner built."""
+    dispatched = _squad_answers(executor, None)
+    answered = executor._task_dispatcher.dispatch_task
+
+    async def _dispatch(envelope, run_id, **kw):
+        if envelope.task_type != "development.correction_repair":
+            return await answered(envelope, run_id, **kw)
+        dispatched.append(envelope)
+        handled = await DevelopmentCorrectionRepairHandler().handle(
+            _answering(reply), dict(envelope.inputs)
+        )
+        return TaskResult(
+            task_id=envelope.task_id, status=TaskResultStatus.SUCCEEDED, outputs=handled.outputs
+        )
+
+    executor._task_dispatcher.dispatch_task = _dispatch
+    return dispatched
+
+
+_FIX_THE_REPORT = """```edit:tally/report.py
+<<<<<<< SEARCH
+    return {}
+=======
+    counters = ledger.counters()
+    top = max(counters, key=counters.get) if counters else None
+    return {"total": ledger.total(), "counters": len(counters), "top": top}
+>>>>>>> REPLACE
+```
+"""
+
+
+async def test_a_removal_a_regressions_repair_makes_is_delivered_with_it(world, tmp_path):
+    """PR #2918's round, entered at ``_execute_sequential``'s end of plan through the real
+    correction runner and the real repair handler. Bugs caught: the repair judged with no view,
+    so its removal is refused for want of a product; its removal lost between the round and the
+    re-delivery; the file left in the repaired candidate's capture."""
+    _repo, vault, executor, cycle, run = world
+    _squad_repairs_with(executor, _FIX_THE_REPORT + _REMOVE_NOTIFY)
+
+    await _end_of_plan(
+        executor, _implementation(cycle), run, vault, {"tally/report.py": _BROKEN_REPORT},
+        profile=_SQUAD,
+    )  # fmt: skip
+
+    (_first_id, first), (_second_id, second) = _verifications(vault)
+    assert (first["verdict"], second["verdict"]) == ("regressed", "accepted")
+    assert first["changed_paths"] == ["tally/report.py"]
+    assert second["changed_paths"] == [
+        "checks/check_notify.py",
+        "tally/notify.py",
+        "tally/report.py",
+    ]
+    [(patch_ref, _patch)] = _of_type(vault, SOURCE_PATCH_TYPE)
+    clone = tmp_path / "cache" / "prj-tally.git"
+    captured = tracked_files(clone, patch_ref.metadata["captured_commit"])
+    assert "tally/notify.py" not in captured and "checks/check_notify.py" not in captured
+
+
+async def test_a_refused_removal_in_a_regressions_repair_fails_the_run_naming_it(world):
+    """A deletion in that round is refused with a reason. Bug caught: the refusal read as a
+    round that wrote nothing, so the run's error never says which path or why."""
+    _repo, vault, executor, cycle, run = world
+    _squad_repairs_with(executor, "```delete:tally/absent.py\n```\n")
+
+    with pytest.raises(_ExecutionError, match="tally/absent.py: removal refused: .*no such file"):
+        await _end_of_plan(
+            executor, _implementation(cycle), run, vault, {"tally/report.py": _BROKEN_REPORT},
+            profile=_SQUAD,
+        )  # fmt: skip
+
+    assert [d["verdict"] for _id, d in _verifications(vault)] == ["regressed"]
+    assert _of_type(vault, DELETION_ARTIFACT_TYPE) == []

@@ -304,6 +304,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_deletions": [],
       "repair_dropped": [],
       "repair_subject_dropped": [],
       "repair_typed_checks": []
@@ -712,6 +713,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_deletions": [],
       "repair_dropped": [],
       "repair_subject_dropped": [],
       "repair_typed_checks": []
@@ -1187,6 +1189,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_deletions": [],
       "repair_dropped": [],
       "repair_subject_dropped": [],
       "repair_typed_checks": []
@@ -1557,6 +1560,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_deletions": [],
       "repair_dropped": [],
       "repair_subject_dropped": [],
       "repair_typed_checks": []

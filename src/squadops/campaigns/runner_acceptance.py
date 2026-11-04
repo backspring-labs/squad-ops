@@ -194,11 +194,13 @@ class SandboxTree:
 
     files: Mapping[str, bytes]
     executable: frozenset[str] = frozenset()
-    changes: Mapping[str, bytes] = field(default_factory=dict)
+    #: A file the squad removed is ``None`` here (#2612), as the sandbox's patch takes it.
+    changes: Mapping[str, bytes | None] = field(default_factory=dict)
 
     @property
     def content(self) -> dict[str, bytes]:
-        return {**self.files, **self.changes}
+        merged = {**self.files, **self.changes}
+        return {path: c for path, c in merged.items() if c is not None}
 
     @property
     def file_tree(self) -> FileTree:

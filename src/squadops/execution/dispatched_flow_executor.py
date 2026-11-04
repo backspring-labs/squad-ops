@@ -18,7 +18,7 @@ import functools
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
@@ -63,10 +63,12 @@ from squadops.cycles.contract_derivation import (
 from squadops.cycles.correction_signature import (
     REPAIR_DROPPED_MARKER,
     REPAIR_EMPTY_MARKER,
+    REPAIR_REMOVAL_REFUSED_MARKER,
     REPAIR_SUBJECT_DROPPED_MARKER,
 )
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
+from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
@@ -1908,6 +1910,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     exc_info=True,
                 )
 
+        # #2612: a path whose latest accepted entry is a removal holds no file in the workspace,
+        # whichever filter selected an earlier copy of it (the checkout's seed, a prior write).
+        for path in deleted_paths(stored_artifacts):
+            contents.pop(path, None)
         return contents
 
     async def _resolve_assembly_notes(
@@ -2743,8 +2749,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             raise _ExecutionError(
                 f"{regressed}; the repair round decided {protocol.correction_path!r}"
             )
-        if protocol.emission_empty or protocol.repair_dropped or not protocol.repair_artifacts:
+        if protocol.repair_dropped:
+            raise _ExecutionError(
+                f"{regressed}; the repair round's writes were refused: "
+                + "; ".join(f"{d['path']}: {d['reason']}" for d in protocol.repair_dropped)
+            )
+        if protocol.emission_empty or not (protocol.repair_artifacts or protocol.repair_deletions):
             raise _ExecutionError(f"{regressed}; the repair round wrote no file of the product")
+        # #2612: a removal the repair makes is stored with its files, and the next delivery
+        # judges the candidate without the file: its verification names it in changed_paths.
         await self._store_accepted_artifacts(
             protocol.repair_artifacts,
             None,
@@ -2755,6 +2768,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             produced.stored_artifacts,
             bound_record=state.ownership.bound_record,
             compliance_counter=state.ownership.compliance_counter,
+            deletions=protocol.repair_deletions,
         )
         logger.info(
             "source regression repaired in correction round %d of %d (task %s): delivering the "
@@ -4024,6 +4038,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "repair may write, or the plan's grant is wrong",
             )
             return "continue"
+        if protocol.repair_deletions and correction_path == "patch":
+            # #2612 (SIP-0112 H.23): the verifier and the retest judge the workspace overlaid with
+            # the repair's files, which can't hold a removal, so accepting one would store a tree
+            # no verdict was about (SIP-0107 §20). Spent, as a dropped patch is, and named.
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: {REPAIR_REMOVAL_REFUSED_MARKER} ("
+                + ", ".join(protocol.repair_deletions)
+                + ") — nothing was applied, verified or retested; inside the plan a repair "
+                "changes files, and a removal belongs in the task's own emission",
+            )
+            return "continue"
         if protocol.repair_subject_dropped and correction_path == "patch":
             # #2664 (SIP-0104 §13f): the qa repair kept no assertion on its failing assertion's
             # subject, and the declarations show that field there. The round is spent, as a
@@ -4236,6 +4263,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             stored_artifacts,
             bound_record=bound_record,
             compliance_counter=compliance_counter,
+            deletions=(result.outputs or {}).get(DELETIONS_KEY) or (),
         )
 
         # Chain outputs by role
@@ -4278,6 +4306,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         *,
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
+        deletions: Iterable[str] = (),
     ) -> None:
         """Store a task's artifacts as the run's accepted state (producing_task_type metadata).
 
@@ -4285,6 +4314,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         kept mid-loop (#1522), which stores without completing the task or
         checkpointing. ``outputs`` is what the §5.5 guard reads: a set carrying
         ``persisted_revision_id`` is a verified candidate, and enforcement may not change it.
+
+        ``deletions`` (#2612) are the product paths the task removed, each judged by its handler
+        against its view and grant. Each is recorded after the files, as a removal of that path
+        under the task (``cycles.deletions``).
         """
         # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
         # has its content restored to the bound scaffold bytes (D2 authority) — the producer
@@ -4320,7 +4353,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"set it evaluated (evaluated={mismatch[0]}, stored={mismatch[1]}) — SIP-0107 §20"
             )
         new_refs: list[str] = []
-        for art in artifacts:
+        for art in [*artifacts, *(deletion_record(path) for path in dict.fromkeys(deletions))]:
             ref = await self._store_artifact(
                 art,
                 cycle,
@@ -4358,9 +4391,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         it passes. The kept set is recorded for #994's rewind guard, as an accepted patch is,
         since a rewind re-authors from the checkpoint and cannot preserve it.
         """
+        kept_outputs = holder.pop(KEPT_OUTPUTS_KEY)
         await self._store_accepted_artifacts(
             holder.pop(KEPT_ARTIFACTS_KEY),
-            holder.pop(KEPT_OUTPUTS_KEY),
+            kept_outputs,
             envelope,
             cycle,
             run_id,
@@ -4368,6 +4402,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             state.produced.stored_artifacts,
             bound_record=state.ownership.bound_record,
             compliance_counter=state.ownership.compliance_counter,
+            # #2612: the failed task's removals are part of the candidate kept; its retest's
+            # result, which the next round starts from, carries none.
+            deletions=(kept_outputs or {}).get(DELETIONS_KEY) or (),
         )
         state.correction.accepted_repair_task_ids.add(envelope.task_id)
         authored_contract, authored_manifest = state.authored
