@@ -579,9 +579,7 @@ def resumable_class(entry: ControlLogEntry) -> ResumableClass | None:
         return _DECISION_CLASSES.get(str(binding.get("ending")))
     if entry.operation is ControlOperation.LAUNCH_BLOCKED:
         return (
-            ResumableClass.LAUNCH_BLOCKED
-            if entry.next_state is CampaignState.ESCALATED
-            else None
+            ResumableClass.LAUNCH_BLOCKED if entry.next_state is CampaignState.ESCALATED else None
         )
     return None
 
@@ -589,7 +587,20 @@ def resumable_class(entry: ControlLogEntry) -> ResumableClass | None:
 def escalating_row(campaign: Campaign, log: Sequence[ControlLogEntry]) -> ControlLogEntry | None:
     """The row that escalated ``campaign``, when it is escalated: the latest applied row that
     moved it to ``escalated`` and wasn't the owner's resume out of a pause around it (the pause
-    and its lifting change nothing about what escalated). ``None`` for any other state."""
+    and its lifting change nothing about what escalated). A paused campaign's is the row that
+    paused it: a pause is never delegated, and the audit row names what held it. ``None`` for any
+    other state."""
+    if campaign.state is CampaignState.PAUSED:
+        return next(
+            (
+                e
+                for e in reversed(log)
+                if e.outcome is ControlOutcome.APPLIED
+                and e.next_state is CampaignState.PAUSED
+                and e.prior_state is not CampaignState.PAUSED
+            ),
+            None,
+        )
     if campaign.state is not CampaignState.ESCALATED:
         return None
     return next(
@@ -694,6 +705,7 @@ def delegation_verdict(
     held: str | None,
     move: DelegatedMove | None,
     spent: Mapping[CycleKind, int],
+    asked: str | None = None,
 ) -> DelegationVerdict:
     """The one rule (§24da). The resume is delegated only when every one of these holds:
 
@@ -703,7 +715,8 @@ def delegation_verdict(
     - ``move`` is one that class permits;
     - a repair or retry is within the increment's limit (``spent`` is ``spent_on_increment``).
 
-    Otherwise it is refused, with the first reason that fails."""
+    Otherwise it is refused, with the first reason that fails. ``asked`` names what the request
+    asked for, when it is no delegated move (an action the route takes but no class permits)."""
     declared = campaign.policy.unattended_resume
     escalation_class = resumable_class(escalating) if escalating is not None else None
     ref = escalation_ref(escalating)
@@ -735,7 +748,7 @@ def delegation_verdict(
     if move not in permitted:
         return refused(
             f"{escalation_class.value} permits {sorted(m.value for m in permitted)}, not "
-            f"{move.value if move is not None else 'this resume'}"
+            f"{move.value if move is not None else asked or 'this resume'}"
         )
     limit = _LIMITS.get(move)
     if limit is not None:

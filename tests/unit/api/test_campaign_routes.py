@@ -185,7 +185,8 @@ async def test_only_the_managing_seats_start_a_campaign(world, role):
 
 async def test_the_supervisor_cannot_lift_the_owners_own_pause(world):
     """#1940: the supervisor lifts its own pause, not the owner's. Bug caught: the manage scope
-    letting the supervisor resume a campaign the owner held. Refused before anything is written."""
+    letting the supervisor resume a campaign the owner held. Since §24da the refusal is recorded
+    (every refused crew resume is a control-log row), and the state does not move."""
     _create(world)
     await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "k-run"))
     assert _control(world, "pause", "k-owner-pause").status_code == 200
@@ -195,9 +196,16 @@ async def test_the_supervisor_cannot_lift_the_owners_own_pause(world):
     refused = _control(world, "resume", "k-sup-resume")
 
     error = refused.json()["detail"]["error"]
-    assert (refused.status_code, error["code"]) == (403, "OWNER_AUTHORITY_REQUIRED")
+    assert (refused.status_code, error["code"]) == (403, "RESUME_NOT_DELEGATED")
     assert "paused by the owner" in error["message"]
-    assert len(await world.campaigns.control_log("cmp_api000000001")) == rows
+    log = await world.campaigns.control_log("cmp_api000000001")
+    assert len(log) == rows + 1
+    assert (log[-1].outcome, log[-1].refusal, log[-1].actor) == (
+        "refused",
+        "resume_not_delegated",
+        "ripley",
+    )
+    assert (await world.campaigns.get_campaign("cmp_api000000001")).state is CampaignState.PAUSED
     world.as_(_identity(Role.ADMIN))
     assert _control(world, "resume", "k-owner-resume").status_code == 200
 
@@ -217,6 +225,28 @@ async def test_the_creation_row_records_the_definition_file_and_a_replay_needs_t
     assert created.binding == {"definition": sent}
     assert (again.status_code, again.json()["replayed"]) == (201, True)
     assert other_file.status_code == 409
+
+
+@pytest.mark.parametrize(
+    ("declared", "status"),
+    [(["in_cycle_failure", "launch_blocked"], 201), (["security_finding"], 422), (["anything"], 422)],
+)  # fmt: skip
+def test_unattended_resume_is_declared_at_creation_and_an_unknown_class_refused(
+    world, declared, status
+):
+    """SIP-0109 §24da: the declaration enters at creation and reads back from the campaign; a
+    class outside the table (a never-class among them) is a 422 and creates nothing. Bug caught:
+    the DTO dropping the field, so a granted campaign is stored with nothing delegated, or one
+    stored with a class no rule knows."""
+    resp = _create(world, policy={**_POLICY, "unattended_resume": declared})
+
+    assert resp.status_code == status, resp.json()
+    read = world.client.get("/api/v1/campaigns/cmp_api000000001")
+    if status == 201:
+        assert read.json()["policy"]["unattended_resume"] == declared
+    else:
+        assert "not an escalation class" in resp.json()["detail"]["error"]["message"]
+        assert read.status_code == 404
 
 
 def test_a_definition_with_a_malformed_hash_is_a_422_and_creates_nothing(world):

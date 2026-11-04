@@ -258,19 +258,36 @@ async def _gate_scopes(request: Request, gate_name: str) -> Identity | None:
 
 
 async def _supervisor_answers_a_campaign_plan_gate(
-    request: Request, registry, cycle_id: str
+    request: Request,
+    registry,
+    cycle_id: str,
+    *,
+    run_id: str,
+    gate_name: str,
+    identity: Identity | None,
 ) -> None:
     """#2837: a caller ruling the plan gate on ``campaigns:supervise`` alone may do so only on a
-    cycle a campaign launched. An operator's own cycle stays a cycle write."""
+    cycle a campaign launched. An operator's own cycle stays a cycle write.
+
+    SIP-0109 §24da: when the plan-review tier escalated that gate, the answer is the ``plan_gate``
+    class's delegated resume: allowed and recorded only when the campaign declared it and the
+    owner holds no pause, refused and recorded otherwise, before the gate is decided."""
     if holds_scopes(request, Scope.CYCLES_WRITE):
         return
     cycle = await registry.get_cycle(cycle_id)
-    if getattr(cycle, "campaign_id", None) is None:
+    campaign_id = getattr(cycle, "campaign_id", None)
+    if campaign_id is None:
         raise http_error(
             403,
             "FORBIDDEN",
             "the plan gate of a cycle no campaign launched is a cycle write (cycles:write)",
         )
+    # deferred (cycle): api.routes.campaigns.campaigns loads this module
+    from squadops.api.routes.campaigns.campaigns import delegated_plan_gate_answer
+
+    await delegated_plan_gate_answer(
+        request, campaign_id, identity, run_id=run_id, gate_name=gate_name
+    )
 
 
 #: The decisions a ruling's task instructions may go with: an approval launches the work they direct.
@@ -528,7 +545,9 @@ async def gate_decision(
 
     registry = get_cycle_registry(request)
     if gate_name == PLAN_REVIEW_GATE:
-        await _supervisor_answers_a_campaign_plan_gate(request, registry, cycle_id)
+        await _supervisor_answers_a_campaign_plan_gate(
+            request, registry, cycle_id, run_id=run_id, gate_name=gate_name, identity=identity
+        )
 
     if gate_name == INCREMENT_RULING_GATE:
         record, body = await _rule_increment(request, registry, cycle_id, run_id, body, identity)

@@ -46,5 +46,6 @@ def campaign_error_envelope(e: CampaignError) -> tuple[int, dict]:
         details |= {
             "class": e.entry.binding.get("class"),
             "escalation": e.entry.binding.get("escalation"),
+            "why": e.entry.binding.get("why"),
         }
     return mapped_error(e, _ERROR_MAP, details)

@@ -164,6 +164,31 @@ def test_a_refusal_exits_with_the_conflict_code(get_client):
     assert "stale_state" in result.output
 
 
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_a_crew_resume_not_delegated_prints_its_reason_not_an_auth_failure(get_client):
+    """SIP-0109 §24da: the refused resume is a 403, which the client reads as "authentication
+    failed". Bug caught: the crew told its login failed when the campaign's declaration refused
+    it, with the recorded reason and row nowhere on the screen."""
+    client = MagicMock()
+    client.post.side_effect = CLIError(
+        "Error: authentication failed — x",
+        exit_codes.AUTH_ERROR,
+        detail={
+            "entry_id": "ent_9",
+            "refusal": "resume_not_delegated",
+            "why": "the campaign's unattended_resume ['plan_gate'] does not declare launch_blocked",
+        },
+    )
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "resume", "cmp_1", "--reason", "overnight"])
+
+    assert result.exit_code == exit_codes.AUTH_ERROR
+    assert "resume not delegated (recorded as ent_9)" in result.output
+    assert "does not declare launch_blocked" in result.output
+    assert "authentication failed" not in result.output
+
+
 _REFUSED_ROW = {
     "seq": 2,
     "committed_at": "t",

@@ -32,7 +32,7 @@ from squadops.campaigns.models import (
     SubmittedProposal,
 )
 from squadops.cycles.models import Cycle, Gate, Run, TaskFlowPolicy
-from tests.unit.campaigns.builders import campaign, move
+from tests.unit.campaigns.builders import campaign, move, policy
 
 pytestmark = pytest.mark.auth
 
@@ -309,3 +309,98 @@ async def test_the_supervisor_answers_no_plan_gate_outside_a_campaign(world):
     assert resp.status_code == 403
     assert "cycles:write" in resp.text
     assert (await world.cycles.get_run("run_own")).gate_decisions == ()
+
+
+# --- SIP-0109 §24da (#2891): the plan_gate class, at the gate's answer path ----------------------
+
+
+async def _escalated_gate(declared: tuple[str, ...], *, owner_paused: bool = False) -> _World:
+    """A campaign whose plan gate on ``run_prop`` the tier escalated, declaring ``declared``."""
+    from squadops.campaigns.models import CampaignTransition
+
+    w = _World()
+    await w.campaigns.create_campaign(
+        campaign(CID, policy=policy(unattended_resume=declared)),
+        actor="owner", actor_role="admin", reason="r", idempotency_key="create",
+    )  # fmt: skip
+    await at_the_gate(w)
+    identity = {
+        "campaign_id": CID, "cycle_id": "cyc_inc", "run_id": "run_prop",
+        "gate_name": "progress_plan_review", "proposal_id": "prop_cap", "proposal_version": 1,
+        "baseline": "sha-accepted", "plan_identity": "p",
+    }  # fmt: skip
+    await w.campaigns.transition(
+        CID,
+        CampaignTransition(
+            operation=ControlOperation.ESCALATION_OPENED,
+            actor="squadops",
+            actor_role="executor",
+            reason="the tier could not approve",
+            idempotency_key="escalation:esc_plangate001",
+            next_state=None,
+            target="run_prop",
+            binding={
+                "escalation_id": "esc_plangate001", "identity": identity,
+                "failed": [{"condition": "no_open_question", "reading": "a question"}],
+                "questions": ["which order?"], "decision_ids": ["order"],
+                "opened_at": NOW.isoformat(),
+            },
+        ),
+    )  # fmt: skip
+    if owner_paused:
+        await w.campaigns.transition(
+            CID, move(CampaignState.PAUSED, "owner-pause", operation=ControlOperation.PAUSE,
+                      actor="owner", actor_role="admin"),
+        )  # fmt: skip
+    return w
+
+
+@pytest.mark.parametrize(
+    ("declared", "owner_paused", "status", "outcome", "why"),
+    [
+        (("plan_gate",), False, 200, "applied", None),
+        (("in_cycle_failure",), False, 403, "refused", "does not declare plan_gate"),
+        (("plan_gate",), True, 403, "refused", "paused by the owner"),
+    ],
+    ids=["declared", "undeclared", "owner-paused"],
+)
+async def test_the_crew_answers_an_escalated_plan_gate_only_under_its_grant(
+    declared, owner_paused, status, outcome, why
+):
+    """Wiring at the gate route (§24da's ``plan_gate``): the crew's answer to a gate the tier
+    escalated is a delegated resume, recorded before the gate is decided; undeclared, or under the
+    owner's pause, it is refused 403 with the reason, recorded, and the gate stays undecided.
+    Bugs caught: #2837's supervisor answer bypassing the campaign's declaration, or a refused
+    answer that still decides the gate."""
+    w = await _escalated_gate(declared, owner_paused=owner_paused)
+
+    resp = w.client.post(
+        "/api/v1/projects/group_run/cycles/cyc_inc/runs/run_prop/gates/progress_plan_review",
+        json={"decision": "approved", "notes": "the requirements answer it: ascending"},
+    )
+
+    assert resp.status_code == status, resp.json()
+    *_, row = await w.campaigns.control_log(CID)
+    assert (row.operation, row.outcome, row.binding["class"], row.binding["move"]) == (
+        ControlOperation.RESUME, outcome, "plan_gate", "gate_answer",
+    )  # fmt: skip
+    assert row.binding["escalation"]["escalation_id"] == "esc_plangate001"
+    assert row.binding["definition_hash"] == (await w.campaigns.control_log(CID))[0].request_hash
+    decisions = await w.gate_decisions()
+    if why is None:
+        assert decisions == [("progress_plan_review", "approved")]
+    else:
+        assert resp.json()["detail"]["error"]["code"] == "RESUME_NOT_DELEGATED"
+        assert why in row.binding["why"]
+        assert decisions == []
+
+
+async def test_a_plan_gate_no_escalation_holds_is_answered_as_before_and_records_nothing(world):
+    """#2837 unchanged: a campaign cycle's plan gate the tier did not escalate is the supervisor's,
+    with no grant needed and no resume row."""
+    rows = len(await world.campaigns.control_log(CID))
+
+    resp = world.rule("progress_plan_review", binding=None, idempotency_key=None)
+
+    assert resp.status_code == 200
+    assert len(await world.campaigns.control_log(CID)) == rows

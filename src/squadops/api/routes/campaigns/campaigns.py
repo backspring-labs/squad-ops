@@ -324,6 +324,7 @@ async def _delegated_resume(
         held=held,
         move=requested_move(action),
         spent=spent_on_increment(await registry.launch_intents(campaign.campaign_id)),
+        asked=action.value if action is not None else None,
     )
     binding = delegation_binding(verdict, definition_hash=definition_hash(log))
     if verdict.allowed:
