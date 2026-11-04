@@ -98,6 +98,14 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         run: npm install -g --no-audit --no-fund $(grep -vE '^\s*#|^\s*$' agents/instances/qa/npm-global-packages.txt)
 
+      # #2903/#2904: the helpers the console plugins bundle (the command bus body, paging) are
+      # plain ES modules with no runner of their own; node's own runs their tests, as the
+      # console image's node 20 can.
+      - name: The console plugins' shared helpers
+        if: needs.changes.outputs.code == 'true'
+        working-directory: console/continuum-plugins/shared
+        run: npm test
+
       # Runs `ruff check .` + `ruff format --check .` (lint + format, fail-stop) +
       # the test-quality lint + the full unit regression suite. The repo-wide
       # format sweep landed in #196, so the format check is now gated here.
