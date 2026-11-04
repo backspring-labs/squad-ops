@@ -1,0 +1,29 @@
+[plugin]
+id = "squadops.campaigns"
+name = "Campaigns"
+version = "0.1.0"
+description = "Every Project's Campaigns, and one Campaign's state, current increment, ledger, digest, open escalations and control log. Read-only in 2.6 (#2834; SIP-0069 §14)."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-campaigns"
+bundle = "plugin.js"
+
+[[contributions.nav]]
+slot = "ui.slot.left_nav"
+label = "Campaigns"
+icon = "flag"
+priority = 650
+
+[contributions.nav.target]
+type = "panel"
+panel_id = "campaigns"
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "campaigns"
+component = "squadops-campaigns-perspective"
+priority = 800
+
+# No command: the plugin writes nothing. Launch, rule, pause, resume and abort stay with the
+# crew's broker and the CLI in 2.6 (the 2.6 plan's D13; SIP-0069 §14).
