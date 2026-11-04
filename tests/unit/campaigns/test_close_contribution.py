@@ -125,6 +125,9 @@ class _World(_BranchWorld):
         self.book = _Contributions()
         self.goal_sets = GoalSetStore()
         super().__init__(tmp_path)
+        # No identity from the host: git's guess from the box's hostname works here and exits 128
+        # on CI's runner, so every commit these tests make names its own.
+        _git(self.repo.path, "config", "user.useConfigOnly", "true")
         self.projects.contributions = self.book.contributions
         self.projects.record_contribution = self.book.record_contribution
         self.contribution = CampaignContribution(

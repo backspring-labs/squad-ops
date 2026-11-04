@@ -48,6 +48,13 @@ from tests.unit.campaigns.test_close_contribution import (
 
 PATH = f"/api/v1/projects/{PROJECT}/unintegrated-increments"
 INCREMENT = "cyc_inc000000001"
+#: The merge's identity, as the fixture's own commits name theirs: none comes from the host.
+_OWNER = {
+    "GIT_AUTHOR_NAME": "Tally Owner",
+    "GIT_AUTHOR_EMAIL": "owner@tally.example.invalid",
+    "GIT_COMMITTER_NAME": "Tally Owner",
+    "GIT_COMMITTER_EMAIL": "owner@tally.example.invalid",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -59,7 +66,7 @@ def _sandbox_provider(monkeypatch):
 def _merged(world: _World) -> str:
     """The owner merges the review request on the product, by a merge commit, and the Project's
     clone fetches it. Returns the merge."""
-    _git(world.repo.path, "merge", "-q", "--no-ff", "-m", "merge the campaign", BRANCH)
+    _git(world.repo.path, "merge", "-q", "--no-ff", "-m", "merge the campaign", BRANCH, env=_OWNER)
     return _git(world.repo.path, "rev-parse", "HEAD").strip()
 
 
