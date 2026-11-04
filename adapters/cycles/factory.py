@@ -13,6 +13,7 @@ from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
+from squadops.ports.projects.goal_sets import GoalSetRegistryPort
 
 if TYPE_CHECKING:
     from squadops.campaigns.launcher import BoxVerdict
@@ -51,6 +52,20 @@ def create_project_registry(provider: str, **kwargs) -> ProjectRegistryPort:
         # R3: the read-only value is the rollback's write gate, every Project still readable.
         return PostgresProjectRegistry(pool=pool, writable=provider == "postgres")
     raise ValueError(f"Unknown project registry provider: {provider}")
+
+
+def create_goal_set_registry(provider: str, *, pool) -> GoalSetRegistryPort:
+    """A Project's goal-set revisions (SIP-0115 §4, #2884), chosen by the Project registry's
+    selector, beside the records its rows reference. Only ``postgres`` writes: under
+    ``postgres_read_only`` (R3) and ``config`` the Project registry's writes are gated, and so
+    are these; every revision written stays readable."""
+    if provider not in ("config", "postgres", "postgres_read_only"):
+        raise ValueError(f"Unknown project registry provider: {provider}")
+    if pool is None:
+        raise ValueError("pool is required for the goal-set registry")
+    from adapters.cycles.postgres_goal_set_registry import PostgresGoalSetRegistry
+
+    return PostgresGoalSetRegistry(pool=pool, writable=provider == "postgres")
 
 
 def create_cycle_registry(provider: str, **kwargs) -> CycleRegistryPort:

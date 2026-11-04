@@ -46,6 +46,7 @@ from squadops.api.routes.cycles import (
     artifacts_router,
     cycle_request_profiles_router,
     cycles_router,
+    goal_sets_router,
     models_router,
     profiles_router,
     projects_router,
@@ -155,6 +156,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(auth_router)  # SIP-0062 Phase 3a
     # SIP-0064: cycle execution routes
     app.include_router(projects_router)
+    app.include_router(goal_sets_router)  # SIP-0115 §8.1 (#2884): a Project's goal set
     app.include_router(cycles_router)
     app.include_router(runs_router)
     app.include_router(campaigns_router)  # SIP-0109 §13
@@ -439,6 +441,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         create_cycle_registry,
         create_deploy_registry,
         create_flow_executor,
+        create_goal_set_registry,
         create_project_registry,
         create_squad_profile_port,
     )
@@ -449,6 +452,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         project_provider, **({"pool": pool} if project_provider != "config" else {})
     )
     await _cut_over_project_registry(project_provider, project_registry, pool)
+    # SIP-0115 §4 (#2884): the goal sets, beside the Project records their rows reference.
+    state.goal_set_registry = create_goal_set_registry(project_provider, pool=pool)
     state.project_locator_policy = LocatorPolicy.of(
         config.projects.locator_allowed_hosts, config.projects.locator_local_roots
     )

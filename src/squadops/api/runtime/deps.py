@@ -37,6 +37,7 @@ from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.ports.llm.provider import LLMPort
+from squadops.ports.projects.goal_sets import GoalSetRegistryPort
 from squadops.ports.projects.source_repository import SourceRepositoryPort
 from squadops.ports.runtime.assignments import AssignmentPort
 from squadops.projects.registration import LocatorPolicy
@@ -56,6 +57,7 @@ PORT_SLOTS = (
     "authz_port",
     "audit_port",  # SIP-0062 Phase 3b
     "project_registry",  # SIP-0064
+    "goal_set_registry",  # SIP-0115 §4 (#2884)
     "cycle_registry",
     "deploy_registry",  # #1720
     "campaign_registry",  # SIP-0109 §16
@@ -118,6 +120,11 @@ def _required(request: Request, name: str, port: str) -> Any:
 def get_project_registry(request: Request) -> ProjectRegistryPort:
     """Return the ProjectRegistryPort (T14: never None at call sites)."""
     return _required(request, "project_registry", "ProjectRegistryPort")
+
+
+def get_goal_set_registry(request: Request) -> GoalSetRegistryPort:
+    """A Project's goal-set revisions (SIP-0115 §4, #2884)."""
+    return _required(request, "goal_set_registry", "GoalSetRegistryPort")
 
 
 def get_project_locator_policy(request: Request) -> LocatorPolicy:
