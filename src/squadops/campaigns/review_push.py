@@ -107,7 +107,9 @@ def _key(idempotency_key: str) -> str:
 PUSHED_BY_SUPERVISOR = (
     "Pushed by the campaign's supervisor (SIP-0109 §24ci (b)). The owner merges it."
 )
-OPENED_AT_CLOSE = "Opened at the campaign's close (SIP-0109 §24dc). The owner merges it."
+OPENED_AFTER_CLOSE = (
+    "Opened by the campaign's supervisor after its close (SIP-0109 §24dc). The owner merges it."
+)
 
 
 def review_title(campaign: Campaign) -> str:

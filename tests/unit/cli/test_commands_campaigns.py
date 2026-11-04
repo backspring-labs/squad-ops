@@ -6,7 +6,6 @@ import hashlib
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from squadops.cli import exit_codes
@@ -522,29 +521,34 @@ def _contributed(**overrides) -> dict:
     }  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    ("args", "body"),
-    [
-        (["--token-from-gh"], {"token": "tok_invented_cli"}),
-        ([], {}),  # the deploy's token for the Project, as at the close
-    ],
-)
 @patch("squadops.cli.commands.campaigns.gh_token", return_value="tok_invented_cli")
 @patch("squadops.cli.commands.campaigns._get_client")
-def test_contribute_sends_the_token_only_when_asked_and_says_where_it_opened(
-    get_client, _token, args, body
-):
-    """SIP-0109 §24dc. Bugs caught: the caller's token sent without --token-from-gh, or dropped
-    with it; the token printed; the review request's address not said."""
+def test_contribute_sends_the_callers_token_and_says_where_it_opened(get_client, _token):
+    """SIP-0109 §24dc. Bugs caught: the token dropped or printed; the review request's address not
+    said; the short timeout on a request that runs the criteria on the product's runner."""
     client = _client(post=_contributed())
+    client.long_timeout = 600
     get_client.return_value = client
 
-    result = runner.invoke(app, ["campaigns", "contribute", "cmp_1", *args])
+    result = runner.invoke(app, ["campaigns", "contribute", "cmp_1", "--token-from-gh"])
 
     assert result.exit_code == 0, result.output
-    client.post.assert_called_once_with("/api/v1/campaigns/cmp_1/contributions", json=body)
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/contributions", json={"token": "tok_invented_cli"}, timeout=600
+    )
     assert "cmp_1: cccccccccccc, pending: https://forge.example.invalid/pull/9" in result.output
     assert "tok_invented_cli" not in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_contribute_without_its_own_token_sends_nothing(get_client):
+    """The owner's ruling: the token comes with the request. Bug caught: a request whose only way
+    to succeed would be a token stored in the deploy."""
+    result = runner.invoke(app, ["campaigns", "contribute", "cmp_1"])
+
+    assert result.exit_code == 2
+    assert "--token-from-gh" in result.output
+    get_client.assert_not_called()
 
 
 def _backlog(**overrides) -> dict:

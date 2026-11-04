@@ -1,37 +1,31 @@
-"""A Campaign that closes with an accepted increment opens one contribution to the product
-(SIP-0109 §24dc, #2861).
+"""A Campaign that closes with an accepted increment has one contribution due to the product, and
+the supervisor opens it (SIP-0109 §24dc, #2861).
 
 Campaigns 4 and 6 on ``prj-shelfnote`` closed with accepted increments that lived only on their
-campaign branches, and the next Campaign started without them. So the close itself opens the
-contribution:
+campaign branches, and the next Campaign started without them. So:
 - **the closing row says what is due.** The row that completes a repository-backed Campaign (its
-  terminal decision, or the owner's abort) carries ``contribution``: ``due`` with the accepted
-  increments, or not due with why (``no accepted increment``). It is written in the closing
-  transaction, as a launch intent is written with its decision (§12b): the intent, never the act;
-- **the act follows the commit.** Opening the review request is a push and a forge call, which
-  can't join the control log's transaction. ``CampaignContribution.open`` makes it after the
-  close commits, through the contribution path (``squadops.projects.contribution
-  .contribute_campaign``): one commit on the branch's head with the criterion files moved
-  (#2860's interim, made the rule), pushed as ``squadops/<campaign>``, recorded ``pending`` as the
-  Project's contribution. Merging stays the owner's;
-- **a failure is recorded, and retried.** Each attempt that fails writes a ``contribution_failed``
-  row naming why, and the contribution stays due. It is attempted again at every startup, and
-  when the supervisor asks (``POST /api/v1/campaigns/{id}/contributions``, with its own token).
-  The Campaign is closed either way: nothing here can reopen it;
-- **the token** is the one the deploy holds for the Project (``projects.review_request_tokens``),
-  or the one a retry carries. With neither, the attempt is refused as ``no review-request token``
-  and recorded, and the supervisor's retry opens it (§24ci (b): nothing is stored for it by
-  default).
+  terminal decision, or the abort) carries ``contribution``: ``due`` with the accepted increments,
+  or not due with why (``no accepted increment``). That is all a close does. It pushes nothing and
+  opens nothing, whatever the deploy holds: the owner chose to drop the automatic open on
+  2026-11-04, keeping §24ci (b) as ruled;
+- **the supervisor opens it.** ``POST /api/v1/campaigns/{id}/contributions``, with the supervisor's
+  own token (``squadops campaigns contribute <id> --token-from-gh``), calls
+  ``CampaignContribution.open``. ``squadops.projects.contribution.contribute_campaign`` makes one
+  commit on the branch's head with the criterion files moved (#2860's interim, made the rule),
+  pushes it as ``squadops/<campaign>`` and records it ``pending`` as the Project's contribution.
+  ``projects.review_request_tokens`` is never read here. Merging stays the owner's;
+- **a failed attempt is recorded.** Each one writes a ``contribution_failed`` row naming why, and
+  the contribution stays due for the supervisor's next request.
 
-A Campaign closed before this rule carries no ``contribution`` on its closing row, and is never
-contributed by it: its work was contributed by hand, or is the owner's to contribute.
+A Campaign closed before this rule carries no ``contribution`` on its closing row, and the request
+is refused: its work was contributed by hand, or is the owner's to contribute.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 from squadops.campaigns.campaign_branch import branch_base, head
@@ -46,7 +40,7 @@ from squadops.campaigns.models import (
     LaunchIntent,
 )
 from squadops.campaigns.review_push import (
-    OPENED_AT_CLOSE,
+    OPENED_AFTER_CLOSE,
     campaign_push_lock,
     review_body,
     review_title,
@@ -60,8 +54,6 @@ CONTRIBUTION_KEY = "contribution"
 INCREMENT_FAMILY = frozenset({CycleKind.INCREMENT, CycleKind.REPAIR, CycleKind.RETRY})
 #: Why a closing row records nothing due.
 NO_ACCEPTED_INCREMENT = "no accepted increment: the Campaign opens no contribution"
-#: The actor of the attempts the deploy makes: at the close, and at startup.
-DEPLOY_ACTOR, DEPLOY_ROLE = "squadops", "completion"
 
 
 def accepted_on_branch(
@@ -148,24 +140,17 @@ class CampaignContribution:
         projects: Any,
         repository: Any,
         forge: Any,
-        tokens: Mapping[str, str],
     ) -> None:
         self._campaigns = campaigns
         self._projects = projects
         self._repository = repository
         self._forge = forge
-        self._tokens = tokens
 
     async def open(
-        self,
-        campaign_id: str,
-        *,
-        token: str | None = None,
-        actor: str = DEPLOY_ACTOR,
-        actor_role: str = DEPLOY_ROLE,
+        self, campaign_id: str, *, token: str, actor: str, actor_role: str
     ) -> tuple[Any, bool]:
-        """Open the closed Campaign's contribution, once, with ``token`` or the deploy's own for
-        its Project. Serialized with the Campaign's review pushes. Returns the contribution and
+        """Open the closed Campaign's contribution, once, at the supervisor's request and with its
+        ``token``. Serialized with the Campaign's review pushes. Returns the contribution and
         whether it was recorded already.
 
         Raises:
@@ -181,7 +166,7 @@ class CampaignContribution:
             return await self._open(campaign_id, token, actor, actor_role)
 
     async def _open(
-        self, campaign_id: str, token: str | None, actor: str, actor_role: str
+        self, campaign_id: str, token: str, actor: str, actor_role: str
     ) -> tuple[Any, bool]:
         # deferred (pair): squadops.projects imports this package at load
         from squadops.ports.projects.review_request import ReviewRequestFailed
@@ -206,11 +191,11 @@ class CampaignContribution:
                 base=base.commit,
                 criterion_paths=criterion_paths(log),
                 title=review_title(campaign),
-                body=review_body(campaign, log, OPENED_AT_CLOSE),
+                body=review_body(campaign, log, OPENED_AFTER_CLOSE),
                 registry=self._projects,
                 repository=self._repository,
                 forge=self._forge,
-                token=token or self._tokens.get(campaign.project_id),
+                token=token,
                 actor=actor,
                 idempotency_key=f"campaign-contribution:{campaign_id}",
             )
@@ -226,7 +211,7 @@ class CampaignContribution:
         if closing is None:
             raise ContributionRefused(
                 f"campaign {campaign.campaign_id} is {campaign.state.value}: its contribution is "
-                "opened at its close (SIP-0109 §24dc)"
+                "opened after its close (SIP-0109 §24dc)"
             )
         recorded = closing.binding.get(CONTRIBUTION_KEY)
         if recorded is None:
@@ -265,42 +250,3 @@ class CampaignContribution:
             "campaign_contribution_failed",
             extra={"campaign_id": campaign_id, "error": binding["error"], "reason": reason},
         )
-
-    async def at_close(self, campaign_id: str) -> None:
-        """After a Campaign's close commits: open its contribution when its close says it is due.
-        Never raises: the Campaign is closed, and a failure is recorded for the next attempt."""
-        try:
-            log = await self._campaigns.control_log(campaign_id)
-            closing = closing_row(log)
-            if closing is None or not (closing.binding.get(CONTRIBUTION_KEY) or {}).get("due"):
-                return
-            await self.open(campaign_id)
-        except Exception:
-            logger.exception("campaign_contribution_not_opened", extra={"campaign_id": campaign_id})
-
-    async def open_due(self) -> list[str]:
-        """At startup: each completed Campaign whose close says its contribution is due and which
-        none records yet is attempted again. Returns the Campaigns contributed."""
-        opened = []
-        recorded: dict[str, set[str]] = {}
-        for campaign in await self._campaigns.campaigns_in_state(CampaignState.COMPLETED):
-            try:
-                closing = closing_row(await self._campaigns.control_log(campaign.campaign_id))
-                if closing is None or not (closing.binding.get(CONTRIBUTION_KEY) or {}).get("due"):
-                    continue
-                if campaign.project_id not in recorded:
-                    recorded[campaign.project_id] = {
-                        c.campaign_id
-                        for c in await self._projects.contributions(campaign.project_id)
-                        if c.campaign_id
-                    }
-                if campaign.campaign_id in recorded[campaign.project_id]:
-                    continue
-                await self.open(campaign.campaign_id)
-            except Exception:
-                logger.exception(
-                    "campaign_contribution_not_opened", extra={"campaign_id": campaign.campaign_id}
-                )
-                continue
-            opened.append(campaign.campaign_id)
-        return opened

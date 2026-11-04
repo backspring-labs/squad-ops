@@ -424,15 +424,24 @@ def contribute(
     token_from_gh: bool = typer.Option(
         False,
         "--token-from-gh",
-        help="Open it with your own GitHub access (`gh auth token`), for this act only; without "
-        "it, the deploy's token for the Project is used",
+        help="Open it with your own GitHub access (`gh auth token`), for this act only: required",
     ),
 ):
-    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc), when its close's own
-    attempt failed (its `contribution_failed` rows say why). Once per Campaign: one already
-    contributed is answered with its record. Merging stays the owner's."""
-    body = {"token": gh_token()} if token_from_gh else {}
-    data = _call(ctx, "post", f"/api/v1/campaigns/{campaign_id}/contributions", json=body)
+    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc). A close records what
+    is due and opens nothing, so this is the act that does. Its criterion files are moved and run
+    on the product's runner first. Once per Campaign: one already contributed is answered with its
+    record, and a failed attempt's reason is on its `contribution_failed` row. Merging stays the
+    owner's."""
+    if not token_from_gh:
+        print_error(
+            "a campaign's contribution is opened with your own token, for this act only: "
+            "pass --token-from-gh"
+        )
+        raise typer.Exit(code=2)
+    body = {"token": gh_token()}
+    data = _call(
+        ctx, "post", f"/api/v1/campaigns/{campaign_id}/contributions", long_wait=True, json=body
+    )
     fmt, _quiet = _fmt(ctx)
     if fmt == "json":
         print_json(data)

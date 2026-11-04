@@ -91,6 +91,8 @@ async def test_an_opened_contribution_reads_pending_until_the_integrated_commit_
     await world.accepted_with_criterion()
     await _integrated_at(world, world.repo.second_commit)
     client = world.client()
+    opened = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": "tok"})
+    assert opened.status_code == 201, opened.text
 
     pending = client.get(PATH)
     merge = _merged(world)
@@ -118,9 +120,10 @@ async def test_an_opened_contribution_reads_pending_until_the_integrated_commit_
 
 
 async def test_an_increment_never_contributed_stands_not_contributed(tmp_path):
-    """The deploy holds no token, so the close's open failed. Bug caught: an accepted increment
-    with no contribution left out of the set, since nothing names it but its Campaign's log."""
-    world = _World(tmp_path, tokens={})
+    """The Campaign closed and the supervisor hasn't opened its contribution. Bug caught: an
+    accepted increment with no contribution left out of the set, since nothing names it but its
+    Campaign's log."""
+    world = _World(tmp_path)
     await world.started()
     await world.accepted_with_criterion()
 

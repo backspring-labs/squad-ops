@@ -13,8 +13,8 @@ A repository-backed Campaign's one review request is pushed through the same pat
 supervisor at the Campaign's close or on request (SIP-0109 §24ci (b), ``push_campaign_review``),
 with the token the request carries and none the deploy holds.
 
-A Campaign that closes with an accepted increment is contributed through it too (SIP-0109 §24dc,
-#2861, ``contribute_campaign``): its branch's head, with the criterion files its increments placed
+A closed Campaign's accepted work is contributed through it too, at the supervisor's request and
+with its token (SIP-0109 §24dc, #2861, ``contribute_campaign``): its branch's head, with the criterion files its increments placed
 renamed out of the ``criterion_`` stem and moved off the root (#2860's interim, made the rule),
 pushed as ``squadops/<campaign>`` and recorded as one of the Project's contributions, under the
 Campaign's id and ``campaign`` where a run's cycle and run stand.
@@ -324,7 +324,7 @@ async def contribute_campaign(
     registry: Any,
     repository: Any,
     forge: Any,
-    token: str | None,
+    token: str,
     actor: str,
     idempotency_key: str,
 ) -> tuple[Contribution, bool]:
@@ -370,8 +370,8 @@ async def contribute_campaign(
             token,
             forge,
             no_token=(
-                "the deploy names none for it (projects.review_request_tokens), so the supervisor "
-                "opens it with its own (`squadops campaigns contribute <campaign> --token-from-gh`)"
+                "a closed Campaign's contribution is opened with the supervisor's own token "
+                "(`squadops campaigns contribute <campaign> --token-from-gh`)"
             ),
         )
     commit, moved = await _with_criteria_moved(

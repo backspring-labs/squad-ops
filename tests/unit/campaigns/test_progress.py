@@ -145,7 +145,6 @@ class _World:
             intervention_section=None,
             campaign_branch=branch,
             goal_sets=goal_sets,
-            contribute_at_close=None,
             clock=lambda: self.now,
         )
         self.executor = DispatchedFlowExecutor(

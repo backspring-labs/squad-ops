@@ -668,15 +668,13 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         projects=project_registry,
         repository=state.source_repository,
     )
-    # SIP-0109 §24dc (#2861): a Campaign that closes with an accepted increment opens its
-    # contribution to the product after the close commits, with the deploy's token for the
-    # Project when it holds one; a failure is recorded, and retried at startup and on request.
+    # SIP-0109 §24dc (#2861): the supervisor's request opens a closed Campaign's contribution,
+    # with the supervisor's own token. Nothing the deploy runs calls this (§24ci (b)).
     state.campaign_contribution = CampaignContribution(
         campaigns=projected_campaigns,
         projects=project_registry,
         repository=state.source_repository,
         forge=state.review_requests,
-        tokens=state.review_request_tokens,
     )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,
@@ -706,7 +704,6 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         ),
         # SIP-0115 §5.5a: a goal-set Campaign's ``backlog_done`` and its next item read it.
         goal_sets=state.goal_set_registry,
-        contribute_at_close=state.campaign_contribution.at_close,
     )
 
     flow_executor = create_flow_executor(
@@ -1082,12 +1079,6 @@ async def _resume_campaigns(state) -> None:
     await state.campaign_progress.rehear_calibration_records()
     # #1922: what the dying process was running, or waiting on at a gate, is taken up again.
     await state.campaign_launch.reattach()
-    # SIP-0109 §24dc: a closed Campaign whose contribution is due and none records is attempted
-    # again. Each attempt that fails is recorded, and logged here, never stopping the startup.
-    try:
-        await state.campaign_contribution.open_due()
-    except Exception:
-        logger.exception("campaign_contributions_not_attempted")
 
 
 async def _stop_work(state) -> None:

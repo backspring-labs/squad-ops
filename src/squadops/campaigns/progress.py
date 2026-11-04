@@ -666,11 +666,6 @@ class CampaignProgress:
         #: (``stop_when: backlog_done``) and its proposals are launched against. ``None`` where
         #: none is wired: such a Campaign's decision raises, and the re-hearing retries it.
         goal_sets: GoalSetRegistryPort | None,
-        #: §24dc (#2861): after a Campaign's close commits, its contribution to the product is
-        #: opened when its closing row says it is due (``CampaignContribution.at_close``), by the
-        #: Campaign's id. ``None`` where no contribution path is wired: the contribution stays due,
-        #: and the startup's attempt opens it.
-        contribute_at_close: Callable[[str], Awaitable[object]] | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -691,7 +686,6 @@ class CampaignProgress:
         self._intervention_section = intervention_section
         self._campaign_branch = campaign_branch
         self._goal_sets = goal_sets
-        self._contribute_at_close = contribute_at_close
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -828,7 +822,6 @@ class CampaignProgress:
             await self._launch()
         if decision.terminal:
             await self.materialize_package(campaign.campaign_id)
-            await self._contributed_at_close(campaign.campaign_id)
         return decision
 
     async def _closing_contribution(self, campaign_id: str) -> dict | None:
@@ -841,17 +834,6 @@ class CampaignProgress:
             await self._campaigns.launch_intents(campaign_id),
             repository_backed=branch_base(log) is not None,
         )
-
-    async def _contributed_at_close(self, campaign_id: str) -> None:
-        """§24dc: after the close commits, its contribution is opened, outside the row's
-        transaction. ``at_close`` records a failure and never raises; a wiring that does is
-        logged here, so the close it follows stands."""
-        if self._contribute_at_close is None:
-            return
-        try:
-            await self._contribute_at_close(campaign_id)
-        except Exception:
-            logger.exception("campaign_contribution_not_opened", extra={"campaign_id": campaign_id})
 
     async def _promoted_and_evaluating(
         self,
@@ -1177,7 +1159,6 @@ class CampaignProgress:
                 await self._launch()
             if decision.terminal:
                 await self.materialize_package(campaign_id)
-                await self._contributed_at_close(campaign_id)
             return result
         finally:
             self._hearing.discard(record.record_id)

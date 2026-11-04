@@ -747,16 +747,16 @@ async def open_campaign_contribution(
     body: CampaignContributionRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ContributionResponse:
-    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc), when its close's
-    own attempt failed: the supervisor's retry, with its own token or the deploy's for the
-    Project. One per Campaign, recorded as the Project's contribution, pending; a Campaign
+    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc): the supervisor's
+    act, with its own token, when the Campaign's closing row says one is due. The close itself
+    opens nothing. One per Campaign, recorded as the Project's contribution, pending; a Campaign
     already contributed is answered with it. Each failed attempt is a ``contribution_failed``
     row on the Campaign. Merging stays the owner's."""
     actor, role = actor_from(identity)
     try:
         contribution, replayed = await get_campaign_contribution(request).open(
             campaign_id,
-            token=body.token.get_secret_value() if body.token is not None else None,
+            token=body.token.get_secret_value(),
             actor=actor,
             actor_role=role,
         )
@@ -1251,7 +1251,6 @@ async def abort_campaign(
     cancelled = await _cancel_launched_cycles(request, campaign_id)
     if not result.replayed:
         await _materialize_after_close(request, campaign_id)
-        await _contribute_after_close(request, campaign_id)
     return _result(result, cancelled_cycles=cancelled)
 
 
@@ -1267,16 +1266,6 @@ async def _closing_contribution(request: Request, campaign_id: str) -> dict:
         repository_backed=project.source is not None,
     )
     return {} if contribution is None else {CONTRIBUTION_KEY: contribution}
-
-
-async def _contribute_after_close(request: Request, campaign_id: str) -> None:
-    """§24dc: a closed campaign's contribution, after its close commits. The close stands
-    whatever happens here: a failure is recorded on the campaign by the attempt, and retried at
-    startup or by ``POST …/contributions``."""
-    try:
-        await get_campaign_contribution(request).at_close(campaign_id)
-    except Exception:
-        logger.exception("campaign_contribution_not_opened", extra={"campaign_id": campaign_id})
 
 
 @router.post("/{campaign_id}/package")

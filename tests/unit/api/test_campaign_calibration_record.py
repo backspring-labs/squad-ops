@@ -192,7 +192,6 @@ def _progress(world: _World, vault_dir, branch: CampaignBranch | None = None) ->
         intervention_section=None,
         campaign_branch=branch,
         goal_sets=None,
-        contribute_at_close=None,
     )
 
 

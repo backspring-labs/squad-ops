@@ -81,7 +81,6 @@ async def world():
         intervention_section=None,
         campaign_branch=None,
         goal_sets=None,
-        contribute_at_close=None,
     )
     app.state.authz_port = KeycloakAuthzAdapter()
     await campaigns.create_campaign(

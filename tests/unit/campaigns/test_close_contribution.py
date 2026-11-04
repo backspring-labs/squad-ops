@@ -53,6 +53,7 @@ from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.contribution import (
     CAMPAIGN_RUN,
     ContributionRefused,
+    campaign_contribution_ref,
     contribute_campaign,
     relocated_criterion_files,
 )
@@ -120,7 +121,7 @@ class _World(_BranchWorld):
     """A Campaign on Tally whose first accepted increment meets its objective, so that
     increment's decision closes it; its contribution opened as ``main`` wires it."""
 
-    def __init__(self, tmp_path, *, tokens: dict[str, str] | None = None) -> None:
+    def __init__(self, tmp_path) -> None:
         self.forge = _Forge()
         self.book = _Contributions()
         self.goal_sets = GoalSetStore()
@@ -135,7 +136,6 @@ class _World(_BranchWorld):
             projects=self.projects,
             repository=self.clones,
             forge=self.forge,
-            tokens={PROJECT: TOKEN} if tokens is None else tokens,
         )
 
     def progress_on(self, repository) -> CampaignProgress:
@@ -152,7 +152,6 @@ class _World(_BranchWorld):
             intervention_section=None,
             campaign_branch=progress._campaign_branch,
             goal_sets=self.goal_sets,
-            contribute_at_close=lambda campaign_id: self.contribution.at_close(campaign_id),
         )
 
     async def started(self, *, target: int = 1) -> None:
@@ -334,14 +333,39 @@ def test_a_file_outside_the_stem_is_left_where_it_is():
     assert relocated_criterion_files(["tests/test_report.py", "README.md"], "cmp_x") == {}
 
 
-async def test_a_campaign_closed_by_its_decision_opens_one_contribution_with_its_criteria_moved(
+@pytest.mark.parametrize("close", ["decision", "abort"])
+async def test_the_close_records_what_is_due_and_acts_on_nothing_outside(tmp_path, close):
+    """The owner's ruling of 2026-11-04, keeping §24ci (b): a close never pushes or opens a request,
+    even on a deploy that holds a token for the Project (``app.state.review_request_tokens``, the
+    run contribution's fallback). Entered at the completion boundary and at the abort route. Bugs
+    caught: an automatic open returning; a stored token read on this path; a failure row written
+    for a token nobody was asked for; the closing row silent about what is due."""
+    world = _World(tmp_path)
+    await world.started(target=1 if close == "decision" else 2)
+    client = world.client()
+    client.app.state.review_request_tokens = {PROJECT: TOKEN}
+
+    await world.accepted_with_criterion()
+    if close == "abort":
+        aborted = client.post(
+            f"/api/v1/campaigns/{CID}/abort", json={"reason": "stop", "idempotency_key": "a-1"}
+        )
+        assert aborted.status_code == 200, aborted.text
+
+    closing = await world.closing()
+    held = await world.clones.ref_commit(PROJECT, campaign_contribution_ref(CID))
+    assert closing.binding["contribution"] == {"due": True, "accepted": ["cyc_inc000000001"]}
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.COMPLETED
+    assert world.forge.calls == 0 and world.remote() is None and held is None
+    assert world.book.recorded == [] and await world.failures() == []
+
+
+async def test_the_supervisors_request_opens_one_contribution_with_its_criteria_moved(
     tmp_path, caplog
 ):
-    """The wiring, entered at the completion boundary. The increment's acceptance meets the
-    objective, so its decision closes the Campaign, and the close opens the contribution. Bugs
+    """The wiring: the increment's decision closes the Campaign at the completion boundary, and
+    ``POST …/contributions`` with the supervisor's token opens what the close said was due. Bugs
     caught:
-    - the close recording nothing due, or opening nothing (campaigns 4 and 6, by hand);
-    - the open inside the close's transaction, so a refusal there undoes the close;
     - the root criterion file contributed as it was placed, where the next Campaign's placement
       collides with it (#2860);
     - the commit pushed or recorded off the branch's head, or its base wrong, so a sync reads the
@@ -350,17 +374,14 @@ async def test_a_campaign_closed_by_its_decision_opens_one_contribution_with_its
     caplog.set_level(logging.DEBUG)
     world = _World(tmp_path)
     await world.started()
-
     captured = await world.accepted_with_criterion()
 
-    stored = await world.campaigns.get_campaign(CID)
-    closing = await world.closing()
+    opened = world.client().post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert opened.status_code == 201, opened.text
     [contribution] = world.book.recorded
     pushed = world.remote()
     files = tracked_files(world.repo.path, pushed)
-    assert (stored.state, stored.outcome) == (CampaignState.COMPLETED, CampaignOutcome.SUCCESS)
-    assert closing.operation is ControlOperation.DECIDE
-    assert closing.binding["contribution"] == {"due": True, "accepted": ["cyc_inc000000001"]}
     assert pushed == contribution.commit != captured
     assert _git(world.repo.path, "rev-parse", f"{pushed}^").strip() == captured
     assert CRITERION not in files and files[MOVED] == b"def test_t1():\n    pass\n"
@@ -371,20 +392,21 @@ async def test_a_campaign_closed_by_its_decision_opens_one_contribution_with_its
         BRANCH,
         URL,
     )
+    assert contribution.contributed_by == "supervisor"
     assert contribution.parent_commit == world.repo.second_commit  # the branch's base
     [request] = world.forge.opened
     assert (request["head"], request["base"], request["token"]) == (BRANCH, "main", TOKEN)
     assert f"- {CRITERION} -> {MOVED}" in request["body"]
-    assert "Opened at the campaign's close" in request["body"]
+    assert "Opened by the campaign's supervisor after its close" in request["body"]
     assert await world.failures() == []
-    assert TOKEN not in repr(await world.campaigns.control_log(CID)) + caplog.text
+    assert TOKEN not in repr(await world.campaigns.control_log(CID)) + caplog.text + opened.text
 
 
 async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry_opens_it(
     tmp_path, monkeypatch
 ):
-    """The forge refuses at the close; the owner's abort closed the Campaign (the route the
-    live loop takes). Bugs caught:
+    """The owner's abort closes the Campaign; the supervisor's first request meets a forge that
+    refuses. Bugs caught:
     - a failure lost: nothing on the Campaign says the contribution wasn't opened;
     - a failure that reopens or unwinds the close;
     - a retry that pushes a second commit, so the branch the first attempt left is refused as
@@ -395,13 +417,16 @@ async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry
     await world.accepted_with_criterion()
     world.forge.refuse = True
     client = world.client()
-
     aborted = client.post(
         f"/api/v1/campaigns/{CID}/abort",
         json={"reason": "the crew's deadline", "idempotency_key": "a-1"},
     )
-
     assert aborted.status_code == 200, aborted.text
+
+    refused = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert refused.status_code == 502, refused.text
+    assert refused.json()["detail"]["error"]["code"] == "CONTRIBUTION_FAILED"
     closing = await world.closing()
     [failure] = await world.failures()
     stored = await world.campaigns.get_campaign(CID)
@@ -409,6 +434,7 @@ async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry
     assert closing.binding["contribution"]["due"] is True
     assert (stored.state, stored.outcome) == (CampaignState.COMPLETED, CampaignOutcome.ABORTED)
     assert failure.outcome is ControlOutcome.APPLIED
+    assert failure.actor == "supervisor"
     assert failure.binding["error"] == "ReviewRequestFailed"
     assert "503" in failure.binding["message"]
     assert world.book.recorded == []
@@ -418,8 +444,8 @@ async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry
     # A minute later: a commit made again would differ from the first by its committer date.
     later = time.time() + 60
     monkeypatch.setattr("adapters.tools.git_source.time.time", lambda: later)
-    retried = client.post(f"/api/v1/campaigns/{CID}/contributions", json={})
-    again = client.post(f"/api/v1/campaigns/{CID}/contributions", json={})
+    retried = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+    again = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
 
     assert retried.status_code == 201, retried.text
     body = retried.json()
@@ -429,26 +455,19 @@ async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry
     assert len(world.forge.opened) == 1
 
 
-async def test_with_no_token_the_close_records_why_and_the_supervisors_token_opens_it(tmp_path):
-    """The deploy holds no token for the Project (§24ci (b): nothing is stored by default). Bugs
-    caught: the close pushing without one, or failing silently; the supervisor's own token not
-    reaching the push; the token kept anywhere."""
-    world = _World(tmp_path, tokens={})
+async def test_a_request_with_no_token_is_refused_and_no_stored_one_stands_in(tmp_path):
+    """§24ci (b): the token comes with the request alone. Bug caught: the route falling back on the
+    deploy's token for the Project, which is the automatic path by another door."""
+    world = _World(tmp_path)
     await world.started()
     await world.accepted_with_criterion()
+    client = world.client()
+    client.app.state.review_request_tokens = {PROJECT: TOKEN}
 
-    [failure] = await world.failures()
-    assert "no review-request token" in failure.binding["message"]
-    assert world.remote() is None and world.forge.calls == 0
+    refused = client.post(f"/api/v1/campaigns/{CID}/contributions", json={})
 
-    opened = world.client().post(
-        f"/api/v1/campaigns/{CID}/contributions", json={"token": "supervisor-own-token"}
-    )
-
-    assert opened.status_code == 201, opened.text
-    assert world.forge.opened[0]["token"] == "supervisor-own-token"
-    assert "supervisor-own-token" not in opened.text
-    assert world.book.recorded[0].contributed_by == "supervisor"
+    assert refused.status_code == 422, refused.text
+    assert world.forge.calls == 0 and world.remote() is None and await world.failures() == []
 
 
 async def test_a_campaign_with_no_accepted_increment_opens_nothing_and_says_so(tmp_path):
@@ -462,7 +481,7 @@ async def test_a_campaign_with_no_accepted_increment_opens_nothing_and_says_so(t
     aborted = client.post(
         f"/api/v1/campaigns/{CID}/abort", json={"reason": "stop", "idempotency_key": "a-1"}
     )
-    retried = client.post(f"/api/v1/campaigns/{CID}/contributions", json={})
+    retried = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
 
     assert aborted.status_code == 200, aborted.text
     assert (await world.closing()).binding["contribution"] == {
@@ -482,11 +501,11 @@ async def test_a_running_campaign_and_an_unknown_one_are_refused(tmp_path):
     await world.started(target=2)
     client = world.client()
 
-    running = client.post(f"/api/v1/campaigns/{CID}/contributions", json={})
-    unknown = client.post("/api/v1/campaigns/cmp_nosuch000001/contributions", json={})
+    running = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+    unknown = client.post("/api/v1/campaigns/cmp_nosuch000001/contributions", json={"token": TOKEN})
 
     assert running.status_code == 409
-    assert "opened at its close" in running.json()["detail"]["error"]["message"]
+    assert "opened after its close" in running.json()["detail"]["error"]["message"]
     assert unknown.status_code == 404
     assert unknown.json()["detail"]["error"]["code"] == "CAMPAIGN_NOT_FOUND"
 
