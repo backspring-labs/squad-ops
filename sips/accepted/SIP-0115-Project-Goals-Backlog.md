@@ -1,18 +1,20 @@
 ---
 sip_uid: '17933742279101532'
 title: Project Goals and Backlog
-status: proposed
+status: accepted
 author: Jason Ladd
 created_at: '2026-10-30T00:00:00Z'
+sip_number: 115
+updated_at: '2026-11-04T01:15:45.660024Z'
 ---
+# SIP-0115: Project Goals and Backlog
 
-# SIP: Project Goals and Backlog
-
-**Status:** Proposed (2026-10-30), for design review
+**Status:** Accepted (2026-11-03): the owner's rulings on the 2.6 plan, "Let's go with battle-trainer and then your
+recommendations on the other decisions", made this SIP 2.6.0's headline (D1) and ruled Q41–Q44 as recommended (§9).
+Proposed 2026-10-30.
 **Authors:** Jason Ladd (the owner's direction, 2026-10-30); drafted by the Spark lane's supervisor
 **Created:** 2026-10-30
-**Targets:** proposed as 2.6.0's headline by the 2.6 plan's draft (`docs/plans/2-6-0-plan.md`, PR #2832). Not
-placed until the owner adopts that plan and accepts this SIP.
+**Targets:** 2.6.0's headline, slices 1–5 (`docs/plans/2-6-0-plan.md`, adopted 2026-11-03, D1). Slice 6 is not in 2.6.
 **Builds on:** SIP-0112 (Project Lifecycle Management: the Project Record), SIP-0109 (Campaign Orchestration: the
 objective and its requirements source), SIP-0113 (Outcome Evaluation: the held-out suite), SIP-0069 (the console's
 Continuum plugins)
@@ -61,12 +63,12 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 
 | part | status | where |
 |---|---|---|
-| slice 1: the goal-set record, its revisions, the API and the CLI | **unplaced**, deliberately: proposed for 2.6.0 by the plan's draft, PR #2832 | — |
-| slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 3: candidates, their promotion and drop | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 4: the console's goals panel | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7) | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 6: the repository export | **unplaced**, deliberately: not proposed for 2.6 | — |
+| slice 1: the goal-set record, its revisions, the API and the CLI | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2884 |
+| slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2885 |
+| slice 3: candidates, their promotion and drop | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2886 |
+| slice 4: the console's goals panel | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2887 |
+| slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2888 |
+| slice 6: the repository export | **unplaced**, deliberately: not in 2.6 (the plan's D1, ruled 2026-11-03) | — |
 
 **What closes this SIP:** slices 1–5 shipped and read live on a Campaign whose backlog reached three accepted items,
 with at least one assessment recorded by the crew; slice 6 shipped or dropped by a numbered amendment.
@@ -334,6 +336,9 @@ SquadOps builds nothing for Buzz. The crew is an API client, and slice 5 is what
 What the crew does with them, in Buzz and in its harness, is the crew's.
 
 ## 9. Open questions for the owner
+
+**Ruled 2026-11-03, each as recommended** (the owner, ruling the 2.6 plan: "Let's go with battle-trainer and then your
+recommendations on the other decisions"; Q41 is the plan's D15). Slices 1 and 3 build to Q41's rule.
 
 | # | question | recommendation |
 |---|---|---|

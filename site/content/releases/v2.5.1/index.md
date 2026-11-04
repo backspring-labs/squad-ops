@@ -112,7 +112,7 @@ defects, on a Campaign's path or in the cut's tooling (D11).
 
 | Proposal | From | To |
 |---|---|---|
-| [SIP-Project-Goals-Backlog](../../design/sips/SIP-Project-Goals-Backlog.md) | new | proposed |
+| SIP-Project-Goals-Backlog | new | proposed |
 
 ## Improvement proposals amended in place
 
