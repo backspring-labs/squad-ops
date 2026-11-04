@@ -111,6 +111,35 @@ class TestEdit:
         assert result.exit_code == exit_codes.CONFLICT
         assert "idempotency key cli-" in " ".join(result.output.split())
 
+    def test_a_hand_written_time_reaches_the_server_in_its_iso_form(self, tmp_path):
+        """Bug caught: YAML reads an unquoted ``found_at`` as a datetime, and the request can't
+        encode it, so a hand-written candidate fails before it is sent."""
+        spec = tmp_path / "goals.yaml"
+        spec.write_text(
+            "goal: A reader keeps a log\n"
+            "candidates:\n"
+            "  - {id: C-1, title: Edit a session, found_by: owner, "
+            "found_at: 2026-11-02T09:30:00+00:00}\n"
+        )
+        client = MagicMock()
+        client.post.return_value = {
+            "revision": _revision(1),
+            "idempotency_key": "g-1",
+            "replayed": False,
+        }
+
+        with patch(CLIENT, return_value=client):
+            result = runner.invoke(
+                app,
+                ["goals", "edit", "prj-lantern", "-f", str(spec), "--reason", "first"]
+                + ["--expected-revision", "0"],
+            )
+
+        assert result.exit_code == 0, result.output
+        sent = client.post.call_args.kwargs["json"]
+        json.dumps(sent)  # what httpx does with it
+        assert sent["goal_set"]["candidates"][0]["found_at"] == "2026-11-02T09:30:00+00:00"
+
     @pytest.mark.parametrize("content", [None, "- just\n- a list\n", "goal: [unclosed\n"])
     def test_a_file_that_holds_no_goal_set_exits_before_any_call(self, content, tmp_path):
         spec = tmp_path / "goals.yaml"

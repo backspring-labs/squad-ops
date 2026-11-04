@@ -8,7 +8,9 @@ revision. Each edit, a reorder included, writes a revision; none is changed in p
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 import typer
 import yaml
@@ -84,7 +86,7 @@ def edit(
     """Write a Project's next goal-set revision from a file. Every edit, a reorder included, is a
     new revision with its reason; a concurrent edit is refused, never overwritten."""
     try:
-        goal_set = yaml.safe_load(file.read_text())
+        goal_set = _as_written(yaml.safe_load(file.read_text()))
     except (OSError, yaml.YAMLError) as e:
         print_error(f"cannot read {file}: {e}")
         raise typer.Exit(code=2) from e
@@ -119,6 +121,18 @@ def edit(
         f"{verb}: {project_id} goal set revision {written['revision']} "
         f"({len(written['goal_set']['backlog'])} backlog item(s); key {data['idempotency_key']})"
     )
+
+
+def _as_written(value: Any) -> Any:
+    """The file's values as JSON carries them. YAML reads an unquoted ``found_at`` as a time,
+    which the request can't encode; its ISO form is what the server reads."""
+    if isinstance(value, dict):
+        return {k: _as_written(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_as_written(v) for v in value]
+    if isinstance(value, date):  # a datetime is a date
+        return value.isoformat()
+    return value
 
 
 def _active_revision(client, project_id: str) -> int:
