@@ -11,9 +11,12 @@ fixture's own repository, the Project's locator. The forge is a recorder, and th
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import logging
 import time
+from fnmatch import fnmatch
+from pathlib import PurePosixPath
 
 import pytest
 from fastapi import FastAPI, Request
@@ -71,7 +74,15 @@ TOKEN = "github_pat_inventedForTheTest0002"
 BRANCH = f"squadops/{CID}"
 URL = "https://forge.example.invalid/tally/pull/9"
 CRITERION = "test_criterion_T1.py"
-MOVED = f"tests/test_{CID}_T1.py"
+LIVE = "cmp_b498332d326e028682987379"
+
+
+def _tag(campaign_id: str) -> str:
+    """What a Campaign's id reads as in a file name, computed here apart from the code's."""
+    return "campaign_" + hashlib.sha256(campaign_id.encode()).hexdigest()[:16]
+
+
+MOVED = f"tests/test_{_tag(CID)}_T1.py"
 
 
 @pytest.fixture(autouse=True)
@@ -313,11 +324,11 @@ class _World(_BranchWorld):
     ("placed", "moved"),
     [
         # campaign 4's root files: moved under tests/, out of the stem
-        ("test_criterion_T1.py", "tests/test_cmp_b498332d326e_T1.py"),
+        ("test_criterion_T1.py", f"tests/test_{_tag(LIVE)}_T1.py"),
         # placed beside the runner's tests (#2858): renamed where it stands
-        ("tests/test_criterion_T2.py", "tests/test_cmp_b498332d326e_T2.py"),
+        ("tests/test_criterion_T2.py", f"tests/test_{_tag(LIVE)}_T2.py"),
         # a vitest runner's pattern has no prefix
-        ("frontend/src/criterion_T3.test.jsx", "frontend/src/cmp_b498332d326e_T3.test.jsx"),
+        ("frontend/src/criterion_T3.test.jsx", f"frontend/src/{_tag(LIVE)}_T3.test.jsx"),
     ],
 )
 def test_a_criterion_file_leaves_the_stem_and_the_root(placed, moved):
@@ -325,7 +336,27 @@ def test_a_criterion_file_leaves_the_stem_and_the_root(placed, moved):
     placement under ``tests/`` breaks pytest's collection (#2858); a name left in the stem, which
     §24cx then refuses to every later Campaign's criterion of that id; the runner's own prefix
     dropped, so the runner no longer collects the file."""
-    assert relocated_criterion_files([placed], "cmp_b498332d326e028682987379") == {placed: moved}
+    assert relocated_criterion_files([placed], LIVE) == {placed: moved}
+
+
+def test_two_campaigns_never_take_one_name_and_each_name_is_a_valid_test_module():
+    """PR #2920's review, finding 5. ``cmp_product_feature_a`` and ``_b`` shared 16 characters, so
+    the second Campaign's file took the first's name, and pytest refuses two modules of one name
+    (#2858). Bugs caught: a truncated id; an id's ``-`` reaching a module name, which no import
+    can name; the runner's own patterns no longer matching."""
+    ids = ("cmp_product_feature_a", "cmp_product_feature_b", "cmp-product-feature-a")
+    moved = [
+        relocated_criterion_files(["test_criterion_T1.py", "criterion_T1.test.jsx"], i) for i in ids
+    ]
+
+    python = [m["test_criterion_T1.py"] for m in moved]
+    assert len(set(python)) == len(ids)
+    for path in python:
+        name = PurePosixPath(path)
+        assert name.stem.isidentifier() and fnmatch(name.name, "test_*.py")
+        assert "criterion_" not in name.name
+    for m in moved:
+        assert fnmatch(m["criterion_T1.test.jsx"], "*.test.*")
 
 
 def test_a_file_outside_the_stem_is_left_where_it_is():

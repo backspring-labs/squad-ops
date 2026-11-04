@@ -26,6 +26,7 @@ doesn't delegate, so a ``direct_push`` Project is refused by name.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -116,13 +117,14 @@ def campaign_contribution_ref(campaign_id: str) -> str:
 def relocated_criterion_files(paths: Iterable[str], campaign_id: str) -> dict[str, str]:
     """Where each of a Campaign's criterion files goes in its contribution (#2860's interim, made
     the rule; SIP-0109 §24dc):
-    - ``criterion_`` in the file's name becomes the Campaign's id, so no later Campaign's
-      placement finds the name taken (§24cx);
+    - ``criterion_`` in the file's name becomes ``campaign_<hash>_``, a stable hash of the
+      Campaign's whole id, so no later Campaign's placement finds the name taken (§24cx), no two
+      Campaigns share one, and the name is a module name whatever the id holds;
     - a file at the root moves under ``tests/``.
 
-    ``test_criterion_T1.py`` of ``cmp_b498332d326e…`` becomes ``tests/test_cmp_b498332d326e_T1.py``.
-    A path whose name doesn't carry the stem is left where it is."""
-    tag = campaign_id[:16]
+    ``test_criterion_T1.py`` becomes ``tests/test_campaign_3f9c…_T1.py``. The runner's prefix and
+    suffix stay. A path whose name doesn't carry the stem is left where it is."""
+    tag = f"campaign_{hashlib.sha256(campaign_id.encode()).hexdigest()[:16]}"
     moves = {}
     for path in sorted(set(paths)):
         placed = PurePosixPath(path)
