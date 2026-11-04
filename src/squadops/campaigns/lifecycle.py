@@ -148,6 +148,10 @@ def transition_request_hash(transition: CampaignTransition) -> str:
     """
     payload = dataclasses.asdict(transition)
     payload.pop("idempotency_key")
+    # §24dc: what a closing row records of its contribution is the registry's derivation, read under
+    # its lock, never the caller's content: an abort stored without it replays, and so does one
+    # whose log has moved since.
+    payload.pop("repository_backed")
     # §24cc, §24bv point 2: a tree is hashed as it was before it could name a calibration record
     # or a commit, so a promotion committed then still replays after a restart on this code.
     for added in ("calibration_record_id", "commit"):
@@ -305,8 +309,11 @@ def control_log_entry(
     committed_at: datetime,
     refusal: RefusalReason | None,
     launch_id: str | None,
+    derived: dict | None = None,
 ) -> ControlLogEntry:
-    """The row a control operation writes, applied or refused. A refusal leaves the state as it was."""
+    """The row a control operation writes, applied or refused. A refusal leaves the state as it
+    was. ``derived`` is what the registry adds to the row's binding, read under its lock (§24dc),
+    outside the request's hash."""
     applied = refusal is None
     next_state = (
         transition.next_state if applied and transition.next_state is not None else campaign.state
@@ -322,7 +329,7 @@ def control_log_entry(
         target=transition.target,
         idempotency_key=transition.idempotency_key,
         request_hash=transition_request_hash(transition),
-        binding=dict(transition.binding),
+        binding={**transition.binding, **(derived or {})},
         outcome=ControlOutcome.APPLIED if applied else ControlOutcome.REFUSED,
         refusal=refusal,
         prior_state=campaign.state,

@@ -876,8 +876,15 @@ class CampaignTransition:
     submitted: SubmittedProposal | None = None
     ruling: IncrementRuling | None = None
     supersedes: str | None = None
+    #: A closing row's ask (§24dc): the registry derives what the row records of the Campaign's
+    #: contribution, under its lock. ``True`` or ``False`` says whether the caller read the Project
+    #: as repository-backed, and a Campaign with a branch is one whatever it read. ``None`` derives
+    #: nothing. Never the caller's content: it is left out of the request's hash.
+    repository_backed: bool | None = None
 
     def __post_init__(self) -> None:
+        if self.repository_backed is not None and self.next_state is not CampaignState.COMPLETED:
+            raise ValueError("only a row that completes the campaign records its contribution")
         _require_text(
             "CampaignTransition",
             actor=self.actor,

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from squadops.campaigns import box, lifecycle
 from squadops.campaigns.box import BoxLease
+from squadops.campaigns.close_contribution import closing_binding
 from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
@@ -261,6 +262,11 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
             committed_at=now,
             refusal=None,
             launch_id=intent.launch_id if intent is not None else None,
+            derived=closing_binding(
+                transition,
+                self._log[campaign_id],
+                [i for i in self._intents.values() if i.campaign_id == campaign_id],
+            ),
         )
         updated = lifecycle.applied_campaign(campaign, transition, now)
 

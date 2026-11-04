@@ -103,6 +103,21 @@ def closing_contribution(
     return {"due": True, "accepted": accepted}
 
 
+def closing_binding(
+    transition: CampaignTransition,
+    log: list[ControlLogEntry],
+    intents: Iterable[LaunchIntent],
+) -> dict:
+    """What a registry adds to a closing row, under the Campaign's lock, from the log and intents
+    as the row commits on them (§24dc). A promotion that committed since the caller read anything
+    is on the record, so accepted work is never closed over as ``due: false``."""
+    if transition.repository_backed is None:
+        return {}
+    backed = transition.repository_backed or branch_base(log) is not None
+    contribution = closing_contribution(log, intents, repository_backed=backed)
+    return {} if contribution is None else {CONTRIBUTION_KEY: contribution}
+
+
 def closing_row(log: Iterable[ControlLogEntry]) -> ControlLogEntry | None:
     """The applied row that completed the Campaign: its terminal decision, or the abort."""
     return next(

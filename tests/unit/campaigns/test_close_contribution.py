@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+from adapters.cycles.factory import create_project_registry
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.campaigns import campaigns_router
 from squadops.api.routes.cycles.projects import router as projects_router
@@ -38,8 +39,10 @@ from squadops.campaigns.close_contribution import (
 from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
 from squadops.campaigns.launch_requests import start_transition
 from squadops.campaigns.models import (
+    AcceptedTree,
     CampaignOutcome,
     CampaignState,
+    CampaignTransition,
     ControlLogEntry,
     ControlOperation,
     ControlOutcome,
@@ -523,6 +526,90 @@ async def test_a_campaign_with_no_accepted_increment_opens_nothing_and_says_so(t
     assert retried.json()["detail"]["error"]["code"] == "CONTRIBUTION_REFUSED"
     assert world.forge.calls == 0 and world.remote() is None and world.book.recorded == []
     assert await world.failures() == []
+
+
+def _promotes_first(world: _World, operation: ControlOperation, cycle_id: str, commit: str) -> None:
+    """A PROMOTE that commits in the instant before ``operation``'s row: after anything read for
+    the row outside the registry's lock, and before its own write."""
+    real = world.campaigns.transition
+
+    async def racing(campaign_id, transition):
+        if transition.operation is operation:
+            held = await world.campaigns.get_campaign(campaign_id)
+            await real(
+                campaign_id,
+                move(
+                    held.state, f"promote-{cycle_id}", operation=ControlOperation.PROMOTE,
+                    accepted=AcceptedTree("tree-late", cycle_id, commit=commit),
+                    binding={"cycle_id": cycle_id, "commit": commit, "identity": "tree-late"},
+                ),
+            )  # fmt: skip
+        return await real(campaign_id, transition)
+
+    world.campaigns.transition = racing
+
+
+async def test_a_promotion_racing_the_abort_is_on_the_closing_rows_record(tmp_path):
+    """PR #2920's review, finding 3, entered at the abort route. The promotion commits after the
+    route's reads and before the abort's row. Bug caught: ``due: false`` over accepted work, which
+    no request can then open: stranded on the branch."""
+    world = _World(tmp_path)
+    await world.started(target=2)
+    cycle, _run, captured = await world.delivered("cyc_late00000001", _added("total"))
+    _promotes_first(world, ControlOperation.ABORT, cycle.cycle_id, captured)
+
+    aborted = world.client().post(
+        f"/api/v1/campaigns/{CID}/abort", json={"reason": "stop", "idempotency_key": "a-1"}
+    )
+
+    assert aborted.status_code == 200, aborted.text
+    assert (await world.closing()).binding["contribution"] == {
+        "due": True,
+        "accepted": ["cyc_late00000001"],
+    }
+
+
+async def test_a_promotion_racing_a_terminal_decision_is_on_the_closing_rows_record(tmp_path):
+    """Finding 3's other door, entered at the completion boundary: a promotion that commits after
+    the hearing's last read of the log. Bug caught: the terminal decision's record missing an
+    increment the branch holds."""
+    world = _World(tmp_path)
+    await world.started()
+    late = "cyc_race00000003"
+    held = (await world.campaigns.get_campaign(CID)).state
+    launched = await world.campaigns.transition(
+        CID,
+        move(
+            CampaignState.BUILDING, "launch-race", operation=ControlOperation.RESUME,
+            launch=LaunchRequest(CycleKind.INCREMENT, {}),
+        ),
+    )  # fmt: skip
+    await world.campaigns.mark_launch_intent_launched(
+        launched.intent.launch_id, late, actor="launcher"
+    )
+    await world.campaigns.transition(CID, move(CampaignState.ESCALATED, "held-again"))
+    assert held is CampaignState.ESCALATED
+    real = world.campaigns.transition
+
+    async def racing(campaign_id, transition):
+        if transition.next_state is CampaignState.COMPLETED:
+            state = (await world.campaigns.get_campaign(campaign_id)).state
+            await real(
+                campaign_id,
+                move(
+                    state, "promote-race", operation=ControlOperation.PROMOTE,
+                    accepted=AcceptedTree("tree-race", late, commit="d" * 40),
+                    binding={"cycle_id": late, "commit": "d" * 40, "identity": "tree-race"},
+                ),
+            )  # fmt: skip
+        return await real(campaign_id, transition)
+
+    world.campaigns.transition = racing
+    await world.accepted_with_criterion()
+
+    closing = await world.closing()
+    assert closing.operation is ControlOperation.DECIDE
+    assert closing.binding["contribution"]["accepted"] == ["cyc_inc000000001", late]
 
 
 async def test_a_running_campaign_and_an_unknown_one_are_refused(tmp_path):

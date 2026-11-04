@@ -33,13 +33,9 @@ from squadops.campaigns.calibration_record import (
     CalibrationRecord,
     recorded_calibration,
 )
-from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused, branch_base
+from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused
 from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
-from squadops.campaigns.close_contribution import (
-    CONTRIBUTION_KEY,
-    INCREMENT_FAMILY,
-    closing_contribution,
-)
+from squadops.campaigns.close_contribution import INCREMENT_FAMILY
 from squadops.campaigns.continuation import (
     UNCOUNTED_ABANDONMENT_ROWS,
     CampaignCounters,
@@ -247,7 +243,6 @@ def decision_transition(
     unbuilt: str | None = None,
     promotion_refused: str | None = None,
     goals_revision: int | None = None,
-    contribution: dict | None = None,
 ) -> CampaignTransition:
     """The decision's one control-log row (§10). Its binding records the decision whole — the
     row, the ending and verdict it read, and the outcome or the action with its guard — so the
@@ -267,9 +262,9 @@ def decision_transition(
     ``promotion_refused`` names why an accepted cycle's tree wasn't promoted (§24ce), whatever
     the decision. Only a row that has one carries the key, so every other row hashes as before.
 
-    ``contribution`` is what a terminal decision's row records of the Campaign's contribution
-    (§24dc, ``close_contribution.closing_contribution``): only a repository-backed Campaign's
-    closing row carries the key.
+    A terminal decision asks the registry to record the Campaign's contribution (§24dc): it is
+    derived under the Campaign's lock, from the log as the row commits on it, so a promotion
+    committing meanwhile is on the record. Only a repository-backed Campaign's row carries it.
     """
     binding: dict = {
         "cycle_id": decision.cycle_id,
@@ -281,8 +276,6 @@ def decision_transition(
         binding["promotion_refused"] = promotion_refused
     if goals_revision is not None:
         binding["goals_revision"] = goals_revision
-    if contribution is not None and decision.terminal:
-        binding[CONTRIBUTION_KEY] = contribution
     decided, next_state, outcome = _decided(decision, unbuilt)
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
@@ -295,6 +288,11 @@ def decision_transition(
         target=decision.cycle_id,
         binding=binding | decided,
         launch=launch if next_state in _LAUNCH_STATES.values() else None,
+        repository_backed=(
+            campaign.accepted is not None and campaign.accepted.commit is not None
+            if decision.terminal
+            else None
+        ),
     )
 
 
@@ -304,15 +302,12 @@ def record_decision_transition(
     *,
     launch: LaunchRequest | None,
     unbuilt: str | None = None,
-    contribution: dict | None = None,
 ) -> CampaignTransition:
     """A calibration record's decision row (§24bv point 1, §24cc): as a cycle's, keyed by the
     record's id and naming it, never a cycle. Its ending is ``calibration_recorded``, and its
-    verdict ``accepted``: row 5 read the record as an accepted calibration. A terminal one carries
+    verdict ``accepted``: row 5 read the record as an accepted calibration. A terminal one asks for
     ``contribution`` as a cycle's does (§24dc)."""
     decided, next_state, outcome = _decided(decision, unbuilt)
-    if contribution is not None and decision.terminal:
-        decided = decided | {CONTRIBUTION_KEY: contribution}
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
         actor="squadops",
@@ -331,6 +326,7 @@ def record_decision_transition(
         }
         | decided,
         launch=launch if next_state in _LAUNCH_STATES.values() else None,
+        repository_backed=True if decision.terminal else None,
     )
 
 
@@ -794,9 +790,6 @@ class CampaignProgress:
         campaign, moved = await self._still(campaign, cycle.cycle_id)
         if moved:
             return None
-        contribution = (
-            await self._closing_contribution(campaign.campaign_id) if decision.terminal else None
-        )
         try:
             result = await self._campaigns.transition(
                 campaign.campaign_id,
@@ -809,7 +802,6 @@ class CampaignProgress:
                     unbuilt=unbuilt,
                     promotion_refused=not_promoted,
                     goals_revision=goals_revision,
-                    contribution=contribution,
                 ),
             )
         except ControlOperationRefused as refused:
@@ -823,17 +815,6 @@ class CampaignProgress:
         if decision.terminal:
             await self.materialize_package(campaign.campaign_id)
         return decision
-
-    async def _closing_contribution(self, campaign_id: str) -> dict | None:
-        """What a terminal decision's row records of the Campaign's contribution (§24dc): read
-        from the log its promotions committed to. A Campaign with a branch is repository-backed
-        (its start promoted a calibration record, §24cc)."""
-        log = await self._campaigns.control_log(campaign_id)
-        return closing_contribution(
-            log,
-            await self._campaigns.launch_intents(campaign_id),
-            repository_backed=branch_base(log) is not None,
-        )
 
     async def _promoted_and_evaluating(
         self,
@@ -1135,9 +1116,6 @@ class CampaignProgress:
             campaign, moved = await self._still(campaign, record.record_id)
             if moved:
                 return None
-            contribution = (
-                await self._closing_contribution(campaign_id) if decision.terminal else None
-            )
             try:
                 result = await self._campaigns.transition(
                     campaign_id,
@@ -1146,7 +1124,6 @@ class CampaignProgress:
                         decision,
                         launch=launch,
                         unbuilt=unbuilt,
-                        contribution=contribution,
                     ),
                 )
             except ControlOperationRefused as refused:

@@ -88,7 +88,6 @@ from squadops.campaigns.calibration_record import (
     record_for,
     recorded_calibration,
 )
-from squadops.campaigns.close_contribution import CONTRIBUTION_KEY, closing_contribution
 from squadops.campaigns.continuation import PendingAction
 from squadops.campaigns.escalation import (
     DelegatedMove,
@@ -1233,8 +1232,8 @@ async def abort_campaign(
 ) -> ControlResultResponse:
     """Abort: terminal (§12a). Every cycle the campaign launched that has not ended is
     cancelled by the existing cancel path, and no continuation follows. A repository-backed
-    campaign's abort row records its contribution, as a terminal decision's does, and the
-    contribution is opened after the row commits when one is due (§24dc)."""
+    campaign's abort row records its contribution, as a terminal decision's does: derived under
+    the Campaign's lock, from the log as the row commits on it. It opens nothing (§24dc)."""
     actor, role = actor_from(identity)
     transition = dataclasses.replace(
         _transition(
@@ -1245,7 +1244,7 @@ async def abort_campaign(
             role,
             outcome=CampaignOutcome.ABORTED,
         ),
-        binding=await _closing_contribution(request, campaign_id),
+        repository_backed=await _repository_backed(request, campaign_id),
     )
     result = await apply_control(request, campaign_id, transition, identity)
     cancelled = await _cancel_launched_cycles(request, campaign_id)
@@ -1254,18 +1253,13 @@ async def abort_campaign(
     return _result(result, cancelled_cycles=cancelled)
 
 
-async def _closing_contribution(request: Request, campaign_id: str) -> dict:
-    """The abort row's binding (§24dc): what it records of the Campaign's contribution, or
-    nothing for a sample application's."""
-    registry = _registry(request)
-    campaign = await registry.get_campaign(campaign_id)
+async def _repository_backed(request: Request, campaign_id: str) -> bool:
+    """Whether the abort's row says what is due (§24dc) though the Campaign has no branch yet: its
+    Project has a repository. A Project that can't be found has no contribution to name, and never
+    blocks the abort: a Campaign with a branch is read as repository-backed from its log."""
+    campaign = await _registry(request).get_campaign(campaign_id)
     project = await get_project_registry(request).get_project(campaign.project_id)
-    contribution = closing_contribution(
-        await registry.control_log(campaign_id),
-        await registry.launch_intents(campaign_id),
-        repository_backed=project.source is not None,
-    )
-    return {} if contribution is None else {CONTRIBUTION_KEY: contribution}
+    return project.source is not None
 
 
 @router.post("/{campaign_id}/package")
