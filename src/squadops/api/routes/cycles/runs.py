@@ -49,7 +49,7 @@ from squadops.campaigns.models import (
 )
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.cycles.gate_attribution import compose_decided_by
-from squadops.cycles.gate_decisions import record_gate_decision
+from squadops.cycles.gate_decisions import record_gate_decision, refuse_undecidable
 from squadops.cycles.lifecycle import (
     TERMINAL_STATES,
     compute_config_hash,
@@ -261,19 +261,12 @@ async def _supervisor_answers_a_campaign_plan_gate(
     request: Request,
     registry,
     cycle_id: str,
-    *,
-    run_id: str,
-    gate_name: str,
-    identity: Identity | None,
-) -> None:
+) -> str | None:
     """#2837: a caller ruling the plan gate on ``campaigns:supervise`` alone may do so only on a
-    cycle a campaign launched. An operator's own cycle stays a cycle write.
-
-    SIP-0109 §24da: when the plan-review tier escalated that gate, the answer is the ``plan_gate``
-    class's delegated resume: allowed and recorded only when the campaign declared it and the
-    owner holds no pause, refused and recorded otherwise, before the gate is decided."""
+    cycle a campaign launched. An operator's own cycle stays a cycle write. Returns that campaign,
+    whose delegation the route reads once the request is valid; ``None`` for a cycle writer."""
     if holds_scopes(request, Scope.CYCLES_WRITE):
-        return
+        return None
     cycle = await registry.get_cycle(cycle_id)
     campaign_id = getattr(cycle, "campaign_id", None)
     if campaign_id is None:
@@ -282,12 +275,7 @@ async def _supervisor_answers_a_campaign_plan_gate(
             "FORBIDDEN",
             "the plan gate of a cycle no campaign launched is a cycle write (cycles:write)",
         )
-    # deferred (cycle): api.routes.campaigns.campaigns loads this module
-    from squadops.api.routes.campaigns.campaigns import delegated_plan_gate_answer
-
-    await delegated_plan_gate_answer(
-        request, campaign_id, identity, run_id=run_id, gate_name=gate_name
-    )
+    return campaign_id
 
 
 #: The decisions a ruling's task instructions may go with: an approval launches the work they direct.
@@ -544,10 +532,9 @@ async def gate_decision(
 ) -> RunResponse:
 
     registry = get_cycle_registry(request)
+    answering_for = None
     if gate_name == PLAN_REVIEW_GATE:
-        await _supervisor_answers_a_campaign_plan_gate(
-            request, registry, cycle_id, run_id=run_id, gate_name=gate_name, identity=identity
-        )
+        answering_for = await _supervisor_answers_a_campaign_plan_gate(request, registry, cycle_id)
 
     if gate_name == INCREMENT_RULING_GATE:
         record, body = await _rule_increment(request, registry, cycle_id, run_id, body, identity)
@@ -598,6 +585,22 @@ async def gate_decision(
     )
     # #1986: one recorder for every decider: the row, the promotion an approval implies
     # (SIP-0086), and one `gate.decided` shape (SIP-0077 §7.3).
+
+    # SIP-0109 §24da: when the tier escalated this gate, the supervisor's answer is the
+    # ``plan_gate`` class's delegated resume. Its row says the answer happened, so it comes after
+    # every check above and only for a decision the registry would take.
+    if answering_for is not None:
+        # deferred (cycle): api.routes.campaigns.campaigns loads this module
+        from squadops.api.routes.campaigns.campaigns import delegated_plan_gate_answer
+
+        await delegated_plan_gate_answer(
+            request,
+            answering_for,
+            identity,
+            run_id=run_id,
+            gate_name=gate_name,
+            decidable=lambda: refuse_undecidable(registry, run_id, decision),
+        )
 
     updated = await record_gate_decision(
         registry,

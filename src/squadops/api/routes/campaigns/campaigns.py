@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import NoReturn
 
@@ -253,13 +254,18 @@ async def delegated_plan_gate_answer(
     *,
     run_id: str,
     gate_name: str,
+    decidable: Callable[[], Awaitable[None]],
 ) -> None:
     """§24da, the ``plan_gate`` class, at the gate's answer path (#2837): a caller on
     ``campaigns:supervise`` without ``campaigns:control`` answers a plan gate the tier escalated
     only when the campaign declared ``plan_gate`` and the owner holds no pause. The answer is
     recorded as a ``resume`` row that moves nothing, before the gate decision; the refusal as a
     ``resume_not_delegated`` row, and the gate is not decided. A gate no escalation holds is the
-    supervisor's as #2837 made it, and records nothing here."""
+    supervisor's as #2837 made it, and records nothing here.
+
+    The caller has validated the request. ``decidable`` raises what the registry would refuse the
+    decision with, and runs after the verdict, so a refused delegation is still recorded and an
+    applied row is never written for an answer that can't happen."""
     if holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
         return
     registry = _registry(request)
@@ -293,6 +299,7 @@ async def delegated_plan_gate_answer(
     )
     if not verdict.allowed:
         await refuse_delegated_resume(request, campaign_id, transition, identity)
+    await decidable()
     await apply_control(request, campaign_id, transition, identity)
 
 

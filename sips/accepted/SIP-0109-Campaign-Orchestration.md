@@ -5922,6 +5922,13 @@ that the grant goes to the crew's existing broker principals: no new identity is
      before the gate decision, or refused and the gate left undecided. **This narrows #2837** for escalated gates only:
      a campaign that doesn't declare `plan_gate` no longer has its escalated plan gates answered by the supervisor
      seat. A plan gate no escalation holds is answered as before, with nothing recorded here.
+   - **The row is written only for an answer that happens** (the owner's review of this PR). The route validates the
+     whole request first, then reads the verdict, so a refused delegation is still recorded. It then asks
+     `gate_decisions.refuse_undecidable` what the registry would say (a terminal run, a gate outside the policy, a
+     conflicting decision), and writes the applied row only if the decision would be taken. The row stays ahead of the
+     decision, so a delegated act can't happen unaudited. **What remains:** the preflight is a read, so a conflicting
+     decision landing between it and the record leaves an applied row for an answer the registry then refused 409. The
+     escalation stays pending in that case, and the caller sees the refusal.
 3. **The audit (§13).** Every delegated resume is the `resume` row it always was, its binding carrying `delegated:
    true`, `class`, `move`, `escalation` (the escalating row's `seq`, operation and target, and the queue's
    `escalation_id` for a plan gate) and `definition_hash` (the creation row's request hash). The principal is the row's
@@ -5959,13 +5966,24 @@ identity (D7), and resuming an escalation whose cycle-create launch was refused 
   relaunch; the owner's path and a reader's refusal.
 - `tests/unit/api/test_increment_gate_route.py`: the crew's answer to an escalated plan gate, declared, undeclared and
   under the owner's pause, entered at the gate route; a gate no escalation holds is unchanged.
+- `tests/unit/api/test_increment_gate_route.py`: an answer that can't happen (an increment field, a classification, a
+  bad waiver, a cancelled run, a gate decided otherwise) leaves no `resume` row and no decision; a refused delegation
+  is recorded even on a gate that can't be decided; a retried answer replays its row and decides once.
+- `tests/unit/cycles/test_gate_decision_preflight.py`: the preflight raises exactly what the registry raises, type and
+  message, in seven states, so the two can't drift.
+- `tests/integration/cycles/test_postgres_campaign_registry_integration.py`, against migration `2002`: a refusal
+  persists through a restart, the state doesn't move, and a later applied resume takes the refused key. Run on a
+  throwaway Postgres 16, and in CI's integration job.
 - `tests/unit/campaigns/test_unattended_resume.py`: the classifier over each escalating row, the declaration's
   refusals, the creation hash (unchanged without the field, pinned to main's), the spent count, the verdict, and the
   digest section.
 - Mutations, each run and restored: reading a `launch_refused` row (an upstream conflict) as `in_cycle_failure`
   fails the classifier test and the route's upstream-conflict refusal; dropping the verdict's pause check lets the
   crew decide an escalated plan gate under the owner's pause (the gate test fails) and fails the revocation test;
-  dropping it and reading the escalation beneath the owner's pause fails the same three.
+  dropping it and reading the escalation beneath the owner's pause fails the same three. From the review: the
+  preflight not called (2 fail), the delegation moved back ahead of validation (5), the preflight ahead of the verdict
+  (1), each preflight rule dropped (3, 1 and 2), the same decision refused (2), migration `2002` without the value (the
+  integration test fails), and a refused key read as used (the integration test fails).
 
 **Who ruled it.** The owner's rulings D6 and D7 of 2026-11-03 (the 2.6 plan, PR #2883): the classes, the never-classes,
 enforcement at the resume route against the definition hash and the caller's principal, the audit rows, the digest,
