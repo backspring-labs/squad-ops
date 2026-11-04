@@ -13,7 +13,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from squadops.campaigns.backlog import ItemStatus, backlog_view, goals_revised
+from squadops.campaigns.backlog import (
+    Acceptance,
+    ItemStatus,
+    acceptances,
+    backlog_view,
+    goals_revised,
+)
 from squadops.campaigns.models import (
     CampaignState,
     ControlLogEntry,
@@ -399,6 +405,23 @@ def test_an_item_removed_mid_increment_keeps_building_and_is_accepted_as_it_stoo
     assert _statuses(backlog_view(revisions, 2, accepted.rows))["B-1"] == (
         "accepted (removed in r2)"
     )
+
+
+def test_acceptances_name_the_row_and_what_the_item_served_at_its_bound_revision():
+    """What makes an assessment stale (SIP-0115 §5.7). Bugs caught: a repair's promotion not
+    credited to the item it continues; ``serves`` read at the latest revision rather than the one
+    the proposal is bound to (§5.5a); the calibration's own promotion, which named no item, or an
+    unaccepted increment, counted as one."""
+    later = _document()
+    later["backlog"][1]["serves"] = ["ER-log"]
+    log = _Log().promote("cyc_cal")
+    _approved(log, "B-2", "c1").decide("c1", 12, action="repair")
+    log.launch(CycleKind.REPAIR, "c1r", "c1").promote("c1r")
+    log.submit("B-3", "c2", revision=2).rule("approved", "c2")
+
+    read = acceptances([_revision(1), _revision(2, later)], log.rows, log.launches)
+
+    assert read == (Acceptance(log.rows[-3].seq, "B-2", ("ER-week",)),)
 
 
 def test_a_rebase_that_superseded_the_items_repair_returns_it_to_pending():

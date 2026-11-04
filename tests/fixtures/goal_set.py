@@ -66,6 +66,8 @@ class GoalSetStore:
     def __init__(self) -> None:
         self.revisions: dict[str, list] = {}
         self.by_key: dict[str, tuple[str, object]] = {}
+        self.assessments: dict[str, list] = {}
+        self.assessment_by_key: dict[str, tuple[str, object]] = {}
 
     async def record_revision(self, revision, *, idempotency_key: str, request_hash: str):
         from squadops.cycles.models import RegistrationKeyConflictError, StaleGoalSetRevisionError
@@ -122,6 +124,38 @@ class GoalSetStore:
 
     async def list_revisions(self, project_id: str):
         return list(reversed(self.revisions.get(project_id) or []))
+
+    async def record_assessment(self, assessment, *, idempotency_key: str, request_hash: str):
+        from dataclasses import replace
+
+        from squadops.cycles.models import RegistrationKeyConflictError
+
+        if idempotency_key in self.assessment_by_key:
+            written_hash, written = self.assessment_by_key[idempotency_key]
+            if written_hash != request_hash:
+                raise RegistrationKeyConflictError(
+                    f"idempotency key {idempotency_key!r} wrote different content"
+                )
+            return written, True
+        held = self.assessments.setdefault(assessment.project_id, [])
+        recorded = replace(assessment, sequence=len(held) + 1)
+        held.append(recorded)
+        self.assessment_by_key[idempotency_key] = (request_hash, recorded)
+        return recorded, False
+
+    async def assessment_under_key(self, idempotency_key: str, request_hash: str):
+        written_hash, written = self.assessment_by_key.get(idempotency_key, (None, None))
+        return written if written_hash == request_hash else None
+
+    async def list_assessments(
+        self, project_id, *, campaign_id=None, expected_result=None, limit=None, offset=0
+    ):
+        found = [
+            a
+            for a in self.assessments.get(project_id) or []
+            if campaign_id in (None, a.campaign_id) and expected_result in (None, a.expected_result)
+        ]
+        return found[offset:] if limit is None else found[offset : offset + limit]
 
 
 def campaign_on(
