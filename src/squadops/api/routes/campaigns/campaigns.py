@@ -43,6 +43,7 @@ from squadops.api.campaign_schemas import (
     ControlResultResponse,
     EscalationAnswerRequest,
     EscalationResponse,
+    GoalDelegationRequest,
     LeaseRequest,
     LeaseResponse,
     LeaseResultResponse,
@@ -104,6 +105,7 @@ from squadops.campaigns.escalation import (
     spent_on_increment,
 )
 from squadops.campaigns.gate import increment_sequence_refusal
+from squadops.campaigns.goal_delegation import goal_delegation_transition
 from squadops.campaigns.launch_blocking import (
     escalated_by_a_blocked_launch,
     escalated_by_a_refused_launch,
@@ -898,6 +900,43 @@ async def read_backlog(
             for i in view.items
         ],
     )
+
+
+@router.post("/{campaign_id}/goal-delegation", status_code=201)
+async def grant_goal_delegation(
+    request: Request,
+    campaign_id: str,
+    body: GoalDelegationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """The owner grants the crew this Campaign's goal-set curation (SIP-0115 Q41, §10c; SIP-0109
+    §24dd): the row the crew's promotion, drop and split within it read. ``campaigns:control``,
+    which is the owner's alone: the supervisor can create a Campaign, and must not be able to
+    authorize itself on one. It moves no state, lasts the Campaign's life, and a completed Campaign
+    refuses it (409 ``CONTROL_OPERATION_REFUSED``, recorded); a retry with its key replays. A
+    Campaign naming no goal set has nothing to delegate: 404 ``CAMPAIGN_HAS_NO_GOAL_SET``."""
+    campaign = await _registry(request).get_campaign(campaign_id)
+    if campaign.objective.goals is None:
+        raise http_error(
+            404,
+            "CAMPAIGN_HAS_NO_GOAL_SET",
+            f"campaign {campaign_id} names no goal set (objective.goals), so it has nothing to "
+            "delegate",
+        )
+    actor, role = actor_from(identity)
+    try:
+        transition = goal_delegation_transition(
+            campaign,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            source_ref=body.source_ref,
+            expected_state=CampaignState(body.expected_state) if body.expected_state else None,
+        )
+    except ValueError as e:
+        raise HTTPException(422, _validation(str(e))) from e
+    return _result(await apply_control(request, campaign_id, transition, identity))
 
 
 @router.post("/{campaign_id}/pause")

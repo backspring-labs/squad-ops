@@ -477,6 +477,30 @@ def pause(
     _control(ctx, "pause", campaign_id, reason, idempotency_key, expected_state)
 
 
+@app.command("delegate")
+def delegate(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    reason: str = _REASON,
+    source_ref: str | None = typer.Option(
+        None, "--source-ref", help="Where the decision came from: a conversation's or issue's link"
+    ),
+    idempotency_key: str | None = _KEY,
+    expected_state: str | None = _EXPECTED,
+):
+    """Grant the crew this Campaign's goal-set curation: its promotions, drops and splits (SIP-0115
+    Q41). The owner's alone, for the Campaign's life, and needed once on every Campaign the crew
+    should curate, whoever created it."""
+    key = _key(idempotency_key)
+    body = {"reason": reason, "idempotency_key": key}
+    if source_ref is not None:
+        body["source_ref"] = source_ref
+    if expected_state:
+        body["expected_state"] = expected_state
+    path = f"/api/v1/campaigns/{campaign_id}/goal-delegation"
+    _show_result(ctx, _call(ctx, "post", path, json=body), key)
+
+
 @app.command("resume")
 def resume(
     ctx: typer.Context,

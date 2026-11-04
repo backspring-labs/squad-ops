@@ -161,6 +161,16 @@ class LeaseResultResponse(BaseModel):
     lease: LeaseResponse
 
 
+class GoalDelegationRequest(ControlRequest):
+    """The owner's grant of a Campaign's goal-set curation to the crew (SIP-0115 Q41, §10c):
+    ``source_ref`` is where the decision came from, when a conversation (§6): a link, never its
+    content."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
 class ClassificationRequest(ControlRequest):
     """The supervisor's classification of what went wrong with one proposal version (§9.4)."""
 
