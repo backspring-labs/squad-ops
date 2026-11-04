@@ -21,9 +21,13 @@ result. Otherwise the image's "not run" repeats every round as a carried failure
 still judges the task only when nothing else failed; a re-read result otherwise stays failed, on
 the product runner's evidence.
 
-The tree is the one the agent ran: ``qa_run_tree.suite_run_tree`` over the dispatched inputs, the
-product's non-test files, with the task's emitted test files beside it. A sample application's run
-is never re-judged: its suite already runs where its stack's toolchain lives.
+The tree is the product's own at the pin, from the managed clone, as the baseline and the
+acceptance read it, with what the agent ran laid over it: ``qa_run_tree.suite_run_tree`` over the
+dispatched inputs (the product's non-test files as the run has them), then a retest's repaired
+files, with the suite beside them. The clone is the base because a run's artifacts hold back what
+no task's view carries, a binary file or a generated lockfile, and a product's setup needs them:
+``npm ci`` installs nothing without ``package-lock.json`` (#2900). A sample application's run is
+never re-judged: its suite already runs where its stack's toolchain lives.
 """
 
 from __future__ import annotations
@@ -36,7 +40,7 @@ from typing import Any
 
 from squadops.campaigns.runner_acceptance import RunnerSetup, single_file_argv
 from squadops.capabilities.handlers.source_repository import source_backed
-from squadops.capabilities.qa_run_tree import suite_run_tree
+from squadops.capabilities.qa_run_tree import product_runners, product_tree, suite_run_tree
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import row_is_blocking_failure
 from squadops.tasks.models import TaskResult, TaskResultStatus
@@ -174,6 +178,38 @@ def suite_under_judgement(
 
 
 @dataclasses.dataclass(frozen=True)
+class PinnedTree:
+    """The product's own non-test files at the cycle's pin, as bytes, and their executable bits."""
+
+    files: Mapping[str, bytes]
+    executable: frozenset[str]
+
+
+async def _product_tree_at_pin(
+    repository: Any, cycle: Any, inputs: Mapping[str, Any], task_id: str
+) -> PinnedTree | None:
+    """The product's own non-test files at the cycle's pin, from the managed clone, or ``None``
+    when there is no clone to read: a tree without the files its artifacts hold back fails the
+    product's setup, so it judges nothing (#2900)."""
+    context = cycle.source_context
+    if repository is None:
+        logger.info("product suite %s: not re-judged: no source repository", task_id)
+        return None
+    try:
+        clone = await repository.tree_at(cycle.project_id, context.pinned_commit)
+    except Exception:
+        logger.warning(
+            "product suite %s: not re-judged: the product's tree at %s is unreadable",
+            task_id,
+            getattr(context, "pinned_commit", None),
+            exc_info=True,
+        )
+        return None
+    files = product_tree(clone.files, product_runners(inputs))
+    return PinnedTree(files, frozenset(clone.executable) & frozenset(files))
+
+
+@dataclasses.dataclass(frozen=True)
 class SuiteRun:
     """One emitted test file's run on its runner's single-file command."""
 
@@ -217,19 +253,24 @@ async def run_on_product_runner(
     sandbox: Any,
     profile: Any,
     setup: RunnerSetup,
+    pinned: PinnedTree,
     tree: Mapping[str, str],
     tests: Mapping[str, str],
     workspace_id: str,
 ) -> list[SuiteRun] | None:
     """Run each of ``tests`` on its own runner's single-file command, read by that runner's
-    test-id reader, on ``tree`` with ``tests`` beside it. ``None`` when a test file is held by no
-    runner, or by one that can't be scoped to a file or has no test-id reader: the product names
-    no way to show that file's tests ran, so nothing here can judge it."""
+    test-id reader, on ``pinned`` with ``tree`` and ``tests`` laid over it. ``None`` when a test
+    file is held by no runner, or by one that can't be scoped to a file or has no test-id reader:
+    the product names no way to show that file's tests ran, so nothing here can judge it.
+
+    ``pinned`` is seeded as the checkout it is (``GIT_CHECKOUT``), so the sandbox takes a file its
+    derived-state rule would refuse from anything else, a tracked ``package-lock.json`` (X-2), and
+    the rest is a patch on it, as source delivery assembles a candidate (#2900)."""
     # deferred (pair): squadops.sandbox imports the campaigns package at load (its API's seed plan)
     from squadops.sandbox.findings import FindingsReading
 
     # deferred (pair): as above
-    from squadops.sandbox.models import CommandOutcome, RevisionOrigin
+    from squadops.sandbox.models import CommandOutcome, RevisionOrigin, WorkspaceRevision
 
     planned: list[tuple[str, Any]] = []
     for path in tests:
@@ -237,12 +278,21 @@ async def run_on_product_runner(
         if runner is None or runner.single_file_argv is None or not runner.test_ids:
             return None
         planned.append((path, runner))
-    files = {**tree, **tests}
     runs: list[SuiteRun] = []
     await sandbox.release_workspace(workspace_id)
     try:
-        revision = await sandbox.seed_workspace(
-            workspace_id, files, origin=RevisionOrigin.ACCEPTANCE_ASSEMBLY
+        seeded = await sandbox.seed_workspace(
+            workspace_id,
+            dict(pinned.files),
+            origin=RevisionOrigin.GIT_CHECKOUT,
+            executable=pinned.executable,
+        )
+        patched = await sandbox.apply_workspace_patch(base=seeded, files={**tree, **tests})
+        revision = WorkspaceRevision(
+            revision_id=patched.new_revision_id,
+            cycle_id=workspace_id,
+            origin=RevisionOrigin.AGENT_PATCH,
+            parent_revision_id=seeded.revision_id,
         )
         for path, runner in planned:
             argv = single_file_argv(runner, path)
@@ -481,6 +531,7 @@ async def judge_on_product_runner(
     run_id: str,
     sandbox: Any,
     projects: Any,
+    repository: Any,
     read_profile: Callable[[Any], Any],
 ) -> TaskResult | None:
     """The result judged on the product's runner, or ``None`` when the agent's result stands.
@@ -488,8 +539,8 @@ async def judge_on_product_runner(
     Judged passed (``SUCCEEDED``): a product's ``qa.test`` failing only ``tests_pass`` (beside
     ``ENVIRONMENT_SENSITIVE`` checks) whose suite passes there. Re-read (still ``FAILED``, #2877):
     one whose ``tests_pass`` the qa image didn't execute, and which isn't judged passed. ``None``:
-    neither applies, no sandbox, no profile or configuration at the pin, a test no runner holds,
-    or a run that can't be judged."""
+    neither applies, no sandbox, no profile or configuration at the pin, no clone of the product
+    at the pin, a test no runner holds, or a run that can't be judged."""
     if result.status == TaskResultStatus.SUCCEEDED or not authors_qa_suite(task_type):
         return None
     why_judge: str | None
@@ -515,11 +566,15 @@ async def judge_on_product_runner(
     tests, overlay = suite_under_judgement(inputs, result.outputs or {}, profile)
     if configuration is None or not tests:
         return None
+    pinned = await _product_tree_at_pin(repository, cycle, inputs, task_id)
+    if pinned is None:
+        return None
     try:
         runs = await run_on_product_runner(
             sandbox=sandbox,
             profile=profile,
             setup=RunnerSetup.of(configuration.commands),
+            pinned=pinned,
             tree={**suite_run_tree(inputs), **overlay},
             tests=tests,
             workspace_id=suite_workspace_prefix(run_id, task_id),

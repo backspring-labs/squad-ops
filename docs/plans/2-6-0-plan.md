@@ -17,7 +17,7 @@ Harness* (PR #2872, under design review).
   threshold asks for. It needs no provisioning and holds no data (D10 is moot). It gives the game direction a product
   that runs headless on Linux today.
 - **What it costs.** It is the first product off the framework's two sample stacks, and its first Campaigns on the
-  MacBook found the gaps Track A now carries: #2875, #2876, #2877 and #2881.
+  MacBook found the gaps Track A now carries: #2875, #2876, #2877, #2881 and #2900.
 - **Where it runs.** The counted Campaign runs on the Spark. The MacBook stays the crew's small-model trial box.
 - **The held-out suite in 2.6** is sealed fixture cases run by the product's own runner. Simulator-scored play waits
   for #2872's acceptance (its Q49 and Q50).
@@ -336,6 +336,7 @@ the rows marked **battle-trainer** below.
 | **#2876** (battle-trainer) | the qa plan prompt's worked example follows the product's runner (pytest, or vitest/jest). PR #2880 | S |
 | **#2877** (battle-trainer) | when the qa image could not run the product's suite, the result is re-read on the product's own runner, even beside other failures. PR #2878 (SIP-0112 H.18), merging after its MacBook proof | S–M |
 | **#2881** | a dev repair's retest is judged on the product's runner. Today its patched source is read as the suite, so `runs=no runner holds a test` (2.5.1's validation Campaign). The suite is the failed task's own tests, with the patched source overlaid on the tree. The Spark lane's | S–M |
+| **#2900** (battle-trainer) | a product's suite on its own runner gets the product's tree at the pin from the clone, with the run's tree laid over it. Today the base is the run's artifacts, which hold back the lockfile, so an npm product's `npm ci` fails setup on every run (`cmp_c59db96e4a87`). The MacBook lane's PR #2902 (SIP-0112 H.19) | S |
 | **#2799** | a vitest page criterion for a page the change adds can fail as an assertion on a tree without it (a loader the bundle carries, as #2749 did for the Next.js sample stack) | M |
 | **#2827 item 2** | H.13's two unbuilt items: a product's repaired suite read by the product's runners, not the scaffold's `__tests__/` rule; a plan-less product cycle's test author shown the product | M |
 | **a size preflight** (#2889) | before a Campaign starts on a product, every task type the profile dispatches is rendered against the product's real tree at the pinned commit, and a binding that can't fit is a blocking gap, named before the first cycle. #2805 and #2810 were found one at a time, live, an hour in. The proving product will be larger than `z_continuum` | S–M |

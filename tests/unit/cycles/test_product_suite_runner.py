@@ -93,9 +93,29 @@ class _Sandbox:
     async def release_workspace(self, workspace_id: str) -> None:
         self.released.append(workspace_id)
 
-    async def seed_workspace(self, workspace_id, files, *, origin, **_):
-        self.seeded = dict(files)
+    async def seed_workspace(self, workspace_id, files, *, origin, executable=(), **_):
+        """Refuses a path as the sandbox does (``workspace._safe_relpath``): a derived-state name,
+        a ``package-lock.json``, is content only in a checkout's tracked set (X-2, #2900)."""
+        from squadops.sandbox.models import RevisionOrigin
+        from squadops.sandbox.workspace import _safe_relpath
+
+        self.origin = origin
+        tracked = None if origin in RevisionOrigin.TRACKED_TREE else ()
+        for path in files:
+            _safe_relpath(path, tracked=tracked)
+        self.seeded, self.executable = dict(files), frozenset(executable)
         return SimpleNamespace(revision_id="rev_1")
+
+    async def apply_workspace_patch(self, *, base, files, **_):
+        """``seeded`` is the tree the command runs on: the seed with the patch over it. A patch
+        may name a derived-state path only when its base holds it, as the sandbox's does."""
+        from squadops.sandbox.workspace import _safe_relpath
+
+        for path in files:
+            _safe_relpath(path, tracked=self.seeded)
+        self.patched = dict(files)
+        self.seeded = {**self.seeded, **files}
+        return SimpleNamespace(new_revision_id="rev_2")
 
     async def run_declared_command(self, *, revision, command, working_dir, setup, findings_reader):
         if self.raises:
@@ -129,8 +149,26 @@ class _Profile:
 
 
 _CYCLE = SimpleNamespace(
-    project_id="prj_x", source_context=SimpleNamespace(development_configuration_revision=3)
+    project_id="prj_x",
+    source_context=SimpleNamespace(development_configuration_revision=3, pinned_commit="c0ffee"),
 )
+
+
+class _Repository:
+    """The managed clone: ``files`` at the pin, or a refusal when ``raises``. Empty by default,
+    so a test that isn't about the clone sees only the run's own tree, as before #2900."""
+
+    def __init__(self, files: dict[str, bytes] | None = None, *, raises: bool = False) -> None:
+        self.files, self.raises = files or {}, raises
+        self.read: list[tuple[str, str]] = []
+
+    async def tree_at(self, project_id: str, commit: str):
+        self.read.append((project_id, commit))
+        if self.raises:
+            raise RuntimeError("the clone does not hold c0ffee")
+        return SimpleNamespace(files=dict(self.files), executable=frozenset({"bin/run"}))
+
+
 _PROJECTS = SimpleNamespace(
     get_development_configuration=lambda *_: _async(
         SimpleNamespace(commands=SimpleNamespace(working_directory=".", check_setup=_SETUP))
@@ -159,6 +197,7 @@ async def _judge(result, sandbox, *, profile=None, task_type="qa.test", inputs=_
         run_id="run_1",
         sandbox=sandbox,
         projects=_PROJECTS,
+        repository=_Repository(),
         read_profile=_profile_of(profile or _Profile()),
     )
 
@@ -286,6 +325,7 @@ def _executor() -> DispatchedFlowExecutor:
     executor = object.__new__(DispatchedFlowExecutor)
     executor._sandbox = _Sandbox()
     executor._project_registry = _PROJECTS
+    executor._source_repository = _Repository()
     executor._derived_profile_for = _profile_of(_Profile())
     return executor
 
@@ -727,3 +767,68 @@ async def test_patch_acceptance_hands_the_retest_the_failed_tasks_suite():
     )
 
     assert handed["failed_suite"] == failed.outputs["artifacts"]
+
+
+# #2900: a run's artifacts hold back a generated lockfile (``manifest.held_back``), so a tree built
+# from them alone has no ``package-lock.json``, and an npm product's setup (``npm ci``) refused it:
+# ``unexecuted: setup_failed`` on every run of battle-trainer's suite (cmp_c59db96e4a87).
+
+_LOCK = b'{"lockfileVersion": 3}\n'
+_CLONE = {
+    "package.json": b'{"name": "p"}\n',
+    "package-lock.json": _LOCK,
+    "app/main.py": b"import plugins  # the pin's\n",
+    "app/logo.png": b"\x89PNG\r\n\x1a\n",
+    "bin/run": b"#!/bin/sh\n",
+    "tests/test_existing.py": b"def test_old(): ...\n",
+}
+
+
+async def test_the_products_suite_runs_on_the_pinned_tree_with_its_held_back_lockfile():
+    """Wiring, entering at the executor's ``_judged_on_product_runner`` as a live failed
+    ``qa.test`` does. Bug caught: the suite's tree built from the run's artifacts alone, so the
+    lockfile they hold back never reached the sandbox and the product's setup failed every run."""
+    executor = _executor()
+    executor._source_repository = _Repository(_CLONE)
+    envelope = _envelope(_INPUTS)
+
+    judged = await executor._judged_on_product_runner(
+        _failed(_TESTS_PASS_RED), envelope, envelope, _CYCLE, "run_1"
+    )
+
+    assert executor._source_repository.read == [("prj_x", "c0ffee")]
+    sandbox = executor._sandbox
+    # The pin is seeded as the checkout it is, so the sandbox takes its tracked lockfile, which
+    # its derived-state rule refuses from any other origin; the run's tree is a patch on it.
+    assert sandbox.origin == "git_checkout"
+    assert "package-lock.json" not in sandbox.patched
+    assert sandbox.executable == {"bin/run"}
+    seeded = sandbox.seeded
+    # What the run's artifacts hold back comes from the clone, byte for byte.
+    assert seeded["package-lock.json"] == _LOCK
+    assert seeded["app/logo.png"] == _CLONE["app/logo.png"]
+    # What the run has is laid over the pin: the agent's tree, not the commit's.
+    assert seeded["app/main.py"] == "import plugins\n"
+    # The product's own tests stay out of the run, from the clone as from the artifacts.
+    assert "tests/test_existing.py" not in seeded
+    assert seeded["tests/test_t1.py"] == "def test_t(): ...\n"
+    assert judged is not None and judged.status == TaskResultStatus.SUCCEEDED
+
+
+@pytest.mark.parametrize(
+    "repository", [None, _Repository(raises=True)], ids=["no repository", "clone refuses the pin"]
+)
+async def test_no_readable_tree_at_the_pin_judges_nothing(repository):
+    """Bug caught: a fallback to the artifacts' tree, which lacks the held-back lockfile and so
+    reads ``setup_failed`` in place of the suite's result. The agent's result stands, as for every
+    judgement that can't run, and the sandbox is never asked."""
+    executor = _executor()
+    executor._source_repository = repository
+    envelope = _envelope(_INPUTS)
+
+    judged = await executor._judged_on_product_runner(
+        _failed(_TESTS_PASS_RED), envelope, envelope, _CYCLE, "run_1"
+    )
+
+    assert judged is None
+    assert executor._sandbox.commands == []

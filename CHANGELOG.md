@@ -100,6 +100,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   (#2877, PR #2878; SIP-0112 H.18).
 - **A dev repair's retest is judged on the product's runner:** the failed task's own suite, with the repaired source
   on the tree, where before the repaired source was read as the suite and nothing was judged (#2881, PR #2898).
+- **A product's suite on its own runner gets the product's whole tree at the pin,** lockfile included, with the
+  run's changes laid over it. Before, an npm product's `npm ci` failed setup on every run (#2900, PR #2902; SIP-0112
+  H.19).
 
 ### Documentation
 - **The 2.6 plan adopted** on the owner's rulings of 2026-11-03: battle-trainer is the proving Project (PR #2883).
