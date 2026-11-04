@@ -77,6 +77,8 @@ without Studio: **not tried** (needs an account, a key and a published place).
 
 ## The implication for SquadOps, and the gaps to file
 
+Gaps 1–4 are filed together as #2906, unplaced until the owner rules on D3's follow-up.
+
 A Roblox game fits the Development Configuration shape battle-trainer uses: `install` (pinned Lune, or `pesde
 install`), one check `[".tools/lune", "run", "tests/run.luau"]`, read whole or with the `lines` reader; the toolchain
 reads as available because the install step provides it (`_toolchains` reads the baseline's own evidence, not the
