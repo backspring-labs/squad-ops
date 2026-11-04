@@ -30,6 +30,7 @@ import {
   recentLog,
   waitingProposals,
 } from './campaigns.js';
+import { ISSUES_URL, standingOf, standingRows } from '../../../shared/assessments.js';
 import { takeAnnounced } from '../../../shared/selection.js';
 
 const envelope = (code, message) => ({ detail: { error: { code, message, details: null } } });
@@ -380,4 +381,86 @@ test('the list reads at most `concurrency` control logs at once, and every one o
   assert.equal(most, 3);
   assert.equal(read.length, 10);
   assert.equal(Object.keys(got).length, 10);
+});
+
+// --- the crew's assessments (SIP-0115 §5.7, slice 5, #2888) ---
+
+const ASSESSMENTS = {
+  campaign_id: 'cmp_one',
+  project_id: 'prj',
+  revision: 3,
+  results: [
+    {
+      expected_result: 'ER-week',
+      standing: 'conflicting',
+      assessments: [
+        {
+          sequence: 4, reading: 'not_met', cause: 'framework_gap', issue: 2901, author: 'crew',
+          goals_revision: 3, source_ref: 'buzz://t/7', created_at: '2026-11-04T09:00:00+00:00',
+        },
+        {
+          sequence: 2, reading: 'met', cause: null, issue: null, author: 'the-owner',
+          goals_revision: 2, source_ref: null, created_at: '2026-11-04T08:00:00+00:00',
+        },
+      ],
+    },
+    { expected_result: 'ER-log', standing: 'unassessed', assessments: [] },
+  ],
+};
+
+const viewRoutes = (campaign, assessments) => ({
+  [BASE]: [200, campaign],
+  [`${BASE}/control-log`]: [200, []],
+  [`${BASE}/ledger`]: [200, []],
+  [`${BASE}/escalations`]: [200, []],
+  [`${BASE}/package`]: [404, envelope('PACKAGE_NOT_FOUND', 'none yet')],
+  ...(assessments ? { [`${BASE}/assessments`]: assessments } : {}),
+});
+
+const onGoals = { ...CAMPAIGN, objective: { ...CAMPAIGN.objective, goals: { goal_set: 'prj', revision: 'current' } } };
+const onRequirements = { ...CAMPAIGN, objective: { ...CAMPAIGN.objective, goals: null } };
+
+test('a goal-set Campaign reads its assessments, and a requirements one never asks', async () => {
+  // Bugs caught: the route not read, so the section stays empty; a requirements Campaign's 404
+  // shown as a failure, or a read a Campaign with no goal set can only be refused.
+  const goals = api(viewRoutes(onGoals, [200, ASSESSMENTS]));
+  const view = await loadCampaignView(goals.apiFetch, '', 'cmp_one');
+  assert.deepEqual(view.assessments, { value: ASSESSMENTS });
+
+  const requirements = api(viewRoutes(onRequirements));
+  const without = await loadCampaignView(requirements.apiFetch, '', 'cmp_one');
+  assert.deepEqual(without.assessments, { none: true });
+  assert.ok(!requirements.calls.some((u) => u.endsWith('/assessments')));
+});
+
+test('one unreadable part leaves the rest of the view, its assessments included', async () => {
+  // Bug caught: a refused assessments read blanking the Campaign, or shown as no assessment.
+  const { apiFetch } = api(viewRoutes(onGoals, [403, envelope('FORBIDDEN', 'missing campaigns:read')]));
+  const view = await loadCampaignView(apiFetch, '', 'cmp_one');
+  assert.equal(view.state, 'ok');
+  assert.match(view.assessments.error, /The crew's assessments: missing campaigns:read/);
+});
+
+test('each result reads its standing, every conflicting assessment, and the issue it links', () => {
+  // Bugs caught: only the newest of a conflict shown, which reads as settled; the issue's link built
+  // on a number that is absent; an unknown standing dropped rather than shown.
+  const [conflict, unassessed] = standingRows(ASSESSMENTS);
+  assert.match(conflict.label, /^conflicting/);
+  assert.deepEqual(
+    conflict.entries.map((e) => [e.readingText, e.causeText, e.issueUrl, e.author]),
+    [
+      ['not met', 'a framework gap', `${ISSUES_URL}/2901`, 'crew'],
+      ['met', null, null, 'the-owner'],
+    ],
+  );
+  assert.deepEqual([unassessed.label, unassessed.entries], ['not assessed', []]);
+  assert.equal(standingRows({ results: [{ expected_result: 'E', standing: 'new' }] })[0].label, 'new');
+  assert.deepEqual(standingRows(null), []);
+});
+
+test('a result the Campaign does not read has no row, rather than one saying it is unassessed', () => {
+  // Bug caught: a Campaign pinned to a revision without the result shown as having left it unassessed.
+  assert.equal(standingOf(ASSESSMENTS, 'ER-gone'), null);
+  assert.equal(standingOf(null, 'ER-week'), null);
+  assert.equal(standingOf(ASSESSMENTS, 'ER-log').standing, 'unassessed');
 });

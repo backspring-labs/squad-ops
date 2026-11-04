@@ -38,6 +38,7 @@
     recentLog,
     waitingProposals,
   } from './campaigns.js';
+  import { standingRows } from '../../../shared/assessments.js';
 
   const POLL_MS = 30000;
   const LOG_ROWS = 15;
@@ -310,13 +311,45 @@
         </section>
 
         {#if campaign.objective.goals}
-          <!-- SIP-0115 slice 5 (#2888) has no route yet: this is where its reads will go. -->
           <section>
             <div class="section-label">The crew's assessment of each expected result</div>
-            <div class="placeholder small">
-              Not available yet: the crew's assessments are SIP-0115 slice 5 (#2888), which has no
-              API route on this deploy.
-            </div>
+            {#if view.assessments.error}
+              <div class="error">{view.assessments.error}</div>
+            {:else}
+              <table>
+                <thead>
+                  <tr>
+                    <th>Expected result</th>
+                    <th>Standing</th>
+                    <th>Reading</th>
+                    <th>Cause</th>
+                    <th>Issue</th>
+                    <th>By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each standingRows(view.assessments.value) as r (r.expected_result)}
+                    {#each r.entries as e (e.sequence)}
+                      <tr>
+                        <td class="mono small">{r.expected_result}</td>
+                        <td class="small">{r.label}</td>
+                        <td class="small">{e.readingText}</td>
+                        <td class="small">{e.causeText ?? '--'}</td>
+                        <td class="small">
+                          {#if e.issueUrl}<a href={e.issueUrl} target="_blank" rel="noreferrer">#{e.issue}</a>{:else}--{/if}
+                        </td>
+                        <td class="small mono" title={e.sourceRef ?? ''}>{e.author}</td>
+                      </tr>
+                    {:else}
+                      <tr>
+                        <td class="mono small">{r.expected_result}</td>
+                        <td class="small muted" colspan="5">{r.label}</td>
+                      </tr>
+                    {/each}
+                  {/each}
+                </tbody>
+              </table>
+            {/if}
           </section>
         {/if}
 
@@ -540,12 +573,6 @@
     border-radius: var(--continuum-radius-sm, 4px);
     padding: 6px 10px;
     margin-bottom: 6px;
-  }
-  .placeholder {
-    border: 1px dashed var(--continuum-border, #334155);
-    border-radius: var(--continuum-radius-sm, 4px);
-    padding: 6px 10px;
-    color: var(--continuum-text-muted, #94a3b8);
   }
   .digest {
     white-space: pre-wrap;

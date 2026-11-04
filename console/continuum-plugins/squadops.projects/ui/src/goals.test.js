@@ -17,6 +17,7 @@ import {
   documentFrom,
   draftFrom,
   incrementOf,
+  loadAssessments,
   loadBacklog,
   loadGoalSet,
   loadGoalSetCampaigns,
@@ -309,4 +310,28 @@ test('saying no to the bus\'s confirmation writes nothing and is not an error', 
 
   assert.deepEqual(got, { state: 'declined' });
   assert.equal(posts.length, 1);
+});
+
+// --- the crew's assessment of each expected result (SIP-0115 §8.3, slice 5, #2888) ---
+
+test('the panel reads a Campaign\'s assessments, and a Campaign with no goal set has none', async () => {
+  // Bugs caught: the wrong route, so each expected result stays unassessed; a requirements
+  // Campaign's 404 shown as a failure; an unknown Campaign's shown as nothing to show.
+  const view = { campaign_id: 'cmp-b', revision: 2, results: [] };
+  const { apiFetch, calls } = api({ '/api/v1/campaigns/cmp-b/assessments': [200, view] });
+  assert.deepEqual(await loadAssessments(apiFetch, '', 'cmp-b'), view);
+  assert.deepEqual(calls.map((c) => c.url), ['/api/v1/campaigns/cmp-b/assessments']);
+
+  const requirements = api({
+    '/api/v1/campaigns/cmp-r/assessments': [404, envelope('CAMPAIGN_HAS_NO_GOAL_SET', 'names none')],
+  });
+  assert.equal(await loadAssessments(requirements.apiFetch, '', 'cmp-r'), null);
+
+  const gone = api({
+    '/api/v1/campaigns/cmp-x/assessments': [404, envelope('CAMPAIGN_NOT_FOUND', 'no such Campaign')],
+  });
+  await assert.rejects(loadAssessments(gone.apiFetch, '', 'cmp-x'), (err) => {
+    assert.ok(err instanceof GoalsReadError);
+    return err.code === 'CAMPAIGN_NOT_FOUND';
+  });
 });
