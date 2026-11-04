@@ -81,7 +81,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Memory Entry Points (epic #2173; drafted 2026-10-09 on the owner's direction) | **accepted 2026-10-09 and absorbed into SIP-0110** (§5g, Appendix A); the proposal file is **deprecated** with a pointer there | 2.3.0 (#2174, #2175, #2176), 2.4.0 (#2177–#2183), 2.5.0 (#2184): SIP-0110's ledger | Q25–Q29, ruled |
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (the A/B in 2.4.0, the 2.4 plan's D6) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
-| Project Goals and Backlog (`SIP-Project-Goals-Backlog`; the owner's direction, drafted 2026-10-30) | live | proposed as 2.6.0's headline by the 2.6 plan's draft (PR #2832); unplaced until that plan is adopted and this SIP accepted | Q41–Q44 |
+| Project Goals and Backlog (`SIP-Project-Goals-Backlog`; the owner's direction, drafted 2026-10-30) | live | **2.6.0's headline,** by the 2.6 plan adopted 2026-11-03 (D1). Slices 1–5 are in 2.6, and slice 6, the repository export, is not. Accepted, with its slices placed, in the PR that files their issues | ruled 2026-11-03 |
 | Campaign Self-Improvement and Test Bay (`SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements`) | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
 | Capability-Backed Agents | **deferred to 3.x**; premise to correct (#400/#401) | 3.x | ruled |
 | Agent Embodiment Runtime | **deferred to 3.x** | 3.x | ruled |
@@ -205,11 +205,13 @@ proposal-only until the owner approves it.
 | Q36 | *Project Development Profile* (Q32) beside SIP-0072 §10a's *development profile*, implemented: `DevelopmentProfile`, `DEVELOPMENT_PROFILES`, and the cycle request's `development_profile` key, which names the stack and which `prepare_cycle()` checks against `build_profile`. §10a renamed its registry to end "three meanings of one word" (#922) | **agreed, the same day:** the record is the *Project Development Configuration*, the owner's own phrase in Q31, so that *development profile* keeps one meaning; its keys renamed to match | the draft's intake check and B.5; cluster 14 |
 | Q40 | how a product's secrets reach an evaluation: contract 7's start declaration may name `secret://` references (raised by the Spark lane's review of revision 7; Outcome Evaluation's A4 is the same question) | **approved as recommended:** evaluation-scoped secrets only. The runner resolves only references the Project declares for evaluation and the owner approves per Project: test credentials, never the product's production secrets. They are resolved into the disposable copy's environment at start, never written to a file, log, record or squad agent's input, and discarded with the copy | the draft's §8.2.1 (contract 7); Outcome Evaluation's A4 (PR #2406) |
 
-### Open 2026-10-30: Project Goals and Backlog
+### Ruled 2026-11-03: Project Goals and Backlog
 
-Raised by the draft's intake. Each waits for the owner's ruling; the SIP's §9 carries the same rows.
+Raised by the draft's intake on 2026-10-30. **Ruled as recommended on 2026-11-03.** The owner, ruling the 2.6 plan:
+"Let's go with battle-trainer and then your recommendations on the other decisions". Q41 is the plan's D15. The SIP's
+§9 carries the same rows.
 
-| # | decision | recommendation | recorded in |
+| # | decision | ruling | recorded in |
 |---|---|---|---|
 | Q41 | the crew's authority over a Project's backlog: reorder, split, promote a candidate | promote and split within a Campaign the owner started, each with its reason; never reorder | the draft's §6 |
 | Q42 | `objective.requirements` beside `objective.goals` | keep both: the sample applications read PRDs; a product Campaign names one, never both | the draft's §5.1 |
