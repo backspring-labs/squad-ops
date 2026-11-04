@@ -148,8 +148,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
 | the operator's box lease outside Campaigns (§9.3) | **placed** (the 2.6 plan's Track C, adopted 2026-11-03) | 2.6.0, #2287 |
-| a Campaign that closes with accepted increments opens its contribution to the product | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2861 |
-| a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2863 |
+| a Campaign that closes with accepted increments opens its contribution to the product: the closing row's intent, opened after the commit through E.4.3's path with the criterion files moved, a failure recorded and retried (§24dc items 1–5) | **placed** (the 2.6 plan, adopted 2026-11-03); built on `feat/2861-campaign-contribution`, shipped at its PR | 2.6.0, #2861 |
+| a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 6) | **placed** (the 2.6 plan, adopted 2026-11-03); built on `feat/2861-campaign-contribution`, shipped at its PR | 2.6.0, #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
@@ -6115,3 +6115,108 @@ what the preflight leaves out and its mutants.
 **Who ruled.** Placed in 2.6.0 by the 2.6 plan's Track A, adopted on the owner's rulings of 2026-11-03. The refusal's
 shape is the implementer's, for the owner's ruling in review. The delivery is tracked on SIP-0112's ledger, where #2889
 is placed.
+
+### 24dc. A Campaign that closes with an accepted increment opens one contribution, and the work not yet integrated is a signal (2026-11-04, §10, §12a, §12b, §14, §24ci (b), §24cn, §24cx; SIP-0112 E.4.3, E.4.4, H.22; #2861, #2863; the implementer's design under the supervisor's brief, for the owner)
+
+**Why.** Campaigns 4 and 6 on `prj-shelfnote` closed with accepted increments that lived only on their campaign
+branches. Campaign 5 started without campaign 4's work, and the crew's next draft assumed campaign 6's had landed.
+Both were contributed by hand afterwards (z_shelfnote PRs #2 and #3), with the root criterion files renamed by hand
+(#2860's interim). The Nostromo crew asked for the close to open the contribution (#2861) and for a signal of
+accepted work not yet integrated, to gate a draft on (#2863).
+
+**What changed.**
+1. **The closing row says what is due** (§10, §12a). The row that completes a repository-backed Campaign, its
+   terminal decision or the owner's abort, carries `contribution`:
+   - `{due: true, accepted: [<cycle>, …]}`, the increments accepted onto its branch; or
+   - `{due: false, reason: "no accepted increment: the Campaign opens no contribution"}`.
+
+   A sample application's closing row carries no key: it has no product. A terminal decision is repository-backed when
+   its log has a branch base (§24cc's start promoted the calibration record); the abort reads the Project. Only a
+   closing row carries the key, so every other row hashes as before.
+2. **The act follows the commit: an intent, never inside the transaction** (§12b). Opening the review request is a
+   push and a forge call, which can't join the control log's transaction. The closing row is the intent, as a launch
+   intent is written with its decision. After the row commits, `CampaignContribution.at_close` opens it:
+   - at the completion boundary, after the package (`CampaignProgress`), and in the abort route, after the package;
+   - **again at every startup** for each completed Campaign whose closing row says due and which no contribution
+     records (`open_due`), and **when the supervisor asks**: `POST /api/v1/campaigns/{id}/contributions`
+     (`campaigns:manage`, 201, the contribution's document; `squadops campaigns contribute <id> [--token-from-gh]`).
+     There is no interval sweep, so a failure that can't clear by itself (no token) isn't retried in a loop;
+   - serialized with the Campaign's review pushes (§24cn item 6's lock), and the Campaign is closed whatever it does.
+
+   The alternative, opening it inside the closing transaction, was rejected: a refused push would undo the close, or
+   a close would commit with an act half made and nothing recording it.
+3. **The contribution is E.4.3's, through its path** (SIP-0112 H.22). `contribute_campaign` beside `contribute`, with
+   its checks (`_review_target`: a token, a forge, a base that is a branch) and its forge call:
+   - **the commit** is the branch's head with the criterion files its increments froze (every PROMOTE row's
+     `frozen_criteria[].test_path`, retired ones too) moved by #2860's interim, made the rule: `criterion_` in the
+     file name becomes the Campaign's id (its first 16 characters), and a file at the root moves under `tests/`.
+     `test_criterion_T1.py` becomes `tests/test_cmp_b498332d326e_T1.py`. The runner's own prefix stays, so it still
+     collects it, and no later Campaign's placement finds the name taken (§24cx). With no criterion file on the head
+     it is the head itself. The move is one commit on the head, kept at `refs/squadops/<campaign>/contribution`; a
+     retry on the same head reuses it, so a branch a crash left pushed is up to date. A moved name the head already
+     holds is refused, never overwritten;
+   - **pushed** as `squadops/<campaign>`, never forced (`push_capture`). A branch a review push left there at an
+     ancestor fast-forwards, and the forge returns the open request rather than a second (the port's contract), so
+     the Campaign has one. A branch holding other history is refused, recorded, and the owner's;
+   - **recorded `pending`** as one of the Project's contributions, with the Campaign's id where a run's cycle id stands
+     and `campaign` where its run id does; the document carries `campaign_id`. Its parent is the branch's base, so a
+     sync reads the Campaign's whole change, and tracks its merge as any contribution's (E.4.4);
+   - **`patch_export`** records it and pushes nothing. `direct_push` is refused, as E.4.3 refuses it.
+
+   Opening the review request is the only outward act. Merging stays the owner's.
+4. **A failure is recorded, and retryable.** Each failed attempt (the contribution path's refusal, the product's or
+   the forge's) writes a `contribution_failed` row: a record, accepted on a completed Campaign (migration `2004`), with
+   the error's class, reason and message, never the token. Each attempt is its own row. The contribution stays due.
+5. **The token.** The close and the startup use the deploy's token for the Project (`projects.review_request_tokens`),
+   as a run's contribution falls back to. A retry may carry the supervisor's own. With neither, the attempt is
+   recorded as refused (`no review-request token …`), and the supervisor's retry opens it.
+6. **The signal** (#2863). `GET /api/v1/projects/{id}/unintegrated-increments` (`cycles:read`) returns
+   `list[UnintegratedIncrementResponse]`, each `{campaign_id, campaign_state, cycle_id, title, commit, standing,
+   review_url}`, Campaign by Campaign, oldest first, in promotion order. `squadops projects unintegrated <project>`.
+   - **The set:** each accepted increment on a Campaign's branch, its commit followed through each rebase since
+     (`replayed`), unless the Project's `integrated_upstream_commit` carries it: the commit, or the merge commit a sync
+     recorded (a squash merge makes a new one), is in that commit's history in the managed clone. One a rebase dropped
+     is carried (upstream held its change). A running Campaign's increments are listed too.
+   - **`standing`:** `not_contributed` (no contribution, or one closed unmerged); `contribution_pending`;
+     `merged_not_synced` (a sync recorded it integrated, and the integrated commit doesn't carry it until the Project
+     is re-validated there, E.4.4).
+   - **`title`:** the backlog item the increment's proposal served (SIP-0115), through the ledger for a repair or
+     retry; `null` otherwise.
+   - **Refusals:** an unknown Project is 404 `PROJECT_NOT_FOUND`; a sample application is 409 `NO_SOURCE_REPOSITORY`,
+     never an empty list a gate reads as integrated. A history the clone can't read reads as not carried (logged).
+
+**Narrowed: merged is known only by a sync.** The route reads no forge. A request merged on the forge stands
+`contribution_pending` until `POST /api/v1/projects/{id}/syncs` records it: a sync after a merge is #2862, not built
+here.
+
+**A conflict, for the owner's ruling.** §24ci (b) ruled "no automatic push from the deploy", because it would need a
+write token stored in the deploy, and §24cn built none. #2861 asks the close to open the contribution. This build opens
+it automatically only with a token the owner has stored for the Project in `projects.review_request_tokens`, the one a
+run's contribution already uses; with none (today's deploys), the close records the refusal and the supervisor's
+retry, with its own token, opens it. Whether a stored token should open a Campaign's contribution unattended is the
+owner's to rule. Until then a deploy that stores none behaves as §24ci (b) said.
+
+**Unchanged.** The review push (§24cn) and its route. A Campaign closed before this rule has no `contribution` on its
+closing row, and neither the startup nor the retry contributes it: campaigns 4 and 6 were contributed by hand.
+
+**The evidence.**
+- **Wiring:** `tests/unit/campaigns/test_close_contribution.py` enters at `CampaignProgress.cycle_ended`, as the
+  completion boundary calls it, over `test_campaign_branch`'s world (a real managed clone, real deliveries, the
+  fixture's own repository as the product): the increment's acceptance meets the objective, the decision closes the
+  Campaign, and the close opens one request whose branch holds the moved criterion file, on the head, recorded
+  pending with the branch's base. The abort is entered at `POST /api/v1/campaigns/{id}/abort`.
+- **Errors:** the forge refusing (recorded, the Campaign closed, the retry reusing the pushed commit and opening one
+  request); no token (recorded, the supervisor's token opening it); no accepted increment (`due: false`, nothing
+  opened, the retry refused); a running Campaign and an unknown one; a sample application.
+- **The signal:** `tests/unit/api/test_unintegrated_increments.py` enters at the route over the same world: pending,
+  then `merged_not_synced` once a sync recorded the merge, then empty once the integrated commit carries it;
+  `not_contributed` with no token; empty with no accepted increment; the 404 and 409. On the control log's rows: a
+  repair's acceptance titled by its proposal's item, a closed contribution, a partial merge, and a squash merge.
+- **The schema:** `test_campaign_schema.py` holds migration `2004`'s list to the enum; CI's integration job records a
+  `contribution_failed` row on a completed Campaign in Postgres.
+- **Mutations:** listed in the PR's evidence.
+
+**Who ruled.** The supervisor briefed #2861 and #2863 from the crew's requests; the shapes above (the closing row's
+key, the intent after the commit, the retry route, the rename's form, the standing's reading, and the 409 for a sample
+application) are the implementer's, for the owner's review in the PR. The automatic open with a stored token is the
+owner's to rule (the conflict above).
