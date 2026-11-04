@@ -145,7 +145,7 @@ async def test_a_branch_increments_continuation_carries_its_approved_change_requ
     progress = CampaignProgress(
         campaigns=AsyncMock(), cycles=cycles, vault=_Vault(promoted), assess=AsyncMock(),
         launch=AsyncMock(), evaluate_outcome=None, evaluate_baseline=None, outcome_section=None,
-        intervention_section=None, campaign_branch=None, goal_sets=None,
+        intervention_section=None, campaign_branch=None, goal_sets=None, contribute_at_close=None,
     )  # fmt: skip
 
     assert await progress._bound_seeds(cycle) == seeds

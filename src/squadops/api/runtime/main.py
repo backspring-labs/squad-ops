@@ -72,6 +72,7 @@ from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
 from squadops.campaigns.branch_rebase import BranchRebase, ProductRunnerFrozen
 from squadops.campaigns.campaign_branch import CampaignBranch
+from squadops.campaigns.close_contribution import CampaignContribution
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
 from squadops.config import config_fingerprint, load_config, redact_config
@@ -667,6 +668,16 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         projects=project_registry,
         repository=state.source_repository,
     )
+    # SIP-0109 §24dc (#2861): a Campaign that closes with an accepted increment opens its
+    # contribution to the product after the close commits, with the deploy's token for the
+    # Project when it holds one; a failure is recorded, and retried at startup and on request.
+    state.campaign_contribution = CampaignContribution(
+        campaigns=projected_campaigns,
+        projects=project_registry,
+        repository=state.source_repository,
+        forge=state.review_requests,
+        tokens=state.review_request_tokens,
+    )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,
         cycles=cycle_registry,
@@ -695,6 +706,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         ),
         # SIP-0115 §5.5a: a goal-set Campaign's ``backlog_done`` and its next item read it.
         goal_sets=state.goal_set_registry,
+        contribute_at_close=state.campaign_contribution.at_close,
     )
 
     flow_executor = create_flow_executor(
@@ -1070,6 +1082,12 @@ async def _resume_campaigns(state) -> None:
     await state.campaign_progress.rehear_calibration_records()
     # #1922: what the dying process was running, or waiting on at a gate, is taken up again.
     await state.campaign_launch.reattach()
+    # SIP-0109 §24dc: a closed Campaign whose contribution is due and none records is attempted
+    # again. Each attempt that fails is recorded, and logged here, never stopping the startup.
+    try:
+        await state.campaign_contribution.open_due()
+    except Exception:
+        logger.exception("campaign_contributions_not_attempted")
 
 
 async def _stop_work(state) -> None:

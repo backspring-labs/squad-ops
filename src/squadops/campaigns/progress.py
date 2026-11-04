@@ -33,8 +33,13 @@ from squadops.campaigns.calibration_record import (
     CalibrationRecord,
     recorded_calibration,
 )
-from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused
+from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused, branch_base
 from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
+from squadops.campaigns.close_contribution import (
+    CONTRIBUTION_KEY,
+    INCREMENT_FAMILY,
+    closing_contribution,
+)
 from squadops.campaigns.continuation import (
     UNCOUNTED_ABANDONMENT_ROWS,
     CampaignCounters,
@@ -242,6 +247,7 @@ def decision_transition(
     unbuilt: str | None = None,
     promotion_refused: str | None = None,
     goals_revision: int | None = None,
+    contribution: dict | None = None,
 ) -> CampaignTransition:
     """The decision's one control-log row (§10). Its binding records the decision whole — the
     row, the ending and verdict it read, and the outcome or the action with its guard — so the
@@ -260,6 +266,10 @@ def decision_transition(
 
     ``promotion_refused`` names why an accepted cycle's tree wasn't promoted (§24ce), whatever
     the decision. Only a row that has one carries the key, so every other row hashes as before.
+
+    ``contribution`` is what a terminal decision's row records of the Campaign's contribution
+    (§24dc, ``close_contribution.closing_contribution``): only a repository-backed Campaign's
+    closing row carries the key.
     """
     binding: dict = {
         "cycle_id": decision.cycle_id,
@@ -271,6 +281,8 @@ def decision_transition(
         binding["promotion_refused"] = promotion_refused
     if goals_revision is not None:
         binding["goals_revision"] = goals_revision
+    if contribution is not None and decision.terminal:
+        binding[CONTRIBUTION_KEY] = contribution
     decided, next_state, outcome = _decided(decision, unbuilt)
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
@@ -292,11 +304,15 @@ def record_decision_transition(
     *,
     launch: LaunchRequest | None,
     unbuilt: str | None = None,
+    contribution: dict | None = None,
 ) -> CampaignTransition:
     """A calibration record's decision row (§24bv point 1, §24cc): as a cycle's, keyed by the
     record's id and naming it, never a cycle. Its ending is ``calibration_recorded``, and its
-    verdict ``accepted``: row 5 read the record as an accepted calibration."""
+    verdict ``accepted``: row 5 read the record as an accepted calibration. A terminal one carries
+    ``contribution`` as a cycle's does (§24dc)."""
     decided, next_state, outcome = _decided(decision, unbuilt)
+    if contribution is not None and decision.terminal:
+        decided = decided | {CONTRIBUTION_KEY: contribution}
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
         actor="squadops",
@@ -618,7 +634,7 @@ def accepted_increments(log: list, intents: list) -> int:
 
 
 #: The kinds whose acceptance is an increment's: the increment itself, or its repair or retry.
-_INCREMENT_FAMILY = frozenset({CycleKind.INCREMENT, CycleKind.REPAIR, CycleKind.RETRY})
+_INCREMENT_FAMILY = INCREMENT_FAMILY
 
 
 #: Reads a cycle's assessment from the stores: ``squadops.execution.cycle_evidence.assess_cycle``.
@@ -650,6 +666,11 @@ class CampaignProgress:
         #: (``stop_when: backlog_done``) and its proposals are launched against. ``None`` where
         #: none is wired: such a Campaign's decision raises, and the re-hearing retries it.
         goal_sets: GoalSetRegistryPort | None,
+        #: §24dc (#2861): after a Campaign's close commits, its contribution to the product is
+        #: opened when its closing row says it is due (``CampaignContribution.at_close``), by the
+        #: Campaign's id. ``None`` where no contribution path is wired: the contribution stays due,
+        #: and the startup's attempt opens it.
+        contribute_at_close: Callable[[str], Awaitable[object]] | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -670,6 +691,7 @@ class CampaignProgress:
         self._intervention_section = intervention_section
         self._campaign_branch = campaign_branch
         self._goal_sets = goal_sets
+        self._contribute_at_close = contribute_at_close
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -778,6 +800,9 @@ class CampaignProgress:
         campaign, moved = await self._still(campaign, cycle.cycle_id)
         if moved:
             return None
+        contribution = (
+            await self._closing_contribution(campaign.campaign_id) if decision.terminal else None
+        )
         try:
             result = await self._campaigns.transition(
                 campaign.campaign_id,
@@ -790,6 +815,7 @@ class CampaignProgress:
                     unbuilt=unbuilt,
                     promotion_refused=not_promoted,
                     goals_revision=goals_revision,
+                    contribution=contribution,
                 ),
             )
         except ControlOperationRefused as refused:
@@ -802,7 +828,30 @@ class CampaignProgress:
             await self._launch()
         if decision.terminal:
             await self.materialize_package(campaign.campaign_id)
+            await self._contributed_at_close(campaign.campaign_id)
         return decision
+
+    async def _closing_contribution(self, campaign_id: str) -> dict | None:
+        """What a terminal decision's row records of the Campaign's contribution (§24dc): read
+        from the log its promotions committed to. A Campaign with a branch is repository-backed
+        (its start promoted a calibration record, §24cc)."""
+        log = await self._campaigns.control_log(campaign_id)
+        return closing_contribution(
+            log,
+            await self._campaigns.launch_intents(campaign_id),
+            repository_backed=branch_base(log) is not None,
+        )
+
+    async def _contributed_at_close(self, campaign_id: str) -> None:
+        """§24dc: after the close commits, its contribution is opened, outside the row's
+        transaction. ``at_close`` records a failure and never raises; a wiring that does is
+        logged here, so the close it follows stands."""
+        if self._contribute_at_close is None:
+            return
+        try:
+            await self._contribute_at_close(campaign_id)
+        except Exception:
+            logger.exception("campaign_contribution_not_opened", extra={"campaign_id": campaign_id})
 
     async def _promoted_and_evaluating(
         self,
@@ -1104,10 +1153,19 @@ class CampaignProgress:
             campaign, moved = await self._still(campaign, record.record_id)
             if moved:
                 return None
+            contribution = (
+                await self._closing_contribution(campaign_id) if decision.terminal else None
+            )
             try:
                 result = await self._campaigns.transition(
                     campaign_id,
-                    record_decision_transition(record, decision, launch=launch, unbuilt=unbuilt),
+                    record_decision_transition(
+                        record,
+                        decision,
+                        launch=launch,
+                        unbuilt=unbuilt,
+                        contribution=contribution,
+                    ),
                 )
             except ControlOperationRefused as refused:
                 logger.error(
@@ -1119,6 +1177,7 @@ class CampaignProgress:
                 await self._launch()
             if decision.terminal:
                 await self.materialize_package(campaign_id)
+                await self._contributed_at_close(campaign_id)
             return result
         finally:
             self._hearing.discard(record.record_id)

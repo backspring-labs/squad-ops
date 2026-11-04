@@ -59,7 +59,9 @@ _PUSHING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio
 )
 
 
-def _lock_for(campaign_id: str) -> asyncio.Lock:
+def campaign_push_lock(campaign_id: str) -> asyncio.Lock:
+    """The one lock a Campaign's pushes take: the supervisor's review pushes, and its contribution
+    at its close (§24dc), so the two never push its branch at once."""
     locks = _PUSHING.setdefault(asyncio.get_running_loop(), {})
     return locks.setdefault(campaign_id, asyncio.Lock())
 
@@ -101,12 +103,22 @@ def _key(idempotency_key: str) -> str:
     return f"review-push:{idempotency_key}"
 
 
-def _title(campaign: Campaign) -> str:
+#: Who a review request says pushed it, by the act that pushed it.
+PUSHED_BY_SUPERVISOR = (
+    "Pushed by the campaign's supervisor (SIP-0109 §24ci (b)). The owner merges it."
+)
+OPENED_AT_CLOSE = "Opened at the campaign's close (SIP-0109 §24dc). The owner merges it."
+
+
+def review_title(campaign: Campaign) -> str:
     return f"SquadOps campaign {campaign.campaign_id}: {campaign.objective.statement}"[:240]
 
 
-def _body(campaign: Campaign, log: list[ControlLogEntry]) -> str:
-    """What the review request says: the objective, and each increment and rebase on the branch."""
+def review_body(
+    campaign: Campaign, log: list[ControlLogEntry], signed: str = PUSHED_BY_SUPERVISOR
+) -> str:
+    """What the review request says: the objective, and each increment and rebase on the branch,
+    and ``signed``: who pushed it."""
     lines = [campaign.objective.statement, "", "On the campaign branch:"]
     for e in log:
         if e.outcome is not ControlOutcome.APPLIED:
@@ -116,7 +128,7 @@ def _body(campaign: Campaign, log: list[ControlLogEntry]) -> str:
             lines.append(f"- increment {b['cycle_id']}: {b['commit'][:12]}")
         elif e.operation is ControlOperation.BRANCH_REBASED:
             lines.append(f"- rebased onto {b['base'][:12]}: {b['commit'][:12]}")
-    lines += ["", "Pushed by the campaign's supervisor (SIP-0109 §24ci (b)). The owner merges it."]
+    lines += ["", signed]
     return "\n".join(lines)
 
 
@@ -147,7 +159,7 @@ async def push_review(
         squadops.projects.models.SourceUnavailable: The product refused the push, with reason
             ``lease_refused`` when someone else moved the branch since the last push.
     """
-    async with _lock_for(campaign_id):
+    async with campaign_push_lock(campaign_id):
         return await _push_review(
             campaign_id,
             campaigns=campaigns,
@@ -227,8 +239,8 @@ async def _push_review(
         campaign_id,
         lease=lease,
         review_url=previous.binding["review_url"] if previous is not None else None,
-        title=_title(campaign),
-        body=_body(campaign, log),
+        title=review_title(campaign),
+        body=review_body(campaign, log),
         repository=repository,
         forge=forge,
         token=token,

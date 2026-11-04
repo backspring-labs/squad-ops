@@ -351,6 +351,18 @@ class ReviewPushResponse(BaseModel):
     replayed: bool
 
 
+class CampaignContributionRequest(BaseModel):
+    """Open a closed Campaign's contribution again (SIP-0109 §24dc), after its close's attempt
+    failed. Once per Campaign: a Campaign already contributed is answered with its record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The supervisor's own forge token, for this one attempt: used in memory, never stored,
+    #: logged or returned. Absent, the deploy's token for the Project is used
+    #: (``projects.review_request_tokens``), as at the close.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
 class ControlResultResponse(BaseModel):
     """What an applied (or replayed) control operation left."""
 

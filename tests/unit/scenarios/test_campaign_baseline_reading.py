@@ -140,6 +140,7 @@ def _progress(world, evaluator, store, campaigns=None) -> CampaignProgress:
         intervention_section=None,
         campaign_branch=CampaignBranch(projects=world.projects, repository=world.clones),
         goal_sets=None,
+        contribute_at_close=None,
     )
 
 
@@ -905,6 +906,7 @@ async def test_a_sample_applications_start_reads_no_baseline(tmp_path):
         launch=AsyncMock(), evaluate_outcome=None, evaluate_baseline=evaluate_baseline,
         outcome_section=None, intervention_section=None, campaign_branch=None,
         goal_sets=None,
+        contribute_at_close=None,
     )  # fmt: skip
 
     assert await progress.calibration_recorded(CID) is None

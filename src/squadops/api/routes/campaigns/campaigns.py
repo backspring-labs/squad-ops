@@ -31,6 +31,7 @@ from squadops.api.campaign_schemas import (
     AcceptedTreeDTO,
     BacklogItemResponse,
     BacklogResponse,
+    CampaignContributionRequest,
     CampaignCreateRequest,
     CampaignGoalsDTO,
     CampaignObjectiveDTO,
@@ -53,6 +54,7 @@ from squadops.api.campaign_schemas import (
     ReviewPushResponse,
     WorkClassDTO,
 )
+from squadops.api.cycle_schemas import ContributionResponse
 from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
@@ -62,6 +64,7 @@ from squadops.api.runtime.deps import (
     get_artifact_vault,
     get_audit_port,
     get_box_reader,
+    get_campaign_contribution,
     get_campaign_launch,
     get_campaign_progress,
     get_campaign_registry,
@@ -85,6 +88,7 @@ from squadops.campaigns.calibration_record import (
     record_for,
     recorded_calibration,
 )
+from squadops.campaigns.close_contribution import CONTRIBUTION_KEY, closing_contribution
 from squadops.campaigns.continuation import PendingAction
 from squadops.campaigns.escalation import (
     DelegatedMove,
@@ -736,6 +740,33 @@ async def push_review_request(
     )
 
 
+@router.post("/{campaign_id}/contributions", status_code=201)
+async def open_campaign_contribution(
+    request: Request,
+    campaign_id: str,
+    body: CampaignContributionRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
+) -> ContributionResponse:
+    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc), when its close's
+    own attempt failed: the supervisor's retry, with its own token or the deploy's for the
+    Project. One per Campaign, recorded as the Project's contribution, pending; a Campaign
+    already contributed is answered with it. Each failed attempt is a ``contribution_failed``
+    row on the Campaign. Merging stays the owner's."""
+    actor, role = actor_from(identity)
+    try:
+        contribution, replayed = await get_campaign_contribution(request).open(
+            campaign_id,
+            token=body.token.get_secret_value() if body.token is not None else None,
+            actor=actor,
+            actor_role=role,
+        )
+    except ContributionRefused as e:
+        raise http_error(409, "CONTRIBUTION_REFUSED", str(e)) from e
+    except (SourceUnavailable, ReviewRequestFailed) as e:
+        raise http_error(502, "CONTRIBUTION_FAILED", str(e)) from e
+    return ContributionResponse(contribution=contribution.to_document(), replayed=replayed)
+
+
 @router.get("/{campaign_id}/escalations")
 async def list_escalations(
     request: Request,
@@ -1201,21 +1232,51 @@ async def abort_campaign(
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
     """Abort: terminal (§12a). Every cycle the campaign launched that has not ended is
-    cancelled by the existing cancel path, and no continuation follows."""
+    cancelled by the existing cancel path, and no continuation follows. A repository-backed
+    campaign's abort row records its contribution, as a terminal decision's does, and the
+    contribution is opened after the row commits when one is due (§24dc)."""
     actor, role = actor_from(identity)
-    transition = _transition(
-        ControlOperation.ABORT,
-        CampaignState.COMPLETED,
-        body,
-        actor,
-        role,
-        outcome=CampaignOutcome.ABORTED,
+    transition = dataclasses.replace(
+        _transition(
+            ControlOperation.ABORT,
+            CampaignState.COMPLETED,
+            body,
+            actor,
+            role,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+        binding=await _closing_contribution(request, campaign_id),
     )
     result = await apply_control(request, campaign_id, transition, identity)
     cancelled = await _cancel_launched_cycles(request, campaign_id)
     if not result.replayed:
         await _materialize_after_close(request, campaign_id)
+        await _contribute_after_close(request, campaign_id)
     return _result(result, cancelled_cycles=cancelled)
+
+
+async def _closing_contribution(request: Request, campaign_id: str) -> dict:
+    """The abort row's binding (§24dc): what it records of the Campaign's contribution, or
+    nothing for a sample application's."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    project = await get_project_registry(request).get_project(campaign.project_id)
+    contribution = closing_contribution(
+        await registry.control_log(campaign_id),
+        await registry.launch_intents(campaign_id),
+        repository_backed=project.source is not None,
+    )
+    return {} if contribution is None else {CONTRIBUTION_KEY: contribution}
+
+
+async def _contribute_after_close(request: Request, campaign_id: str) -> None:
+    """§24dc: a closed campaign's contribution, after its close commits. The close stands
+    whatever happens here: a failure is recorded on the campaign by the attempt, and retried at
+    startup or by ``POST …/contributions``."""
+    try:
+        await get_campaign_contribution(request).at_close(campaign_id)
+    except Exception:
+        logger.exception("campaign_contribution_not_opened", extra={"campaign_id": campaign_id})
 
 
 @router.post("/{campaign_id}/package")

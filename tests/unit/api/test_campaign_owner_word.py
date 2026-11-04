@@ -121,6 +121,7 @@ class _World:
             intervention_section=None,
             campaign_branch=None,
             goal_sets=goal_sets,
+            contribute_at_close=None,
         )
         app.state.campaign_launch = self.launch
         app.state.authz_port = KeycloakAuthzAdapter()

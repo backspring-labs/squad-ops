@@ -818,3 +818,30 @@ async def test_a_review_push_is_recorded_on_a_completed_campaign(campaigns):
 
     assert result.entry.outcome is ControlOutcome.APPLIED
     assert (await campaigns.control_log(CID))[-1].binding["commit"] == "a" * 40
+
+
+async def test_a_failed_contribution_is_recorded_on_a_completed_campaign(campaigns):
+    """§24dc, migration 2004: ``contribution_failed`` is in the schema, and as a record it is
+    accepted on a completed campaign, since the contribution is opened after the close. Bug
+    caught: the value added in Python and not in the CHECK list, so a failed open is lost."""
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    failed = move(
+        S.COMPLETED,
+        "contribution-failed:k-1",
+        operation=ControlOperation.CONTRIBUTION_FAILED,
+        next_state=None,
+        binding={"error": "ReviewRequestFailed", "reason": None, "message": "the forge said 503"},
+    )
+
+    result = await campaigns.transition(CID, failed)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
+    assert (await campaigns.control_log(CID))[-1].binding["error"] == "ReviewRequestFailed"

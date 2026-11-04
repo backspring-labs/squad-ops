@@ -111,6 +111,7 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
         intervention_section=None,
         campaign_branch=None,
         goal_sets=None,
+        contribute_at_close=None,
         clock=lambda: now[0],
     )
 

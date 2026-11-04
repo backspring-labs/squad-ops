@@ -125,6 +125,7 @@ async def _world():
         intervention_section=None,
         campaign_branch=None,
         goal_sets=None,
+        contribute_at_close=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now

@@ -82,6 +82,7 @@ async def closed():
         intervention_section=None,
         campaign_branch=None,
         goal_sets=None,
+        contribute_at_close=None,
         clock=lambda: NOW + timedelta(hours=1),
     )
     draft = campaign(CID, policy=policy(calibration_profile="framing"))
@@ -443,6 +444,7 @@ async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(close
         intervention_section=None,
         campaign_branch=None,
         goal_sets=None,
+        contribute_at_close=None,
         clock=lambda: NOW + timedelta(hours=2),
     )
 
@@ -480,6 +482,7 @@ async def test_the_package_carries_its_interventions_and_the_digest_aors_four_in
         intervention_section=partial(campaign_interventions, MemoryInterventionLedger()),
         campaign_branch=None,
         goal_sets=None,
+        contribute_at_close=None,
         clock=lambda: NOW + timedelta(hours=2),
     )
 
@@ -545,6 +548,7 @@ async def test_the_package_reads_the_goals_each_cycle_named_and_the_digest_lists
         intervention_section=None,
         campaign_branch=None,
         goal_sets=None,
+        contribute_at_close=None,
         clock=lambda: NOW + timedelta(hours=3),
     )
 
