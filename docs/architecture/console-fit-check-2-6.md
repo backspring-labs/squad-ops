@@ -48,6 +48,12 @@ no unit test posts to `/api/commands/execute` (grep of `tests/`: none; `test_con
   `confirmed: true` (`command_bus.py:293-303`), and no plugin sends it (grep: none). The browser `confirm()` at
   `GateDecisionCard.svelte:49` is not the bus's confirmation.
 
+**Both fixed** by the PR for #2903/#2904: the body is built in `console/continuum-plugins/shared/commands.js` alone
+(`executeCommand` posts `args`, reads `status`, and on `requires_confirmation` asks and re-posts with `confirmed: true`);
+`tests/unit/console/test_command_bus_bodies.py` refuses a plugin that names the route or a `params` key, the helper's
+own tests run under node, and `test_cycle_command_handlers.py::TestTheBodyThePluginsPost` enters the console app's route
+with the plugins' bodies. The goals panel's edit inherits the helper, not the defects. Still not reproduced on a deploy.
+
 What would come back to the owner only if wanted, not for 2.6's views: **a URL per Project or per Campaign.** The shell has
 no router (§1 row 3). A plugin can keep its selection in `location.hash` itself (the Systems plugin already reads
 `location`, `squadops.system/ui/src/SystemHost.svelte:74`) with no shell change; a real route per perspective is a

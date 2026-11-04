@@ -28,6 +28,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   §10 row 3 when every item of the revision read at the decision is accepted, and the decision's row records which.
 
 ### Fixed
+- **The console's write buttons execute** (#2903, #2904). Every plugin posted `{command_id, params}` to the shell's
+  command route, whose body is `{command_id, args, dry_run, confirmed}` (Continuum v1.0.2), so each handler got `{}`
+  and the bus's 200 `status: failed` passed as success; and no plugin sent `confirmed`, so a confirm-level command
+  (`gate_reject`, `cancel_cycle`, `cancel_run`, `set_active_profile`) was answered `pending` and never ran. The body
+  is built once, in `console/continuum-plugins/shared/commands.js`: it posts `args`, reads the answer's `status`
+  (`success` only; a `failed`, `timeout` or `denied` answer and a handler's relayed API refusal are shown as the
+  failure they are), and on `requires_confirmation` asks the user — the reject and set-active dialogs — and re-posts
+  the same body with `confirmed: true`. The create modal also read the handler's `cycle_id` from the answer's top
+  level rather than its `result`. Guards: no plugin names the route or a `params` key
+  (`tests/unit/console/test_command_bus_bodies.py`), the helper's node tests
+  (`console/continuum-plugins/shared`, `npm test`, now a CI step), and the console app's route entered with the
+  plugins' bodies. SIP-0074 §5.1 and SIP-0069 are unchanged: the behaviour is theirs, restored.
 - **A private Node package that declares a module interface is a package surface,** so a criterion on a product
   like battle-trainer can name its interface (#2875, PR #2879; SIP-0112 H.17).
 - **The qa plan proposer's worked example is in its product's runner's terms,** pytest or vitest/jest (#2876,
