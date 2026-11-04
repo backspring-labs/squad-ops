@@ -141,6 +141,10 @@ class ControlOperation(StrEnum):
     #: as the contribution path refused it or the product or forge answered. A record, accepted
     #: on a completed campaign. The contribution stays due for the supervisor's next request.
     CONTRIBUTION_FAILED = "contribution_failed"
+    #: The owner delegated this Campaign's goal-set curation to the crew (SIP-0115 Q41, §10c;
+    #: SIP-0109 §24dd): what lets the crew promote, drop or split within it. A record of a grant
+    #: for the Campaign's life, so a live Campaign alone takes one (``needs_a_live_campaign``).
+    GOAL_DELEGATION_GRANTED = "goal_delegation_granted"
 
     @property
     def records_only(self) -> bool:
@@ -149,6 +153,8 @@ class ControlOperation(StrEnum):
         It is the one kind accepted on a completed campaign: a launch the launcher had already
         made before an abort committed is still a cycle that exists, and its record must say so;
         a proposal's classification is read the morning after, when the campaign may have ended.
+        A record that grants something for the Campaign's life is the exception
+        (``needs_a_live_campaign``): on a completed one there is no life left to grant it for.
         """
         return self in (
             ControlOperation.MARK_LAUNCHED,
@@ -162,7 +168,13 @@ class ControlOperation(StrEnum):
             ControlOperation.INSTRUCT,
             ControlOperation.REVIEW_PUSHED,
             ControlOperation.CONTRIBUTION_FAILED,
+            ControlOperation.GOAL_DELEGATION_GRANTED,
         )
+
+    @property
+    def needs_a_live_campaign(self) -> bool:
+        """A record-only operation a completed campaign refuses, as it refuses a move."""
+        return self is ControlOperation.GOAL_DELEGATION_GRANTED
 
     @property
     def changes_the_lease(self) -> bool:
