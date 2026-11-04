@@ -39,6 +39,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   posts `POST /api/v1/projects/{id}/goal-set/revisions` against the revision the edit began from. A revision
   written first by someone else (409 `STALE_GOAL_SET_REVISION`) is said plainly and the edit kept, never retried
   over. The panel's reads and write are `goals.js`, tested under node (`npm test` in the plugin's `ui/`, run in CI).
+- **A regression at a source-backed run's end of plan gets one repair round** (#2613, SIP-0112 H.20). When the
+  product's own checks read `regressed`, the run no longer fails there: the regression enters the plan's correction
+  chain (analyze, decide, repair) through the same budget check and run counter as an in-plan failure, about the
+  plan's last source author. The analysis and the repair read each blocking check as the product's runner read it in
+  the sandbox: its id, exit code and output tails, never a re-run in an agent's image (#2913). The repair is stored as
+  that task's own and the candidate is delivered again; its verification records `repair_of`, and every check that
+  regressed must execute and pass. A spent budget, a round that repairs nothing, or a second regression fails the run
+  as before, the verification naming the checks. One round only, whatever budget remains. Runs with no pinned source
+  are unchanged.
 
 ### Fixed
 - **The backlog says which limit ended a Campaign on an item** (#2911). The ledger's projection of a decision left

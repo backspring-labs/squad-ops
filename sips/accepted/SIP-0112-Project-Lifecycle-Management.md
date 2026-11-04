@@ -133,7 +133,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | the qa plan proposer's worked example in its product's runner's terms (pytest, or vitest/jest) | **shipped** | 2.6.0, PR #2880, closes #2876 |
 | a product's suite that the qa image couldn't run read on the product's own runner, whatever else failed (H.18) | **shipped** | 2.6.0, PR #2878, closes #2877 |
 | a source-backed change that deletes a file | **placed** (the 2.6 plan's Track B, adopted 2026-11-03) | 2.6.0, #2612 |
-| a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **placed** (the 2.6 plan's Track B, adopted 2026-11-03) | 2.6.0, #2613 |
+| a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, closes #2613 |
 | a merged contribution syncs its Project, so the integrated commit includes the work | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2862 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.6.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
@@ -2859,3 +2859,69 @@ result stands.
 
 **Who ruled.** Proposed by the MacBook lane on 2026-11-03, under the owner's direction to fix the seams battle-trainer
 found ("proceed as far as you can on the line of fixes"). The owner rules on it in review.
+
+## H.20 A regression found at a source-backed run's end of plan gets one repair round from the correction budget (2026-11-04; E.4.3; #2613, #2410's slice 2b point 3; the Spark lane, for the owner's ruling in review)
+
+**What E.4.3 shipped, and what it deferred.** A source-backed run's candidate is verified at the end of the plan by the
+product's own checks, on the product's runner in the sandbox (`source_delivery.deliver_source_change`). A FAIL the
+baseline didn't have (`no-introduced-regression/v2` reads `regressed`) failed the run there. #2410's slice 2b design
+(2026-10-18, point 3) routes that failure into the existing correction chain with the failing checks' evidence,
+bounded by the cycle's correction budget, and verifies the candidate again. It was deferred "if a live run shows it's
+needed" (#2613) and placed in 2.6 by the plan's Track B (adopted 2026-11-03).
+
+**What changed** (`DispatchedFlowExecutor._repair_source_regression`; `source_delivery.regression_failure`,
+`regression_subject`; `verification.RepairOf`):
+1. **One round, in the plan's own chain.** A regressed delivery enters `_dispatch_correction_protocol`, where an
+   in-plan failure enters it. The same budget check runs, the round is billed to the same run counter, and the
+   profile's declared steps run: analyze, decide, repair. There is no second loop and no flag: a non-source-backed run
+   never reaches delivery, so IR-10's counted pair is unchanged.
+2. **The failed task is the plan's last source author** (its last suite author in a plan that authors only tests). Its
+   envelope carries the write grant and the workspace a repair of the product's code works under, enriched again
+   from the run's stored artifacts as a kept repair's is (#1522).
+3. **The evidence is the product runner's reading, and nothing else** (#2913). Each blocking check becomes a failed
+   row: its id, `judged_on: product_runner`, its attribution, why it blocks (`why_blocking`), the exit code, and the
+   stdout and stderr tails the sandbox returned. The summary names the runner's image and toolchain, the inherited
+   failures and the changed paths. Nothing is re-run in an agent's image.
+4. **The repair is stored as the failed task's own,** and the candidate is delivered again: seeded, patched,
+   verified, and captured only when accepted.
+5. **A repaired candidate owes its regressed checks a passing run.** Its verification carries `repair_of`: the
+   regressed verification's artifact and its blocking checks. Each must execute and pass. A check that regressed and
+   then couldn't run (a timeout, a missing tool) blocks, since UNVERIFIED blocks nothing on its own while another
+   check passes, and missing evidence grants no waiver.
+6. **The run fails as it did before,** with the verification naming the checks, when:
+   - the plan's own rounds already spent the budget ("no repair round: the run's correction budget (N) is spent");
+   - the round decides anything but a patch, or its repair writes no file of the product;
+   - the repaired candidate regresses again, or can't run a check it owes. **No second round is taken,** even with
+     budget left.
+
+Both verifications are kept on the run. A Campaign's promotion reads the latest (`campaign_branch`), which is the
+repaired one.
+
+**The seams that evaluate a regressed run's criteria** (CLAUDE.md's typed-check table):
+
+| seam | runs in | tree it sees | before | after | on a tree that lacks a file |
+|---|---|---|---|---|---|
+| the end-of-plan verification (`deliver_source_change`) | runtime-api, X-3a in the sandbox | the pinned commit plus the squad's accepted changes | `regressed` fails the run | `regressed` enters one correction round | absent from the candidate, as from the product; the product's checks read it so |
+| the analysis (`data.analyze_failure`) | the data role's container | none: it reads the failure evidence | not reached | the product runner's rows, as stored in the verification | n/a |
+| the repair (`development.correction_repair`) | the repairing role's container | the failed task's workspace as the run's stored artifacts hold it | not reached | the same evidence; its emission is bounded by the failed task's grant | a file the repair doesn't write keeps its accepted content |
+| the in-plan patch verifier (`_try_accept_patch`, the retest) | runtime-api | the failed task's overlay | n/a | **not run**: the re-delivery is this round's verdict | n/a |
+| the repaired candidate's verification | runtime-api, X-3a in the sandbox | the pinned commit plus the accepted changes and the repair | n/a | must pass every check that regressed (`repair_of`), and introduce none | as above |
+| the increment's acceptance (SIP-0109 §24cd point 6) | runtime-api, the sandbox | the captured candidate | after an accepted delivery | unchanged: after the repaired delivery, when accepted | unchanged |
+
+**The evidence:**
+- **Wiring:** `test_a_regression_is_repaired_in_one_round_from_the_product_runners_reading` enters at
+  `_execute_sequential`'s end of plan, with the shared fixture through the real managed clone and sandbox service, and
+  the real correction runner down to the agents' queue. It asserts the analysis and the repair each receive exactly
+  the stored verification's row for `report` (exit code 1, the unittest output), that one round runs, that the second
+  verification names the first and passes `report`, and that the captured commit holds the repair.
+- **Error cases:** a spent budget (no step dispatched); a repair that regresses again (one round, two regressed
+  verifications, nothing captured); a regressed check that times out on the repaired candidate; a round that decides
+  `abort`, and one whose repair writes nothing. The policy: `test_a_repaired_candidate_owes_its_regressed_checks_a_passing_run`.
+- **Mutants**, each against the committed tree: the runner's stderr dropped from the evidence; the budget check
+  removed; `repair_of`'s owed checks ignored; the repair not stored; a regressed repaired candidate captured; a second
+  round. Each fails at least one of the tests above.
+
+**Who ruled.** The design is #2410's slice 2b point 3, written by the MacBook lane on 2026-10-18; the owner placed it
+in 2.6 with the plan's Track B (2026-11-03). Points 2 and 5 (which task the round is about, and the owed passing run)
+and "one round, even with budget left" are this implementation's decisions, built by the Spark lane on 2026-11-04.
+The owner rules on them in review.
