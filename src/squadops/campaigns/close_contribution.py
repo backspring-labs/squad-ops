@@ -72,18 +72,20 @@ def accepted_on_branch(
     commit is followed through every rebase since; ``None`` when a rebase dropped it, because the
     commit it rebased onto already held its change (the owner's merge, §24cd point 4). A sample
     application's increments name no commit, and aren't listed."""
-    kinds = {i.cycle_id: i.cycle_kind for i in intents if i.cycle_id}
+    kinds: dict[str, CycleKind] = {i.cycle_id: i.cycle_kind for i in intents if i.cycle_id}
     current: dict[str, str | None] = {}
     for e in log:
         if e.outcome is not ControlOutcome.APPLIED:
             continue
         b = e.binding
+        cycle_id = b.get("cycle_id")
         if (
             e.operation is ControlOperation.PROMOTE
             and b.get("commit")
-            and kinds.get(b.get("cycle_id")) in INCREMENT_FAMILY
+            and isinstance(cycle_id, str)
+            and kinds.get(cycle_id) in INCREMENT_FAMILY
         ):
-            current.setdefault(b["cycle_id"], b["commit"])
+            current.setdefault(cycle_id, b["commit"])
         elif e.operation is ControlOperation.BRANCH_REBASED:
             replayed = {old: new for old, new in b.get("replayed") or ()}
             dropped = set(b.get("dropped") or ())
