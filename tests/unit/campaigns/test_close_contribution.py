@@ -612,6 +612,41 @@ async def test_a_promotion_racing_a_terminal_decision_is_on_the_closing_rows_rec
     assert closing.binding["contribution"]["accepted"] == ["cyc_inc000000001", late]
 
 
+async def test_an_abort_stored_before_this_rule_replays_and_stays_as_it_was(tmp_path):
+    """PR #2920's review, finding 4. An abort committed before the upgrade has no ``contribution``
+    on its row, and its client's retry arrives after it. The key is the server's derivation, never
+    the caller's content. Bugs caught: the retry's hash differing, so a replay reads as an
+    idempotency conflict; a retry rewriting the stored row; such a Campaign contributed."""
+    world = _World(tmp_path)
+    await world.started(target=2)
+    await world.accepted_with_criterion()
+    stored = await world.campaigns.transition(
+        CID,
+        CampaignTransition(
+            operation=ControlOperation.ABORT,
+            actor="supervisor",
+            actor_role=Role.CAMPAIGN_SUPERVISOR,
+            reason="stop",
+            idempotency_key="a-old",
+            next_state=CampaignState.COMPLETED,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    assert "contribution" not in stored.entry.binding
+    client = world.client()
+
+    retried = client.post(
+        f"/api/v1/campaigns/{CID}/abort", json={"reason": "stop", "idempotency_key": "a-old"}
+    )
+    asked = client.post(f"/api/v1/campaigns/{CID}/contributions", json={"token": TOKEN})
+
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["replayed"] is True
+    assert retried.json()["entry"]["entry_id"] == stored.entry.entry_id
+    assert "contribution" not in (await world.closing()).binding
+    assert asked.status_code == 409 and world.forge.calls == 0
+
+
 async def test_a_running_campaign_and_an_unknown_one_are_refused(tmp_path):
     """Bugs caught: a contribution opened mid-Campaign, before its close; an unknown Campaign
     answered with anything but the standard 404."""
