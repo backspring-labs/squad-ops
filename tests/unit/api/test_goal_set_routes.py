@@ -1,8 +1,9 @@
-"""``/api/v1/projects/{id}/goal-set`` (SIP-0115 §8.1, #2884), at the routes the CLI calls, behind
-the runtime's own auth middleware and error handlers."""
+"""``/api/v1/projects/{id}/goal-set`` (SIP-0115 §8.1; #2884, #2886), at the routes the CLI calls,
+behind the runtime's own auth middleware and error handlers."""
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -11,18 +12,20 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 from squadops.api.routes.cycles.goal_sets import router
 from squadops.auth.models import ROLE_SCOPES, Identity, Role, TokenClaims
 from squadops.cycles.models import (
+    GateDecisionValue,
     GoalSetNotFoundError,
     Project,
     ProjectNotFoundError,
     StaleGoalSetRevisionError,
 )
-from squadops.projects.goal_set import GoalSetRevision, parse_goal_set
-from tests.fixtures.goal_set import goal_set_document
+from squadops.projects.goal_set import Change, ChangeKind, GoalSetRevision, parse_goal_set
+from tests.fixtures.goal_set import GoalSetStore, goal_set_document, proposed, started
 
 pytestmark = [pytest.mark.domain_api]
 
@@ -30,9 +33,10 @@ NOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
 PATH = "/api/v1/projects/prj-lantern/goal-set"
 
 
-def _client(role: str, projects: AsyncMock, goal_sets: AsyncMock) -> TestClient:
+def _client(role: str, projects: AsyncMock, goal_sets, campaigns=None) -> TestClient:
     """The app as the runtime builds it for these routes: a token resolving to ``role``'s
-    principal, its scopes the ones the realm's role grants."""
+    principal, its scopes the ones the realm's role grants. ``campaigns``: the registry slice 3's
+    actions read the Campaign the crew acts within from."""
     identity = Identity(
         user_id=f"{role}-principal",
         display_name=role,
@@ -60,6 +64,7 @@ def _client(role: str, projects: AsyncMock, goal_sets: AsyncMock) -> TestClient:
     register_domain_error_handlers(app)
     app.state.project_registry = projects
     app.state.goal_set_registry = goal_sets
+    app.state.campaign_registry = campaigns if campaigns is not None else MemoryCampaignRegistry()
     return TestClient(app, headers={"Authorization": "Bearer t"})
 
 
@@ -156,7 +161,9 @@ class TestWriting:
     )
     def test_only_the_owners_scope_writes(self, role, expected, projects, goal_sets):
         """Bug caught: the write left on a read, cycle-write or campaign scope, so an operator
-        or the crew's principal rewrites the owner's goal."""
+        or the crew's principal rewrites the owner's goal. The crew's 403 here is Q41's "reorder,
+        no": slice 3 delegates a promotion, a drop and a split through their own routes, never
+        the whole-document write, which is the only way to reorder."""
         resp = _client(role, projects, goal_sets).post(f"{PATH}/revisions", json=_body())
 
         assert resp.status_code == expected
@@ -257,3 +264,290 @@ class TestReading:
             404,
             "PROJECT_NOT_FOUND",
         )
+
+
+# --- slice 3 (#2886): candidates and splits, behind the runtime's auth (§6, Q41) ---
+
+DELEGATED = ("promote", "drop", "split")
+
+
+def _action(action: str, **overrides) -> tuple[str, dict]:
+    """Each action's path and body, as the CLI posts it, against revision 1."""
+    body: dict = {
+        "idempotency_key": "k-3",
+        "expected_revision": 1,
+        "reason": "the crew found it blocks the weekly total",
+        "source_ref": "https://chat.example.invalid/thread/7",
+    }
+    if action == "add":
+        path = f"{PATH}/candidates"
+        body["candidate"] = {"id": "C-2", "title": "Delete a session", "found_by": "crew"}
+    elif action == "promote":
+        path = f"{PATH}/candidates/C-1/promote"
+        body["serves"] = ["ER-week"]
+    elif action == "drop":
+        path = f"{PATH}/candidates/C-1/drop"
+    else:
+        path = f"{PATH}/backlog/B-1/split"
+        body["into"] = [{"id": "B-1a", "title": "the book"}, {"id": "B-1b", "title": "the minutes"}]
+    return path, body | overrides
+
+
+@pytest.fixture
+def store() -> GoalSetStore:
+    """The goal set at revision 1, in a store that keeps the port's rules."""
+    held = GoalSetStore()
+    held.write("prj-lantern", goal_set_document())
+    return held
+
+
+@pytest.fixture
+def campaigns() -> MemoryCampaignRegistry:
+    """Two Campaigns on Lantern's goal set: one the owner started, one the crew's own."""
+    registry = MemoryCampaignRegistry()
+    asyncio.run(started(registry, "cmp_owner", created_by="owner"))
+    asyncio.run(started(registry, "cmp_crew", created_by="campaign-supervisor-principal"))
+    return registry
+
+
+def _error(resp) -> tuple[int, str | None]:
+    detail = resp.json().get("detail") if resp.status_code >= 400 else None
+    return resp.status_code, detail["error"]["code"] if detail else None
+
+
+@pytest.mark.usefixtures("authz")
+class TestWhoMayAct:
+    @pytest.mark.parametrize("action", DELEGATED)
+    @pytest.mark.parametrize(
+        ("role", "campaign", "expected"),
+        [
+            (Role.ADMIN, None, (201, None)),
+            (Role.ADMIN, "cmp_owner", (201, None)),
+            (Role.CAMPAIGN_SUPERVISOR, "cmp_owner", (201, None)),
+            (Role.CAMPAIGN_SUPERVISOR, None, (403, "NOT_DELEGATED")),
+            (Role.CAMPAIGN_SUPERVISOR, "cmp_crew", (403, "NOT_DELEGATED")),
+            (Role.CAMPAIGN_SUPERVISOR, "cmp_none", (404, "CAMPAIGN_NOT_FOUND")),
+            (Role.CAMPAIGN_TRIAGE, "cmp_owner", (403, "FORBIDDEN")),
+            (Role.VIEWER, "cmp_owner", (403, "FORBIDDEN")),
+            (Role.OPERATOR, None, (403, "FORBIDDEN")),
+        ],
+        ids=[
+            "the owner",
+            "the owner naming a Campaign",
+            "the crew within the owner's Campaign",
+            "the crew outside any Campaign",
+            "the crew within its own Campaign",
+            "the crew naming no Campaign that exists",
+            "triage",
+            "a viewer",
+            "an operator",
+        ],
+    )
+    def test_who_may_promote_drop_or_split(
+        self, action, role, campaign, expected, projects, store, campaigns
+    ):
+        """§6 and Q41 at each delegated route. Bugs caught: the crew acting with no Campaign, or
+        within one it started itself; triage (reads only, #1719), a viewer or an operator acting;
+        the owner asked for a Campaign; a refusal after the revision was written."""
+        path, body = _action(action, **({"campaign_id": campaign} if campaign else {}))
+
+        resp = _client(role, projects, store, campaigns).post(path, json=body)
+
+        assert _error(resp) == expected, resp.text
+        assert len(store.revisions["prj-lantern"]) == (2 if expected[0] == 201 else 1)
+
+    @pytest.mark.parametrize(
+        ("role", "expected"),
+        [
+            (Role.ADMIN, 201),
+            (Role.CAMPAIGN_SUPERVISOR, 201),
+            (Role.CAMPAIGN_TRIAGE, 403),
+            (Role.VIEWER, 403),
+            (Role.OPERATOR, 403),
+            (Role.AGENT, 403),
+        ],
+    )
+    def test_who_may_add_a_candidate(self, role, expected, projects, store):
+        """§6: the owner and the crew add what they find, with no Campaign named. Bugs caught: the
+        crew asked for a delegation to add; a reader adding; the squad's agent principal (which
+        holds no read scope here, §10c) adding."""
+        path, body = _action("add")
+
+        resp = _client(role, projects, store).post(path, json=body)
+
+        assert resp.status_code == expected, resp.text
+        if expected == 201:
+            written = store.revisions["prj-lantern"][-1]
+            assert (written.author, written.change) == (
+                f"{role}-principal",
+                Change(ChangeKind.CANDIDATE_ADDED, "C-2"),
+            )
+            assert [c.id for c in written.goal_set.candidates] == ["C-1", "C-2"]
+            assert written.goal_set.candidates[-1].found_at is not None
+
+
+@pytest.mark.usefixtures("authz")
+class TestPromotionAndSplit:
+    def test_the_crews_promotion_within_the_owners_campaign_reaches_the_store_as_the_next_revision(
+        self, projects, store, campaigns
+    ):
+        """The wiring test (anti-pattern 6a): entered at the route the CLI posts to, as the
+        crew's principal. Bugs caught: the author taken as the owner; the Campaign the crew acted
+        within not recorded; the candidate's id re-minted or its item put anywhere but the end;
+        the reason or source_ref dropped; the action unnamed on the revision; a retry under the
+        key written again."""
+        path, body = _action("promote", campaign_id="cmp_owner")
+        client = _client(Role.CAMPAIGN_SUPERVISOR, projects, store, campaigns)
+
+        resp = client.post(path, json=body)
+        again = client.post(path, json=body)
+
+        assert resp.status_code == 201, resp.text
+        written = store.revisions["prj-lantern"][-1]
+        assert (written.revision, written.author, written.reason, written.source_ref) == (
+            2,
+            "campaign-supervisor-principal",
+            "the crew found it blocks the weekly total",
+            "https://chat.example.invalid/thread/7",
+        )
+        assert written.change == Change(
+            ChangeKind.CANDIDATE_PROMOTED, "C-1", position=3, campaign_id="cmp_owner"
+        )
+        assert [i.id for i in written.goal_set.backlog] == ["B-1", "B-2", "C-1"]
+        assert written.goal_set.backlog[-1].serves == ("ER-week",)
+        assert written.goal_set.candidates == ()
+        answered = resp.json()
+        assert (answered["revision"]["revision"], answered["replayed"]) == (2, False)
+        assert answered["revision"]["change"] == {
+            "kind": "candidate_promoted",
+            "subject": "C-1",
+            "position": 3,
+            "campaign_id": "cmp_owner",
+        }
+        assert (again.status_code, again.json()["replayed"]) == (201, True)
+        assert len(store.revisions["prj-lantern"]) == 2
+
+    def test_the_crew_appends_and_the_owner_places(self, projects, store, campaigns):
+        """Q41: "a promoted candidate is appended at the end of the backlog; putting it anywhere
+        else is a reorder." Bug caught: the crew's position honoured, so the crew steers the
+        order through promotions."""
+        path, body = _action("promote", campaign_id="cmp_owner", position=1)
+
+        crew = _client(Role.CAMPAIGN_SUPERVISOR, projects, store, campaigns).post(path, json=body)
+        owner = _client(Role.ADMIN, projects, store, campaigns).post(path, json=body)
+
+        assert _error(crew) == (403, "NOT_DELEGATED")
+        assert "reorder" in crew.json()["detail"]["error"]["message"]
+        assert owner.status_code == 201, owner.text
+        assert [i["id"] for i in owner.json()["revision"]["goal_set"]["backlog"]] == [
+            "C-1",
+            "B-1",
+            "B-2",
+        ]
+
+    def test_the_owners_split_reaches_the_store_naming_the_parts_in_the_parents_place(
+        self, projects, store, campaigns
+    ):
+        """The wiring test for a split. Bugs caught: the parts appended rather than in the
+        parent's place; a part's ``serves`` left empty rather than inherited; the split
+        recorded as a plain removal (no ``split_into``), so the view can't name the parts."""
+        path, body = _action("split")
+
+        resp = _client(Role.ADMIN, projects, store, campaigns).post(path, json=body)
+
+        assert resp.status_code == 201, resp.text
+        written = store.revisions["prj-lantern"][-1]
+        assert written.change == Change(ChangeKind.ITEM_SPLIT, "B-1", split_into=("B-1a", "B-1b"))
+        assert [(i.id, i.serves) for i in written.goal_set.backlog] == [
+            ("B-1a", ("ER-log",)),
+            ("B-1b", ("ER-log",)),
+            ("B-2", ("ER-week",)),
+        ]
+        assert resp.json()["revision"]["change"]["split_into"] == ["B-1a", "B-1b"]
+
+    @pytest.mark.parametrize(
+        ("ruled", "status"),
+        [(None, "proposed"), (GateDecisionValue.APPROVED, "in_increment")],
+        ids=["proposed", "in_increment"],
+    )
+    def test_a_split_waits_while_a_live_campaign_reads_the_item_proposed_or_building(
+        self, ruled, status, projects, store, campaigns
+    ):
+        """§5.5a at the route. Bug caught: the split written while the item's increment builds,
+        so the acceptance lands on an item that is gone; or answered 500."""
+        asyncio.run(proposed(campaigns, "cmp_owner", "B-1", ruled=ruled))
+        path, body = _action("split")
+
+        resp = _client(Role.ADMIN, projects, store, campaigns).post(path, json=body)
+
+        assert _error(resp) == (409, "BACKLOG_ITEM_IN_PROGRESS")
+        assert f"B-1 is {status} in campaign cmp_owner" in resp.json()["detail"]["error"]["message"]
+        assert len(store.revisions["prj-lantern"]) == 1
+
+    @pytest.mark.parametrize(
+        ("action", "overrides", "expected", "field"),
+        [
+            ("split", {"into": [{"id": "B-1a", "title": "t"}]}, (422, "GOAL_SET_INVALID"), "into"),
+            (
+                "split",
+                {"into": [{"id": "B-1a", "title": "t"}, {"id": "B-2", "title": "t"}]},
+                (422, "GOAL_SET_INVALID"),
+                "into",
+            ),
+            (
+                "split",
+                {"into": [{"id": "B-1a", "title": "t"}, {"id": "B-1b", "title": "t", "serves": ["ER-x"]}]},
+                (422, "GOAL_SET_INVALID"),
+                "into[1].serves",
+            ),
+            ("promote", {"serves": ["ER-x"]}, (422, "GOAL_SET_INVALID"), "serves"),
+            ("add", {"candidate": {"id": "C-2", "title": "t", "found_by": "c", "x": 1}}, (422, "GOAL_SET_INVALID"), "candidate"),
+            ("drop", {"expected_revision": 0}, (404, "GOAL_SET_NOT_FOUND"), None),
+            ("drop", {"expected_revision": 2}, (404, "GOAL_SET_NOT_FOUND"), None),
+            ("drop", {"campaign_id": None, "stale": True}, (409, "STALE_GOAL_SET_REVISION"), None),
+        ],
+        ids=[
+            "one part",
+            "a part with another item's id",
+            "a part serving an unknown result",
+            "serving an unknown result",
+            "an unknown candidate field",
+            "no goal set yet",
+            "a revision not written",
+            "a revision another writer passed",
+        ],
+    )  # fmt: skip
+    def test_an_action_is_refused_in_the_envelope_naming_its_field(
+        self, action, overrides, expected, field, projects, store, campaigns
+    ):
+        """Bugs caught: a refusal answered 500 or written; the field unnamed, so a client can't
+        say which part was wrong; an action against a stale or missing revision written over
+        another writer's."""
+        if overrides.pop("stale", False):
+            store.write("prj-lantern", goal_set_document())
+        before = len(store.revisions["prj-lantern"])
+        path, body = _action(action, **overrides)
+
+        resp = _client(Role.ADMIN, projects, store, campaigns).post(path, json=body)
+
+        assert _error(resp) == expected, resp.text
+        if field is not None:
+            assert resp.json()["detail"]["error"]["details"] == {"field": field}
+        assert len(store.revisions["prj-lantern"]) == before
+
+    @pytest.mark.parametrize(
+        ("path", "code"),
+        [
+            (f"{PATH}/candidates/C-9/promote", "CANDIDATE_NOT_FOUND"),
+            (f"{PATH}/candidates/C-9/drop", "CANDIDATE_NOT_FOUND"),
+            (f"{PATH}/backlog/B-9/split", "BACKLOG_ITEM_NOT_FOUND"),
+        ],
+    )
+    def test_an_unknown_candidate_or_item_is_not_found(self, path, code, projects, store, campaigns):
+        action = "split" if path.endswith("split") else "promote" if "promote" in path else "drop"
+        _, body = _action(action)
+
+        resp = _client(Role.ADMIN, projects, store, campaigns).post(path, json=body)
+
+        assert _error(resp) == (404, code), resp.text
+        assert len(store.revisions["prj-lantern"]) == 1

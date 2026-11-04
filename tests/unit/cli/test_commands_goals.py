@@ -226,6 +226,165 @@ class TestHistory:
         assert "prj-lantern has no goal set yet" in result.output
 
 
+class TestCandidates:
+    def test_each_candidate_is_a_row_from_the_active_revision(self):
+        """Bug caught: candidates read from the history's first revision rather than the active
+        one, or the evidence dropped from the row."""
+        client = MagicMock()
+        client.get.return_value = _revision(3)
+
+        with patch(CLIENT, return_value=client):
+            result = runner.invoke(app, ["--quiet", "goals", "candidates", "prj-lantern"])
+
+        assert result.exit_code == 0, result.output
+        assert client.get.call_args.args[0] == "/api/v1/projects/prj-lantern/goal-set"
+        rows = [line.split("\t") for line in result.output.strip().splitlines()]
+        assert rows == [
+            ["C-1", "Edit a session", "cyc_0a1b2c", "2026-11-02T09:30:00+00:00", "vault://cyc_0a1b2c/qa_report.md"]
+        ]  # fmt: skip
+
+    def test_no_candidates_says_so_and_json_prints_the_list(self):
+        empty = _revision(2)
+        empty["goal_set"]["candidates"] = []
+        client = MagicMock()
+        client.get.return_value = empty
+
+        with patch(CLIENT, return_value=client):
+            table = runner.invoke(app, ["goals", "candidates", "prj-lantern"])
+            as_json = runner.invoke(app, ["--json", "goals", "candidates", "prj-lantern"])
+
+        assert "prj-lantern has no candidates at revision 2" in table.output
+        assert json.loads(as_json.output) == []
+
+
+def _recorded(revision: int, **goal_set_changes) -> dict:
+    written = _revision(revision)
+    written["goal_set"].update(goal_set_changes)
+    return {"revision": written, "idempotency_key": "g-3", "replayed": False}
+
+
+class TestActions:
+    """``promote``, ``drop`` and ``split`` (SIP-0115 §8.2, slice 3). Bugs caught: an action sent
+    against no revision (the server can't refuse a concurrent edit) or against one read when a
+    flag already named it; the Campaign, position or parts not reaching the body."""
+
+    def test_a_promotion_is_sent_against_the_active_revision_read_first(self):
+        client = MagicMock()
+        client.get.return_value = _revision(3)
+        client.post.return_value = _recorded(4)
+
+        with patch(CLIENT, return_value=client):
+            result = runner.invoke(
+                app,
+                [
+                    "goals", "promote", "prj-lantern", "C-1",
+                    "--serves", "ER-week", "--serves", "ER-log", "--position", "2",
+                    "--campaign", "cmp_owner", "--reason", "it blocks the weekly total",
+                    "--source-ref", "https://chat.example.invalid/t/7", "--idempotency-key", "g-3",
+                ],
+            )  # fmt: skip
+
+        assert result.exit_code == 0, result.output
+        assert client.get.call_args.args[0] == "/api/v1/projects/prj-lantern/goal-set"
+        assert client.post.call_args.args[0] == (
+            "/api/v1/projects/prj-lantern/goal-set/candidates/C-1/promote"
+        )
+        assert client.post.call_args.kwargs["json"] == {
+            "idempotency_key": "g-3",
+            "expected_revision": 3,
+            "reason": "it blocks the weekly total",
+            "source_ref": "https://chat.example.invalid/t/7",
+            "serves": ["ER-week", "ER-log"],
+            "position": 2,
+            "campaign_id": "cmp_owner",
+        }
+        assert "written: prj-lantern goal set revision 4, promoted C-1" in " ".join(
+            result.output.split()
+        )
+
+    def test_a_drop_with_a_given_revision_reads_nothing_and_a_refusal_names_key_and_revision(
+        self,
+    ):
+        """P2's lesson for the actions: a retry resends the printed key and revision, so the
+        server replays rather than reads a moved revision and refuses a key conflict."""
+        client = MagicMock()
+        client.post.side_effect = CLIError("Error: forbidden — NOT_DELEGATED", exit_codes.AUTH_ERROR)
+
+        with patch(CLIENT, return_value=client):
+            result = runner.invoke(
+                app,
+                ["goals", "drop", "prj-lantern", "C-1", "--reason", "a duplicate of B-2"]
+                + ["--expected-revision", "5", "--idempotency-key", "g-9"],
+            )
+
+        client.get.assert_not_called()
+        assert client.post.call_args.args[0] == (
+            "/api/v1/projects/prj-lantern/goal-set/candidates/C-1/drop"
+        )
+        assert client.post.call_args.kwargs["json"] == {
+            "idempotency_key": "g-9",
+            "expected_revision": 5,
+            "reason": "a duplicate of B-2",
+        }
+        assert result.exit_code == exit_codes.AUTH_ERROR
+        assert "idempotency key g-9, expected revision 5" in " ".join(result.output.split())
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "- {id: B-1a, title: the book}\n- {id: B-1b, title: the minutes, serves: [ER-week]}\n",
+            "into:\n  - {id: B-1a, title: the book}\n  - {id: B-1b, title: the minutes, serves: [ER-week]}\n",
+        ],
+        ids=["a list", "a mapping with into"],
+    )
+    def test_a_split_sends_the_files_parts_in_order(self, content, tmp_path):
+        spec = tmp_path / "split.yaml"
+        spec.write_text(content)
+        client = MagicMock()
+        client.get.return_value = _revision(2)
+        client.post.return_value = _recorded(3)
+
+        with patch(CLIENT, return_value=client):
+            result = runner.invoke(
+                app,
+                ["goals", "split", "prj-lantern", "B-1", "--into", str(spec)]
+                + ["--reason", "too large for one increment", "--campaign", "cmp_owner"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert client.post.call_args.args[0] == (
+            "/api/v1/projects/prj-lantern/goal-set/backlog/B-1/split"
+        )
+        sent = client.post.call_args.kwargs["json"]
+        assert sent["expected_revision"] == 2
+        assert sent["into"] == [
+            {"id": "B-1a", "title": "the book"},
+            {"id": "B-1b", "title": "the minutes", "serves": ["ER-week"]},
+        ]
+        assert sent["campaign_id"] == "cmp_owner"
+        assert "split B-1 into B-1a, B-1b" in " ".join(result.output.split())
+
+    @pytest.mark.parametrize(
+        "content",
+        [None, "- {id: B-1a, title: the book}\n", "goal: not a split\n", "- just\n- strings\n"],
+        ids=["no file", "one part", "no into", "not items"],
+    )
+    def test_a_file_that_holds_no_split_exits_before_any_call(self, content, tmp_path):
+        """Bug caught: a one-part file sent and refused by the server after a read, or a file of
+        strings sent as parts."""
+        spec = tmp_path / "split.yaml"
+        if content is not None:
+            spec.write_text(content)
+
+        with patch(CLIENT) as get_client:
+            result = runner.invoke(
+                app, ["goals", "split", "prj-lantern", "B-1", "--into", str(spec), "--reason", "r"]
+            )
+
+        assert result.exit_code == 2
+        get_client.assert_not_called()
+
+
 class _Server:
     """The write route's rules, as ``revise_goal_set`` and the store keep them: a write must name
     the active revision, and a key resent with the same request replays what it wrote."""

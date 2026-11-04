@@ -509,16 +509,22 @@ def promote_candidate(
     at = end if position is None else position
     if isinstance(at, bool) or not isinstance(at, int) or not 1 <= at <= end:
         raise GoalSetInvalid("position", f"from 1 to {end}, the end of the backlog, not {at!r}")
-    item = _backlog_item(
-        {
-            "id": candidate.id,
-            "title": candidate.title,
-            "description": candidate.description,
-            "serves": list(serves) if isinstance(serves, (list, tuple)) else serves,
-        },
-        "promote",
+    if (
+        isinstance(serves, (str, bytes))
+        or not isinstance(serves, Sequence)
+        or not serves
+        or not all(isinstance(s, str) for s in serves)
+    ):
+        raise GoalSetInvalid("serves", "the ids of the expected results it serves, at least one")
+    if len(set(serves)) != len(serves):
+        raise GoalSetInvalid("serves", f"each expected result once: {list(serves)}")
+    _serves_known(serves, goal_set, "serves")
+    item = BacklogItem(
+        id=candidate.id,
+        title=candidate.title,
+        serves=tuple(serves),
+        description=candidate.description,
     )
-    _serves_known(item.serves, goal_set, "serves")
     backlog = list(goal_set.backlog)
     backlog.insert(at - 1, item)
     candidates = tuple(c for c in goal_set.candidates if c.id != candidate_id)

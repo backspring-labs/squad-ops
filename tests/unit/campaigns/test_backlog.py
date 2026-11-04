@@ -23,7 +23,7 @@ from squadops.campaigns.models import (
     LaunchIntent,
     LaunchIntentState,
 )
-from squadops.projects.goal_set import GoalSetRevision, parse_goal_set
+from squadops.projects.goal_set import Change, ChangeKind, GoalSetRevision, parse_goal_set
 from tests.fixtures.goal_set import goal_set_document
 
 T0 = datetime(2026, 11, 3, 9, 0, tzinfo=UTC)
@@ -338,6 +338,53 @@ def test_a_later_revision_reads_against_what_the_campaign_did(history, r2, b1, n
 
     assert _statuses(view)["B-1"] == b1
     assert view.next_item is not None and view.next_item.item_id == next_item
+
+
+def _split_b1() -> dict:
+    """r2: B-1 split into B-1a and B-1b, which take its place (§5.5a)."""
+    doc = _document()
+    doc["backlog"][0:1] = [
+        {"id": "B-1a", "title": "Record a session's book", "serves": ["ER-log"]},
+        {"id": "B-1b", "title": "Record its minutes", "serves": ["ER-log"]},
+    ]
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("r2", "change", "split_into"),
+    [
+        (_split_b1(), Change(ChangeKind.ITEM_SPLIT, "B-1", split_into=("B-1a", "B-1b")), ("B-1a", "B-1b")),
+        (_without("B-1"), None, ()),
+    ],
+    ids=["split", "removed by the owner"],
+)  # fmt: skip
+def test_a_split_parent_reads_removed_naming_its_parts_which_take_its_place(r2, change, split_into):
+    """§5.5a (slice 3, #2886): a proposal named B-1, was returned for a split, and r2 split it.
+    Bugs caught: the parent not listed, so the proposal that named it reads as naming nothing;
+    the parts not ``pending`` at the parent's position (appended, so B-2 is proposed next); a
+    plain removal reading as a split, or a split as a plain removal (``split_into`` taken from
+    any later revision rather than the one that dropped it)."""
+    log = _Log().submit("B-1", "c1").rule("returned_for_revision", "c1")
+    revisions = [_revision(1), GoalSetRevision(
+        project_id="prj-lantern", revision=2, goal_set=parse_goal_set(r2), author="owner",
+        reason="r2", created_at=T0, change=change,
+    )]  # fmt: skip
+
+    view = backlog_view(revisions, 2, log.rows, log.launches)
+
+    parent = next(i for i in view.items if i.item_id == "B-1")
+    assert (parent.status, parent.position, parent.removed_in, parent.split_into) == (
+        ItemStatus.REMOVED,
+        None,
+        2,
+        split_into,
+    )
+    placed = [(i.item_id, i.status.value, i.position) for i in view.items if i.position]
+    if split_into:
+        assert placed[:2] == [("B-1a", "pending", 1), ("B-1b", "pending", 2)]
+        assert view.next_item is not None and view.next_item.item_id == "B-1a"
+    else:
+        assert placed[0] == ("B-2", "pending", 1)
 
 
 def test_an_item_removed_mid_increment_keeps_building_and_is_accepted_as_it_stood():
