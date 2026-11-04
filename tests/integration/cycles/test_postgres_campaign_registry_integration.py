@@ -820,6 +820,37 @@ async def test_a_review_push_is_recorded_on_a_completed_campaign(campaigns):
     assert (await campaigns.control_log(CID))[-1].binding["commit"] == "a" * 40
 
 
+async def test_a_closing_row_derives_its_contribution_in_its_own_transaction(campaigns):
+    """§24dc: the registry reads the log and intents under the campaign's lock, and the derivation
+    is outside the request's hash. Bugs caught: the Postgres path reading nothing, or a column the
+    row mapper doesn't name, so an abort fails; an abort retried conflicting with its own row."""
+    launched = await campaigns.transition(CID, _launching("k-launch"))
+    await campaigns.mark_launch_intent_launched(
+        launched.intent.launch_id, "cyc_it0000000001", actor="launcher"
+    )
+    await campaigns.transition(
+        CID,
+        move(
+            S.AT_PROPOSAL, "k-promote", operation=ControlOperation.PROMOTE,
+            accepted=AcceptedTree("sha-cccc", "cyc_it0000000001", commit="c" * 40),
+            binding={"cycle_id": "cyc_it0000000001", "commit": "c" * 40},
+        ),
+    )  # fmt: skip
+    close = move(
+        S.COMPLETED, "k-close", operation=ControlOperation.ABORT,
+        outcome=CampaignOutcome.ABORTED, repository_backed=True,
+    )  # fmt: skip
+
+    closed = await campaigns.transition(CID, close)
+    replayed = await campaigns.transition(CID, close)
+
+    assert closed.entry.binding["contribution"] == {
+        "due": True,
+        "accepted": ["cyc_it0000000001"],
+    }
+    assert replayed.replayed is True
+
+
 async def test_a_failed_contribution_is_recorded_on_a_completed_campaign(campaigns):
     """§24dc, migration 2004: ``contribution_failed`` is in the schema, and as a record it is
     accepted on a completed campaign, since the contribution is opened after the close. Bug
