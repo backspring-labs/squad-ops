@@ -6,7 +6,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
-- **A Project's goal set** (SIP-0115 slice 1, #2884, PR #TBD): the goal, expected results with where each is
+- **A Project's goal set** (SIP-0115 slice 1, #2884, PR #2899): the goal, expected results with where each is
   observed, constraints, out of scope, the ordered backlog and candidates, written as immutable numbered revisions
   with author, reason and `source_ref`. `/api/v1/projects/{id}/goal-set` reads the active revision, `/revisions`
   the history and one by number, and `POST /revisions` writes the next against an expected revision (409 when

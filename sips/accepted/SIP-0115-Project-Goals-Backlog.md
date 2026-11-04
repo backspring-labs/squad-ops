@@ -63,7 +63,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 
 | part | status | where |
 |---|---|---|
-| slice 1: the goal-set record, its revisions, the API and the CLI (as built: §10a) | **shipped** | 2.6.0, PR #TBD, closes #2884 |
+| slice 1: the goal-set record, its revisions, the API and the CLI (as built: §10a) | **shipped** | 2.6.0, PR #2899, closes #2884 |
 | slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2885 |
 | slice 3: candidates, their promotion and drop | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2886 |
 | slice 4: the console's goals panel | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2887 |
