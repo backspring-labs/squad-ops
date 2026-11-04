@@ -122,7 +122,9 @@ def _cycle(
     )
 
 
-async def _prepared(cycle: Cycle, clones, projects: _Projects, vault=None):
+async def _prepared(
+    cycle: Cycle, clones, projects: _Projects, vault=None, *, goal_sets=None, campaigns=None
+):
     """``RunProvisioning.prepare`` for the cycle's proposal run, as ``execute_run`` calls it."""
     from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
     from squadops.execution.run_provisioning import RunInProgress
@@ -131,9 +133,9 @@ async def _prepared(cycle: Cycle, clones, projects: _Projects, vault=None):
     executor = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(), artifact_vault=vault or _EmptyVault(), queue=AsyncMock(),
         squad_profile=AsyncMock(), task_timeout=5.0, project_registry=projects,
-        campaign_registry=None, campaign_progress=None, box_verdict=None,
+        campaign_registry=campaigns, campaign_progress=None, box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(), proposal_evidence=NoOpProposalEvidence(),
-        source_repository=clones,
+        source_repository=clones, goal_set_registry=goal_sets,
     )  # fmt: skip
     executor._cycle_event_bus = MagicMock()
     run = Run("run_prop", cycle.cycle_id, 1, "queued", "system", "cfg", workload_type="proposal")
@@ -300,3 +302,119 @@ async def test_a_proposal_on_a_head_past_the_record_reads_it_and_its_verificatio
     ]
     assert given["requirements"]["ref"] == f"repo:file:README.md@{head}"
     assert given["requirements"]["content"].endswith("The report ends in a total.\n")
+
+
+# --- SIP-0115 §5.2: a goal-set Campaign's proposal is given its goal set (SIP-0109 §24cy) ---
+
+
+class _Campaigns:
+    """The campaign registry's reads the goal set's composition makes: the campaign, and its
+    control log and launch outbox (``tests/unit/campaigns/test_backlog.py``'s rows)."""
+
+    def __init__(self, project_id: str, revision, log) -> None:
+        from squadops.campaigns.models import CampaignGoals, CampaignObjective
+        from tests.unit.campaigns.builders import campaign
+
+        self.campaign = campaign(
+            "cmp_tally00001",
+            project_id=project_id,
+            objective=CampaignObjective(
+                statement="s", allowed_scope=("tally/**",), measurement="m",
+                target_accepted_increments=3, work_class=None,
+                goals=CampaignGoals(goal_set=project_id, revision=revision),
+            ),
+        )  # fmt: skip
+        self.log = log
+
+    async def get_campaign(self, campaign_id):
+        return self.campaign
+
+    async def control_log(self, campaign_id):
+        return self.log.rows
+
+    async def launch_intents(self, campaign_id):
+        return self.log.launches
+
+
+def _goals_cycle(repo) -> Cycle:
+    cycle = _cycle(repo)
+    block = cycle.execution_overrides["campaign_proposal"]
+    objective = {k: v for k, v in block["objective"].items() if k != "requirements"}
+    objective["goals"] = {"goal_set": cycle.project_id, "revision": "current"}
+    overrides = {"campaign_proposal": {**block, "objective": objective}}
+    return dataclasses.replace(cycle, execution_overrides=overrides)
+
+
+@pytest.mark.parametrize(("revision", "read"), [("current", 2), (1, 1)])
+async def test_a_goal_set_proposal_is_given_its_goal_set_at_the_revision_it_binds(
+    tmp_path, revision, read
+):
+    """Wiring (anti-pattern 6a), entered at ``RunProvisioning.prepare`` as ``execute_run`` calls
+    it. Bugs caught: the goal set never composed on the live path, so the proposer is shown
+    nothing to serve; a ``current`` Campaign read at its first revision, or a pinned one at the
+    latest (§5.5); each item's status not this Campaign's (an accepted item offered again); the
+    next item not the first pending one, with the abandoned item skipped (§5.3)."""
+    from tests.fixtures.goal_set import GoalSetStore, backlog_document
+    from tests.unit.campaigns.test_backlog import _Log
+
+    repo, clones = await _clone(tmp_path)
+    cycle = _goals_cycle(repo)
+    store = GoalSetStore()
+    store.write(cycle.project_id, backlog_document("B-1", "B-2", "B-3"))
+    store.write(cycle.project_id, backlog_document("B-1", "B-2", "B-3", "B-4"))
+    log = _Log().submit("B-1", "c1").rule("approved", "c1").promote("c1")
+    log.submit("B-2", "c2").rule("approved", "c2")
+    log.decide("c2", 13, action="abandon_and_propose", ending="assessed", verdict="rejected")
+    campaigns = _Campaigns(cycle.project_id, revision, log)
+
+    plan = await _prepared(cycle, clones, _Projects(), goal_sets=store, campaigns=campaigns)
+
+    [given] = [e.inputs[PRODUCT_PROPOSAL_INPUT] for e in plan if PRODUCT_PROPOSAL_INPUT in e.inputs]
+    assert "requirements" not in given
+    goals = given["goals"]
+    assert (goals["revision"], goals["next_item"]) == (read, "B-3")
+    assert [(i["id"], i["status"]) for i in goals["backlog"]] == [
+        ("B-1", "accepted"),
+        ("B-2", "abandoned"),
+        ("B-3", "pending"),
+        *([("B-4", "pending")] if read == 2 else []),
+    ]
+    assert goals["backlog"][1]["reason"].startswith("§10 row 13")
+    assert goals["goal"] == "A reader keeps a log of reading sessions and sees their weekly total"
+
+
+@pytest.mark.parametrize(
+    ("setup", "why"),
+    [
+        ("no goal set", "the campaign's goal set can't be read"),
+        ("nothing pending", "has no pending item"),
+        ("no store", "reads no goal-set store"),
+    ],
+)
+async def test_a_goal_set_proposal_with_nothing_to_serve_fails_its_run_naming_why(
+    tmp_path, setup, why
+):
+    """The rule for every proposal input (§10t ruling 6): a failed read raises, and the campaign
+    proposes again under §24bn's bound. Bug caught: a proposal launched with no goal set, or with
+    every item accepted, which can only fail the one-item rail at every attempt."""
+    from squadops.execution.execution_errors import _ExecutionError
+    from tests.fixtures.goal_set import GoalSetStore, backlog_document
+    from tests.unit.campaigns.test_backlog import _Log
+
+    repo, clones = await _clone(tmp_path)
+    cycle = _goals_cycle(repo)
+    store = GoalSetStore()
+    log = _Log()
+    if setup == "nothing pending":
+        store.write(cycle.project_id, backlog_document("B-1"))
+        log.submit("B-1", "c1").rule("approved", "c1").promote("c1")
+    campaigns = _Campaigns(cycle.project_id, "current", log)
+
+    with pytest.raises(_ExecutionError, match=why):
+        await _prepared(
+            cycle,
+            clones,
+            _Projects(),
+            goal_sets=None if setup == "no store" else store,
+            campaigns=campaigns,
+        )

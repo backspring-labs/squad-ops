@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_product_increment
-version: "2"
+version: "3"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -9,8 +9,9 @@ required_variables:
   - head_commit
   - product_profile_section
   - previous_verification_section
-  - requirements_section
 optional_variables:
+  - requirements_section
+  - goal_set_section
   - product_tree_section
   - approved_manifest_section
   - frozen_conventions_section
@@ -52,7 +53,7 @@ criterion the product already meets cannot be proven, and the proposal is return
 fails only because it imports something your change adds does not count as failing: assert the
 behaviour where a caller reaches it.
 
-{{requirements_section}}
+{{requirements_section}}{{goal_set_section}}
 
 {{product_profile_section}}
 

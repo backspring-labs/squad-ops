@@ -106,6 +106,14 @@ async def world() -> _World:
     await w.campaigns.create_campaign(
         campaign(CID), actor="owner", actor_role="owner", reason="r", idempotency_key="create"
     )
+    await at_the_gate(w)
+    return w
+
+
+async def at_the_gate(w: _World, backlog: dict | None = None) -> None:
+    """The created campaign calibrated and its proposal submitted from ``run_prop``, its cycle and
+    run recorded. ``backlog``: the item and revision a goal-set Campaign's submission records
+    (SIP-0115 §5.5a)."""
     await w.campaigns.transition(CID, move(CampaignState.CALIBRATING, "cal"))
     await w.campaigns.transition(
         CID,
@@ -122,6 +130,7 @@ async def world() -> _World:
         submission(
             CampaignState.AT_PROPOSAL,
             SubmittedProposal(ProposalBinding(**BINDING), "cyc_inc", "run_prop"),
+            backlog,
         ),
     )
     await w.cycles.create_cycle(
@@ -150,7 +159,6 @@ async def world() -> _World:
             workload_type="proposal",
         )
     )
-    return w
 
 
 @pytest.mark.parametrize(

@@ -46,3 +46,50 @@ def goal_set_document() -> dict:
             }
         ],
     }
+
+
+def backlog_document(*item_ids: str) -> dict:
+    """The invented goal set with its backlog's items ``item_ids``, in that order, each serving
+    the weekly total. No candidate: a candidate's id may not be an item's."""
+    doc = goal_set_document()
+    doc["backlog"] = [{"id": i, "title": f"Item {i}", "serves": ["ER-week"]} for i in item_ids]
+    doc["candidates"] = []
+    return doc
+
+
+class GoalSetStore:
+    """A goal-set store holding revisions as written (``GoalSetRegistryPort``'s reads), for the
+    tests that read a Campaign's backlog. ``write`` appends the next revision of ``doc``."""
+
+    def __init__(self) -> None:
+        self.revisions: dict[str, list] = {}
+
+    def write(self, project_id: str, doc: dict) -> int:
+        from datetime import UTC, datetime
+
+        from squadops.projects.goal_set import GoalSetRevision, parse_goal_set
+
+        held = self.revisions.setdefault(project_id, [])
+        held.append(
+            GoalSetRevision(
+                project_id=project_id,
+                revision=len(held) + 1,
+                goal_set=parse_goal_set(doc),
+                author="owner",
+                reason=f"revision {len(held) + 1}",
+                created_at=datetime(2026, 11, 3, 9, 0, tzinfo=UTC),
+            )
+        )
+        return len(held)
+
+    async def get_revision(self, project_id: str, revision: int | None = None):
+        from squadops.cycles.models import GoalSetNotFoundError
+
+        held = self.revisions.get(project_id) or []
+        found = held[-1:] if revision is None else [r for r in held if r.revision == revision]
+        if not found:
+            raise GoalSetNotFoundError(f"{project_id} r{revision}")
+        return found[0]
+
+    async def list_revisions(self, project_id: str):
+        return list(reversed(self.revisions.get(project_id) or []))

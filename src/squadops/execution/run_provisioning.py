@@ -72,10 +72,12 @@ class RunProvisioning:
     BORROWED = (
         "_artifact_vault",
         "_binding_holds",
+        "_campaign_registry",
         "_cycle_event_bus",
         "_cycle_registry",
         "_derived_profile_for",
         "_failure_recall",
+        "_goal_set_registry",
         "_load_contract_for_run",
         "_load_interface_manifest_for_run",
         "_load_plan_for_run",
@@ -211,6 +213,9 @@ class RunProvisioning:
             repository=self._source_repository,
             vault=self._artifact_vault,
             projects=self._project_registry,
+            # SIP-0115 §5.2: a goal-set Campaign's goal set and its backlog, as it stands on it.
+            goal_sets=self._goal_set_registry,
+            campaigns=self._campaign_registry,
         )
         # SIP-0112 H.8: a source-backed plan's authors are shown where a blocking gap stops the
         # work, before either plan gate refuses a plan that goes there.

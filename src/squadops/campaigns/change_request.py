@@ -206,6 +206,13 @@ class ChangeRequest:
     #: §24bv point 5: each criterion's test file on a campaign branch, placed by the framework.
     #: Empty on a sample application, whose stack places it (``scaffold.criterion_test_path``).
     criterion_files: tuple[PlacedCriterionFile, ...] = ()
+    #: SIP-0115 §5.3 (SIP-0109 §24cy), on a goal-set Campaign only: the backlog item the increment
+    #: serves, authored. Left out of the document and its hash when empty, as ``moves_goals``.
+    backlog_item: str = ""
+    #: SIP-0115 §5.5a: the goal-set revision the proposal was created under. Derived (written by
+    #: the rails from the input the proposal read, never authored), and hashed, so a ruling binds
+    #: to it: the increment is judged against the item as that revision states it.
+    goals_revision: int | None = None
     content_hash: str = ""
 
 
@@ -247,6 +254,10 @@ class RefusalKind(StrEnum):
     #: already carries, a pinned route's in the approved manifest or another added page's. A page
     #: the build never made could show it: the app's fallback renders that other view there.
     ANCHOR_NOT_UNIQUE = "anchor_not_unique"
+    #: SIP-0115 §5.3 (SIP-0109 §24cy): a goal-set Campaign's proposal names no backlog item, or
+    #: any but the next eligible one (the first pending in the order; an abandoned one is skipped).
+    #: Also a ``backlog_item`` on a Campaign that names no goal set. One item per increment.
+    NOT_THE_NEXT_ITEM = "not_the_next_backlog_item"
 
 
 @dataclass(frozen=True)
@@ -286,6 +297,7 @@ _DERIVED_FIELDS = (
     "baseline_tree",
     "basis",
     "criterion_files",
+    "goals_revision",
 )
 
 
@@ -342,6 +354,7 @@ def parse_change_request(
             retires=_retirements(authored.get("retires")),
             replaces_verifiers=_retirements(authored.get("replaces_verifiers")),
             moves_goals=_goal_ids(authored.get("moves_goals")),
+            backlog_item=_backlog_item(authored.get("backlog_item")),
             basis=basis,
             footprint=() if basis.has_manifest else _paths(authored.get("footprint"), "footprint"),
         )
@@ -442,13 +455,14 @@ def role_view(document: str) -> str:
 
 def _authored_fields(payload: dict) -> dict:
     """``payload`` without what a request before them never carried, when it is empty: absent, as
-    in every request before §4.5 (``moves_goals``) and §24bv point 5 (``basis``,
-    ``criterion_files``, a criterion's ``paths``). So every stored request keeps its document and
-    its hash."""
+    in every request before §4.5 (``moves_goals``), §24bv point 5 (``basis``,
+    ``criterion_files``, a criterion's ``paths``) and §24cy (``backlog_item``,
+    ``goals_revision``). So every stored request keeps its document and its hash."""
     out = {
         k: v
         for k, v in payload.items()
-        if not (k in ("moves_goals", "criterion_files") and not v)
+        if not (k in ("moves_goals", "criterion_files", "backlog_item") and not v)
+        and not (k == "goals_revision" and v is None)
         and not (k == "basis" and v == IncrementBasis.MANIFEST)
     }
     if "criteria" in out:
@@ -505,10 +519,12 @@ def load_stored_change_request(document: str) -> ChangeRequest:
     except (KeyError, TypeError) as e:
         raise ChangeRequestError(f"the stored change request has no {e}") from e
     stored_hash = str(data.get("content_hash") or "")
+    revision = data.get("goals_revision")
     restored = dataclasses.replace(
         request,
         footprint=() if basis.has_manifest else _paths(data.get("footprint"), "footprint"),
         criterion_files=placed,
+        goals_revision=int(revision) if revision is not None else None,
     )
     # §24cj: the placement is checked whole before the hash, so a stored placement that disagrees
     # with its own criteria is refused by name, whatever hash it carries.
@@ -557,6 +573,18 @@ def _text(raw: Any, key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ChangeRequestError(f"{key} is required text")
     return value
+
+
+def _backlog_item(raw: Any) -> str:
+    """``backlog_item``: one item's id, as the backlog shows it, or ``""`` when not named."""
+    if raw is None:
+        return ""
+    if not isinstance(raw, str) or not raw.strip():
+        raise ChangeRequestError(
+            "backlog_item is the id of the one backlog item the increment serves, as the "
+            "backlog shows it"
+        )
+    return raw.strip()
 
 
 def _goal_ids(raw: Any) -> tuple[str, ...]:
@@ -756,6 +784,21 @@ class ProposalContext:
     #: §24bv point 5: a repository-backed Project's proposal reads its derived profile in place of
     #: a manifest. ``None`` on a sample application.
     product: ProductContext | None = None
+    #: SIP-0115 §5.3 (§24cy): a goal-set Campaign's backlog, as its proposal was shown it. ``None``
+    #: on every other Campaign.
+    backlog: BacklogRail | None = None
+
+
+@dataclass(frozen=True)
+class BacklogRail:
+    """What the one-item rail reads of a goal-set Campaign's backlog (SIP-0115 §5.3): the
+    revision the proposal read, the next eligible item, and each item's status there."""
+
+    revision: int
+    #: The first pending item of the revision's order; ``None`` when none is pending.
+    next_item: str | None
+    #: Each item's id and its status label, in the order shown.
+    statuses: tuple[tuple[str, str], ...] = ()
 
 
 #: §24bv point 5: the proposal task's input on a repository-backed Project, composed at its run
@@ -853,6 +896,7 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
         + _undefined_key_refusals(request)
         + _goal_refusals(request, context)
         + _goal_copy_refusals(request, context)
+        + _backlog_refusals(request, context)
     )
     try:
         candidate = apply_manifest_delta(context.baseline_manifest, request.manifest_delta)
@@ -946,6 +990,7 @@ def _validate_product_proposal(
         _criteria_refusals(request, context)
         + _goal_refusals(request, context)
         + _goal_copy_refusals(request, context)
+        + _backlog_refusals(request, context)
     )
     if request.manifest_delta:
         refusals.append(
@@ -1005,6 +1050,8 @@ def _validate_product_proposal(
         request,
         footprint=(*footprint, *(f.path for f in placed if f.path not in footprint)),
         criterion_files=tuple(placed),
+        # SIP-0115 §5.5a: bound to the revision it was created under, recorded with it.
+        goals_revision=context.backlog.revision if context.backlog is not None else None,
     )
     return ProposalVerdict(dataclasses.replace(final, content_hash=content_hash(final)), ())
 
@@ -1245,6 +1292,48 @@ def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list
             )
         )
     return refusals
+
+
+def _backlog_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:
+    """SIP-0115 §5.3 (§24cy): on a goal-set Campaign, the request names the next eligible backlog
+    item, the first pending in the order, and only it; one item per increment. A request naming an
+    item on a Campaign with no goal set names something nothing reads, and is refused too."""
+    rail = context.backlog
+    named = request.backlog_item
+    if rail is None:
+        if not named:
+            return []
+        return [
+            ProposalRefusal(
+                RefusalKind.NOT_THE_NEXT_ITEM,
+                f"backlog_item {named!r}: this Campaign works from no goal set, so there is no "
+                "backlog to serve. Leave backlog_item out",
+            )
+        ]
+    if rail.next_item is None:
+        return [
+            ProposalRefusal(
+                RefusalKind.NOT_THE_NEXT_ITEM,
+                f"no backlog item is pending in goal-set revision {rail.revision}, so there is "
+                "nothing for an increment to serve",
+            )
+        ]
+    if named == rail.next_item:
+        return []
+    statuses = dict(rail.statuses)
+    if not named:
+        why = "names no backlog item"
+    elif named not in statuses:
+        why = f"names backlog_item {named!r}, which the backlog doesn't hold"
+    else:
+        why = f"names backlog_item {named!r}, which is {statuses[named]}"
+    return [
+        ProposalRefusal(
+            RefusalKind.NOT_THE_NEXT_ITEM,
+            f"this proposal {why}. Each increment serves the next item, and only it: "
+            f"backlog_item: {rail.next_item}",
+        )
+    ]
 
 
 def _goal_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:

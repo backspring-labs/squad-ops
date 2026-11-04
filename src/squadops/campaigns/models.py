@@ -377,6 +377,59 @@ def parse_requirements_source(text: str) -> RequirementsSource:
     )
 
 
+#: SIP-0115 §5.5: a Campaign that reads its goal set's latest revision at each proposal and each
+#: continuation decision, rather than one revision for its life.
+GOALS_CURRENT = "current"
+
+
+@dataclass(frozen=True)
+class CampaignGoals:
+    """``objective.goals`` (SIP-0115 §5.1; SIP-0109 §24cy): the goal set a repository-backed
+    Campaign works through, one backlog item per increment, in place of a requirements source.
+
+    ``goal_set`` names the Project whose goal set it is. A Project has one (Q44), so it is the
+    Project's id, required and checked against the Campaign's at creation: a definition copied
+    to another Project is refused rather than read against that Project's goals. ``revision`` is
+    a revision number, pinned for the Campaign's life, or ``current``: the latest at each read
+    (§5.5)."""
+
+    goal_set: str
+    revision: int | str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.goal_set, str) or not self.goal_set.strip():
+            raise ValueError(
+                "objective.goals.goal_set is required: the Project whose goal set it is"
+            )
+        revision = self.revision
+        if revision == GOALS_CURRENT:
+            return
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+            raise ValueError(
+                f"objective.goals.revision is a revision number (1 or more), or "
+                f"{GOALS_CURRENT!r} for the latest at each read, not {revision!r}"
+            )
+
+    @property
+    def pinned(self) -> int | None:
+        """The revision pinned for the Campaign's life, or ``None`` when it reads the latest."""
+        return None if self.revision == GOALS_CURRENT else int(self.revision)
+
+    @classmethod
+    def from_stored(cls, stored: Mapping[str, Any] | None) -> CampaignGoals | None:
+        return cls(**stored) if stored else None
+
+
+class StopWhen:
+    """What else stops a Campaign in success at §10 row 3, beside ``target_accepted_increments``
+    (SIP-0115 §5.6). Constants, not an enum, as ``PrdTier``'s are."""
+
+    #: Every item of the goal set's revision, read at the decision, is accepted in this Campaign
+    #: or removed (SIP-0115 §5.5a).
+    BACKLOG_DONE = "backlog_done"
+    ALL = frozenset({BACKLOG_DONE})
+
+
 @dataclass(frozen=True)
 class CampaignObjective:
     """What the campaign is for (§15): the statement, the scope it may touch, how success reads.
@@ -399,11 +452,33 @@ class CampaignObjective:
     #: head, or a stored artifact's id. Required at creation for one, refused for a sample
     #: application (``requirements_source_refusal``); ``None`` on every other campaign.
     requirements: str | None = None
+    #: SIP-0115 §5.1 (§24cy): a repository-backed Project's goal set, named in place of its
+    #: requirements source, never beside it. ``None`` on every other campaign.
+    goals: CampaignGoals | None = None
+    #: SIP-0115 §5.6 (§24cy): ``backlog_done``, read at §10 row 3 beside the target. Only with
+    #: ``goals``.
+    stop_when: str | None = None
 
     def __post_init__(self) -> None:
         _require_text("CampaignObjective", statement=self.statement, measurement=self.measurement)
         if self.requirements is not None:
             parse_requirements_source(self.requirements)
+        if self.requirements is not None and self.goals is not None:
+            raise ValueError(
+                "objective names goals or requirements, never both: the goal set is the "
+                "Campaign's requirements (SIP-0115 §5.1)"
+            )
+        if self.stop_when is not None:
+            if self.stop_when not in StopWhen.ALL:
+                raise ValueError(
+                    f"objective.stop_when must be one of {sorted(StopWhen.ALL)}, "
+                    f"got {self.stop_when!r}"
+                )
+            if self.goals is None:
+                raise ValueError(
+                    f"objective.stop_when {self.stop_when!r} reads a goal set's backlog, and the "
+                    "objective names no goals"
+                )
         target = self.target_accepted_increments
         if target is not None and (isinstance(target, bool) or not isinstance(target, int)):
             raise ValueError(

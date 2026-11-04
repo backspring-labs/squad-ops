@@ -22,11 +22,12 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from squadops.auth.models import Role
 from squadops.campaigns import binding_hold
 from squadops.campaigns.acceptance import DiscriminationReason, Held
+from squadops.campaigns.backlog import campaign_backlog
 from squadops.campaigns.calibration_record import (
     RECORDED_ENDING,
     CalibrationRecord,
@@ -88,6 +89,7 @@ from squadops.campaigns.models import (
     LaunchIntentState,
     LaunchRequest,
     PlanGate,
+    StopWhen,
     TransitionResult,
 )
 from squadops.campaigns.prior_cycle import evaluation_findings, prior_cycle_brief
@@ -115,6 +117,7 @@ from squadops.cycles.models import (
     Cycle,
     GateDecision,
     GateDecisionValue,
+    GoalSetNotFoundError,
     IllegalStateTransitionError,
     Run,
     RunStatus,
@@ -122,6 +125,9 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_integrity import RunVerdict
+
+if TYPE_CHECKING:
+    from squadops.ports.projects.goal_sets import GoalSetRegistryPort
 
 logger = logging.getLogger(__name__)
 
@@ -225,10 +231,14 @@ def decision_transition(
     launch: LaunchRequest | None,
     unbuilt: str | None = None,
     promotion_refused: str | None = None,
+    goals_revision: int | None = None,
 ) -> CampaignTransition:
     """The decision's one control-log row (§10). Its binding records the decision whole — the
     row, the ending and verdict it read, and the outcome or the action with its guard — so the
     counters of later decisions are read back from it.
+
+    ``goals_revision`` is the goal-set revision a ``stop_when: backlog_done`` decision read
+    (SIP-0115 §5.5a): only a row that read one carries the key.
 
     - a terminal outcome completes the campaign;
     - ``escalate`` moves it to ``escalated``, waiting for the owner;
@@ -249,6 +259,8 @@ def decision_transition(
     }
     if promotion_refused is not None:
         binding["promotion_refused"] = promotion_refused
+    if goals_revision is not None:
+        binding["goals_revision"] = goals_revision
     decided, next_state, outcome = _decided(decision, unbuilt)
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
@@ -627,6 +639,10 @@ class CampaignProgress:
         #: where no project registry and managed clone are wired: a repository-backed increment's
         #: promotion is then refused, and the campaign escalates naming it.
         campaign_branch: CampaignBranch | None,
+        #: SIP-0115 §5.5a, §5.6: the goal sets a goal-set Campaign's decisions read
+        #: (``stop_when: backlog_done``) and its proposals are launched against. ``None`` where
+        #: none is wired: such a Campaign's decision raises, and the re-hearing retries it.
+        goal_sets: GoalSetRegistryPort | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -646,6 +662,7 @@ class CampaignProgress:
         # SIP-0113 §4.3, §4.6 (#2418): the package's intervention ledger, which AOR reads.
         self._intervention_section = intervention_section
         self._campaign_branch = campaign_branch
+        self._goal_sets = goal_sets
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -730,6 +747,7 @@ class CampaignProgress:
         campaign, not_promoted = promoted
 
         launched = await self._launched_cycles(campaign)
+        objective_met, goals_revision = await self._objective_met(campaign)
         decision = campaign_continuation_decision(
             campaign,
             derive_counters(
@@ -738,7 +756,7 @@ class CampaignProgress:
                 launched,
                 ending=ending,
                 now=self._clock(),
-                objective_met=await self._objective_met(campaign),
+                objective_met=objective_met,
             ),
             ended,
             latest,
@@ -764,6 +782,7 @@ class CampaignProgress:
                     launch=launch,
                     unbuilt=unbuilt,
                     promotion_refused=not_promoted,
+                    goals_revision=goals_revision,
                 ),
             )
         except ControlOperationRefused as refused:
@@ -862,7 +881,10 @@ class CampaignProgress:
         if not_promoted is not None:
             return None, f"cycle {cycle.cycle_id} was accepted and not promoted: {not_promoted}"
         assert action is not None
-        built = await self._launch_for(campaign, action, cycle, latest)
+        # §24cy item 7: a goal-set Campaign's eligibility is read with this decision applied.
+        built = await self._launch_for(
+            campaign, action, cycle, latest, pending=(cycle.cycle_id, action.value)
+        )
         return (built, None) if isinstance(built, LaunchRequest) else (None, built)
 
     async def _outcome_evaluated(self, cycle: Cycle) -> None:
@@ -1417,7 +1439,12 @@ class CampaignProgress:
         :class:`CannotLaunch` for an action this campaign cannot execute."""
         if action not in OWNER_ACTIONS:
             raise CannotLaunch(f"{action} is not an action the owner's word executes")
-        built = await self._launch_for(campaign, action, await self._last_decided_cycle(campaign))
+        cycle = await self._last_decided_cycle(campaign)
+        # SIP-0115 §5.3 (§24cy item 7): the word's row isn't written yet, so a goal-set Campaign's
+        # eligibility is read with it applied: a ``propose`` returns the decided increment's item
+        # to pending, an ``abandon_and_propose`` reads it abandoned.
+        pending = (cycle.cycle_id, action.value) if cycle is not None else None
+        built = await self._launch_for(campaign, action, cycle, pending=pending)
         if isinstance(built, str):
             raise CannotLaunch(built)
         return CampaignTransition(
@@ -1731,10 +1758,14 @@ class CampaignProgress:
         action: PendingAction,
         cycle: Cycle | None,
         latest: CycleAssessment | None = None,
+        *,
+        pending: tuple[str, str] | None = None,
     ) -> LaunchRequest | str:
-        """The cycle a launch action writes (§10, §10a), or why it cannot be launched."""
+        """The cycle a launch action writes (§10, §10a), or why it cannot be launched.
+        ``pending`` is the row being prepared, ``(cycle_id, action)``, which a goal-set Campaign's
+        proposal reads its eligibility against (§24cy item 7)."""
         if action is PendingAction.PROPOSE:
-            return await self._propose_launch(campaign)
+            return await self._propose_launch(campaign, pending=pending)
         if action is PendingAction.ABANDON_AND_PROPOSE:
             # Rows 13 and 16 (#1692): the fresh proposal is shown why the increment it replaces
             # failed, and (#2315) which of its criteria the accepted application already meets.
@@ -1744,7 +1775,10 @@ class CampaignProgress:
                 if met:
                     abandoned = {**(abandoned or {"cycle_id": cycle.cycle_id}), "already_met": met}
             return await self._propose_launch(
-                campaign, abandoned, abandoned_cycle_id=cycle.cycle_id if cycle else None
+                campaign,
+                abandoned,
+                abandoned_cycle_id=cycle.cycle_id if cycle else None,
+                pending=pending,
             )
         kind = {PendingAction.RETRY: CycleKind.RETRY, PendingAction.REPAIR: CycleKind.REPAIR}.get(
             action
@@ -1756,12 +1790,18 @@ class CampaignProgress:
         return await self._bound_launch(campaign, cycle, kind, latest)
 
     async def proposal_after_rebase(
-        self, campaign: Campaign, continued_cycle_id: str | None
+        self,
+        campaign: Campaign,
+        continued_cycle_id: str | None,
+        superseding: str | None = None,
     ) -> LaunchRequest | str:
         """§24cd point 2: row 6's fresh proposal, on the head a rebase left ``campaign`` at, when
         the rebase superseded a repair or retry of ``continued_cycle_id``'s increment. The
         proposal is shown that increment's brief as row 13's is, marked ``upstream_moved``: the
-        squad's work didn't fail, the tree under it moved. Or why it can't be launched."""
+        squad's work didn't fail, the tree under it moved. Or why it can't be launched.
+
+        ``superseding`` is the launch the rebase supersedes, whose row isn't written yet: a
+        goal-set Campaign reads its item as ``upstream_moved`` leaves it, pending (§24cy item 7)."""
         abandoned: dict[str, Any] | None = None
         if continued_cycle_id is not None:
             cycle = await self._cycles.get_cycle(continued_cycle_id)
@@ -1770,7 +1810,7 @@ class CampaignProgress:
                 "abandoned_as": "upstream_moved",
             }
         return await self._propose_launch(
-            campaign, abandoned, abandoned_cycle_id=continued_cycle_id
+            campaign, abandoned, abandoned_cycle_id=continued_cycle_id, superseding=superseding
         )
 
     async def _bound_launch(
@@ -1969,12 +2009,25 @@ class CampaignProgress:
         campaign: Campaign,
         abandoned: dict[str, Any] | None = None,
         abandoned_cycle_id: str | None = None,
+        *,
+        pending: tuple[str, str] | None = None,
+        superseding: str | None = None,
     ) -> LaunchRequest | str:
         """The increment cycle a ``propose`` writes, from the accepted tree's manifest — or why
         it cannot be launched. ``abandoned``: the brief of the increment it replaces (row 13),
-        whose cycle ``abandoned_cycle_id`` is."""
+        whose cycle ``abandoned_cycle_id`` is. ``pending`` and ``superseding`` are the row being
+        prepared, which a goal-set Campaign's eligibility is read against (§24cy item 7)."""
         if campaign.accepted is None:
             return "the campaign has no accepted tree to propose against"
+        if campaign.objective.goals is not None:
+            # SIP-0115 §5.3: a goal-set Campaign proposes only while an item is pending. With
+            # none (each accepted or abandoned, and no ``backlog_done`` to stop it), the campaign
+            # escalates rather than launch a proposal the one-item rail can only refuse.
+            nothing = await self._nothing_pending(
+                campaign, pending=pending, superseding=superseding
+            )
+            if nothing is not None:
+                return nothing
         accepted_cycle = campaign.accepted.cycle_id
         if campaign.accepted.commit is not None:
             return await self._propose_on_branch(campaign, abandoned, abandoned_cycle_id)
@@ -2146,18 +2199,67 @@ class CampaignProgress:
         )
         return result.campaign
 
-    async def _objective_met(self, campaign: Campaign) -> bool:
+    async def _objective_met(self, campaign: Campaign) -> tuple[bool, int | None]:
         """§10 row 3's reading (§24ah): the increments accepted so far, this one counted, have
         reached the objective's target. Read from the PROMOTE rows of the campaign's increment,
         repair and retry cycles, after this cycle's own promotion has committed; the
         calibration's promotion is the baseline, not an increment. A campaign stored with no
-        target has no reader, and is never met."""
-        target = campaign.objective.target_accepted_increments
-        if target is None:
-            return False
+        target has no reader, and is never met by it.
+
+        **Or its backlog is done** (SIP-0115 §5.5a, §5.6; SIP-0109 §24cy), for a Campaign that
+        declares ``stop_when: backlog_done``: every item of the goal set's revision, read now (the
+        latest for ``current``), is accepted in this Campaign. It is read here, at the decision,
+        never mid-increment, so an item the owner added during the increment keeps the Campaign
+        going. Returns the reading and the revision it read (``None`` when none was read), which
+        the decision's row records."""
         intents = await self._campaigns.launch_intents(campaign.campaign_id)
         log = await self._campaigns.control_log(campaign.campaign_id)
-        return accepted_increments(log, intents) >= target
+        target = campaign.objective.target_accepted_increments
+        met = target is not None and accepted_increments(log, intents) >= target
+        if campaign.objective.stop_when != StopWhen.BACKLOG_DONE:
+            return met, None
+        if self._goal_sets is None:
+            raise RuntimeError(
+                f"campaign {campaign.campaign_id} stops when its backlog is done, and this runtime "
+                "reads no goal-set store"
+            )
+        view, _revisions = await campaign_backlog(
+            campaign, goal_sets=self._goal_sets, campaigns=self._campaigns
+        )
+        return met or view.done, view.revision
+
+    async def _nothing_pending(
+        self,
+        campaign: Campaign,
+        *,
+        pending: tuple[str, str] | None = None,
+        superseding: str | None = None,
+    ) -> str | None:
+        """Why a goal-set Campaign has nothing to propose (SIP-0115 §5.3), or ``None``. The backlog
+        is read with the row being prepared applied (``pending``, ``superseding``), since that row
+        commits only once the proposal is built (§24cy item 7)."""
+        if self._goal_sets is None:
+            return (
+                f"campaign {campaign.campaign_id} works from a goal set, and this runtime reads no "
+                "goal-set store"
+            )
+        try:
+            view, _revisions = await campaign_backlog(
+                campaign,
+                goal_sets=self._goal_sets,
+                campaigns=self._campaigns,
+                pending_word=pending,
+                superseding=superseding,
+            )
+        except (GoalSetNotFoundError, ValueError) as e:
+            return f"the campaign's goal set can't be read: {e}"
+        if view.next_item is not None:
+            return None
+        return (
+            f"goal-set revision {view.revision} has no pending backlog item: each is accepted or "
+            "abandoned. The owner revises the goal set (an abandoned item is re-queued by an "
+            "edit to it) or stops the campaign"
+        )
 
     async def _launched_cycles(self, campaign: Campaign) -> list[CycleRecord]:
         records = []

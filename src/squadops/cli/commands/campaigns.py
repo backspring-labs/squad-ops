@@ -239,6 +239,34 @@ def ledger(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
     print_table(["Proposal", "Ruling", "Decided (row)", "Cycles", "Classified"], rows, quiet=quiet)
 
 
+@app.command("backlog")
+def backlog(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
+    """A goal-set Campaign's backlog (SIP-0115 §4): each item's status, derived from its control
+    log at the revision it reads now, and the next item a proposal must name."""
+    data = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/backlog")
+    fmt, quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(data)
+        return
+    following = data["next_item"] or ("none: the backlog is done" if data["done"] else "none")
+    print_success(
+        f"{data['campaign_id']} reads revision {data['revision']} ({data['reads']}); "
+        f"next item: {following}"
+    )
+    rows = [
+        [
+            str(i["position"]) if i["position"] is not None else "—",
+            i["item_id"],
+            i["title"],
+            i["label"],
+            f"{i['proposal_id']} v{i['version']} (r{i['revision']})" if i["proposal_id"] else "—",
+            i.get("reason") or "—",
+        ]
+        for i in data["items"]
+    ]
+    print_table(["#", "Item", "Title", "Status", "Last proposal", "Why"], rows, quiet=quiet)
+
+
 @app.command("classify")
 def classify(
     ctx: typer.Context,

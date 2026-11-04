@@ -319,6 +319,7 @@ nothing merges at all; a fix voids the set (2.0 plan §4).
 ```bash
 squadops campaigns digest <campaign_id>     # what was accepted, how each cycle ended, what waits
 squadops campaigns ledger <campaign_id>     # each proposal version, its ruling and its outcome
+squadops campaigns backlog <campaign_id>    # a goal-set Campaign: each item's status, the next item
 ```
 
 **The evidence package** is materialized at close from records alone. Its identity is the hash of its

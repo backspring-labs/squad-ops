@@ -693,6 +693,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         campaign_branch=CampaignBranch(
             projects=project_registry, repository=state.source_repository
         ),
+        # SIP-0115 §5.5a: a goal-set Campaign's ``backlog_done`` and its next item read it.
+        goal_sets=state.goal_set_registry,
     )
 
     flow_executor = create_flow_executor(
@@ -744,6 +746,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
         # started from its declaration, by the same runner the cycle-end hook evaluates with.
         route_renderer=DeclaredStartRoutes(scenario_runner),
+        # SIP-0115 §5.2: a goal-set Campaign's proposal is shown its goal set and backlog.
+        goal_set_registry=state.goal_set_registry,
     )
 
     state.project_registry = project_registry

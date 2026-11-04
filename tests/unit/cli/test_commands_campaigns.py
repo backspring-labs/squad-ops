@@ -484,3 +484,52 @@ def test_push_review_without_its_own_token_sends_nothing(get_client):
     assert result.exit_code == 2
     assert "--token-from-gh" in result.output
     get_client.assert_not_called()
+
+
+def _backlog(**overrides) -> dict:
+    return {
+        "campaign_id": "cmp_1", "project_id": "prj-x", "revision": 3, "reads": "current",
+        "next_item": "B-2", "done": False,
+        "items": [
+            {"item_id": "B-1", "title": "Record", "serves": ["ER-1"], "status": "accepted",
+             "label": "accepted (removed in r3)", "position": None, "proposal_id": "prop_a",
+             "version": 2, "cycle_id": "cyc_a", "revision": 2, "row": None, "reason": None},
+            {"item_id": "B-2", "title": "Total", "serves": ["ER-2"], "status": "pending",
+             "label": "pending", "position": 1, "proposal_id": None, "version": None,
+             "cycle_id": None, "revision": None, "row": None, "reason": None},
+        ],
+    } | overrides  # fmt: skip
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_backlog_prints_each_item_its_label_and_the_next_item(get_client):
+    """SIP-0115 §4. Bugs caught: the derived label dropped for the bare status, so an item a
+    revision removed after its acceptance reads as plainly accepted; or the revision the proposal
+    was bound to left out of the row."""
+    get_client.return_value = _client(get=_backlog())
+
+    with patch("squadops.cli.commands.campaigns.print_table") as table:
+        result = runner.invoke(app, ["campaigns", "backlog", "cmp_1"])
+
+    assert result.exit_code == 0, result.output
+    assert "reads revision 3 (current); next item: B-2" in result.output
+    headers, rows = table.call_args.args
+    assert headers == ["#", "Item", "Title", "Status", "Last proposal", "Why"]
+    assert rows == [
+        ["—", "B-1", "Record", "accepted (removed in r3)", "prop_a v2 (r2)", "—"],
+        ["1", "B-2", "Total", "pending", "—", "—"],
+    ]
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_backlog_on_a_campaign_with_no_goal_set_exits_with_the_routes_error(get_client):
+    """The edge: the route's 404. Bug caught: the CLI printing an empty table, which reads as a
+    backlog with nothing left."""
+    client = _client()
+    client.get.side_effect = CLIError("campaign cmp_1 names no goal set", exit_codes.NOT_FOUND)
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "backlog", "cmp_1"])
+
+    assert result.exit_code == exit_codes.NOT_FOUND
+    assert "names no goal set" in result.output

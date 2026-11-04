@@ -25,6 +25,17 @@ class WorkClassDTO(BaseModel):
     attendance: Literal["attended", "unattended"]
 
 
+class CampaignGoalsDTO(BaseModel):
+    """SIP-0115 §5.1 (SIP-0109 §24cy): the goal set a repository-backed Campaign works through, in
+    place of a requirements source. ``goal_set`` is the Campaign's Project's id (a Project has
+    one, Q44); ``revision`` pins one revision for the Campaign's life, or reads ``current``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal_set: str
+    revision: int | Literal["current"]
+
+
 class CampaignObjectiveDTO(BaseModel):
     statement: str
     allowed_scope: list[str] = Field(default_factory=list)
@@ -39,6 +50,11 @@ class CampaignObjectiveDTO(BaseModel):
     #: ``repo:file:<path>@current`` or a stored artifact's id. Required at creation for one, and
     #: refused for a sample application.
     requirements: str | None = None
+    #: SIP-0115 §5.1: a repository-backed Project's goal set, named in place of ``requirements``
+    #: and never beside it.
+    goals: CampaignGoalsDTO | None = None
+    #: SIP-0115 §5.6: ``backlog_done``, read at §10 row 3 beside the target. Only with ``goals``.
+    stop_when: Literal["backlog_done"] | None = None
 
 
 class CampaignPolicyDTO(BaseModel):
@@ -248,6 +264,44 @@ class LedgerEntryResponse(BaseModel):
     classification: dict[str, Any] | None = None
     #: #2578 part 4: each cycle that carried the version, in launch order, with its deciding row.
     cycles: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class BacklogItemResponse(BaseModel):
+    """One goal-set backlog item as the Campaign stands on it (SIP-0115 §4), derived from its
+    control log, never stored."""
+
+    item_id: str
+    title: str
+    serves: list[str]
+    #: ``pending``, ``proposed``, ``in_increment``, ``accepted``, ``abandoned`` or ``removed``.
+    status: str
+    #: The status as SIP-0115 writes it: ``accepted (removed in r4)``, say.
+    label: str
+    #: Its place in the revision read's order, from 1; ``None`` when that revision dropped it.
+    position: int | None
+    proposal_id: str | None = None
+    version: int | None = None
+    cycle_id: str | None = None
+    #: The goal-set revision the proposal that last named it was created under.
+    revision: int | None = None
+    row: int | None = None
+    reason: str | None = None
+    removed_in: int | None = None
+    results_changed_in: int | None = None
+
+
+class BacklogResponse(BaseModel):
+    """A goal-set Campaign's backlog (SIP-0115 §4, §8.1; SIP-0109 §24cy): the revision it reads
+    now, each item's derived status, the next eligible item and whether the backlog is done."""
+
+    campaign_id: str
+    project_id: str
+    revision: int
+    #: ``current`` (the latest at each read) or ``pinned``.
+    reads: Literal["current", "pinned"]
+    next_item: str | None
+    done: bool
+    items: list[BacklogItemResponse]
 
 
 class PackageMaterializedResponse(BaseModel):

@@ -34,6 +34,8 @@ _UNWIRED = {
     "binding_fill": None,
     # SIP-0109 §24co: what renders a product's routes; ``None``, each one blocks.
     "route_renderer": None,
+    # SIP-0115 §5.2: where a goal-set Campaign's proposal reads its goal set; ``None``, nowhere.
+    "goal_set_registry": None,
 }
 _REQUIRED = (*_UNWIRED, "task_timeout")
 

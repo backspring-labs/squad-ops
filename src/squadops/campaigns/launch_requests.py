@@ -116,7 +116,7 @@ def increment_launch(
     (``basis: campaign_branch``), the one marker every increment seam reads, and carries no
     manifest and no accepted cycle: what its proposal reads of the product is composed at its run,
     at the head its cycle pins (``execution.product_proposal``). Its objective carries its
-    requirements source.
+    requirements source, or its goal set (SIP-0115 §5.1).
 
     Raises ``ValueError`` for a sample application's campaign whose accepted tree is no cycle's,
     or one given no manifest: every seam downstream reads ``accepted_cycle_id`` as the cycle the
@@ -155,6 +155,8 @@ def increment_launch(
         }
     )
     requirements = campaign.objective.requirements
+    # SIP-0115 §5.1: or its goal set, which the proposal's run reads at the revision it binds.
+    goals = campaign.objective.goals
     return LaunchRequest(
         CycleKind.INCREMENT,
         {
@@ -172,6 +174,11 @@ def increment_launch(
                             "allowed_scope": list(campaign.objective.allowed_scope),
                             "measurement": campaign.objective.measurement,
                             **({"requirements": requirements} if requirements else {}),
+                            **(
+                                {"goals": {"goal_set": goals.goal_set, "revision": goals.revision}}
+                                if goals
+                                else {}
+                            ),
                         },
                         "prior_criteria": [f["criterion_id"] for f in frozen],
                         "frozen_criteria": [dict(f) for f in frozen],

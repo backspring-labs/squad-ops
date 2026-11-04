@@ -153,6 +153,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
+| a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -5772,3 +5773,114 @@ Tests:
   `runner_placements` reads, refuse it and name the file.
 
 **Who ruled it.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2860.
+
+### 24cy. A Campaign on a goal set: `objective.goals`, the one-item rail, `goals_revised` at the ruling, and `stop_when: backlog_done` (2026-11-03, §7.2, §9.1, §9.2, §9.5, §10 row 3, §15, §24bv point 5, §24cj; SIP-0115 §5.1–§5.6, §10b; #2885; the implementer's design under the supervisor's brief, for the owner)
+
+**Why.** SIP-0115 makes a Project's goal set a source a Campaign's objective can name beside `objective.requirements`
+(its intake check: "the rails and rows it touches change by a numbered SIP-0109 amendment in the PR that builds
+them"). Slice 2 builds the Campaign's side. This section is what changes here; SIP-0115 §10b records what slice 2
+settles of its own text.
+
+**What changed.**
+1. **The definition (§15, §24bv point 5).** `CampaignObjective` takes two fields, each stored only when set, so every
+   campaign stored before keeps its creation hash:
+   - `goals: {goal_set, revision}`. `goal_set` is the Campaign's Project's id: a Project has one goal set (SIP-0115
+     Q44), so the field could be omitted. It is kept and checked, so a definition copied to another Project is refused
+     rather than read against that Project's goals, and a later shape with more than one goal set is additive.
+     `revision` is a number, pinned for the Campaign's life, or `current`.
+   - `stop_when: backlog_done`, refused without `goals`.
+
+   §24bv point 5's creation rule is extended. A repository-backed Campaign names `requirements` or `goals`, never
+   both, and never neither. A sample application's names neither. A Project with no goal set written, a pinned
+   revision it doesn't hold, and another Project's `goal_set` are each refused at creation (422), naming why.
+   `target_accepted_increments` stays required and is read as before.
+2. **The proposal's input (§9.1, §24cj item 3).** A goal-set Campaign's proposal is given `goals` in place of
+   `requirements`. It is composed at the proposal's run, as `requirements` is: the revision the Campaign binds (its
+   pinned one, or the latest for `current`), the goal, expected results, constraints, out of scope, and the backlog
+   with each item's status in this Campaign and why any was abandoned. The status is derived from this Campaign's
+   control log (`campaigns/backlog.py`), and the next item is named. The prompt is
+   `request.proposal_goal_set` and `request.proposal_next_backlog_item`. A revision run after a return reads the goal
+   set again. A goal set that can't be read, or a backlog with nothing pending, fails the run, as any unreadable input
+   does (§24bn bounds it).
+3. **The change request (§7.2).** It takes `backlog_item` (authored) and `goals_revision` (derived from the input the
+   proposal read, refused if authored). Each is stored only when set, and both are hashed, so a ruling binds to the
+   item and to the revision it was created under. The submission row records both (`gate.submission`), and the
+   derived backlog reads them back.
+4. **The one-item rail (§9.1).** `not_the_next_backlog_item` refuses, before a cycle is spent:
+   - a goal-set Campaign's request that names no item, or any item but the next eligible one. That is the first
+     `pending` item in the order; an `abandoned` one is skipped;
+   - a request on a Campaign with no goal set that names an item.
+
+   The refusal names the item to propose. It runs in the proposal task with the other rails, so the proposer revises
+   within `proposal_max_attempts`.
+5. **`goals_revised` at the ruling (§9.2, §9.5).** When the supervisor approves or rejects a `current` Campaign's
+   proposal, the ruling route reads the goal set's latest revision. It returns the proposal as `goals_revised`, in
+   place of the ruling asked for, when two things hold: a revision later than the proposal's exists, and in it the
+   named item is not the next eligible one (read with this proposal left out), or an expected result it serves changed.
+   - The gate decision recorded is `returned_for_revision`, its notes the reason. The `rule` row is marked
+     `returned_as: goals_revised` with the decision `requested`, and carries no §24bi class: nothing was found wrong
+     with the proposal.
+   - It ends no cycle, so it never counts toward `max_rejected_proposals_in_row`. The executor's revision budget leaves
+     it out too (`gate.goals_revised_runs`), so it can't spend the revisions and end the cycle `revision_unavailable`,
+     which §9.5 counts as rejected.
+   - A supervisor's own return is left as asked. A pinned Campaign reads no later revision. An approved proposal keeps
+     its revision.
+   - **A retry replays the ruling as committed** (added on the outside second review of PR #2901, its P2). The
+     ruling's row commits before its gate decision is recorded, and a process that dies between the two is retried
+     with the same key. The route first reads the applied `rule` row that key wrote on the run, and replays what it
+     committed, never reading the goal set again: a `goals_revised` return is returned again with its recorded reason,
+     and a committed approval or rejection is recorded as asked, whatever revision the owner wrote in between. A retry
+     asking a decision other than the row's `decision` (or `requested`, for a return) is a conflict, refused and
+     recorded by the registry (§12a). Before this, the retry read the goal set anew, built a different row, and the
+     key conflicted: the Campaign stood `building` with a ruling row and no gate decision.
+6. **`stop_when: backlog_done` at row 3 (§10).** Row 3's predicate is "the objective's measurement is met with this
+   increment counted". `backlog_done` is a second reading of it, beside the target. The decision reads the goal set's
+   revision then (the latest for `current`, never the one the increment was proposed under), and the measurement is
+   met when every item of that revision is accepted in this Campaign. The cause is `objective_met`. No terminal cause
+   is added: what stops the Campaign is still its objective's measurement, and the decision row records which revision
+   it read (`goals_revision`).
+   - **Narrowed: not one transaction.** SIP-0115 §5.5a asks that the read be "in the same transaction as the
+     decision". The goal set has its own store (SIP-0115 §10a), so it is read immediately before the decision's row is
+     written, and the row names the revision it read. A revision written in that interval is read by the next
+     decision, unless this one stopped the Campaign. The row then says exactly which revision the stop was judged on.
+   - **Narrowed: row 3 still needs an accepted increment** (§10's "stop_success needs latest.verdict = accepted"). A
+     backlog emptied only by a revision's removals, with no acceptance, is not stopped there. The next proposal finds
+     nothing pending (item 7).
+7. **Nothing pending escalates (§10, §12b).** A goal-set Campaign whose backlog has no pending item (each accepted or
+   abandoned, and no `backlog_done` to stop it) writes no proposal launch. Its decision escalates with the reason as
+   `unbuilt`, as any launch that can't be built does. The owner revises the goal set or stops the Campaign.
+   - **Eligibility is read against the transition being prepared** (added on the outside second review of PR #2901,
+     its P2). The owner's word (`resume`, §10) and a rebase's supersession (§24cd point 2) build their proposal before
+     their row commits, and a continuation decision builds its launch before its row. So the backlog is read with that
+     row applied: the owner's `propose` returns the decided increment's item to `pending`, the owner's
+     `abandon_and_propose` reads it `abandoned` (so a lone abandoned item still has nothing pending, and the word is
+     refused), and a rebase reads the repair or retry it supersedes as `upstream_moved` leaves it, pending. The
+     rebase's proposal is told which launch its row supersedes (`ProposeAfterRebase` takes it). The proposal run reads
+     only committed rows: its intent is written in the row's transaction and drained after it. Before this, the
+     owner's `propose` on an escalated goal-set Campaign was refused as "no pending backlog item", and every upstream
+     move that superseded a repair escalated instead of proposing the item again.
+
+**Unchanged.** A sample application's Campaigns and every requirements Campaign: no field, row, rail or prompt of
+theirs changes. The decision table's other rows, the counters, and the guards are unchanged too.
+
+**The evidence.**
+- `tests/unit/api/test_campaign_repository_creation.py`: the creation refusals, entered at `POST /api/v1/campaigns`.
+- `tests/unit/cycles/test_product_proposal.py`: the goal set composed at `RunProvisioning.prepare`, at the revision
+  the Campaign binds, with this Campaign's statuses and the next item.
+- `tests/unit/capabilities/test_strategy_propose_product_increment.py`: what the proposer is shown, and the rail
+  judged through `handle()`.
+- `tests/unit/cycles/test_increment_gate_wiring.py`: the submission's item and revision, and a `goals_revised` return
+  that spends no revision.
+- `tests/unit/api/test_goals_revised_ruling.py`: the return at the ruling route, and a retried ruling replaying what
+  its row committed (an approval, then a reorder; a `goals_revised` return, then the order restored), while a retry
+  asking another decision conflicts.
+- `tests/unit/campaigns/test_progress.py`: `backlog_done` and the escalation, entered at `CycleCompletion.end`; the
+  rebase's replacement proposal built with the superseded repair's item pending.
+- `tests/unit/api/test_campaign_owner_word.py`: the owner's `propose` and `abandon_and_propose` on an escalated
+  goal-set Campaign, through the resume route.
+- `tests/unit/campaigns/test_branch_rebase.py`: `before_launch` hands the proposal the launch it supersedes.
+
+**Who ruled it.** The owner accepted SIP-0115 as 2.6's headline and placed slice 2, with "a SIP-0109 amendment in
+the same PR", on 2026-11-03 (the 2.6 plan's D1). The shapes above are the implementer's under the supervisor's brief
+for #2885, for the owner's review in the PR: the `goal_set` field kept and checked, `objective_met` rather than a new
+cause, the escalation in item 7, and the revision budget's exception in item 5.
