@@ -11,7 +11,9 @@ runs the same suite again where acceptance and the baseline run a product's test
 on the product's runner, after the Development Configuration's install and build steps
 (``RunnerSetup``, SIP-0109 §24bv point 3, H.6). That run decides the check. If it passes, the task
 is judged passed on it, and the agent's run is kept beside it as a disclosed reading. If it fails,
-or can't run, the agent's result stands and the correction loop sees it as before.
+the task stays failed on that run's reading, not the agent's (#2913: the image's error about a
+dependency it lacks told the analysis and the repair nothing was wrong). If it can't run, the
+agent's result stands and the correction loop sees it as before.
 
 #2877: when the qa image couldn't run the suite at all (its ``tests_pass`` row reads not executed:
 a vitest product's suite, which the image's pytest can't collect), the product's runner runs it
@@ -413,9 +415,10 @@ def _runner_report(runs: list[SuiteRun], summary: str) -> str:
 
 
 def reread(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
-    """#2877: ``result`` with the product runner's reading of its suite in place of the qa image's
-    "not run". It stays failed: either the suite failed on the product's runner, or another check
-    did. The image's row and test result are kept apart from what the analysis reads."""
+    """#2877, #2913: ``result`` with the product runner's reading of its suite in place of the qa
+    image's, a "not run" or a failure the image's environment made. It stays failed: either the
+    suite failed on the product's runner, or another check did. The image's row and test result
+    are kept apart from what the analysis reads."""
     outputs = dict(result.outputs or {})
     vr = dict(outputs.get("validation_result") or {})
     passed = all(r.passed for r in runs)
@@ -543,10 +546,11 @@ async def judge_on_product_runner(
     """The result judged on the product's runner, or ``None`` when the agent's result stands.
 
     Judged passed (``SUCCEEDED``): a product's ``qa.test`` failing only ``tests_pass`` (beside
-    ``ENVIRONMENT_SENSITIVE`` checks) whose suite passes there. Re-read (still ``FAILED``, #2877):
-    one whose ``tests_pass`` the qa image didn't execute, and which isn't judged passed. ``None``:
-    neither applies, no sandbox, no profile or configuration at the pin, no clone of the product
-    at the pin, a test no runner holds, or a run that can't be judged."""
+    ``ENVIRONMENT_SENSITIVE`` checks) whose suite passes there. Re-read (still ``FAILED``): one
+    whose ``tests_pass`` the qa image didn't execute (#2877), or one it could judge whose suite
+    exited there and didn't pass (#2913). ``None``: neither applies, no sandbox, no profile or
+    configuration at the pin, no clone of the product at the pin, a test no runner holds, or a run
+    that can't be judged or didn't exit."""
     if result.status == TaskResultStatus.SUCCEEDED or not authors_qa_suite(task_type):
         return None
     why_judge: str | None
@@ -602,6 +606,6 @@ async def judge_on_product_runner(
         return None
     if why_judge is None and all(r.passed for r in runs):
         return judged_passed(result, runs)
-    if why_reread is None:
+    if why_reread is None or (why_judge is None and all(r.unexecuted is None for r in runs)):
         return reread(result, runs)
     return None

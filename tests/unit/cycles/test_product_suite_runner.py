@@ -19,7 +19,12 @@ import pytest
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.execution.correction_runner import CorrectionRunner
 from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor, _TaskOutcomeRouter
-from squadops.execution.product_suite import PRODUCT_RUNNER, judge_on_product_runner, rejudgeable
+from squadops.execution.product_suite import (
+    PRODUCT_RUNNER,
+    PRODUCT_SUITE_KEY,
+    judge_on_product_runner,
+    rejudgeable,
+)
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from tests.unit.cycles._product_increment import squad
 
@@ -84,8 +89,11 @@ def _reading(passed: int, collected: int) -> dict[str, Any]:
 class _Sandbox:
     """Answers each command by the file it names: ``exits[path]`` and ``readings[path]``."""
 
-    def __init__(self, exits=None, readings=None, *, raises: bool = False) -> None:
+    def __init__(
+        self, exits=None, readings=None, *, raises=False, output="", unavailable=None
+    ) -> None:
         self.exits, self.readings, self.raises = exits or {}, readings or {}, raises
+        self.output, self.unavailable = output, unavailable
         self.seeded: dict[str, str] = {}
         self.commands: list[dict[str, Any]] = []
         self.released: list[str] = []
@@ -122,9 +130,18 @@ class _Sandbox:
             raise RuntimeError("sandbox down")
         path = command[-1]
         self.commands.append({"command": command, "setup": setup, "reader": findings_reader})
+        if self.unavailable is not None:
+            return SimpleNamespace(
+                ran=False,
+                outcome="unavailable",
+                unavailable_reason=self.unavailable,
+                exit_code=None,
+                findings=None,
+            )
         return SimpleNamespace(
             ran=True,
             outcome="exited",
+            stdout_tail=self.output,
             exit_code=self.exits.get(path, 0),
             findings=self.readings.get(path, _reading(1, 1)),
         )
@@ -254,7 +271,9 @@ async def test_two_runners_of_one_tool_each_run_their_own_files():
     sandbox = _Sandbox(exits={"worker/test_w.py": 1})
     result = _failed(_TESTS_PASS_RED, tests=("tests/test_t1.py", "worker/test_w.py"))
 
-    assert await _judge(result, sandbox, profile=_Profile(api, worker)) is None
+    judged = await _judge(result, sandbox, profile=_Profile(api, worker))
+
+    assert judged is not None and judged.status == TaskResultStatus.FAILED
     assert [c["command"] for c in sandbox.commands] == [
         ("pytest", "tests/test_t1.py"),
         ("pytest", "-c", "w.ini", "worker/test_w.py"),
@@ -270,8 +289,62 @@ async def test_two_runners_of_one_tool_each_run_their_own_files():
     ],
     ids=["failed", "ran-nothing", "not-all-passed"],
 )
-async def test_a_file_whose_tests_were_not_read_as_passed_leaves_the_agents_result(exits, reading):
+async def test_a_file_whose_tests_were_not_read_as_passed_stays_failed_on_the_products_reading(
+    exits, reading
+):
+    """The runner ran it and it didn't pass: the task stays failed, and that run is the evidence
+    (#2913). Exit zero is not a pass (review P2: ``unittest discover``), and it isn't the image's
+    word either."""
     sandbox = _Sandbox(exits=exits, readings={"tests/test_t1.py": reading})
+
+    judged = await _judge(_failed(_TESTS_PASS_RED), sandbox)
+
+    assert judged is not None and judged.status == TaskResultStatus.FAILED
+    row = next(
+        r for r in judged.outputs["validation_result"]["checks"] if r["check"] == "tests_pass"
+    )
+    assert (row["judged_on"], row["passed"]) == (PRODUCT_RUNNER, False)
+
+
+_IMAGE_LACKS_A_DEPENDENCY = {
+    "check": "tests_pass",
+    "passed": False,
+    "exit_code": 4,
+    "runner": "pytest",
+    "reason": "exit_code 4: usage error",
+    "stderr_tail": "ModuleNotFoundError: No module named 'slugify'",
+}
+
+
+async def test_the_image_failing_on_a_dependency_it_lacks_never_reaches_the_analysis():
+    """#2913, seen live on Shelfnote's SN-6. The image died importing a dependency the product
+    declares (exit 4); the product's runner ran the suite and read a real failure. Bug caught: the
+    failed run left the agent's result, so the analysis read an environment problem, the repair
+    had nothing to fix, and the real failure never reached either, twice. The image's row is kept
+    apart, disclosed."""
+    sandbox = _Sandbox(
+        exits={"tests/test_t1.py": 1},
+        readings={"tests/test_t1.py": _reading(0, 1)},
+        output="AssertionError: PATCH b1 reading: 400",
+    )
+
+    judged = await _judge(_failed(_IMAGE_LACKS_A_DEPENDENCY), sandbox)
+
+    assert judged is not None and judged.status == TaskResultStatus.FAILED
+    outputs = judged.outputs
+    row = next(r for r in outputs["validation_result"]["checks"] if r["check"] == "tests_pass")
+    assert (row["judged_on"], row["exit_code"]) == (PRODUCT_RUNNER, 1)
+    assert "slugify" not in repr(row) and "slugify" not in outputs["summary"]
+    assert "400" in repr(outputs[PRODUCT_SUITE_KEY])
+    assert outputs["test_result"]["judged_on"] == PRODUCT_RUNNER
+    assert outputs["agent_tests_pass_row"]["exit_code"] == 4
+
+
+async def test_a_run_that_never_exited_leaves_the_agents_result():
+    """Bug caught: a sandbox that couldn't run the command replacing a real reading with nothing:
+    a run that didn't exit is no reading of the product."""
+    sandbox = _Sandbox(unavailable="no capacity")
+
     assert await _judge(_failed(_TESTS_PASS_RED), sandbox) is None
 
 
@@ -831,6 +904,26 @@ async def test_a_file_the_run_removed_stays_removed_on_the_pinned_tree():
     patched = executor._sandbox.patched
     assert patched["app/logo.png"] is None
     assert patched["app/main.py"] == "import plugins\n"
+
+
+async def test_the_executor_hands_on_the_products_failure_in_place_of_the_images():
+    """Wiring for #2913, entering at ``_judged_on_product_runner`` as a live failed ``qa.test``
+    does. Bug caught: a seam-level reading the executor drops, so the router still hands the
+    correction loop the image's result."""
+    executor = _executor()
+    executor._source_repository = _Repository(_CLONE)
+    executor._sandbox = _Sandbox(
+        exits={"tests/test_t1.py": 1}, readings={"tests/test_t1.py": _reading(0, 1)}
+    )
+    envelope = _envelope(_INPUTS)
+
+    judged = await executor._judged_on_product_runner(
+        _failed(_IMAGE_LACKS_A_DEPENDENCY), envelope, envelope, _CYCLE, "run_1"
+    )
+
+    assert judged is not None and judged.status == TaskResultStatus.FAILED
+    assert judged.outputs["test_result"]["judged_on"] == PRODUCT_RUNNER
+    assert judged.outputs["agent_tests_pass_row"]["exit_code"] == 4
 
 
 @pytest.mark.parametrize(
