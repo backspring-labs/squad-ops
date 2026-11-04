@@ -815,6 +815,24 @@ async def test_the_products_suite_runs_on_the_pinned_tree_with_its_held_back_loc
     assert judged is not None and judged.status == TaskResultStatus.SUCCEEDED
 
 
+async def test_a_file_the_run_removed_stays_removed_on_the_pinned_tree():
+    """H.23 over H.19, entering where a live failed ``qa.test`` does. Bug caught: the tree seeded
+    from the pin brings back a file an earlier task removed, so the suite is judged on a product
+    the run doesn't deliver, and a test of the removal fails here and passes at delivery."""
+    executor = _executor()
+    executor._source_repository = _Repository(_CLONE)
+    view = {**_INPUTS["source_repository"], "deleted": ["app/logo.png"]}
+    envelope = _envelope({**_INPUTS, "source_repository": view})
+
+    await executor._judged_on_product_runner(
+        _failed(_TESTS_PASS_RED), envelope, envelope, _CYCLE, "run_1"
+    )
+
+    patched = executor._sandbox.patched
+    assert patched["app/logo.png"] is None
+    assert patched["app/main.py"] == "import plugins\n"
+
+
 @pytest.mark.parametrize(
     "repository", [None, _Repository(raises=True)], ids=["no repository", "clone refuses the pin"]
 )

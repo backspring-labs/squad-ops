@@ -3145,7 +3145,7 @@ the contribution couldn't express the intent. The plan's Track B placed it in 2.
 | agent-side repair | the repairing role's container | accepted workspace plus the failed task's files, the patch | as above |
 | the verifier (`verify_patched_artifacts`) | runtime-api | accepted workspace, the failed task's artifacts, the patch | as above; a failed task's unaccepted removal isn't applied |
 | the qa suite (`qa_run_tree`) | the qa image | `artifact_contents`, tests left out | absent once accepted, so the suite reads the product without it; a removed test was never in this tree |
-| the product runner's re-reading (`product_suite`) | the sandbox | `suite_run_tree`, the same | as above. **PR #2902 seeds this tree from the pin**, so after it merges an accepted removal returns here unless its patch passes `None` for `source_repository["deleted"]` |
+| the product runner's re-reading (`product_suite`) | the sandbox | `suite_run_tree`, the same | as above. H.19 seeds this tree from the pin, which still holds an accepted removal, so its patch names `source_repository["deleted"]` as removed; a file written since wins |
 | delivery (`deliver_source_change`) | runtime-api, X-3a in the sandbox | the pinned commit plus the accepted changes and removals | absent; the product's checks read it so |
 | the increment's acceptance (`SandboxTree`) | the sandbox | the delivered candidate | absent: `content` drops a `None`, and the patch removes it |
 
