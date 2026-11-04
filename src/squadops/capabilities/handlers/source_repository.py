@@ -21,6 +21,7 @@ from squadops.stacks.development_profiles import (
     effective_development_profile,
     get_development_profile,
 )
+from squadops.tasks.task_types import DeletionGrant, deletion_grant
 
 
 def source_backed(inputs: Mapping[str, Any]) -> bool:
@@ -31,8 +32,12 @@ def source_backed(inputs: Mapping[str, Any]) -> bool:
     return isinstance(inputs.get("source_repository"), Mapping)
 
 
-async def source_repository_section(renderer: Any, inputs: dict[str, Any]) -> str:
-    """The product's repository as an appendix, or ``""`` for a run that has none."""
+async def source_repository_section(
+    renderer: Any, inputs: dict[str, Any], *, task_type: object = None
+) -> str:
+    """The product's repository as an appendix, or ``""`` for a run that has none. ``task_type``
+    is the step reading it: one that may remove a file is shown the deletion form (#2612), and a
+    stage that authors no product file (a plan's, the framing's) passes none and is shown none."""
     repository = inputs.get("source_repository")
     if renderer is None or not isinstance(repository, Mapping):
         return ""
@@ -66,8 +71,39 @@ async def source_repository_section(renderer: Any, inputs: dict[str, Any]) -> st
             "request.source_repository_existing_files_block", {"files": _files(existing)}
         )
         variables["existing_files"] = block.content
+    deletion = await _deletion_block(renderer, repository, task_type)
+    if deletion:
+        variables["deletion"] = deletion
     rendered = await renderer.render("request.source_repository_appendix", variables)
     return rendered.content
+
+
+async def _deletion_block(renderer: Any, repository: Mapping[str, Any], task_type: object) -> str:
+    """How the step removes a file, in its own grant's terms, or ``""`` for a step that may not.
+    A test step of a product with no runner holds no test it could remove, so it is shown none."""
+    grant = deletion_grant(task_type)
+    if grant is DeletionGrant.PRODUCT:
+        block = await renderer.render("request.source_repository_deletion_product", {})
+        return block.content
+    example = _replaced_test_path(repository) if grant is DeletionGrant.TESTS else None
+    if example is None:
+        return ""
+    block = await renderer.render(
+        "request.source_repository_deletion_tests", {"example_path": example}
+    )
+    return block.content
+
+
+def _replaced_test_path(repository: Mapping[str, Any]) -> str | None:
+    """A path the product's first runner would hold, in that runner's own terms, so the example a
+    test step is shown is a test of this product's kind (#2876). No file of the product's."""
+    for runner in repository.get("runners") or ():
+        roots = runner.get("roots") or ()
+        pattern = str(runner.get("file_pattern") or "")
+        if roots and pattern:
+            name = pattern.replace("*", "replaced")
+            return name if roots[0] == "." else f"{roots[0]}/{name}"
+    return None
 
 
 def suite_language(inputs: Mapping[str, Any]) -> str:

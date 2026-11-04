@@ -6,6 +6,7 @@ instructions and its project's (SIP-0110 Appendix A §3.6, #2179), then the less
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
@@ -25,10 +26,16 @@ _SLOTS = (
 )
 
 
-async def context_sections(renderer: Any, inputs: dict[str, Any]) -> dict[str, str]:
-    """Each slot's rendered section, keyed by its template variable, for the slots that have one."""
+async def context_sections(
+    renderer: Any, inputs: dict[str, Any], *, task_type: object = None
+) -> dict[str, str]:
+    """Each slot's rendered section, keyed by its template variable, for the slots that have one.
+    ``task_type`` is the step reading them, for the product's slot: a step that may remove a file
+    is shown how (#2612)."""
     sections: dict[str, str] = {}
     for variable, render in _SLOTS:
+        if render is source_repository_section:
+            render = partial(render, task_type=task_type)
         section = await render(renderer, inputs)
         if section:
             sections[variable] = section

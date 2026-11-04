@@ -277,6 +277,11 @@ _SHARED_CONTEXT_TEMPLATES = (
     "request.source_repository_existing_files_block",
     "request.source_repository_instructions_block",
     "request.source_repository_runners_block",
+    # #2612: how a step that may remove a file does, in its grant's terms, one at a time.
+    (
+        "request.source_repository_deletion_product",
+        "request.source_repository_deletion_tests",
+    ),
     # SIP-0112 H.13: the blueprint's conventions for a product, one stack's at a time.
     (
         "request.source_repository_conventions_fullstack_fastapi_react",
@@ -796,6 +801,9 @@ REPAIR_PRESENCE_KEYS: tuple[str, ...] = (
     # SIP-0109 §24cp: a dev repair of a view a repository-backed change adds is shown the anchor
     # acceptance reads the page for, as the view's first author was (``increment_views``).
     "increment_views",
+    # #2612 (SIP-0112 H.23): a source-backed run's view of the product, which a repair's removal
+    # is judged against. No repair prompt renders it.
+    "source_repository",
 )
 
 #: #1264: the failed task's own emitted files, forwarded to its repair from the failed

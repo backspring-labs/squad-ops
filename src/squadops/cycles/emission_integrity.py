@@ -86,6 +86,8 @@ EMISSION_FAILURE_KEY = "emission_failure"
 #: not pass — a string field's own vocabulary, not a run or task status.
 EMISSION_STATUS_FAILED = "failed"
 EMISSION_FAILURE_NO_FENCED_BLOCKS = "no_fenced_blocks"
+#: #2612: the emission named a removal its step may not make; its `refusals` say which and why.
+EMISSION_FAILURE_DELETION_REFUSED = "deletion_refused"
 
 # #998: what KIND of nothing. Three zero-extraction shapes with three different remedies,
 # previously indistinguishable in the evidence — a correction decision that cannot tell
@@ -277,6 +279,10 @@ def emission_retry_reason_line(marker: dict[str, Any]) -> str:
         return (
             f"no fenced code block carrying a file path could be extracted "
             f"from the {chars}-character response.{shape}"
+        )
+    if reason == EMISSION_FAILURE_DELETION_REFUSED:
+        return "its removals were refused: " + "; ".join(
+            str(r) for r in marker.get("refusals") or ()
         )
     return f"the response failed emission extraction ({reason})."
 
