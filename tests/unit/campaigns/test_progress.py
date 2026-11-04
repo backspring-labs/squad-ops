@@ -671,6 +671,15 @@ async def test_a_cycle_that_can_still_continue_is_not_decided(calibrating, stopp
             )
         ],
         ("implementation", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
+        # §24cz (#2890): the implementation run ended at its qa task on a criterion the head
+        # already meets; the completion boundary recorded the ending the run declared.
+        (
+            "implementation",
+            "failed",
+            CycleStopReason.CRITERIA_NOT_CHECKABLE,
+            CycleEnding.CRITERIA_NOT_CHECKABLE,
+            False,
+        ),
         # A framing run that failed stopped on its own run, not its gate: its summary judges it.
         ("framing", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
         # §24bj: the expired escalation's run, cancelled for it.
@@ -711,6 +720,8 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
         decided("assessed", action="abandon_and_propose"),
         # #2849 (§24ct): row 16's abandonment (criteria already met) counts toward no limit.
         decided("assessed", action="abandon_and_propose", row=16),
+        # #2890 (§24cz): nor row 19's (criteria already met on the head, before delivery).
+        decided("criteria_not_checkable", action="abandon_and_propose", row=19),
         decided("rejected_at_gate"),
     ]
     launched = [
@@ -2824,6 +2835,119 @@ async def test_an_increment_rejected_only_for_criteria_already_met_goes_to_a_new
                 "surface": "POST /runs",
             }
         ]
+
+
+async def test_a_cycle_ended_for_criteria_met_on_the_head_goes_to_a_new_proposal_told_which(
+    calibrating, stored
+):
+    """#2890 (§24cz, row 19), entered at the completion boundary as the executor ends a failed
+    implementation run whose terminal decision declares the criteria not checkable, with the
+    check's record stored on the run. Bugs caught: the boundary recording ``run_failed``, so the
+    campaign reads a failed build (an escalation on a run that delivered nothing) and a restart
+    re-hears it as one; or the next proposal not told which criteria the head meets, so it
+    proposes them again (the spike's item 1, twice)."""
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
+    from squadops.cycles.failure_attribution import TerminalKind
+    from squadops.cycles.llm_usage import RunUsage
+    from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    request = validate_proposal(
+        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            (),
+        ),
+    ).change_request
+    stored["art_candidate"] = (
+        _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
+        MANIFEST.encode(),
+    )
+    stored["art_cr"] = (
+        _ref("art_cr", "change_request.yaml", "change_request", -1),
+        stored_change_request(request).encode(),
+    )
+    stored["art_head"] = (
+        _ref("art_head", "criterion_head_check.json", "criterion_head_check", 20),
+        json.dumps(
+            {
+                "increment_id": "prop_cap",
+                "head_commit": "a" * 40,
+                "checked_on": "product_runner",
+                "criteria": [
+                    {
+                        "criterion_id": "C1",
+                        "path": "tests/test_c1.py",
+                        "reading": "no_baseline_failure",
+                    }
+                ],
+                "runs": [],
+            }
+        ).encode(),
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    block = {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "baseline_tree": (await w.campaigns.get_campaign(CID)).accepted.identity,
+        "accepted_cycle_id": "cyc_cal",
+        "baseline_manifest": MANIFEST,
+    }
+    increment_run = await w.launched_cycle(
+        "increment", "cyc_inc", "implementation", "failed", overrides={"campaign_proposal": block}
+    )
+    await w.cycles.create_run(
+        Run(
+            run_id="run_prop",
+            cycle_id="cyc_inc",
+            run_number=0,
+            status="completed",
+            initiated_by="system",
+            resolved_config_hash="cfg",
+            workload_type="proposal",
+        )
+    )
+    await w.cycles.record_run_loop_summary(
+        increment_run.run_id,
+        RunLoopSummary(
+            run_id=increment_run.run_id,
+            usage=RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=()),
+            terminal=RunTerminalDecision(kind=TerminalKind.CRITERIA_NOT_CHECKABLE),
+        ),
+    )
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.RUN_FAILED)
+
+    recorded_end = await w.cycles.get_cycle_end("cyc_inc")
+    assert recorded_end is not None
+    assert recorded_end.stopped_because is CycleStopReason.CRITERIA_NOT_CHECKABLE
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert (decision.binding["row"], decision.binding["action"], decision.binding["ending"]) == (
+        19,
+        "abandon_and_propose",
+        "criteria_not_checkable",
+    )
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.AT_PROPOSAL
+    *_, launched = await w.campaigns.launch_intents(CID)
+    launched_block = launched.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert launched.cycle_kind is CycleKind.INCREMENT
+    assert launched_block["abandoned_increment"]["already_met"] == [
+        {
+            "criterion_id": "C1",
+            "statement": "A run created with capacity 2 is returned with capacity 2",
+            "surface": "POST /runs",
+        }
+    ]
 
 
 @pytest.mark.parametrize(

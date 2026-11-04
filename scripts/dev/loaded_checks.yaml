@@ -865,7 +865,7 @@ checks:
       from squadops.campaigns import continuation as c
       src = inspect.getsource(c.campaign_continuation_decision)
       # §24cb (#2704) tabled the parked row with the plan-gate stop's: either form counts the park.
-      tabled = "cycle.ending in _ABANDONED_UNBUILT" in src and c.CycleEnding.PARKED in getattr(c, "_ABANDONED_UNBUILT", {})
+      tabled = "_ABANDONED_BEFORE_VERDICT.get(cycle.ending)" in src and c.CycleEnding.PARKED in getattr(c, "_ABANDONED_BEFORE_VERDICT", {})
       print("cycle.ending is CycleEnding.PARKED" in src or tabled)
     expect: "True"
   - id: "2301"
@@ -1739,13 +1739,13 @@ checks:
     what: a framing run stopped at its plan gate ends its cycle unbuilt, with no verdict; a calibration fails on row 2 and an increment is abandoned on row 18 (SIP-0109 §24cb)
     container: squadops-runtime-api
     code: |
-      from squadops.campaigns.continuation import _ABANDONED_UNBUILT, CycleEnding
+      from squadops.campaigns.continuation import _ABANDONED_BEFORE_VERDICT, CycleEnding
       from squadops.campaigns.progress import cycle_ending
       from squadops.cycles.cycle_end import CycleStopReason
       from squadops.cycles.models import Run
       run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="framing")
       ending = cycle_ending(CycleStopReason.PLAN_REJECTED, run, parked=False)
-      print(ending.value, _ABANDONED_UNBUILT[CycleEnding.STOPPED_AT_PLAN_GATE])
+      print(ending.value, _ABANDONED_BEFORE_VERDICT[CycleEnding.STOPPED_AT_PLAN_GATE])
     expect: "stopped_at_plan_gate 18"
   - id: "2659"
     what: a click may say if_enabled, and the suite's draft-time rule refuses it on anything but a click (the evaluator's -6)

@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-11-03)
+## Delivery ledger (current as of 2026-11-04)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -145,7 +145,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp, not built) | **placed** (the 2.6 plan's Track B, adopted 2026-11-03) | 2.6.0, #2783 |
 | a Campaign on a repository-backed Project, read live, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co): the calibration record and its baseline reading, the proposal from the product's tree, the instruction binding at each cycle's own commit, the launch, the refusal at a moved upstream and the rebase onto the reconciled commit, increments judged at delivery on the product's runners, and the anchored page | **shipped**, read on the 2.5 cut's final deploy (the cut's pre-registration §14b): IR-2, IR-3 (a)–(e), IR-4, IR-6's calibration half, IR-7 and IR-8 hold. Narrowed by the owner (2026-10-29: "Narrow the claim, go to cut"): no product increment was accepted, so the row below carries the rest | 2.5.0, PRs #2820 and #2825 with the release PR, closes #2619 |
 | a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading); waits on #2799. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.6.0, #2827 |
-| a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; a numbered amendment in its PR) | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2890 |
+| a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
 | the operator's box lease outside Campaigns (§9.3) | **placed** (the 2.6 plan's Track C, adopted 2026-11-03) | 2.6.0, #2287 |
 | a Campaign that closes with accepted increments opens its contribution to the product | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.6.0, #2861 |
@@ -5884,6 +5884,106 @@ theirs changes. The decision table's other rows, the counters, and the guards ar
 the same PR", on 2026-11-03 (the 2.6 plan's D1). The shapes above are the implementer's under the supervisor's brief
 for #2885, for the owner's review in the PR: the `goal_set` field kept and checked, `objective_met` rather than a new
 cause, the escalation in item 7, and the revision budget's exception in item 5.
+
+### 24cz. A criterion already met is found as soon as its test exists: run on the campaign branch's head at the qa task, ending the increment `criteria_not_checkable` at row 19 (2026-11-04, §8.2, §10 rows 4 and 16, §12a, §24bv point 3, §24ci (a), §24cj, §24cl, §24ct; the 2.6 plan's D9; #2890; the implementer's build under the supervisor's brief, for the owner)
+
+**Why.** At the ruling only a criterion's statement and observable exist; its executable test is written by the
+increment cycle's qa task (§24cj). Until now the first reading of that test against the accepted tree was
+acceptance's, at the run's delivery (`no_baseline_failure`, §8.2, §24cl), on a cycle already spent, and row 16 then
+abandoned the increment (§24bq, §24ct). The 2.6 plan's D9 ruled the check moved to the earliest point a test exists.
+
+**What changed.**
+1. **The check (§8.2, §24bv point 3).** On a repository-backed increment, repair or retry (`IncrementBasis
+   .evaluated_at_delivery`, the same property acceptance asks), once a qa task's emission is collected on the run,
+   each of the increment's criterion files the run has stored (`criterion_files`, read as delivery reads the squad's
+   change: the path's latest accepted content from a test author) is run alone on its runner's one-file command in
+   the sandbox (`product_suite.run_on_product_runner`, #2818's run), read by the runner's test-id reader, against
+   **the head**: the pinned commit's tree from the managed clone, seeded as a checkout and read as the re-judged
+   suite reads it (`product_suite.product_tree_at_pin`, SIP-0112 H.19), with the criterion files patched on it. So a
+   tracked lockfile is content there and a Node product's setup installs (X-2, #2900): seeded as plain revision
+   content the sandbox refuses it, and the check would skip on every such product. No development emission is on the
+   tree. **That includes a removal** (SIP-0112 H.23): the re-judged suite lays the run's removals over the pin
+   because it judges the run's tree, and this check judges the head, which still holds the file. Laid here, a test
+   that a file is gone would pass on "the head" and end an increment that discriminates. A file that runs and passes
+   whole there is **already met**. Code: `execution/criterion_head_check.py`, entered from the executor's
+   `_after_task_success` with the task's dispatched inputs, whose product runners say which of the pin's files are
+   tests.
+2. **The record.** The run's `criterion_head_check` artifact (`campaigns/criterion_head.py`): the increment, the head
+   commit, each criterion's reading and each file's run. A met criterion's reading is `no_baseline_failure`, the word
+   acceptance's `discriminations` row carries for the same finding, so either record reads to the next proposal's
+   brief the same way; the others are `fails_on_head` (a failure the reader named) and `not_run`.
+3. **The ending (§10, §12a).** Any criterion already met ends the run there, with its own terminal kind
+   (`TerminalKind.CRITERIA_NOT_CHECKABLE`, SIP-0108 §4.1). The completion boundary reads a failed run's declared
+   kind and records the cycle's ending as `criteria_not_checkable` (a new `CycleStopReason`, migration 2003), so a
+   restart re-hears it as that and never as a failed build. The campaign reads it as
+   `CycleEnding.CRITERIA_NOT_CHECKABLE`: no verdict, nothing promoted, nothing evaluated.
+4. **Row 19 (§10).** Asked before row 6, beside rows 15 and 18: `abandon_and_propose`. The next proposal is told
+   which criteria the head already meets, with their statements, through row 16's `already_met` brief (#2315), read
+   from the check's record where no evaluation exists. **Counted toward no unaccepted limit** (§24ct's rule, now
+   `UNCOUNTED_ABANDONMENT_ROWS = {16, 19}`), and it does not count toward `max_rejected_proposals_in_row`: its proposal
+   was approved and built. `max_cycles`, the budget and the elapsed limit bound it as they bound row 16. The
+   attribution reads the kind as `criteria_or_contract_failure`: the criteria were the fault, not the work.
+5. **Where it can't run, the cycle proceeds as today, and the skip is logged with its reason** (as
+   `judge_on_product_runner` logs "not re-judged"): no sandbox, no managed clone, no derived profile or configuration
+   at the pin, a criterion file the request placed nowhere, a file no runner holds one by one or no test-id reader
+   can read (§24ci (a): Tally's unittest is such a runner), or any read, sandbox run or store that failed. Nothing
+   here fails a run.
+
+**Narrowed: the check spends the development task too.** The plan's D9 row says the check "spends one framing and
+one QA task". As built it spends the implementation workload's development task as well: the workload's order is the
+definition of done, development, then the qa task (`task_plan.IMPLEMENTATION_TASK_STEPS`; the plan merger's rule 8
+orders development's tasks before qa's), and the criterion's test exists only once the qa task has written it. What
+the check saves is the delivery, the acceptance and the repair cycle (or cycles) that row 16 cost. A check before
+development would need the test authored before the build, which the ruling named as the larger alternative and did
+not propose.
+
+**The seam table** (CLAUDE.md's rule for a typed check: every seam that evaluates a criterion's test, the tree it
+sees, and the outcome on a tree that lacks the file):
+
+| seam | where | the tree | the file absent |
+|---|---|---|---|
+| the emission | the qa role's container (`qa.test`) | the accepted workspace as the task sees it, development's emission, its own emission | the task's expected artifact is absent: a failed emission, the correction loop's |
+| **this check** | runtime-api, the sandbox, at the qa task's collection | the product's non-test files at the pin, seeded as a checkout, the stored criterion files patched on it, nothing else of the run's (no emission, no removal) | not checked ("no criterion file in this task's stored emission", logged); the cycle proceeds |
+| the re-judged suite (#2818, #2877) | runtime-api, the sandbox, on a failed `qa.test` | the same pin seeded as a checkout, with the run's tree patched on it (development's emission and its removals, H.19, H.23) and the emitted tests beside it | not re-judged: `run_on_product_runner` returns none for a file no runner holds |
+| a repair's retest (#2881) | runtime-api, the sandbox | the failed task's own suite with the repaired source on the tree | unchanged by this amendment |
+| acceptance (§24cl) | runtime-api, the sandbox, at delivery | the head and the candidate, the criterion's bundle frozen from the candidate on each | `BundleIncomplete`: the criterion reads `not_run`, blocked, never met |
+
+Only this check and acceptance read the head without the candidate, and only acceptance reads the candidate beside
+it: this check can say a criterion is already met and nothing else, and acceptance's read stays the last line.
+
+**Unchanged.** A sample application's increment (no source repository): the check does not apply. Acceptance's own
+discrimination read (§24cl, §24ct's preservation rule). Requirements and goal-set Campaigns alike: on a goal-set
+Campaign the item reads `abandoned` with its row, as row 16's does (§24cy item 2's backlog view). The decision table's
+other rows, the counters and the guards.
+
+**The evidence.** The 2.6 plan's §0 spike, unattended run `cmp_cf75c37569da` on `prj-shelfnote`, 2026-10-31
+(`var/verification_sets/2-6-0-spike/readings.md`): both unaccepted increments would have been caught before a cycle
+was spent, item 1's already-met criteria (row 16 after a whole cycle) and item 5's T21 (`no_baseline_failure` after a
+cycle and its repair). Tests:
+- `tests/unit/cycles/test_criterion_head_check.py`: entered at `_execute_sequential` on the shared fixture's Tally,
+  its tree seeded as provisioning seeds it, its plan `generate_task_plan`'s from the stored change request, each task
+  dispatched and collected by the executor, a fake sandbox answering the one-file command. A criterion passing on the
+  head ends the run after the qa task with the declared kind, nothing delivered, the head seeded without the
+  developer's report and the record written; one failing on the head proceeds to delivery with `fails_on_head`
+  recorded; no sandbox, no clone, no test-id reader, a sandbox error, a clone that refuses the pin and an unreadable
+  change request each proceed, with the reason logged. A Node product's tracked `package-lock.json` is seeded
+  `git_checkout` and the check runs and ends the increment, on the fake sandbox that applies `_safe_relpath`, the
+  sandbox's own rule. A file development removed is still on the head, with the removal shown reaching the qa task's
+  view.
+- `tests/unit/campaigns/test_progress.py`: entered at `CycleCompletion.end` on a failed implementation run whose
+  loop summary declares the kind, with the record stored: the ending recorded `criteria_not_checkable`, row 19
+  `abandon_and_propose`, the next proposal's `already_met` naming the criterion with its statement; the ending read
+  from the stop reason; a row-19 abandonment left out of the unaccepted count read from the log.
+- `tests/unit/campaigns/test_continuation.py`: row 19 at the unaccepted limit's edge and after a rejection proposes
+  again, never row 4, and spends no repair.
+- `tests/unit/cycles/test_failure_attribution.py`: the kind's attribution. `test_cycle_ends.py` holds the migration
+  to the stop reasons.
+
+**Who ruled it.** The owner's D9 (2026-11-03, the 2.6 plan §7): "checked as soon as the criterion's test exists, in
+the increment's cycle, against the head, since no test exists at the ruling." The shapes above are the implementer's
+under the supervisor's brief for #2890, for the owner's review in the PR: the run ended by a declared terminal kind
+that the completion boundary records as the ending, row 19 rather than row 16 widened (the ending has no verdict to
+read), the record's shared word, and the narrowing on the development task.
 
 ### 24da. The unattended resume: the escalation classes a Campaign delegates to the crew's supervisor principal, enforced at the resume route, audited, and revoked by the owner's pause (2026-11-04, §9.3, §10, §12, §13, §24az, §24bj, §24bk, §24cs; #2837; #2891; the 2.6 plan's D6 and D7, the owner's rulings of 2026-11-03)
 

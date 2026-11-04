@@ -91,6 +91,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   control-log row naming the principal, the class, the escalation and the definition hash (refusal
   `resume_not_delegated`, migration `2002`), and the digest lists them. The owner's pause revokes the grant until the
   owner resumes. The supervisor seat's refused resume is now recorded rather than refused unwritten.
+- **A criterion already met is found as soon as its test exists** (#2890; SIP-0109 §24cz, the 2.6 plan's D9). On a
+  repository-backed increment, once the qa task's criterion files are stored on the run, each is run alone on the
+  product's own runner in the sandbox against the campaign branch's head, with no development emission on the tree.
+  One that passes there is already met: the run ends with `criteria_not_checkable` before anything is delivered or
+  judged (a new cycle ending, migration `2003`), and §10's new row 19 returns the increment to a new proposal told
+  which criteria the head meets, counted toward neither `max_unaccepted_increments` nor
+  `max_rejected_proposals_in_row`. The reading is the run's `criterion_head_check` record. Where the check can't run
+  (no sandbox or clone, no profile at the pin, a runner with no test-id reader, a sandbox error) the cycle proceeds
+  as before and the skip is logged with its reason; acceptance's own read stays the last line.
 
 ### Fixed
 - **A suite that fails on the product's runner is read there, not in the qa image** (#2913, SIP-0112 H.24). When the
