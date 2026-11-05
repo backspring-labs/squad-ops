@@ -38,6 +38,7 @@ from squadops.api.campaign_schemas import (
     CampaignPolicyDTO,
     CampaignResponse,
     ClassificationRequest,
+    ContributionDismissalRequest,
     ControlLogEntryResponse,
     ControlRequest,
     ControlResultResponse,
@@ -96,6 +97,7 @@ from squadops.campaigns.calibration_record import (
     recorded_calibration,
 )
 from squadops.campaigns.continuation import PendingAction
+from squadops.campaigns.contribution_dismissal import dismissal_refusal, dismissal_transition
 from squadops.campaigns.escalation import (
     DelegatedMove,
     Escalation,
@@ -774,6 +776,51 @@ async def open_campaign_contribution(
     except (SourceUnavailable, ReviewRequestFailed) as e:
         raise http_error(502, "CONTRIBUTION_FAILED", str(e)) from e
     return ContributionResponse(contribution=contribution.to_document(), replayed=replayed)
+
+
+@router.post("/{campaign_id}/contribution-dismissal", status_code=201)
+async def dismiss_campaign_contribution(
+    request: Request,
+    campaign_id: str,
+    body: ContributionDismissalRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """The owner declares a closed, unmerged contribution won't land (SIP-0109 §24dg, #2926): a
+    ``contribution_dismissed`` row, which clears it from the Project's unintegrated increments so it
+    stops blocking the crew's gate. ``campaigns:control``, the owner's alone: the crew opens a
+    contribution, and must not be able to write off work the owner hasn't. The contribution's record
+    stays ``closed``, and the row says who and why. Anything but a closed, unmerged contribution is
+    409 ``CONTRIBUTION_NOT_DISMISSABLE``, nothing written. A retry with its key replays, whatever
+    has happened to the contribution since. Re-opening is not built."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    log = await registry.control_log(campaign_id)
+    held = await get_project_registry(request).contributions(campaign.project_id)
+    contribution = next((c for c in held if c.campaign_id == campaign_id), None)
+    replay = any(
+        e.operation is ControlOperation.CONTRIBUTION_DISMISSED
+        and e.outcome is ControlOutcome.APPLIED
+        and e.idempotency_key == body.idempotency_key
+        for e in log
+    )
+    if not replay:
+        refusal = dismissal_refusal(campaign_id, contribution, log)
+        if refusal is not None:
+            raise http_error(409, "CONTRIBUTION_NOT_DISMISSABLE", refusal)
+    assert contribution is not None  # a replay's row was written over one, and none is deleted
+    actor, role = actor_from(identity)
+    try:
+        transition = dismissal_transition(
+            contribution,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            source_ref=body.source_ref,
+        )
+    except ValueError as e:
+        raise HTTPException(422, _validation(str(e))) from e
+    return _result(await apply_control(request, campaign_id, transition, identity))
 
 
 @router.get("/{campaign_id}/escalations")

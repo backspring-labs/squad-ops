@@ -155,6 +155,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `split_into`. `squadops goals candidates|promote|drop|split`.
 
 ### Fixed
+- **A closed, unmerged Campaign contribution can be dismissed** (#2926, SIP-0109 §24dg; the owner's choice of
+  2026-11-05). It kept blocking the crew's integration gate with no way to clear it. The owner's
+  `POST /api/v1/campaigns/{id}/contribution-dismissal` (`squadops campaigns dismiss-contribution <id> --reason …`,
+  `campaigns:control`) records "this work won't land" as a `contribution_dismissed` control-log row, with who, why and
+  the commit and review request, and the row leaves `GET /api/v1/projects/{id}/unintegrated-increments`. Anything but a
+  closed, unmerged contribution is `409 CONTRIBUTION_NOT_DISMISSABLE`, a retry with its key replays, and nothing is
+  deleted. Re-opening is not built. Migration `2104_campaign_contribution_dismissed.sql`.
 - **A suite that fails on the product's runner is read there, not in the qa image** (#2913, SIP-0112 H.24). When the
   runner ran a product's suite and it failed, the agent's result stood, so an image that died on a dependency it lacks
   (Shelfnote's `slugify`, exit 4) stayed the evidence: the analysis called it an environment issue, the repair changed

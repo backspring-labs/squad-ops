@@ -171,6 +171,17 @@ class GoalDelegationRequest(ControlRequest):
     source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
+class ContributionDismissalRequest(BaseModel):
+    """The owner's "this work won't land" on a closed, unmerged contribution (SIP-0109 §24dg):
+    why, under which key, and where the decision came from, when a conversation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+    idempotency_key: str
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
 class ClassificationRequest(ControlRequest):
     """The supervisor's classification of what went wrong with one proposal version (§9.4)."""
 

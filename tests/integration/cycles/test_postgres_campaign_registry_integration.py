@@ -948,3 +948,30 @@ async def test_a_failed_contribution_is_recorded_on_a_completed_campaign(campaig
 
     assert result.entry.outcome is ControlOutcome.APPLIED
     assert (await campaigns.control_log(CID))[-1].binding["error"] == "ReviewRequestFailed"
+
+
+async def test_a_dismissal_is_recorded_on_a_completed_campaign(campaigns):
+    """§24dg, migration 2104: ``contribution_dismissed`` is in the schema, and a completed Campaign
+    takes it. Bug caught: the value added in Python and not in the CHECK list, so the owner's
+    dismissal fails on the deploy and on no unit test."""
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    dismissed = move(
+        S.COMPLETED,
+        "d-1",
+        operation=ControlOperation.CONTRIBUTION_DISMISSED,
+        next_state=None,
+        binding={"commit": "a" * 40, "review_url": None},
+    )
+
+    result = await campaigns.transition(CID, dismissed)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
+    assert (await campaigns.control_log(CID))[-1].binding["commit"] == "a" * 40

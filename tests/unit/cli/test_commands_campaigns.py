@@ -52,6 +52,30 @@ def test_delegate_posts_the_owners_grant_with_where_it_came_from(get_client):
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
+def test_dismiss_contribution_posts_the_owners_reason_and_needs_one(get_client):
+    """SIP-0109 §24dg. Bugs caught: the command posting to another route, a key minted per retry
+    when one was given, or a dismissal sent with no reason."""
+    client = _client(post=_RESULT)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app,
+        ["campaigns", "dismiss-contribution", "cmp_a", "--reason", "the owner refused it"]
+        + ["--idempotency-key", "k-1"],
+    )
+    missing = runner.invoke(app, ["campaigns", "dismiss-contribution", "cmp_a"])
+
+    assert result.exit_code == 0, result.output
+    assert client.post.call_args.args[0] == "/api/v1/campaigns/cmp_a/contribution-dismissal"
+    assert client.post.call_args.kwargs["json"] == {
+        "reason": "the owner refused it",
+        "idempotency_key": "k-1",
+    }
+    assert missing.exit_code != 0
+    assert client.post.call_count == 1
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
 def test_a_control_command_sends_its_reason_key_and_expected_state(get_client):
     """Bug caught: the key or the expected state dropped on the way, so a retry acts twice or
     a stale operation applies."""

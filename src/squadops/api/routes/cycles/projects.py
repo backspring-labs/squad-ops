@@ -318,8 +318,9 @@ async def list_unintegrated_increments(
     the history, and nothing reaches the forge, so a merge reads as pending until a sync records it.
 
     ``contribution_closed`` keeps blocking, with the closed request's ``review_url``. Its recovery
-    is the owner's on the forge: reopen the request and merge it with a merge commit, then sync and
-    re-validate. ``squadops campaigns contribute`` answers the closed record and opens nothing."""
+    is the owner's: on the forge, reopen the request and merge it with a merge commit, then sync and
+    re-validate; or dismiss it, ``POST /api/v1/campaigns/{id}/contribution-dismissal`` (§24dg), which
+    clears the row. ``squadops campaigns contribute`` answers the closed record and opens nothing."""
     registry = get_project_registry(request)
     project = await registry.get_project(project_id)
     if project.source is None:
