@@ -50,10 +50,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   part never blanks the rest. It polls every 30 s while open and visible. A Campaign that names a goal set links to
   the goals panel with that Campaign chosen: `squadops:select-campaign` is kept until the panel mounts, and the
   Projects view is opened through the shell's own nav entry (`shared/selection.js`), since the pinned shell gives a
-  plugin no way to open another view. The crew's assessment of each expected result is a named placeholder until
-  SIP-0115 slice 5 (#2888) has a route. The plugin registers no command and writes nothing: launch, rule, pause,
+  plugin no way to open another view. The plugin registers no command and writes nothing: launch, rule, pause,
   resume and abort stay with the crew's broker and the CLI. SIP-0069 §14 records this and names what stays off the
   console. The reads are `campaigns.js`, tested under node in CI.
+- **The crew's surface** (SIP-0115 slice 5, #2888; §10d; SIP-0109 §24df). The crew's `campaign-supervisor` and
+  `campaign-triage` principals read the goal set and its derived backlog, with no scope changed. **A gate's evidence:**
+  `GET /api/v1/campaigns/{id}/ledger`, which the crew's reviewer reads, names each goal-set version's `backlog_item` and
+  `goals_revision`, and the version an open gate can be on carries `goal_evidence` (the goal, the item and the expected
+  results it serves, at the revision it is bound to). A requirements Campaign's rows are unchanged. **Assessments:**
+  `POST /api/v1/projects/{id}/goal-set/assessments` records the crew's or the owner's judgement of one expected result in
+  a Campaign (`reading`: `met`, `not_met` or `unclear`; `cause` with `not_met`: `app_work`, `framework_defect`,
+  `framework_gap` or `needs_owner`; `issue` with a framework cause; `evidence` by id; `log_seq`, the control-log row the
+  evidence was read at; `source_ref`, the crew's signed statement). It needs no Campaign grant, a completed Campaign takes one, and it is append-only and decides nothing.
+  `GET …/goal-set/assessments` is the history and `GET /api/v1/campaigns/{id}/assessments` how each result stands now
+  (`current`, `stale`, `conflicting` or `unassessed`). Migration `2103_goal_set_assessments.sql`. The Campaigns plugin's
+  placeholder is replaced by that view, and the goals panel shows it on each expected result, with the Campaign's own
+  text where a pinned revision defines the result differently.
 - **A source-backed change can remove a file** (#2612, SIP-0112 H.23). A step removes a file with a `delete:<path>` fence
   with nothing inside, shown to the steps that may use it. `development.develop` and its repair may remove any text
   file of the product; `qa.test` and its repair only a test one of the product's runners holds. A path outside the

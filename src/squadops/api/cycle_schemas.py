@@ -380,6 +380,85 @@ class GoalSetActionRequest(BaseModel):
     source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
+class AssessmentRequest(BaseModel):
+    """An assessment of one expected result (SIP-0115 §5.7, Q43). The vocabulary and what each
+    reading requires are the domain's, which names the field it refuses. ``source_ref`` is the
+    crew's signed statement, required of the crew and optional for the owner. ``log_seq`` is the
+    Campaign's control-log row the evidence was read at: the ``log_seq`` of
+    ``GET /api/v1/campaigns/{id}/assessments``, read before the evidence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    campaign_id: str = Field(min_length=1, max_length=200)
+    expected_result: str = Field(min_length=1, max_length=64)
+    goals_revision: int = Field(ge=1)
+    log_seq: int = Field(ge=0)
+    reading: str
+    cause: str | None = None
+    issue: int | None = None
+    evidence: dict[str, Any]
+    reason: str = Field(min_length=1, max_length=2000)
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+    supersedes: list[int] = Field(default_factory=list)
+
+
+class AssessmentResponse(BaseModel):
+    """One assessment as recorded (§5.7). ``sequence`` is its place in the goal set's own order,
+    and what a later assessment names in ``supersedes``. ``log_seq`` is the Campaign's control-log
+    row its evidence was read at, comparable only within that Campaign."""
+
+    project_id: str
+    sequence: int
+    campaign_id: str
+    expected_result: str
+    goals_revision: int
+    reading: str
+    cause: str | None = None
+    issue: int | None = None
+    evidence: dict[str, Any]
+    supersedes: list[int]
+    log_seq: int
+    reason: str
+    source_ref: str | None = None
+    author: str
+    created_at: datetime
+
+
+class AssessmentRecordedResponse(BaseModel):
+    """An assessment written, or replayed under its key."""
+
+    assessment: AssessmentResponse
+    idempotency_key: str
+    replayed: bool
+
+
+class ResultStandingResponse(BaseModel):
+    """One expected result as a Campaign's assessments leave it (§5.7). ``statement`` and
+    ``surface`` define it at the revision the Campaign reads, which a pinned Campaign may hold
+    apart from the latest. ``standing`` is ``current``, ``stale``, ``conflicting`` or
+    ``unassessed``; ``assessments`` holds the latest alone, or, while conflicting, each that
+    disagrees, newest first."""
+
+    expected_result: str
+    statement: str
+    surface: dict[str, str]
+    standing: str
+    assessments: list[AssessmentResponse]
+
+
+class CampaignAssessmentsResponse(BaseModel):
+    """Each expected result of the revision a Campaign reads now, derived, never stored.
+    ``log_seq`` is the Campaign's last control-log row at this read: what an assessment made from
+    evidence read after it states as its own."""
+
+    campaign_id: str
+    project_id: str
+    revision: int
+    log_seq: int
+    results: list[ResultStandingResponse]
+
+
 class CandidateRequest(GoalSetActionRequest):
     """Add a candidate (§5.4): ``id``, ``title``, ``description``, ``found_by``, ``found_at``
     (the time of the write when absent) and ``evidence``, as §4 names them."""

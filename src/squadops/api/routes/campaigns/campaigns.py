@@ -43,6 +43,7 @@ from squadops.api.campaign_schemas import (
     ControlResultResponse,
     EscalationAnswerRequest,
     EscalationResponse,
+    GateGoalEvidenceResponse,
     GoalDelegationRequest,
     LeaseRequest,
     LeaseResponse,
@@ -55,11 +56,16 @@ from squadops.api.campaign_schemas import (
     ReviewPushResponse,
     WorkClassDTO,
 )
-from squadops.api.cycle_schemas import ContributionResponse
+from squadops.api.cycle_schemas import (
+    CampaignAssessmentsResponse,
+    ContributionResponse,
+    ResultStandingResponse,
+)
 from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
+from squadops.api.routes.cycles.goal_sets import assessment_response
 from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.api.runtime.deps import (
     get_artifact_vault,
@@ -83,7 +89,7 @@ from squadops.api.runtime.deps import (
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
-from squadops.campaigns.backlog import campaign_backlog
+from squadops.campaigns.backlog import campaign_backlog, gate_goal_evidence
 from squadops.campaigns.calibration_record import (
     CalibrationRecord,
     record_for,
@@ -148,6 +154,8 @@ from squadops.execution.size_preflight import size_preflight
 from squadops.memory.pinning import pin_campaign
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.contribution import ContributionRefused
+from squadops.projects.goal_set import surface_document
+from squadops.projects.goal_set_assessments import CampaignHasNoGoalSet, campaign_assessments
 from squadops.projects.models import SourceUnavailable
 from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
 
@@ -836,13 +844,27 @@ async def read_ledger(
 ) -> list[LedgerEntryResponse]:
     """The proposal ledger (§9.4), read from the control log and the launch outbox: per proposal
     version, its submission, its ruling, the cycles that carried it with their outcomes (#2578),
-    and its classification."""
+    and its classification.
+
+    **It is what a gate's reviewer reads** (SIP-0115 §8.5). On a goal-set Campaign each version names
+    its ``backlog_item`` and ``goals_revision``, and the one a gate can be open on, its item
+    ``proposed`` or ``in_increment``, carries ``goal_evidence``: the goal, the item and the expected
+    results it serves, as the revision it is bound to holds them (§5.5a). A requirements Campaign's
+    rows carry none of the three."""
     import dataclasses
 
     registry = _registry(request)
-    await registry.get_campaign(campaign_id)
+    campaign = await registry.get_campaign(campaign_id)
+    evidence: dict[tuple[str, int], GateGoalEvidenceResponse] = {}
+    if campaign.objective.goals is not None:
+        read = await gate_goal_evidence(
+            campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
+        )
+        evidence = {key: GateGoalEvidenceResponse(**doc) for key, doc in read.items()}
     return [
-        LedgerEntryResponse(**dataclasses.asdict(e))
+        LedgerEntryResponse(
+            **dataclasses.asdict(e), goal_evidence=evidence.get((e.proposal_id, e.version))
+        )
         for e in ledger(
             await registry.control_log(campaign_id), await registry.launch_intents(campaign_id)
         )
@@ -898,6 +920,42 @@ async def read_backlog(
                 split_into=list(i.split_into),
             )
             for i in view.items
+        ],
+    )
+
+
+@router.get("/{campaign_id}/assessments")
+async def read_assessments(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> CampaignAssessmentsResponse:
+    """How each expected result of the revision the Campaign reads now stands (SIP-0115 §5.7): the
+    latest assessment in this Campaign, or the ones that conflict, derived and never stored. Per
+    Campaign, as the backlog is: what makes one stale is this Campaign's acceptances. A Campaign
+    naming no goal set has none: 404 ``CAMPAIGN_HAS_NO_GOAL_SET``."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    try:
+        read = await campaign_assessments(
+            campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
+        )
+    except CampaignHasNoGoalSet as e:
+        raise http_error(404, "CAMPAIGN_HAS_NO_GOAL_SET", str(e)) from e
+    return CampaignAssessmentsResponse(
+        campaign_id=campaign_id,
+        project_id=campaign.project_id,
+        revision=read.revision,
+        log_seq=read.log_seq,
+        results=[
+            ResultStandingResponse(
+                expected_result=r.expected_result,
+                statement=r.result.statement,
+                surface=surface_document(r.result.surface),
+                standing=r.standing.value,
+                assessments=[assessment_response(a) for a in r.assessments],
+            )
+            for r in read.results
         ],
     )
 

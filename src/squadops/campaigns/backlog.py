@@ -40,7 +40,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.continuation import PendingAction
-from squadops.campaigns.ledger import ledger
+from squadops.campaigns.ledger import BACKLOG_ITEM_KEY, GOALS_REVISION_KEY, ledger
 from squadops.campaigns.models import (
     Campaign,
     ControlLogEntry,
@@ -55,11 +55,6 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
     from squadops.ports.projects.goal_sets import GoalSetRegistryPort
     from squadops.projects.goal_set import BacklogItem, GoalSet, GoalSetRevision
-
-#: The submission binding's keys for the item a proposal serves and the revision it was created
-#: under (written by ``gate.submission`` from the change request's own fields).
-BACKLOG_ITEM_KEY = "backlog_item"
-GOALS_REVISION_KEY = "goals_revision"
 
 
 class ItemStatus(StrEnum):
@@ -223,6 +218,43 @@ def goals_revised(
     return None
 
 
+@dataclass(frozen=True)
+class Acceptance:
+    """One increment a Campaign accepted: the control-log row that did, and the expected results
+    its item served in the revision its proposal is bound to (§5.5a)."""
+
+    seq: int
+    item_id: str
+    serves: tuple[str, ...]
+
+
+def acceptances(
+    revisions: Iterable[GoalSetRevision],
+    log: Sequence[ControlLogEntry],
+    launches: Iterable[LaunchIntent] = (),
+) -> tuple[Acceptance, ...]:
+    """The Campaign's accepted increments that named a backlog item, in log order: what makes an
+    assessment of a result they served stale (SIP-0115 §5.7)."""
+    by_number = {r.revision: r for r in revisions}
+    promoted = {
+        str(e.target): e.seq
+        for e in log
+        if e.outcome is ControlOutcome.APPLIED
+        and e.operation is ControlOperation.PROMOTE
+        and e.target is not None
+    }
+    found = []
+    for entry in ledger(list(log), launches):
+        bound = by_number.get(entry.goals_revision) if entry.goals_revision else None
+        item = _item(bound.goal_set, entry.backlog_item or "") if bound else None
+        # Only the versions a cycle carried: a returned version shares its cycle with the revision
+        # that replaced it, and lists no cycle of its own.
+        rows = [promoted[c["cycle_id"]] for c in entry.cycles if c["cycle_id"] in promoted]
+        if item is not None and rows:
+            found.append(Acceptance(min(rows), item.id, item.serves))
+    return tuple(sorted(found, key=lambda a: a.seq))
+
+
 # --- reading the control log ---
 
 
@@ -280,7 +312,7 @@ def _status(entry, promoted, superseded, owners_word, ended):
         return ItemStatus.PROPOSED, None, None
     if ruling["decision"] != GateDecisionValue.APPROVED.value:
         return ItemStatus.PENDING, None, None
-    if any(c in promoted for c in cycles):
+    if any(c["cycle_id"] in promoted for c in entry.cycles):
         return ItemStatus.ACCEPTED, None, None
     outcome = entry.outcome or {}
     if outcome.get("action") == PendingAction.ABANDON_AND_PROPOSE.value:
@@ -479,6 +511,39 @@ def _first_change(
 
 
 # --- reading it for a Campaign ---
+
+
+async def gate_goal_evidence(
+    campaign: Campaign, *, goal_sets: GoalSetRegistryPort, campaigns: CampaignRegistryPort
+) -> dict[tuple[str, int], dict[str, Any]]:
+    """What a reviewer outside SquadOps judges an open gate against (SIP-0115 §8.5), by proposal
+    version: the goal, the backlog item and the expected results it serves, as documents of the
+    goal set, read from the revision the version is bound to (§5.5a), never a later one.
+
+    Only a version an open gate can be on: its item ``proposed`` (the increment gate) or
+    ``in_increment`` (the plan gate). A reviewer's request is bounded, and the rows already decided
+    keep their item's id, so repeating each one's goal would spend that bound on nothing."""
+    view, revisions = await campaign_backlog(campaign, goal_sets=goal_sets, campaigns=campaigns)
+    by_number = {r.revision: r for r in revisions}
+    evidence: dict[tuple[str, int], dict[str, Any]] = {}
+    for held in view.items:
+        if held.status not in (ItemStatus.PROPOSED, ItemStatus.IN_INCREMENT):
+            continue
+        bound = by_number.get(held.revision) if held.revision is not None else None
+        if bound is None or held.proposal_id is None or held.version is None:
+            continue
+        document = bound.goal_set.to_document()
+        item = next((i for i in document["backlog"] if i["id"] == held.item_id), None)
+        if item is None:
+            continue
+        evidence[(held.proposal_id, held.version)] = {
+            "goal": document["goal"],
+            "item": item,
+            "expected_results": [
+                r for r in document["expected_results"] if r["id"] in item["serves"]
+            ],
+        }
+    return evidence
 
 
 async def campaign_backlog(

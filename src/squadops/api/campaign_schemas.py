@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_serializer
 
 from squadops.campaigns.models import PlanGate
 
@@ -262,6 +262,21 @@ class ControlLogEntryResponse(BaseModel):
     launch_id: str | None
 
 
+class GateGoalEvidenceResponse(BaseModel):
+    """What a gate's reviewer judges a goal-set increment against (SIP-0115 §8.5): the goal, the
+    backlog item and the expected results it serves, in the goal set's own document shape, as the
+    revision the proposal is bound to holds them."""
+
+    goal: str
+    item: dict[str, Any]
+    expected_results: list[dict[str, Any]]
+
+
+#: A ledger row's fields only a goal-set Campaign has. Left out when unset, so a requirements
+#: Campaign's rows, which a reviewer's bounded request carries whole, are as they were.
+_GOAL_SET_ROW_FIELDS = ("backlog_item", "goals_revision", "goal_evidence")
+
+
 class LedgerEntryResponse(BaseModel):
     """One proposal version in the ledger (§9.4): its submission, then its ruling, its cycle's
     outcome and its classification as each is recorded."""
@@ -278,6 +293,17 @@ class LedgerEntryResponse(BaseModel):
     classification: dict[str, Any] | None = None
     #: #2578 part 4: each cycle that carried the version, in launch order, with its deciding row.
     cycles: list[dict[str, Any]] = Field(default_factory=list)
+    #: SIP-0115 §8.5, a goal-set Campaign only: the item this version serves and the revision it
+    #: is bound to, on every row; ``goal_evidence`` while an open gate can be on it.
+    backlog_item: str | None = None
+    goals_revision: int | None = None
+    goal_evidence: GateGoalEvidenceResponse | None = None
+
+    @model_serializer(mode="wrap")
+    def _without_unset_goal_fields(self, handler):
+        return {
+            k: v for k, v in handler(self).items() if k not in _GOAL_SET_ROW_FIELDS or v is not None
+        }
 
 
 class BacklogItemResponse(BaseModel):

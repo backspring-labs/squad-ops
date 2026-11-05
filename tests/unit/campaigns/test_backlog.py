@@ -13,7 +13,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from squadops.campaigns.backlog import ItemStatus, backlog_view, goals_revised
+from squadops.campaigns.backlog import (
+    Acceptance,
+    ItemStatus,
+    acceptances,
+    backlog_view,
+    goals_revised,
+)
 from squadops.campaigns.models import (
     CampaignState,
     ControlLogEntry,
@@ -399,6 +405,55 @@ def test_an_item_removed_mid_increment_keeps_building_and_is_accepted_as_it_stoo
     assert _statuses(backlog_view(revisions, 2, accepted.rows))["B-1"] == (
         "accepted (removed in r2)"
     )
+
+
+def test_acceptances_name_the_row_and_what_the_item_served_at_its_bound_revision():
+    """What makes an assessment stale (SIP-0115 §5.7). Bugs caught: a repair's promotion not
+    credited to the item it continues; ``serves`` read at the latest revision rather than the one
+    the proposal is bound to (§5.5a); the calibration's own promotion, which named no item, or an
+    unaccepted increment, counted as one."""
+    later = _document()
+    later["backlog"][1]["serves"] = ["ER-log"]
+    log = _Log().promote("cyc_cal")
+    _approved(log, "B-2", "c1").decide("c1", 12, action="repair")
+    log.launch(CycleKind.REPAIR, "c1r", "c1").promote("c1r")
+    log.submit("B-3", "c2", revision=2).rule("approved", "c2")
+
+    read = acceptances([_revision(1), _revision(2, later)], log.rows, log.launches)
+
+    assert read == (Acceptance(log.rows[-3].seq, "B-2", ("ER-week",)),)
+
+
+def test_a_returned_version_is_not_accepted_by_the_revision_that_replaced_it():
+    """A ledger row's carrying cycle is on the last version it carried, so a version returned
+    and revised in that cycle lists none. Bug caught: reading the version's own ``cycle_id``
+    instead, so promoting v2 credits v1's item too: an assessment of a result only v1 served reads
+    stale (§5.7), and v1's item reads accepted when nothing was."""
+    moved = _document()
+    moved["backlog"][1]["serves"] = ["ER-log"]
+    log = _Log().submit("B-1", "c1").rule("returned", "c1")
+    log.submit("B-2", "c1", version=2, revision=2).rule("approved", "c1", version=2)
+    log.promote("c1")
+    revisions = [_revision(1), _revision(2, moved)]
+
+    assert acceptances(revisions, log.rows, log.launches) == (
+        Acceptance(log.rows[-1].seq, "B-2", ("ER-log",)),
+    )
+    statuses = _statuses(backlog_view(revisions, 2, log.rows, log.launches))
+    assert (statuses["B-1"], statuses["B-2"]) == ("pending", "accepted")
+
+
+def test_an_approved_version_a_revision_replaced_is_not_accepted_by_it():
+    """The same reading at the item's status. Bug caught: v1 was approved, its increment was
+    revised as v2 serving another item, and v2's promotion marks v1's item accepted: the backlog
+    skips an item nobody built."""
+    log = _Log().submit("B-1", "c1").rule("approved", "c1")
+    log.submit("B-2", "c1", version=2).rule("approved", "c1", version=2).promote("c1")
+
+    statuses = _statuses(backlog_view([_revision(1)], 1, log.rows, log.launches))
+
+    assert statuses["B-2"] == "accepted"
+    assert statuses["B-1"] != "accepted"
 
 
 def test_a_rebase_that_superseded_the_items_repair_returns_it_to_pending():

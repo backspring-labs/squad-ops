@@ -17,6 +17,7 @@ import {
   documentFrom,
   draftFrom,
   incrementOf,
+  loadAssessments,
   loadBacklog,
   loadGoalSet,
   loadGoalSetCampaigns,
@@ -24,6 +25,7 @@ import {
   revisionArgs,
   submitRevision,
 } from './goals.js';
+import { standingOf } from '../../../shared/assessments.js';
 import { COMMAND_ROUTE } from '../../../shared/commands.js';
 
 const envelope = (code, message, details = null) => ({ detail: { error: { code, message, details } } });
@@ -309,4 +311,53 @@ test('saying no to the bus\'s confirmation writes nothing and is not an error', 
 
   assert.deepEqual(got, { state: 'declined' });
   assert.equal(posts.length, 1);
+});
+
+// --- the crew's assessment of each expected result (SIP-0115 §8.3, slice 5, #2888) ---
+
+test('a pinned Campaign\'s assessment is shown against the text it judged, not the latest', () => {
+  // Bug caught: a Campaign pinned to r1 assessed "total minutes" as met; the panel shows the latest
+  // revision, where the same id says "total hours", and the reading read as a judgement of that.
+  const page = { kind: 'page', ref: '/week' };
+  const assessment = { sequence: 1, reading: 'met', author: 'crew', goals_revision: 1 };
+  const pinned = {
+    revision: 1,
+    results: [
+      { expected_result: 'ER-week', statement: 'The total minutes', surface: page, standing: 'current', assessments: [assessment] },
+      { expected_result: 'ER-log', statement: 'A session is kept', surface: page, standing: 'unassessed', assessments: [] },
+    ],
+  };
+
+  const changed = standingOf(pinned, { id: 'ER-week', statement: 'The total hours', surface: page });
+  assert.deepEqual(changed.readAs, { revision: 1, statement: 'The total minutes', surface: page });
+  assert.equal(changed.standing, 'current');
+
+  const moved = { kind: 'page', ref: '/month' };
+  const elsewhere = standingOf(pinned, { id: 'ER-week', statement: 'The total minutes', surface: moved });
+  assert.deepEqual(elsewhere.readAs, { revision: 1, statement: 'The total minutes', surface: page });
+
+  const same = standingOf(pinned, { id: 'ER-log', statement: 'A session is kept', surface: page });
+  assert.equal(same.readAs, null);
+});
+
+test('the panel reads a Campaign\'s assessments, and a Campaign with no goal set has none', async () => {
+  // Bugs caught: the wrong route, so each expected result stays unassessed; a requirements
+  // Campaign's 404 shown as a failure; an unknown Campaign's shown as nothing to show.
+  const view = { campaign_id: 'cmp-b', revision: 2, results: [] };
+  const { apiFetch, calls } = api({ '/api/v1/campaigns/cmp-b/assessments': [200, view] });
+  assert.deepEqual(await loadAssessments(apiFetch, '', 'cmp-b'), view);
+  assert.deepEqual(calls.map((c) => c.url), ['/api/v1/campaigns/cmp-b/assessments']);
+
+  const requirements = api({
+    '/api/v1/campaigns/cmp-r/assessments': [404, envelope('CAMPAIGN_HAS_NO_GOAL_SET', 'names none')],
+  });
+  assert.equal(await loadAssessments(requirements.apiFetch, '', 'cmp-r'), null);
+
+  const gone = api({
+    '/api/v1/campaigns/cmp-x/assessments': [404, envelope('CAMPAIGN_NOT_FOUND', 'no such Campaign')],
+  });
+  await assert.rejects(loadAssessments(gone.apiFetch, '', 'cmp-x'), (err) => {
+    assert.ok(err instanceof GoalsReadError);
+    return err.code === 'CAMPAIGN_NOT_FOUND';
+  });
 });

@@ -197,7 +197,7 @@ class GoalSet:
             "api_version": API_VERSION,
             "goal": self.goal,
             "expected_results": [
-                {"id": r.id, "statement": r.statement, "surface": _surface_document(r.surface)}
+                {"id": r.id, "statement": r.statement, "surface": surface_document(r.surface)}
                 for r in self.expected_results
             ],
             "constraints": list(self.constraints),
@@ -360,7 +360,7 @@ def _candidate(doc: Any, at: str) -> Candidate:
     )
 
 
-def _surface_document(surface: Surface) -> dict[str, str]:
+def surface_document(surface: Surface) -> dict[str, str]:
     if surface.kind == _NO_SURFACE:
         return {"kind": surface.kind, "reason": surface.reason or ""}
     return {"kind": surface.kind, "ref": surface.ref or ""}

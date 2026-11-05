@@ -2,7 +2,8 @@
 
 <!--
   The goals panel (SIP-0115 §8.3, slice 4, #2887): the selected Project's goal set and expected
-  results, its backlog with each item's status and increment as a chosen Campaign stands on it,
+  results with the crew's latest assessment of each (slice 5, #2888), its backlog with each item's
+  status and increment as a chosen Campaign stands on it,
   the candidates waiting (read-only: slice 3's actions are not here) and the revision history.
   Editing writes the next revision through the command bus. What it reads and how it writes is
   `goals.js`; this file renders it.
@@ -21,6 +22,7 @@
     documentFrom,
     draftFrom,
     incrementOf,
+    loadAssessments,
     loadBacklog,
     loadGoalSet,
     loadGoalSetCampaigns,
@@ -29,6 +31,7 @@
     revisionArgs,
     submitRevision,
   } from './goals.js';
+  import { standingOf } from '../../../shared/assessments.js';
   import { takeAnnounced } from '../../../shared/selection.js';
 
   const SELECT_CAMPAIGN = 'squadops:select-campaign';
@@ -51,6 +54,8 @@
   let campaignId = $state('');
   let backlog = $state(null); // {state: 'ok'|'no-goal-set', backlog, message}
   let backlogError = $state(null);
+  let assessments = $state(null); // CampaignAssessmentsResponse, for the chosen Campaign
+  let assessmentsError = $state(null);
   let campaignsError = $state(null);
   let canWrite = $state(false);
   let openRevision = $state(null);
@@ -98,6 +103,8 @@
     if (!campaignId) {
       backlog = null;
       backlogError = null;
+      assessments = null;
+      assessmentsError = null;
       return;
     }
     const forCampaign = campaignId;
@@ -108,6 +115,14 @@
       backlogError = null;
     } catch (err) {
       if (forCampaign === campaignId) backlogError = err.message;
+    }
+    try {
+      const got = await loadAssessments(apiFetch, apiBase, forCampaign);
+      if (forCampaign !== campaignId) return;
+      assessments = got;
+      assessmentsError = null;
+    } catch (err) {
+      if (forCampaign === campaignId) assessmentsError = err.message;
     }
   }
 
@@ -125,6 +140,8 @@
       campaigns = [];
       backlog = null;
       backlogError = null;
+      assessments = null;
+      assessmentsError = null;
       campaignsError = null;
       error = null;
       draft = null;
@@ -170,6 +187,8 @@
   function chooseCampaign(e) {
     campaignId = e.target.value;
     backlog = null;
+    assessments = null;
+    assessmentsError = null;
     refreshBacklog();
   }
 
@@ -409,9 +428,32 @@
               <code>{result.id}</code>
               <span>{result.statement}</span>
               <span class="muted small">{surfaceText(result.surface)}</span>
+              {#if standingOf(assessments, result)}
+                {@const row = standingOf(assessments, result)}
+                {#if row.readAs}
+                  <div class="read-as small">
+                    This Campaign reads r{row.readAs.revision}, and its standing is of that text:
+                    <span>{row.readAs.statement}</span>
+                    <span class="muted">{surfaceText(row.readAs.surface)}</span>
+                  </div>
+                {/if}
+                <div class="assessment small">
+                  <span class="standing standing-{row.standing}">{row.label}</span>
+                  {#each row.entries as e (e.sequence)}
+                    <span class="reading">
+                      {e.readingText}{e.causeText ? `: ${e.causeText}` : ''}
+                      {#if e.issueUrl}<a href={e.issueUrl} target="_blank" rel="noreferrer">#{e.issue}</a>{/if}
+                      <span class="muted" title={e.sourceRef ?? ''}>{e.author}, r{e.revision}</span>
+                    </span>
+                  {/each}
+                </div>
+              {/if}
             </li>
           {/each}
         </ul>
+        {#if assessmentsError}
+          <div class="error small">{assessmentsError}</div>
+        {/if}
 
         {#if goalSet.constraints.length > 0}
           <div class="section-label">Constraints</div>
@@ -662,6 +704,29 @@
   .status-abandoned,
   .status-removed {
     color: var(--continuum-text-muted, #94a3b8);
+  }
+  .assessment {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    margin-top: 2px;
+  }
+  .read-as {
+    margin-top: 2px;
+    color: var(--continuum-accent-warning, #f59e0b);
+  }
+  .read-as span {
+    color: var(--continuum-text-primary, #e2e8f0);
+  }
+  .read-as .muted {
+    color: var(--continuum-text-muted, #94a3b8);
+  }
+  .standing-stale,
+  .standing-unassessed {
+    color: var(--continuum-text-muted, #94a3b8);
+  }
+  .standing-conflicting {
+    color: var(--continuum-accent-warning, #f59e0b);
   }
   select,
   input[type='text'],

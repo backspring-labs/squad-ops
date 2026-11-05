@@ -155,6 +155,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
 | a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
 | the owner's goal delegation (SIP-0115 slice 3): `goal_delegation_granted`, the first record a completed Campaign refuses (§24dd) | **shipped** | 2.6.0, PR #2908 |
+| a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -6273,3 +6274,21 @@ the replay after the close).
 
 **Who ruled.** The owner, 2026-11-04: the owner chose the one-step grant, on Q41's "within a Campaign the owner
 started". The row's shape and the exception to the record-only kind are the implementer's, under the supervisor's brief.
+
+### 24df. A goal-set Campaign's ledger rows carry what a gate is judged against (2026-11-04, §9.4; SIP-0115 §8.5, §10d; #2888; the implementer's design under the supervisor's brief, for the owner)
+
+**What changed.** §9.4's ledger is what a reviewer outside SquadOps reads at a gate, so SIP-0115 §8.5's gate evidence is
+carried on it. `GET /api/v1/campaigns/{id}/ledger` gains three fields on a goal-set Campaign's rows:
+- `backlog_item` and `goals_revision`, on every row, read from the submission row §24cy item 3 writes;
+- `goal_evidence`, on the version whose item reads `proposed` or `in_increment`, the two statuses an increment or a plan
+  gate can be open on: the goal, the item and the expected results it serves, read at the revision the version is bound
+  to (SIP-0115 §5.5a).
+
+Each is left out when unset, so a requirements Campaign's rows are unchanged and its ledger reads no goal set. The
+decided rows carry no `goal_evidence` because a reviewer's request is bounded. The evidence package is unchanged: it
+doesn't read this ledger.
+
+**Evidence.** `tests/unit/api/test_crew_surface_routes.py`: the increment gate and the plan gate at the route with the
+crew's roles, a decided row, a later revision, and a requirements row's exact fields.
+
+**Who ruled.** The supervisor's brief for #2888; the design is the implementer's, for the owner's review in the PR.

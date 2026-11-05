@@ -18,10 +18,9 @@
 //     (`EscalationResponse`), as `squadops campaigns escalations` reads it;
 //   - `GET /api/v1/campaigns/{id}/package`: the latest evidence package's digest
 //     (`PackageDigestResponse`), as `squadops campaigns digest` prints it. A Campaign with none
-//     yet answers 404 `PACKAGE_NOT_FOUND`.
-//
-// Not read: the crew's assessment of each expected result. SIP-0115 slice 5 (#2888) has no route
-// on main yet; the view names the gap where it will go.
+//     yet answers 404 `PACKAGE_NOT_FOUND`;
+//   - `GET /api/v1/campaigns/{id}/assessments`: the crew's assessment of each expected result, on a
+//     Campaign naming a goal set (`CampaignAssessmentsResponse`, `shared/assessments.js`).
 
 import { errorFromText } from '../../../shared/errors.js';
 import { fetchAllPages } from '../../../shared/paging.js';
@@ -202,8 +201,9 @@ async function part(apiFetch, url, what) {
 
 /**
  * One Campaign's view. Answers `{state: 'not-found', message}` for a Campaign the API doesn't hold,
- * else `{state: 'ok', campaign, log, ledger, escalations, digest}`, where each of the last four is
- * `{value}` or `{error}`, and `digest` is `{none: message}` when no evidence package is stored yet.
+ * else `{state: 'ok', campaign, log, ledger, escalations, digest, assessments}`, where each of the
+ * last five is `{value}` or `{error}`, `digest` is `{none: message}` when no evidence package is
+ * stored yet, and `assessments` is `{none: true}` on a Campaign naming no goal set, which has none.
  */
 export async function loadCampaignView(apiFetch, apiBase, campaignId) {
   const base = `${apiBase}/api/v1/campaigns/${enc(campaignId)}`;
@@ -215,13 +215,16 @@ export async function loadCampaignView(apiFetch, apiBase, campaignId) {
   }
   if (!resp.ok) throw await refusal(resp, campaignId);
   const campaign = await resp.json();
-  const [log, ledger, escalations, digest] = await Promise.all([
+  const [log, ledger, escalations, digest, assessments] = await Promise.all([
     part(apiFetch, `${base}/control-log`, 'The control log'),
     part(apiFetch, `${base}/ledger`, 'The ledger'),
     part(apiFetch, `${base}/escalations`, 'The escalations'),
     loadDigest(apiFetch, base),
+    campaign.objective?.goals
+      ? part(apiFetch, `${base}/assessments`, "The crew's assessments")
+      : { none: true },
   ]);
-  return { state: 'ok', campaign, log, ledger, escalations, digest };
+  return { state: 'ok', campaign, log, ledger, escalations, digest, assessments };
 }
 
 async function loadDigest(apiFetch, base) {
