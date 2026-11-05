@@ -6338,7 +6338,8 @@ evidence package, which reads no contribution.
 **Evidence.** `tests/unit/api/test_contribution_dismissal_routes.py`, entered at the route with the real authorization adapter
 over a real managed clone: the owner clears the row, the record stays; each role; each refusal; a replay after the record
 moved. `tests/unit/api/test_unintegrated_increments.py`: a live record beside a dismissal.
-`tests/integration/cycles/test_postgres_campaign_registry_integration.py`: migration 2104 on Postgres.
+`tests/integration/cycles/test_postgres_campaign_registry_integration.py`: migration 2104 on Postgres. Twelve mutants, each on a
+commit, each failed a test; one survived at first, the Project's first contribution read as the Campaign's, and gained its test.
 
 **Who ruled.** The owner, 2026-11-05: dismiss first. The row's shape and the narrowings are the implementer's, under the
 supervisor's brief.
