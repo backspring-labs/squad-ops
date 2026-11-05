@@ -170,4 +170,3 @@ async def test_a_retry_replays_whatever_became_of_the_record_and_a_new_key_is_re
 
     other = owner.post(DISMISS, json={**BODY, "source_ref": "https://chat.example.invalid/t/2"})
     assert other.status_code == 409, other.text
-    assert owner.get(UNINTEGRATED).json() == []

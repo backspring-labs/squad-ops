@@ -27,6 +27,7 @@ from squadops.campaigns.models import (
     CampaignGoals,
     CampaignState,
     ControlOperation,
+    ControlOutcome,
     CycleKind,
 )
 from squadops.campaigns.unintegrated import unintegrated_increments
@@ -356,6 +357,26 @@ async def test_a_dismissal_clears_a_closed_standing_and_never_a_live_record(besi
     )
 
     assert [(i.cycle_id, i.standing.value) for i in listed] == expected
+
+
+async def test_a_refused_dismissal_row_dismisses_nothing():
+    """§24dg, the control log's rule: a refused row is a record of a refusal. Bug caught: any row
+    of the operation read as the owner's word, so the gate opens on an act that never applied."""
+    _held, log, goal_sets = _goal_set_world()
+    row = _row(99, ControlOperation.CONTRIBUTION_DISMISSED, {"commit": "r1"})
+    log.rows.append(dataclasses.replace(row, outcome=ControlOutcome.REFUSED))
+    project = Project(project_id=PROJECT, name="Tally", description="", created_at=T0)
+    whole = dataclasses.replace(_per_run(CID, "closed"), run_id=CAMPAIGN_RUN)
+
+    listed = await unintegrated_increments(
+        project,
+        campaigns=log,
+        contributions=[whole],
+        repository=_Clone(set()),
+        goal_sets=goal_sets,
+    )
+
+    assert {i.standing.value for i in listed} == {"contribution_closed"}
 
 
 async def test_an_increment_contributed_by_its_own_run_stands_by_that_record():
