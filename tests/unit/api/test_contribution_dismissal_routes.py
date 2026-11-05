@@ -119,6 +119,19 @@ async def test_anything_but_closed_and_unmerged_is_refused_and_writes_nothing(
     assert await _dismissals(world) == []
 
 
+async def test_another_campaigns_closed_contribution_is_not_this_ones(tmp_path):
+    """Bug caught: the Project's first contribution read as the Campaign's, so a closed one of
+    another Campaign lets the owner dismiss this one's pending work."""
+    world = await _contributed(tmp_path, "pending")
+    ours = world.book.recorded[0]
+    world.book.recorded.insert(0, dataclasses.replace(ours, cycle_id="cmp_other", state="closed"))
+
+    resp = world.client(Role.ADMIN).post(DISMISS, json=BODY)
+
+    assert _code(resp) == (409, "CONTRIBUTION_NOT_DISMISSABLE")
+    assert await _dismissals(world) == []
+
+
 async def test_a_campaign_with_no_contribution_and_an_unknown_one_are_refused(tmp_path):
     """Bugs caught: a dismissal of nothing recorded, which would clear a later contribution's row
     before it existed; a 500 for an unknown id."""
