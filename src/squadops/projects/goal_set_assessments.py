@@ -12,8 +12,9 @@ nothing (§5.7): it writes no goal-set revision, changes no item's status and no
 interpretation comes after the close, so a completed Campaign takes one.
 
 **Append-only, in its own order.** Each takes the next ``sequence`` on the goal set, and is never
-edited. It may name earlier ones it ``supersedes``. Its Campaign's control-log position
-(``log_seq``) is read at the write. It orders it against that Campaign's acceptances only: log
+edited. It may name earlier ones it ``supersedes``. Its ``log_seq`` is the Campaign's control-log
+position its evidence was read at, which the submitter states: an acceptance after that read makes
+it stale however late the write. It orders it against that Campaign's acceptances only: log
 positions can't be compared across Campaigns (§5.7).
 
 **The derived reading** is per Campaign, as an item's status is, and nothing derived is stored.
@@ -36,7 +37,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.backlog import Acceptance, acceptances, campaign_backlog
-from squadops.campaigns.models import Campaign, CampaignNotFoundError
+from squadops.campaigns.models import Campaign, CampaignNotFoundError, ControlLogEntry
 from squadops.projects.development_configuration import submission_digest
 from squadops.projects.goal_set import ExpectedResult, GoalSetInvalid, GoalSetRevision
 from squadops.projects.goal_set_actions import Actor
@@ -116,7 +117,7 @@ class AssessmentEvidence:
 @dataclass(frozen=True)
 class Assessment:
     """One assessment. ``sequence`` is the store's, 0 until it is recorded; ``log_seq`` is the
-    Campaign's last control-log row when it was written."""
+    Campaign's control-log row its evidence was read at."""
 
     project_id: str
     campaign_id: str
@@ -137,12 +138,28 @@ class Assessment:
 
 @dataclass(frozen=True)
 class ResultStanding:
-    """One expected result as a Campaign's assessments leave it: the latest alone, or, while they
-    conflict, each one that disagrees, newest first; none when it is ``unassessed``."""
+    """One expected result, as the revision the Campaign reads defines it, as a Campaign's
+    assessments leave it: the latest alone, or, while they conflict, each one that disagrees,
+    newest first; none when it is ``unassessed``."""
 
-    expected_result: str
+    result: ExpectedResult
     standing: Standing
     assessments: tuple[Assessment, ...] = ()
+
+    @property
+    def expected_result(self) -> str:
+        return self.result.id
+
+
+@dataclass(frozen=True)
+class CampaignStandings:
+    """How a Campaign's expected results stand: at ``revision``, the one it reads now, with
+    ``log_seq``, its last control-log row at this read: what an assessment made from this read
+    states as read at (§5.7)."""
+
+    revision: int
+    log_seq: int
+    results: tuple[ResultStanding, ...]
 
 
 # --- reading a submitted or stored assessment ---
@@ -255,19 +272,20 @@ async def record_assessment(
     now: datetime | None = None,
 ) -> tuple[Assessment, bool]:
     """Record the assessment ``submission`` holds (``campaign_id``, ``expected_result``,
-    ``goals_revision``, ``reading``, ``cause``, ``issue``, ``evidence``, ``reason``,
+    ``goals_revision``, ``log_seq``, ``reading``, ``cause``, ``issue``, ``evidence``, ``reason``,
     ``source_ref``, ``supersedes``), as the goal set's next in sequence. Returns it and whether
     this replayed an earlier write under its key. Nothing checked here can have changed since
-    that write (revisions and assessments are immutable, and a Campaign is never deleted), so a
-    retry passes them and the store replays it.
+    that write (revisions and assessments are immutable, a Campaign is never deleted and its log
+    only grows), so a retry passes them and the store replays it.
 
     Raises:
         ProjectNotFoundError: no such Project.
         CampaignNotFoundError: no such Campaign on this Project.
         CampaignHasNoGoalSet: it reads requirements.
         GoalSetInvalid: the submission, naming its field: a revision the goal set doesn't hold, an
-            expected result that revision doesn't hold, and a ``supersedes`` that isn't an
-            earlier assessment of this result in this Campaign among them.
+            expected result that revision doesn't hold, a ``log_seq`` past the Campaign's log, and
+            a ``supersedes`` that isn't an earlier assessment of this result in this Campaign
+            among them.
         ProjectRegistryReadOnlyError, RegistrationKeyConflictError: the store's refusals.
     """
     await projects.get_project(project_id)
@@ -285,6 +303,7 @@ async def record_assessment(
     campaign_id = str(submission["campaign_id"])
     expected_result = str(submission["expected_result"])
     goals_revision = int(submission["goals_revision"])
+    log_seq = int(submission["log_seq"])
 
     request = submission_digest(
         {
@@ -292,6 +311,7 @@ async def record_assessment(
             "campaign_id": campaign_id,
             "expected_result": expected_result,
             "goals_revision": goals_revision,
+            "log_seq": log_seq,
             "reading": reading.value,
             "cause": cause.value if cause else None,
             "issue": issue,
@@ -312,7 +332,11 @@ async def record_assessment(
         )
     await _holds_the_result(project_id, goals_revision, expected_result, goal_sets)
     await _supersedes_earlier(project_id, campaign_id, expected_result, supersedes, goal_sets)
-    log = await campaigns.control_log(campaign_id)
+    last = _last_row(await campaigns.control_log(campaign_id))
+    if log_seq > last:
+        raise GoalSetInvalid(
+            "log_seq", f"campaign {campaign_id}'s log ends at row {last}, so {log_seq} wasn't read"
+        )
     return await goal_sets.record_assessment(
         Assessment(
             project_id=project_id,
@@ -328,11 +352,15 @@ async def record_assessment(
             cause=cause,
             issue=issue,
             supersedes=supersedes,
-            log_seq=max((e.seq for e in log), default=0),
+            log_seq=log_seq,
         ),
         idempotency_key=idempotency_key,
         request_hash=request,
     )
+
+
+def _last_row(log: Iterable[ControlLogEntry]) -> int:
+    return max((e.seq for e in log), default=0)
 
 
 async def _holds_the_result(
@@ -383,14 +411,14 @@ def standings(
     by_number = {r.revision: r for r in revisions}
     held = list(assessments)
     return tuple(
-        _standing(result.id, [a for a in held if a.expected_result == result.id], by_number, at,
+        _standing(result, [a for a in held if a.expected_result == result.id], by_number, at,
                   accepted)
         for result in by_number[at].goal_set.expected_results
     )  # fmt: skip
 
 
 def _standing(
-    result_id: str,
+    result: ExpectedResult,
     mine: list[Assessment],
     by_number: Mapping[int, GoalSetRevision],
     at: int,
@@ -401,17 +429,17 @@ def _standing(
         (a for a in mine if a.sequence not in superseded), key=lambda a: a.sequence, reverse=True
     )
     if not live:
-        return ResultStanding(result_id, Standing.UNASSESSED)
+        return ResultStanding(result, Standing.UNASSESSED)
 
     def stale(a: Assessment) -> bool:
         return _accepted_since(a, accepted) or _result_changed(a, by_number, at)
 
     if stale(live[0]):
-        return ResultStanding(result_id, Standing.STALE, (live[0],))
+        return ResultStanding(result, Standing.STALE, (live[0],))
     fresh = tuple(a for a in live if not stale(a))
     if len({(a.reading, a.cause) for a in fresh}) > 1:
-        return ResultStanding(result_id, Standing.CONFLICTING, fresh)
-    return ResultStanding(result_id, Standing.CURRENT, (live[0],))
+        return ResultStanding(result, Standing.CONFLICTING, fresh)
+    return ResultStanding(result, Standing.CURRENT, (live[0],))
 
 
 def _accepted_since(assessment: Assessment, accepted: Sequence[Acceptance]) -> bool:
@@ -432,20 +460,25 @@ def _result_changed(
 
 async def campaign_assessments(
     campaign: Campaign, *, goal_sets: GoalSetRegistryPort, campaigns: CampaignRegistryPort
-) -> tuple[int, tuple[ResultStanding, ...]]:
+) -> CampaignStandings:
     """The revision the Campaign reads now, its pinned one or the latest, and each of that
     revision's expected results as this Campaign's assessments leave it.
+
+    Nothing here is one snapshot, so the reads run in the order the records depend on each other:
+    an assessment names a revision and a log row names a revision, and neither is written until
+    the revision is, so revisions read last hold every one the others name. An assessment or row
+    landing after its read is simply not in this answer.
 
     Raises:
         CampaignHasNoGoalSet: it reads requirements.
     """
     if campaign.objective.goals is None:
         raise CampaignHasNoGoalSet(f"campaign {campaign.campaign_id} names no goal set")
-    view, revisions = await campaign_backlog(campaign, goal_sets=goal_sets, campaigns=campaigns)
-    accepted = acceptances(
-        revisions,
-        await campaigns.control_log(campaign.campaign_id),
-        await campaigns.launch_intents(campaign.campaign_id),
-    )
     held = await goal_sets.list_assessments(campaign.project_id, campaign_id=campaign.campaign_id)
-    return view.revision, standings(held, revisions, view.revision, accepted)
+    log = await campaigns.control_log(campaign.campaign_id)
+    launches = await campaigns.launch_intents(campaign.campaign_id)
+    view, revisions = await campaign_backlog(campaign, goal_sets=goal_sets, campaigns=campaigns)
+    accepted = acceptances(revisions, log, launches)
+    return CampaignStandings(
+        view.revision, _last_row(log), standings(held, revisions, view.revision, accepted)
+    )

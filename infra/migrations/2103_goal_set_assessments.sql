@@ -4,8 +4,9 @@
 -- Project has one). They are not goal-set revisions and write none. Nothing derived is stored:
 -- `stale` and `conflicting` are read per Campaign (squadops.projects.goal_set_assessments).
 --
--- `log_seq` is the Campaign's last control-log row at the write. It orders an assessment against
--- that Campaign's acceptances only: log positions can't be compared across Campaigns (§5.7).
+-- `log_seq` is the Campaign's control-log row its evidence was read at, as the submitter states it
+-- (never past the log's end at the write). It orders an assessment against that Campaign's
+-- acceptances only: log positions can't be compared across Campaigns (§5.7).
 --
 -- The idempotency key is the write's own, kept on its row, as a revision's is (2100).
 --

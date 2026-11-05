@@ -603,7 +603,7 @@ brief for #2888; the owner reviews it in the slice's PR.
   else (`403`). A completed Campaign takes one, since the closing interpretation comes after the close.
 - **The write is `POST /api/v1/projects/{id}/goal-set/assessments`,** answering 201 with
   `{assessment, idempotency_key, replayed}`. It carries `idempotency_key`, `campaign_id`, `expected_result`,
-  `goals_revision`, `reading`, `cause`, `issue`, `evidence`, `reason`, `source_ref` and `supersedes`.
+  `goals_revision`, `log_seq`, `reading`, `cause`, `issue`, `evidence`, `reason`, `source_ref` and `supersedes`.
   - **`cause` is required with `not_met` and refused otherwise.** *Narrowed:* §5.7's "shortfall" is read as `not_met`,
     so an `unclear` takes no cause.
   - **`issue` is the squad-ops issue's number,** required with `framework_defect` or `framework_gap` and refused with
@@ -622,21 +622,30 @@ brief for #2888; the owner reviews it in the slice's PR.
     have changed since the write.
 - **The reads are two.** `GET /api/v1/projects/{id}/goal-set/assessments` (`cycles:read`) is the history, in sequence,
   paged, with `campaign_id` and `expected_result` filters. `GET /api/v1/campaigns/{id}/assessments` (`campaigns:read`)
-  is how each result stands: `{campaign_id, project_id, revision, results: [{expected_result, standing, assessments}]}`,
-  one per expected result of the revision the Campaign reads now, derived and never stored. It is the Campaign's for
-  §10b's reason: what makes one stale is this Campaign's acceptances. A result a later revision removed drops out.
+  is how each result stands: `{campaign_id, project_id, revision, log_seq, results: [{expected_result, statement, surface,
+  standing, assessments}]}`, one per expected result of the revision the Campaign reads now, derived and never stored.
+  `statement` and `surface` are that revision's, because a pinned Campaign can read a result the latest revision says
+  differently. It is the Campaign's for §10b's reason: what makes one stale is this Campaign's acceptances. A result a
+  later revision removed drops out. Nothing here is one snapshot, so the view reads assessments and the log before
+  revisions: anything they name is then held.
 - **`standing`** is `current`, `stale`, `conflicting` or `unassessed`. `assessments` holds the latest alone, or, while
   they conflict, each that disagrees, newest first.
   - **Disagree** is read as a different `reading` or `cause`: the cause is whose work it is.
   - **Stale is judged on the latest.** A latest that is stale reads `stale`, whatever older ones say, so a stale
     assessment never reads current and never conflicts with the one that replaced it.
-  - **`log_seq`** is the Campaign's last control-log row at the write, compared only within that Campaign (§5.7).
-    *Narrowed:* it is when the assessment was written, not when the crew read. An acceptance between the two reads as
-    before the assessment.
+  - **`log_seq`** is the Campaign's control-log row the evidence was read at, compared only within that Campaign
+    (§5.7). The submitter states it, required of the owner and the crew, from this view's `log_seq` read before the
+    evidence: an acceptance after that read makes the assessment stale however late it is written. One past the log's
+    end is refused. The owner's review of #2927 found the first build's position, taken at the write, read such a
+    report as current, and recommended the cursor (2026-11-04).
+  - **What counts as accepted** is the version a promoted cycle carried. A version returned and revised in its cycle
+    carries none, so it serves nothing when the revision is promoted (the same review).
   - **"Changed"** is the result's statement or surface differing between the revision the assessment read and the one
     the Campaign reads now, so a reorder stales nothing.
 - **The console** (§8.3). `squadops.campaigns` replaces its named placeholder with this view, and the goals panel shows
-  each expected result's standing, reading, cause and issue for the chosen Campaign. What a standing says lives once, in
+  each expected result's standing, reading, cause and issue for the chosen Campaign. The panel shows the latest
+  revision, so where the Campaign's revision defines a result differently it also shows that text, and says the
+  standing is of it (the same review). What a standing says lives once, in
   `console/continuum-plugins/shared/assessments.js`.
 - **Not built: a CLI for assessments.** §8.2 names none. The crew is an API client, and the owner reads them in the
   console.

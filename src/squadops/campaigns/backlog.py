@@ -247,8 +247,9 @@ def acceptances(
     for entry in ledger(list(log), launches):
         bound = by_number.get(entry.goals_revision) if entry.goals_revision else None
         item = _item(bound.goal_set, entry.backlog_item or "") if bound else None
-        cycles = [c["cycle_id"] for c in entry.cycles] or [entry.cycle_id]
-        rows = [promoted[c] for c in cycles if c in promoted]
+        # Only the versions a cycle carried: a returned version shares its cycle with the revision
+        # that replaced it, and lists no cycle of its own.
+        rows = [promoted[c["cycle_id"]] for c in entry.cycles if c["cycle_id"] in promoted]
         if item is not None and rows:
             found.append(Acceptance(min(rows), item.id, item.serves))
     return tuple(sorted(found, key=lambda a: a.seq))
@@ -311,7 +312,7 @@ def _status(entry, promoted, superseded, owners_word, ended):
         return ItemStatus.PROPOSED, None, None
     if ruling["decision"] != GateDecisionValue.APPROVED.value:
         return ItemStatus.PENDING, None, None
-    if any(c in promoted for c in cycles):
+    if any(c["cycle_id"] in promoted for c in entry.cycles):
         return ItemStatus.ACCEPTED, None, None
     outcome = entry.outcome or {}
     if outcome.get("action") == PendingAction.ABANDON_AND_PROPOSE.value:

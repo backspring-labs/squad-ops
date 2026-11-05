@@ -428,8 +428,15 @@
               <code>{result.id}</code>
               <span>{result.statement}</span>
               <span class="muted small">{surfaceText(result.surface)}</span>
-              {#if standingOf(assessments, result.id)}
-                {@const row = standingOf(assessments, result.id)}
+              {#if standingOf(assessments, result)}
+                {@const row = standingOf(assessments, result)}
+                {#if row.readAs}
+                  <div class="read-as small">
+                    This Campaign reads r{row.readAs.revision}, and its standing is of that text:
+                    <span>{row.readAs.statement}</span>
+                    <span class="muted">{surfaceText(row.readAs.surface)}</span>
+                  </div>
+                {/if}
                 <div class="assessment small">
                   <span class="standing standing-{row.standing}">{row.label}</span>
                   {#each row.entries as e (e.sequence)}
@@ -703,6 +710,16 @@
     flex-wrap: wrap;
     gap: 2px 12px;
     margin-top: 2px;
+  }
+  .read-as {
+    margin-top: 2px;
+    color: var(--continuum-accent-warning, #f59e0b);
+  }
+  .read-as span {
+    color: var(--continuum-text-primary, #e2e8f0);
+  }
+  .read-as .muted {
+    color: var(--continuum-text-muted, #94a3b8);
   }
   .standing-stale,
   .standing-unassessed {

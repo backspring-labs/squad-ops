@@ -153,6 +153,18 @@ def test_a_result_a_later_revision_removed_drops_out_of_the_view():
     assert all(r.standing is Standing.UNASSESSED for r in read)
 
 
+def test_a_standing_carries_the_definition_of_the_revision_it_is_read_at():
+    """Bug caught: a pinned Campaign's reading handed out with the latest text, so a viewer shows
+    a judgement of "minutes" beside "hours"."""
+    revisions = [_revision(1), _revision(2, _changed_statement())]
+
+    pinned = standings([_assessment(1)], revisions, 1, ())
+    latest = standings([_assessment(1)], revisions, 2, ())
+
+    assert pinned[1].result.statement == "The week's total minutes are shown"
+    assert latest[1].result.statement == "The week's total hours are shown"
+
+
 def test_a_pinned_campaign_reads_its_own_revision_not_the_latest():
     """Bug caught: a Campaign pinned to r1 reading a result the owner removed in r2 as gone, or
     an assessment of r1 as stale, when r1 is what it was built against (§5.5)."""

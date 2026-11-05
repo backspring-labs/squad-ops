@@ -60,11 +60,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   results it serves, at the revision it is bound to). A requirements Campaign's rows are unchanged. **Assessments:**
   `POST /api/v1/projects/{id}/goal-set/assessments` records the crew's or the owner's judgement of one expected result in
   a Campaign (`reading`: `met`, `not_met` or `unclear`; `cause` with `not_met`: `app_work`, `framework_defect`,
-  `framework_gap` or `needs_owner`; `issue` with a framework cause; `evidence` by id; `source_ref`, the crew's signed
-  statement). It needs no Campaign grant, a completed Campaign takes one, and it is append-only and decides nothing.
+  `framework_gap` or `needs_owner`; `issue` with a framework cause; `evidence` by id; `log_seq`, the control-log row the
+  evidence was read at; `source_ref`, the crew's signed statement). It needs no Campaign grant, a completed Campaign takes one, and it is append-only and decides nothing.
   `GET …/goal-set/assessments` is the history and `GET /api/v1/campaigns/{id}/assessments` how each result stands now
   (`current`, `stale`, `conflicting` or `unassessed`). Migration `2103_goal_set_assessments.sql`. The Campaigns plugin's
-  placeholder is replaced by that view, and the goals panel shows it on each expected result.
+  placeholder is replaced by that view, and the goals panel shows it on each expected result, with the Campaign's own
+  text where a pinned revision defines the result differently.
 - **A source-backed change can remove a file** (#2612, SIP-0112 H.23). A step removes a file with a `delete:<path>` fence
   with nothing inside, shown to the steps that may use it. `development.develop` and its repair may remove any text
   file of the product; `qa.test` and its repair only a test one of the product's runners holds. A path outside the

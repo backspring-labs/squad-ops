@@ -154,6 +154,7 @@ from squadops.execution.size_preflight import size_preflight
 from squadops.memory.pinning import pin_campaign
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.contribution import ContributionRefused
+from squadops.projects.goal_set import surface_document
 from squadops.projects.goal_set_assessments import CampaignHasNoGoalSet, campaign_assessments
 from squadops.projects.models import SourceUnavailable
 from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
@@ -936,7 +937,7 @@ async def read_assessments(
     registry = _registry(request)
     campaign = await registry.get_campaign(campaign_id)
     try:
-        revision, results = await campaign_assessments(
+        read = await campaign_assessments(
             campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
         )
     except CampaignHasNoGoalSet as e:
@@ -944,14 +945,17 @@ async def read_assessments(
     return CampaignAssessmentsResponse(
         campaign_id=campaign_id,
         project_id=campaign.project_id,
-        revision=revision,
+        revision=read.revision,
+        log_seq=read.log_seq,
         results=[
             ResultStandingResponse(
                 expected_result=r.expected_result,
+                statement=r.result.statement,
+                surface=surface_document(r.result.surface),
                 standing=r.standing.value,
                 assessments=[assessment_response(a) for a in r.assessments],
             )
-            for r in results
+            for r in read.results
         ],
     )
 

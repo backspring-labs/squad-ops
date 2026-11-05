@@ -155,11 +155,16 @@ class GoalSetStore:
 
 
 def campaign_on(
-    project_id: str, campaign_id: str, *, created_by: str = "owner", goals: bool = True
+    project_id: str,
+    campaign_id: str,
+    *,
+    created_by: str = "owner",
+    goals: bool = True,
+    revision: int | str = "current",
 ):
     """A draft Campaign on ``project_id`` reading its goal set at ``current`` (or, ``goals``
     false, a requirements Campaign), as ``create_campaign`` takes it. ``created_by`` is who
-    started it: the owner, or a crew principal (SIP-0115 Q41)."""
+    started it: the owner, or a crew principal (SIP-0115 Q41). ``revision`` pins one."""
     from datetime import UTC, datetime
 
     from squadops.campaigns.models import CampaignGoals, CampaignObjective
@@ -171,7 +176,7 @@ def campaign_on(
         measurement="one accepted increment",
         target_accepted_increments=1,
         work_class=None,
-        goals=CampaignGoals(project_id, "current") if goals else None,
+        goals=CampaignGoals(project_id, revision) if goals else None,
         requirements=None if goals else "repo:file:README.md@current",
     )
     return campaign(

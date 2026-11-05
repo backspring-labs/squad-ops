@@ -460,7 +460,7 @@ test('each result reads its standing, every conflicting assessment, and the issu
 
 test('a result the Campaign does not read has no row, rather than one saying it is unassessed', () => {
   // Bug caught: a Campaign pinned to a revision without the result shown as having left it unassessed.
-  assert.equal(standingOf(ASSESSMENTS, 'ER-gone'), null);
-  assert.equal(standingOf(null, 'ER-week'), null);
-  assert.equal(standingOf(ASSESSMENTS, 'ER-log').standing, 'unassessed');
+  assert.equal(standingOf(ASSESSMENTS, { id: 'ER-gone' }), null);
+  assert.equal(standingOf(null, { id: 'ER-week' }), null);
+  assert.equal(standingOf(ASSESSMENTS, { id: 'ER-log' }).standing, 'unassessed');
 });

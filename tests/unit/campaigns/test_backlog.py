@@ -424,6 +424,38 @@ def test_acceptances_name_the_row_and_what_the_item_served_at_its_bound_revision
     assert read == (Acceptance(log.rows[-3].seq, "B-2", ("ER-week",)),)
 
 
+def test_a_returned_version_is_not_accepted_by_the_revision_that_replaced_it():
+    """A ledger row's carrying cycle is on the last version it carried, so a version returned
+    and revised in that cycle lists none. Bug caught: reading the version's own ``cycle_id``
+    instead, so promoting v2 credits v1's item too: an assessment of a result only v1 served reads
+    stale (§5.7), and v1's item reads accepted when nothing was."""
+    moved = _document()
+    moved["backlog"][1]["serves"] = ["ER-log"]
+    log = _Log().submit("B-1", "c1").rule("returned", "c1")
+    log.submit("B-2", "c1", version=2, revision=2).rule("approved", "c1", version=2)
+    log.promote("c1")
+    revisions = [_revision(1), _revision(2, moved)]
+
+    assert acceptances(revisions, log.rows, log.launches) == (
+        Acceptance(log.rows[-1].seq, "B-2", ("ER-log",)),
+    )
+    statuses = _statuses(backlog_view(revisions, 2, log.rows, log.launches))
+    assert (statuses["B-1"], statuses["B-2"]) == ("pending", "accepted")
+
+
+def test_an_approved_version_a_revision_replaced_is_not_accepted_by_it():
+    """The same reading at the item's status. Bug caught: v1 was approved, its increment was
+    revised as v2 serving another item, and v2's promotion marks v1's item accepted: the backlog
+    skips an item nobody built."""
+    log = _Log().submit("B-1", "c1").rule("approved", "c1")
+    log.submit("B-2", "c1", version=2).rule("approved", "c1", version=2).promote("c1")
+
+    statuses = _statuses(backlog_view([_revision(1)], 1, log.rows, log.launches))
+
+    assert statuses["B-2"] == "accepted"
+    assert statuses["B-1"] != "accepted"
+
+
 def test_a_rebase_that_superseded_the_items_repair_returns_it_to_pending():
     """§24cd point 2's ``upstream_moved``: the squad's work didn't fail. Bug caught: the item read
     ``in_increment`` forever after its repair was superseded, so the next proposal skips it."""

@@ -331,7 +331,7 @@
                   {#each standingRows(view.assessments.value) as r (r.expected_result)}
                     {#each r.entries as e (e.sequence)}
                       <tr>
-                        <td class="mono small">{r.expected_result}</td>
+                        <td class="mono small" title={r.statement ?? ''}>{r.expected_result}</td>
                         <td class="small">{r.label}</td>
                         <td class="small">{e.readingText}</td>
                         <td class="small">{e.causeText ?? '--'}</td>
@@ -342,7 +342,7 @@
                       </tr>
                     {:else}
                       <tr>
-                        <td class="mono small">{r.expected_result}</td>
+                        <td class="mono small" title={r.statement ?? ''}>{r.expected_result}</td>
                         <td class="small muted" colspan="5">{r.label}</td>
                       </tr>
                     {/each}

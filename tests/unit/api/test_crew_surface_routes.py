@@ -10,6 +10,7 @@ whole), so the gate tests read it there. The goal set is invented
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 
 import pytest
 
@@ -26,6 +27,7 @@ from squadops.campaigns.models import (
     SubmittedProposal,
 )
 from squadops.cycles.models import GateDecisionValue
+from squadops.projects.goal_set_assessments import Assessment, AssessmentEvidence, Reading
 from tests.fixtures.goal_set import (
     ACCEPTED_TREE,
     GoalSetStore,
@@ -83,6 +85,7 @@ def _body(key: str = "a-1", **fields) -> dict:
         "campaign_id": CID,
         "expected_result": "ER-week",
         "goals_revision": 1,
+        "log_seq": 0,
         "reading": "not_met",
         "cause": "framework_defect",
         "issue": 2901,
@@ -99,6 +102,22 @@ def _body(key: str = "a-1", **fields) -> dict:
 
 def _assess(world, **fields):
     return world.client.post(f"{GOAL_SET}/assessments", json=_body(**fields))
+
+
+def _cursor(world) -> int:
+    """Where the crew's read stands: the view's ``log_seq``, read before its evidence."""
+    return world.client.get(f"{CAMPAIGN}/assessments").json()["log_seq"]
+
+
+def _written(**fields) -> Assessment:
+    """An assessment as the store takes it, for a write landing inside another read."""
+    values = {
+        "project_id": "prj-tally", "campaign_id": CID, "expected_result": "ER-week",
+        "goals_revision": 1, "reading": Reading.MET,
+        "evidence": AssessmentEvidence(cycles=("cyc_0a1b2c",)), "reason": "the total shows",
+        "author": "crew-broker", "created_at": datetime(2026, 11, 4, 9, 0, tzinfo=UTC),
+    }  # fmt: skip
+    return Assessment(**{**values, **fields})
 
 
 def _code(resp) -> tuple[int, str]:
@@ -213,6 +232,8 @@ async def test_the_crew_reads_the_goal_rules_against_it_and_assesses_it_end_to_e
     assert world.client.get(f"{GOAL_SET}/assessments").json() == [recorded]
     view = world.client.get(f"{CAMPAIGN}/assessments").json()
     assert (view["campaign_id"], view["project_id"], view["revision"]) == (CID, "prj-tally", 3)
+    last_row = (await world.campaigns.control_log(CID))[-1].seq
+    assert view["log_seq"] == last_row
     assert {r["expected_result"]: r["standing"] for r in view["results"]} == {
         "ER-log": "unassessed",
         "ER-week": "current",
@@ -298,6 +319,7 @@ async def test_the_owner_may_record_one_with_no_statement_and_the_crew_may_not(w
          "evidence.evaluations[0].passed"),
         ({"expected_result": "ER-nothing"}, "expected_result"),
         ({"goals_revision": 9}, "goals_revision"),
+        ({"log_seq": 9999}, "log_seq"),
         ({"supersedes": [7]}, "supersedes"),
         ({"supersedes": [1, 1]}, "supersedes"),
     ],
@@ -412,13 +434,14 @@ async def test_a_completed_campaign_takes_a_closing_assessment(world):
 
 
 async def test_a_later_acceptance_at_the_route_makes_it_stale_and_a_new_one_reads_current(world):
-    """The position the write records and the acceptance the view reads, wired together. Bugs
-    caught: ``log_seq`` not read at the write, so every acceptance reads later; the view reading
-    no acceptance at all, so a judgement of the old tree reads current in the console."""
+    """The position the crew read at and the acceptance the view reads, wired together. Bugs
+    caught: the stated ``log_seq`` not reaching the store, so every acceptance reads later; the
+    view reading no acceptance at all, so a judgement of the old tree reads current in the
+    console."""
     await _on_goals(world)
     await proposed(world.campaigns, CID, "B-2", ruled=GateDecisionValue.APPROVED)
     world.as_(SUPERVISOR)
-    assert _assess(world, key="a-1").status_code == 201
+    assert _assess(world, key="a-1", log_seq=_cursor(world)).status_code == 201
     assert _result(world)["standing"] == "current"
 
     await _promoted(world, f"cyc_{CID[-4:]}_B-2")
@@ -426,9 +449,78 @@ async def test_a_later_acceptance_at_the_route_makes_it_stale_and_a_new_one_read
     stale = _result(world)
     assert (stale["standing"], [a["sequence"] for a in stale["assessments"]]) == ("stale", [1])
 
-    assert _assess(world, key="a-2", reading="met", cause=None, issue=None).status_code == 201
+    fresh_read = {"reading": "met", "cause": None, "issue": None, "log_seq": _cursor(world)}
+    assert _assess(world, key="a-2", **fresh_read).status_code == 201
     fresh = _result(world)
     assert (fresh["standing"], [a["sequence"] for a in fresh["assessments"]]) == ("current", [2])
+
+
+async def test_a_report_of_an_older_read_is_stale_however_late_it_is_written(world):
+    """§5.7: an assessment is of what its author read. Bug caught: the position taken at the
+    write, so the crew reads, an increment is accepted, the report lands, and a judgement of the
+    tree before that increment reads current."""
+    await _on_goals(world)
+    await proposed(world.campaigns, CID, "B-2", ruled=GateDecisionValue.APPROVED)
+    world.as_(SUPERVISOR)
+    read_at = _cursor(world)
+
+    await _promoted(world, f"cyc_{CID[-4:]}_B-2")
+    assert _assess(world, log_seq=read_at).status_code == 201
+
+    assert _result(world)["standing"] == "stale"
+
+
+async def test_a_report_must_say_where_it_read(world):
+    """Bug caught: a default position, which is the write-time reading back again by omission."""
+    await _on_goals(world)
+    world.as_(SUPERVISOR)
+    body = _body()
+    del body["log_seq"]
+
+    assert world.client.post(f"{GOAL_SET}/assessments", json=body).status_code == 422
+    assert _store(world).assessments == {}
+
+
+async def test_a_view_read_during_a_revision_and_its_assessment_landing_still_answers(
+    world, monkeypatch
+):
+    """Revisions read, then a new revision and an assessment naming it commit. Bug caught: reading
+    the assessments after the revisions, so one names a revision the read doesn't hold, and the
+    view answers 500 until the next read."""
+    await _on_goals(world)
+    store = _store(world)
+    read_revisions = store.list_revisions
+    landed = []
+
+    async def then_a_write_lands(project_id):
+        found = await read_revisions(project_id)
+        if not landed:
+            landed.append(True)
+            store.write("prj-tally", goal_set_document())
+            at = max(r.revision for r in await read_revisions(project_id))
+            world.as_(SUPERVISOR)
+            await store.record_assessment(
+                _written(goals_revision=at), idempotency_key="mid-read", request_hash="h"
+            )
+        return found
+
+    monkeypatch.setattr(store, "list_revisions", then_a_write_lands)
+    world.as_(TRIAGE)
+
+    assert world.client.get(f"{CAMPAIGN}/assessments").status_code == 200
+
+
+async def test_a_pinned_campaigns_view_defines_each_result_at_the_revision_it_reads(world):
+    """The view's text is what the console shows the reading against. Bug caught: the latest
+    revision's statement on a pinned Campaign's result, a judgement of "minutes" read as "hours"."""
+    changed = goal_set_document()
+    changed["expected_results"][1]["statement"] = "The week's total hours are shown"
+    _store(world).write("prj-tally", changed)
+    await _on_goals(world, revision=1)
+    world.as_(SUPERVISOR)
+
+    assert _result(world)["statement"] == "The week's total minutes are shown"
+    assert _result(world)["surface"] == {"kind": "page", "ref": "/week"}
 
 
 async def test_a_conflict_reads_at_the_route_and_a_new_assessment_naming_both_ends_it(world):
@@ -467,6 +559,8 @@ async def test_a_campaigns_view_reads_only_its_own_assessments(world):
 
     assert _result(world) == {
         "expected_result": "ER-week",
+        "statement": "The week's total minutes are shown",
+        "surface": {"kind": "page", "ref": "/week"},
         "standing": "unassessed",
         "assessments": [],
     }
