@@ -317,6 +317,23 @@ jobs:
       - name: mypy against its baseline
         run: python scripts/dev/mypy_ratchet.py
 
+  console-plugins:
+    # #2928: the plugins' `npm test` runs their plain modules under node and never compiles a
+    # `.svelte` file, so a compile error passed every check and first failed at the console image's
+    # build. Its own job so whether it is required stays the owner's call.
+    name: console plugins compile
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build every plugin, as the console image does
+        run: bash scripts/dev/build_console_plugins.sh
+
   dependency-audit:
     # #1205: nothing scanned the pins for advisories, and since #1203 every image installs
     # the same set — a CVE in any pinned package lands in the runtime API and all six
