@@ -331,13 +331,14 @@ class _World(_BranchWorld):
     def client(self, role: str = Role.CAMPAIGN_SUPERVISOR) -> TestClient:
         """The campaign routes, as the runtime mounts them, for the supervisor's seat, or
         ``role``'s."""
+        user = "supervisor" if role == Role.CAMPAIGN_SUPERVISOR else str(role)
         app = FastAPI()
 
         class InjectIdentity(BaseHTTPMiddleware):
             async def dispatch(self, request: Request, call_next):
                 request.state.identity = Identity(
-                    user_id=str(role),
-                    display_name=str(role),
+                    user_id=user,
+                    display_name=user,
                     roles=(role,),
                     scopes=tuple(sorted(scopes_for_roles((role,)))),
                     identity_type=IdentityType.HUMAN,
