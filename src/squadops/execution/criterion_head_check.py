@@ -19,6 +19,13 @@ request placed nowhere, one no runner holds one by one or no test-id reader can 
 or sandbox run that failed. Nothing here fails a run. Acceptance's own discrimination read (§24cl) stays, as
 the last line.
 
+**A pass is only news about the product when the test is the one qa first wrote (§24dh, #2933).**
+A suite that failed and was rewritten by a repair has only changed its test: the head is pinned.
+So ``repaired`` reads a repair's criterion files on the head before the repair is accepted, and
+``PatchAcceptance`` refuses one that passes there. Neither that reading nor one after such a refusal
+writes the record (``write_record=False``): ``CampaignProgress._already_met_stated`` tells the next
+proposal what the record says the head meets, and a refused suite is no evidence of that.
+
 **Unchanged:** a sample application's increment (no source repository) and every task that isn't
 the qa suite's author.
 """
@@ -75,11 +82,21 @@ class CriterionHeadCheck:
     head_commit: str
     readings: tuple[CriterionHeadReading, ...]
     runs: tuple[SuiteRun, ...]
-    record_id: str
+    #: ``None`` for a reading that wrote no record.
+    record_id: str | None
 
     @property
     def already_met(self) -> tuple[str, ...]:
         return tuple(r.criterion_id for r in self.readings if r.already_met)
+
+    def passing_files(self) -> str:
+        """The files that passed on the head, each with its count, as a refusal names them."""
+        counts = {run.path: run.tests_passed for run in self.runs}
+        return ", ".join(
+            f"{r.criterion_id} ({r.path}: {counts.get(r.path)} passed)"
+            for r in self.readings
+            if r.already_met
+        )
 
 
 def applies(task_type: str, cycle: Any) -> bool:
@@ -118,9 +135,15 @@ async def check_criteria_on_head(
     projects: Any,
     repository: Any,
     read_profile: Any,
+    repaired: Mapping[str, str] | None = None,
+    write_record: bool = True,
 ) -> CriterionHeadCheck | None:
     """Run the increment's criterion files the run has stored on the head, record the readings,
     and return them; ``None`` where the check doesn't apply or can't run (logged with why).
+
+    ``repaired`` is a repair's files by path, not yet accepted: they're laid over the stored ones,
+    and with none of them a criterion file the repair didn't rewrite, there's nothing to read and
+    the answer is ``None``. ``write_record=False`` reads without writing the record (§24dh).
 
     ``inputs`` are the task's dispatched inputs, whose product runners say which of the pin's
     files are tests (``product_tree_at_pin``). Nothing here raises: a check that can't run leaves
@@ -134,7 +157,7 @@ async def check_criteria_on_head(
     try:
         return await _read_on_head(
             task_id, inputs, cycle, run_id, stored_artifacts, vault, sandbox, projects, repository,
-            read_profile,
+            read_profile, repaired, write_record,
         )  # fmt: skip
     except Exception:
         logger.warning(
@@ -156,6 +179,8 @@ async def _read_on_head(
     projects: Any,
     repository: Any,
     read_profile: Any,
+    repaired: Mapping[str, str] | None,
+    write_record: bool,
 ) -> CriterionHeadCheck | None:
     context = cycle.source_context
     assert context is not None  # _why_cant_run refused a cycle with none
@@ -165,6 +190,9 @@ async def _read_on_head(
             await _change_request(vault, cycle), scaffold_stack_for(cycle.resolved_config())
         )
     }
+    rewritten = {path: text for path, text in (repaired or {}).items() if path in placed}
+    if repaired is not None and not rewritten:
+        return None
     profile = await read_profile(cycle)
     if profile is None:
         _skipped(task_id, "no derived profile at the Project's pin")
@@ -183,7 +211,10 @@ async def _read_on_head(
     pinned = await product_tree_at_pin(repository, cycle, inputs, task_id, unread=_UNREAD)
     if pinned is None:
         return None
-    tests = await _criterion_tests(vault, stored_artifacts, placed, pinned.files)
+    tests = {
+        **await _criterion_tests(vault, stored_artifacts, placed, pinned.files),
+        **rewritten,
+    }
     if not tests:
         _skipped(task_id, "no criterion file in the run's stored emissions")
         return None
@@ -205,14 +236,16 @@ async def _read_on_head(
     readings = tuple(
         CriterionHeadReading(placed[run.path], run.path, reading_of(run)) for run in runs
     )
-    block = cycle.resolved_config().get("campaign_proposal") or {}
-    document = head_check_document(
-        increment_id=str(block.get("proposal_id") or ""),
-        head_commit=context.pinned_commit,
-        readings=readings,
-        runs=[run.as_dict() for run in runs],
-    )
-    record_id = await _store(cycle, run_id, document, vault)
+    record_id = None
+    if write_record:
+        block = cycle.resolved_config().get("campaign_proposal") or {}
+        document = head_check_document(
+            increment_id=str(block.get("proposal_id") or ""),
+            head_commit=context.pinned_commit,
+            readings=readings,
+            runs=[run.as_dict() for run in runs],
+        )
+        record_id = await _store(cycle, run_id, document, vault)
     logger.info(
         "criterion head check %s: head=%s readings=%s",
         task_id,
