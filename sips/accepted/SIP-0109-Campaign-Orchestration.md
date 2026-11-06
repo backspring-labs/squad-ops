@@ -158,6 +158,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
+| a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, closes #2933 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -6343,3 +6344,40 @@ commit, each failed a test; one survived at first, the Project's first contribut
 
 **Who ruled.** The owner, 2026-11-05: dismiss first. The row's shape and the narrowings are the implementer's, under the
 supervisor's brief.
+
+### 24dh. A repaired test that passes on the head says nothing about the product (2026-11-05, §8.2, §10 row 19, §24cz, SIP-0104 §13f; #2933; the implementer's build, on the owner's "start on #2933")
+
+**Why.** `cmp_0a5376d902b5`'s BT-2 was abandoned at row 19 as "already met" on a head that hard-coded the behaviour's
+absence. qa's test read its fixture from the wrong path and failed, so §24cz's check, which runs when the qa task
+succeeds, hadn't run. `qa.test_repair` then replaced that fixture with an inline one missing a field the product
+filters on. The product answered with no units, every assertion sat in a loop over nothing, and the retest passed. That
+was the check's first reading: passed on the head, row 19, development's correct change discarded, and the next proposal
+told the criterion was met. Run against the head's file, the product returned `{"units":[]}` for that fixture and
+`throttle: 0` for every unit once the field was present.
+
+§24cz's reasoning holds for a test as qa wrote it. It doesn't hold for a rewrite: the head is pinned, so between a suite's
+failure and its repair only the test changed, and a pass there is news about the test.
+
+**What changed.**
+1. **The refusal (`PatchAcceptance`).** After a repair's retest passes and before it is accepted, any criterion file the
+   repair rewrote runs on the head, §24cz's way, with the repair's text laid over the stored files. One that passes is
+   refused: `REPAIR_SUITE_PASSES_ON_HEAD_MARKER` in the rejection carry, the round spent and nothing applied, as SIP-0104
+   §13f's refusal, and `repair_not_applied_in_round` reads it so the signature rule doesn't count it. The next round is told
+   which files passed and on what head. A head that can't be read refuses nothing, as in §24cz.
+2. **The backstop (`_end_if_criteria_met_on_head`).** A refused repair re-dispatches the task. If a later emission passes on
+   the head too, the run fails with no terminal kind, so the campaign reads an ordinary failure, repairs it and counts it.
+   It isn't `criteria_not_checkable`.
+3. **No record from either.** Neither reading writes `criterion_head_check`, because `_already_met_stated` tells the next
+   proposal what that record says the head meets, and a refused suite is no evidence of that.
+
+**Unchanged.** A first emission that passes on the head stays row 19. A repair that leaves the criterion files alone runs
+nothing here: a dev repair of a qa failure keeps qa's test, and the task's own check judges it as before.
+
+**Accepted cost.** A criterion the head really meets, behind a test that was only broken, now takes the failure path and is
+counted, instead of the uncounted abandonment. The two can't be told apart from a pass, and the failure path is the one that
+can't lose work silently.
+
+**Not covered.** (a) A test that is empty on its **first** emission: nothing separates it from a test of a met criterion, so it
+still ends at row 19. (b) A rewrite accepted as kept progress (#1522) in one round, then passed by a dev repair in a later one:
+that later repair touches no criterion file, so only the task's own check reads it. (c) The repair prompt itself is
+unchanged; #2933's fixture and non-empty guidance is prompt work, and the refusal's text is what reaches the next round today.

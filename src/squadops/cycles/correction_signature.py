@@ -542,7 +542,9 @@ REPAIR_REMOVAL_REFUSED_MARKER = "the repair removes a file, which no in-plan ver
 #: repair, only the test did, so that pass says nothing about the product. Spent, not refunded,
 #: and nothing applied, as #2664's refusal. One constant, two readers: the refusal and the
 #: executor's reading of the carry at the task's next success.
-REPAIR_SUITE_PASSES_ON_HEAD_MARKER = "the repaired suite passes on the head, without this run's work"
+REPAIR_SUITE_PASSES_ON_HEAD_MARKER = (
+    "the repaired suite passes on the head, without this run's work"
+)
 
 
 def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:

@@ -155,6 +155,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `split_into`. `squadops goals candidates|promote|drop|split`.
 
 ### Fixed
+- **A repaired test that passes on the head no longer abandons a backlog item** (#2933, SIP-0109 §24dh). A qa repair
+  rewrote BT-2's test with a fixture the product filtered out, so its assertions ran over nothing and it passed on the
+  head; row 19 then discarded development's correct change as "already met", and the next proposal was told so. The head
+  doesn't change between a suite's failure and its repair, so that pass is news about the test. A criterion file a repair
+  rewrote is now run on the head before the repair is accepted: passing there refuses the repair, spends the round and
+  tells the next one. A later emission that still passes fails the run instead of abandoning it, and neither reading
+  writes the record the next proposal is briefed from. A first emission that passes on the head stays row 19.
 - **A closed, unmerged Campaign contribution can be dismissed** (#2926, SIP-0109 §24dg; the owner's choice of
   2026-11-05). It kept blocking the crew's integration gate with no way to clear it. The owner's
   `POST /api/v1/campaigns/{id}/contribution-dismissal` (`squadops campaigns dismiss-contribution <id> --reason …`,
