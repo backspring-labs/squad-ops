@@ -76,6 +76,7 @@ from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.memory.records import RecordConflict
+from squadops.stacks.development_profiles import development_profile_drift
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,11 @@ async def create_run(
         workload_type=validated_wt,
     )
     created = await registry.create_run(run)
+    # SIP-0112 H.26: a retry stays on the pinned profile and runs what is deployed, so a change in
+    # what that profile does since it was selected goes on the record.
+    drift = development_profile_drift(cycle.execution_overrides)
+    if drift:
+        logger.warning("run_development_profile_drift", extra={"run_id": created.run_id, **drift})
 
     # SIP-0077: run.created
 
@@ -173,6 +179,7 @@ async def create_run(
             "run_number": created.run_number,
             "initiated_by": created.initiated_by,
             "workload_type": created.workload_type,
+            **({"development_profile_drift": drift} if drift else {}),
         },
     )
 

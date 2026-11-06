@@ -127,7 +127,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **shipped**: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), a blueprint's conventions without its test placement (H.13), a product's qa suite run on the product's tree (H.15, #2815), with SIP-0109 §24bv point 5's proposal input and point 6's `qa.evaluate_increment` drop shipped there; read live on the 2.5 cut's final deploy on `z_shelfnote` and `z_continuum` (the cut's pre-registration §14b). Narrowed by the owner (2026-10-29): no product increment was accepted, and H.13's two unbuilt items remain, so the row below carries them | 2.5.0, closes #2619 with the release PR |
 | H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), waiting on #2799 (#2818 shipped in 2.5.1; the 2.6 spikes' accepted increments are uncounted); and H.13's two items not built (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing) | 2.6.0, #2827 |
-| H.4's remainder for a product with no blueprint: its development profile selected from the derived facts, a neutral profile and a named gap in place of a silent `python_cli`, and QA evidence that says where its suite ran (H.26, superseding H.13's "no blueprint" paragraph) | **placed** (the 2.6 plan's Track A, on the outside review the owner relayed 2026-11-06: before the counted Campaign) | 2.6.0, #2937 |
+| H.4's remainder for a product with no blueprint: its development profile selected from the derived facts, a neutral profile and a named gap in place of a silent `python_cli`, and QA evidence that says where its suite ran (H.26, superseding H.13's "no blueprint" paragraph) | **shipped** | 2.6.0, PR #2941, closes #2937 |
 | a size preflight: before a Campaign starts on a product, every task type it dispatches rendered against the product's tree at the pinned commit, a binding that can't fit named as a blocking gap (H.21) | **shipped** (H.21): measured at the start route on the live path's own counter, a floor, `prompt_over_window` and `size_unmeasured` | 2.6.0, PR #2919, closes #2889 |
 | a dev repair's retest of a product's qa suite judged on the product's runner: the failed task's own tests, with the patched source overlaid on the tree | **shipped** | 2.6.0, PR #2898, closes #2881 |
 | a private Node package that declares a module interface is a package surface (H.17) | **shipped** | 2.6.0, PR #2879, closes #2875 |
@@ -3235,3 +3235,51 @@ image lacked the declared `python-slugify` and died at `conftest.py` (exit 4). T
 beside another failing check is still the image's reading. Not seen live, so not built.
 
 **Who ruled.** The Spark lane, under the 2.6 merge grant: the fix follows #2877's rule, and #2913 records the defect.
+
+## H.26 A repository-backed product runs on its own stack, and its evidence says so (2026-11-06; H.4, H.6, H.11, H.13, H.24; #2937; the Spark lane)
+
+**What changed.** H.4 directs deriving a product's stack, and H.13 built that only for a product made from a blueprint. Its
+"no blueprint" paragraph, which keeps such a product on 2.4's behaviour, is **superseded**.
+
+1. **Selection.** `prepare_cycle` selects the profile from the derived facts at the pin (`select_development_profile`).
+   Runners decide, because they say what really executes the product's tests.
+
+   | derived facts | profile | origin |
+   |---|---|---|
+   | a blueprint whose profile has product conventions | that profile | `blueprint` |
+   | every runner is pytest or unittest | `python_cli`, unchanged | `derived` |
+   | every runner is vitest | `node_vitest` | `derived` |
+   | anything else: jest, `other`, mixed runners, no runner | `product_neutral`, with `stack_unmatched` | `derived` |
+
+2. **Provenance.** The cycle records `development_profile_selection`: name, origin and a fingerprint of the profile's whole
+   definition. A named profile stands, with origin `operator`, unless it runs a framework the product has no runner for,
+   which is refused (`development_profile_conflict`). A retry stays on the pinned name, runs what is deployed, and records
+   any change on `run.created`. A replay across a changed profile is refused: `development_profile_fingerprint` joins the
+   compatibility elements.
+3. **What no profile fits.** `product_neutral` gives no stack advice. Each task reads the runners by the paths it touches
+   (`runner_for`), so a mixed product is resolved by its footprint and no global profile contradicts it. H.6's table gains
+   `stack_unmatched`: disclosed (`stack_guidance`) while a runner can verify the work, blocking (`campaigns`) when none can.
+   A standalone Cycle still runs, so nothing that worked is refused.
+4. **Evidence.** `node_vitest` and `product_neutral` take the test framework `product_runner`: the qa image doesn't run the
+   suite, or any build or boot check, because the product's toolchain is the sandbox's. So there is no change of failure
+   shape to get past #2877's re-read. The product's runner now reads every `tests_pass` failure, whether or not the image
+   executed the suite, which **closes H.24's remainder** for every product. A run that never exited stays no reading, unless
+   the image read nothing either. `judged_passed` rewrites `test_report.md` as `reread` does, and the report names what ran,
+   on which runner, in the sandbox, with the image's own attempt beside it.
+5. **The pin** H.13 names as `_pin_blueprint_conventions` is now `_pin_development_profile`. **A plan-less cycle** gets `node_vitest` or `product_neutral`, which hold no skeleton placement. A plan-less Python or
+   blueprint cycle stays as it was.
+
+**The evidence.** A live Campaign on battle-trainer (2026-11-06, #2937): every `qa.test` logged `framework=pytest executed=False`, and
+`test_report.md` said no tests ran on a task whose suite then passed 3 of 3 on vitest. `why_not_reread` stopped at the image's
+`executed` flag, and only `reread` rewrote the report. `tests/unit/cycles/test_product_stack_selection.py` enters at
+`prepare_cycle` and the real handlers. Read from the deploy's stored profiles, battle-trainer selects `node_vitest`, and
+`z_shelfnote` and `z_continuum` keep what they ran.
+
+**Not built.** The fingerprint covers a prompt asset by name, not by content. A stored profile gains `stack_unmatched` only when
+next derived. Profiles for other stacks are out of scope, and `product_neutral` serves them. None of this teaches the squad a
+product's domain contract: that stays Project instructions and approved lessons (SIP-0110), and #2938 measures play.
+
+**Who ruled.** The owner: "every Project needs a stack" (2026-11-06). The outside review the owner relayed the same day set the
+five requirements and the placement ahead of the counted Campaign. It asked to test the transition to `run_node_tests`; the
+Spark lane removed that transition instead, and said so in revision 3 on #2937.
+

@@ -24,7 +24,11 @@ from pathlib import Path
 from squadops.core.bounded_run import run_bounded
 from squadops.cycles.patch_verification import materialize
 from squadops.stacks.app_invocation import JS_SUITE_SUFFIXES
-from squadops.stacks.development_profiles import TEST_FRAMEWORK_BOTH, TEST_FRAMEWORK_VITEST
+from squadops.stacks.development_profiles import (
+    TEST_FRAMEWORK_BOTH,
+    TEST_FRAMEWORK_PRODUCT_RUNNER,
+    TEST_FRAMEWORK_VITEST,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1636,6 +1640,26 @@ def _effective_sources(
     return list(by_path.values())
 
 
+def _left_to_the_product_runner(
+    source_files: list[dict[str, str]], test_files: list[dict[str, str]]
+) -> RunTestsResult:
+    """A product whose toolchain is only the sandbox's (SIP-0112 H.26): the image doesn't try. Its
+    ``executed=False`` is what sends every result to the product's runner, so a suite the image
+    half-ran can't change that reading's shape. No test files stays the own-artifact verdict."""
+    return RunTestsResult(
+        executed=False,
+        error=(
+            "the qa image doesn't run this product's suite: its own runner does, in the sandbox"
+            if test_files
+            else "no test files provided"
+        ),
+        runner=TEST_FRAMEWORK_PRODUCT_RUNNER,
+        test_file_count=len(test_files),
+        source_file_count=len(source_files),
+        suite_broken=not test_files,
+    )
+
+
 async def run_suite(
     test_framework: str,
     source_files: list[dict[str, str]],
@@ -1647,6 +1671,8 @@ async def run_suite(
     wraps with the deliverable's checks. SIP-0109 §8 runs one criterion's tests at a time on
     two trees, where the deliverable's build is judged elsewhere. Never raises."""
 
+    if test_framework == TEST_FRAMEWORK_PRODUCT_RUNNER:
+        return _left_to_the_product_runner(source_files, test_files)
     if test_framework == TEST_FRAMEWORK_VITEST:
         return await run_node_tests(source_files, test_files, timeout_seconds=timeout_seconds)
     if test_framework == TEST_FRAMEWORK_BOTH:
@@ -1674,6 +1700,8 @@ async def run_build_validation(
     """
 
     result = await run_suite(test_framework, source_files, test_files, timeout_seconds)
+    if test_framework == TEST_FRAMEWORK_PRODUCT_RUNNER:
+        return result  # no build or boot check either: the product's own checks are the sandbox's
     if test_framework == TEST_FRAMEWORK_VITEST:
         frontend_target: str | None = None
         run_frontend, run_backend = True, False

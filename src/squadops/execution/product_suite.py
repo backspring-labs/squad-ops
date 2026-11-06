@@ -117,9 +117,10 @@ def _tests_pass_row(result: TaskResult) -> Mapping[str, Any] | None:
 
 
 def why_not_reread(task_type: str, inputs: Mapping[str, Any], result: TaskResult) -> str | None:
-    """#2877: why the product's runner's reading can't replace the image's, or ``None`` when it
-    can: a product's ``qa.test`` whose ``tests_pass`` the qa image didn't execute, whatever else
-    failed beside it."""
+    """#2877, SIP-0112 H.26: why the product's runner's reading can't replace the image's, or
+    ``None`` when it can: a product's ``qa.test`` whose ``tests_pass`` failed, whatever else failed
+    beside it and whether or not the image executed the suite. The image is never the authority
+    on a product's suite, so what it managed to run must not decide who reads the failure."""
     if result.status == TaskResultStatus.SUCCEEDED:
         return "the task succeeded"
     if not authors_qa_suite(task_type):
@@ -129,8 +130,6 @@ def why_not_reread(task_type: str, inputs: Mapping[str, Any], result: TaskResult
     row = _tests_pass_row(result)
     if row is None or not _failing(row):
         return "tests_pass didn't fail"
-    if row.get("executed") is not False:
-        return "the qa image ran the suite"
     return None
 
 
@@ -407,8 +406,21 @@ def _runner_row(runs: list[SuiteRun]) -> dict[str, Any]:
     }
 
 
-def _runner_report(runs: list[SuiteRun], summary: str) -> str:
-    lines = ["# Test Execution Report", "", f"**Result:** {summary}", ""]
+def _runner_report(runs: list[SuiteRun], summary: str, agent_test: Any = None) -> str:
+    """What ran, where, on which runner, and with what result (H.26). The qa image's own attempt is
+    named beside it, so this report can't read as if the image's result were the suite's."""
+    runners = ", ".join(sorted({r.runner for r in runs}))
+    image = (agent_test or {}).get("summary") if isinstance(agent_test, Mapping) else None
+    lines = [
+        "# Test Execution Report",
+        "",
+        f"**Result:** {summary}",
+        "",
+        f"**Ran on:** the product's runner ({runners}), in the sandbox",
+        "",
+        f"**In the qa image:** {image or 'no reading'}",
+        "",
+    ]
     for r in runs:
         lines += [
             f"## {r.path}",
@@ -423,6 +435,19 @@ def _runner_report(runs: list[SuiteRun], summary: str) -> str:
             lines += ["", "```", r.output_tail, "```"]
         lines.append("")
     return "\n".join(lines)
+
+
+def _with_runner_report(
+    outputs: Mapping[str, Any], runs: list[SuiteRun], summary: str, agent_test: Any
+) -> list[Any]:
+    """The task's artifacts, its ``test_report`` being the product runner's. Both judgements use
+    it: a report left as the image wrote it said a suite that passed had never run (#2937)."""
+    return [
+        {**a, "content": _runner_report(runs, summary, agent_test)}
+        if isinstance(a, Mapping) and a.get("type") == "test_report"
+        else a
+        for a in outputs.get("artifacts") or []
+    ]
 
 
 def reread(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
@@ -474,12 +499,7 @@ def reread(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
     if agent_test is not None:
         outputs["agent_test_result"] = agent_test
     outputs[PRODUCT_SUITE_KEY] = [r.as_dict() for r in runs]
-    outputs["artifacts"] = [
-        {**a, "content": _runner_report(runs, summary)}
-        if isinstance(a, Mapping) and a.get("type") == "test_report"
-        else a
-        for a in outputs.get("artifacts") or []
-    ]
+    outputs["artifacts"] = _with_runner_report(outputs, runs, summary, agent_test)
     return dataclasses.replace(result, outputs=outputs, error=summary)
 
 
@@ -531,6 +551,7 @@ def judged_passed(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
     if agent is not None:
         outputs["agent_test_result"] = agent
     outputs[PRODUCT_SUITE_KEY] = [r.as_dict() for r in runs]
+    outputs["artifacts"] = _with_runner_report(outputs, runs, vr["summary"], agent)
     outputs.pop("failure_classification", None)
     return dataclasses.replace(
         result,
@@ -557,9 +578,8 @@ async def judge_on_product_runner(
     """The result judged on the product's runner, or ``None`` when the agent's result stands.
 
     Judged passed (``SUCCEEDED``): a product's ``qa.test`` failing only ``tests_pass`` (beside
-    ``ENVIRONMENT_SENSITIVE`` checks) whose suite passes there. Re-read (still ``FAILED``): one
-    whose ``tests_pass`` the qa image didn't execute (#2877), or one it could judge whose suite
-    exited there and didn't pass (#2913). ``None``: neither applies, no sandbox, no profile or
+    ``ENVIRONMENT_SENSITIVE`` checks) whose suite passes there. Re-read (still ``FAILED``): any
+    other product ``qa.test`` whose ``tests_pass`` failed (#2877, H.26), on the runner's reading. ``None``: neither applies, no sandbox, no profile or
     configuration at the pin, no clone of the product at the pin, a test no runner holds, or a run
     that can't be judged or didn't exit."""
     if result.status == TaskResultStatus.SUCCEEDED or not authors_qa_suite(task_type):
@@ -617,6 +637,10 @@ async def judge_on_product_runner(
         return None
     if why_judge is None and all(r.passed for r in runs):
         return judged_passed(result, runs)
-    if why_reread is None or (why_judge is None and all(r.unexecuted is None for r in runs)):
+    exited = all(r.unexecuted is None for r in runs)
+    row = _tests_pass_row(result) or {}
+    # A run that never exited is no reading, so what the image read stands (H.24), unless the
+    # image read nothing either (#2877).
+    if exited or (why_reread is None and row.get("executed") is False):
         return reread(result, runs)
     return None
