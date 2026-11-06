@@ -12,6 +12,7 @@ qa image.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from typing import Any
 
 import pytest
@@ -811,6 +812,7 @@ async def test_patch_acceptance_hands_the_retest_the_failed_tasks_suite():
         enforce_frozen_ownership=lambda *a, **k: ([], []),
         emit_integrity_evidence=lambda *a: None,
         enforce_compliance_budget=lambda *a, **k: None,
+        read_repaired_suite_on_head=AsyncMock(return_value=None),
     )
     failed = _failed(_TESTS_PASS_RED)
     await acceptance._retest_patched_suite(

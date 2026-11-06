@@ -24,6 +24,10 @@ import pytest
 
 from adapters.noop.ports import NoOpProposalEvidence
 from squadops.campaigns.criterion_head import CRITERION_HEAD_CHECK_ARTIFACT_TYPE
+from squadops.cycles.correction_signature import (
+    REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
+    repair_not_applied_in_round,
+)
 from squadops.cycles.deletions import DELETIONS_KEY
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import ArtifactRef
@@ -381,3 +385,132 @@ async def test_a_file_development_removed_is_still_on_the_head():
     assert sandbox.seeded[gone] == product_tree()[gone]
     assert sandbox.patched == {SUITE: _CRITERION}
     built._deliver_source_change.assert_awaited_once()
+
+
+# --- #2933 (SIP-0109 §24dh): a repair's rewrite of a criterion's test, read on the head -----------
+
+_REWRITTEN = "def test_total():\n    assert [] == []\n"
+_MADE_IT = "accept_patch"
+
+
+def _stored_suite(vault, cycle, implementation):
+    """qa's own suite as the run stored it, its content in the vault."""
+    criterion = ArtifactRef(
+        artifact_id="art_suite", project_id=CONTEXT.project_id, artifact_type="test",
+        filename=SUITE, content_hash="h", size_bytes=len(_CRITERION), media_type="text/plain",
+        created_at=NOW, cycle_id=cycle.cycle_id, run_id=implementation.run_id,
+        metadata={"producing_task_type": "qa.test"},
+    )  # fmt: skip
+    vault.stored["art_suite"] = (criterion, _CRITERION.encode())
+    return [("art_suite", criterion)]
+
+
+async def _repair_of_the_suite(sandbox, repair, carry):
+    """A repair reaching acceptance as the router hands it over: the executor's own
+    ``_try_accept_patch``, the wiring to the head and the sandbox real. What's stubbed is what comes
+    before the head's reading (a verified patch, a passing retest) and the rendering after it."""
+    built, _squad, cycle, implementation, vault, envelopes, _seeded = await _increment(sandbox)
+    qa = next(e for e in envelopes if e.task_type == "qa.test")
+    acceptance = built._patch_acceptance
+    acceptance._authorize_repair_artifacts = lambda artifacts, *a, **k: artifacts
+    acceptance._build_patch_subject = lambda *a, **k: MagicMock()
+    acceptance._verify_patch = AsyncMock()
+    acceptance._refuse_unpassed_patch = lambda *a, **k: None
+    acceptance._retest_patched_suite = AsyncMock(
+        return_value=MagicMock(reduction=None, failed_retest=None)
+    )
+    acceptance._settle_patch_evidence = lambda *a, **k: ([], [])
+    acceptance._accept_patch = lambda *a, **k: _MADE_IT
+    action = await built._try_accept_patch(
+        qa,
+        TaskResult(task_id=qa.task_id, status="FAILED", outputs={}),
+        repair,
+        {},
+        run_id=implementation.run_id,
+        cycle=cycle,
+        correction_attempts=1,
+        enriched_envelope=qa,
+        stored_artifacts=_stored_suite(vault, cycle, implementation),
+        repair_rejection_carry=carry,
+    )
+    return action, vault, qa
+
+
+async def test_a_repair_whose_rewritten_suite_passes_on_the_head_is_refused_and_the_next_round_told():
+    """BT-2: the repair's test passed on a head that hard-coded the behaviour's absence."""
+    sandbox = _Sandbox()
+    carry: dict[str, list[str]] = {}
+    repair = [{"name": SUITE, "content": _REWRITTEN, "type": "source"}]
+
+    action, vault, qa = await _repair_of_the_suite(sandbox, repair, carry)
+
+    assert action == "continue"
+    # The repair's text ran, on the head: the product's own report, not the developer's.
+    assert sandbox.seeded[SUITE] == _REWRITTEN
+    assert sandbox.seeded[NAMED] == product_tree()[NAMED]
+    [entry] = carry[qa.task_id]
+    assert entry.startswith(f"correction attempt 1: {REPAIR_SUITE_PASSES_ON_HEAD_MARKER}")
+    assert f"R1 ({SUITE}:" in entry and CONTEXT.pinned_commit[:12] in entry
+    assert repair_not_applied_in_round(carry[qa.task_id], 1)
+    # No record: the next proposal is told what the record says the head meets.
+    assert _record(vault) is None
+
+
+async def test_a_repaired_suite_that_fails_on_the_head_is_accepted():
+    """The repair that worked: green on the run's tree and red without its work."""
+    sandbox = _Sandbox(exits={SUITE: 1}, readings={SUITE: _FAILS_ON_HEAD})
+    carry: dict[str, list[str]] = {}
+    repair = [{"name": SUITE, "content": _REWRITTEN, "type": "source"}]
+
+    action, vault, _qa = await _repair_of_the_suite(sandbox, repair, carry)
+
+    assert action == _MADE_IT
+    assert carry == {}
+    assert _record(vault) is None  # the task's own check, at its success, writes the record
+
+
+async def test_a_repair_that_leaves_the_criterion_files_alone_runs_nothing_on_the_head():
+    """A dev repair of a qa failure: the test is the one qa wrote, so the task's own check judges
+    it, and a pass there is still row 19's."""
+    sandbox = _Sandbox()
+    repair = [{"name": NAMED, "content": _DEVELOPED, "type": "source"}]
+
+    action, _vault, _qa = await _repair_of_the_suite(sandbox, repair, {})
+
+    assert action == _MADE_IT
+    assert sandbox.commands == []
+
+
+async def test_a_head_that_cant_be_read_leaves_the_repair_to_the_tasks_own_check():
+    """Nothing here fails a run: a sandbox that's down is no refusal."""
+    carry: dict[str, list[str]] = {}
+    repair = [{"name": SUITE, "content": _REWRITTEN, "type": "source"}]
+
+    action, _vault, _qa = await _repair_of_the_suite(_Sandbox(raises=True), repair, carry)
+
+    assert action == _MADE_IT
+    assert carry == {}
+
+
+async def test_after_a_refusal_a_later_pass_on_the_head_fails_the_run_and_never_reads_as_met():
+    """The re-dispatched emission passes on the head too: a failure the campaign repairs and
+    counts, with no row 19 and no record to tell the next proposal the head meets it."""
+    sandbox = _Sandbox()
+    built, _squad, cycle, implementation, vault, envelopes, _seeded = await _increment(sandbox)
+    qa = next(e for e in envelopes if e.task_type == "qa.test")
+    stored = _stored_suite(vault, cycle, implementation)
+
+    with pytest.raises(_ExecutionError) as ended:
+        await built._end_if_criteria_met_on_head(
+            qa,
+            qa,
+            cycle,
+            implementation.run_id,
+            stored,
+            [f"correction attempt 1: {REPAIR_SUITE_PASSES_ON_HEAD_MARKER} (R1)"],
+        )
+
+    assert ended.value.terminal is None
+    assert "R1" in str(ended.value) and "§24dh" in str(ended.value)
+    assert sandbox.seeded[SUITE] == _CRITERION
+    assert _record(vault) is None

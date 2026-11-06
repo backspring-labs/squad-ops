@@ -18,7 +18,7 @@ import functools
 import logging
 import os
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
@@ -65,6 +65,7 @@ from squadops.cycles.correction_signature import (
     REPAIR_EMPTY_MARKER,
     REPAIR_REMOVAL_REFUSED_MARKER,
     REPAIR_SUBJECT_DROPPED_MARKER,
+    REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
 )
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
@@ -951,6 +952,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             enforce_compliance_budget=lambda *args, **kw: self._enforce_compliance_budget(
                 *args, **kw
             ),
+            read_repaired_suite_on_head=lambda *args: self._read_repaired_suite_on_head(*args),
         )
         # SIP-0097 §6.2: pulse-boundary collaborator (boundary verification +
         # bounded repair loop). LLM observability is event-emission-only per
@@ -2352,7 +2354,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # deliver. One that already passes there is met already: the run ends here, and the
         # campaign proposes anew rather than spend the delivery, the acceptance and a repair.
         await self._end_if_criteria_met_on_head(
-            envelope, enriched, cycle, run_id, state.produced.stored_artifacts
+            envelope,
+            enriched,
+            cycle,
+            run_id,
+            state.produced.stored_artifacts,
+            state.correction.rejection_carry.get(envelope.task_id) or (),
         )
 
         # ----------------------------------------------------------
@@ -4831,12 +4838,63 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         cycle: Any,
         run_id: str,
         stored_artifacts: list[tuple[str, ArtifactRef]],
+        repair_rejections: Sequence[str],
     ) -> None:
         """#2890 (SIP-0109 §24cz): the qa task's criterion files run on the campaign branch's
         head (``criterion_head_check``). A criterion already met there ends the run with its own
         terminal kind, which the completion boundary records as the cycle's ending. A check that
-        doesn't apply or can't run leaves the run to proceed as it did."""
-        check = await check_criteria_on_head(
+        doesn't apply or can't run leaves the run to proceed as it did.
+
+        #2933 (§24dh): after a repair of this task was refused for passing on the head, a later
+        emission that passes there is no finding about the product either. The run fails as a
+        failure, which the campaign repairs and counts, and never reads as a clean abandonment."""
+        refused = any(REPAIR_SUITE_PASSES_ON_HEAD_MARKER in str(e) for e in repair_rejections)
+        check = await self._read_criteria_on_head(
+            envelope, enriched, cycle, run_id, stored_artifacts, record=not refused
+        )
+        if check is None or not check.already_met:
+            return
+        if refused:
+            raise _ExecutionError(
+                f"{', '.join(check.already_met)}: after a repair was refused for passing on the "
+                f"head, the suite still passes on {check.head_commit[:12]}, so it can't tell this "
+                "run's work from its absence, and nothing shows the head meets it (SIP-0109 §24dh)"
+            )
+        raise _ExecutionError(
+            f"criteria already met on the campaign branch's head {check.head_commit[:12]}: "
+            f"{', '.join(check.already_met)}. Their tests pass with no change to the product, so "
+            "the increment can't be checked; the campaign proposes anew (SIP-0109 §24cz)",
+            terminal=RunTerminalDecision(
+                kind=TerminalKind.CRITERIA_NOT_CHECKABLE, task_id=envelope.task_id
+            ),
+        )
+
+    async def _read_repaired_suite_on_head(
+        self,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        repaired: Mapping[str, str],
+    ) -> Any:
+        """#2933 (SIP-0109 §24dh): a repair's criterion files on the head, before it's accepted."""
+        return await self._read_criteria_on_head(
+            envelope, enriched, cycle, run_id, stored_artifacts, repaired=repaired, record=False
+        )
+
+    async def _read_criteria_on_head(
+        self,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        *,
+        record: bool,
+        repaired: Mapping[str, str] | None = None,
+    ) -> Any:
+        return await check_criteria_on_head(
             task_type=envelope.task_type,
             task_id=envelope.task_id,
             inputs=enriched.inputs,
@@ -4848,16 +4906,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             projects=self._project_registry,
             repository=self._source_repository,
             read_profile=self._derived_profile_for,
-        )
-        if check is None or not check.already_met:
-            return
-        raise _ExecutionError(
-            f"criteria already met on the campaign branch's head {check.head_commit[:12]}: "
-            f"{', '.join(check.already_met)}. Their tests pass with no change to the product, so "
-            "the increment can't be checked; the campaign proposes anew (SIP-0109 §24cz)",
-            terminal=RunTerminalDecision(
-                kind=TerminalKind.CRITERIA_NOT_CHECKABLE, task_id=envelope.task_id
-            ),
+            repaired=repaired,
+            record=record,
         )
 
     async def _derived_profile_for(self, cycle: Any) -> Any:

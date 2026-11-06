@@ -37,6 +37,7 @@ from squadops.cycles.check_registry import (
 )
 from squadops.cycles.correction_signature import (
     REPAIR_REFUSED_MARKER,
+    REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
     RetestReduction,
     criterion_identity,
     failure_signature,
@@ -357,7 +358,9 @@ class PatchAcceptance:
         enforce_frozen_ownership: Callable[..., tuple[list[dict], list[Any]]],
         emit_integrity_evidence: Callable[[Any, Any], None],
         enforce_compliance_budget: Callable[..., None],
+        read_repaired_suite_on_head: Callable[..., Any],
     ) -> None:
+        self._read_repaired_suite_on_head = read_repaired_suite_on_head
         self._reexecute_repaired_suite = reexecute_repaired_suite
         self._enforce_frozen_ownership = enforce_frozen_ownership
         self._emit_integrity_evidence = emit_integrity_evidence
@@ -481,6 +484,18 @@ class PatchAcceptance:
                 correction_attempts=correction_attempts,
                 deletions=(result.outputs or {}).get(DELETIONS_KEY) or (),
             )
+
+        if await self._suite_passes_on_head(
+            envelope,
+            repair_artifacts,
+            run_id=run_id,
+            cycle=cycle,
+            correction_attempts=correction_attempts,
+            stored_artifacts=stored_artifacts,
+            enriched_envelope=enriched_envelope,
+            repair_rejection_carry=repair_rejection_carry,
+        ):
+            return "continue"
 
         patched_artifacts, spine_rows = self._settle_patch_evidence(
             envelope, subject, verdict, retest
@@ -980,6 +995,54 @@ class PatchAcceptance:
             rows=retest_rows,
             evidence=retest_evidence,
         )
+
+    async def _suite_passes_on_head(
+        self,
+        envelope: TaskEnvelope,
+        repair_artifacts: Sequence[Mapping[str, Any]],
+        *,
+        run_id: str,
+        cycle: Cycle | None,
+        correction_attempts: int,
+        stored_artifacts: list[tuple[str, ArtifactRef]] | None,
+        enriched_envelope: TaskEnvelope | None,
+        repair_rejection_carry: dict[str, list[str]] | None,
+    ) -> bool:
+        """SIP-0109 §24dh (#2933): whether a repair rewrote a criterion's test into one that passes
+        on the head, which refuses it.
+
+        The retest passing is the repair's own claim, on the tree holding this run's work. The head
+        is the same product without that work, and it hasn't moved since the suite failed, so a
+        pass there came from the test changing. BT-2's did: its fixture lost a field, the
+        controller answered with no units, and every assertion sat in a loop over nothing. The
+        round is spent and the next one is told, as #2664's is. A repair that left the criterion
+        files alone reads ``None`` here, and the task's head check judges the test qa wrote."""
+        if cycle is None:
+            return False
+        check = await self._read_repaired_suite_on_head(
+            envelope,
+            enriched_envelope if enriched_envelope is not None else envelope,
+            cycle,
+            run_id,
+            stored_artifacts if stored_artifacts is not None else [],
+            {
+                str(artifact.get("name")): str(artifact.get("content") or "")
+                for artifact in repair_artifacts
+            },
+        )
+        if check is None or not check.already_met:
+            return False
+        _record_repair_rejection(
+            repair_rejection_carry,
+            envelope.task_id,
+            f"correction attempt {correction_attempts}: {REPAIR_SUITE_PASSES_ON_HEAD_MARKER} ("
+            + check.passing_files()
+            + f") — {check.head_commit[:12]} is the product before this run's work, so these "
+            "tests can't tell the work from its absence, and nothing was applied. Keep the "
+            "suite's own fixtures and setup, and make a test fail on the head for the reason "
+            "the criterion states",
+        )
+        return True
 
     def _settle_patch_evidence(
         self,
