@@ -46,8 +46,8 @@ _ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 #: The repository's own instruction sources (§B.5.1): the files a contributor is told to read,
-#: found by name at the validated commit. Discovery lists them; SIP-0110 confirms each as a
-#: project instruction, so the list itself reaches no task.
+#: found by name at the validated commit. Each reaches a task's prompt whole, through the checkout
+#: manifest's ``instruction_paths`` and the source repository section.
 INSTRUCTION_FILES = (
     "CONTRIBUTING.md",
     "AGENTS.md",
