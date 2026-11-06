@@ -9,6 +9,11 @@ owner's rulings of 2026-11-03.
 The spikes (§0, §0a) and 2.5.1's validation Campaign revised this plan before adoption. §8 lists what the outside
 reviewer was asked to challenge.
 
+**Revised 2026-11-06: the simulator reads every accepted increment, before the counted Campaign** (#2938, the owner:
+"place it before the counted campaign"). Run in the provider's engine, every accepted head so far lost all four matches,
+and two scored exactly what the hold-still baseline scores, though each passed the squad's own criteria. So rung 2 could be
+met by tanks that don't play. §2.6 carries the item and §3 step 5 waits for it.
+
 **Revised 2026-11-03 at adoption: battle-trainer is the proving Project** (D2, §2.6). It is
 `backspring-labs/battle-trainer`, a private Node library, tested with vitest: a tank controller for
 battle.training, whose campaigns the Nostromo crew steers. Its design is the owner's draft SIP *Battle Training Squad
@@ -420,6 +425,7 @@ this repository. Until slice 1 lands, phase 1 drafts them as text to load.
 |---|---|---|
 | **battle-trainer** (#2893; D2, the owner, 2026-11-03) | the counted proving Project: `backspring-labs/battle-trainer`, a Node library tested with vitest (`src/controller.js` answers `hello`, `draft` and `tick`). The MacBook lane registers its charter, Development Configuration and Campaign definition. It is registered on the Spark as a repository-backed Project, and its first goal set is the charter, loaded as a goal set once slice 1 lands (§2.4). The provider's SDK is fetched by pinned digest, never committed. No credentials until publication, which the owner authorizes separately. **Registered on the Spark after #2879 is deployed there,** or at `1f9e195`, where the package isn't private. At the MacBook's baseline `4d1d0b0`, the Spark's derivation would find no surface, and every proposal would be refused `unknown_surface` (as `cmp_c20d825c8131` was) | S to set up |
 | **its held-out suite** (#2894) | **sealed fixture cases:** an observation and the properties the controller's orders must have (one order per living unit, a throttle and steer in range, holding still when every objective is owned). They are run by the product's own vitest, outside the squad, in SquadOps' custody, never in the repository. Drafted, reviewed and approved as 2.5's demonstration suites were (2.5 plan D11). **Built from real observations:** the repository's `test/fixtures/` were written by hand from a summary of the provider's contract, with no raw bytes and no hashes. A suite built on guesses can pass while the controller does nothing, so each case starts from a captured observation, recorded with its digest. **Blocked until the owner acts:** on 2026-11-03, `api.battle.training` and `battle.training` resolved but refused TLS from both the Spark and the MacBook (curl exit 35). The home gateway's security filter blocks the domain, which was registered on 2026-10-26, and the owner allows it in the gateway's app. **Not in 2.6:** a simulator-scored cohort (#2872's A01.2). Its Q49 (Eve running the sealed cohort, against SIP-0113 §4.1) and Q50 (SIP-0113 has no simulation step) are ruled with that SIP | M |
+| **the simulator's reading on each accepted increment** (#2938; the owner, 2026-11-06) | the product's declared simulator runs where the increment is judged, at delivery, and its reading is kept on the run and shown in the gate's evidence: per opponent, the score, the result, units moved and shots fired. Seeds the squad can see: it is development evidence, and neither replaces the held-out suite nor waits on #2872's Q49 and Q50. Whether a bad reading refuses an increment or only reports it is the owner's; report-only is recommended | M |
 | **a Roblox spike** (#2895; D3, no box time) | can a Rojo project's Luau tests run headless on Linux inside the sandbox from declared commands? **Unverified:** which runner (a standalone Luau runtime, or a test framework that needs Roblox's own APIs) and what it can't exercise. If yes, a Roblox game is an ordinary repository-backed Project once Track A lands, and its game-specific skills come from PR #2405. If it needs Roblox Studio, it is #2405's remote worker, not 2.6 | S |
 
 ### 2.7 Track G: the console, so the owner drives a Campaign off the terminal (#2834)
@@ -492,7 +498,7 @@ The Spark is one GPU and one deploy.
    (#2824, #2817, #2814), which the patch read only by replay. Its exit rule: one Campaign with an accepted increment and no
    new seam finding.
 5. **The proving Campaign** on battle-trainer, on the Spark, first attended, then unattended overnight under D6's
-   policy.
+   policy. It starts only once each accepted increment carries the simulator's reading (#2938).
 6. **The cut.**
 
 **What invalidates earlier evidence:** 2.5's rule carries. A merge that changes a path an earlier run executed voids
