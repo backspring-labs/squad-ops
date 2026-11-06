@@ -53,6 +53,14 @@ criterion the product already meets cannot be proven, and the proposal is return
 fails only because it imports something your change adds does not count as failing: assert the
 behaviour where a caller reaches it.
 
+**What the product already does stays inside the criterion that changes it.** Read each half of what
+you were asked for against the product as it stands. A half that already holds can't be a criterion
+of its own, because its test passes before your change, and that ends the increment before it is
+delivered. Say the export command prints nothing today, and the ask is "CSV with --format csv, and
+no output without it". "No output without --format" already holds, so this is one criterion, not
+two: "with --format csv stdout is the CSV, and without it stdout stays empty". Its test fails today
+on the first half, and its second half guards what the change must leave alone.
+
 {{requirements_section}}{{goal_set_section}}
 
 {{product_profile_section}}

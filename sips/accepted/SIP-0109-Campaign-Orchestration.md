@@ -159,6 +159,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
+| a product proposal is shown that what the product already does stays inside the criterion that changes it (§24di); whether row 19 re-queues a goal-set item waits for the owner (SIP-0115 §5.3) | **shipped** | 2.6.0, PR #2936, refs #2935 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -6381,3 +6382,21 @@ can't lose work silently.
 still ends at row 19. (b) A rewrite accepted as kept progress (#1522) in one round, then passed by a dev repair in a later one:
 that later repair touches no criterion file, so only the task's own check reads it. (c) The repair prompt itself is
 unchanged; #2933's fixture and non-empty guidance is prompt work, and the refusal's text is what reaches the next round today.
+
+### 24di. What the product already does stays inside the criterion that changes it (2026-11-06, §8.2, §10 row 19, §24cl, §24cz; #2935; the implementer's build, on the owner's "yes" to fixing #2935)
+
+**Why.** `cmp_20ff28fb82ef`'s BT-2 asked for full throttle when the match allows it and 0 otherwise. The head stands
+still, so the second half already held. The proposal made it a criterion of its own: T1 read `fails_on_head`, T2
+`no_baseline_failure`, §24cz's rule ended the run, and row 19 abandoned the item with a sound increment in hand.
+
+**What changed.** `request.strategy_propose_product_increment` shows the case: a half that already holds goes inside the
+criterion that changes it, whose test then fails on the head as a whole. §24cz's rule stands. Relaxing it to "every
+criterion passes" was considered and dropped, because acceptance's discrimination read (§24cl) would still refuse T2 as
+`no_baseline_failure`, after a cycle and a repair.
+
+**Not changed, for the owner's ruling.** Row 19 says the campaign proposes anew, but on a goal-set Campaign the item reads
+`abandoned` and is skipped (SIP-0115 §5.3), so its `already_met` brief reaches the next item's proposal instead. That
+is §5.3's rule, so it stays until the owner rules on it.
+
+**Evidence.** Cycle `cyc_e8fb13d8e3bf`, run `run_36f8952e9066`, its `criterion_head_check` record. Test:
+`tests/unit/capabilities/test_strategy_propose_product_increment.py`, through the real render.

@@ -448,3 +448,17 @@ async def test_a_requirements_campaigns_proposal_naming_an_item_is_returned():
     assert "this Campaign works from no goal set" in second
     assert result.success, result.error
     assert "backlog_item" not in yaml.safe_load(result.outputs["artifacts"][0]["content"])
+
+
+async def test_a_product_proposal_is_shown_that_a_half_already_true_stays_in_one_criterion():
+    """#2935, through the real render. Bug caught: BT-2's proposal wrote the half of its item the
+    head already met as its own criterion, and that criterion's pass abandoned a sound increment
+    at row 19. The rule alone didn't prevent it, so the request shows the case, as a split of the
+    example's two halves into one criterion."""
+    ctx = _ctx(_naming("B-3"))
+
+    await StrategyProposeIncrementHandler().handle(ctx, _on_goals())
+
+    [prompt] = _prompts(ctx)
+    assert "**What the product already does stays inside the criterion that changes it.**" in prompt
+    assert "this is one criterion, not\ntwo:" in prompt
