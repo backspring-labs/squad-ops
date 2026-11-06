@@ -53,7 +53,13 @@ EXECUTION_MODE_REPLAY = "replay"
 # than §3.5's eventual per-boundary sets — Slice 4 relaxes an existing guard.
 # ``plan_artifact_refs`` equality is guaranteed by construction: the replayed
 # prefix restores the source checkpoint's own artifact refs.
-REPLAY_COMPATIBILITY_ELEMENTS = ("prd_ref", "build_profile", "contract_ref")
+REPLAY_COMPATIBILITY_ELEMENTS = (
+    "prd_ref",
+    "build_profile",
+    "contract_ref",
+    # SIP-0112 H.26: a product's profile changed since the source ran, so a replay wouldn't be one.
+    "development_profile_fingerprint",
+)
 
 
 @dataclass(frozen=True)

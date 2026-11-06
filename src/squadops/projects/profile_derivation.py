@@ -38,6 +38,7 @@ from squadops.projects.derived_profile import (
     Toolchain,
 )
 from squadops.sandbox.findings import PYTEST, VITEST
+from squadops.stacks.development_profiles import select_development_profile
 from squadops.stacks.scaffold import InterfaceManifest
 
 if TYPE_CHECKING:
@@ -743,6 +744,7 @@ def _gaps(
                 "a start declaration in the Development Configuration",
             )
         )
+    gaps += _stack_unmatched(configuration, runners)
     gaps += _untested(tree, runners)
     gaps += _unscopable(runners, owner)
     gaps += _unread_gaps(runners, unread)
@@ -778,6 +780,32 @@ def _toolchain_gap(toolchain: Toolchain, runners: Sequence[Runner], ran: Sequenc
         f"{toolchain.name} isn't in the sandbox's image, so {checks} can't run",
         f"{toolchain.name} in the sandbox's image",
     )
+
+
+def _stack_unmatched(
+    configuration: DevelopmentConfiguration, runners: Sequence[Runner]
+) -> list[Gap]:
+    """H.26: a product no development profile fits runs on none, and says so."""
+    kinds = sorted({r.runner for r in runners})
+    if select_development_profile(kinds, configuration.stack).matched:
+        return []
+    verifiable = bool(kinds)
+    return [
+        Gap(
+            "stack_unmatched",
+            DISCLOSED if verifiable else BLOCKING,
+            None,
+            ("**",),
+            f"no development profile fits runners {', '.join(kinds)}, so the squad works from "
+            "the product's own files and runners, with no stack guidance"
+            if verifiable
+            else "no runner is declared, so no profile fits and nothing can verify the squad's "
+            "work",
+            "a development profile for this stack"
+            if verifiable
+            else "a check that runs the product's tests, declared in the Development Configuration",
+        )
+    ]
 
 
 def _untested(tree: _Tree, runners: Sequence[Runner]) -> list[Gap]:

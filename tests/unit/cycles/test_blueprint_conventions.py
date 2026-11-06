@@ -80,8 +80,9 @@ async def prepare_cycle_with(ports, profile, **values):
         (_made_from("fullstack_fastapi_react"), {}, "fullstack_fastapi_react",
          "fullstack_fastapi_react"),
         (_made_from("nextjs_ts"), {}, "nextjs_ts", "nextjs_ts"),
-        # z_continuum's shape: imported, no blueprint. The default stands, as in 2.4.
-        (_PLAIN, {}, None, "python_cli"),
+        # z_continuum's shape: imported, no blueprint. It runs what it ran in 2.4, now pinned and
+        # recorded (H.26).
+        (_PLAIN, {}, "python_cli", "python_cli"),
         # a baseline captured before profiles: nothing to read a blueprint from
         (DerivedProfileNotFoundError("prj-tally"), {}, None, "python_cli"),
         # the operator's choice stands, as a supplied contract_ref does

@@ -505,8 +505,20 @@ async def test_the_import_check_that_failed_in_the_qa_image_is_recorded_not_exec
 async def test_a_product_suite_not_rejudged_says_why_in_the_log(caplog):
     """#2838: the spike's miss left no line saying why; now the reason is logged."""
     caplog.set_level("INFO", logger="squadops.execution.product_suite")
-    assert await _judge(_failed(_TESTS_PASS_RED, _AUTHENTICITY_RED), _Sandbox()) is None
-    assert "not re-judged: other checks failed: ['no_stub_fallback_tests']" in caplog.text
+    assert await _judge(_failed(_OTHER_GREEN, _AUTHENTICITY_RED), _Sandbox()) is None
+    assert "not re-judged: tests_pass didn't fail" in caplog.text
+
+
+async def test_a_suite_failing_beside_another_check_is_read_on_the_runner_and_stays_failed():
+    """H.24's remainder, closed by H.26: the image ran the suite and it failed beside an authenticity
+    check. The other check stands and fails the task, and the suite is read where it can be."""
+    judged = await _judge(_failed(_TESTS_PASS_RED, _AUTHENTICITY_RED), _Sandbox())
+
+    assert judged is not None and judged.status == TaskResultStatus.FAILED
+    rows = {r["check"]: r for r in judged.outputs["validation_result"]["checks"]}
+    assert rows["tests_pass"]["judged_on"] == "product_runner" and rows["tests_pass"]["passed"]
+    assert rows["no_stub_fallback_tests"] == _AUTHENTICITY_RED
+    assert judged.error.endswith("also failing: no_stub_fallback_tests")
 
 
 # --- #2877: the qa image couldn't run the suite ---------------------------------------------
@@ -622,22 +634,45 @@ async def test_the_analysis_reads_the_products_runner_and_never_the_images_words
     )
 
 
-@pytest.mark.parametrize(
-    ("tests_pass", "profile"),
-    [
-        # The image ran the suite and it failed beside another check: the agent's result stands,
-        # as before #2877.
-        ({**_TESTS_PASS_NOT_RUN, "executed": True, "exit_code": 1}, _Profile(_VITEST)),
-        # No runner of the product's holds the file: nothing can read it, so nothing runs.
-        (_TESTS_PASS_NOT_RUN, _Profile(_Runner(root="spec/"))),
-    ],
-    ids=["image-ran-it", "no-runner-holds-it"],
-)
-async def test_a_suite_the_image_ran_or_no_runner_holds_is_not_reread(tests_pass, profile):
+async def test_a_suite_no_runner_holds_is_not_reread():
+    """Nothing of the product's can read it, so nothing runs."""
     sandbox = _Sandbox()
-    result = _failed(tests_pass, _UNDEFINED_VI, tests=(_VITEST_FILE,))
-    assert await _judge(result, sandbox, profile=profile) is None
+    result = _failed(_TESTS_PASS_NOT_RUN, _UNDEFINED_VI, tests=(_VITEST_FILE,))
+    assert await _judge(result, sandbox, profile=_Profile(_Runner(root="spec/"))) is None
     assert sandbox.commands == []
+
+
+async def test_a_suite_the_image_ran_is_read_on_the_runner_whatever_failed_beside_it():
+    """H.26's point: moving a product off pytest must not change who reads the failure. Had the
+    image run vitest and failed, ``executed=True`` used to keep the product's runner away."""
+    sandbox = _Sandbox(
+        exits={_VITEST_FILE: 1}, readings={_VITEST_FILE: _vitest_reading(0, 1, _RED_KEY)}
+    )
+    image_ran_it = {**_TESTS_PASS_NOT_RUN, "executed": True, "exit_code": 1}
+    result = _failed(image_ran_it, _UNDEFINED_VI, tests=(_VITEST_FILE,))
+
+    judged = await _judge(result, sandbox, profile=_Profile(_VITEST))
+
+    assert judged is not None and judged.status == TaskResultStatus.FAILED
+    assert judged.outputs["agent_tests_pass_row"] == image_ran_it
+    assert judged.outputs["test_result"]["judged_on"] == "product_runner"
+
+
+async def test_a_suite_that_passed_on_the_runner_reports_where_it_ran():
+    """#2937, on battle-trainer: the suite passed 3 of 3 on vitest, and ``test_report.md`` still
+    said no tests ran. A pass rewrites the report, and the image's attempt is named as its own."""
+    result = _not_run()
+    result.outputs["test_result"] = {"summary": f"tests not run: {_NOT_RUN_WORDS}"}
+    sandbox = _Sandbox(readings={_VITEST_FILE: _vitest_reading(3, 3)})
+
+    judged = await _judge(result, sandbox, profile=_Profile(_VITEST))
+
+    assert judged is not None and judged.status == TaskResultStatus.SUCCEEDED
+    written = next(a for a in judged.outputs["artifacts"] if a["type"] == "test_report")["content"]
+    assert _NOT_RUN_WORDS not in written.split("**In the qa image:**")[0]
+    assert "**Ran on:** the product's runner (vitest), in the sandbox" in written
+    assert f"## {_VITEST_FILE}" in written and "- passed: 3 of 3" in written
+    assert f"**In the qa image:** tests not run: {_NOT_RUN_WORDS}" in written
 
 
 async def test_the_router_hands_the_correction_loop_the_products_reading():

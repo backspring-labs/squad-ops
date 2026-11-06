@@ -418,3 +418,43 @@ def test_the_proposal_rails_read_a_private_librarys_package_from_its_profile():
 
     context = product_context({"profile": profile.to_document()})
     assert context.serves("package") == ("battle-trainer",)
+
+
+# --- H.26: a product no development profile fits -----------------------------------------------
+
+_JEST_PRODUCT = {
+    "package.json": b'{"name": "x", "private": true, "scripts": {"test": "jest"}, "devDependencies": {"jest": "29"}}',
+    "src/index.js": b"",
+    "test/index.test.js": b"",
+}
+_LINT_ONLY = {"package.json": b'{"name": "x", "private": true}', "src/index.js": b""}
+
+
+def _stack_gaps(profile):
+    return [(g.kind, g.stops) for g in profile.gaps if g.id == "stack_unmatched"]
+
+
+def test_a_stack_no_profile_fits_is_disclosed_while_a_runner_can_verify_the_work():
+    checks = (Check("tests", ("npx", "jest")),)
+    profile = derive_profile(_JEST_PRODUCT, _configuration(checks), _baseline(checks))
+
+    assert [r.runner for r in profile.runners] == ["jest"]
+    assert _stack_gaps(profile) == [("disclosed", "stack_guidance")]
+    assert profile.blocking == ()
+
+
+def test_a_product_nothing_can_verify_blocks_a_campaign_and_leaves_a_cycle_alone():
+    checks = (Check("lint", ("npx", "eslint", "src")),)
+    profile = derive_profile(_LINT_ONLY, _configuration(checks), _baseline(checks))
+
+    assert profile.runners == ()
+    assert _stack_gaps(profile) == [("blocking", "campaigns")]
+    assert profile.blocking_work() == ()
+
+
+def test_a_product_a_profile_fits_has_no_stack_gap():
+    profile = derive_profile(
+        _CONTINUUM, _configuration(_CONTINUUM_CHECKS), _baseline(_CONTINUUM_CHECKS, tests=FAIL)
+    )
+
+    assert _stack_gaps(profile) == []

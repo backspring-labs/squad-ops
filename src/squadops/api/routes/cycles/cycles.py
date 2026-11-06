@@ -117,7 +117,14 @@ from squadops.projects.verification import SOURCE_VERIFICATION_TYPE
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
 from squadops.sandbox.preflight import sandbox_environment_decision
-from squadops.stacks.development_profiles import blueprint_development_profile
+from squadops.stacks.development_profiles import (
+    DEVELOPMENT_PROFILES,
+    ORIGIN_OPERATOR,
+    TEST_FRAMEWORK_PRODUCT_RUNNER,
+    ProfileSelection,
+    development_profile_conflict,
+    select_development_profile,
+)
 
 if TYPE_CHECKING:
     from squadops.campaigns.campaign_branch import CampaignHead
@@ -319,43 +326,55 @@ async def _seed_derived_contract(
         ) from exc
 
 
-def _pin_blueprint_conventions(
+def _pin_development_profile(
     body: CycleCreateRequest, profile: "DerivedProfile | None"
-) -> str | None:
-    """Pin the development profile of the blueprint a product was made from (SIP-0112 H.13).
+) -> ProfileSelection | None:
+    """Pin the development profile a product's cycle runs under (SIP-0112 H.13, H.26).
 
-    A product's cycle runs under the default profile unless something names another, and that is
-    ``python_cli``, so a frontend change on a FastAPI and React product was given a Python
-    package's prompts and a Python-only source filter. The derived profile at the pin names the
-    blueprint the product follows (contract 8's ``blueprint``), and that blueprint's development
-    profile is pinned in ``execution_overrides``, as ``_seed_derived_contract`` pins its
-    ``contract_ref``: one value on the cycle record, read by every task, retry and repair through
-    ``effective_development_profile``. It seeds nothing (``seeds_skeleton``).
+    The cycle would otherwise fall to ``python_cli``, whatever the product is: a Python package's
+    prompts and a Python-only source filter on a vitest product. So the derived profile at the pin
+    selects one (``select_development_profile``) and it is pinned in ``execution_overrides``, as
+    ``_seed_derived_contract`` pins its ``contract_ref``: one value on the cycle record, read by
+    every task, retry and repair through ``effective_development_profile``, beside the record of
+    where it came from and a fingerprint of what it does. It seeds nothing (``seeds_skeleton``).
 
-    Each task is then shown the blueprint's conventions for a product, never its test placement,
-    which the product's runners give (``source_repository_section``). Nothing is pinned:
-    - for no profile at the pin, or no blueprint, or one whose profile says nothing for a product
-      (``blueprint_development_profile``): the default stands, as in 2.4;
-    - where the request already names a ``development_profile``: the operator's choice stands, as
-      a supplied ``contract_ref`` does;
-    - for a cycle with no implementation plan. Only the plan's tasks are shown the product, with
-      its runners, so a plan-less task under the blueprint's profile would be given the profile's
-      prose for the skeleton, and its test placement with it.
+    A profile the request names stands, unless it contradicts the product's runners, which is
+    refused rather than run (``development_profile_conflict``).
 
-    Returns the profile pinned, or ``None``."""
+    A plan-less cycle's tasks aren't shown the product, so a profile with skeleton prose would give
+    them its test placement: it gets a pin only from a profile that holds none, which the ones
+    leaving the suite to the product's runner don't. Nothing is pinned with no profile at the pin.
+
+    Returns what was selected, or ``None``."""
     if profile is None:
-        return None
-    name = blueprint_development_profile(profile.blueprint_stack)
-    if not name:
         return None
     overrides = body.execution_overrides or {}
     config = resolve_config(body.applied_defaults, overrides)
-    if config.get("development_profile"):
-        return None
-    if not (config.get("implementation_plan") or config.get("typed_acceptance")):
-        return None
-    body.execution_overrides = {**overrides, "development_profile": name}
-    return name
+    runners = [r.runner for r in profile.runners]
+    named = str(config.get("development_profile") or "")
+    if config.get("build_profile"):
+        return None  # a sample application's profile on a product: preflight says so, and why
+    if named in DEVELOPMENT_PROFILES:
+        conflict = development_profile_conflict(named, runners)
+        if conflict:
+            raise PreflightRejectedError(f"development_profile_conflict: {conflict}")
+        selection = ProfileSelection(named, ORIGIN_OPERATOR)
+    elif named:
+        return None  # an unknown name is the create preflight's to refuse
+    else:
+        selection = select_development_profile(runners, profile.blueprint_stack)
+        planned = config.get("implementation_plan") or config.get("typed_acceptance")
+        framework = DEVELOPMENT_PROFILES[selection.name].test_framework
+        if not planned and framework != TEST_FRAMEWORK_PRODUCT_RUNNER:
+            return None
+    record = selection.to_record()
+    body.execution_overrides = {
+        **overrides,
+        "development_profile": selection.name,
+        "development_profile_selection": record,
+        "development_profile_fingerprint": record["fingerprint"],
+    }
+    return selection
 
 
 async def _validate_replay_declaration(
@@ -737,12 +756,18 @@ async def prepare_cycle(
         gap_warnings = await require_no_blocking_gap(
             derived, ports.artifact_vault, source_context, body
         )
-        # SIP-0112 H.13: before the effective config is read, so preflight sees what dispatch runs.
-        pinned = _pin_blueprint_conventions(body, derived)
-        if pinned is not None:
+        # SIP-0112 H.13, H.26: before the effective config is read, so preflight sees what
+        # dispatch runs.
+        selected = _pin_development_profile(body, derived)
+        if selected is not None:
             logger.info(
-                "cycle_create_blueprint_conventions",
-                extra={"project_id": project_id, "development_profile": pinned},
+                "cycle_create_development_profile",
+                extra={
+                    "project_id": project_id,
+                    "development_profile": selected.name,
+                    "origin": selected.origin,
+                    "matched": selected.matched,
+                },
             )
 
     # Resolve squad profile snapshot
