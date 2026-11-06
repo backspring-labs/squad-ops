@@ -312,7 +312,9 @@ accepted work stays on the campaign branch until the supervisor opens it:
   accepted increment is in the Project's integrated commit.
 - **`contribution_closed`:** the request was closed unmerged, and it keeps blocking. The command above
   can't reopen it. The owner reopens it on the forge, merges it with a merge commit, and re-validates
-  the Project.
+  the Project. If the work won't land, the owner says so, which clears it and can't be undone:
+  `squadops campaigns dismiss-contribution <id> --reason "<why>"` (SIP-0109 §24dg). The supervisor
+  can't run it, and the control log shows it as `contribution_dismissed`.
 
 ---
 

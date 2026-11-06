@@ -145,6 +145,10 @@ class ControlOperation(StrEnum):
     #: SIP-0109 §24dd): what lets the crew promote, drop or split within it. A record of a grant
     #: for the Campaign's life, so a live Campaign alone takes one (``needs_a_live_campaign``).
     GOAL_DELEGATION_GRANTED = "goal_delegation_granted"
+    #: The owner declared a closed, unmerged contribution won't land (§24dg, #2926): who, why, and
+    #: the commit and review request it names. A record, accepted on a completed campaign, since a
+    #: contribution exists only after the close. It clears the unintegrated set's row.
+    CONTRIBUTION_DISMISSED = "contribution_dismissed"
 
     @property
     def records_only(self) -> bool:
@@ -169,6 +173,7 @@ class ControlOperation(StrEnum):
             ControlOperation.REVIEW_PUSHED,
             ControlOperation.CONTRIBUTION_FAILED,
             ControlOperation.GOAL_DELEGATION_GRANTED,
+            ControlOperation.CONTRIBUTION_DISMISSED,
         )
 
     @property

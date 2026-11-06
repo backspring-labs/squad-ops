@@ -48,7 +48,7 @@ def _check_values(sql: str, column: str) -> set[str]:
         # Replaced whole again by 2001 (the Campaign's review request pushed, §24ci (b)), 2004 (a
         # closed Campaign's contribution that couldn't be opened, §24dc) and 2102 (the owner's
         # goal delegation, SIP-0115 §10c).
-        ("2102_campaign_goal_delegation.sql", "operation", ControlOperation),
+        ("2104_campaign_contribution_dismissed.sql", "operation", ControlOperation),
         # Replaced whole by 2000 (a superseded repair or retry, §24cd point 2).
         ("2000_campaign_branch_rebased.sql", "state", LaunchIntentState),
         # Replaced whole by 2002 (a resume not delegated to the crew's supervisor, §24da).

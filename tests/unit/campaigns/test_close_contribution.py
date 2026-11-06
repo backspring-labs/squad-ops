@@ -328,17 +328,19 @@ class _World(_BranchWorld):
             if e.operation is ControlOperation.CONTRIBUTION_FAILED
         ]
 
-    def client(self) -> TestClient:
-        """The campaign routes, as the runtime mounts them, for the supervisor's seat."""
+    def client(self, role: str = Role.CAMPAIGN_SUPERVISOR) -> TestClient:
+        """The campaign routes, as the runtime mounts them, for the supervisor's seat, or
+        ``role``'s."""
+        user = "supervisor" if role == Role.CAMPAIGN_SUPERVISOR else str(role)
         app = FastAPI()
 
         class InjectIdentity(BaseHTTPMiddleware):
             async def dispatch(self, request: Request, call_next):
                 request.state.identity = Identity(
-                    user_id="supervisor",
-                    display_name="supervisor",
-                    roles=(Role.CAMPAIGN_SUPERVISOR,),
-                    scopes=tuple(sorted(scopes_for_roles((Role.CAMPAIGN_SUPERVISOR,)))),
+                    user_id=user,
+                    display_name=user,
+                    roles=(role,),
+                    scopes=tuple(sorted(scopes_for_roles((role,)))),
                     identity_type=IdentityType.HUMAN,
                 )
                 return await call_next(request)

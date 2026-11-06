@@ -452,6 +452,27 @@ def contribute(
     print_success(f"{campaign_id}: {c['commit'][:12]}, {c['state']}: {where}{again}")
 
 
+@app.command("dismiss-contribution")
+def dismiss_contribution(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    reason: str = _REASON,
+    source_ref: str | None = typer.Option(
+        None, "--source-ref", help="Where the decision came from: a conversation's or issue's link"
+    ),
+    idempotency_key: str | None = _KEY,
+):
+    """Declare a closed, unmerged contribution won't land (SIP-0109 §24dg): the owner's alone. It
+    stops blocking `projects unintegrated`, and the record stays, with who and why. It can't be
+    undone: re-opening isn't built."""
+    key = _key(idempotency_key)
+    body = {"reason": reason, "idempotency_key": key}
+    if source_ref is not None:
+        body["source_ref"] = source_ref
+    path = f"/api/v1/campaigns/{campaign_id}/contribution-dismissal"
+    _show_result(ctx, _call(ctx, "post", path, json=body), key)
+
+
 @app.command("start")
 def start(
     ctx: typer.Context,

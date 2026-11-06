@@ -27,6 +27,7 @@ from squadops.campaigns.models import (
     CampaignGoals,
     CampaignState,
     ControlOperation,
+    ControlOutcome,
     CycleKind,
 )
 from squadops.campaigns.unintegrated import unintegrated_increments
@@ -323,6 +324,59 @@ async def test_of_two_records_the_furthest_along_says_where_it_stands():
         ("cyc_rep1", "contribution_pending"),
         ("cyc_inc2", "contribution_pending"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("beside", "expected"),
+    [
+        (None, []),
+        ("closed", []),
+        ("pending", [("cyc_rep1", "contribution_pending")]),
+        ("integrated", [("cyc_rep1", "merged_not_synced")]),
+    ],
+    ids=["alone", "a run's closed record", "a run's pending record", "a run's merged record"],
+)
+async def test_a_dismissal_clears_a_closed_standing_and_never_a_live_record(beside, expected):
+    """§24dg. Bugs caught: a dismissal read as "skip the Campaign", so an increment a live per-run
+    record still carries leaves the set and a draft starts without it; or a run's own closed record
+    of a dismissed increment keeping the gate shut, when the owner said it won't land."""
+    _held, log, goal_sets = _goal_set_world()
+    log.rows.append(_row(99, ControlOperation.CONTRIBUTION_DISMISSED, {"commit": "r1"}))
+    project = Project(project_id=PROJECT, name="Tally", description="", created_at=T0)
+    held = [dataclasses.replace(_per_run(CID, "closed"), run_id=CAMPAIGN_RUN)]
+    if beside is not None:
+        merge = "squash" if beside == "integrated" else None
+        held.append(_per_run("cyc_rep1", beside, merge))
+
+    listed = await unintegrated_increments(
+        project,
+        campaigns=log,
+        contributions=held,
+        repository=_Clone(set()),
+        goal_sets=goal_sets,
+    )
+
+    assert [(i.cycle_id, i.standing.value) for i in listed] == expected
+
+
+async def test_a_refused_dismissal_row_dismisses_nothing():
+    """§24dg, the control log's rule: a refused row is a record of a refusal. Bug caught: any row
+    of the operation read as the owner's word, so the gate opens on an act that never applied."""
+    _held, log, goal_sets = _goal_set_world()
+    row = _row(99, ControlOperation.CONTRIBUTION_DISMISSED, {"commit": "r1"})
+    log.rows.append(dataclasses.replace(row, outcome=ControlOutcome.REFUSED))
+    project = Project(project_id=PROJECT, name="Tally", description="", created_at=T0)
+    whole = dataclasses.replace(_per_run(CID, "closed"), run_id=CAMPAIGN_RUN)
+
+    listed = await unintegrated_increments(
+        project,
+        campaigns=log,
+        contributions=[whole],
+        repository=_Clone(set()),
+        goal_sets=goal_sets,
+    )
+
+    assert {i.standing.value for i in listed} == {"contribution_closed"}
 
 
 async def test_an_increment_contributed_by_its_own_run_stands_by_that_record():

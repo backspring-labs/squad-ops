@@ -156,6 +156,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
 | the owner's goal delegation (SIP-0115 slice 3): `goal_delegation_granted`, the first record a completed Campaign refuses (§24dd) | **shipped** | 2.6.0, PR #2908 |
 | a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
+| the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
+| a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -6292,3 +6294,52 @@ doesn't read this ledger.
 crew's roles, a decided row, a later revision, and a requirements row's exact fields.
 
 **Who ruled.** The supervisor's brief for #2888; the design is the implementer's, for the owner's review in the PR.
+
+### 24dg. The owner's dismissal of a closed, unmerged contribution (2026-11-05, §13, §24dc; #2926; the owner's choice of the recovery, the implementer's design under the supervisor's brief)
+
+**Why.** §24dc keeps a contribution closed unmerged on the unintegrated set, because the work isn't in, and nothing cleared
+it. `campaigns contribute` answers the closed record, and a sync reads only pending ones. So a request the owner means to
+refuse blocked the crew's integration gate for good.
+
+**What changed.**
+- **`POST /api/v1/campaigns/{id}/contribution-dismissal`** (`squadops campaigns dismiss-contribution <id> --reason …
+  [--source-ref …]`) takes `reason`, `idempotency_key` and an optional `source_ref`, and answers 201 with the control
+  result. It needs `campaigns:control`, which only the admin role holds, as §24dd's grant does. The supervisor seat opens
+  a contribution with `campaigns:manage`, and is refused this `403 FORBIDDEN`: writing off work is the owner's.
+- **`contribution_dismissed`** is a record-only control-log row, binding `{commit, review_url, source_ref?}`, with who and
+  why. A completed Campaign takes it, since a contribution exists only after the close. Migration `2104` replaces the
+  operation CHECK list whole.
+- **The record stays.** The contribution's row is untouched and still reads `closed`, in
+  `GET /api/v1/projects/{id}/contributions`. Who dismissed it and why are on the Campaign's control log, and the work stays
+  on the Campaign's branch. No contribution state is added.
+- **The unintegrated set skips an increment that would stand `contribution_closed` on a Campaign with an applied
+  dismissal.** A live record of the same increment still decides: a per-run contribution pending or integrated stands as
+  it did, and stays listed.
+- **Refused** (`409 CONTRIBUTION_NOT_DISMISSABLE`, nothing written): a Campaign with no contribution, one pending or
+  integrated, one closed with an integrated commit, and one already dismissed under another key. A blank reason is `422`,
+  an unknown Campaign `404`.
+- **A retry replays,** answered before the contribution's state is read, so it holds whatever has happened to the record
+  since. As for any record (§12a), the key stands for the row's target and binding: another `source_ref` conflicts, and
+  another reason replays the first, which stands.
+
+**Deliberately not built.**
+- **Re-open:** a fresh contribution from the same accepted state. The owner chose dismiss first. A dismissal can't be undone,
+  and a request reopened on the forge after one stays out of the set unless the integrated commit carries it. The ledger
+  lists re-open as unplaced.
+- **A sync reading closed records** (#2926's other suggestion). It still reads pending ones only.
+- **A per-run contribution's dismissal.** A contribution through `POST /api/v1/projects/{id}/contributions` has no Campaign
+  of its own to record it on. An increment whose only closed record is a per-run one, on a Campaign with no contribution of
+  its own, still blocks.
+
+**A reading, for the owner's review:** it isn't an intervention (SIP-0113 §4.3) and isn't in `outcomes.ledger._ACTED`. It comes
+after the close and changes nothing the squad did, as §24dd's grant isn't one. It doesn't re-materialize the stored
+evidence package, which reads no contribution.
+
+**Evidence.** `tests/unit/api/test_contribution_dismissal_routes.py`, entered at the route with the real authorization adapter
+over a real managed clone: the owner clears the row, the record stays; each role; each refusal; a replay after the record
+moved. `tests/unit/api/test_unintegrated_increments.py`: a live record beside a dismissal.
+`tests/integration/cycles/test_postgres_campaign_registry_integration.py`: migration 2104 on Postgres. Twelve mutants, each on a
+commit, each failed a test; one survived at first, the Project's first contribution read as the Campaign's, and gained its test.
+
+**Who ruled.** The owner, 2026-11-05: dismiss first. The row's shape and the narrowings are the implementer's, under the
+supervisor's brief.

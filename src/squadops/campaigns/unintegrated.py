@@ -13,8 +13,10 @@ it, and stands as one of:
 - ``merged_not_synced``: a sync recorded one integrated, and the Project's integrated commit
   doesn't carry it yet: the Project is re-validated at the new commit (E.4.4) to move it;
 - ``contribution_closed``: its review request was closed unmerged, and ``review_url`` names it. The
-  work still isn't in, so it keeps blocking. Recovery is the owner's on the forge: reopen the
-  request and merge it with a merge commit, then sync and re-validate.
+  work still isn't in, so it keeps blocking. Recovery is the owner's: on the forge, reopen the
+  request and merge it with a merge commit, then sync and re-validate; or declare the work won't
+  land, ``squadops campaigns dismiss-contribution`` (§24dg), which clears the row. An increment a
+  live record still carries stands by that record, and stays listed.
   ``squadops campaigns contribute`` can't do this: it answers the closed record (SIP-0109 §24dc).
 
 "Carries" is read in the managed clone: the increment's commit, or the merge commit a sync
@@ -33,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.backlog import ItemStatus, campaign_backlog
 from squadops.campaigns.close_contribution import accepted_on_branch
+from squadops.campaigns.contribution_dismissal import contribution_dismissal
 from squadops.campaigns.ledger import ledger
 from squadops.campaigns.models import Campaign
 from squadops.cycles.models import GoalSetNotFoundError
@@ -97,6 +100,7 @@ async def unintegrated_increments(
         if not accepted:
             continue
         whole = by_campaign.get(campaign.campaign_id)
+        dismissed = contribution_dismissal(log) is not None
         titles = await _titles(campaign, log, intents, campaigns, goal_sets)
         for cycle_id, commit in accepted:
             if commit is None or await _carried(project, commit, repository):
@@ -110,6 +114,8 @@ async def unintegrated_increments(
             if contribution is None:
                 standing = Standing.NOT_CONTRIBUTED
             elif contribution.state == CLOSED:
+                if dismissed:
+                    continue
                 standing = Standing.CONTRIBUTION_CLOSED
             elif contribution.state == INTEGRATED:
                 standing = Standing.MERGED_NOT_SYNCED
