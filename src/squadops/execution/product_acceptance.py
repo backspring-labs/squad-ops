@@ -174,6 +174,9 @@ async def evaluate_product_increment(
         routes=routes.results,
         replaced=replaced,
     )
+    # #2938: what the product's own measurements say of the candidate. It reports, so it runs after
+    # the verdict is formed and can't change it.
+    readings = [await runs.read(r.id, r.argv, candidate) for r in configuration.commands.readings]
     document = {
         **evaluation_document(
             evaluation,
@@ -187,6 +190,7 @@ async def evaluate_product_increment(
         "evaluated_on": PRODUCT_RUNNER,
         "runs": [r.as_dict() for r in done],
         "renderings": routes.record,
+        **({"readings": readings} if readings else {}),
     }
     return await _store(cycle, run_id, document, vault)
 

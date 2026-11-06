@@ -164,7 +164,7 @@ class _World:
         await self.progress.calibration_recorded(CID)
 
     async def delivered(
-        self, cycle_id: str, change: bytes, evaluation: str = "accepted"
+        self, cycle_id: str, change: bytes, evaluation: str = "accepted", readings=None
     ) -> tuple[Cycle, Run, str]:
         """An increment launched on the campaign (the owner's word, standing in for the proposal
         point 5 adds), pinned as today's cycle-create path pins it, at the Project's baseline. Its
@@ -226,7 +226,9 @@ class _World:
             run,
             "increment_evaluation.json",
             INCREMENT_EVALUATION_ARTIFACT_TYPE,
-            json.dumps({"verdict": evaluation}).encode(),
+            json.dumps(
+                {"verdict": evaluation, **({"readings": readings} if readings else {})}
+            ).encode(),
         )
         return cycle, run, delivery.captured_commit
 
@@ -321,6 +323,20 @@ async def test_an_accepted_increment_moves_the_branch_to_its_capture(tmp_path):
         f"- increment `{cycle.cycle_id}`: tree `{identity[:12]}`, commit `{captured[:12]}` on "
         "the campaign branch"
     ) in digest.decode()
+
+
+async def test_an_accepted_increments_reading_reaches_its_promotion_row(tmp_path):
+    """#2938, entered at the completion boundary: the digest, the gate and the viewer all read the
+    control log, so a reading left on the run alone is one nobody sees."""
+    readings = [{"id": "play", "argv": ["node", "play.mjs"], "reading": {"wins": 0}}]
+    world = _World(tmp_path)
+    await world.started()
+    cycle, run, _ = await world.delivered("cyc_inc000000001", _added("total"), readings=readings)
+
+    await world.progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    [promote] = await world.promotions(cycle.cycle_id)
+    assert promote.binding["readings"] == readings
 
 
 async def test_a_capture_built_on_another_commit_than_the_head_is_refused(tmp_path):
