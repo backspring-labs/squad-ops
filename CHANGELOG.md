@@ -155,6 +155,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `split_into`. `squadops goals candidates|promote|drop|split`.
 
 ### Fixed
+- **A proposal keeps what the product already does inside the criterion that changes it** (#2935, SIP-0109 §24di). BT-2's
+  item was half true on the head, so its proposal wrote the half that held as its own criterion, whose pass on the head
+  abandoned the whole increment at row 19. The product proposal's request now shows the case.
 - **A repaired test that passes on the head no longer abandons a backlog item** (#2933, SIP-0109 §24dh). A qa repair
   rewrote BT-2's test with a fixture the product filtered out, so its assertions ran over nothing and it passed on the
   head; row 19 then discarded development's correct change as "already met", and the next proposal was told so. The head
