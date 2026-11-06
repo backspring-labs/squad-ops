@@ -9,6 +9,10 @@ owner's rulings of 2026-11-03.
 The spikes (§0, §0a) and 2.5.1's validation Campaign revised this plan before adoption. §8 lists what the outside
 reviewer was asked to challenge.
 
+**Revised 2026-11-06: every repository-backed product runs on its own stack, before the counted Campaign** (#2937, on the
+outside review the owner relayed the same day). battle-trainer ran under `python_cli`, so its agents were given Python
+guidance and `test_report.md` said its passing suite never ran. Track A carries the item and §3 step 5 waits for it.
+
 **Revised 2026-11-06: the simulator reads every accepted increment, before the counted Campaign** (#2938, the owner:
 "place it before the counted campaign"). Run in the provider's engine, every accepted head so far lost all four matches,
 and two scored exactly what the hold-still baseline scores, though each passed the squad's own criteria. So rung 2 could be
@@ -344,6 +348,7 @@ the rows marked **battle-trainer** below.
 | **#2900** (battle-trainer) | a product's suite on its own runner gets the product's tree at the pin from the clone, with the run's tree laid over it. Today the base is the run's artifacts, which hold back the lockfile, so an npm product's `npm ci` fails setup on every run (`cmp_c59db96e4a87`). The MacBook lane's PR #2902 (SIP-0112 H.19) | S |
 | **#2799** | a vitest page criterion for a page the change adds can fail as an assertion on a tree without it (a loader the bundle carries, as #2749 did for the Next.js sample stack) | M |
 | **#2827 item 2** | H.13's two unbuilt items: a product's repaired suite read by the product's runners, not the scaffold's `__tests__/` rule; a plan-less product cycle's test author shown the product | M |
+| **#2937** (battle-trainer) | every repository-backed product's stack is selected from its derived facts at `prepare_cycle`, with its provenance recorded; a plain Node and vitest profile; a neutral profile with a named gap for what no profile matches, in place of a silent `python_cli`; and QA evidence that says which tests ran, where and on which runner. SIP-0112 H.26 | M–L |
 | **a size preflight** (#2889) | before a Campaign starts on a product, every task type the profile dispatches is rendered against the product's real tree at the pinned commit, and a binding that can't fit is a blocking gap, named before the first cycle. #2805 and #2810 were found one at a time, live, an hour in. The proving product will be larger than `z_continuum` | S–M |
 
 **Evidence before merge:** each fix replays the stored envelope that found it (`cyc_ac0cb5a7b6b2` for #2818,
@@ -498,7 +503,7 @@ The Spark is one GPU and one deploy.
    (#2824, #2817, #2814), which the patch read only by replay. Its exit rule: one Campaign with an accepted increment and no
    new seam finding.
 5. **The proving Campaign** on battle-trainer, on the Spark, first attended, then unattended overnight under D6's
-   policy. It starts only once each accepted increment carries the simulator's reading (#2938).
+   policy. It starts only once every repository-backed product runs on its own stack (#2937) and each accepted increment carries the simulator's reading (#2938).
 6. **The cut.**
 
 **What invalidates earlier evidence:** 2.5's rule carries. A merge that changes a path an earlier run executed voids
