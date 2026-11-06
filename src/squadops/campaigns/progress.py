@@ -1020,6 +1020,13 @@ class CampaignProgress:
                     "verification_ref": promotion.verification_ref,
                     "frozen_criteria": frozen,
                     "retired_criteria": list((evaluation or {}).get("retired") or ()),
+                    # #2938: what the product's own measurements said of it, on the record, so
+                    # the digest, the gate and the viewer read it without opening the run.
+                    **(
+                        {"readings": (evaluation or {})["readings"]}
+                        if (evaluation or {}).get("readings")
+                        else {}
+                    ),
                 },
                 accepted=accepted,
             ),

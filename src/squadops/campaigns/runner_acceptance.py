@@ -37,6 +37,8 @@ runtime-side, at its delivery (§24cd point 6). The decisions are the same modul
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import posixpath
 import sys
@@ -277,6 +279,25 @@ def _patch_to(current: Mapping[str, bytes], target: Mapping[str, bytes]) -> dict
     return patch
 
 
+#: How long a declared reading may run: it measures, so it never holds an increment for long.
+READING_TIMEOUT_SECONDS = 300
+
+
+def _last_json_line(output: str) -> tuple[dict[str, Any] | None, str | None]:
+    """A reading's result: the last non-empty line of its output, a JSON object. The sandbox keeps
+    only the output's tail, so a reading says what it found last, and keeps it short."""
+    lines = [line for line in output.splitlines() if line.strip()]
+    if not lines:
+        return None, "the reading printed nothing"
+    try:
+        value = json.loads(lines[-1])
+    except ValueError:
+        return None, f"its last line isn't JSON: {lines[-1][:120]}"
+    if not isinstance(value, dict):
+        return None, "its last line isn't a JSON object"
+    return value, None
+
+
 @dataclass(frozen=True)
 class RunnerAcceptance:
     """Runs a criterion's bundle on an overlay, in the sandbox (§24cd point 6).
@@ -390,6 +411,57 @@ class RunnerAcceptance:
             if exited
             else (getattr(result, "unavailable_reason", None) or result.outcome or "not run"),
         )
+
+    async def read(
+        self, reading_id: str, argv: tuple[str, ...], tree: SandboxTree
+    ) -> dict[str, Any]:
+        """#2938: a declared reading of ``tree``, the candidate. It reports and never decides, so
+        nothing about it can fail an increment: whatever goes wrong becomes the record's ``error``,
+        and the run carries on to its verdict."""
+        # deferred (pair): as ``run``
+        from squadops.sandbox.models import CommandOutcome, RevisionOrigin
+
+        record: dict[str, Any] = {"id": reading_id, "argv": list(argv), "reading": None}
+        digest = hashlib.sha256(reading_id.encode()).hexdigest()[:12]
+        workspace_id = f"{self.workspace_prefix}read-{digest}"
+        try:
+            await self.sandbox.release_workspace(workspace_id)
+            try:
+                revision = await self.sandbox.seed_workspace(
+                    workspace_id,
+                    dict(tree.files),
+                    origin=RevisionOrigin.GIT_CHECKOUT,
+                    executable=tree.executable,
+                )
+                if tree.changes:
+                    patched = await self._patched(
+                        revision, dict(tree.changes), RevisionOrigin.AGENT_PATCH
+                    )
+                    if patched is None:
+                        return {**record, "error": "the candidate couldn't be assembled"}
+                    revision = patched
+                result = await self.sandbox.run_declared_command(
+                    revision=revision,
+                    command=argv,
+                    working_dir=self.setup.working_directory,
+                    setup=self.setup.setup,
+                    timeout_seconds=READING_TIMEOUT_SECONDS,
+                )
+            finally:
+                await self.sandbox.release_workspace(workspace_id)
+        except Exception as e:  # a measurement never fails what it measures
+            logger.warning("product_reading_failed", extra={"reading": reading_id}, exc_info=True)
+            return {**record, "error": f"{type(e).__name__}: {e}"[:300]}
+        if not (result.ran and result.outcome == CommandOutcome.EXITED):
+            why = getattr(result, "unavailable_reason", None) or result.outcome or "not run"
+            return {**record, "error": str(why)[:300]}
+        reading, error = _last_json_line(result.stdout_tail)
+        return {
+            **record,
+            "exit_code": result.exit_code,
+            "reading": reading,
+            **({"error": error} if error else {}),
+        }
 
     async def _patched(
         self, base: WorkspaceRevision, files: dict, origin: str

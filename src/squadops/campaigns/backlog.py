@@ -526,6 +526,9 @@ async def gate_goal_evidence(
     view, revisions = await campaign_backlog(campaign, goal_sets=goal_sets, campaigns=campaigns)
     by_number = {r.revision: r for r in revisions}
     evidence: dict[tuple[str, int], dict[str, Any]] = {}
+    # #2938: what the product's own measurements said of the latest accepted increment, so a gate
+    # is ruled knowing how the product does, not only that its criteria passed.
+    readings = latest_readings(await campaigns.control_log(campaign.campaign_id))
     for held in view.items:
         if held.status not in (ItemStatus.PROPOSED, ItemStatus.IN_INCREMENT):
             continue
@@ -542,8 +545,22 @@ async def gate_goal_evidence(
             "expected_results": [
                 r for r in document["expected_results"] if r["id"] in item["serves"]
             ],
+            **({"latest_readings": readings} if readings else {}),
         }
     return evidence
+
+
+def latest_readings(log: Iterable[ControlLogEntry]) -> list[dict[str, Any]]:
+    """The readings on the campaign's latest promotion that carries any, or none (#2938)."""
+    readings: list[dict[str, Any]] = []
+    for entry in log:
+        if (
+            entry.operation is ControlOperation.PROMOTE
+            and entry.outcome is ControlOutcome.APPLIED
+            and entry.binding.get("readings")
+        ):
+            readings = list(entry.binding["readings"])
+    return readings
 
 
 async def campaign_backlog(

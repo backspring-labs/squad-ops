@@ -147,7 +147,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading); waits on #2799. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.6.0, #2827 |
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
-| a product's declared simulator read at an increment's delivery, its reading kept on the run and shown in the gate's evidence | **placed** (the 2.6 plan's Track F, the owner, 2026-11-06: before the counted Campaign) | 2.6.0, #2938 |
+| a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
+| the replay viewer showing a new version with no step by hand (§24dj) | **placed** (the 2.6 plan's Track F, the owner, 2026-11-06) | 2.6.0, #2938 |
 | the operator's box lease outside Campaigns (§9.3) | **placed** (the 2.6 plan's Track C, adopted 2026-11-03) | 2.6.0, #2287 |
 | a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
@@ -6401,3 +6402,33 @@ is §5.3's rule, so it stays until the owner rules on it.
 
 **Evidence.** Cycle `cyc_e8fb13d8e3bf`, run `run_36f8952e9066`, its `criterion_head_check` record. Test:
 `tests/unit/capabilities/test_strategy_propose_product_increment.py`, through the real render.
+
+### 24dj. A product's declared reading of an accepted increment (2026-11-06, §8, §24cd point 6, §24df; #2938; the Spark lane)
+
+**What changed.** A repository-backed increment was judged only by criteria the squad wrote. Run in battle-trainer's provider engine on
+2026-11-06, every accepted head lost all four matches against the house bots, and two scored exactly what the hold-still baseline
+scores, because a criterion such as "every order's throttle is 65536" can be met by a tank driving into a wall. So a product can now
+declare **readings**: `technical.commands.readings`, each an `id` and an `argv`, optional and additive.
+
+1. **Where it runs.** After the verdict is formed, in `evaluate_product_increment`, on the candidate, in the sandbox's disposable copy,
+   after the product's setup, for at most 300 seconds.
+2. **What it records.** The last non-empty line of its stdout, a JSON object, because the sandbox keeps only the output's tail. The
+   record is `{id, argv, exit_code, reading}`, with `error` saying why when there's no result.
+3. **It reports.** The owner ruled this report-only on 2026-11-06. A reading never changes a verdict, and nothing that goes wrong with
+   one can fail an increment. A nonzero exit with a result is still reported.
+4. **Who reads it.** The `increment_evaluation` document, the promotion's binding, the digest (`read <id>: …`), and each open gate's
+   evidence as `latest_readings`.
+
+**The boundary.** Readings are development evidence on inputs the squad can see, so they are not SIP-0113's held-out evidence: sealed
+cases stay out of this path, and rung 3's pre-registered threshold is unchanged. It doesn't rule Q49 or Q50 of the Battle Training Squad
+Harness draft, of whose I1 it is the first part.
+
+**The evidence.** `tests/unit/campaigns/test_product_readings.py` enters at `evaluate_product_increment` and runs in the real sandbox
+service, and `test_campaign_branch.py` enters at the completion boundary and reads the promotion's row.
+
+**Not built.** A reading runs on the candidate alone, not the head beside it, so a change is read by comparing rows. The match
+recording itself stays out of the record, which holds the summary. The replay viewer still records versions by hand after a Campaign,
+so #2938 stays open for that.
+
+**Who ruled.** The owner: placed before the counted Campaign, and report-only (2026-11-06). The Spark lane chose `technical.commands`,
+beside the checks, over a flag on a check, since a check's failure is a verdict.

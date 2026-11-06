@@ -6,6 +6,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A product's declared reading of an accepted increment** (SIP-0109 §24dj, #2938, PR #2942): `technical.commands.readings`
+  run on the candidate in the sandbox, and what each one prints is kept on the evaluation and the promotion, and shown in the digest
+  and each open gate's evidence. Report-only: a reading never changes a verdict.
 - **A repository-backed product runs on its own stack** (SIP-0112 H.26, #2937, PR #2941): its development profile is selected
   from the derived facts at `prepare_cycle`, with its origin and a fingerprint recorded, and a named profile that contradicts
   its runners is refused. `node_vitest` is new, and `product_neutral` with a `stack_unmatched` gap replaces a silent
