@@ -4850,7 +4850,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         failure, which the campaign repairs and counts, and never reads as a clean abandonment."""
         refused = any(REPAIR_SUITE_PASSES_ON_HEAD_MARKER in str(e) for e in repair_rejections)
         check = await self._read_criteria_on_head(
-            envelope, enriched, cycle, run_id, stored_artifacts, record=not refused
+            envelope, enriched, cycle, run_id, stored_artifacts, write_record=not refused
         )
         if check is None or not check.already_met:
             return
@@ -4880,7 +4880,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     ) -> Any:
         """#2933 (SIP-0109 §24dh): a repair's criterion files on the head, before it's accepted."""
         return await self._read_criteria_on_head(
-            envelope, enriched, cycle, run_id, stored_artifacts, repaired=repaired, record=False
+            envelope,
+            enriched,
+            cycle,
+            run_id,
+            stored_artifacts,
+            repaired=repaired,
+            write_record=False,
         )
 
     async def _read_criteria_on_head(
@@ -4891,7 +4897,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         run_id: str,
         stored_artifacts: list[tuple[str, ArtifactRef]],
         *,
-        record: bool,
+        write_record: bool,
         repaired: Mapping[str, str] | None = None,
     ) -> Any:
         return await check_criteria_on_head(
@@ -4907,7 +4913,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             repository=self._source_repository,
             read_profile=self._derived_profile_for,
             repaired=repaired,
-            record=record,
+            write_record=write_record,
         )
 
     async def _derived_profile_for(self, cycle: Any) -> Any:

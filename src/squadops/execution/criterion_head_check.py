@@ -23,7 +23,7 @@ the last line.
 A suite that failed and was rewritten by a repair has only changed its test: the head is pinned.
 So ``repaired`` reads a repair's criterion files on the head before the repair is accepted, and
 ``PatchAcceptance`` refuses one that passes there. Neither that reading nor one after such a refusal
-writes the record (``record=False``): ``CampaignProgress._already_met_stated`` tells the next
+writes the record (``write_record=False``): ``CampaignProgress._already_met_stated`` tells the next
 proposal what the record says the head meets, and a refused suite is no evidence of that.
 
 **Unchanged:** a sample application's increment (no source repository) and every task that isn't
@@ -136,14 +136,14 @@ async def check_criteria_on_head(
     repository: Any,
     read_profile: Any,
     repaired: Mapping[str, str] | None = None,
-    record: bool = True,
+    write_record: bool = True,
 ) -> CriterionHeadCheck | None:
     """Run the increment's criterion files the run has stored on the head, record the readings,
     and return them; ``None`` where the check doesn't apply or can't run (logged with why).
 
     ``repaired`` is a repair's files by path, not yet accepted: they're laid over the stored ones,
     and with none of them a criterion file the repair didn't rewrite, there's nothing to read and
-    the answer is ``None``. ``record=False`` reads without writing the record (§24dh).
+    the answer is ``None``. ``write_record=False`` reads without writing the record (§24dh).
 
     ``inputs`` are the task's dispatched inputs, whose product runners say which of the pin's
     files are tests (``product_tree_at_pin``). Nothing here raises: a check that can't run leaves
@@ -157,7 +157,7 @@ async def check_criteria_on_head(
     try:
         return await _read_on_head(
             task_id, inputs, cycle, run_id, stored_artifacts, vault, sandbox, projects, repository,
-            read_profile, repaired, record,
+            read_profile, repaired, write_record,
         )  # fmt: skip
     except Exception:
         logger.warning(
@@ -180,7 +180,7 @@ async def _read_on_head(
     repository: Any,
     read_profile: Any,
     repaired: Mapping[str, str] | None,
-    record: bool,
+    write_record: bool,
 ) -> CriterionHeadCheck | None:
     context = cycle.source_context
     assert context is not None  # _why_cant_run refused a cycle with none
@@ -237,7 +237,7 @@ async def _read_on_head(
         CriterionHeadReading(placed[run.path], run.path, reading_of(run)) for run in runs
     )
     record_id = None
-    if record:
+    if write_record:
         block = cycle.resolved_config().get("campaign_proposal") or {}
         document = head_check_document(
             increment_id=str(block.get("proposal_id") or ""),
