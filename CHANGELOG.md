@@ -6,6 +6,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A repository-backed product runs on its own stack** (SIP-0112 H.26, #2937, PR #2941): its development profile is selected
+  from the derived facts at `prepare_cycle`, with its origin and a fingerprint recorded, and a named profile that contradicts
+  its runners is refused. `node_vitest` is new, and `product_neutral` with a `stack_unmatched` gap replaces a silent
+  `python_cli`. The product's runner now reads every failing `tests_pass`, for Python products too, and `test_report.md` says
+  what ran, where and on which runner.
 - **A Project's goal set** (SIP-0115 slice 1, #2884, PR #2899): the goal, expected results with where each is
   observed, constraints, out of scope, the ordered backlog and candidates, written as immutable numbered revisions
   with author, reason and `source_ref`. `/api/v1/projects/{id}/goal-set` reads the active revision, `/revisions`

@@ -1880,10 +1880,28 @@ checks:
     what: a product's cycle is pinned to its blueprint's development profile, and a product with no blueprint keeps the default (SIP-0112 H.13)
     container: squadops-runtime-api
     code: |
-      from squadops.api.routes.cycles.cycles import _pin_blueprint_conventions
+      from squadops.api.routes.cycles.cycles import _pin_development_profile
       from squadops.stacks.development_profiles import blueprint_development_profile
-      print(blueprint_development_profile("fullstack_fastapi_react"), blueprint_development_profile(None) or "-", callable(_pin_blueprint_conventions))
+      print(blueprint_development_profile("fullstack_fastapi_react"), blueprint_development_profile(None) or "-", callable(_pin_development_profile))
     expect: fullstack_fastapi_react - True
+  - id: "2937-stack-selection"
+    what: a product's development profile comes from its runners, and no profile fitting is neutral, never python_cli
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.development_profiles import select_development_profile as s
+      print(s(["vitest"], None).name, s(["pytest"], None).name, s(["pytest", "vitest"], None).name)
+    expect: node_vitest python_cli product_neutral
+  - id: "2937-qa-defers"
+    what: the qa image leaves a node_vitest product's suite to its own runner
+    container: squadops-eve
+    code: |
+      import asyncio
+      from squadops.capabilities.handlers.test_runner import run_build_validation as v
+      from squadops.stacks.development_profiles import get_development_profile as g
+      f = g("node_vitest").test_framework
+      r = asyncio.run(v(f, [], [{"path": "t.test.js", "content": ""}]))
+      print(f, r.executed, r.suite_broken)
+    expect: product_runner False False
   - id: "2619-blueprint-conventions-neo"
     what: the developer of a product made from a blueprint is shown its conventions for a product, and never the skeleton's supplement (SIP-0112 H.13)
     container: squadops-neo
