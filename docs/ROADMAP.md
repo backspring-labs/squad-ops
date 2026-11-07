@@ -23,7 +23,24 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.5.1 (2026-11-03) — Current — the fixes a Campaign on a product needed to accept increments
+### v2.6.0 (2026-11-07) — Current — a Project's goal set drives its Campaigns
+
+**v2.6.0, a feature release led by SIP-0115.** A Project keeps a goal set: its goal, expected results and an ordered
+backlog. On it:
+- **a Campaign works the backlog one item at a time,** proposing the next eligible item of the revision it reads, and
+  every increment reaches a named ending at a §10 row (SIP-0115 slices 1 and 2, SIP-0109 §24cy);
+- **learning returns to the goal set:** candidates and assessments are recorded, a promotion makes a new revision, a
+  running Campaign reads it uninterrupted, and a product's own reading reaches the next proposal (slice 3, §24dj, §24dk);
+- **an operator reaches it through scoped principals,** with the goal set in each gate's evidence (slice 5, §24df);
+- **a product runs on its own stack,** and a qa suite sees the code it calls (SIP-0112 H.26, #2952);
+- **the console gains a goals panel and a read-only Campaigns view** (slice 4, #2834).
+
+**What the cut rests on, and what it doesn't.** The owner narrowed the claim on 2026-11-07 to the machinery, read on
+battle-trainer: `docs/plans/verification-sets/2-6-0-cut-record.md`. It doesn't claim tanks play better, a backlog
+finished, or an unattended overnight run: the soak and the sealed play claim moved to 2.7, and improving the product
+is an operator's work on this line. SIP-0115 stays accepted: its close needs three accepted items in one Campaign, read by an operator.
+
+### v2.5.1 (2026-11-03) — the fixes a Campaign on a product needed to accept increments
 
 **v2.5.1, the 2.5 line's first patch** (the 2.6 plan's §0, §0a and §1a, D11). It carries what the 2.6 plan's two
 spikes found on `prj-shelfnote`, and the 2.5 cut's open defects on a Campaign's path:
@@ -1083,7 +1100,7 @@ The following areas are identified for future work but do not block 1.0 readines
 | 2.3.1 | patch: what the 2.3 cut found, fixed small, **shipped 2026-10-17** (`docs/plans/2-3-1-plan.md`) | **placed by the owner after the 2.3.0 cut:** the runtime's unused AMQP connection removed (#2322); a late answer updates the stored digest and can be an agent's (#2305, SIP-0109); the signature check accepts a declared query parameter, the smaller fix (#2378); two reads first, each fixed in 2.3.1 only where the read points: QA's view of the leave endpoint (#2297, moved to 2.4) and a patch-verification skip replacing a pass (#2381, fixed). **Ruled in:** a failed cycle no longer rolls up `accepted` (#2384, D2); the Next.js vitest config compiles a page's JSX (#2394, D4); a detail page spelled apart from its API is seeded by its parameter (#2398, D5) |
 | 2.4 | two features, one per lane, **shipped 2026-10-23** (`docs/plans/2-4-0-cut-preregistration.md` §13): **Outcome Evaluation** (SIP-0113, accepted 2026-10-17) on the Spark lane and **Project Lifecycle Management** (SIP-0112, accepted 2026-10-17) on the MacBook lane (the owner's direction of 2026-10-17, PR #2401, §8). The plan, adopted 2026-10-17 (D1–D14 ruled), is `docs/plans/2-4-0-plan.md`: Outcome Evaluation's instruments first, its phase 2 conditional on their data, and if it moves, Project Lifecycle Management is the headline (D14); Project Lifecycle's brownfield and greenfield demonstrations, greenfield shipped at the cut (its G6) | **moved from 2.3 (2026-10-15, the owner):** Outcome Evaluation's reporting-only instruments and the request-profile taxonomy (#316), each after its SIP's design review; Verification Yield's risk-first instructions (#1966); the judgement steps it measures (#557, #949, #950) are not in 2.4, re-read at its cut (D10); **placed (SIP-0110 §5g, Q25):** memory entry points for chat and task assignment beside it (SIP-0110 Appendix A, epic #2173, #2177–#2183); **Project Lifecycle Management (proposed, PR #2401):** existing-product registration, discovery and the inherited baseline, two features across an outside contribution, and greenfield creation (its E.4.1–E.4.4 and E.4.6), meeting Outcome Evaluation at seven shared contracts; **placed by the owner on the 2.3 line:** #2395 (a Next.js plan's page-state tests the stack's vitest can't run, before the window) and #2297 (QA's empty-name case against a name in the path) |
 | 2.5 | stabilization, **shipped 2026-10-30** (`docs/plans/2-5-0-cut-preregistration.md`), **2.5.1 shipped 2026-11-03** (the 2.6 plan's §0–§1a fixes); **the plan, adopted 2026-10-24** (D1–D11 ruled, D12 on 2026-10-28; one lane from 2026-10-28), is `docs/plans/2-5-0-plan.md`: a Campaign on a repository-backed Project (#2619), the yardstick re-cut once, and the hardening the 2.4 line found. **The claim narrowed by the owner on 2026-10-29:** not an accepted increment on a product whose in-cycle tests need its own dependencies (#2818) | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK), **shipped** (#2735) |
-| 2.6 | **Project Goals and Backlog** (SIP-0115, the headline) | **the plan, adopted 2026-11-03,** is `docs/plans/2-6-0-plan.md`. It asks whether a multi-hour Campaign can run on a product the owner wants built. The proving Project is **battle-trainer** (D2, the owner, 2026-11-03), a Node product tested with vitest. A Project's goals and ordered backlog become records the crew and the owner work through, off the terminal (slices 1–5). The floor is SIP-0109's and SIP-0112's completion: an increment accepted on a product (Track A), recovery past a failure (B), unattended hours (C). The claim is a ladder of three rungs (§4). The strategy role ordering its own features waits for a later line (D5). Test-First's greenfield gate (#1978) is not in 2.6. **The TensorFold 1.x upgrade (#2230) is deferred to 3.x consideration** (the owner, 2026-10-30) |
+| 2.6 | **Project Goals and Backlog** (SIP-0115, the headline), **shipped 2026-11-07** | **the plan, adopted 2026-11-03,** is `docs/plans/2-6-0-plan.md`. It asks whether a multi-hour Campaign can run on a product the owner wants built. The proving Project is **battle-trainer** (D2, the owner, 2026-11-03), a Node product tested with vitest. A Project's goals and ordered backlog become records the crew and the owner work through, off the terminal (slices 1–5). The floor is SIP-0109's and SIP-0112's completion: an increment accepted on a product (Track A), recovery past a failure (B), unattended hours (C). The claim is a ladder of three rungs (§4). The strategy role ordering its own features waits for a later line (D5). Test-First's greenfield gate (#1978) is not in 2.6. **The TensorFold 1.x upgrade (#2230) is deferred to 3.x consideration** (the owner, 2026-10-30) |
 
 **3.x: agents running continuously in the world (duty mode).** Deferred here by ruling, and placed by 3.0's plan:
 - SIP-0088 Agent Runtime Modes (umbrella);
@@ -1131,10 +1148,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-11-03 (v2.5.1):*
+*As of 2026-11-07 (v2.6.0):*
 
-- **Framework version**: 2.5.1
-- **SIPs** (2026-11-03, after the 2.5.1 sweep, which promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.6.0
+- **SIPs** (2026-11-07, after the 2.6.0 sweep, which promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
