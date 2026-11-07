@@ -61,17 +61,17 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   the goals panel with that Campaign chosen: `squadops:select-campaign` is kept until the panel mounts, and the
   Projects view is opened through the shell's own nav entry (`shared/selection.js`), since the pinned shell gives a
   plugin no way to open another view. The plugin registers no command and writes nothing: launch, rule, pause,
-  resume and abort stay with the crew's broker and the CLI. SIP-0069 §14 records this and names what stays off the
+  resume and abort stay with the operator's broker and the CLI. SIP-0069 §14 records this and names what stays off the
   console. The reads are `campaigns.js`, tested under node in CI.
-- **The crew's surface** (SIP-0115 slice 5, #2888; §10d; SIP-0109 §24df). The crew's `campaign-supervisor` and
+- **The operator's surface** (SIP-0115 slice 5, #2888; §10d; SIP-0109 §24df). The operator's `campaign-supervisor` and
   `campaign-triage` principals read the goal set and its derived backlog, with no scope changed. **A gate's evidence:**
-  `GET /api/v1/campaigns/{id}/ledger`, which the crew's reviewer reads, names each goal-set version's `backlog_item` and
+  `GET /api/v1/campaigns/{id}/ledger`, which the operator's reviewer reads, names each goal-set version's `backlog_item` and
   `goals_revision`, and the version an open gate can be on carries `goal_evidence` (the goal, the item and the expected
   results it serves, at the revision it is bound to). A requirements Campaign's rows are unchanged. **Assessments:**
-  `POST /api/v1/projects/{id}/goal-set/assessments` records the crew's or the owner's judgement of one expected result in
+  `POST /api/v1/projects/{id}/goal-set/assessments` records the operator's or the owner's judgement of one expected result in
   a Campaign (`reading`: `met`, `not_met` or `unclear`; `cause` with `not_met`: `app_work`, `framework_defect`,
   `framework_gap` or `needs_owner`; `issue` with a framework cause; `evidence` by id; `log_seq`, the control-log row the
-  evidence was read at; `source_ref`, the crew's signed statement). It needs no Campaign grant, a completed Campaign takes one, and it is append-only and decides nothing.
+  evidence was read at; `source_ref`, the operator's signed statement). It needs no Campaign grant, a completed Campaign takes one, and it is append-only and decides nothing.
   `GET …/goal-set/assessments` is the history and `GET /api/v1/campaigns/{id}/assessments` how each result stands now
   (`current`, `stale`, `conflicting` or `unassessed`). Migration `2103_goal_set_assessments.sql`. The Campaigns plugin's
   placeholder is replaced by that view, and the goals panel shows it on each expected result, with the Campaign's own
@@ -104,11 +104,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   be read, and a tree that can't be read or is past 2.4's limits refuse it as `size_unmeasured`. A product that fits
   starts as before, and a sample application's Campaign is never measured.
 - **Unattended resume** (SIP-0109 §24da, #2891; the 2.6 plan's D6 and D7). A Campaign declares
-  `policy.unattended_resume`: the escalation classes the crew's `campaign-supervisor` principal may resume on its own,
+  `policy.unattended_resume`: the escalation classes the operator's `campaign-supervisor` principal may resume on its own,
   `plan_gate` (a plan gate the tier escalated, answered at the gate), `in_cycle_failure` (a `repair` or `retry` after
   the cycle's own failure, within the per-increment limits) and `launch_blocked` (the relaunch). It is fixed at
   creation and part of the creation hash when set; an unknown class, including the never-classes (an upstream
-  conflict, a limit's pause, a security finding, the owner's pause), is refused at creation. Anything else the crew
+  conflict, a limit's pause, a security finding, the owner's pause), is refused at creation. Anything else the operator
   asks is refused 403 `RESUME_NOT_DELEGATED` with its reason; every delegated resume and every refusal is a
   control-log row naming the principal, the class, the escalation and the definition hash (refusal
   `resume_not_delegated`, migration `2002`), and the digest lists them. The owner's pause revokes the grant until the
@@ -152,11 +152,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   named; `…/candidates/{id}/drop` drops it with the reason; `…/backlog/{id}/split` puts two or more new items in its
   place, inheriting what it served unless they say otherwise. Each is written against an expected revision, answers
   201, and the revision carries `change` (`candidate_added | candidate_promoted | candidate_dropped | item_split`,
-  with the subject, the position taken, the parts a split produced and the Campaign the crew acted within; migration
-  `2101_goal_set_revision_change.sql`). The owner (`admin:write`) may do each; the crew's supervisor seat
+  with the subject, the position taken, the parts a split produced and the Campaign the operator acted within; migration
+  `2101_goal_set_revision_change.sql`). The owner (`admin:write`) may do each; the operator's supervisor seat
   (`campaigns:supervise`) adds freely and promotes, drops or splits only within a Campaign the owner has granted it
   (named in the request; live, on this Project, reading this goal set; `403 NOT_DELEGATED` otherwise), appending a
-  promoted candidate and never reordering (Q41). **The grant** is the owner's, on each Campaign the crew should curate,
+  promoted candidate and never reordering (Q41). **The grant** is the owner's, on each Campaign the operator should curate,
   whoever created it (the owner's ruling of 2026-11-04): `POST /api/v1/campaigns/{id}/goal-delegation`, `squadops
   campaigns delegate <id> --reason …`, `campaigns:control`, so the supervisor can't grant itself. It is a
   `goal_delegation_granted` control-log row for the Campaign's life, which a completed Campaign refuses (migration
@@ -165,6 +165,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `split_into`. `squadops goals candidates|promote|drop|split`.
 
 ### Fixed
+- **SquadOps names no external supervisor** (the owner's ruling of 2026-11-07, SIP-0115 §10e): what drives a Campaign from outside is an
+  API client, and the product calls it the operator, in its code, console, messages and the safety guarantee's label. No route,
+  scope or field changed, and a guard holds it.
 - **A qa suite is shown the code it calls** (#2952): a focused `qa.test` and a qa repair see what the suite imports, and the
   files the task names, from outside its package, counted in the prompt budget. On a product whose suite and helper live apart,
   qa guessed the helper's field names and a real count read 0. `test_report.md` no longer reads a suite left to the product's
@@ -182,7 +185,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   tells the next one. A later emission that still passes fails the run instead of abandoning it, and neither reading
   writes the record the next proposal is briefed from. A first emission that passes on the head stays row 19.
 - **A closed, unmerged Campaign contribution can be dismissed** (#2926, SIP-0109 §24dg; the owner's choice of
-  2026-11-05). It kept blocking the crew's integration gate with no way to clear it. The owner's
+  2026-11-05). It kept blocking the operator's integration gate with no way to clear it. The owner's
   `POST /api/v1/campaigns/{id}/contribution-dismissal` (`squadops campaigns dismiss-contribution <id> --reason …`,
   `campaigns:control`) records "this work won't land" as a `contribution_dismissed` control-log row, with who, why and
   the commit and review request, and the row leaves `GET /api/v1/projects/{id}/unintegrated-increments`. Anything but a

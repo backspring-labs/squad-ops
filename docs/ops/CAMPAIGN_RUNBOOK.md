@@ -42,8 +42,8 @@ squadops campaigns start <campaign_id> --reason "<why>"      # the calibration c
 python scripts/dev/campaign_log_archive.py <campaign_id> --follow   # beside it, until it closes
 ```
 
-**A Campaign the crew should curate needs the owner's grant** (SIP-0115 Q41, §10c). On a Campaign that names a goal
-set, the crew may add candidates freely, but may promote or drop one, or split a backlog item, only after the owner
+**A Campaign the operator should curate needs the owner's grant** (SIP-0115 Q41, §10c). On a Campaign that names a goal
+set, the operator may add candidates freely, but may promote or drop one, or split a backlog item, only after the owner
 records the grant, whoever created the Campaign. It lasts the Campaign's life, and a completed Campaign refuses it:
 
 ```bash
@@ -53,7 +53,7 @@ squadops campaigns delegate <campaign_id> --reason "<why>" --source-ref <the con
 Until then each of those acts answers `403 NOT_DELEGATED`, naming this command. The grant needs `campaigns:control`,
 so the supervisor can't run it. The control log shows it as `goal_delegation_granted`.
 
-**The crew reports on a goal set without any grant** (SIP-0115 §5.7, §10d). Its assessment of an expected result is
+**The operator reports on a goal set without any grant** (SIP-0115 §5.7, §10d). Its assessment of an expected result is
 `POST /api/v1/projects/{id}/goal-set/assessments`, on a live or a completed Campaign, and it decides nothing. How each
 result stands is `GET /api/v1/campaigns/{id}/assessments`, which the console shows. Read that first and send its `log_seq`
 with the assessment: it says where the evidence was read, so an acceptance after that read makes the assessment stale. At
@@ -180,7 +180,7 @@ squadops runs gate <project> <cycle_id> <proposal_run_id> progress_increment_rul
   `max_rejected_proposals_in_row`.
 - **Never edit the proposal.** The supervisor is not an author (§9.2).
 - **The ruling bound** (`ruling_bound_s`) is the supervisor's, whoever holds the seat, the
-  owner or the crew (§24al). Once it passes, a `ruling_overdue` row is recorded and the digest
+  owner or the operator (§24al). Once it passes, a `ruling_overdue` row is recorded and the digest
   names it. Nothing rules for you (§24ae).
 
 ---
@@ -206,16 +206,16 @@ retry, as `build_profile` and `development_profile`. Leave it out and the campai
 profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
 creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
 
-**Which escalations the crew may resume on its own is the campaign's declaration too**
+**Which escalations the operator may resume on its own is the campaign's declaration too**
 (`policy.unattended_resume`, SIP-0109 §24da; the 2.6 plan's D6). Leave it out and nothing is delegated: every
-escalation waits for you, as before. Each class you list lets the crew's `campaign-supervisor` principal make one
+escalation waits for you, as before. Each class you list lets the operator's `campaign-supervisor` principal make one
 move: `plan_gate` (answer a plan gate the tier escalated, at the gate), `in_cycle_failure` (`resume --action repair`
 or `retry` after the cycle's own failure, within the per-increment limits) and `launch_blocked` (`resume` with no
 action, once the box kept refusing). An upstream conflict, a limit's pause, a security finding and your own pause
 can't be declared. The list is fixed at creation and is part of the definition's hash, so widening it is a new
-campaign. Every crew resume and every refusal (403 `RESUME_NOT_DELEGATED`, with the reason) is a control-log row
+campaign. Every operator resume and every refusal (403 `RESUME_NOT_DELEGATED`, with the reason) is a control-log row
 naming who, the class, the escalation and that hash, and the digest's **Unattended resumes** section lists them.
-**Your pause revokes the grant:** while you hold the campaign, the crew's resumes are refused, and your resume
+**Your pause revokes the grant:** while you hold the campaign, the operator's resumes are refused, and your resume
 restores it.
 
 **Who decides a plan gate is the campaign's declaration** (`policy.plan_gate`, §24bj). Every new
@@ -426,7 +426,7 @@ turns findings into a framework change and measures it.
 
 ## 10. The approval boundary
 
-What the supervisor (the crew, or whoever holds the seat, §24al) does alone, and what stops for the owner.
+What the supervisor (the operator, or whoever holds the seat, §24al) does alone, and what stops for the owner.
 
 | alone | stops for the owner |
 |---|---|

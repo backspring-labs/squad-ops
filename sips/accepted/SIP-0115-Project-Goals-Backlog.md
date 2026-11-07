@@ -660,3 +660,24 @@ sequence per goal set, racing writers, replay, the write gate, each CHECK and fo
 `console/continuum-plugins/squadops.campaigns/ui/src/campaigns.test.js` and
 `console/continuum-plugins/squadops.projects/ui/src/goals.test.js`. Thirty-eight mutants, each on a commit, each failed
 a test. One survived at first, the Campaign's view reading the goal set's whole history, and gained its test.
+
+### 10e. SquadOps names no external supervisor (2026-11-07)
+
+**What changed.** The product knows nothing of who drives it from outside. The code, the console, the migrations' comments,
+the scripts, the tests and the Campaign runbook now say **the operator** where this SIP says "the crew", and they name no
+external tool or repository. §2's boundary, that any external supervisor is an API client, now holds in the product by
+name as well as by design. The label "no launch beside a crew model" reads "no launch beside an operator model". The console's
+Campaigns view says controls run through the API and the CLI.
+
+No route, scope or field changed, so an existing client keeps working; only prose and error text did. A policy stored before
+§24al keeps its key as written, and the reader finds it by its suffix. `tests/unit/architecture/test_no_named_supervisor.py`
+holds the rule.
+
+**What stays.** This SIP's earlier sections and SIP-0109's amendments keep their words, since they record dated rulings and the
+owner's own quotes. Read "the crew" in them as the operator. Released records stay as they shipped.
+
+**Evidence.** The Campaigns plugin named the client's broker in three places and put "the crew" on screen, and two product
+modules named it or its tool, against §2's boundary.
+
+**Who ruled it.** The owner, 2026-11-07: "squad ops should know nothing about Buzz, Nostromo or a crew", and "you can call it
+operator".

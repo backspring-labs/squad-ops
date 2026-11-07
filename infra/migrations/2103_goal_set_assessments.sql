@@ -1,5 +1,5 @@
 -- 2103_goal_set_assessments.sql
--- SIP-0115 §5.7, Q43 (#2888, slice 5): the crew's assessments of a goal set's expected results, one
+-- SIP-0115 §5.7, Q43 (#2888, slice 5): the operator's assessments of a goal set's expected results, one
 -- row per assessment. Append-only, in their own order: `sequence` counts them per goal set (Q44: a
 -- Project has one). They are not goal-set revisions and write none. Nothing derived is stored:
 -- `stale` and `conflicting` are read per Campaign (squadops.projects.goal_set_assessments).

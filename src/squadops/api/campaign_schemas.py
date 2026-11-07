@@ -79,7 +79,7 @@ class CampaignPolicyDTO(BaseModel):
     #: §24bs (#2443): the stack every cycle the campaign launches builds on. Omitted, it is the
     #: campaign profiles' own.
     stack: str | None = None
-    #: §24da (the 2.6 plan's D6): the escalation classes the crew's supervisor principal may
+    #: §24da (the 2.6 plan's D6): the escalation classes the operator's supervisor principal may
     #: resume on its own (``plan_gate``, ``in_cycle_failure``, ``launch_blocked``). Omitted or
     #: empty, nothing is delegated. An unknown class is refused at creation.
     unattended_resume: list[str] = []
@@ -162,7 +162,7 @@ class LeaseResultResponse(BaseModel):
 
 
 class GoalDelegationRequest(ControlRequest):
-    """The owner's grant of a Campaign's goal-set curation to the crew (SIP-0115 Q41, §10c):
+    """The owner's grant of a Campaign's goal-set curation to the operator (SIP-0115 Q41, §10c):
     ``source_ref`` is where the decision came from, when a conversation (§6): a link, never its
     content."""
 

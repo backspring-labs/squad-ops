@@ -212,7 +212,7 @@ def _escalations_of(campaign: dict, rows: list[dict]):
 
 
 def _unattended_lines(campaign: dict, rows: list[dict]) -> list[str]:
-    """§24da: every resume the crew's supervisor principal made under the campaign's
+    """§24da: every resume the operator's supervisor principal made under the campaign's
     ``unattended_resume``, and every one refused, from the control log: who, the class, the
     escalation and the definition hash it was judged against."""
     declared = campaign["policy"].get("unattended_resume") or []

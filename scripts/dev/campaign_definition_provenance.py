@@ -6,7 +6,7 @@ a campaign only when its semantic fields reconcile with that campaign's stored o
 ``project_id``, the same objective, and the same policy, compared as the domain objects the runtime
 builds (``CampaignObjective``, ``CampaignPolicy.from_stored``), so a policy stored before §24al's one
 supervisor bound reconciles exactly as the registry maps it. A file that reconciles with no campaign
-is an example, not evidence (the crew's rule on #1941).
+is an example, not evidence (the operator's rule on #1941).
 
 For each campaign the script records the definitions that reconcile with it, each one's sha256, and
 the identity of the campaign's close-time evidence package (``campaign_evidence``, ``part=package``),

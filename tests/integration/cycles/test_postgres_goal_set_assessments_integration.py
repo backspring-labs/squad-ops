@@ -1,4 +1,4 @@
-"""The crew's assessments against real Postgres (SIP-0115 §5.7, migration 2103; #2888).
+"""The operator's assessments against real Postgres (SIP-0115 §5.7, migration 2103; #2888).
 
 The routes' tests hold what reaches the store. Only a database proves what the store claims:
 assessments read back whole in sequence, the sequence is per goal set, racing writers each take
@@ -130,9 +130,9 @@ def _assessment(project_id: str = PROJECT, **fields) -> Assessment:
             evaluations=(CitedEvaluation("eval_3", 2, 1),),
         ),
         "reason": "the framework can't reach the page",
-        "author": "crew-broker",
+        "author": "operator-client",
         "created_at": datetime(2026, 11, 4, 12, 0, tzinfo=UTC),
-        "source_ref": "buzz://campaigns/thread-7/statement-3",
+        "source_ref": "ext://campaigns/thread-7/statement-3",
         "log_seq": 11,
     }
     return Assessment(**{**values, **fields})
@@ -191,7 +191,7 @@ async def test_a_retry_replays_and_another_body_under_its_key_is_refused(pool):
 
 async def test_racing_writers_each_take_a_sequence(pool):
     """Bug caught: two writers reading the same maximum, one failing on the primary key, so an
-    assessment the crew was told nothing about is lost."""
+    assessment the operator was told nothing about is lost."""
     store = PostgresGoalSetRegistry(pool)
 
     written = await asyncio.gather(

@@ -3,7 +3,7 @@
 Its own port, beside the Project registry rather than in it: SIP-0112 owns the Project Record,
 and the goal set "adds nothing to the Project Record itself" (SIP-0115's intake check). The
 Project's existence is the Project registry's to answer; this store holds the revisions, and the
-crew's assessments of them (§5.7, slice 5, #2888), which are appended beside the revisions and are
+operator's assessments of them (§5.7, slice 5, #2888), which are appended beside the revisions and are
 not one.
 """
 

@@ -74,7 +74,7 @@ class EngineReading:
     why). ``in_flight`` is the requests it is serving now, where the engine reports them
     (SIP-0111 §5.5), and ``None`` where it does not. It is read, and an engine whose count
     cannot be read is unread, but a count above zero does not make the box loud: a shared
-    engine serves the crew and the squad at once (SIP-0109 §24cu)."""
+    engine serves the operator and the squad at once (SIP-0109 §24cu)."""
 
     engine: str
     loaded: tuple[Model, ...] | None
@@ -91,7 +91,7 @@ class Quietness:
 def box_quietness(declared: Iterable[Model], readings: Iterable[EngineReading]) -> Quietness:
     """Quiet when every engine was read and every model it has loaded is declared by the active
     deploy record. An engine serving requests is still quiet when it holds only declared models:
-    the requests are the crew's or another run's on the same model, and the engine serves them
+    the requests are the operator's or another run's on the same model, and the engine serves them
     side by side (SIP-0109 §24cu, which retired SIP-0111 §5.5's idle-only launch). Every reason
     is reported, not the first."""
     declared = tuple(declared)
@@ -128,7 +128,7 @@ class LaunchVerdict:
 def launch_verdict(lease: BoxLease | None, quietness: Quietness, now: datetime) -> LaunchVerdict:
     """Whether a cycle may launch on the box (§9.3). The lease is read first: a supervisor
     holding the box refuses whatever the box reads. An expired supervisor lease no longer holds
-    it, but the launch still needs a quiet box, so a crew model left resident refuses it."""
+    it, but the launch still needs a quiet box, so an operator model left resident refuses it."""
     if lease is not None and lease.supervisor_holds(now):
         return LaunchVerdict(
             LaunchRefusal.SUPERVISOR_HOLDS_THE_BOX,

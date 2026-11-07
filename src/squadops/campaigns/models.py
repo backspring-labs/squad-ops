@@ -141,8 +141,8 @@ class ControlOperation(StrEnum):
     #: as the contribution path refused it or the product or forge answered. A record, accepted
     #: on a completed campaign. The contribution stays due for the supervisor's next request.
     CONTRIBUTION_FAILED = "contribution_failed"
-    #: The owner delegated this Campaign's goal-set curation to the crew (SIP-0115 Q41, §10c;
-    #: SIP-0109 §24dd): what lets the crew promote, drop or split within it. A record of a grant
+    #: The owner delegated this Campaign's goal-set curation to the operator (SIP-0115 Q41, §10c;
+    #: SIP-0109 §24dd): what lets the operator promote, drop or split within it. A record of a grant
     #: for the Campaign's life, so a live Campaign alone takes one (``needs_a_live_campaign``).
     GOAL_DELEGATION_GRANTED = "goal_delegation_granted"
     #: The owner declared a closed, unmerged contribution won't land (§24dg, #2926): who, why, and
@@ -199,7 +199,7 @@ class ProposalClassification(StrEnum):
 
 
 class ResumableClass(StrEnum):
-    """An escalation class a Campaign may delegate to the crew's supervisor principal (§24da; the
+    """An escalation class a Campaign may delegate to the operator's supervisor principal (§24da; the
     2.6 plan's D6, ruled 2026-11-03). Declared in ``policy.unattended_resume``; a class absent
     from this table is never declarable: an upstream conflict, a limit's pause, a security
     finding and the owner's pause stay the owner's."""
@@ -259,7 +259,7 @@ class RefusalReason(StrEnum):
     RUN_IN_FLIGHT = "run_in_flight"
     BOX_HELD = "box_held"
     NOT_LEASE_HOLDER = "not_lease_holder"
-    #: The crew's supervisor principal asked to resume an escalation the campaign did not delegate
+    #: The operator's supervisor principal asked to resume an escalation the campaign did not delegate
     #: to it (§24da): a class outside ``policy.unattended_resume``, a never-class, a move the class
     #: doesn't permit or past its limit, or a campaign the owner holds. The route decides it and
     #: records it; the row's binding says which.
@@ -319,7 +319,7 @@ class ControlOperationRefused(CampaignError):
 
 
 class ResumeNotDelegated(ControlOperationRefused):
-    """A resume the crew's supervisor principal asked for that the campaign did not delegate to
+    """A resume the operator's supervisor principal asked for that the campaign did not delegate to
     it (§24da), refused and recorded: ``entry`` is the ``resume_not_delegated`` row, and its
     binding's ``why`` is the message."""
 
@@ -576,6 +576,11 @@ _POSITIVE_POLICY_FIELDS = frozenset(
 )
 
 
+#: A stored policy's two seat bounds, from before §24al: the supervisor seat's and the owner's.
+_SEAT_BOUND = "_ruling_bound_s"
+_OWNER_BOUND = "owner_ruling_bound_s"
+
+
 @dataclass(frozen=True)
 class CampaignPolicy:
     """The campaign's limits and bounds (§9.5, §15). Every limit is required: a limit is set from
@@ -613,7 +618,7 @@ class CampaignPolicy:
     # stack, as a cycle that overrides none runs its profile's; a policy stored before it was
     # declarable reads as that.
     stack: str | None = None
-    # §24da (the 2.6 plan's D6): the escalation classes the crew's supervisor principal may
+    # §24da (the 2.6 plan's D6): the escalation classes the operator's supervisor principal may
     # resume on its own, fixed at creation and part of the creation hash when set. Empty, nothing
     # is delegated: every escalation waits for the owner, as before; a policy stored before it
     # was declarable reads as that.
@@ -621,14 +626,16 @@ class CampaignPolicy:
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
-        """A stored policy, as written. One stored before §24al carries two seat bounds, a crew's
-        and an owner's; its supervisor's bound is the first of them, the crew's. One stored before
+        """A stored policy, as written. One stored before §24al carries two seat bounds, a supervisor's
+        and an owner's; its supervisor's bound is the first of them. One stored before
         §24bj declares no plan gate, and ran supervised. A terminal row needs no migration, and its
         record keeps the values it ran under."""
         values = dict(data)
-        if "ruling_bound_s" not in values and "crew_ruling_bound_s" in values:
-            values["ruling_bound_s"] = values.pop("crew_ruling_bound_s")
-            values.pop("owner_ruling_bound_s", None)
+        if "ruling_bound_s" not in values:
+            seat = next((k for k in values if k.endswith(_SEAT_BOUND) and k != _OWNER_BOUND), None)
+            if seat is not None:
+                values["ruling_bound_s"] = values.pop(seat)
+                values.pop(_OWNER_BOUND, None)
         values.setdefault("plan_gate", PlanGate.SUPERVISED)
         return cls(**values)
 
@@ -681,7 +688,7 @@ def _resumable_classes(declared: Any) -> tuple[ResumableClass, ...]:
         except ValueError:
             raise ValueError(
                 f"CampaignPolicy.unattended_resume: {entry!r} is not an escalation class the "
-                f"crew's supervisor may resume; the classes are {[c.value for c in ResumableClass]}"
+                f"operator's supervisor may resume; the classes are {[c.value for c in ResumableClass]}"
             ) from None
         if cls in classes:
             raise ValueError(f"CampaignPolicy.unattended_resume names {cls.value!r} twice")

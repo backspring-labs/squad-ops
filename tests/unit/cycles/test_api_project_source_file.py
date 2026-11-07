@@ -1,4 +1,4 @@
-"""A registered product's file at the Project's integrated commit (#2855): what the crew's Campaign
+"""A registered product's file at the Project's integrated commit (#2855): what the operator's Campaign
 drafting reads a product's goals through, and the commit its card states."""
 
 import subprocess

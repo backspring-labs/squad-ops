@@ -15,7 +15,7 @@ from squadops.campaigns.safety_guarantees import (
     all_intact,
     build_bound_to_ruling,
     no_duplicate_launch,
-    no_launch_beside_crew,
+    no_launch_beside_operator,
     no_lost_ruling,
     no_partial_promotion,
     no_stale_ruling,
@@ -233,7 +233,7 @@ def test_a_partial_promotion_is_a_violation_and_one_from_before_1887_isnt_read(p
 def test_a_launch_while_the_supervisor_holds_the_box_is_a_violation(lease, status):
     rows = [*lease, _row(10, "mark_launched", {"cycle_id": "cyc_inc"}, launch_id="lnc_2")]
 
-    assert no_launch_beside_crew(_doc(rows)).status is status
+    assert no_launch_beside_operator(_doc(rows)).status is status
 
 
 @pytest.mark.parametrize(

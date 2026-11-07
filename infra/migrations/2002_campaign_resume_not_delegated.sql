@@ -1,5 +1,5 @@
 -- 2002_campaign_resume_not_delegated.sql
--- SIP-0109 §24da (#2891): a resume the crew's supervisor principal asked for that the Campaign did
+-- SIP-0109 §24da (#2891): a resume the operator's supervisor principal asked for that the Campaign did
 -- not delegate to it is refused and recorded as 'resume_not_delegated'. The CHECK list is the
 -- Python enum's values (RefusalReason), held equal by test_campaign_schema.py; it is replaced
 -- whole, by name, so re-applying is a no-op.

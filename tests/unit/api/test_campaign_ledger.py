@@ -43,7 +43,7 @@ def _rule(decision, binding, run_id, key):
         decision,
         binding,
         run_id=run_id,
-        actor="crew-sup",
+        actor="operator-sup",
         actor_role="campaign-supervisor",
         reason=f"{decision} on v{binding.version}",
         idempotency_key=key,
@@ -61,7 +61,7 @@ async def world():
     class Inject(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             request.state.identity = Identity(
-                user_id="crew-sup",
+                user_id="operator-sup",
                 display_name="s",
                 roles=(role["now"],),
                 scopes=tuple(sorted(scopes_for_roles((role["now"],)))),
@@ -133,7 +133,7 @@ async def test_the_ledger_holds_each_version_its_ruling_its_outcome_and_its_clas
     assert v1["ruling"]["decision"] == "returned_for_revision"
     assert v1["outcome"] is None
     assert v1["classification"]["classification"] == "scope_too_large"
-    assert (v2["ruling"]["decision"], v2["ruling"]["actor"]) == ("approved", "crew-sup")
+    assert (v2["ruling"]["decision"], v2["ruling"]["actor"]) == ("approved", "operator-sup")
     assert v2["outcome"] == {"row": 14, "ending": "assessed", "action": "escalate"}
     assert v2["classification"] is None
 

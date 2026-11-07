@@ -186,7 +186,7 @@ async def test_only_the_managing_seats_start_a_campaign(world, role):
 async def test_the_supervisor_cannot_lift_the_owners_own_pause(world):
     """#1940: the supervisor lifts its own pause, not the owner's. Bug caught: the manage scope
     letting the supervisor resume a campaign the owner held. Since §24da the refusal is recorded
-    (every refused crew resume is a control-log row), and the state does not move."""
+    (every refused operator resume is a control-log row), and the state does not move."""
     _create(world)
     await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "k-run"))
     assert _control(world, "pause", "k-owner-pause").status_code == 200
@@ -595,7 +595,7 @@ async def test_the_supervisor_takes_and_returns_the_box_through_its_routes(world
 
     world.client.app.state.box_reader = QuietBox()
     await _at_the_gate(world)
-    world.as_(_identity(Role.CAMPAIGN_SUPERVISOR, user="crew"))
+    world.as_(_identity(Role.CAMPAIGN_SUPERVISOR, user="operator"))
     url = "/api/v1/campaigns/cmp_api000000001/lease"
 
     too_long = world.client.post(
@@ -610,7 +610,7 @@ async def test_the_supervisor_takes_and_returns_the_box_through_its_routes(world
     assert too_long.status_code == 422
     assert taken.status_code == 200
     assert (taken.json()["lease"]["held_by"], taken.json()["lease"]["supervisor_holds"]) == (
-        "crew",
+        "operator",
         True,
     )
     assert read.json()["supervisor_holds"] is True

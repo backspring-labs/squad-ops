@@ -49,7 +49,7 @@ from tests.unit.campaigns.builders import move
 NOW = datetime(2026, 11, 4, 9, 0, tzinfo=UTC)
 PROJECT = "prj-lantern"
 OWNER = Actor("owner", owner=True)
-CREW = Actor("campaign-supervisor-principal", owner=False)
+OPERATOR = Actor("campaign-supervisor-principal", owner=False)
 
 
 def _goal_set():
@@ -123,7 +123,7 @@ class TestAddAndDrop:
         retry can't reproduce (the hash is over the request, so the store replays it)."""
         added = add_candidate(
             _goal_set(),
-            {"id": "C-2", "title": "Delete a session", "found_by": "crew"},
+            {"id": "C-2", "title": "Delete a session", "found_by": "operator"},
             found_at=NOW,
         )
         kept = add_candidate(
@@ -131,7 +131,7 @@ class TestAddAndDrop:
             {
                 "id": "C-2",
                 "title": "t",
-                "found_by": "crew",
+                "found_by": "operator",
                 "found_at": "2026-11-01T00:00:00+00:00",
             },
             found_at=NOW,
@@ -144,9 +144,12 @@ class TestAddAndDrop:
     @pytest.mark.parametrize(
         ("candidate", "field"),
         [
-            ({"id": "B-1", "title": "t", "found_by": "crew"}, "candidates"),
-            ({"id": "C-1", "title": "t", "found_by": "crew"}, "candidates"),
-            ({"id": "C-2", "title": "t", "found_by": "crew", "serves": ["ER-log"]}, "candidate"),
+            ({"id": "B-1", "title": "t", "found_by": "operator"}, "candidates"),
+            ({"id": "C-1", "title": "t", "found_by": "operator"}, "candidates"),
+            (
+                {"id": "C-2", "title": "t", "found_by": "operator", "serves": ["ER-log"]},
+                "candidate",
+            ),
             ({"id": "C-2", "title": "t"}, "candidate.found_by"),
         ],
         ids=["an item's id", "a candidate's id", "an unknown field", "no finder"],
@@ -289,7 +292,7 @@ def _write(actor: Actor, *, campaign_id: str | None = None, key: str = "k-1", **
     values = dict(
         actor=actor,
         expected_revision=1,
-        reason="the crew found it blocks the weekly total",
+        reason="the operator found it blocks the weekly total",
         idempotency_key=key,
         source_ref="https://chat.example.invalid/thread/7",
         campaign_id=campaign_id,
@@ -302,36 +305,36 @@ def _write(actor: Actor, *, campaign_id: str | None = None, key: str = "k-1", **
 @pytest.mark.parametrize(
     ("actor", "project_id", "goals", "created_by", "grant", "completed", "refused"),
     [
-        (CREW, PROJECT, True, "owner", True, False, None),
-        (CREW, PROJECT, True, CREW.principal, True, False, None),
-        (CREW, PROJECT, True, CREW.principal, False, False, "the owner hasn't granted"),
-        (CREW, PROJECT, True, "owner", False, False, "the owner hasn't granted"),
+        (OPERATOR, PROJECT, True, "owner", True, False, None),
+        (OPERATOR, PROJECT, True, OPERATOR.principal, True, False, None),
+        (OPERATOR, PROJECT, True, OPERATOR.principal, False, False, "the owner hasn't granted"),
+        (OPERATOR, PROJECT, True, "owner", False, False, "the owner hasn't granted"),
         (OWNER, PROJECT, True, "owner", False, False, None),
-        (CREW, "prj-other", True, "owner", True, False, "is on Project prj-other"),
+        (OPERATOR, "prj-other", True, "owner", True, False, "is on Project prj-other"),
         (OWNER, "prj-other", True, "owner", False, False, "is on Project prj-other"),
-        (CREW, PROJECT, False, "owner", False, False, "names no goal set"),
-        (CREW, PROJECT, True, "owner", True, True, "has completed (aborted)"),
+        (OPERATOR, PROJECT, False, "owner", False, False, "names no goal set"),
+        (OPERATOR, PROJECT, True, "owner", True, True, "has completed (aborted)"),
         (OWNER, PROJECT, True, "owner", False, True, "has completed (aborted)"),
     ],
     ids=[
-        "the crew, granted, on the owner's Campaign",
-        "the crew, granted, on its broker's Campaign",
-        "the crew on a Campaign it created, no grant",
-        "the crew on the owner's Campaign, no grant",
+        "the operator, granted, on the owner's Campaign",
+        "the operator, granted, on its broker's Campaign",
+        "the operator on a Campaign it created, no grant",
+        "the operator on the owner's Campaign, no grant",
         "the owner needs no grant",
-        "the crew, granted, on another Project's Campaign",
+        "the operator, granted, on another Project's Campaign",
         "the owner naming another Project's Campaign",
         "a requirements Campaign",
-        "the crew, granted, on a completed Campaign",
+        "the operator, granted, on a completed Campaign",
         "the owner naming a completed Campaign",
     ],
 )
 async def test_who_may_act_within_a_campaign(
     actor, project_id, goals, created_by, grant, completed, refused, campaigns
 ):
-    """Q41 as the owner ruled it on 2026-11-04 (§10c). Bugs caught: the crew acting within a
+    """Q41 as the owner ruled it on 2026-11-04 (§10c). Bugs caught: the operator acting within a
     Campaign it created for itself with no grant, the defect the owner's review of PR #2908 found;
-    a Campaign the owner created read as a grant; the crew refused on its broker's Campaign once
+    a Campaign the owner created read as a grant; the operator refused on its broker's Campaign once
     granted; the owner asked for a grant; a grant carrying across Projects, or past the
     Campaign's life."""
     await started(
@@ -377,33 +380,33 @@ class TestRecordPromotion:
         assert (written.revision, written.author, replayed) == (2, "owner", False)
         assert written.change == Change(ChangeKind.CANDIDATE_PROMOTED, "C-1", position=1)
         assert (written.reason, written.source_ref) == (
-            "the crew found it blocks the weekly total",
+            "the operator found it blocks the weekly total",
             "https://chat.example.invalid/thread/7",
         )
         assert _ids(written.goal_set) == ["C-1", "B-1", "B-2"]
         assert await goal_sets.get_revision(PROJECT) == written
 
-    async def test_the_crew_promotes_within_the_owners_campaign_and_only_appends(
+    async def test_the_operator_promotes_within_the_owners_campaign_and_only_appends(
         self, projects, goal_sets, campaigns
     ):
-        """Q41. Bugs caught: the crew promoting with no Campaign named; or putting the item
+        """Q41. Bugs caught: the operator promoting with no Campaign named; or putting the item
         anywhere but the end, which reorders the owner's backlog; the Campaign not recorded."""
         await started(campaigns, "cmp_owner", created_by="owner", granted=True)
 
         with pytest.raises(NotDelegated, match="name campaign_id"):
             await record_promotion(
-                PROJECT, "C-1", serves=["ER-week"], position=None, write=_write(CREW),
+                PROJECT, "C-1", serves=["ER-week"], position=None, write=_write(OPERATOR),
                 projects=projects, goal_sets=goal_sets, campaigns=campaigns,
             )  # fmt: skip
         with pytest.raises(NotDelegated, match="position 1 is a reorder"):
             await record_promotion(
                 PROJECT, "C-1", serves=["ER-week"], position=1,
-                write=_write(CREW, campaign_id="cmp_owner"),
+                write=_write(OPERATOR, campaign_id="cmp_owner"),
                 projects=projects, goal_sets=goal_sets, campaigns=campaigns,
             )  # fmt: skip
         written, _ = await record_promotion(
             PROJECT, "C-1", serves=["ER-week"], position=3,
-            write=_write(CREW, campaign_id="cmp_owner"),
+            write=_write(OPERATOR, campaign_id="cmp_owner"),
             projects=projects, goal_sets=goal_sets, campaigns=campaigns,
         )  # fmt: skip
 
@@ -413,15 +416,15 @@ class TestRecordPromotion:
         )
         assert _ids(written.goal_set) == ["B-1", "B-2", "C-1"]
 
-    async def test_a_grant_lets_the_crew_act_within_its_brokers_campaign_for_that_campaigns_life(
+    async def test_a_grant_lets_the_operator_act_within_its_own_campaign_for_that_campaigns_life(
         self, projects, goal_sets, campaigns
     ):
-        """§10c: the grant lasts the Campaign's life. Bugs caught: the crew's broker's own
-        Campaign refused once granted (the crew locked out of every Campaign it runs); a
-        completed Campaign still delegating, so the crew curates the backlog with no Campaign
+        """§10c: the grant lasts the Campaign's life. Bugs caught: the operator's broker's own
+        Campaign refused once granted (the operator locked out of every Campaign it runs); a
+        completed Campaign still delegating, so the operator curates the backlog with no Campaign
         running."""
         await started(
-            campaigns, "cmp_crew", created_by="campaign-supervisor-principal", granted=True
+            campaigns, "cmp_operator", created_by="campaign-supervisor-principal", granted=True
         )
         await started(campaigns, "cmp_done", created_by="owner", granted=True)
         await campaigns.transition(
@@ -432,17 +435,19 @@ class TestRecordPromotion:
 
         with pytest.raises(NotDelegated, match="cmp_done has completed \\(aborted\\)"):
             await record_drop(
-                PROJECT, "C-1", write=_write(CREW, campaign_id="cmp_done"),
+                PROJECT, "C-1", write=_write(OPERATOR, campaign_id="cmp_done"),
                 projects=projects, goal_sets=goal_sets, campaigns=campaigns,
             )  # fmt: skip
         assert (await goal_sets.get_revision(PROJECT)).revision == 1
         written, _ = await record_drop(
-            PROJECT, "C-1", write=_write(CREW, campaign_id="cmp_crew"),
+            PROJECT, "C-1", write=_write(OPERATOR, campaign_id="cmp_operator"),
             projects=projects, goal_sets=goal_sets, campaigns=campaigns,
         )  # fmt: skip
 
         assert (written.revision, written.author) == (2, "campaign-supervisor-principal")
-        assert written.change == Change(ChangeKind.CANDIDATE_DROPPED, "C-1", campaign_id="cmp_crew")
+        assert written.change == Change(
+            ChangeKind.CANDIDATE_DROPPED, "C-1", campaign_id="cmp_operator"
+        )
 
     async def test_a_retry_replays_and_the_same_key_with_another_request_conflicts(
         self, projects, goal_sets, campaigns
@@ -473,7 +478,7 @@ class TestRecordPromotion:
     ):
         """The retry contract outlives the Campaign (the review of PR #2908). Bug caught: the
         delegated act committed, its response was lost, the Campaign completed, and the retry was
-        refused 403 at the eligibility check, so the crew reads a write that happened as refused.
+        refused 403 at the eligibility check, so the operator reads a write that happened as refused.
         A new key on the same Campaign is still refused."""
         await started(campaigns, "cmp_1", created_by="owner", granted=True)
         stores = dict(projects=projects, goal_sets=goal_sets, campaigns=campaigns)
@@ -488,19 +493,19 @@ class TestRecordPromotion:
                 return record_drop(PROJECT, "C-1", write=write, **stores)
             return record_split(PROJECT, "B-1", into, write=write, **stores)
 
-        first, _ = await act(_write(CREW, campaign_id="cmp_1"))
+        first, _ = await act(_write(OPERATOR, campaign_id="cmp_1"))
         await campaigns.transition(
             "cmp_1",
             move(CampaignState.COMPLETED, "end", operation=ControlOperation.ABORT,
                  outcome=CampaignOutcome.ABORTED),
         )  # fmt: skip
 
-        again, replayed = await act(_write(CREW, campaign_id="cmp_1"))
+        again, replayed = await act(_write(OPERATOR, campaign_id="cmp_1"))
 
         assert (again, replayed) == (first, True)
         assert len(goal_sets.revisions[PROJECT]) == 2
         with pytest.raises(NotDelegated, match="has completed"):
-            await act(_write(CREW, campaign_id="cmp_1", key="k-2", expected_revision=2))
+            await act(_write(OPERATOR, campaign_id="cmp_1", key="k-2", expected_revision=2))
 
     @pytest.mark.parametrize(
         ("expected_revision", "error"),
@@ -523,17 +528,17 @@ class TestRecordPromotion:
 
 
 class TestRecordCandidate:
-    async def test_the_crew_adds_a_candidate_with_no_campaign_and_a_retry_keeps_its_time(
+    async def test_the_operator_adds_a_candidate_with_no_campaign_and_a_retry_keeps_its_time(
         self, projects, goal_sets
     ):
-        """§6: adding needs no delegation. Bugs caught: the crew refused; the second write of a
+        """§6: adding needs no delegation. Bugs caught: the operator refused; the second write of a
         retried request minting a new ``found_at``, so it is refused as a key conflict."""
-        candidate = {"id": "C-2", "title": "Delete a session", "found_by": "crew"}
+        candidate = {"id": "C-2", "title": "Delete a session", "found_by": "operator"}
         first, _ = await record_candidate(
-            PROJECT, candidate, _write(CREW), projects=projects, goal_sets=goal_sets
+            PROJECT, candidate, _write(OPERATOR), projects=projects, goal_sets=goal_sets
         )
         again, replayed = await record_candidate(
-            PROJECT, candidate, _write(CREW, now=NOW.replace(hour=10)),
+            PROJECT, candidate, _write(OPERATOR, now=NOW.replace(hour=10)),
             projects=projects, goal_sets=goal_sets,
         )  # fmt: skip
 
@@ -633,7 +638,7 @@ class TestRecordSplit:
             ControlOperation.SUBMIT
         )
 
-    async def test_the_crew_splits_within_the_owners_campaign_and_the_revision_names_it(
+    async def test_the_operator_splits_within_the_owners_campaign_and_the_revision_names_it(
         self, projects, goal_sets, campaigns
     ):
         await started(campaigns, "cmp_owner", created_by="owner", granted=True)
@@ -641,11 +646,11 @@ class TestRecordSplit:
 
         with pytest.raises(NotDelegated):
             await record_split(
-                PROJECT, "B-1", into, write=_write(CREW),
+                PROJECT, "B-1", into, write=_write(OPERATOR),
                 projects=projects, goal_sets=goal_sets, campaigns=campaigns,
             )  # fmt: skip
         written, _ = await record_split(
-            PROJECT, "B-1", into, write=_write(CREW, campaign_id="cmp_owner"),
+            PROJECT, "B-1", into, write=_write(OPERATOR, campaign_id="cmp_owner"),
             projects=projects, goal_sets=goal_sets, campaigns=campaigns,
         )  # fmt: skip
 

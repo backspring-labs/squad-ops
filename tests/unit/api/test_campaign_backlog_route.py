@@ -86,7 +86,7 @@ async def test_the_backlog_reads_the_latest_revision_and_the_campaigns_own_log(w
 
 async def test_a_split_parent_reaches_the_body_removed_with_its_parts(world):
     """Slice 3 (#2886), §5.5a at the route. Bug caught: ``split_into`` derived but not mapped
-    into the response, so the console and the crew read a split as a plain removal."""
+    into the response, so the console and the operator read a split as a plain removal."""
     _campaign(world)
     registry = world.campaigns
     await registry.transition(

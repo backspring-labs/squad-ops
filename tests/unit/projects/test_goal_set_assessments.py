@@ -1,7 +1,7 @@
 """How a Campaign's assessments leave each expected result (SIP-0115 §5.7), read by ``standings``
 from assessments and revisions written here. The goal set is invented
 (``tests/fixtures/goal_set.py``). What reaches the store, and the refusals, are entered at the
-route in ``tests/unit/api/test_crew_surface_routes.py``."""
+route in ``tests/unit/api/test_operator_surface_routes.py``."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def _assessment(sequence: int, **fields) -> Assessment:
         "reading": Reading.MET,
         "evidence": AssessmentEvidence(cycles=("cyc_1",)),
         "reason": "the total shows",
-        "author": "crew",
+        "author": "operator",
         "created_at": T0,
         "log_seq": 10,
         "sequence": sequence,

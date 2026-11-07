@@ -88,7 +88,7 @@ async def test_the_owner_clears_the_gate_and_the_record_says_who_and_why(tmp_pat
 )
 async def test_only_the_owner_may_dismiss(tmp_path, role, status):
     """Bug caught: the route on ``campaigns:manage``, where the contribution's own write is, so the
-    crew writes off the work blocking its gate and opens the gate for itself."""
+    operator writes off the work blocking its gate and opens the gate for itself."""
     world = await _contributed(tmp_path)
 
     resp = world.client(role).post(DISMISS, json=BODY)

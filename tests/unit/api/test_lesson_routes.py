@@ -185,7 +185,7 @@ async def world() -> _World:
     ],
 )
 async def test_approving_a_lesson_is_the_owners_alone(world, role, route, status):
-    """Bug caught: the crew's supervisor, or an operator who writes cycles, approving a lesson into
+    """Bug caught: the operator's supervisor, or an operator who writes cycles, approving a lesson into
     every later unit's prompts (the stop list: approving any lesson is the owner's)."""
     revision_id = world.draft().json()["revision_id"]
     world.identity = _identity(role)

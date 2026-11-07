@@ -817,7 +817,7 @@ class TestCreateReadsTheBox:
     """SIP-0109 §9.3 (#1802), entering at the create route with the runtime's own box reader:
     the lease from the campaign registry, the declared models from the active deploy record,
     and the resident models from a real Ollama adapter's ``/api/ps``. Bug caught: a CLI or
-    driver launch beside a crew model, or while the supervisor holds the box, or a refusal that
+    driver launch beside an operator model, or while the supervisor holds the box, or a refusal that
     leaves no audit event."""
 
     _REQUEST = {"squad_profile_id": "full", "task_flow_policy": {"mode": "sequential"}}
@@ -845,12 +845,12 @@ class TestCreateReadsTheBox:
                 "cmp_c",
                 CampaignTransition(
                     operation=ControlOperation.LEASE_ACQUIRE,
-                    actor="crew",
+                    actor="operator",
                     actor_role="campaign-supervisor",
                     reason="gate",
                     idempotency_key="lease",
                     next_state=None,
-                    binding={"held_by": "crew", "expires_in_s": 600},
+                    binding={"held_by": "operator", "expires_in_s": 600},
                 ),
                 runs_in_flight=(),
             )
@@ -889,7 +889,7 @@ class TestCreateReadsTheBox:
             ("qwen2.5:3b-instruct", "9" * 64, False, 409, "box_not_quiet"),
             ("qwen3.8:27b", _DECLARED, False, 201, None),
         ],
-        ids=["the-supervisor-holds-it", "a-crew-model-is-resident", "quiet"],
+        ids=["the-supervisor-holds-it", "a-operator-model-is-resident", "quiet"],
     )
     async def test_a_create_is_refused_on_a_held_or_loud_box_and_audited(
         self, client, mock_cycle_registry, resident, digest, holds, status, refusal

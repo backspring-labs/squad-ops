@@ -193,7 +193,7 @@ async def _escalated(declared: list[str], last=None) -> _World:
     await w.campaigns.transition(
         CID,
         ruling_transition(
-            GateDecisionValue.APPROVED, BINDING, run_id="run_1", actor="crew",
+            GateDecisionValue.APPROVED, BINDING, run_id="run_1", actor="operator",
             actor_role="campaign-supervisor", reason="in scope", idempotency_key="rule-1",
         ),
     )  # fmt: skip
@@ -217,8 +217,10 @@ def _audit(row) -> dict:
     return {k: b.get(k) for k in ("delegated", "class", "move", "definition_hash")}
 
 
-async def test_a_declared_class_is_resumed_by_the_crew_and_the_retry_is_launched(world_hash=None):
-    """Wiring (§24da, D6's first "done when"): the crew's principal resumes a declared in-cycle
+async def test_a_declared_class_is_resumed_by_the_operator_and_the_retry_is_launched(
+    world_hash=None,
+):
+    """Wiring (§24da, D6's first "done when"): the operator's principal resumes a declared in-cycle
     failure with a retry, and the owner's own path builds it: the outbox holds a retry bound to the
     increment, and the resume row names the principal, the class, the escalation and the
     definition hash. Bugs caught: the delegation refusing a declared class, or allowing it without
@@ -226,7 +228,7 @@ async def test_a_declared_class_is_resumed_by_the_crew_and_the_retry_is_launched
     w = await _escalated(["in_cycle_failure"])
     [creation, *_rest, decided] = await w.log()
 
-    resp = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("crew-1", action="retry")
+    resp = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("operator-1", action="retry")
 
     assert resp.status_code == 200, resp.json()
     *_, row = await w.log()
@@ -311,7 +313,7 @@ def _unbuilt(stored):
         "unbuilt-proposal",
     ],
 )
-async def test_a_crew_resume_outside_its_grant_is_refused_recorded_and_changes_nothing(
+async def test_a_operator_resume_outside_its_grant_is_refused_recorded_and_changes_nothing(
     declared, last, action, klass, why
 ):
     """D6's second "done when": an undeclared class, a move the class doesn't permit and each
@@ -323,7 +325,7 @@ async def test_a_crew_resume_outside_its_grant_is_refused_recorded_and_changes_n
     creation = (await w.log())[0]
 
     resp = w.as_(Role.CAMPAIGN_SUPERVISOR).resume(
-        "crew-1", **({"action": action} if action else {})
+        "operator-1", **({"action": action} if action else {})
     )
 
     error = resp.json()["detail"]["error"]
@@ -349,13 +351,13 @@ async def test_a_crew_resume_outside_its_grant_is_refused_recorded_and_changes_n
 
 async def test_the_owners_pause_revokes_the_grant_and_the_owners_resume_restores_it():
     """D6's third "done when": the owner's pause, which the principal can't resume. Bugs caught:
-    the crew lifting the owner's pause, or reading the escalation under it as still delegated;
+    the operator lifting the owner's pause, or reading the escalation under it as still delegated;
     and a grant never restored once the owner resumes."""
     w = await _escalated(ALL)
     assert w.as_(Role.ADMIN).pause("owner-pause").status_code == 200
 
-    lift = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("crew-lift")
-    retry = w.resume("crew-retry", action="retry")
+    lift = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("operator-lift")
+    retry = w.resume("operator-retry", action="retry")
 
     for resp in (lift, retry):
         assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
@@ -368,12 +370,12 @@ async def test_the_owners_pause_revokes_the_grant_and_the_owners_resume_restores
 
     assert w.as_(Role.ADMIN).resume("owner-resume").status_code == 200
     assert (await w.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
-    restored = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("crew-after", action="retry")
+    restored = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("operator-after", action="retry")
     assert restored.status_code == 200, restored.json()
 
 
 async def test_a_retry_past_the_increments_limit_is_the_owners():
-    """§24da "within the limits": the crew's retries spend ``max_retry_cycles_per_increment``
+    """§24da "within the limits": the operator's retries spend ``max_retry_cycles_per_increment``
     (2 here). Bug caught: an unattended loop of retries the policy bounds for the owner."""
     w = await _escalated(ALL)
     for n in (1, 2):
@@ -382,7 +384,7 @@ async def test_a_retry_past_the_increments_limit_is_the_owners():
                       binding={"action": "escalate", "ending": "assessed", "row": 11},
                       target="cyc_inc")
         ) if n == 2 else None  # fmt: skip
-        resp = w.as_(Role.CAMPAIGN_SUPERVISOR).resume(f"crew-{n}", action="retry")
+        resp = w.as_(Role.CAMPAIGN_SUPERVISOR).resume(f"operator-{n}", action="retry")
         assert resp.status_code == 200, resp.json()
     await w.campaigns.transition(
         CID,
@@ -390,15 +392,15 @@ async def test_a_retry_past_the_increments_limit_is_the_owners():
              binding={"action": "escalate", "ending": "assessed", "row": 11}, target="cyc_inc"),
     )  # fmt: skip
 
-    third = w.resume("crew-3", action="retry")
+    third = w.resume("operator-3", action="retry")
 
     assert third.status_code == 403
     assert "spent 2 retry cycle(s)" in third.json()["detail"]["error"]["message"]
     assert len(await w.campaigns.launch_intents(CID)) == 2
 
 
-async def test_a_launch_blocked_escalation_is_relaunched_by_the_crew_when_declared():
-    """The ``launch_blocked`` class: the crew's resume without an action returns the campaign to
+async def test_a_launch_blocked_escalation_is_relaunched_by_the_operator_when_declared():
+    """The ``launch_blocked`` class: the operator's resume without an action returns the campaign to
     ``launch_blocked``, re-attempted at once. Bug caught: the relaunch refused as a missing move."""
 
     def blocked(_campaign):
@@ -413,7 +415,7 @@ async def test_a_launch_blocked_escalation_is_relaunched_by_the_crew_when_declar
 
     w = await _escalated(["launch_blocked"], blocked)
 
-    resp = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("crew-relaunch")
+    resp = w.as_(Role.CAMPAIGN_SUPERVISOR).resume("operator-relaunch")
 
     assert resp.status_code == 200, resp.json()
     assert resp.json()["entry"]["binding"]["class"] == "launch_blocked"

@@ -383,7 +383,7 @@ class GoalSetActionRequest(BaseModel):
 class AssessmentRequest(BaseModel):
     """An assessment of one expected result (SIP-0115 §5.7, Q43). The vocabulary and what each
     reading requires are the domain's, which names the field it refuses. ``source_ref`` is the
-    crew's signed statement, required of the crew and optional for the owner. ``log_seq`` is the
+    operator's source statement, required of the operator and optional for the owner. ``log_seq`` is the
     Campaign's control-log row the evidence was read at: the ``log_seq`` of
     ``GET /api/v1/campaigns/{id}/assessments``, read before the evidence."""
 
@@ -468,7 +468,7 @@ class CandidateRequest(GoalSetActionRequest):
 
 class CandidatePromotionRequest(GoalSetActionRequest):
     """Promote a candidate into the backlog (§5.4, Q41), keeping its id: at ``position`` (from 1;
-    the end when absent) serving ``serves``. The crew names the Campaign it acts within and may
+    the end when absent) serving ``serves``. The operator names the Campaign it acts within and may
     only append."""
 
     serves: list[str] = Field(min_length=1)
@@ -477,7 +477,7 @@ class CandidatePromotionRequest(GoalSetActionRequest):
 
 
 class CandidateDropRequest(GoalSetActionRequest):
-    """Drop a candidate (§5.4), with the reason. The crew names the Campaign it acts within."""
+    """Drop a candidate (§5.4), with the reason. The operator names the Campaign it acts within."""
 
     campaign_id: str | None = Field(default=None, min_length=1, max_length=200)
 
@@ -485,7 +485,7 @@ class CandidateDropRequest(GoalSetActionRequest):
 class BacklogItemSplitRequest(GoalSetActionRequest):
     """Split a backlog item (§5.5a) into ``into``, two or more parts (``id``, ``title``,
     ``description``, ``serves`` defaulting to the parent's, ``size``) that take its place in
-    order. The crew names the Campaign it acts within."""
+    order. The operator names the Campaign it acts within."""
 
     into: list[dict[str, Any]]
     campaign_id: str | None = Field(default=None, min_length=1, max_length=200)

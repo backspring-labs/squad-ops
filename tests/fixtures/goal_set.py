@@ -164,7 +164,7 @@ def campaign_on(
 ):
     """A draft Campaign on ``project_id`` reading its goal set at ``current`` (or, ``goals``
     false, a requirements Campaign), as ``create_campaign`` takes it. ``created_by`` is who
-    started it: the owner, or a crew principal (SIP-0115 Q41). ``revision`` pins one."""
+    started it: the owner, or an operator principal (SIP-0115 Q41). ``revision`` pins one."""
     from datetime import UTC, datetime
 
     from squadops.campaigns.models import CampaignGoals, CampaignObjective

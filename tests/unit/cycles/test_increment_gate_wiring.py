@@ -204,7 +204,7 @@ def executor(campaigns):
         return_value=GateDecision(
             gate_name=INCREMENT_RULING_GATE,
             decision=GateDecisionValue.APPROVED.value,
-            decided_by="human:crew-supervisor",
+            decided_by="human:operator-supervisor",
             decided_at=NOW,
         )
     )
@@ -280,7 +280,7 @@ def _returned(notes: str = "Keep it backend only.") -> GateDecision:
     return GateDecision(
         gate_name=INCREMENT_RULING_GATE,
         decision=GateDecisionValue.RETURNED_FOR_REVISION.value,
-        decided_by="human:crew-supervisor",
+        decided_by="human:operator-supervisor",
         decided_at=NOW,
         notes=notes,
     )
@@ -648,7 +648,7 @@ async def test_a_goals_revised_return_spends_none_of_the_revision_budget(revisin
                 GateDecisionValue.RETURNED_FOR_REVISION,
                 ProposalBinding("prop_cap", 1, _REQUEST.content_hash, "sha-accepted"),
                 run_id="run_prop",
-                actor="crew-supervisor",
+                actor="operator-supervisor",
                 actor_role="campaign-supervisor",
                 reason="goals_revised: B-2 is no longer the next item",
                 idempotency_key="rule-goals",

@@ -1,7 +1,7 @@
 """The owner's "this work won't land": a closed, unmerged Campaign contribution, dismissed
 (SIP-0109 §24dg; #2926; the owner's choice of 2026-11-05).
 
-A contribution closed unmerged keeps blocking the crew's integration gate, because the work isn't in
+A contribution closed unmerged keeps blocking the operator's integration gate, because the work isn't in
 (``campaigns.unintegrated``), and nothing else clears it. The dismissal says it never will be:
 
 - It is an **applied ``contribution_dismissed`` row of the Campaign's control log,** with who and why,
