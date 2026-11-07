@@ -32,3 +32,23 @@ since changed code on its path, which voids it for the release claim (§3).
 ## If it misses
 
 The Campaign's result stands as read. Whether the cut narrows further, or the run repeats, is the owner's ruling.
+
+## Amended 2026-11-07, before any increment of the Campaign ended
+
+**The owner:** "I don't want to test the squad on how well their tank improvements perform, but strictly the machinery to
+propose (goals), execute with campaigns and cycles, take the learning back into the goal definition, and record the
+events that happen." So this run reads the machinery, and the cut rests on these:
+
+1. **M1. Goals drive the work.** Each proposal names the next eligible backlog item of the revision it read. Falsified by
+   a proposal that names another.
+2. **M2. Campaigns and cycles execute it.** Every increment reaches a named ending at a §10 row, whether accepted or not.
+   Falsified by a stop no row names, or an increment with no ending.
+3. **M3. Learning returns to the goal definition.** An assessment, a candidate and its promotion are written through the
+   API, make a new revision where they should, and the running Campaign reads it without being interrupted. Read live
+   the same day on `cmp_6963834274e0`: assessment 1, candidate BT-16 at revision 10, promoted at revision 11. A product's
+   reading reaches the next proposal (§24dk). Falsified by a later proposal that doesn't read the current revision.
+4. **M4. Events are recorded.** The control log, ledger, digest and goal-set history show what happened, from the records
+   alone. Falsified by an event in M1–M3 missing from them.
+
+R1 and R4 are reported and decide nothing. How well the tanks play, and how many increments are accepted, are the crew's
+work on the released line. R2 and R3 stand: R2 is read if an increment is accepted, and R3 is M2.

@@ -7,8 +7,8 @@ owner's rulings of 2026-11-03.
   written. D4 and D11 shipped in 2.5.1 (§7).
 
 **Narrowed 2026-11-07, on the owner's rulings:** the four-hour, overnight, crew-driven claim (§4, rung 3) leaves 2.6, and
-that work passes to the crew on the released line. The cut rests on rungs 1 and 2, the second read in
-`docs/plans/verification-sets/2-6-0-three-increment-preregistration.md`. Track E's scripted squad and soak (#2495, #2892)
+that work passes to the crew on the released line. The cut rests on the machinery: goals, Campaigns and cycles, learning returned to the goal set, and the record, read in
+`docs/plans/verification-sets/2-6-0-three-increment-preregistration.md` as amended. The squad's play isn't what it tests. Track E's scripted squad and soak (#2495, #2892)
 and the open items (#2287, #2862, #2799, #2827's item 2, #2783, #2781, #2938's remainder, #2826, #2736, #2737) move to
 2.7, the stabilization line. The owner also ruled that battle-trainer's only rules are the game maker's: its held-out
 suite now checks legal orders, and the sealed play measure carries the improvement threshold when rung 3 is run.
