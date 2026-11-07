@@ -139,7 +139,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a merged contribution syncs its Project, so the integrated commit includes the work | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.7.0, #2862 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.7.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
-| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional. The 2.6 plan ships it or drops it by a numbered amendment, since the SIP closes in 2.6 (the owner, 2026-10-23) | — |
+| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
 
 **What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It closes in 2.6
 (the owner, 2026-10-23). Greenfield creation (E.4.6)
@@ -3283,3 +3283,13 @@ product's domain contract: that stays Project instructions and approved lessons 
 five requirements and the placement ahead of the counted Campaign. It asked to test the transition to `run_node_tests`; the
 Spark lane removed that transition instead, and said so in revision 3 on #2937.
 
+## H.27 Direct attachment doesn't ship in 2.6, and this SIP stays open past it (2026-11-07; E.4.7, FR-02)
+
+**What changed.** The owner ruled on 2026-10-23 that this SIP closes in 2.6, so its ledger said the 2.6 plan would ship E.4.7
+or drop it. It does neither. E.4.7 stays optional and unbuilt, and the line that closes the SIP decides it.
+
+**The evidence.** The SIP can't close in 2.6 whichever way E.4.7 goes: #2709 (E.4.5) was outside 2.6 from the plan's adoption,
+and #2862 moved to 2.7 on the owner's rulings of 2026-11-07. No Project needs a checkout written in place: battle-trainer,
+Shelfnote and `z_continuum` all run from their repositories.
+
+**Who ruled.** The owner, 2026-11-07, on the implementer's recommendation.
