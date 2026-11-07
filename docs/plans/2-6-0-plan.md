@@ -12,6 +12,10 @@ that work passes to the crew on the released line. The cut rests on the machiner
 and the open items (#2287, #2862, #2799, #2827's item 2, #2783, #2781, #2938's remainder, #2826, #2736, #2737) move to
 2.7, the stabilization line. The owner also ruled that battle-trainer's only rules are the game maker's: its held-out
 suite now checks legal orders, and the sealed play measure carries the improvement threshold when rung 3 is run.
+Three more, the same day: #2839 moves to 2.7 (it reached no track's table, though the ROADMAP placed it in Track A). E.4.7's
+direct attachment doesn't ship (SIP-0112 H.27). §3's step 4, the short Campaign on `z_continuum` and `z_shelfnote`, is dropped:
+battle-trainer's Campaigns have run the product path many times since, so it would read nothing new about the path, though
+those two stacks go unread on this line.
 
 The spikes (§0, §0a) and 2.5.1's validation Campaign revised this plan before adoption. §8 lists what the outside
 reviewer was asked to challenge.
