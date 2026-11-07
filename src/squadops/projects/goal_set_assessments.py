@@ -1,12 +1,12 @@
-"""The crew's assessments of a goal set's expected results (SIP-0115 §5.7, §6, Q43; slice 5,
+"""The operator's assessments of a goal set's expected results (SIP-0115 §5.7, §6, Q43; slice 5,
 #2888).
 
 An assessment is one judgement of one expected result at a point in a Campaign: its ``reading``
 (``met``, ``not_met`` or ``unclear``), for a shortfall the ``cause``, for a framework cause the
 squad-ops ``issue`` it filed, the ``evidence`` it read by id, the goal-set revision it read, and
-its ``source_ref``: the signed statement it came from (Q43).
+its ``source_ref``: the statement it came from (Q43).
 
-**It is a report, not curation.** §6 lets the owner and the crew's supervisor seat record one, with
+**It is a report, not curation.** §6 lets the owner and the operator's supervisor seat record one, with
 no Campaign grant: Q41's grant covers the order, which an assessment never touches. It decides
 nothing (§5.7): it writes no goal-set revision, changes no item's status and no gate. A closing
 interpretation comes after the close, so a completed Campaign takes one.
@@ -299,7 +299,9 @@ async def record_assessment(
         raise GoalSetInvalid("reason", "required: why it reads so")
     source_ref = submission.get("source_ref")
     if not actor.owner and not source_ref:
-        raise GoalSetInvalid("source_ref", "required of the crew: its signed statement (Q43)")
+        raise GoalSetInvalid(
+            "source_ref", "required of the operator: the statement it came from (Q43)"
+        )
     campaign_id = str(submission["campaign_id"])
     expected_result = str(submission["expected_result"])
     goals_revision = int(submission["goals_revision"])

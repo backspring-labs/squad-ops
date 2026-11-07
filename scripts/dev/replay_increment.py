@@ -2,7 +2,7 @@
 """Replay a campaign increment outside its campaign, on the current deploy (#1959).
 
 The outer loop's comparison: approve a framework change, run the same increments again on the new
-deploy, and compare (the Nostromo IDEA §8 step 7). This generalizes the reference launcher (#1804)
+deploy, and compare. This generalizes the reference launcher (#1804)
 from one pinned increment to any increment of any campaign, and re-derives nothing. An increment
 cycle already stores every input its replay needs:
 

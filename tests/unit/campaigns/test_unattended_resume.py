@@ -90,7 +90,7 @@ _ESC = {"action": "escalate", "guard": None, "paused_by": None}
 )  # fmt: skip
 def test_each_escalating_row_reads_as_its_class(row, expected):
     """Bug caught: a never-class (an upstream conflict, a limit's pause, an operator's input)
-    read as a delegable one, so the crew resumes what D6 keeps with the owner."""
+    read as a delegable one, so the operator resumes what D6 keeps with the owner."""
     assert resumable_class(row) is expected
 
 
@@ -203,16 +203,16 @@ async def test_the_digest_lists_each_delegated_resume_and_each_refusal():
     }
     await registry.refuse(
         cid,
-        move(CampaignState.CALIBRATING, "crew-1", operation=ControlOperation.RESUME,
-             actor="crew", actor_role="campaign-supervisor",
+        move(CampaignState.CALIBRATING, "operator-1", operation=ControlOperation.RESUME,
+             actor="operator", actor_role="campaign-supervisor",
              binding={**audit, "delegated": False, "class": None, "move": "retry",
                       "why": "the pause row (seq 3) escalated the campaign"}),
         RefusalReason.RESUME_NOT_DELEGATED,
     )  # fmt: skip
     await registry.transition(
         cid,
-        move(CampaignState.CALIBRATING, "crew-2", operation=ControlOperation.RESUME,
-             actor="crew", actor_role="campaign-supervisor", binding=audit),
+        move(CampaignState.CALIBRATING, "operator-2", operation=ControlOperation.RESUME,
+             actor="operator", actor_role="campaign-supervisor", binding=audit),
     )  # fmt: skip
     # The owner's own resume carries no delegation, and is not listed.
     await registry.transition(
@@ -235,9 +235,9 @@ async def test_the_digest_lists_each_delegated_resume_and_each_refusal():
         "Declared: `in_cycle_failure`.",
         "1 delegated resume(s), 1 refused.",
         "",
-        "- seq 3: refused by crew (campaign-supervisor), class `none`, move `retry`, on decide "
+        "- seq 3: refused by operator (campaign-supervisor), class `none`, move `retry`, on decide "
         "row 2; definition `ffffffffffff`. Why: the pause row (seq 3) escalated the campaign",
-        "- seq 4: resumed by crew (campaign-supervisor), class `in_cycle_failure`, move `retry`, "
+        "- seq 4: resumed by operator (campaign-supervisor), class `in_cycle_failure`, move `retry`, "
         "on decide row 2; definition `ffffffffffff`",
     ]
 

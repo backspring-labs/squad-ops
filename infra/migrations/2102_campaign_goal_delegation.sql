@@ -1,7 +1,7 @@
 -- 2102_campaign_goal_delegation.sql
 -- SIP-0115 Q41, §10c; SIP-0109 §24dd (#2886): the owner's grant of a Campaign's goal-set curation
--- to the crew is a record-only control-log operation, 'goal_delegation_granted', which a live
--- Campaign alone takes. The crew's promotion, drop and split read it. The CHECK list is the Python
+-- to the operator is a record-only control-log operation, 'goal_delegation_granted', which a live
+-- Campaign alone takes. The operator's promotion, drop and split read it. The CHECK list is the Python
 -- enum's values (ControlOperation), held equal by test_campaign_schema.py; it is replaced whole,
 -- by name, so re-applying is a no-op.
 

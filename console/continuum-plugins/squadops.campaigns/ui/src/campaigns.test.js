@@ -383,7 +383,7 @@ test('the list reads at most `concurrency` control logs at once, and every one o
   assert.equal(Object.keys(got).length, 10);
 });
 
-// --- the crew's assessments (SIP-0115 §5.7, slice 5, #2888) ---
+// --- the operator's assessments (SIP-0115 §5.7, slice 5, #2888) ---
 
 const ASSESSMENTS = {
   campaign_id: 'cmp_one',
@@ -395,8 +395,8 @@ const ASSESSMENTS = {
       standing: 'conflicting',
       assessments: [
         {
-          sequence: 4, reading: 'not_met', cause: 'framework_gap', issue: 2901, author: 'crew',
-          goals_revision: 3, source_ref: 'buzz://t/7', created_at: '2026-11-04T09:00:00+00:00',
+          sequence: 4, reading: 'not_met', cause: 'framework_gap', issue: 2901, author: 'operator',
+          goals_revision: 3, source_ref: 'ext://t/7', created_at: '2026-11-04T09:00:00+00:00',
         },
         {
           sequence: 2, reading: 'met', cause: null, issue: null, author: 'the-owner',
@@ -438,7 +438,7 @@ test('one unreadable part leaves the rest of the view, its assessments included'
   const { apiFetch } = api(viewRoutes(onGoals, [403, envelope('FORBIDDEN', 'missing campaigns:read')]));
   const view = await loadCampaignView(apiFetch, '', 'cmp_one');
   assert.equal(view.state, 'ok');
-  assert.match(view.assessments.error, /The crew's assessments: missing campaigns:read/);
+  assert.match(view.assessments.error, /The operator's assessments: missing campaigns:read/);
 });
 
 test('each result reads its standing, every conflicting assessment, and the issue it links', () => {
@@ -449,7 +449,7 @@ test('each result reads its standing, every conflicting assessment, and the issu
   assert.deepEqual(
     conflict.entries.map((e) => [e.readingText, e.causeText, e.issueUrl, e.author]),
     [
-      ['not met', 'a framework gap', `${ISSUES_URL}/2901`, 'crew'],
+      ['not met', 'a framework gap', `${ISSUES_URL}/2901`, 'operator'],
       ['met', null, null, 'the-owner'],
     ],
   );

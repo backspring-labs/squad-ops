@@ -1,6 +1,6 @@
 // The Campaigns plugin's reads (the 2.6 plan's Track G, D13; #2834). Read-only: it writes nothing,
-// registers no command, and the controls (launch, rule, pause, resume, abort) stay with the crew's
-// broker and the CLI. Plain functions over the console's `apiFetch`, so node's own runner tests
+// registers no command, and the controls (launch, rule, pause, resume, abort) stay with the API and the
+// CLI. Plain functions over the console's `apiFetch`, so node's own runner tests
 // them (`npm test` here) without a browser; `CampaignsPerspective.svelte` renders what they answer.
 //
 // What it reads, every route `campaigns:read` (or `cycles:read` for the Projects), and the
@@ -19,7 +19,7 @@
 //   - `GET /api/v1/campaigns/{id}/package`: the latest evidence package's digest
 //     (`PackageDigestResponse`), as `squadops campaigns digest` prints it. A Campaign with none
 //     yet answers 404 `PACKAGE_NOT_FOUND`;
-//   - `GET /api/v1/campaigns/{id}/assessments`: the crew's assessment of each expected result, on a
+//   - `GET /api/v1/campaigns/{id}/assessments`: the operator's assessment of each expected result, on a
 //     Campaign naming a goal set (`CampaignAssessmentsResponse`, `shared/assessments.js`).
 
 import { errorFromText } from '../../../shared/errors.js';
@@ -221,7 +221,7 @@ export async function loadCampaignView(apiFetch, apiBase, campaignId) {
     part(apiFetch, `${base}/escalations`, 'The escalations'),
     loadDigest(apiFetch, base),
     campaign.objective?.goals
-      ? part(apiFetch, `${base}/assessments`, "The crew's assessments")
+      ? part(apiFetch, `${base}/assessments`, "The operator's assessments")
       : { none: true },
   ]);
   return { state: 'ok', campaign, log, ledger, escalations, digest, assessments };

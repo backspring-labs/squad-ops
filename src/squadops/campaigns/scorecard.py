@@ -1,8 +1,8 @@
 """The per-increment scorecard (#1960): what an increment cost, from the evidence package alone.
 
 An increment is not one cycle. It is its proposal run and any revision rounds, its framing and
-implementation, and any repair or retry cycles, up to its promotion or abandonment. The Nostromo
-IDEA's product and framework measures are read at that unit, and so is the comparison of a replay
+implementation, and any repair or retry cycles, up to its promotion or abandonment. An outer
+loop's product and framework measures are read at that unit, and so is the comparison of a replay
 with its original (#1959): the same arithmetic on both sides.
 
 Reporting only: it changes no verdict, decision or prompt, and no model writes it. Every number is

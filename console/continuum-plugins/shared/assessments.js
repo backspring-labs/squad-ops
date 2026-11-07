@@ -1,4 +1,4 @@
-// The crew's assessments of a goal set's expected results, as a view reads them (SIP-0115 §5.7,
+// The operator's assessments of a goal set's expected results, as a view reads them (SIP-0115 §5.7,
 // §8.3; slice 5, #2888). `GET /api/v1/campaigns/{id}/assessments` answers
 // `CampaignAssessmentsResponse`: campaign_id, project_id, revision, log_seq, and `results`, one per
 // expected result of the revision the Campaign reads now: `expected_result`, its `statement` and

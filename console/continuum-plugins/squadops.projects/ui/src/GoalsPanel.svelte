@@ -2,7 +2,7 @@
 
 <!--
   The goals panel (SIP-0115 §8.3, slice 4, #2887): the selected Project's goal set and expected
-  results with the crew's latest assessment of each (slice 5, #2888), its backlog with each item's
+  results with the operator's latest assessment of each (slice 5, #2888), its backlog with each item's
   status and increment as a chosen Campaign stands on it,
   the candidates waiting (read-only: slice 3's actions are not here) and the revision history.
   Editing writes the next revision through the command bus. What it reads and how it writes is

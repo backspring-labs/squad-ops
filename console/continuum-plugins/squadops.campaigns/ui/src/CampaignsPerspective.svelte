@@ -4,7 +4,7 @@
   The Campaigns perspective (the 2.6 plan's Track G, D13; #2834): every Project's Campaigns, and one
   Campaign's state, current increment, ledger, digest, open escalations, proposals waiting for a
   ruling and recent control-log rows. Read-only in 2.6: no launch, rule, pause, resume or abort
-  here; those stay with the crew's broker and the CLI (SIP-0069 §14). What it reads is
+  here; those stay with the API and the CLI (SIP-0069 §14). What it reads is
   `campaigns.js`; this file renders it.
 
   How it fits the pinned shell (docs/architecture/console-fit-check-2-6.md, view 2): one
@@ -150,7 +150,7 @@
 <div class="campaigns">
   <div class="head">
     <h3 class="title">Campaigns</h3>
-    <span class="muted small">Read-only: the crew and the CLI run the controls.</span>
+    <span class="muted small">Read-only: controls run through the API and the CLI.</span>
     <label class="filter">
       <span class="muted small">Project</span>
       <select bind:value={projectFilter}>
@@ -312,7 +312,7 @@
 
         {#if campaign.objective.goals}
           <section>
-            <div class="section-label">The crew's assessment of each expected result</div>
+            <div class="section-label">Assessments of each expected result</div>
             {#if view.assessments.error}
               <div class="error">{view.assessments.error}</div>
             {:else}

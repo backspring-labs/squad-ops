@@ -42,7 +42,7 @@ def _call(ctx: typer.Context, method: str, path: str, *, long_wait: bool = False
     except CLIError as e:
         detail = e.detail if isinstance(e.detail, dict) else {}
         if detail.get("refusal") == RefusalReason.RESUME_NOT_DELEGATED:
-            # SIP-0109 §24da: the crew's resume refused by the campaign's declaration, which the
+            # SIP-0109 §24da: the operator's resume refused by the campaign's declaration, which the
             # 403's "authentication failed" would misname: the reason, and the row recording it.
             print_error(
                 f"resume not delegated (recorded as {detail.get('entry_id')}): {detail.get('why')}"
@@ -509,8 +509,8 @@ def delegate(
     idempotency_key: str | None = _KEY,
     expected_state: str | None = _EXPECTED,
 ):
-    """Grant the crew this Campaign's goal-set curation: its promotions, drops and splits (SIP-0115
-    Q41). The owner's alone, for the Campaign's life, and needed once on every Campaign the crew
+    """Grant the operator this Campaign's goal-set curation: its promotions, drops and splits (SIP-0115
+    Q41). The owner's alone, for the Campaign's life, and needed once on every Campaign the operator
     should curate, whoever created it."""
     key = _key(idempotency_key)
     body = {"reason": reason, "idempotency_key": key}
@@ -615,7 +615,7 @@ def lease_release(
     reason: str = _REASON,
     idempotency_key: str | None = _KEY,
 ):
-    """Give the box back to the squad, the crew's models unloaded."""
+    """Give the box back to the squad, the operator's models unloaded."""
     key = _key(idempotency_key)
     data = _call(
         ctx,

@@ -1,12 +1,12 @@
-"""The owner's grant of a Campaign's goal-set curation to the crew (SIP-0115 Q41, §10c; SIP-0109
+"""The owner's grant of a Campaign's goal-set curation to the operator (SIP-0115 Q41, §10c; SIP-0109
 §24dd; #2886).
 
-The crew may promote a candidate, drop one or split a backlog item only within a Campaign the
-owner has granted it. The crew can create a Campaign itself (``campaigns:manage``), so who created
+The operator may promote a candidate, drop one or split a backlog item only within a Campaign the
+owner has granted it. The operator can create a Campaign itself (``campaigns:manage``), so who created
 one says nothing about the owner: the grant is a row the owner writes.
 
 - It is an **applied ``goal_delegation_granted`` row of the Campaign's own control log.** Nothing
-  else stands in for one: not a binding on another row, not a field of a definition the crew
+  else stands in for one: not a binding on another row, not a field of a definition the operator
   submitted, not a refused attempt.
 - It moves no state, and a completed Campaign refuses it.
 - It lasts the Campaign's life. There is no revocation: the owner aborts the Campaign, or writes

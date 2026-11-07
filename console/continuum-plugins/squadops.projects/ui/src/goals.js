@@ -11,7 +11,7 @@
 //   - `GET /api/v1/campaigns/{id}/backlog`: the backlog as one Campaign stands on it
 //     (`BacklogResponse`: revision, reads, next_item, done, items). A Campaign naming no goal set
 //     answers 404 `CAMPAIGN_HAS_NO_GOAL_SET`;
-//   - `GET /api/v1/campaigns/{id}/assessments`: the crew's assessment of each expected result as
+//   - `GET /api/v1/campaigns/{id}/assessments`: the operator's assessment of each expected result as
 //     that Campaign stands (slice 5, #2888; `shared/assessments.js` says what each reads as).
 // What it writes: the next revision, through the command bus (`squadops.revise_goal_set`, the
 // console app's handler for `POST /api/v1/projects/{id}/goal-set/revisions`). The revision the
@@ -88,7 +88,7 @@ export async function loadBacklog(apiFetch, apiBase, campaignId) {
 }
 
 /**
- * The crew's assessments as `campaignId` stands (`CampaignAssessmentsResponse`), or null for a
+ * The operator's assessments as `campaignId` stands (`CampaignAssessmentsResponse`), or null for a
  * Campaign that names no goal set, which has none.
  */
 export async function loadAssessments(apiFetch, apiBase, campaignId) {
@@ -96,9 +96,9 @@ export async function loadAssessments(apiFetch, apiBase, campaignId) {
   if (resp.status === 404) {
     const { code, message } = errorFromText(await resp.text(), 404);
     if (code === 'CAMPAIGN_HAS_NO_GOAL_SET') return null;
-    throw new GoalsReadError(`The crew's assessments: ${message}`, { status: 404, code });
+    throw new GoalsReadError(`The operator's assessments: ${message}`, { status: 404, code });
   }
-  if (!resp.ok) throw await refusal(resp, "The crew's assessments");
+  if (!resp.ok) throw await refusal(resp, "The operator's assessments");
   return resp.json();
 }
 

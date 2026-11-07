@@ -28,7 +28,7 @@ class Role:
     # Service role held by the squadops-agent service account (#326): lets agent
     # containers report their own status via the authed lane, nothing else.
     AGENT = "agent"
-    # SIP-0109 §13 (#1799): the crew's two seats. The supervisor supervises a campaign —
+    # SIP-0109 §13 (#1799): the operator's two seats. The supervisor supervises a campaign —
     # reads it, rules at its increment gate, takes and releases the box lease, and pauses
     # it — and manages it (#1940, §24az): creates, starts and aborts it, materializes its
     # package, and resumes its own pause. Resuming an escalation, a limit's pause or the
@@ -49,7 +49,7 @@ class Scope:
     ADMIN_WRITE = "admin:write"
     # SIP-0109 §13: read a campaign and its control log; supervise it (rule, lease, pause);
     # manage it (create, start, abort, package, resume the supervisor's pause; #1940, §24az);
-    # control it (resume an escalation, a limit's pause or the owner's pause; grant the crew a
+    # control it (resume an escalation, a limit's pause or the owner's pause; grant the operator a
     # Campaign's goal-set curation, SIP-0115 Q41) — the last is the owner's alone.
     CAMPAIGNS_READ = "campaigns:read"
     CAMPAIGNS_SUPERVISE = "campaigns:supervise"

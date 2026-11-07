@@ -6453,3 +6453,11 @@ that the backlog's goals are written for it, so §5.3 of SIP-0115 stands.
 
 **Who ruled.** The owner, 2026-11-07: "The goal of squad ops is to learn and improve" product quality without an outside hand on the
 scales, and "Agree go" to showing the squad its readings before the next Campaign.
+
+### 24dl. The supervisor outside is the operator (2026-11-07, SIP-0115 §10e)
+
+**What changed.** The product calls whatever drives a Campaign from outside the operator, and names no external tool. The
+guarantee "no launch beside a crew model" (§24 and its readers) reads "no launch beside an operator model": what it reads is
+unchanged. No route, scope or field changed. Earlier sections keep their words as the record of their rulings.
+
+**Who ruled it.** The owner, 2026-11-07, as SIP-0115 §10e records.

@@ -1,5 +1,5 @@
 """``GET /api/v1/projects/{id}/unintegrated-increments`` (SIP-0109 §24dc, #2863): the accepted
-Campaign work its Project's integrated commit doesn't carry yet, the signal the crew's supervisor
+Campaign work its Project's integrated commit doesn't carry yet, the signal the operator's supervisor
 gates a draft on.
 
 Entered at the route, as the runtime mounts it, over ``test_close_contribution``'s world: Tally, a

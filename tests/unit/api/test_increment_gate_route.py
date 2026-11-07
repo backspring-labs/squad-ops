@@ -364,10 +364,10 @@ async def _escalated_gate(declared: tuple[str, ...], *, owner_paused: bool = Fal
     ],
     ids=["declared", "undeclared", "owner-paused"],
 )
-async def test_the_crew_answers_an_escalated_plan_gate_only_under_its_grant(
+async def test_the_operator_answers_an_escalated_plan_gate_only_under_its_grant(
     declared, owner_paused, status, outcome, why
 ):
-    """Wiring at the gate route (§24da's ``plan_gate``): the crew's answer to a gate the tier
+    """Wiring at the gate route (§24da's ``plan_gate``): the operator's answer to a gate the tier
     escalated is a delegated resume, recorded before the gate is decided; undeclared, or under the
     owner's pause, it is refused 403 with the reason, recorded, and the gate stays undecided.
     Bugs caught: #2837's supervisor answer bypassing the campaign's declaration, or a refused
@@ -425,7 +425,7 @@ async def _nothing(w: _World) -> None:
     ids=["an-increment-field", "a-classification", "a-bad-waiver", "a-cancelled-run", "decided"],
 )
 async def test_an_answer_that_cant_happen_records_no_delegated_row(before, body, status):
-    """§24da's row says the crew answered the gate, so it is written only for an answer that
+    """§24da's row says the operator answered the gate, so it is written only for an answer that
     happens. Bug caught (the review of #2914): the row was committed before the route read the
     request, so a plan-gate request carrying an increment field applied a delegated answer, was
     refused 422, and left the digest reporting an answer that never happened. The registry's own
@@ -447,7 +447,7 @@ async def test_an_answer_that_cant_happen_records_no_delegated_row(before, body,
 
 async def test_a_refused_delegation_is_recorded_even_when_the_gate_cant_be_decided():
     """The verdict comes before the preflight: every refusal is a row (D6), whatever else was
-    wrong with the answer. Bug caught: the preflight moved ahead of the verdict, so the crew's
+    wrong with the answer. Bug caught: the preflight moved ahead of the verdict, so the operator's
     undelegated answer to a cancelled run left no record it was asked."""
     w = await _escalated_gate(("in_cycle_failure",))
     await _cancelled(w)

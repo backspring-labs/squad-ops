@@ -1,9 +1,9 @@
-"""The crew's surface (SIP-0115 §5.7, §8.5; slice 5, #2888), entered at the routes the crew calls,
-with the crew's real roles through the real authorization adapter: the goal set and backlog read
+"""The operator's surface (SIP-0115 §5.7, §8.5; slice 5, #2888), entered at the routes the operator calls,
+with the operator's real roles through the real authorization adapter: the goal set and backlog read
 back, a gate's ledger row carries its item and expected results, and an assessment written by the
-crew reads back.
+operator reads back.
 
-The ledger is what a reviewer outside SquadOps reads at a gate (the crew's packet carries its rows
+The ledger is what a reviewer outside SquadOps reads at a gate (the operator's packet carries its rows
 whole), so the gate tests read it there. The goal set is invented
 (``tests/fixtures/goal_set.py``)."""
 
@@ -45,15 +45,15 @@ CID = "cmp_api000000001"
 GOAL_SET = "/api/v1/projects/prj-tally/goal-set"
 CAMPAIGN = f"/api/v1/campaigns/{CID}"
 OWNER = _identity(Role.ADMIN, user="the-owner")
-SUPERVISOR = _identity(Role.CAMPAIGN_SUPERVISOR, user="crew-broker")
-TRIAGE = _identity(Role.CAMPAIGN_TRIAGE, user="crew-evidence")
+SUPERVISOR = _identity(Role.CAMPAIGN_SUPERVISOR, user="operator-client")
+TRIAGE = _identity(Role.CAMPAIGN_TRIAGE, user="operator-evidence")
 NO_SCOPE = _identity(user="a-stranger")
 #: The ledger row's fields before slice 5: a requirements Campaign's rows are exactly these.
 ROW_FIELDS = {
     "proposal_id", "version", "content_hash", "baseline_tree", "cycle_id", "run_id",
     "submitted_at", "ruling", "outcome", "classification", "cycles",
 }  # fmt: skip
-SIGNED = "buzz://campaigns/thread-7/statement-3"
+SIGNED = "ext://campaigns/thread-7/statement-3"
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ def _assess(world, **fields):
 
 
 def _cursor(world) -> int:
-    """Where the crew's read stands: the view's ``log_seq``, read before its evidence."""
+    """Where the operator's read stands: the view's ``log_seq``, read before its evidence."""
     return world.client.get(f"{CAMPAIGN}/assessments").json()["log_seq"]
 
 
@@ -115,7 +115,7 @@ def _written(**fields) -> Assessment:
         "project_id": "prj-tally", "campaign_id": CID, "expected_result": "ER-week",
         "goals_revision": 1, "reading": Reading.MET,
         "evidence": AssessmentEvidence(cycles=("cyc_0a1b2c",)), "reason": "the total shows",
-        "author": "crew-broker", "created_at": datetime(2026, 11, 4, 9, 0, tzinfo=UTC),
+        "author": "operator-client", "created_at": datetime(2026, 11, 4, 9, 0, tzinfo=UTC),
     }  # fmt: skip
     return Assessment(**{**values, **fields})
 
@@ -145,10 +145,10 @@ async def _completed(world) -> None:
     )  # fmt: skip
 
 
-async def test_the_crew_reads_the_goal_rules_against_it_and_assesses_it_end_to_end(world):
-    """The slice's done-when, at the routes the crew calls (anti-pattern 6a). Bugs caught: a read
-    route on a scope one of the crew's principals lacks; the gate's row reaching the reviewer
-    without the item or the results; the crew's candidate refused, or its promotion working with
+async def test_the_operator_reads_the_goal_rules_against_it_and_assesses_it_end_to_end(world):
+    """The slice's done-when, at the routes the operator calls (anti-pattern 6a). Bugs caught: a read
+    route on a scope one of the operator's principals lacks; the gate's row reaching the reviewer
+    without the item or the results; the operator's candidate refused, or its promotion working with
     no grant; an assessment that doesn't read back through the triage principal, or that writes a
     goal-set revision."""
     await _on_goals(world)
@@ -189,7 +189,7 @@ async def test_the_crew_reads_the_goal_rules_against_it_and_assesses_it_end_to_e
         json={
             "idempotency_key": "c-1", "expected_revision": 1, "reason": "found at the gate",
             "source_ref": SIGNED,
-            "candidate": {"id": "C-2", "title": "Export the log", "found_by": "crew-broker"},
+            "candidate": {"id": "C-2", "title": "Export the log", "found_by": "operator-client"},
         },
     )  # fmt: skip
     assert added.status_code == 201, added.json()
@@ -218,7 +218,7 @@ async def test_the_crew_reads_the_goal_rules_against_it_and_assesses_it_end_to_e
     recorded = body["assessment"]
     assert (recorded["sequence"], recorded["author"], recorded["source_ref"]) == (
         1,
-        "crew-broker",
+        "operator-client",
         SIGNED,
     )
     assert (recorded["reading"], recorded["cause"], recorded["issue"]) == (
@@ -254,8 +254,8 @@ async def test_the_crew_reads_the_goal_rules_against_it_and_assesses_it_end_to_e
     ],
 )
 async def test_a_reader_without_the_scope_is_refused_each_read(world, path):
-    """Bug caught: a route of the crew's surface left open to any authenticated token, when a goal
-    set and what the crew concluded about it are the Project's."""
+    """Bug caught: a route of the operator's surface left open to any authenticated token, when a goal
+    set and what the operator concluded about it are the Project's."""
     await _on_goals(world)
     world.as_(NO_SCOPE)
 
@@ -273,7 +273,7 @@ async def test_a_reader_without_the_scope_is_refused_each_read(world, path):
 )
 async def test_who_may_record_one_needs_no_grant(world, role, status):
     """§6's row. Bugs caught: an assessment gated on the owner's Campaign grant, which covers the
-    order and not a report, so an ungranted crew can't report; triage, which reads and nothing
+    order and not a report, so an ungranted operator can't report; triage, which reads and nothing
     else (#1719), or anyone else, writing one."""
     await _on_goals(world)
     world.as_(_identity(role, user="someone"))
@@ -281,8 +281,8 @@ async def test_who_may_record_one_needs_no_grant(world, role, status):
     assert _assess(world).status_code == status
 
 
-async def test_the_owner_may_record_one_with_no_statement_and_the_crew_may_not(world):
-    """Q43: the crew's record is its signed statement, so a crew assessment with none is an
+async def test_the_owner_may_record_one_with_no_statement_and_the_operator_may_not(world):
+    """Q43: the operator's record is its source statement, so an operator assessment with none is an
     unattributable claim. The owner's own word needs no link (§6: "where it came from a
     conversation"). Bug caught: either requirement applied to the other."""
     await _on_goals(world)
@@ -425,7 +425,7 @@ async def test_a_retry_replays_after_the_campaign_closed_and_the_goal_set_moved_
 
 async def test_a_completed_campaign_takes_a_closing_assessment(world):
     """Bug caught: an assessment refused on a completed Campaign as a delegated act is, when the
-    closing interpretation is what the crew writes last (§5.7, Q43)."""
+    closing interpretation is what the operator writes last (§5.7, Q43)."""
     await _on_goals(world)
     await _completed(world)
     world.as_(SUPERVISOR)
@@ -434,7 +434,7 @@ async def test_a_completed_campaign_takes_a_closing_assessment(world):
 
 
 async def test_a_later_acceptance_at_the_route_makes_it_stale_and_a_new_one_reads_current(world):
-    """The position the crew read at and the acceptance the view reads, wired together. Bugs
+    """The position the operator read at and the acceptance the view reads, wired together. Bugs
     caught: the stated ``log_seq`` not reaching the store, so every acceptance reads later; the
     view reading no acceptance at all, so a judgement of the old tree reads current in the
     console."""
@@ -457,7 +457,7 @@ async def test_a_later_acceptance_at_the_route_makes_it_stale_and_a_new_one_read
 
 async def test_a_report_of_an_older_read_is_stale_however_late_it_is_written(world):
     """§5.7: an assessment is of what its author read. Bug caught: the position taken at the
-    write, so the crew reads, an increment is accepted, the report lands, and a judgement of the
+    write, so the operator reads, an increment is accepted, the report lands, and a judgement of the
     tree before that increment reads current."""
     await _on_goals(world)
     await proposed(world.campaigns, CID, "B-2", ruled=GateDecisionValue.APPROVED)
@@ -535,7 +535,7 @@ async def test_a_conflict_reads_at_the_route_and_a_new_assessment_naming_both_en
 
     conflict = _result(world)
     assert conflict["standing"] == "conflicting"
-    assert [a["author"] for a in conflict["assessments"]] == ["the-owner", "crew-broker"]
+    assert [a["author"] for a in conflict["assessments"]] == ["the-owner", "operator-client"]
 
     elsewhere = _assess(world, key="a-3", expected_result="ER-log", supersedes=[1])
     assert elsewhere.json()["detail"]["error"]["details"]["field"] == "supersedes"
@@ -629,7 +629,7 @@ async def test_the_gate_reads_the_revision_the_proposal_is_bound_to(world):
 
 async def test_a_requirements_campaigns_row_is_exactly_as_it_was(world):
     """ "A requirements Campaign's packet is unchanged." Bug caught: the three fields reaching its
-    rows as nulls, which the crew's packet carries and its bounded request pays for; or the
+    rows as nulls, which the operator's packet carries and its bounded request pays for; or the
     ledger reading a goal set a requirements Campaign doesn't have."""
     world.as_(OWNER)
     assert _on(world, "prj-tally").status_code == 201

@@ -19,7 +19,7 @@ NOW = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
 
 
 def _decision(gate: str = "plan", decision: str = "approved") -> GateDecision:
-    return GateDecision(gate_name=gate, decision=decision, decided_by="crew", decided_at=NOW)
+    return GateDecision(gate_name=gate, decision=decision, decided_by="operator", decided_at=NOW)
 
 
 async def _registry(status: str = "completed") -> MemoryCycleRegistry:

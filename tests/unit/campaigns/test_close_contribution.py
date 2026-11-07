@@ -644,7 +644,7 @@ async def test_a_failed_open_is_recorded_the_campaign_stays_closed_and_the_retry
     client = world.client()
     aborted = client.post(
         f"/api/v1/campaigns/{CID}/abort",
-        json={"reason": "the crew's deadline", "idempotency_key": "a-1"},
+        json={"reason": "the operator's deadline", "idempotency_key": "a-1"},
     )
     assert aborted.status_code == 200, aborted.text
 

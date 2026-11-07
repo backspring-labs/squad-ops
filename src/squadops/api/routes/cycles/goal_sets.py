@@ -2,15 +2,15 @@
 
 Read with whatever reads a Project (``cycles:read``). The whole-document write (any edit, a
 reorder included) is the owner's alone, with the scope that writes a Development Configuration,
-``admin:write``: the crew never reorders (Q41).
+``admin:write``: the operator never reorders (Q41).
 
 Slice 3's actions are each a revision too, with who may do what from §6 and Q41 (ruled
-2026-11-03): the owner (``admin:write``) may do each; the crew's supervisor seat
+2026-11-03): the owner (``admin:write``) may do each; the operator's supervisor seat
 (``campaigns:supervise``) may add a candidate, and may promote, drop or split only within a
 Campaign the owner has granted it (``POST /api/v1/campaigns/{id}/goal-delegation``), named in the
 request. Triage reads, and nothing else (#1719).
 
-Slice 5's assessments (§5.7, §6) are the crew's report, not curation: the same two seats may record
+Slice 5's assessments (§5.7, §6) are the operator's report, not curation: the same two seats may record
 one, with no grant and on a completed Campaign, and it writes no revision. Reading them is
 ``cycles:read``, as reading the goal set is.
 """
@@ -110,7 +110,7 @@ async def write_goal_set_revision(
 
 
 def _actor(request: Request, identity: Identity | None) -> Actor:
-    """Who acts, by the scope held: the owner (``admin:write``), or the crew's supervisor seat
+    """Who acts, by the scope held: the owner (``admin:write``), or the operator's supervisor seat
     (``campaigns:supervise``). Anyone else is refused here, before the Project is read."""
     owner = holds_scopes(request, Scope.ADMIN_WRITE)
     if not owner and not holds_scopes(request, Scope.CAMPAIGNS_SUPERVISE):
@@ -118,7 +118,7 @@ def _actor(request: Request, identity: Identity | None) -> Actor:
             403,
             "FORBIDDEN",
             "acting on a goal set needs admin:write (the owner) or campaigns:supervise (the "
-            "crew's supervisor seat, within a Campaign the owner has granted it) (SIP-0115 §6)",
+            "operator's supervisor seat, within a Campaign the owner has granted it) (SIP-0115 §6)",
         )
     return Actor(identity.user_id if identity is not None else "anonymous", owner)
 
@@ -175,7 +175,7 @@ async def add_candidate(
     body: CandidateRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CYCLES_READ)),
 ) -> GoalSetRecordedResponse:
-    """Add a candidate (§5.4): what the crew or the owner found, which nobody has ordered yet.
+    """Add a candidate (§5.4): what the operator or the owner found, which nobody has ordered yet.
     The next revision, with the acting principal as its author."""
     try:
         written = await record_candidate(
@@ -199,7 +199,7 @@ async def promote_candidate(
     identity: Identity | None = Depends(require_scopes(Scope.CYCLES_READ)),
 ) -> GoalSetRecordedResponse:
     """Promote a candidate into the backlog (§5.4), keeping its id: at ``position``, or the end.
-    The owner may put it anywhere; the crew, within a Campaign the owner has granted it
+    The owner may put it anywhere; the operator, within a Campaign the owner has granted it
     (``campaign_id``), appends (Q41): ``403 NOT_DELEGATED`` otherwise."""
     try:
         written = await record_promotion(
@@ -298,7 +298,7 @@ async def add_assessment(
     identity: Identity | None = Depends(require_scopes(Scope.CYCLES_READ)),
 ) -> AssessmentRecordedResponse:
     """Record an assessment of one expected result at a point in a Campaign (§5.7): the owner or
-    the crew's supervisor seat (§6), with no Campaign grant. Append-only, and it writes no
+    the operator's supervisor seat (§6), with no Campaign grant. Append-only, and it writes no
     revision. A retry under its key replays; the key with another body is a conflict."""
     actor = _actor(request, identity)
     try:

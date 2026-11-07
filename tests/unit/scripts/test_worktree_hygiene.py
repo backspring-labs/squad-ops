@@ -307,7 +307,7 @@ def test_a_purge_count_is_refused_without_a_record_or_below_zero(cleanup, argv):
 
 
 def test_a_worktree_another_tool_keeps_elsewhere_is_kept_and_named(cleanup, tmp_path, capsys):
-    """#2751: git lists every worktree of the repository, wherever it lives. The nostromo crews keep
+    """#2751: git lists every worktree of the repository, wherever it lives. Another tool keeps
     one detached on main under ``~/.config``, and the sweep read it as finished work and marked it
     for removal, which the cut's ``--apply`` would have done. Bug caught: a worktree outside the
     checkout's roots (beside it, or ``.claude/worktrees/``) judged at all."""

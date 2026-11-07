@@ -18,7 +18,7 @@ binding hold has no question, is never answered, and never parks its cycle.
 
 **The unattended resume (§24da; the 2.6 plan's D6).** Every escalation a campaign records has a
 class, read from the row that escalated it (``resumable_class``), or none. A campaign declares in
-``policy.unattended_resume`` the classes the crew's supervisor principal may resume on its own;
+``policy.unattended_resume`` the classes the operator's supervisor principal may resume on its own;
 ``delegation_verdict`` is the one rule the resume route and the plan gate's answer path apply,
 and ``delegation_binding`` is what each resume or refusal records.
 """
@@ -536,7 +536,7 @@ class DelegatedMove(StrEnum):
     GATE_ANSWER = "gate_answer"
 
 
-#: Each class and the moves it permits the crew's supervisor principal (§24da). A class is never
+#: Each class and the moves it permits the operator's supervisor principal (§24da). A class is never
 #: resumed by any other move: a ``propose`` after an in-cycle failure abandons the increment, and
 #: only the owner abandons.
 PERMITTED_MOVES: dict[ResumableClass, frozenset[DelegatedMove]] = {
@@ -689,7 +689,7 @@ def escalation_ref(entry: ControlLogEntry | None) -> dict:
 
 @dataclass(frozen=True)
 class DelegationVerdict:
-    """Whether the crew's supervisor principal may make this resume (§24da), and why."""
+    """Whether the operator's supervisor principal may make this resume (§24da), and why."""
 
     allowed: bool
     escalation_class: ResumableClass | None
@@ -736,7 +736,7 @@ def delegation_verdict(
             else "nothing"
         )
         return refused(
-            f"{what} escalated the campaign, and it is of no class the crew's supervisor may "
+            f"{what} escalated the campaign, and it is of no class the operator's supervisor may "
             f"resume; the delegable classes are {[c.value for c in ResumableClass]}"
         )
     if escalation_class not in declared:

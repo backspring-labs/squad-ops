@@ -40,7 +40,7 @@ def _rule(decision: GateDecisionValue, binding: ProposalBinding, key: str, run_i
         decision,
         binding,
         run_id=run_id,
-        actor="crew-supervisor",
+        actor="operator-supervisor",
         actor_role="campaign-supervisor",
         reason="read the change request and its footprint",
         idempotency_key=key,

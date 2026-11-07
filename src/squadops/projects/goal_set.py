@@ -97,7 +97,7 @@ _CHANGE_KEYS = frozenset({"kind", "subject", "position", "split_into", "campaign
 class Change:
     """What a revision did, when it was one of slice 3's actions rather than an edit: the kind,
     the candidate's or item's id it acted on (``subject``), the position a promoted candidate
-    took, the ids a split produced in the parent's place, and the Campaign the crew acted
+    took, the ids a split produced in the parent's place, and the Campaign the operator acted
     within (Q41), when it did. Absent on a revision written as a whole document."""
 
     kind: ChangeKind
@@ -236,7 +236,7 @@ class GoalSetRevision:
     author: str
     reason: str
     created_at: datetime
-    #: Where the change came from, when it came from a conversation (§6): a Buzz statement's
+    #: Where the change came from, when it came from a conversation (§6): a statement's
     #: link, an issue, a review.
     source_ref: str | None = None
     #: The action that wrote it, when it was one of slice 3's (a candidate added, promoted or

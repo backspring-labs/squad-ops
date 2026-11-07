@@ -1,4 +1,4 @@
-"""The owner's grant of a Campaign's goal-set curation to the crew, as a control-log row (SIP-0115
+"""The owner's grant of a Campaign's goal-set curation to the operator, as a control-log row (SIP-0115
 Q41, §10c; SIP-0109 §24dd), through the registry that commits it. The route's scope is
 ``tests/unit/api/test_goal_delegation_routes.py``'s."""
 
@@ -24,7 +24,7 @@ CID = "cmp_1"
 
 
 def _grant(campaign, key: str = "g-1", **overrides):
-    values = dict(actor="owner", actor_role="admin", reason="the owner approved it in Buzz")
+    values = dict(actor="owner", actor_role="admin", reason="the owner approved it")
     return goal_delegation_transition(campaign, idempotency_key=key, **(values | overrides))
 
 
@@ -45,7 +45,7 @@ async def registry():
 
 async def test_a_grant_moves_no_state_and_reads_back_with_who_why_and_where_from(registry):
     """Bugs caught: the grant moving the Campaign, so a grant at a gate loses the gate; who
-    granted, why or the conversation's link missing from the row the crew's authority rests on."""
+    granted, why or the conversation's link missing from the row the operator's authority rests on."""
     campaign = await registry.get_campaign(CID)
 
     result = await registry.transition(
@@ -57,7 +57,7 @@ async def test_a_grant_moves_no_state_and_reads_back_with_who_why_and_where_from
     assert (found.actor, found.actor_role, found.reason) == (
         "owner",
         "admin",
-        "the owner approved it in Buzz",
+        "the owner approved it",
     )
     assert found.binding == {
         "goal_set": "prj-lantern",
@@ -114,12 +114,12 @@ async def test_a_refused_grant_grants_nothing(registry):
 
 
 async def test_no_binding_on_another_row_stands_in_for_a_grant(registry):
-    """Q41: the crew writes rows too. Bug caught: the reader taking a binding's word for it, so a
-    row the crew may write (a classification) authorizes the crew."""
+    """Q41: the operator writes rows too. Bug caught: the reader taking a binding's word for it, so a
+    row the operator may write (a classification) authorizes the operator."""
     await registry.transition(
         CID,
         CampaignTransition(
-            operation=ControlOperation.CLASSIFY, actor="crew", actor_role="campaign-supervisor",
+            operation=ControlOperation.CLASSIFY, actor="operator", actor_role="campaign-supervisor",
             reason="r", idempotency_key="c-1", next_state=None, target="prop_1",
             binding={"goal_set": "prj-lantern", "operation": "goal_delegation_granted"},
         ),

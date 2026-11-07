@@ -211,9 +211,9 @@ def test_a_refusal_exits_with_the_conflict_code(get_client):
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
-def test_a_crew_resume_not_delegated_prints_its_reason_not_an_auth_failure(get_client):
+def test_a_operator_resume_not_delegated_prints_its_reason_not_an_auth_failure(get_client):
     """SIP-0109 §24da: the refused resume is a 403, which the client reads as "authentication
-    failed". Bug caught: the crew told its login failed when the campaign's declaration refused
+    failed". Bug caught: the operator told its login failed when the campaign's declaration refused
     it, with the recorded reason and row nowhere on the screen."""
     client = MagicMock()
     client.post.side_effect = CLIError(
@@ -337,7 +337,7 @@ def test_the_lease_commands_send_the_hold_and_its_return_to_their_routes(get_cli
     sent to the acquire route, which would renew the lease instead of returning it."""
     lease = {
         "holder": "supervisor",
-        "held_by": "crew",
+        "held_by": "operator",
         "campaign_id": "cmp_1",
         "acquired_at": "2026-10-03T14:00:00Z",
         "expires_at": "2026-10-03T14:15:00Z",

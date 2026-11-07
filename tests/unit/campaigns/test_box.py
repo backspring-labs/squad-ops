@@ -40,7 +40,7 @@ QUIET = box_quietness(DECLARED, [EngineReading("ollama", (SQUAD_MODEL,))])
         ([EngineReading("ollama", (SQUAD_MODEL,)), EngineReading("vllm", ())], True, None),
         # A vLLM listing carries no digest; the declared name is enough.
         ([EngineReading("vllm", (Model("Qwen/Qwen3.8-27B-FP8"),))], True, None),
-        # A crew model left resident.
+        # An operator model left resident.
         (
             [EngineReading("ollama", (SQUAD_MODEL, Model("gpt-oss:120b", "abc123def4567")))],
             False,
@@ -55,10 +55,10 @@ QUIET = box_quietness(DECLARED, [EngineReading("ollama", (SQUAD_MODEL,))])
         # An engine that cannot be read fails closed.
         ([EngineReading("ollama", None, "connection refused")], False, "could not be read"),
     ],
-    ids=["squad-only", "vllm-by-name", "crew-resident", "other-digest", "unreadable"],
+    ids=["squad-only", "vllm-by-name", "operator-resident", "other-digest", "unreadable"],
 )
 def test_the_box_is_quiet_only_when_every_loaded_model_is_declared(readings, quiet, reason):
-    """§9.3. Bugs caught: a crew model resident beside the squad's passing the check, a re-pulled
+    """§9.3. Bugs caught: an operator model resident beside the squad's passing the check, a re-pulled
     tag under the declared name passing it, or an engine down reading as empty and so quiet."""
     result = box_quietness(DECLARED, readings)
 
@@ -81,18 +81,18 @@ def test_every_reason_is_reported_not_the_first():
         (None, QUIET, None),
         (BoxLease(LeaseHolder.SQUAD, "squadops", NOW - timedelta(hours=1)), QUIET, None),
         (
-            BoxLease(LeaseHolder.SUPERVISOR, "crew", NOW, NOW + timedelta(minutes=30), "cmp_1"),
+            BoxLease(LeaseHolder.SUPERVISOR, "operator", NOW, NOW + timedelta(minutes=30), "cmp_1"),
             QUIET,
             LaunchRefusal.SUPERVISOR_HOLDS_THE_BOX,
         ),
-        # Expired: the supervisor no longer holds it, but a resident crew model still refuses.
+        # Expired: the supervisor no longer holds it, but a resident operator model still refuses.
         (
-            BoxLease(LeaseHolder.SUPERVISOR, "crew", NOW - timedelta(hours=1), NOW, "cmp_1"),
+            BoxLease(LeaseHolder.SUPERVISOR, "operator", NOW - timedelta(hours=1), NOW, "cmp_1"),
             box_quietness(DECLARED, [EngineReading("ollama", (Model("gpt-oss:120b"),))]),
             LaunchRefusal.BOX_NOT_QUIET,
         ),
         (
-            BoxLease(LeaseHolder.SUPERVISOR, "crew", NOW - timedelta(hours=1), NOW, "cmp_1"),
+            BoxLease(LeaseHolder.SUPERVISOR, "operator", NOW - timedelta(hours=1), NOW, "cmp_1"),
             QUIET,
             None,
         ),
@@ -103,7 +103,7 @@ def test_a_launch_refuses_while_the_supervisor_holds_the_box_or_it_is_not_quiet(
     lease, quietness, refusal
 ):
     """§9.3 and §19 criterion 9. Bug caught: an expired lease reverting to the squad while the
-    crew's model is still resident — the squad's cycle launching beside it."""
+    operator's model is still resident — the squad's cycle launching beside it."""
     assert launch_verdict(lease, quietness, NOW).refusal is refusal
 
 

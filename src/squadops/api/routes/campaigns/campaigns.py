@@ -3,7 +3,7 @@
 Each operation is a control-log transition through ``CampaignRegistryPort``, acknowledged only
 after its row commits. The scopes are the owner's ruling of 2026-10-02:
 - **read** (``campaigns:read``): the campaign and its control log;
-- **supervise** (``campaigns:supervise``, the crew's supervisor): pause, classify, the box lease,
+- **supervise** (``campaigns:supervise``, the operator's supervisor): pause, classify, the box lease,
   and ruling at the increment gate;
 - **manage** (``campaigns:manage``, the supervisor and the owner; #1940, SIP-0109 §24az, revising
   that ruling at the owner's request of 2026-10-03): create, start, abort, materialize the package,
@@ -252,7 +252,7 @@ async def apply_control(
 async def refuse_delegated_resume(
     request: Request, campaign_id: str, transition: CampaignTransition, identity: Identity | None
 ) -> NoReturn:
-    """§24da: a resume the campaign did not delegate to the crew's supervisor principal. The
+    """§24da: a resume the campaign did not delegate to the operator's supervisor principal. The
     refusal is recorded as ``transition``'s row (``resume_not_delegated``, its binding naming
     the principal's claim and why), projected to the audit, and raised as the 403."""
     entry = await _registry(request).refuse(
@@ -335,7 +335,7 @@ async def _delegated_resume(
     held: str,
     action: PendingAction | None,
 ) -> dict:
-    """§24da: the crew's supervisor principal, asking to resume what only the owner could. The
+    """§24da: the operator's supervisor principal, asking to resume what only the owner could. The
     verdict reads the row that escalated the campaign, its declared classes, the move asked for
     and the increment's spent repairs and retries. Allowed, the resume goes on by the owner's own
     path and its row carries the returned binding; refused, the refusal is recorded and raised."""
@@ -787,7 +787,7 @@ async def dismiss_campaign_contribution(
 ) -> ControlResultResponse:
     """The owner declares a closed, unmerged contribution won't land (SIP-0109 §24dg, #2926): a
     ``contribution_dismissed`` row, which clears it from the Project's unintegrated increments so it
-    stops blocking the crew's gate. ``campaigns:control``, the owner's alone: the crew opens a
+    stops blocking the operator's gate. ``campaigns:control``, the owner's alone: the operator opens a
     contribution, and must not be able to write off work the owner hasn't. The contribution's record
     stays ``closed``, and the row says who and why. Anything but a closed, unmerged contribution is
     409 ``CONTRIBUTION_NOT_DISMISSABLE``, nothing written. A retry with its key replays, whatever
@@ -1014,8 +1014,8 @@ async def grant_goal_delegation(
     body: GoalDelegationRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
 ) -> ControlResultResponse:
-    """The owner grants the crew this Campaign's goal-set curation (SIP-0115 Q41, §10c; SIP-0109
-    §24dd): the row the crew's promotion, drop and split within it read. ``campaigns:control``,
+    """The owner grants the operator this Campaign's goal-set curation (SIP-0115 Q41, §10c; SIP-0109
+    §24dd): the row the operator's promotion, drop and split within it read. ``campaigns:control``,
     which is the owner's alone: the supervisor can create a Campaign, and must not be able to
     authorize itself on one. It moves no state, lasts the Campaign's life, and a completed Campaign
     refuses it (409 ``CONTROL_OPERATION_REFUSED``, recorded); a retry with its key replays. A
@@ -1064,7 +1064,7 @@ async def resume_campaign(
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
     """The owner's word (§10, §17), or the supervisor's on its own pause (#1940, §24az), or the
-    crew's supervisor principal's on an escalation the campaign delegated to it (§24da).
+    operator's supervisor principal's on an escalation the campaign delegated to it (§24da).
 
     Who may resume is read from the row that held the campaign (``owner_held``): an escalation,
     a limit's pause and the owner's pause need ``campaigns:control``. A caller on

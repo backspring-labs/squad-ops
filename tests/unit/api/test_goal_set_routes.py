@@ -38,7 +38,7 @@ PATH = "/api/v1/projects/prj-lantern/goal-set"
 def _client(role: str, projects: AsyncMock, goal_sets, campaigns=None) -> TestClient:
     """The app as the runtime builds it for these routes: a token resolving to ``role``'s
     principal, its scopes the ones the realm's role grants. ``campaigns``: the registry slice 3's
-    actions read the Campaign the crew acts within from."""
+    actions read the Campaign the operator acts within from."""
     identity = Identity(
         user_id=f"{role}-principal",
         display_name=role,
@@ -155,7 +155,7 @@ class TestWriting:
             (Role.ADMIN, 201),
             (Role.OPERATOR, 403),
             (Role.VIEWER, 403),
-            # §6: the crew never writes the goal or expected results; a delegated reorder is
+            # §6: the operator never writes the goal or expected results; a delegated reorder is
             # slice 3's, under Q41
             (Role.CAMPAIGN_SUPERVISOR, 403),
             (Role.CAMPAIGN_TRIAGE, 403),
@@ -163,7 +163,7 @@ class TestWriting:
     )
     def test_only_the_owners_scope_writes(self, role, expected, projects, goal_sets):
         """Bug caught: the write left on a read, cycle-write or campaign scope, so an operator
-        or the crew's principal rewrites the owner's goal. The crew's 403 here is Q41's "reorder,
+        or the operator's principal rewrites the owner's goal. The operator's 403 here is Q41's "reorder,
         no": slice 3 delegates a promotion, a drop and a split through their own routes, never
         the whole-document write, which is the only way to reorder."""
         resp = _client(role, projects, goal_sets).post(f"{PATH}/revisions", json=_body())
@@ -232,8 +232,8 @@ class TestReading:
         assert (first.status_code, first.json()["revision"]) == (200, 1)
         assert first.json()["goal_set"] == parse_goal_set(goal_set_document()).to_document()
 
-    def test_the_crews_principals_read_the_goal_set(self, projects, goal_sets):
-        """Bug caught: the read put behind a scope the crew lacks, which slice 5 depends on."""
+    def test_the_operators_principals_read_the_goal_set(self, projects, goal_sets):
+        """Bug caught: the read put behind a scope the operator lacks, which slice 5 depends on."""
         goal_sets.list_revisions.return_value = [_stored(2), _stored(1)]
 
         resp = _client(Role.CAMPAIGN_TRIAGE, projects, goal_sets).get(f"{PATH}/revisions")
@@ -278,12 +278,12 @@ def _action(action: str, **overrides) -> tuple[str, dict]:
     body: dict = {
         "idempotency_key": "k-3",
         "expected_revision": 1,
-        "reason": "the crew found it blocks the weekly total",
+        "reason": "the operator found it blocks the weekly total",
         "source_ref": "https://chat.example.invalid/thread/7",
     }
     if action == "add":
         path = f"{PATH}/candidates"
-        body["candidate"] = {"id": "C-2", "title": "Delete a session", "found_by": "crew"}
+        body["candidate"] = {"id": "C-2", "title": "Delete a session", "found_by": "operator"}
     elif action == "promote":
         path = f"{PATH}/candidates/C-1/promote"
         body["serves"] = ["ER-week"]
@@ -305,12 +305,12 @@ def store() -> GoalSetStore:
 
 @pytest.fixture
 def campaigns() -> MemoryCampaignRegistry:
-    """Four Campaigns on Lantern's goal set. Granted: one the owner created, one the crew's broker
+    """Four Campaigns on Lantern's goal set. Granted: one the owner created, one the operator's client
     created, and one that has since completed. Not granted: ``cmp_ungranted``."""
     registry = MemoryCampaignRegistry()
-    crew = "campaign-supervisor-principal"
+    operator = "campaign-supervisor-principal"
     asyncio.run(started(registry, "cmp_owner", created_by="owner", granted=True))
-    asyncio.run(started(registry, "cmp_crew", created_by=crew, granted=True))
+    asyncio.run(started(registry, "cmp_operator", created_by=operator, granted=True))
     asyncio.run(started(registry, "cmp_done", created_by="owner", granted=True))
     asyncio.run(started(registry, "cmp_ungranted", created_by="owner"))
     asyncio.run(
@@ -337,7 +337,7 @@ class TestWhoMayAct:
             (Role.ADMIN, None, (201, None)),
             (Role.ADMIN, "cmp_owner", (201, None)),
             (Role.CAMPAIGN_SUPERVISOR, "cmp_owner", (201, None)),
-            (Role.CAMPAIGN_SUPERVISOR, "cmp_crew", (201, None)),
+            (Role.CAMPAIGN_SUPERVISOR, "cmp_operator", (201, None)),
             (Role.CAMPAIGN_SUPERVISOR, None, (403, "NOT_DELEGATED")),
             (Role.CAMPAIGN_SUPERVISOR, "cmp_done", (403, "NOT_DELEGATED")),
             (Role.ADMIN, "cmp_done", (403, "NOT_DELEGATED")),
@@ -351,14 +351,14 @@ class TestWhoMayAct:
         ids=[
             "the owner",
             "the owner naming a Campaign",
-            "the crew within the owner's Campaign",
-            "the crew within its broker's Campaign",
-            "the crew outside any Campaign",
-            "the crew within a completed Campaign",
+            "the operator within the owner's Campaign",
+            "the operator within its broker's Campaign",
+            "the operator outside any Campaign",
+            "the operator within a completed Campaign",
             "the owner naming a completed Campaign",
-            "the crew within a Campaign the owner hasn't granted",
+            "the operator within a Campaign the owner hasn't granted",
             "the owner naming a Campaign with no grant",
-            "the crew naming no Campaign that exists",
+            "the operator naming no Campaign that exists",
             "triage",
             "a viewer",
             "an operator",
@@ -367,9 +367,9 @@ class TestWhoMayAct:
     def test_who_may_promote_drop_or_split(
         self, action, role, campaign, expected, projects, store, campaigns
     ):
-        """§6 and Q41 as §10c reads it, at each delegated route. Bugs caught: the crew acting
+        """§6 and Q41 as §10c reads it, at each delegated route. Bugs caught: the operator acting
         with no Campaign, within one that has completed, or within one with no grant; the
-        crew's broker's own Campaign refused once granted; triage (reads only, #1719), a viewer or an operator acting; the owner asked for
+        operator's broker's own Campaign refused once granted; triage (reads only, #1719), a viewer or an operator acting; the owner asked for
         a Campaign; a refusal after the revision was written."""
         path, body = _action(action, **({"campaign_id": campaign} if campaign else {}))
 
@@ -390,8 +390,8 @@ class TestWhoMayAct:
         ],
     )
     def test_who_may_add_a_candidate(self, role, expected, projects, store):
-        """§6: the owner and the crew add what they find, with no Campaign named. Bugs caught: the
-        crew asked for a delegation to add; a reader adding; the squad's agent principal (which
+        """§6: the owner and the operator add what they find, with no Campaign named. Bugs caught: the
+        operator asked for a delegation to add; a reader adding; the squad's agent principal (which
         holds no read scope here, §10c) adding."""
         path, body = _action("add")
 
@@ -410,11 +410,11 @@ class TestWhoMayAct:
 
 @pytest.mark.usefixtures("authz")
 class TestPromotionAndSplit:
-    def test_the_crews_promotion_within_the_owners_campaign_reaches_the_store_as_the_next_revision(
+    def test_the_operators_promotion_within_the_owners_campaign_reaches_the_store_as_the_next_revision(
         self, projects, store, campaigns
     ):
         """The wiring test (anti-pattern 6a): entered at the route the CLI posts to, as the
-        crew's principal. Bugs caught: the author taken as the owner; the Campaign the crew acted
+        operator's principal. Bugs caught: the author taken as the owner; the Campaign the operator acted
         within not recorded; the candidate's id re-minted or its item put anywhere but the end;
         the reason or source_ref dropped; the action unnamed on the revision; a retry under the
         key written again."""
@@ -429,7 +429,7 @@ class TestPromotionAndSplit:
         assert (written.revision, written.author, written.reason, written.source_ref) == (
             2,
             "campaign-supervisor-principal",
-            "the crew found it blocks the weekly total",
+            "the operator found it blocks the weekly total",
             "https://chat.example.invalid/thread/7",
         )
         assert written.change == Change(
@@ -449,17 +449,19 @@ class TestPromotionAndSplit:
         assert (again.status_code, again.json()["replayed"]) == (201, True)
         assert len(store.revisions["prj-lantern"]) == 2
 
-    def test_the_crew_appends_and_the_owner_places(self, projects, store, campaigns):
+    def test_the_operator_appends_and_the_owner_places(self, projects, store, campaigns):
         """Q41: "a promoted candidate is appended at the end of the backlog; putting it anywhere
-        else is a reorder." Bug caught: the crew's position honoured, so the crew steers the
+        else is a reorder." Bug caught: the operator's position honoured, so the operator steers the
         order through promotions."""
         path, body = _action("promote", campaign_id="cmp_owner", position=1)
 
-        crew = _client(Role.CAMPAIGN_SUPERVISOR, projects, store, campaigns).post(path, json=body)
+        operator = _client(Role.CAMPAIGN_SUPERVISOR, projects, store, campaigns).post(
+            path, json=body
+        )
         owner = _client(Role.ADMIN, projects, store, campaigns).post(path, json=body)
 
-        assert _error(crew) == (403, "NOT_DELEGATED")
-        assert "reorder" in crew.json()["detail"]["error"]["message"]
+        assert _error(operator) == (403, "NOT_DELEGATED")
+        assert "reorder" in operator.json()["detail"]["error"]["message"]
         assert owner.status_code == 201, owner.text
         assert [i["id"] for i in owner.json()["revision"]["goal_set"]["backlog"]] == [
             "C-1",

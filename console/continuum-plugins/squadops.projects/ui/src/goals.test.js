@@ -313,13 +313,13 @@ test('saying no to the bus\'s confirmation writes nothing and is not an error', 
   assert.equal(posts.length, 1);
 });
 
-// --- the crew's assessment of each expected result (SIP-0115 §8.3, slice 5, #2888) ---
+// --- the operator's assessment of each expected result (SIP-0115 §8.3, slice 5, #2888) ---
 
 test('a pinned Campaign\'s assessment is shown against the text it judged, not the latest', () => {
   // Bug caught: a Campaign pinned to r1 assessed "total minutes" as met; the panel shows the latest
   // revision, where the same id says "total hours", and the reading read as a judgement of that.
   const page = { kind: 'page', ref: '/week' };
-  const assessment = { sequence: 1, reading: 'met', author: 'crew', goals_revision: 1 };
+  const assessment = { sequence: 1, reading: 'met', author: 'operator', goals_revision: 1 };
   const pinned = {
     revision: 1,
     results: [

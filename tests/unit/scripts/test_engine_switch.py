@@ -89,13 +89,15 @@ def test_the_serve_command_carries_every_pin_the_recipe_names():
 
 def test_key_registry_selects_squadops_without_disabling_independent_callers(tmp_path):
     path = tmp_path / "keys"
-    original = "# shared engine\nnostromo-mother: mother-fixture\nsquadops: squad-fixture\nnostromo-brett: brett-fixture\n"
+    original = (
+        "# shared engine\ncaller-a: a-fixture\nsquadops: squad-fixture\ncaller-b: b-fixture\n"
+    )
     path.write_text(original)
     assert es.api_key(path) == "squad-fixture"
     assert path.read_text() == original
     path.write_text("legacy-fixture\n")
     assert es.api_key(path) == "legacy-fixture"
-    for malformed in ("squadops: first\nsquadops: second", "nostromo-mother: fixture", "# empty\n"):
+    for malformed in ("squadops: first\nsquadops: second", "caller-a: fixture", "# empty\n"):
         path.write_text(malformed)
         with pytest.raises(es.SwitchFailed, match="values withheld"):
             es.api_key(path)

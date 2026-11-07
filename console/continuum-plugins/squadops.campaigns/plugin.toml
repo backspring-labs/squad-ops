@@ -26,4 +26,4 @@ component = "squadops-campaigns-perspective"
 priority = 800
 
 # No command: the plugin writes nothing. Launch, rule, pause, resume and abort stay with the
-# crew's broker and the CLI in 2.6 (the 2.6 plan's D13; SIP-0069 §14).
+# API and the CLI in 2.6 (the 2.6 plan's D13; SIP-0069 §14).

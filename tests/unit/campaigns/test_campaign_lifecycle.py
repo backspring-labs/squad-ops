@@ -224,7 +224,7 @@ def test_a_policy_stored_with_two_seat_bounds_reads_as_one_supervisors():
 
     current = dataclasses.asdict(policy(ruling_bound_s=900))
     legacy = {k: v for k, v in current.items() if k != "ruling_bound_s"}
-    legacy |= {"crew_ruling_bound_s": 1800, "owner_ruling_bound_s": 43200}
+    legacy |= {"seat_ruling_bound_s": 1800, "owner_ruling_bound_s": 43200}
 
     assert CampaignPolicy.from_stored(legacy).ruling_bound_s == 1800
     assert CampaignPolicy.from_stored(current) == policy(ruling_bound_s=900)

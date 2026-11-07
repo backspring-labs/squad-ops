@@ -18,7 +18,7 @@ _ERROR_MAP: list[ErrorRow] = [
     (CampaignNotFoundError, 404, "CAMPAIGN_NOT_FOUND"),
     (LaunchIntentNotFoundError, 404, "LAUNCH_INTENT_NOT_FOUND"),
     (ResumeReservedToOwner, 403, "OWNER_AUTHORITY_REQUIRED"),
-    # §24da: a resume the campaign did not delegate to the crew's supervisor principal, refused
+    # §24da: a resume the campaign did not delegate to the operator's supervisor principal, refused
     # and recorded. Before its parent, so the row's reason answers as a 403, not a conflict.
     (ResumeNotDelegated, 403, "RESUME_NOT_DELEGATED"),
     (CampaignExistsError, 409, "CAMPAIGN_EXISTS"),

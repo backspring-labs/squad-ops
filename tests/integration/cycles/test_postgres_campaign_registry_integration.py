@@ -314,7 +314,7 @@ async def test_a_submitted_proposal_and_a_stale_rulings_refusal_are_stored(campa
                 GateDecisionValue.APPROVED,
                 stale,
                 run_id="run_p1",
-                actor="crew",
+                actor="operator",
                 actor_role="campaign-supervisor",
                 reason="r",
                 idempotency_key="k-rule",
@@ -362,7 +362,7 @@ async def test_a_refused_resume_persists_moves_nothing_and_leaves_its_key_free(p
         "definition_hash": "h", "why": "undeclared",
     }  # fmt: skip
     refused = move(
-        S.ESCALATED, "k-crew", operation=ControlOperation.RESUME, actor="crew",
+        S.ESCALATED, "k-operator", operation=ControlOperation.RESUME, actor="operator",
         actor_role="campaign-supervisor", expected_state=S.ESCALATED, binding=binding,
     )  # fmt: skip
 
@@ -374,12 +374,12 @@ async def test_a_refused_resume_persists_moves_nothing_and_leaves_its_key_free(p
     assert (row.entry_id, row.outcome, row.refusal) == (
         entry.entry_id, ControlOutcome.REFUSED, RefusalReason.RESUME_NOT_DELEGATED,
     )  # fmt: skip
-    assert (row.operation, row.actor, row.binding) == (ControlOperation.RESUME, "crew", binding)
+    assert (row.operation, row.actor, row.binding) == (ControlOperation.RESUME, "operator", binding)
 
     applied = await restarted.transition(
         CID,
         move(
-            S.CALIBRATING, "k-crew", operation=ControlOperation.RESUME, actor="owner",
+            S.CALIBRATING, "k-operator", operation=ControlOperation.RESUME, actor="owner",
             actor_role="admin", expected_state=S.ESCALATED,
         ),
     )  # fmt: skip
@@ -675,12 +675,12 @@ async def test_two_supervisors_racing_for_the_box_leave_exactly_one_holding_it(p
     outcomes = await asyncio.gather(
         reg.change_box_lease(
             "cmp_lease0000001",
-            _lease_change(ControlOperation.LEASE_ACQUIRE, "crew-a", "a"),
+            _lease_change(ControlOperation.LEASE_ACQUIRE, "operator-a", "a"),
             runs_in_flight=(),
         ),
         other.change_box_lease(
             "cmp_lease0000002",
-            _lease_change(ControlOperation.LEASE_ACQUIRE, "crew-b", "b"),
+            _lease_change(ControlOperation.LEASE_ACQUIRE, "operator-b", "b"),
             runs_in_flight=(),
         ),
         return_exceptions=True,
@@ -689,7 +689,7 @@ async def test_two_supervisors_racing_for_the_box_leave_exactly_one_holding_it(p
     refused = [o for o in outcomes if isinstance(o, ControlOperationRefused)]
     assert len(refused) == 1 and str(refused[0].entry.refusal) == "box_held"
     holder = (await reg.box_lease()).held_by
-    winner = "cmp_lease0000001" if holder == "crew-a" else "cmp_lease0000002"
+    winner = "cmp_lease0000001" if holder == "operator-a" else "cmp_lease0000002"
     assert (await reg.box_lease()).campaign_id == winner
 
 
@@ -701,12 +701,12 @@ async def test_the_holder_gives_the_box_back_and_the_lease_reads_back_as_the_squ
     reg = await _two_at_the_gate(pool)
     await reg.change_box_lease(
         "cmp_lease0000001",
-        _lease_change(ControlOperation.LEASE_ACQUIRE, "crew", "a"),
+        _lease_change(ControlOperation.LEASE_ACQUIRE, "operator", "a"),
         runs_in_flight=(),
     )
     await reg.change_box_lease(
         "cmp_lease0000001",
-        _lease_change(ControlOperation.LEASE_RELEASE, "crew", "r"),
+        _lease_change(ControlOperation.LEASE_RELEASE, "operator", "r"),
         runs_in_flight=(),
     )
     lease = await PostgresCampaignRegistry(pool=pool).box_lease()
@@ -823,7 +823,7 @@ async def test_the_owners_goal_delegation_is_a_row_a_live_campaign_alone_takes(c
     def grant(key: str) -> CampaignTransition:
         return CampaignTransition(
             operation=ControlOperation.GOAL_DELEGATION_GRANTED, actor="owner", actor_role="admin",
-            reason="the owner approved it in Buzz", idempotency_key=key, next_state=None,
+            reason="the owner approved it", idempotency_key=key, next_state=None,
             target="campaign_it", binding={"goal_set": "campaign_it"},
         )  # fmt: skip
 
@@ -835,7 +835,7 @@ async def test_the_owners_goal_delegation_is_a_row_a_live_campaign_alone_takes(c
     assert (found.entry_id, found.actor, found.reason, found.binding) == (
         first.entry.entry_id,
         "owner",
-        "the owner approved it in Buzz",
+        "the owner approved it",
         {"goal_set": "campaign_it"},
     )
     assert (await campaigns.transition(CID, grant("grant-1"))).replayed is True
