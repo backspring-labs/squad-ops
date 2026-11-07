@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -25,6 +26,7 @@ from squadops.cycles.models import (
     RunStatus,
     TaskFlowPolicy,
 )
+from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.events.types import EventType
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -2428,6 +2430,34 @@ class TestEveryWayACycleEndsMeetsCycleCompletion:
         assert (end.stopped_because, end.last_run_id) == (reason, last_run)
         assert end.last_run_status == runs[last_run].status
         assert end.last_run_terminal == "the terminal"
+
+    @pytest.mark.parametrize(
+        ("kind", "reason"),
+        [
+            (TerminalKind.CRITERIA_NOT_CHECKABLE, "criteria_not_checkable"),
+            (TerminalKind.OTHER, "single_workload_ended"),
+        ],
+    )
+    async def test_a_single_workload_run_s_declared_ending_is_the_cycle_s(
+        self, executor, mock_registry, kind, reason
+    ):
+        """#2946: a campaign's repair is a single-workload cycle. Its run declared the head already
+        meets a criterion, the cycle recorded ``single_workload_ended``, and the campaign read a
+        ``blocked_unverified`` assessment and escalated at row 9 instead of proposing at row 19."""
+        runs = {"run_001": _make_run("run_001", 1, "failed", "implementation")}
+        ends = self._drive(
+            executor, mock_registry, sequence=[{"type": "implementation"}], runs=runs
+        )
+        mock_registry.get_run_loop_summary.return_value = MagicMock(
+            terminal=RunTerminalDecision(kind=kind)
+        )
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        (end,) = ends
+        assert end.stopped_because == reason
+        recorded = mock_registry.record_cycle_end.await_args.args[0]
+        assert recorded.stopped_because == reason
 
 
 class TestARunThatDidNotCompleteEndsTheSequence:
