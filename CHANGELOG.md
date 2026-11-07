@@ -5,6 +5,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The console's plugin bundles are revalidated on each load, so a rebuilt plugin reaches a browser without emptying its cache.
+
 ## [2.6.0] — 2026-11-07
 
 ### Added

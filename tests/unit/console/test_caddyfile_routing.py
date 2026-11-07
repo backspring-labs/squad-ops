@@ -118,6 +118,16 @@ class TestCaddyfileSecurityHeaders:
         assert "DENY" in caddyfile
 
 
+class TestCaddyfilePluginBundleCaching:
+    """A plugin bundle's URL doesn't change across deploys, so its freshness has to be asked for."""
+
+    def test_plugin_bundles_revalidate(self, caddyfile):
+        """A browser kept showing a replaced plugin after a rebuild until its cache was emptied."""
+        assert re.search(
+            r'^\s*header\s+/plugins/\*\s+Cache-Control\s+"no-cache"\s*$', caddyfile, re.M
+        )
+
+
 class TestCaddyfileSingleOrigin:
     """Verify single-origin architecture — no CORS directives needed."""
 
