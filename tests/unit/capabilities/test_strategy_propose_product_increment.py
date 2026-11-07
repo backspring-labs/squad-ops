@@ -409,6 +409,27 @@ async def test_a_goal_set_proposal_is_shown_the_goal_set_and_names_the_next_item
 
 
 @pytest.mark.parametrize(
+    ("readings", "shown"),
+    [(['play: {"wins": 43}'], True), ([], False)],
+    ids=["a reading", "no increment read yet"],
+)
+async def test_a_goal_set_proposal_is_shown_the_products_latest_reading(readings, shown):
+    """§24dk, entered at ``handle()``. Bugs caught: the reading composed and not rendered, so the
+    squad never sees how its work played; a heading with nothing under it on a Campaign's first
+    proposal, which reads as a measure of nothing."""
+    ctx = _ctx(_naming("B-3"))
+    inputs = _on_goals()
+    inputs["product_proposal"]["goals"] = {**_GOALS, "latest_readings": readings}
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert result.success, result.error
+    [prompt] = _prompts(ctx)
+    assert ("How the product measured" in prompt) is shown
+    assert ('- play: {"wins": 43}' in prompt) is shown
+
+
+@pytest.mark.parametrize(
     ("named", "why"),
     [
         (None, "names no backlog item"),

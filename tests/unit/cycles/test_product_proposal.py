@@ -19,6 +19,7 @@ import pytest
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.change_request import PRODUCT_PROPOSAL_INPUT
+from squadops.campaigns.models import ControlOperation
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -381,6 +382,38 @@ async def test_a_goal_set_proposal_is_given_its_goal_set_at_the_revision_it_bind
     ]
     assert goals["backlog"][1]["reason"].startswith("§10 row 13")
     assert goals["goal"] == "A reader keeps a log of reading sessions and sees their weekly total"
+
+
+async def test_a_goal_set_proposal_is_given_the_last_accepted_increments_reading(tmp_path):
+    """Wiring (anti-pattern 6a), entered at ``RunProvisioning.prepare`` (§24dk). Bugs caught: the
+    reading kept on the promotion and never composed, so the squad proposes blind to how its last
+    increment played; an earlier increment's reading shown in place of the latest; a long reading
+    cut at the digest's 400 characters."""
+    from tests.fixtures.goal_set import GoalSetStore, backlog_document
+    from tests.unit.campaigns.test_backlog import _Log
+
+    repo, clones = await _clone(tmp_path)
+    cycle = _goals_cycle(repo)
+    store = GoalSetStore()
+    store.write(cycle.project_id, backlog_document("B-1", "B-2", "B-3"))
+    log = _Log().submit("B-1", "c1").rule("approved", "c1").promote("c1")
+    log.submit("B-2", "c2").rule("approved", "c2").promote("c2")
+    first, second = [r for r in log.rows if r.operation is ControlOperation.PROMOTE]
+    log.rows[log.rows.index(first)] = dataclasses.replace(
+        first,
+        binding={**first.binding, "readings": [{"id": "play", "reading": {"wins": 1}}]},
+    )
+    log.rows[log.rows.index(second)] = dataclasses.replace(
+        second,
+        binding={**second.binding, "readings": [{"id": "play", "reading": {"note": "x" * 900}}]},
+    )
+
+    plan = await _prepared(
+        cycle, clones, _Projects(), goal_sets=store, campaigns=_Campaigns(cycle.project_id, 1, log)
+    )
+
+    [given] = [e.inputs[PRODUCT_PROPOSAL_INPUT] for e in plan if PRODUCT_PROPOSAL_INPUT in e.inputs]
+    assert given["goals"]["latest_readings"] == ['play: {"note": "' + "x" * 900 + '"}']
 
 
 @pytest.mark.parametrize(

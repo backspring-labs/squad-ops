@@ -38,9 +38,10 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from squadops.campaigns.backlog import campaign_backlog
+from squadops.campaigns.backlog import campaign_backlog, latest_readings
 from squadops.campaigns.change_request import PRODUCT_PROPOSAL_INPUT
 from squadops.campaigns.criterion_placement import runner_placements
+from squadops.campaigns.evidence import reading_line
 from squadops.campaigns.increment_tree import increment_basis
 from squadops.campaigns.models import parse_requirements_source
 from squadops.cycles.models import Cycle, GoalSetNotFoundError
@@ -58,6 +59,8 @@ __all__ = ["PRODUCT_PROPOSAL_INPUT", "product_proposal_input", "with_product_pro
 #: the head, bounded so a lint check with thousands never fills the prompt. The count is shown
 #: whole.
 FINDING_KEYS_SHOWN = 20
+#: A reading is one line of the proposer's request, so it has a bound of its own (§24dk).
+READING_CHARS_SHOWN = 2000
 
 
 async def with_product_proposal(
@@ -255,6 +258,11 @@ async def _goals(cycle: Cycle, goal_sets: Any, campaigns: Any) -> dict[str, Any]
             if i.position is not None
         ],
         "next_item": view.next_item.item_id,
+        # §24dk: how the product measured at the last increment this Campaign accepted.
+        "latest_readings": [
+            f"{r['id']}: {reading_line(r, READING_CHARS_SHOWN)}"
+            for r in latest_readings(await campaigns.control_log(campaign.campaign_id))
+        ],
     }
 
 

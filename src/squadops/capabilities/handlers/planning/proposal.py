@@ -570,6 +570,16 @@ async def goal_set_section(renderer: Any, goals: dict[str, Any]) -> str:
                 },
             )
         ).content
+    readings_section = ""
+    readings = goals.get("latest_readings") or ()
+    if readings:
+        # §24dk: the product's own measure of the last accepted increment, as it was read.
+        readings_section = (
+            await renderer.render(
+                "request.proposal_latest_readings",
+                {"reading_lines": "\n".join(f"- {r}" for r in readings)},
+            )
+        ).content
     rendered = await renderer.render(
         "request.proposal_goal_set",
         {
@@ -585,6 +595,7 @@ async def goal_set_section(renderer: Any, goals: dict[str, Any]) -> str:
                 _backlog_line(n, i) for n, i in enumerate(goals.get("backlog") or (), start=1)
             )
             or "- empty",
+            "latest_readings_section": readings_section,
             "next_item_section": next_section,
         },
     )

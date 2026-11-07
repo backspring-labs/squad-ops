@@ -597,6 +597,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             # SIP-0115 §5.2: a goal-set Campaign's goal set and its next item, in place of it.
             "request.proposal_goal_set",
             "request.proposal_next_backlog_item",
+            # SIP-0109 §24dk: the product's reading of the last accepted increment.
+            "request.proposal_latest_readings",
             "request.proposal_product_tree",
             "request.proposal_approved_manifest",
             "request.source_repository_instructions_block",

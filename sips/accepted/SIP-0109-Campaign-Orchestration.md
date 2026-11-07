@@ -148,6 +148,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
 | a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
+| the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
 | the replay viewer showing a new version with no step by hand (§24dj) | **placed** (the 2.6 plan's Track F, the owner, 2026-11-06) | 2.6.0, #2938 |
 | the operator's box lease outside Campaigns (§9.3) | **placed** (the 2.6 plan's Track C, adopted 2026-11-03) | 2.6.0, #2287 |
 | a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
@@ -6432,3 +6433,23 @@ so #2938 stays open for that.
 
 **Who ruled.** The owner: placed before the counted Campaign, and report-only (2026-11-06). The Spark lane chose `technical.commands`,
 beside the checks, over a flag on a check, since a check's failure is a verdict.
+
+### 24dk. The squad is shown its own reading (2026-11-07, §24dj; #2944; the Spark lane)
+
+**What changed.** §24dj's reading went to the record, the digest and the gate, and to nobody who builds the product. The only way play
+evidence had shaped a next increment was a person reading it and writing a goal. So a goal-set Campaign's proposal now carries the
+reading on the Campaign's latest promotion that has one, as it was read, up to 2,000 characters a reading. This adds a reader to
+§24dj point 4.
+
+**What didn't change.** A reading still reports (§24dj point 3): the request says it doesn't decide acceptance. Sealed cases stay out of
+this path. A Campaign's first proposal has no reading to show, since its log has no promotion yet, and a Campaign that names a
+requirements source shows none.
+
+**The evidence.** `test_product_proposal.py` enters at `RunProvisioning.prepare` and reads what the proposal is given, and
+`test_strategy_propose_product_increment.py` enters at `handle()` and reads the prompt.
+
+**Not built.** The squad choosing its own next item under an outcome goal (#2944's other question): the owner's ruling of 2026-11-07 is
+that the backlog's goals are written for it, so §5.3 of SIP-0115 stands.
+
+**Who ruled.** The owner, 2026-11-07: "The goal of squad ops is to learn and improve" product quality without an outside hand on the
+scales, and "Agree go" to showing the squad its readings before the next Campaign.

@@ -6,6 +6,8 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The squad is shown its own reading** (SIP-0109 §24dk, #2944, PR #2945): a goal-set Campaign's proposal carries the product's
+  reading of the last increment it accepted. It still reports, and decides nothing.
 - **A product's declared reading of an accepted increment** (SIP-0109 §24dj, #2938, PR #2942): `technical.commands.readings`
   run on the candidate in the sandbox, and what each one prints is kept on the evaluation and the promotion, and shown in the digest
   and each open gate's evidence. Report-only: a reading never changes a verdict.
