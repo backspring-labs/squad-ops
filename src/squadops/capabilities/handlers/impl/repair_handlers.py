@@ -275,6 +275,7 @@ class _RepairPromptMixin:
 
     #: Each handler declares its own, on `_CycleTaskHandler`'s field.
     _task_type: str
+    _role: str
     _request_template_id = "request.cycle_repair_task"
     #: #2813: a repair's call, its anchored-edit retry included, is refused by name over the
     #: model's window rather than sent.
@@ -427,8 +428,12 @@ class _RepairPromptMixin:
         decision_section = decision_section_kind(inputs.get("correction_decision"))
         inputs = {**inputs, **(await self._render_output_form(context, inputs))}
         current = await self._render_current_files_section(context, inputs)
+        imported = await self._render_imported_files_section(context, inputs)
         if current:
-            inputs = {**inputs, "current_files_section": current}
+            inputs = {
+                **inputs,
+                "current_files_section": f"{current}\n\n{imported}" if imported else current,
+            }
         anchored, offered = await self._render_anchored_edit_section(context, inputs)
         if anchored:
             inputs = {**inputs, "anchored_edit_section": anchored}
@@ -571,6 +576,23 @@ class _RepairPromptMixin:
     def _scaffold_shell_paths(inputs: dict[str, Any]) -> set[str]:
         """The scaffold's shells, by path — the files a fill-mode repair fills by slot (§9.3)."""
         return scaffold_shell_paths(inputs)
+
+    async def _render_imported_files_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The code a qa repair's suite calls, to read, or "". Non-qa roles, no import, no
+        renderer → "". Shown through ``repair_prompt_contents.imported_files``, which the composer
+        counts."""
+        if self._role != "qa":
+            return ""
+        shown = repair_prompt_contents.imported_files(inputs)
+        renderer = getattr(context.ports, "request_renderer", None)
+        if not shown or renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_repair_imported_files", {"imported_files": shown}
+        )
+        return rendered.content
 
     async def _render_current_files_section(
         self, context: ExecutionContext, inputs: dict[str, Any]

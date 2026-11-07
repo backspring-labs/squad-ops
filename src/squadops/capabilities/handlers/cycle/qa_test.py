@@ -598,6 +598,37 @@ class _QAEmission:
     removals: DeletionReading = DeletionReading()
 
 
+def _test_report_lines(test_result: RunTestsResult) -> list[str]:
+    """``test_report.md``. A suite left to the product's runner has no result of its own to report: an
+    exit code of -1 and an error read as a failure it hasn't had (#2949)."""
+    report_lines = [
+        "# Test Execution Report\n",
+        f"**Result:** {test_result.summary}\n",
+        *(
+            ()
+            if test_result.left_to_the_product_runner
+            else (f"**Exit code:** {test_result.exit_code}\n",)
+        ),
+        f"**Test files:** {test_result.test_file_count}\n",
+        f"**Source files:** {test_result.source_file_count}\n",
+    ]
+    if test_result.uncollected_test_files:
+        # SIP-0104 roll 1: a suite the runner never collected verifies nothing while
+        # the collected ones read green. Named in the report a human actually reads.
+        report_lines.append(
+            f"\n**{UNCOLLECTED_REPORT_LABEL}** "
+            + ", ".join(f"`{p}`" for p in test_result.uncollected_test_files)
+            + "\n"
+        )
+    if test_result.stdout:
+        report_lines.append(f"\n## stdout\n\n```\n{test_result.stdout}\n```\n")
+    if test_result.stderr:
+        report_lines.append(f"\n## stderr\n\n```\n{test_result.stderr}\n```\n")
+    if test_result.error and not test_result.left_to_the_product_runner:
+        report_lines.append(f"\n## Error\n\n{test_result.error}\n")
+    return report_lines
+
+
 class QATestHandler(_CycleTaskHandler):
     """Build handler: generates test files from validation plan + source (D1).
 
@@ -974,27 +1005,7 @@ class QATestHandler(_CycleTaskHandler):
             test_result.error,
         )
 
-        report_lines = [
-            "# Test Execution Report\n",
-            f"**Result:** {test_result.summary}\n",
-            f"**Exit code:** {test_result.exit_code}\n",
-            f"**Test files:** {test_result.test_file_count}\n",
-            f"**Source files:** {test_result.source_file_count}\n",
-        ]
-        if test_result.uncollected_test_files:
-            # SIP-0104 roll 1: a suite the runner never collected verifies nothing while
-            # the collected ones read green. Named in the report a human actually reads.
-            report_lines.append(
-                f"\n**{UNCOLLECTED_REPORT_LABEL}** "
-                + ", ".join(f"`{p}`" for p in test_result.uncollected_test_files)
-                + "\n"
-            )
-        if test_result.stdout:
-            report_lines.append(f"\n## stdout\n\n```\n{test_result.stdout}\n```\n")
-        if test_result.stderr:
-            report_lines.append(f"\n## stderr\n\n```\n{test_result.stderr}\n```\n")
-        if test_result.error:
-            report_lines.append(f"\n## Error\n\n{test_result.error}\n")
+        report_lines = _test_report_lines(test_result)
 
         report_artifact = {
             "name": "test_report.md",
@@ -2403,6 +2414,8 @@ class QATestHandler(_CycleTaskHandler):
 
         if test_result.tests_passed:
             test_suffix = ", all tests passed"
+        elif test_result.left_to_the_product_runner:
+            test_suffix = f", {test_result.summary}"
         elif test_result.executed:
             test_suffix = f", tests failed (exit code {test_result.exit_code})"
         else:

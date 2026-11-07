@@ -11,7 +11,8 @@ The two prompt paths show different files, chosen as the handler chooses its pat
 
 - **the focused prompt** (a plan's subtask, ``subtask_focus``) shows the top-level packages the
   task's expected artifacts live in, or every file when none is expected or none matches
-  (:func:`package_scoped`);
+  (:func:`package_scoped`), and, outside those packages, the code the suite calls
+  (:func:`code_under_test`);
 - **the monolithic prompt** shows the validation plan (:func:`validation_plan`, the handler's
   choice too) and the stack's source and support files (:func:`source_files`), which can include
   a ``conftest.py`` or an ``index.html``, never a file the stack names a test. A source file
@@ -34,6 +35,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from squadops.campaigns.evaluator_trees import imported_paths
+from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY
+from squadops.cycles.structural_jsx import ECMASCRIPT_SUFFIXES
 from squadops.stacks.development_profiles import (
     DevelopmentProfile,
     effective_development_profile,
@@ -47,6 +51,11 @@ VALIDATION_PLAN = "validation_plan"
 #: The name the plan is counted under when a source file shown has its name: the prompt shows the
 #: file twice, in the plan's own section and among the sources (#2809).
 _PLAN_SECTION = "## Validation Plan"
+#: The most of a file :func:`code_under_test` shows. A larger one, a vendored engine say, is named
+#: with its size: a suite that imports it needn't cost the prompt the whole of it.
+CODE_UNDER_TEST_MAX_CHARS = 16_000
+#: The files whose imports :func:`code_under_test` reads.
+_READS_IMPORTS = (".py", *ECMASCRIPT_SUFFIXES)
 
 
 def qa_test_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
@@ -57,7 +66,9 @@ def qa_test_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
     twice: once under its section's name (#2809)."""
     contents = inputs.get("artifact_contents") or {}
     if inputs.get("subtask_focus") is not None:
-        return package_scoped(contents, inputs.get("expected_artifacts") or [])
+        scoped = package_scoped(contents, inputs.get("expected_artifacts") or [])
+        suite = {**scoped, **(inputs.get(RETAKE_CURRENT_FILES_KEY) or {})}
+        return {**scoped, **code_under_test(suite, contents, _task_text(inputs))}
     profile = get_development_profile(effective_development_profile(inputs.get("resolved_config")))
     sources = source_files(contents, profile)
     plan = _validation_plan_file(contents)
@@ -101,6 +112,37 @@ def package_scoped(
         if str(name).strip().lstrip("./").partition("/")[0] in packages
     }
     return scoped or artifact_contents
+
+
+def code_under_test(
+    files: Mapping[str, str], tree: Mapping[str, str], task_text: str = ""
+) -> dict[str, str]:
+    """The files of ``tree`` that ``files`` import or ``task_text`` names, beyond ``files`` itself:
+    what a suite calls, when it lives in another package.
+
+    Scoping a suite's prompt to its own package left it the tests beside it and none of what they
+    call: battle-trainer's suite lives in ``test/``, the helper it calls in ``tools/``, and qa wrote
+    ``unit.shots`` for a count the helper returns as ``shots``. It read 0, and three repairs guessed
+    at the name (``cyc_8e691eb2bccf``). One hop: the helper's own imports are the helper's concern.
+    """
+    present = set(tree)
+    wanted = {path for path in present if path in task_text}
+    for path, source in files.items():
+        if path.endswith(_READS_IMPORTS):
+            wanted.update(imported_paths(path, source, present)[0])
+    return {path: _shown_or_named(tree[path]) for path in sorted(wanted - set(files))}
+
+
+def _shown_or_named(content: str) -> str:
+    if len(content) <= CODE_UNDER_TEST_MAX_CHARS:
+        return content
+    return f"(not shown: {len(content)} characters, too large for this prompt)"
+
+
+def _task_text(inputs: Mapping[str, Any]) -> str:
+    """The task's own words, where a plan names the module its suite is to test."""
+    criteria = [c for c in inputs.get("acceptance_criteria") or () if isinstance(c, str)]
+    return "\n".join([str(inputs.get("subtask_description") or ""), *criteria])
 
 
 def source_files(

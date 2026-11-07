@@ -408,6 +408,7 @@ def test_a_repair_with_no_tree_counts_nothing_for_it():
         "current_files": "",
         "editable_files": "",
         "case_frames": "",
+        "imported_files": "",
     }
     assert rendered_input_tokens(envelope) == _rest(envelope)
 
@@ -512,3 +513,19 @@ def test_every_selector_the_resolvers_write_fits_the_grammar_the_bound_assumes(p
             s.partition("#")[0] for s in selectors if s != structural_jsx.SELECTOR_IMPORTS
         )
         assert max(per_statement.values(), default=0) <= SELECTORS_PER_STATEMENT_MAX
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["x = " + " + ".join(["1"] * 100_000) + "\n", "not python (\n"],
+    ids=["a-module-ast-cannot-build", "a-module-that-does-not-parse"],
+)
+def test_a_suite_no_parser_reads_imports_nothing_and_never_raises_in_the_composer(module):
+    """Entered at ``repair_prompt_contents``, the composer's call, in the runtime. Bug caught: the
+    import reader's ``ast.parse`` raising into the budget (#2812's third reading)."""
+    inputs = {
+        "expected_artifacts": ["tests/test_big.py"],
+        "acceptance_workspace_files": {"tests/test_big.py": module},
+    }
+
+    assert repair_prompt_contents(inputs)["imported_files"] == ""
