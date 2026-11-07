@@ -25,9 +25,9 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | 93.1 proposal and merge schemas | **shipped** | v1.1.0 |
 | 93.2 role proposers | **shipped** | v1.1.0 |
 | 93.3 merger + cutover | **shipped** | v1.1.0 |
-| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **placed**: folded into #950 (§15a) | 2.6 or later, #950, the plan-gate review packet, after Outcome Evaluation: not in 2.4 (the 2.4 plan's D10, ruled 2026-10-17). Re-read at the 2.4.0 cut (2026-10-23): it changes what the plan gate shows, a feature, so it can't go in 2.5, a stabilization release; the 2.6 plan places it |
+| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **placed**: folded into #950 (§15a) | 2.7 or later, #950, the plan-gate review packet, after Outcome Evaluation: not in 2.4 (the 2.4 plan's D10, ruled 2026-10-17). Re-read at the 2.4.0 cut (2026-10-23): it changes what the plan gate shows, a feature, so it can't go in 2.5, a stabilization release; the 2.6 plan places it |
 | §5.8 merge rules 2–5 (compatible-criteria merge, strictest-wins, `rejected_tasks`, conflicts block the gate) | **dropped** (§15a) | re-proposed on evidence |
-| §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.6 or later, #950 (the 2.4 plan's D10; re-read at the 2.4.0 cut, with 93.4) |
+| §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.7 or later, #950 (the 2.4 plan's D10; re-read at the 2.4.0 cut, with 93.4) |
 | §5.11 parallel fan-out | **dropped** by §15a: built sequential | `task_plan.py:147-149` |
 | §15b: an increment's criterion file that a development task and a qa task both claim is the qa task's at the merge | **shipped** | 2.5.0, PR #2802, closes #2795 |
 
