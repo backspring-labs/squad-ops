@@ -165,6 +165,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `split_into`. `squadops goals candidates|promote|drop|split`.
 
 ### Fixed
+- **A qa suite is shown the code it calls** (#2952): a focused `qa.test` and a qa repair see what the suite imports, and the
+  files the task names, from outside its package, counted in the prompt budget. On a product whose suite and helper live apart,
+  qa guessed the helper's field names and a real count read 0. `test_report.md` no longer reads a suite left to the product's
+  runner as a failure (#2949).
 - **A repair cycle keeps the ending its run declared** (SIP-0109 §24cz, #2946): a repair whose test already passed on the head
   recorded `single_workload_ended`, so the Campaign escalated at row 9 instead of proposing anew at row 19.
 - **A proposal keeps what the product already does inside the criterion that changes it** (#2935, SIP-0109 §24di). BT-2's

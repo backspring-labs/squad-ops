@@ -23,7 +23,10 @@ import pytest
 
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
-from squadops.capabilities.handlers.test_runner import run_build_validation
+from squadops.capabilities.handlers.test_runner import (
+    LEFT_TO_THE_PRODUCT_RUNNER,
+    run_build_validation,
+)
 from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents
 from squadops.cycles.models import PreflightRejectedError
 from squadops.cycles.replay import check_replay_compatibility
@@ -157,7 +160,7 @@ async def test_the_test_author_is_never_told_python_on_a_product_that_isnt(deriv
     test_result = result.outputs["test_result"]
     assert test_result["executed"] is False
     assert "pytest" not in test_result["summary"]
-    assert test_result["summary"].endswith("its own runner does, in the sandbox")
+    assert test_result["summary"] == LEFT_TO_THE_PRODUCT_RUNNER
     report = next(a for a in result.outputs["artifacts"] if a["type"] == "test_report")
     assert "pytest" not in report["content"]
     assert "Python" not in report["content"]

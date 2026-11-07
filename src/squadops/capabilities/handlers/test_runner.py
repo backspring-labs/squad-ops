@@ -33,6 +33,8 @@ from squadops.stacks.development_profiles import (
 logger = logging.getLogger(__name__)
 
 _STDOUT_LIMIT = 64 * 1024  # 64 KB
+#: What a qa task says of a suite only the product's runner can run (#2949).
+LEFT_TO_THE_PRODUCT_RUNNER = "left to the product's runner, whose result is this task's verdict"
 
 
 @dataclass(frozen=True)
@@ -100,7 +102,19 @@ class RunTestsResult:
         return self.executed and self.exit_code == 0
 
     @property
+    def left_to_the_product_runner(self) -> bool:
+        """The suite went to the product's own runner (SIP-0112 H.26). A hand-off, not a result:
+        this task's verdict is that runner's (#2949)."""
+        return (
+            not self.executed
+            and self.runner == TEST_FRAMEWORK_PRODUCT_RUNNER
+            and self.test_file_count > 0
+        )
+
+    @property
     def summary(self) -> str:
+        if self.left_to_the_product_runner:
+            return LEFT_TO_THE_PRODUCT_RUNNER
         if not self.executed:
             return f"tests not run: {self.error}" if self.error else "tests not run"
         if self.exit_code == 0:
@@ -1648,11 +1662,7 @@ def _left_to_the_product_runner(
     half-ran can't change that reading's shape. No test files stays the own-artifact verdict."""
     return RunTestsResult(
         executed=False,
-        error=(
-            "the qa image doesn't run this product's suite: its own runner does, in the sandbox"
-            if test_files
-            else "no test files provided"
-        ),
+        error=(LEFT_TO_THE_PRODUCT_RUNNER if test_files else "no test files provided"),
         runner=TEST_FRAMEWORK_PRODUCT_RUNNER,
         test_file_count=len(test_files),
         source_file_count=len(source_files),

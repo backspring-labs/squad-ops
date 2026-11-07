@@ -37,6 +37,7 @@ class _Result:
     stderr: str = ""
     error: str | None = None
     uncollected_test_files: tuple[str, ...] = field(default=())
+    left_to_the_product_runner: bool = False
 
 
 async def _run(monkeypatch, result: _Result):

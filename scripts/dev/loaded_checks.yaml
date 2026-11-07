@@ -2332,7 +2332,7 @@ checks:
           return rendered_input_tokens(SimpleNamespace(task_type=task_type, inputs=inputs))
       js, py = "export const a = 1;\n" * 20, "def a():\n    return 1\n" * 20
       print(REPAIR_CONTEXT_CONTRACT.scoped_rendering, count("orbit/a.py", py), count("console/src/A.jsx", js), count("app/api/a/route.ts", js), count("orbit/a.py", js, "strategy.propose_increment"))
-    expect: repair_prompt 161 397 397 10118
+    expect: repair_prompt 167 402 403 10118
   - id: "2810-repair-handler-neo"
     what: the dev repair shows its tree through the functions the composer counts it with (#2810)
     container: squadops-neo

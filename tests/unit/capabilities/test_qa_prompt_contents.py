@@ -30,7 +30,11 @@ from squadops.capabilities.context_assembly import (
 )
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
 from squadops.capabilities.prompt_budget import rendered_input_tokens
-from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents
+from squadops.capabilities.qa_prompt_contents import (
+    CODE_UNDER_TEST_MAX_CHARS,
+    code_under_test,
+    qa_test_prompt_contents,
+)
 from squadops.memory.lessons import _tokens
 from squadops.stacks.development_profiles import get_development_profile
 
@@ -306,3 +310,89 @@ async def test_a_plan_that_is_also_a_source_is_counted_as_often_as_it_is_shown()
 
     assert prompt.user_prompt.count(text.strip()) == 2
     assert [content for content in counted.values() if content == text] == [text, text]
+
+
+_SPLIT_TREE = {
+    "test/play.test.js": 'import { play } from "../tools/play.mjs";\n',
+    "test/fixtures/hello.json": "{}\n",
+    "tools/play.mjs": "export const play = () => ({ shots: 3 });\n",
+    "tools/viewer.mjs": "export const view = 1;\n",
+    "src/engine.js": "export const run = 1;\n",
+}
+_SPLIT_SUITE = {
+    "subtask_focus": "shot count",
+    "expected_artifacts": ["test/criterion_T1.test.js"],
+    "artifact_contents": _SPLIT_TREE,
+    "resolved_config": {"build_profile": "node_vitest"},
+}
+
+
+async def test_a_focused_suite_is_shown_the_code_its_package_imports_from_outside_it():
+    """Entered at ``_compose_user_prompt``, the handler's own step. Bug caught: scoping to the
+    suite's package hides the helper the suite calls, so qa guesses its field names and a test of
+    a real count reads 0 (``cyc_8e691eb2bccf``)."""
+    prompt = (await _composed({**_SPLIT_SUITE, "prd": "A tank game."})).user_prompt
+
+    names = _section_names(_shown_section(prompt))
+    assert "tools/play.mjs" in names
+    assert "{ shots: 3 }" in prompt
+    assert "tools/viewer.mjs" not in names  # nothing imports it: pf-33's scoping still holds
+    assert "src/engine.js" not in names
+
+
+@pytest.mark.parametrize(
+    ("extra", "shown"),
+    [
+        ({"subtask_description": "Test src/engine.js as it stands."}, "src/engine.js"),
+        ({"acceptance_criteria": ["tools/viewer.mjs draws a match"]}, "tools/viewer.mjs"),
+        (
+            {
+                "retake_current_files": {
+                    "test/criterion_T1.test.js": 'import { view } from "../tools/viewer.mjs";\n'
+                }
+            },
+            "tools/viewer.mjs",
+        ),
+    ],
+)
+def test_the_task_naming_a_file_or_its_retaken_suite_importing_one_shows_it(extra, shown):
+    """Bug caught: a first test beside no other, or a re-take whose own suite is the only one
+    importing the module, left blind to it."""
+    assert shown in qa_test_prompt_contents({**_SPLIT_SUITE, **extra})
+
+
+def test_a_file_too_large_to_show_is_named_with_its_size_and_never_cut():
+    """Bug caught: a vendored engine a suite imports costing the prompt its whole text, or dropped
+    with no word, so qa reads a helper as absent."""
+    big = "x" * (CODE_UNDER_TEST_MAX_CHARS + 1)
+    inputs = {**_SPLIT_SUITE, "artifact_contents": {**_SPLIT_TREE, "tools/play.mjs": big}}
+
+    assert qa_test_prompt_contents(inputs)["tools/play.mjs"] == (
+        f"(not shown: {len(big)} characters, too large for this prompt)"
+    )
+
+
+def test_an_import_of_nothing_in_the_tree_and_a_file_with_no_imports_add_nothing():
+    """Edge: an installed package, a broken relative import, a fixture that reads like one."""
+    assert (
+        code_under_test(
+            {
+                "test/a.test.js": 'import x from "vitest";\nimport y from "./gone.js";\n',
+                "test/notes.md": 'import z from "../tools/play.mjs"\n',
+            },
+            _SPLIT_TREE,
+        )
+        == {}
+    )
+
+
+def test_the_composer_counts_the_imported_code_the_handler_shows():
+    """Entered at ``rendered_input_tokens``. Bug caught: the prompt showing a helper the budget
+    never counted, so a binding is admitted that the window can't hold."""
+    without = {k: v for k, v in _SPLIT_TREE.items() if k != "tools/play.mjs"}
+    bare = {**_SPLIT_SUITE, "artifact_contents": without}
+
+    counted = rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=_SPLIT_SUITE))
+    fewer = rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=bare))
+
+    assert counted > fewer

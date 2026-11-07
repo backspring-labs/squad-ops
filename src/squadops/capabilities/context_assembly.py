@@ -704,6 +704,7 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         "request.qa_test_frozen_surface_appendix",
         "request.qa_test_repair_failing_cases_appendix",
         "request.qa_test_repair_fill_appendix",
+        "request.qa_test_repair_imported_files",
         # D12 (#2253): a qa repair's first call is sent it; the other repair types are not, so for
         # them this is a few tokens over.
         "request.keep_reasoning_short",
