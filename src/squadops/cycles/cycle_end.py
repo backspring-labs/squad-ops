@@ -67,14 +67,20 @@ STOP_REASON_FOR_TERMINAL_KIND: dict[TerminalKind, CycleStopReason] = {
 }
 
 
+#: The stops a run's own ending reaches the boundary by: a sequence's failed run, and the one run
+#: of a single-workload cycle, which is how a campaign's repair runs (#2946).
+_STOPS_A_RUN_CAN_DECLARE_OVER = frozenset(
+    {CycleStopReason.RUN_FAILED, CycleStopReason.SINGLE_WORKLOAD_ENDED}
+)
+
+
 def declared_stop_reason(
     stopped_because: CycleStopReason, terminal: RunTerminalDecision | None
 ) -> CycleStopReason:
-    """``stopped_because``, or the cycle's ending the failed run's terminal decision declares
-    (``STOP_REASON_FOR_TERMINAL_KIND``). Any other stop, a failed run that declared no ending of
-    the cycle's, and a summary whose terminal is not a decision, are left as the sequence read
-    them."""
-    if stopped_because is not CycleStopReason.RUN_FAILED or not isinstance(
+    """``stopped_because``, or the cycle's ending the run's terminal decision declares
+    (``STOP_REASON_FOR_TERMINAL_KIND``). Any other stop, a run that declared no ending of the
+    cycle's, and a summary whose terminal is not a decision, are left as the sequence read them."""
+    if stopped_because not in _STOPS_A_RUN_CAN_DECLARE_OVER or not isinstance(
         terminal, RunTerminalDecision
     ):
         return stopped_because
