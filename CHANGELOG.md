@@ -5,6 +5,8 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-11-07
+
 ### Added
 - **The squad is shown its own reading** (SIP-0109 §24dk, #2944, PR #2945): a goal-set Campaign's proposal carries the product's
   reading of the last increment it accepted. It still reports, and decides nothing.
