@@ -1,6 +1,6 @@
 """#2903: every console plugin that wrote through the Continuum command bus posted
 ``{command_id, params}``. The pinned shell reads the body as ``{command_id, args, dry_run,
-confirmed}`` and drops the rest (Continuum v1.0.2, ``adapters/web/api.py:78-84``), so each handler
+confirmed}`` and drops the rest (Continuum v1.0.3, ``adapters/web/api.py:79-85``), so each handler
 got ``{}``, raised, and the bus's 200 ``status: failed`` passed as success because only ``resp.ok``
 was read. #2904: no plugin sent ``confirmed``, so a confirm-level command's ``pending`` answer
 passed as success too. The body is built in one place now, ``shared/commands.js``'s

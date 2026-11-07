@@ -22,11 +22,6 @@
 		X-Frame-Options "DENY"
 	}
 
-	# A plugin bundle keeps one URL across deploys and arrives with no freshness of its own, so a
-	# browser may reuse a copy from before a rebuild. no-cache has it ask on each load. The console
-	# answers that with the whole file, not a 304, which is ~120 KB per bundle over a local link.
-	header /plugins/* Cache-Control "no-cache"
-
 	# Runtime API — all /api/v1 routes (preserve path)
 	handle /api/v1/* {
 		reverse_proxy runtime-api:8001
