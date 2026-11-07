@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from squadops.campaigns.backlog import latest_readings
-from squadops.campaigns.evidence import _reading_line
+from squadops.campaigns.evidence import reading_line
 from squadops.campaigns.models import ControlLogEntry, ControlOperation, ControlOutcome
 from squadops.campaigns.runner_acceptance import SandboxTree
 from squadops.execution import product_acceptance
@@ -263,4 +263,4 @@ def test_the_gate_reads_the_latest_promotion_that_carries_a_reading():
     ],
 )  # fmt: skip
 def test_the_digest_reports_a_reading_as_read_or_says_why_not(record, line):
-    assert _reading_line(record) == line
+    assert reading_line(record) == line

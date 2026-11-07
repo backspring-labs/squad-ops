@@ -528,15 +528,15 @@ def _accepted(doc: dict) -> list[str]:
         ]
         if b.get("retired_criteria"):
             lines.append(f"  - retired {', '.join(b['retired_criteria'])}")
-        lines += [f"  - read {r['id']}: {_reading_line(r)}" for r in b.get("readings") or ()]
+        lines += [f"  - read {r['id']}: {reading_line(r)}" for r in b.get("readings") or ()]
     return lines
 
 
-def _reading_line(record: dict) -> str:
+def reading_line(record: dict, limit: int = 400) -> str:
     """A declared reading, reported as read (#2938), or why it couldn't be."""
     if record.get("reading") is None:
         return f"no reading ({record.get('error') or 'none recorded'})"
-    return json.dumps(record["reading"], sort_keys=True)[:400]
+    return json.dumps(record["reading"], sort_keys=True)[:limit]
 
 
 def _rebased(b: dict) -> str:
