@@ -8,7 +8,8 @@ moment the test existed. So, once the increment cycle's qa task has emitted a cr
 the run has stored it, that file is run on the product's own runner in the sandbox
 (``product_suite.run_on_product_runner``, the run #2818 made) against **the head**: the pinned
 commit's tree from the managed clone (``product_tree_at_pin``, seeded as a checkout, H.19), with
-the criterion files patched on it and no development emission, a removal included. A file that passes there is already met, and the executor ends the run with
+the criterion files patched on it, and the page loaders the change request placed (#2799), and no
+development emission, a removal included. A file that passes there is already met, and the executor ends the run with
 ``TerminalKind.CRITERIA_NOT_CHECKABLE``; the completion boundary records the cycle's ending as
 ``criteria_not_checkable``, and the campaign's decision (row 19) returns the increment to a new
 proposal told which criteria the head meets, counted toward no unaccepted limit.
@@ -53,6 +54,7 @@ from squadops.campaigns.increment_tree import (
     approved_change_request,
     increment_basis,
     increment_criterion_files,
+    increment_page_loader_files,
 )
 from squadops.campaigns.runner_acceptance import RunnerSetup
 from squadops.cycles.models import ArtifactRef, Cycle
@@ -184,10 +186,11 @@ async def _read_on_head(
 ) -> CriterionHeadCheck | None:
     context = cycle.source_context
     assert context is not None  # _why_cant_run refused a cycle with none
+    change_request = await _change_request(vault, cycle)
     placed = {
         f.path: f.criterion_id
         for f in increment_criterion_files(
-            await _change_request(vault, cycle), scaffold_stack_for(cycle.resolved_config())
+            change_request, scaffold_stack_for(cycle.resolved_config())
         )
     }
     rewritten = {path: text for path, text in (repaired or {}).items() if path in placed}
@@ -223,7 +226,11 @@ async def _read_on_head(
         profile=profile,
         setup=RunnerSetup.of(configuration.commands),
         pinned=pinned,
-        tree={},
+        # #2799: the framework's page loaders, which a page criterion's test imports. The head
+        # holds them only once an earlier increment's delivery wrote them, and without them a
+        # test that loads its view through one fails at its import on the head, so a page the
+        # head already serves never reads as already met.
+        tree=increment_page_loader_files(change_request),
         tests=tests,
         workspace_id=sandbox_workspace_id(_WORKSPACE_KIND, run_id, task_id),
     )

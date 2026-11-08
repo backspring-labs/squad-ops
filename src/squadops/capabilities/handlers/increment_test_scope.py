@@ -21,7 +21,9 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
 
     On a stack whose criterion tests must reach a route through the scaffold's caller (#2577),
     an increment with an endpoint criterion is also told how, through the stack's own asset; and
-    one with a page criterion how to load its page through the scaffold's loader (#2602)."""
+    one with a page criterion how to load its page through the scaffold's loader (#2602). On a
+    product, a page criterion whose test the placement gave a page loader is told how to load its
+    view through it (#2799)."""
     scope = inputs.get("increment_test_scope")
     if renderer is None or not isinstance(scope, dict):
         return ""
@@ -57,6 +59,24 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
                 "page_criteria": ", ".join(pages),
                 "page_loader_import": page_loader_import_for(stack),
                 "route_caller_import": route_caller_import_for(stack),
+            },
+        )
+        sections.append(how.content)
+    # #2799: on a vitest product, a page criterion's test loads its view through the framework's
+    # page loader, which the change request placed beside it. No stack names it: the placement
+    # does, so it reaches an author on any profile.
+    loaders = scope.get("page_loaders")
+    if isinstance(loaders, list) and loaders:
+        # deferred (cycle): campaigns.increment_tree loads this module
+        from squadops.campaigns.increment_tree import page_loader_lines
+        from squadops.campaigns.page_loader import page_loader_source
+
+        how = await renderer.render(
+            "request.increment_page_loader_appendix",
+            {
+                "page_loader_lines": page_loader_lines(loaders),
+                # The model sees the file its test imports, as delivery writes it.
+                "page_loader_source": page_loader_source(str(loaders[0]["loader"])).rstrip(),
             },
         )
         sections.append(how.content)
