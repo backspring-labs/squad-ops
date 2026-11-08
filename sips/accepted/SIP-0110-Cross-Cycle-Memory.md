@@ -3916,6 +3916,25 @@ aren't repairs stay unguarded, as before.
 **Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2813. The choice of
 the guard over a bound is the supervisor's, for the reason above.
 
+## 5ar. The embeddings port and its Ollama adapter removed (2026-11-08, §5am, §A.3.10; #2736; the Spark lane, the 2.7 plan's Track C)
+
+**What changed.** §5am kept the embeddings port (`squadops.ports.embeddings`), its domain models
+(`squadops.embeddings`) and its Ollama adapter (`adapters.embeddings`) when the legacy agent store retired,
+for §A.3.10's optional semantic index. Nothing has built or called them since: no composition root
+constructs them, and no task or chat path reaches them. They are removed. A port with no consumer can't
+be tested at a wiring seam, and its design dates from SIP-042's store, not this substrate.
+
+**What it leaves.** §A.3.10 is unchanged: a semantic index, if one is ever placed, is derived from the
+Postgres records, and its build designs the port it needs against the substrate as it stands then.
+Nothing in memory's reads or writes changes.
+
+**The evidence.** The removal leaves the unit and architecture suites green: no import of the three
+packages remained outside them and their own tests. `docs/architecture/overview.md` loses their entries,
+with the package counts in CLAUDE.md beside it.
+
+**Who ruled it.** The owner adopted the 2.7 plan on 2026-11-08, whose Track C takes #2736's
+recommendation 2 (remove).
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
