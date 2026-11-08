@@ -421,7 +421,6 @@ _FACTORY_SELECTORS = (
     ("adapters.cycles.factory", "create_squad_profile_port", "provider"),
     ("adapters.cycles.factory", "create_artifact_vault", "provider"),
     ("adapters.cycles.factory", "create_flow_executor", "provider"),
-    ("adapters.embeddings.factory", "create_embeddings_provider", "provider"),
     ("adapters.events.factory", "create_cycle_event_bus", "provider"),
     ("adapters.prompts.factory", "create_prompt_repository", "provider"),
     ("adapters.prompts.factory", "create_prompt_asset_source", "provider"),

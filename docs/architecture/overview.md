@@ -98,11 +98,6 @@ dataclasses, the lifecycle state machine, task planning (`task_plan`), the imple
 verification evidence rules (SIP-0096) and the delivered-tree rules. Its executor is
 `squadops.execution` (#1992).
 
-### `squadops.embeddings`
-The embeddings domain: the request and result models an `EmbeddingsPort` adapter serves. Nothing
-consumes it since the LanceDB store's retirement (#2184); a semantic index, if one is ever added, is
-derived from Postgres (SIP-0110 §A.3.10).
-
 ### `squadops.execution`
 The cycle's orchestration (#1992): `DispatchedFlowExecutor`, which implements `FlowExecutionPort`, and
 its collaborators: run admission, provisioning and completion, task dispatch and the reply router, the
@@ -210,9 +205,6 @@ Cycle infrastructure (SIP-0064, SIP-0066): the memory and Postgres cycle, campai
 profile registries, the filesystem artifact vault, the Prefect workflow tracker and log forwarder, the
 config-backed project registry, and the factory that composes the executor from `squadops.execution`
 with the ports a root has bound.
-
-### `adapters.embeddings`
-Implementations of `EmbeddingsPort`, which nothing builds since the LanceDB store's retirement (#2184).
 
 ### `adapters.events`
 Cycle event buses: in-process and NoOp, the runtime event publisher, and their factory.
