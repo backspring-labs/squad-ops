@@ -251,10 +251,10 @@ class TestCustomHandlerTemplateIdCoverage:
         inputs = {"prd": "Test PRD", **extra_inputs}
         await handler.handle(ctx, inputs)
 
-        # A qa first call also renders D12's note, which is not the request (#2253).
-        requests = [
-            c for c in renderer.render.call_args_list if c[0][0] != "request.keep_reasoning_short"
-        ]
+        # A qa first call also renders D12's note, which is not the request (#2253), and a sample
+        # application's monolithic prompt the scaffold's harness block it slots in (SIP-0112 H.29).
+        parts = ("request.keep_reasoning_short", "request.qa_test_scaffold_harness_block")
+        requests = [c for c in renderer.render.call_args_list if c[0][0] not in parts]
         assert len(requests) == 1
         actual_template_id = requests[0][0][0]
         assert actual_template_id == expected_template_id, (

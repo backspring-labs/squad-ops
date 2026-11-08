@@ -428,6 +428,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.qa_test_retained_cases_appendix",
             "request.qa_test_retake_appendix",
             "request.qa_test_fill_mode_appendix",
+            # SIP-0112 H.29: a sample application's monolithic prompt only.
+            "request.qa_test_scaffold_harness_block",
             "request.cycle_repair_anchored_edit_appendix",
             "request.cycle_repair_current_files",
             "request.increment_test_scope_appendix",
