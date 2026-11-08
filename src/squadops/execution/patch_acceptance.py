@@ -27,6 +27,8 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers.source_repository import source_backed
+from squadops.capabilities.qa_run_tree import product_runners
 from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.check_registry import (
     CHECK_TESTS_PASS,
@@ -66,6 +68,7 @@ from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import row_is_blocking_failure
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.projects.derived_profile import runner_holds
 from squadops.stacks.development_profiles import (
     collected_test_patterns_for,
     matches_test_file_patterns,
@@ -257,27 +260,53 @@ def _retest_reduction_of(
     return reduction
 
 
-def _repaired_suite_files(
-    patched_artifacts: Sequence[Mapping[str, Any]], resolved_config: Mapping[str, Any]
-) -> list[str]:
-    """The patched files this stack's runner would collect as a suite (#1269).
+#: The runners a repaired suite is read by, each as ``(roots, file_pattern)``
+#: (``qa_run_tree.product_runners``).
+SuiteRunners = tuple[tuple[tuple[str, ...], str], ...]
 
-    Read through what the stack's runner collects
-    (``collected_test_patterns_for``/``matches_test_file_patterns``, #846, #1534) rather than through
-    the artifact's ``type``: a repair's files are typed by extension, so a repaired
+
+def suite_runners(inputs: Mapping[str, Any]) -> SuiteRunners:
+    """The product's own runners when the task is a repository-backed product's, else ``()``, which
+    reads a repaired suite by its stack (SIP-0112 H.29).
+
+    A product's tests are where its runners collect them, and a stack's collected-test vocabulary
+    can place them: ``nextjs_ts``'s is the scaffold's ``__tests__/`` rule (#1534), which a product
+    made from that blueprint needn't keep. A product with no runner to read keeps its stack's
+    reading, since the qa image's run is then the only one there is."""
+    return product_runners(inputs) if source_backed(inputs) else ()
+
+
+def _repaired_suite_files(
+    patched_artifacts: Sequence[Mapping[str, Any]],
+    resolved_config: Mapping[str, Any],
+    runners: SuiteRunners,
+) -> list[str]:
+    """The patched files a runner would collect as a suite (#1269).
+
+    A repository-backed product's are the files one of its own ``runners`` holds: under that
+    runner's roots, named by its pattern (``runner_holds``, SIP-0112 H.29). A sample application's,
+    or a product's with no runner, are read through what the stack's runner collects
+    (``collected_test_patterns_for``/``matches_test_file_patterns``, #846, #1534). Neither reads the
+    artifact's ``type``: a repair's files are typed by extension, so a repaired
     ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
     miss exactly the case this exists for.
     """
 
-    patterns = collected_test_patterns_for(resolved_config)
-    if not patterns:
-        return []
-    return [
+    names = [
         name
         for artifact in patched_artifacts
         if isinstance(artifact, Mapping) and (name := str(artifact.get("name") or ""))
-        if matches_test_file_patterns(name, patterns)
     ]
+    if runners:
+        return [
+            name
+            for name in names
+            if any(runner_holds(roots, pattern, name) for roots, pattern in runners)
+        ]
+    patterns = collected_test_patterns_for(resolved_config)
+    if not patterns:
+        return []
+    return [name for name in names if matches_test_file_patterns(name, patterns)]
 
 
 #: The values the accepted-patch path hands from one of its steps to the next (the 1.7.5
@@ -299,6 +328,9 @@ class _PatchSubject:
     patched_artifacts: list[dict[str, Any]]
     workspace_files: dict[str, Any]
     file_owned: list[Any]
+    #: What a repaired suite is read by: the product's runners, or ``()`` for the stack's
+    #: vocabulary (``suite_runners``).
+    runners: SuiteRunners
 
 
 @dataclasses.dataclass(frozen=True)
@@ -630,6 +662,8 @@ class PatchAcceptance:
             patched_artifacts=patched_artifacts,
             workspace_files=workspace_files,
             file_owned=file_owned,
+            # The dispatched task's view: only the enriched envelope carries ``source_repository``.
+            runners=suite_runners((enriched_envelope or envelope).inputs or {}),
         )
 
     async def _verify_patch(
@@ -721,7 +755,9 @@ class PatchAcceptance:
         # on the qa task). Same key as block 5: a repair carrying a suite the stack's runner
         # collects has something to run, so the retest decides.
         repaired_suites = (
-            _repaired_suite_files(subject.patched_artifacts, subject.resolved_config)
+            _repaired_suite_files(
+                subject.patched_artifacts, subject.resolved_config, subject.runners
+            )
             if authors_qa_suite(envelope.task_type)
             else []
         )
@@ -880,7 +916,7 @@ class PatchAcceptance:
         # None means "no retest ran" — distinct from a retest that produced no
         # artifacts, which supersede_evidence_artifacts treats the same way (drop).
         retest_evidence: list[dict[str, Any]] | None = None
-        repaired_suites = _repaired_suite_files(patched_artifacts, resolved_config)
+        repaired_suites = _repaired_suite_files(patched_artifacts, resolved_config, subject.runners)
         if isinstance(corrected_outputs.get("test_result"), dict) or repaired_suites:
             if cycle is None:
                 logger.warning(

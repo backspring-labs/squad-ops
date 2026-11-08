@@ -1,0 +1,20 @@
+---
+template_id: request.qa_test_scaffold_harness_block
+version: "1"
+required_variables: []
+optional_variables: []
+---
+## Test boundary — consume the scaffold-provided harness
+
+If the scaffold provides a test harness (a root `conftest.py` exposing an application
+fixture such as `client`), your tests MUST consume it. Do **NOT** import the application
+entry module (e.g. `from backend.main import app`, `from app.main import app`, or
+`importlib.import_module("backend.main")`) or construct the application test client
+(e.g. `TestClient(app)`) yourself — the scaffold owns the application boundary, and a
+suite that re-derives it is rejected by the `harness_boundary` check. Request the fixture
+as a test argument (`def test_x(client): ...`); a pure unit test that needs no application
+access needs no fixture.
+
+That same `conftest.py` clears every scaffold-owned in-memory store **before each test**, so
+every case starts from an empty store whether or not it requests `client`. Do not define your
+own reset fixture and do not call `reset()` yourself: assert the state your case creates.

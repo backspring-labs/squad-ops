@@ -18,7 +18,8 @@ runtime-side, at its delivery (§24cd point 6). The decisions are the same modul
   the one delivery verified.
 - **The product's test files** are what the derived profile classes as tests (contract 8's
   ``files.test`` and ``files.test_support``, matched on the whole path), and the criterion files
-  the framework placed (§24cj). Every other tracked file is the product's (``ProductTestSurface``).
+  the framework placed (§24cj), with the page loaders placed beside page criteria's (#2799). Every
+  other tracked file is the product's (``ProductTestSurface``).
 - **A criterion's bundle** is its placed test file, the test files it imports, the package markers
   its directories need, and its runner's support files (§24bv point 3: "frozen with the
   test-support files the profile names"). Its invocation is its runner's one-file argv, the file
@@ -609,6 +610,7 @@ async def evaluate_on_runner(
     retired: Iterable[str],
     routes: Sequence[RouteResult],
     replaced: Iterable[NewCriterion] = (),
+    placed_support: Iterable[str] = (),
 ) -> tuple[IncrementEvaluation, tuple[OverlayRun, ...]]:
     """The increment's acceptance on the product's runner (§8, §24cd point 6): discrimination,
     accumulated acceptance and the profile's routes, as ``acceptance_run.evaluate_increment``
@@ -616,12 +618,17 @@ async def evaluate_on_runner(
     rendered on the candidate (``execution.product_routes``, §24co): empty where it names none.
 
     ``replaced`` is each frozen criterion whose verifier the change request replaces, at its own
-    test file (§8.1): frozen anew from the candidate and run as a frozen criterion is."""
+    test file (§8.1): frozen anew from the candidate and run as a frozen criterion is.
+
+    ``placed_support`` is the framework's files the change request placed beside its criteria's
+    tests, the page loaders (#2799): test files, as the placed criterion files are, so a bundle
+    whose test imports one is frozen with it, and the baseline's overlay takes it from the bundle,
+    since the accepted tree has none."""
     new, replaced = tuple(new), tuple(replaced)
     retired = frozenset(retired)
     frozen = tuple(c for c in frozen if c.criterion_id not in retired)
     placed = {c.test_path for c in new} | {c.test_path for c in frozen}
-    placed |= {c.test_path for c in replaced}
+    placed |= {c.test_path for c in replaced} | set(placed_support)
     surface = ProductTestSurface.of(runs.profile, placed)
     discriminations: list[Discrimination] = []
     bundles: dict[str, VerifierBundle] = {}

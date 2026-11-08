@@ -1,0 +1,22 @@
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/criterion_P2.test.jsx [ src/__tests__/criterion_P2.test.jsx ]
+Error: Failed to resolve import "../views/TrailSearchView.jsx" from "src/__tests__/criterion_P2.test.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /work/frontend/src/__tests__/criterion_P2.test.jsx:4:28
+  3  |  import { render, screen } from "@testing-library/react";
+  4  |  import { MemoryRouter } from "react-router-dom";
+  5  |  import TrailSearchView from "../views/TrailSearchView.jsx";
+     |                               ^
+  6  |  describe("P2: the trail search page", () => {
+  7  |    it("lists a trail matching the query", async () => {
+ ❯ TransformPluginContext._formatError node_modules/vite/dist/node/chunks/dep-BzOvws4Y.js:49159:41
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/dep-BzOvws4Y.js:49154:16
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/dep-BzOvws4Y.js:63936:23
+ ❯ node_modules/vite/dist/node/chunks/dep-BzOvws4Y.js:64068:39
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/dep-BzOvws4Y.js:63995:7
+ ❯ PluginContainer.transform node_modules/vite/dist/node/chunks/dep-BzOvws4Y.js:49000:18
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-BzOvws4Y.js:51822:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

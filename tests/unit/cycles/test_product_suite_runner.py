@@ -874,6 +874,7 @@ async def test_patch_acceptance_hands_the_retest_the_failed_tasks_suite():
             patched_artifacts=[{"name": "app/main.py", "content": _REPAIRED, "type": "source"}],
             workspace_files={},
             file_owned=[],
+            runners=(),
         ),
         run_id="run_1",
         cycle=SimpleNamespace(**vars(_CYCLE), cycle_id="cyc_x", prd_ref=None),
