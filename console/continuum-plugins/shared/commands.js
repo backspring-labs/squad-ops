@@ -1,7 +1,7 @@
-// The Continuum command bus, as the pinned shell answers it (console/continuum.lock, v1.0.2).
+// The Continuum command bus, as the pinned shell answers it (console/continuum.lock, v1.0.3).
 // Every console write goes through it (SIP-0074 §5.1): `POST /api/commands/execute` with
 // `{command_id, args, dry_run, confirmed}` (the shell's `CommandExecuteRequestBody`,
-// `src/continuum/adapters/web/api.py:78-84`), answered 200 with `{command_id, status, result,
+// `src/continuum/adapters/web/api.py:79-85`), answered 200 with `{command_id, status, result,
 // error, requires_confirmation, danger_level, audit_id, duration_ms}`:
 //   - `success`: the handler ran, and `result` is what it returned;
 //   - `pending` with `requires_confirmation: true`: a `confirm`/`danger` command sent without
