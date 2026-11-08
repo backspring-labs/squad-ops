@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_test_repair_failing_cases_appendix
-version: "2"
+version: "3"
 required_variables:
   - case_lines
   - case_count
@@ -20,3 +20,8 @@ application as it stands. Repair exactly these — fix the assertion, the setup 
 query that failed — and re-emit the file with the passing cases byte-for-byte unchanged.
 Do not rename, reorder, drop or rewrite a passing case; do not add cases. A repair that
 rewrites the whole file discards evidence the loop already has.
+
+Keep the suite's own fixtures. When a case read a fixture from the wrong path, fix the path: an
+inlined stand-in tests what you wrote into it, not what the product receives. A case whose
+assertions sit in a loop asserts first that the collection isn't empty, or it passes having
+checked nothing.
