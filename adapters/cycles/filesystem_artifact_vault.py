@@ -311,6 +311,10 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         path.write_text(json.dumps(baselines, indent=2))
 
 
+#: A metadata file's mode: readable by every reader of the vault, as `write_text` left it (#2921's follow-up).
+METADATA_MODE = 0o644
+
+
 def _write_json_atomically(path: Path, data: object) -> None:
     """Writes ``data`` as JSON to a temporary file beside ``path``, then renames it into place: a
     reader sees the old file or the new one, never a partial write (#2921: the artifact listing
@@ -319,6 +323,10 @@ def _write_json_atomically(path: Path, data: object) -> None:
     try:
         with open(fd, "w") as f:
             json.dump(data, f, indent=2)
+        # mkstemp creates the file 0600. The vault is read by more than the process that writes it:
+        # the release capture, the verification-set driver and triage read it from the host as
+        # another user. 0644 is what `write_text` gave under the default umask, before this helper.
+        Path(tmp).chmod(METADATA_MODE)
         Path(tmp).replace(path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
