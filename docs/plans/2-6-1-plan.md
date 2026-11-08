@@ -49,10 +49,14 @@ build, except D1 (§3), which is an option the owner can take or leave without b
   `compose stop` (`stop_ollama`, `:246`) and removes TensorFold's container (`stop_tensorfold`, `:390-394`). Under
   `unless-stopped`, a container stopped that way stays stopped across a daemon restart, and a removed one doesn't
   exist. So only the selected engine comes back. Ollama's compose service already carries `unless-stopped`.
+- **The watchdog's kill holds too:** `memory_watchdog.py:72` stops TensorFold with `docker kill` under memory
+  pressure. Tested on a throwaway container (2026-11-07): a killed `unless-stopped` container stayed down, while one
+  whose process exited by itself restarted. `always` would restart a killed container at the next daemon start, so
+  the policy is `unless-stopped`, not `always`.
 - **The fix:** `serve_command` adds `--restart unless-stopped`. The running container is updated in place with
   `docker update --restart unless-stopped`, which doesn't restart it.
-- **The test:** `serve_command`'s line carries the policy. A second test checks that the switch's stop paths are a
-  stop and a removal, not a `kill`, because a killed container would come back under `unless-stopped`.
+- **The test:** `serve_command`'s line carries `unless-stopped` as a `docker run` option, before the image (after
+  it, the engine would read it as its own argument).
 - **What stays open on #2932:** ask 2, an agent consuming a redelivered task while its engine is unreachable, is
   larger and goes to 2.7. The PR says `Refs #2932 — remaining: ask 2`.
 
