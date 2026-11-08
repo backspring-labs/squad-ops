@@ -97,8 +97,8 @@ def prior_emission_history(
     real defect — and the analysis handed to the correction chain described none of it.
 
     Read from the banked artifacts (#971 banks failed emissions precisely so this is
-    possible), newest last, one entry per stored emission: its name, size, and whether
-    the emission was marked failed. The analyzer is then told "N rounds happened and here
+    possible), newest last, one entry per stored emission: its name, size, and how the bank
+    marked it (``failed``, or ``handed_off`` to the product's runner, #2949), else ``stored``. The analyzer is then told "N rounds happened and here
     is what they were", instead of inferring a mechanism from an absence.
     """
     history: list[dict[str, Any]] = []

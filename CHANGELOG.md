@@ -18,6 +18,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
 
 ### Fixed
+- **A suite handed to the product's own runner is banked as handed off, not failed** (#2949): on a product
+  only its own runner runs (SIP-0112 H.26), every `qa.test` banked its emission `emission_status=failed`
+  seconds before the runner passed the task. The router now takes the runner's reading before the bank, and an
+  emission whose hand-off the runner passed is banked `handed_off`. It stays out of every workspace, delivered
+  tree and deliverable, as a failed one does, and the scorecard's `failed_emissions` and the verification-set
+  records no longer count it. A runner that fails the suite, a pass refused on the head, and a suite the image
+  ran and failed still bank `failed`. Stored rows read as they did. The Prefect task run, the agent's activity
+  and `task.failed` still read the hand-off as failed (#3000).
 - **A product's repaired suite is read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance
   found a repaired suite by the stack's collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/`
   rule (#1534). A product made from that blueprint runs under it, so a repair placed where the product's vitest

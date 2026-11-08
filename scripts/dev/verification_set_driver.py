@@ -2040,6 +2040,8 @@ def _refunded_suffix(rec: Mapping[str, Any]) -> str:
 
 
 def collect(cfg: SetConfig, cycle_id: str) -> dict:
+    from squadops.cycles.emission_integrity import banked_as
+
     runs = parse_run_rows(
         psql(
             "select run_number||'|'||workload_type||'|'||status||'|'||coalesce(failure_reason,'')||'|'"
@@ -2091,7 +2093,9 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
             )
             if round_id:
                 round_indices.add(int(round_id.group(1)))
-            if (m.get("metadata") or {}).get("emission_status") == "failed":
+            # #2949: a hand-off's bank is not a failed emission (``EmissionStatus.is_failure``).
+            banked = banked_as((m.get("metadata") or {}).get("emission_status"))
+            if banked is not None and banked.is_failure:
                 failed_emission_artifacts += 1
                 banked_metadata.append(m.get("metadata") or {})
     snapshot = psql(
@@ -5336,9 +5340,11 @@ def uncollected_suites(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
     (``cyc_d988c11c71f5``) stored ``__tests__/runs-ui.test.tsx`` as run-nothing and its record
     read clean, and the shape recurred on 1.8.0 deploy A (#1534). Read from the report, the
     only persisted carrier, with the qa handler's own label. Each entry names the task and
-    whether the report was banked with a failed emission (#971) or stored as the task's.
+    whether the report was banked with a failed emission (#971), banked with a hand-off to the
+    product's runner (#2949), or stored as the task's.
     """
     from squadops.capabilities.handlers.cycle.qa_test import UNCOLLECTED_REPORT_LABEL
+    from squadops.cycles.emission_integrity import banked_as
 
     reports = 0
     out: list[dict] = []
@@ -5358,7 +5364,7 @@ def uncollected_suites(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
             out.append(
                 {
                     "task_id": meta.get("task_id"),
-                    "banked": "failed" if meta.get("emission_status") == "failed" else "stored",
+                    "banked": str(banked_as(meta.get("emission_status")) or "stored"),
                     "files": files,
                 }
             )
@@ -5411,6 +5417,9 @@ def _render_revision_forms(entries: list[dict]) -> str:
 def _render_uncollected(entries: list[dict]) -> str:
     """``__tests__/runs-ui.test.tsx`` (3 reports: 1 failed, 2 stored) — per file, so a suite
     that ran nothing on every attempt reads differently from one a repair renamed."""
+    from squadops.cycles.emission_integrity import EmissionStatus
+
+    kinds = (*(str(status) for status in EmissionStatus), "stored")
     by_file: dict[str, list[str]] = {}
     for entry in entries or []:
         for name in entry.get("files") or []:
@@ -5419,7 +5428,7 @@ def _render_uncollected(entries: list[dict]) -> str:
         return "0"
     parts = []
     for name, banked in sorted(by_file.items()):
-        counts = ", ".join(f"{banked.count(k)} {k}" for k in ("failed", "stored") if k in banked)
+        counts = ", ".join(f"{banked.count(k)} {k}" for k in kinds if k in banked)
         parts.append(f"`{name}` ({len(banked)} report{'s' if len(banked) != 1 else ''}: {counts})")
     return "; ".join(parts)
 
