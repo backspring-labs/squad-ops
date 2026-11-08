@@ -32,7 +32,11 @@ from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lesso
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
-from squadops.capabilities.handlers.source_repository import source_repository_section
+from squadops.capabilities.handlers.source_repository import (
+    product_conventions_template,
+    source_backed,
+    source_repository_section,
+)
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -2508,13 +2512,24 @@ class QATestHandler(_CycleTaskHandler):
         capability_name: str,
         inputs: dict[str, Any] | None = None,
     ) -> tuple[Any, str]:
-        """Build the QA prompt via renderer or fallback. Returns (rendered, user_prompt)."""
+        """Build the QA prompt via renderer or fallback. Returns (rendered, user_prompt).
+
+        SIP-0112 H.29: a plan-less task of a repository-backed product is shown the product as a
+        plan's task is (``source_repository_section``: its map, its conventions, how it is checked
+        and where its runners find a test), and none of the prose a sample application's skeleton
+        is described by: the scaffold's harness, and the profile's test supplement where the view
+        shows the stack's conventions for a product in its place."""
         rendered = None
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
+            task_inputs = inputs or {}
             variables: dict[str, str] = {
                 "prd": prd,
-                "test_supplement": capability.test_prompt_supplement,
+                "test_supplement": (
+                    ""
+                    if product_conventions_template(task_inputs)
+                    else capability.test_prompt_supplement
+                ),
             }
             if val_plan:
                 variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
@@ -2524,6 +2539,14 @@ class QATestHandler(_CycleTaskHandler):
                     lang = self._fence_lang(path)
                     source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
                 variables["source_files"] = "\n".join(source_parts)
+            if not source_backed(task_inputs):
+                harness = await renderer.render("request.qa_test_scaffold_harness_block", {})
+                variables["scaffold_harness_section"] = harness.content
+            repository = await source_repository_section(
+                renderer, task_inputs, task_type=self._task_type
+            )
+            if repository:
+                variables["source_repository_section"] = repository
             variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
             # SIP-0110 Appendix A §3.6 (#2674): this task's instructions and its project's, before
             # the lessons, as the focused path shows them. None handed renders the prompt unchanged.

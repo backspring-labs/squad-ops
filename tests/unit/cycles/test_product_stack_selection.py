@@ -172,7 +172,8 @@ async def test_the_test_author_is_never_told_python_on_a_product_that_isnt(deriv
 
 async def test_the_monolithic_test_prompt_names_vitest_not_pytest():
     """``qa_test.py``'s ``test_prompt_supplement``: under ``python_cli`` this read "You are
-    generating pytest test files" on a vitest product."""
+    generating pytest test files" on a vitest product. Since H.29 the monolithic prompt shows the
+    product's view, whose ``node_vitest`` conventions name vitest in the supplement's place."""
     prepared = await _prepared(_NODE)
     ctx = _context(_TEST_REPLY)
     inputs = _inputs(prepared.cycle.resolved_config(), "test/steer.test.js", view=_NODE_VIEW)
@@ -182,7 +183,7 @@ async def test_the_monolithic_test_prompt_names_vitest_not_pytest():
 
     messages, _ = _first_call(ctx)
     prompt = messages[0].content + messages[1].content
-    assert "You are generating vitest test files" in prompt
+    assert "A test is vitest, run by the product's own runner" in prompt
     assert "pytest" not in prompt
 
 

@@ -346,9 +346,12 @@ def _pin_development_profile(
     A profile the request names stands, unless it contradicts the product's runners, which is
     refused rather than run (``development_profile_conflict``).
 
-    A plan-less cycle's tasks aren't shown the product, so a profile with skeleton prose would give
-    them its test placement: it gets a pin only from a profile that holds none, which the ones
-    leaving the suite to the product's runner don't. Nothing is pinned with no profile at the pin.
+    A plan-less cycle's test author is shown the product, with the profile's test prose withheld in
+    favour of its conventions (H.29), but its developer's monolithic prompt still lays files out by
+    the profile's ``file_structure_guidance`` and ``example_structure``. So a profile with skeleton
+    prose would place its files: such a cycle gets a pin only from a profile that holds none, which
+    the ones leaving the suite to the product's runner don't. Nothing is pinned with no profile at
+    the pin.
 
     Returns what was selected, or ``None``."""
     if profile is None:
