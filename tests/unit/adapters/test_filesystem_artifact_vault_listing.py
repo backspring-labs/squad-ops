@@ -94,3 +94,13 @@ def test_a_failed_write_leaves_the_old_file_and_no_temporary(tmp_path):
 
     assert json.loads(path.read_text()) == {"artifact_id": "art_old"}
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+async def test_metadata_stays_readable_by_the_vaults_other_readers(vault, tmp_path):
+    """Bug caught (2.6.1's #2968): the atomic write's temporary file kept mkstemp's 0600, so every
+    metadata file written since was unreadable to the release capture and the driver on the host."""
+    await vault.promote_artifact("art_000000000002")
+
+    modes = {p.stat().st_mode & 0o777 for p in tmp_path.rglob("metadata.json")}
+    assert modes == {0o644}
+    assert vault._index_path.stat().st_mode & 0o777 == 0o644

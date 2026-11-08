@@ -5,6 +5,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
+  write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release
+  capture, the verification-set driver and triage, which read the vault as another user. Files are 0644 again, as
+  `write_text` left them.
+
 ## [2.6.1] — 2026-11-07
 
 The 2.6 line's first patch (`docs/plans/2-6-1-plan.md`): what an operator meets first on 2.6.0, fixed small.
