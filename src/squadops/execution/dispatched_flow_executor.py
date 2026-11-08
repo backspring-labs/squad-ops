@@ -5342,7 +5342,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             metadata["written_by_task_type"] = writer.task_type
             metadata["written_by_role"] = writer.role
         if emission_status:
-            metadata["emission_status"] = emission_status
+            # A plain string on the record: the vocabulary is the core's (``EmissionStatus``).
+            metadata["emission_status"] = str(emission_status)
         if attempt is not None:
             metadata["attempt"] = attempt
         ref = ArtifactRef(
