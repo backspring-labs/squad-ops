@@ -238,6 +238,13 @@ class ArtifactNotFoundError(CycleError):
     """Raised when an artifact_id cannot be found."""
 
 
+class ArtifactUnreadableError(CycleError):
+    """An artifact's record exists but can't be read whole (#2931): its metadata doesn't parse, or
+    its content is missing or doesn't match the size and hash its metadata records. Never a
+    subclass of ``ArtifactNotFoundError``: a reader that treats a missing artifact as absent must
+    not read a damaged one as absent too."""
+
+
 class BaselineNotAllowedError(CycleError):
     """Raised when baseline promotion is attempted on a fresh build strategy."""
 

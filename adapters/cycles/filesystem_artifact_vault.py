@@ -4,6 +4,23 @@ Filesystem artifact vault adapter (SIP-0064).
 Stores artifact bytes to local filesystem with JSON sidecar metadata.
 Vault enforces integrity (content_hash, vault_uri) but NOT business policy (T6).
 
+Durability (#2931). ``store()`` writes in this order, each step a temp file beside its target that is
+fsynced, renamed into place, and followed by an fsync of its directory:
+
+1. the content;
+2. the metadata, carrying the content's ``content_hash`` and ``size_bytes``. **Its rename is the
+   commit point:** an artifact exists when its metadata is readable and its content matches it;
+3. the artifact-id index.
+
+``store()`` returns only then, so a checkpoint in Postgres can never reference an artifact the
+disk didn't keep. A crash before step 2 leaves content with no metadata, which is no artifact.
+The baselines file and the index are written the same way.
+
+A record that exists but can't be read whole (metadata that doesn't parse; content missing, or not
+the size or hash its metadata records) is ``ArtifactUnreadableError`` to a read that needs it: a
+retrieve, a metadata read, a baseline's resolution. A listing skips it and names it in a structured
+warning (``artifact_record_unreadable``), so one damaged file can't fail a listing for another run.
+
 Layout:
   <base_dir>/
     <project_id>/<cycle_id>/<run_id>/<artifact_id>/metadata.json + <filename>
@@ -19,11 +36,12 @@ import dataclasses
 import hashlib
 import json
 import logging
+import os
 import tempfile
 from pathlib import Path
 
 from squadops.cycles.artifact_names import artifact_filename_refusal
-from squadops.cycles.models import ArtifactNotFoundError, ArtifactRef
+from squadops.cycles.models import ArtifactNotFoundError, ArtifactRef, ArtifactUnreadableError
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 
 logger = logging.getLogger(__name__)
@@ -47,9 +65,25 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         return self._base_dir / "_index.json"
 
     def _load_index(self) -> dict[str, str]:
-        if self._index_path.exists():
-            return json.loads(self._index_path.read_text())
-        return {}
+        if not self._index_path.exists():
+            return {}
+        try:
+            index = json.loads(self._index_path.read_text())
+        except ValueError:
+            index = None
+        if not isinstance(index, dict):
+            # #2931: an index a power loss left empty is rebuilt from the tree, which holds every
+            # id it maps, rather than failing every lookup.
+            logger.warning(
+                "artifact_index_unreadable_rebuilt", extra={"path": str(self._index_path)}
+            )
+            index = self._index_from_tree()
+            self._replace_unreadable_index(index)
+        return index
+
+    def _replace_unreadable_index(self, index: dict[str, str]) -> None:
+        """Where an index rebuilt from the tree goes: written over the unreadable one."""
+        self._save_index(index)
 
     def _save_index(self, index: dict[str, str]) -> None:
         _write_json_atomically(self._index_path, index)
@@ -60,14 +94,15 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         self._save_index(index)
 
     def _rebuild_index(self) -> None:
+        self._save_index(self._index_from_tree())
+
+    def _index_from_tree(self) -> dict[str, str]:
         index: dict[str, str] = {}
         for meta_path in self._base_dir.rglob("metadata.json"):
             art_dir = meta_path.parent
-            rel = str(art_dir.relative_to(self._base_dir))
             # The artifact_id is the last component of the path
-            artifact_id = art_dir.name
-            index[artifact_id] = rel
-        self._save_index(index)
+            index[art_dir.name] = str(art_dir.relative_to(self._base_dir))
+        return index
 
     # --- Path helpers ---
 
@@ -107,7 +142,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         content_hash = hashlib.sha256(content).hexdigest()
 
         content_path.parent.mkdir(parents=True, exist_ok=True)
-        content_path.write_bytes(content)
+        _write_atomically(content_path, content, CONTENT_MODE)
 
         vault_uri = str(content_path)
 
@@ -139,7 +174,19 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
         ref = self._load_metadata(meta_path)
         content_path = art_dir / ref.filename
-        content = content_path.read_bytes()
+        try:
+            content = content_path.read_bytes()
+        except FileNotFoundError:
+            raise ArtifactUnreadableError(
+                f"Artifact {artifact_id} is unreadable: its content {ref.filename!r} is missing"
+            ) from None
+        if (ref.size_bytes is not None and len(content) != ref.size_bytes) or (
+            ref.content_hash and hashlib.sha256(content).hexdigest() != ref.content_hash
+        ):
+            raise ArtifactUnreadableError(
+                f"Artifact {artifact_id} is unreadable: its content doesn't match the size and "
+                "hash its metadata records"
+            )
         return ref, content
 
     async def get_metadata(self, artifact_id: str) -> ArtifactRef:
@@ -267,7 +314,16 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         if not scan_dir.exists():
             return
         for meta_path in scan_dir.rglob("metadata.json"):
-            ref = self._load_metadata(meta_path)
+            try:
+                ref = self._load_metadata(meta_path)
+            except ArtifactUnreadableError as e:
+                # #2931: one damaged record failed every listing that walked past it, a completed
+                # run's included. It is skipped and named; a read that needs it still refuses.
+                logger.warning(
+                    "artifact_record_unreadable",
+                    extra={"path": str(meta_path.relative_to(self._base_dir)), "reason": str(e)},
+                )
+                continue
             if project_id and ref.project_id != project_id:
                 continue
             if cycle_id and ref.cycle_id != cycle_id:
@@ -281,7 +337,21 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             results.append(ref)
 
     def _load_metadata(self, meta_path: Path) -> ArtifactRef:
-        data = json.loads(meta_path.read_text())
+        """The record ``meta_path`` holds, or ``ArtifactUnreadableError`` naming the artifact when
+        it doesn't parse (an empty file after a power loss, #2931) or doesn't hold an artifact."""
+        try:
+            return self._parse_metadata(meta_path.read_text())
+        except (ValueError, TypeError, KeyError) as e:
+            raise ArtifactUnreadableError(
+                f"Artifact {meta_path.parent.name} is unreadable: its metadata doesn't parse "
+                f"({type(e).__name__})"
+            ) from e
+
+    @staticmethod
+    def _parse_metadata(text: str) -> ArtifactRef:
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise TypeError("metadata is not an object")
         from datetime import datetime
 
         if isinstance(data.get("created_at"), str):
@@ -301,33 +371,60 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
     def _load_baselines(self, project_id: str) -> dict:
         path = self._baselines_path_for_project(project_id)
-        if path.exists():
-            return json.loads(path.read_text())
-        return {}
+        if not path.exists():
+            return {}
+        try:
+            baselines = json.loads(path.read_text())
+        except ValueError:
+            baselines = None
+        if not isinstance(baselines, dict):
+            # Never read as "no baseline": a damaged record refuses the read that needs it (#2931).
+            raise ArtifactUnreadableError(f"Project {project_id}'s baselines record doesn't parse")
+        return baselines
 
     def _save_baselines(self, project_id: str, baselines: dict) -> None:
         path = self._baselines_path_for_project(project_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(baselines, indent=2))
+        _write_json_atomically(path, baselines)
 
 
 #: A metadata file's mode: readable by every reader of the vault, as `write_text` left it (#2921's follow-up).
 METADATA_MODE = 0o644
+#: A content file's mode: as `write_bytes` left it under the default umask, before #2931.
+CONTENT_MODE = 0o644
 
 
 def _write_json_atomically(path: Path, data: object) -> None:
-    """Writes ``data`` as JSON to a temporary file beside ``path``, then renames it into place: a
-    reader sees the old file or the new one, never a partial write (#2921: the artifact listing
-    reads metadata files from a worker thread while the vault writes them)."""
+    """``data`` as JSON, written by ``_write_atomically``."""
+    _write_atomically(path, json.dumps(data, indent=2).encode(), METADATA_MODE)
+
+
+def _write_atomically(path: Path, data: bytes, mode: int) -> None:
+    """Writes ``data`` to a temporary file beside ``path``, fsyncs it, renames it into place, then
+    fsyncs the directory, so the rename itself survives a power loss (#2931). A reader sees the old
+    file or the new one, never a partial write (#2921: the artifact listing reads metadata files
+    from a worker thread while the vault writes them)."""
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        with open(fd, "w") as f:
-            json.dump(data, f, indent=2)
+        with open(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
         # mkstemp creates the file 0600. The vault is read by more than the process that writes it:
         # the release capture, the verification-set driver and triage read it from the host as
-        # another user. 0644 is what `write_text` gave under the default umask, before this helper.
-        Path(tmp).chmod(METADATA_MODE)
+        # another user.
+        Path(tmp).chmod(mode)
         Path(tmp).replace(path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+    _fsync_directory(path.parent)
+
+
+def _fsync_directory(directory: Path) -> None:
+    """A rename is durable only once its directory is: fsync the directory's own entry."""
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)

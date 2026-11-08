@@ -22,15 +22,17 @@ class ReadOnlyVault(FilesystemArtifactVault):
     _memory_index: dict[str, str] | None = None
 
     def _load_index(self) -> dict[str, str]:
+        if self._memory_index is not None:
+            return self._memory_index
         try:
             return super()._load_index()
         except PermissionError:
-            if self._memory_index is None:
-                self._memory_index = {
-                    meta.parent.name: str(meta.parent.relative_to(self._base_dir))
-                    for meta in self._base_dir.rglob("metadata.json")
-                }
+            self._memory_index = self._index_from_tree()
             return self._memory_index
+
+    def _replace_unreadable_index(self, index: dict[str, str]) -> None:
+        """An unreadable index (#2931) is rebuilt in memory too, and never written."""
+        self._memory_index = index
 
     def _save_index(self, index: dict[str, str]) -> None:
         raise RuntimeError("a read-only vault never writes its index")

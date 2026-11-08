@@ -12,6 +12,7 @@ from squadops.api.errors import ErrorRow, mapped_error
 from squadops.cycles.models import (
     ActiveProfileDeletionError,
     ArtifactNotFoundError,
+    ArtifactUnreadableError,
     BaselineNotAllowedError,
     CycleError,
     CycleNotFoundError,
@@ -43,6 +44,7 @@ _ERROR_MAP: list[ErrorRow] = [
     (CycleNotFoundError, 404, "CYCLE_NOT_FOUND"),
     (RunNotFoundError, 404, "RUN_NOT_FOUND"),
     (ArtifactNotFoundError, 404, "ARTIFACT_NOT_FOUND"),
+    (ArtifactUnreadableError, 500, "ARTIFACT_UNREADABLE"),
     (ProfileNotFoundError, 404, "PROFILE_NOT_FOUND"),
     (DevelopmentConfigurationNotFoundError, 404, "DEVELOPMENT_CONFIGURATION_NOT_FOUND"),
     (InheritedBaselineNotFoundError, 404, "INHERITED_BASELINE_NOT_FOUND"),
