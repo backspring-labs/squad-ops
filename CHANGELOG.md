@@ -27,6 +27,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   with its script and its in-repository boundary file.
 
 ### Fixed
+- **A product's change request can't reuse the anchor of a page an earlier increment added** (#2783, SIP-0109 §24dq):
+  the PROMOTE row on a campaign branch records each page the increment added and acceptance held, with every test id
+  its page carried. The next launch pins that inventory beside the frozen criteria. The rails judge an accepted page
+  as a pinned one and refuse an added page's anchor that one carries. The proposer is shown those pages and their ids.
+  Acceptance renders them in the expected set, so a candidate that drops one is rejected, and a page never built
+  that reuses one's anchor is blocked, never held. A product with no approved manifest is covered by the same
+  inventory. After its outside review (§24dr): an added page's anchor is also held unique against the candidate's
+  own rendered pages; each promotion records the inventory's pages again with the ids they carry now; a pinned
+  route's inventory ids stay taken at acceptance. A launch or promotion from before the inventory is refused rather
+  than read as empty: the proposal and acceptance refuse a block without one, and a Campaign whose log has such a
+  promotion escalates before its next proposal, naming the row. Both the runtime-api and nat images have to answer
+  their loaded checks (`2783-runtime`, `2783-nat`) before the fix is relied on.
 - **A suite handed to the product's own runner is banked as handed off, not failed** (#2949): on a product
   only its own runner runs (SIP-0112 H.26), every `qa.test` banked its emission `emission_status=failed`
   seconds before the runner passed the task. The router now takes the runner's reading before the bank, and an

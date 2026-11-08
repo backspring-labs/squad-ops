@@ -1743,6 +1743,8 @@ async def test_a_continuation_carries_the_increments_keys_and_its_own_lineage_an
             "unapproved_proposals": [{"proposal_id": "prop_old"}],
             "supervisor_note": "narrow it",
             "a_lineage_key_added_later": "cyc_first",
+            # §24dq: the continuation's acceptance judges the pages its increment's launch pinned.
+            "accepted_pages": [{"route": "/t", "anchor": "t-view", "testids": ["t-view"]}],
         },
     )
 
@@ -1751,9 +1753,10 @@ async def test_a_continuation_carries_the_increments_keys_and_its_own_lineage_an
     assert retry.cycle_kind is CycleKind.RETRY
     assert sorted(block) == sorted(
         ["proposal_id", "version", "baseline_tree", "accepted_cycle_id", "baseline_manifest"]
-        + ["continues", "prior_cycle"]
+        + ["accepted_pages", "continues", "prior_cycle"]
     )
     assert (block["continues"], block["prior_cycle"]["cycle_id"]) == ("cyc_inc", "cyc_inc")
+    assert block["accepted_pages"] == [{"route": "/t", "anchor": "t-view", "testids": ["t-view"]}]
 
 
 async def test_a_retry_whose_failed_cycle_cant_be_read_carries_no_brief_not_an_older_one(
@@ -3189,4 +3192,7 @@ async def test_a_rebase_that_supersedes_the_items_repair_proposes_the_item_again
         "campaign_branch",
         "upstream_moved",
     )
+    # SIP-0109 §24dr item 4: pinned on every repository-backed launch, empty for none, so the
+    # proposal and acceptance can tell it from a block an old runtime-api wrote.
+    assert block["accepted_pages"] == []
     assert isinstance(unaware, str) and "no pending backlog item" in unaware

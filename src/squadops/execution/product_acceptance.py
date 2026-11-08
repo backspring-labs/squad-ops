@@ -13,9 +13,10 @@ here, runtime-side, once its delivery has verified and captured the candidate:
   candidate judged is the revision delivery verified;
 - **its runner** is the derived profile's, read at the Project's pin (§24cd point 3), and its
   argvs run as the configuration's checks run (H.6);
-- **its routes** are the profile's client routes, rendered on the candidate started in the sandbox
-  from the product's declared start, by the renderer the root hands in
-  (``scenarios.declared_routes``, §24co);
+- **its routes** are the profile's client routes, the pages the campaign's accepted increments
+  added (§24dq) and the change request's, rendered on the candidate started in the sandbox from the
+  product's declared start, by the renderer the root hands in (``scenarios.declared_routes``,
+  §24co);
 - **its record** is the ``increment_evaluation`` document a sample application's evaluation writes
   (``acceptance_run.evaluation_document``), stored on the implementation run, so the campaign's
   completion reads it unchanged: the verdict, the bundles a promotion freezes, the brief a
@@ -49,7 +50,12 @@ from squadops.campaigns.increment_tree import (
     increment_basis,
     increment_evaluation_inputs,
 )
-from squadops.campaigns.product_routes import requested_routes, routes_blocked
+from squadops.campaigns.product_routes import (
+    ACCEPTED_PAGES,
+    page_inventory,
+    requested_routes,
+    routes_blocked,
+)
 from squadops.campaigns.runner_acceptance import (
     RunnerAcceptance,
     RunnerSetup,
@@ -145,11 +151,20 @@ async def evaluate_product_increment(
         verified_candidate_revision=delivery.verification.candidate_revision_id,
     )
     # §24co: the profile's routes and the change request's, rendered on the candidate started
-    # from its declaration.
+    # from its declaration. §24dq: and the pages the campaign's accepted increments added, from
+    # the inventory its launch pinned, as the frozen criteria are.
     requested = requested_routes(change_request)
+    try:
+        # §24dr item 4: required. A block without one was launched by a runtime-api from before
+        # §24dq, and reading it as empty is the false acceptance #2783 is.
+        accepted_pages = page_inventory(
+            (resolved.get("campaign_proposal") or {}).get(ACCEPTED_PAGES), required=True
+        )
+    except ValueError as e:
+        raise ProductAcceptanceRefused(str(e)) from e
     if route_renderer is None:
         routes = routes_blocked(
-            tuple(dict.fromkeys((*(profile.client_routes or ()), *requested))),
+            tuple(dict.fromkeys((*(profile.client_routes or ()), *accepted_pages, *requested))),
             "no route renderer: this runtime wires none",
         )
     else:
@@ -162,6 +177,7 @@ async def evaluate_product_increment(
             candidate=candidate,
             verified_candidate_revision=delivery.verification.candidate_revision_id,
             requested_routes=requested,
+            accepted_pages=accepted_pages,
         )
     evaluation, done = await evaluate_on_runner(
         runs,

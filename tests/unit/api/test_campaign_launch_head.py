@@ -390,5 +390,8 @@ def test_a_branch_trees_increment_intent_binds_no_tree_and_a_sample_applications
         "accepted_cycle_id",
         "baseline_manifest",
     }
-    assert set(branch_block) - set(vault_block) == {"basis"}
+    # SIP-0109 §24dr item 4: and the accepted-page inventory, empty for none, so a block without
+    # it is one written before §24dq. A sample application's pages are its manifest's.
+    assert set(branch_block) - set(vault_block) == {"basis", "accepted_pages"}
     assert branch_block["basis"] == "campaign_branch"
+    assert branch_block["accepted_pages"] == []

@@ -36,6 +36,7 @@ from squadops.campaigns.change_request import (
 )
 from squadops.campaigns.criterion_placement import RunnerPlacement
 from squadops.campaigns.prior_cycle import brief_lines
+from squadops.campaigns.product_routes import ACCEPTED_PAGES, page_inventory
 from squadops.campaigns.proposed_behaviours import proposal_lines
 from squadops.campaigns.unapproved_proposals import unapproved_lines
 from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
@@ -129,18 +130,31 @@ def proposal_context_from(
             prior_criteria=tuple(str(c) for c in block.get("prior_criteria") or ()),
             shown_goals=shown_goals,
             shown_goal_statements=shown_goal_statements,
-            product=None if basis.has_manifest else product_context(product or {}),
+            product=None
+            if basis.has_manifest
+            else product_context(product or {}, block.get(ACCEPTED_PAGES), required=True),
             backlog=backlog_rail((product or {}).get("goals")),
         )
     except (KeyError, TypeError, ValueError) as e:
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
 
 
-def product_context(product: dict) -> ProductContext:
+def product_context(
+    product: dict, accepted_pages: Any = None, *, required: bool = False
+) -> ProductContext:
     """The rails' reading of a ``product_proposal`` input: each public surface as ``(kind,
     value)``, each runner's placement, and the client routes acceptance already judges (§24cp).
     An input composed before §24cp names no routes, so every page criterion reads as adding one,
-    and must name its anchor: stricter, never looser."""
+    and must name its anchor: stricter, never looser.
+
+    ``accepted_pages`` is the inventory the launch block pinned (§24dq): the pages earlier
+    increments added, each judged by the anchor it was accepted with. ``required``: the block is a
+    repository-backed increment's, which carries one since §24dr item 4, so a block without it was
+    launched by a runtime-api from before §24dq, and is refused rather than read as empty.
+
+    Raises:
+        ValueError: A page of the inventory names no route or no anchor, or a ``required`` one is
+            absent (``product_routes.page_inventory``)."""
     profile = product["profile"]
     return ProductContext(
         surfaces=tuple(
@@ -150,6 +164,7 @@ def product_context(product: dict) -> ProductContext:
         test_files=tuple(str(g) for g in profile.get("test_files") or ()),
         judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
         route_anchors=_route_anchors(product.get("approved_manifest")),
+        accepted_pages=tuple(page_inventory(accepted_pages, required=required).items()),
     )
 
 
@@ -473,12 +488,21 @@ async def product_sections(
         "placement_lines": "\n".join(_placement_line(p) for p in profile.get("placements") or ())
         or "- none: the product declares no test runner",
     }
-    judged = profile.get("client_routes") or []
+    judged = [f"- `{r}`" for r in profile.get("client_routes") or []]
+    # SIP-0109 §24dq: and each page an earlier increment added, with the ids it was accepted by.
+    earlier = page_inventory(
+        ((inputs.get("resolved_config") or {}).get("campaign_proposal") or {}).get(ACCEPTED_PAGES)
+    )
+    judged += [
+        f"- `{r}`, added by an earlier increment: its page carries "
+        + ", ".join(f"`{t}`" for t in ids)
+        for r, ids in earlier.items()
+        if r not in (profile.get("client_routes") or [])
+    ]
     if judged:
         # SIP-0109 §24cp: a page criterion on one of these names no anchor; on any other, one.
         rendered = await renderer.render(
-            "request.proposal_judged_routes",
-            {"route_lines": "\n".join(f"- `{r}`" for r in judged)},
+            "request.proposal_judged_routes", {"route_lines": "\n".join(judged)}
         )
         profile_variables["judged_routes_section"] = rendered.content
     gaps = profile.get("gaps") or []

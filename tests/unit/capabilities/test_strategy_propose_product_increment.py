@@ -78,6 +78,8 @@ def _inputs(*, product: bool = True) -> dict:
                     "requirements": "repo:file:README.md@current",
                 },
                 "prior_criteria": [],
+                # §24dr item 4: every repository-backed launch pins one, empty for none.
+                "accepted_pages": [],
             },
         },
         "source_repository": {
@@ -326,6 +328,76 @@ async def test_an_added_page_reusing_a_pinned_views_anchor_is_returned_and_revis
     assert result.success, result.error
     [artifact] = result.outputs["artifacts"]
     assert yaml.safe_load(artifact["content"])["criteria"][0]["anchor"] == "totals-view"
+
+
+def _after_totals(pages: list) -> dict:
+    """Tally with a UI base and no blueprint, so no approved manifest and no judged page, launched
+    with the inventory ``increment_launch`` pins (§24dq): ``/totals``, an earlier increment's."""
+    inputs = _inputs()
+    inputs["product_proposal"]["profile"]["public_surfaces"].append(
+        {"kind": "ui_base", "url": "http://127.0.0.1:18408/"}
+    )
+    inputs["resolved_config"]["campaign_proposal"]["accepted_pages"] = pages
+    return inputs
+
+
+async def test_a_page_reusing_an_earlier_increments_anchor_is_returned_and_revised():
+    """SIP-0109 §24dq, at ``handle()`` with the real assets, on a product with no approved
+    manifest: the launch block's inventory reaches the proposer, who is shown ``/totals`` and the
+    ids its page carried, and the rails, which return ``/summary`` reusing ``totals-row``. Bugs
+    caught: the inventory pinned and never read, so the reuse passes and ``/summary``, never built,
+    holds where the fallback renders the totals view; or the proposer told nothing, so it guesses
+    an anchor and spends a revision learning it was taken."""
+    page = {"route": "/totals", "anchor": "totals-view", "testids": ["totals-view", "totals-row"]}
+    reusing = yaml.safe_load(_ADDS_A_PAGE)
+    reusing["criteria"][0].update(surface="/summary", anchor="totals-row")
+    own = yaml.safe_load(_ADDS_A_PAGE)
+    own["criteria"][0].update(surface="/summary", anchor="summary-view")
+    ctx = _ctx(
+        _fenced(yaml.safe_dump(reusing, sort_keys=False)),
+        _fenced(yaml.safe_dump(own, sort_keys=False)),
+    )
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _after_totals([page]))
+
+    first, second = _prompts(ctx)
+    assert "**The pages acceptance already reads.**" in first
+    assert (
+        "\n- `/totals`, added by an earlier increment: its page carries `totals-view`, "
+        "`totals-row`\n" in first
+    )
+    assert "[anchor_not_unique]" in second
+    assert "anchor 'totals-row' for /summary, a page this change adds, and /totals" in second
+    assert result.success, result.error
+    [artifact] = result.outputs["artifacts"]
+    assert yaml.safe_load(artifact["content"])["criteria"][0]["anchor"] == "summary-view"
+
+
+async def test_an_inventory_the_proposal_cant_read_fails_it_and_proposes_nothing():
+    """The edge: a page with no anchor can't be held against. Bug caught: it skipped, so the
+    proposal runs with that page's anchor free to reuse."""
+    ctx = _ctx(_fenced(_ADDS_A_PAGE))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _after_totals([{"route": "/t"}]))
+
+    assert not result.success
+    assert "names no route or no anchor" in result.error
+    ctx.ports.llm.chat_stream_with_usage.assert_not_awaited()
+
+
+async def test_a_block_an_old_runtime_api_launched_with_no_inventory_fails_the_proposal():
+    """SIP-0109 §24dr item 4, the skew a mixed deploy makes: a runtime-api from before §24dq
+    launched the proposal, so its block names no inventory. Bug caught: the new nat reading it as
+    an empty one, so a page reusing an accepted page's anchor passes the rails, as before #2783."""
+    ctx = _ctx(_fenced(_ADDS_A_PAGE))
+    inputs = _after_totals([])
+    del inputs["resolved_config"]["campaign_proposal"]["accepted_pages"]
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert not result.success
+    assert "the accepted-page inventory can't be read: the launch pinned none" in result.error
+    ctx.ports.llm.chat_stream_with_usage.assert_not_awaited()
 
 
 # --- SIP-0115 §5.2, §5.3: a goal-set Campaign's proposal (SIP-0109 §24cy) ---

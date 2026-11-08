@@ -856,6 +856,11 @@ class ProductContext:
     #: H.1) with every test id its view carries, the first its root (#659). An added page names an
     #: anchor none of them carries. Empty for a product initialized from no manifest.
     route_anchors: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    #: §24dq: each page the campaign's accepted increments added, with the test ids its page
+    #: carried when acceptance held it, its anchor first: the accepted-page inventory its launch
+    #: pinned. Each is judged at acceptance by that anchor, as a judged route is by its manifest's,
+    #: and an added page names an anchor none of them carries. Empty before any page was accepted.
+    accepted_pages: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def serves(self, kind: str) -> tuple[str, ...]:
         return tuple(value for k, value in self.surfaces if k == kind)
@@ -1114,8 +1119,12 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
     route names none: that route is judged by its approved manifest's anchor (§24co item 5), and a
     second anchor would be one nothing reads. The criteria on one added route name one anchor. An
     added route whose page needs a seed (``_unseedable``) is refused: nothing seeds it, so it could
-    only block. A criterion on a page the product can't serve is refused by its surface alone."""
-    judged = set(product.judged_routes)
+    only block. A criterion on a page the product can't serve is refused by its surface alone.
+
+    §24dq: a page an earlier increment added and acceptance held is judged as a pinned one is, by
+    the anchor it was accepted with, and its ids are held against as the manifest's are. No
+    manifest names it (§24bv point 5), so without the inventory a later page could reuse it."""
+    judged = set(product.judged_routes) | {route for route, _ids in product.accepted_pages}
     refusals: list[ProposalRefusal] = []
     named: dict[str, dict[str, list[str]]] = {}
     for c in request.criteria:
@@ -1165,7 +1174,8 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
                 )
             )
     single = {route: next(iter(anchors)) for route, anchors in named.items() if len(anchors) == 1}
-    for route, others in sorted(anchor_conflicts(single, dict(product.route_anchors)).items()):
+    taken = pages_carrying(dict(product.route_anchors), dict(product.accepted_pages))
+    for route, others in sorted(anchor_conflicts(single, taken).items()):
         anchor, ids = single[route], named[route][single[route]]
         refusals.append(
             ProposalRefusal(
@@ -1184,7 +1194,8 @@ def anchor_conflicts(
 ) -> dict[str, list[str]]:
     """Each added route whose anchor another page carries (§24cp), with those pages, sorted: a
     route in ``taken`` carrying it among its test ids (the approved manifest's views, each with
-    every id it renders), or another added route naming it. One reading for the rails, which
+    every id it renders, and the pages earlier increments added, each with every id its page
+    carried when it was accepted: §24dq), or another added route naming it. One reading for the rails, which
     refuse the request, and the renderer, which blocks such a route on a request stored before
     the rule. An anchor no other page carries is the only evidence that page renders its own
     view: a reused one reads held on a page the build never made, where the app's fallback renders
@@ -1201,6 +1212,17 @@ def anchor_conflicts(
         for route, anchor in added.items()
         if anchor and carriers[anchor] - {route}
     }
+
+
+def pages_carrying(*readings: Mapping[str, Iterable[str]]) -> dict[str, tuple[str, ...]]:
+    """Each page's test ids across ``readings``, merged per route, in order: the approved
+    manifest's views and the accepted-page inventory (§24dq), the pages an added page's anchor
+    is held unique against (``anchor_conflicts``). One reading for the rails and the renderer."""
+    merged: dict[str, tuple[str, ...]] = {}
+    for reading in readings:
+        for route, ids in reading.items():
+            merged[route] = tuple(dict.fromkeys((*merged.get(route, ()), *ids)))
+    return merged
 
 
 def _unseedable(route: str) -> bool:
