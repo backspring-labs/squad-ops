@@ -91,6 +91,9 @@ class TestFullSquadBuilderProfile:
             "full-38-atlas",
             "full-38-tf",
             "solo",
+            # machinery is the scripted squad (#2495): every call answered from a recorded
+            # script, no model. Inert until a cycle names it with its llm_script.
+            "machinery",
         }
 
 
