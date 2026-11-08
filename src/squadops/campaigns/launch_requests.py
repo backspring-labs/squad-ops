@@ -112,7 +112,8 @@ def increment_launch(
     ``accepted_pages`` is the accepted-page inventory (§24dq): every page a repository-backed
     campaign's accepted increments added, with the test ids acceptance held it by. Pinned at
     launch as ``frozen`` is, so the proposal's rails and the increment's acceptance read the same
-    pages. A sample application's pages are its manifest's, so it's given none.
+    pages. Written on every repository-backed increment's block, an empty list for none (§24dr
+    item 4). A sample application's pages are its manifest's, so its block carries none.
 
     **A repository-backed increment's intent binds no tree** (§24cd point 1). Its accepted tree is
     the campaign branch's head, which a rebase can move between this decision and the drain
@@ -190,11 +191,11 @@ def increment_launch(
                         },
                         "prior_criteria": [f["criterion_id"] for f in frozen],
                         "frozen_criteria": [dict(f) for f in frozen],
-                        # §24dq: only when there is one, so every other block is unchanged.
+                        # §24dq: on every repository-backed increment's, empty for none (§24dr
+                        # item 4), so a block without it is one written before §24dq, which the
+                        # proposal and acceptance refuse. A sample application's carries none.
                         **(
-                            {ACCEPTED_PAGES: [dict(p) for p in accepted_pages]}
-                            if accepted_pages
-                            else {}
+                            {ACCEPTED_PAGES: [dict(p) for p in accepted_pages]} if on_branch else {}
                         ),
                         "max_revisions": policy.max_proposal_revisions,
                         # Row 13 (#1692): why the increment this one replaces was abandoned. Its

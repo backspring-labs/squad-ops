@@ -324,8 +324,8 @@ async def test_an_accepted_increment_moves_the_branch_to_its_capture(tmp_path):
     )
     assert promote.binding["verification_ref"] == verification.artifact_id
     assert "tree_ref" not in promote.binding
-    # §24dq: an increment that added no page writes the binding it always did (its replay key).
-    assert "accepted_pages" not in promote.binding
+    # §24dr item 4: written on every one, empty for none, so a row without it predates §24dq.
+    assert promote.binding["accepted_pages"] == []
     assert await world.branch() == captured
     assert head(stored, log) == CampaignHead(captured, identity, verification.artifact_id)
     # Row 7 proposes. Its profile is none the deploy holds here (``started``), so it escalates.
@@ -392,6 +392,42 @@ async def test_the_pages_an_accepted_increment_added_reach_its_promotion_and_the
     [intent] = await world.campaigns.pending_launch_intents()
     block = intent.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
     assert (block["basis"], block["accepted_pages"]) == ("campaign_branch", [page])
+
+
+async def test_a_campaign_whose_promotion_predates_the_inventory_escalates_and_proposes_nothing(
+    tmp_path,
+):
+    """SIP-0109 §24dr item 5, entered at the completion boundary (``cycle_ended``), whose row 7
+    proposes. The promotion is written as the code before §24dq wrote it, with no inventory: a
+    Campaign that accepted an increment, paused or escalated, and resumed across the deploy. Bug
+    caught: the row read as having added no page, so the next proposal is launched with an empty
+    inventory and may reuse the anchor of a page that increment added (#2783)."""
+    world = _World(tmp_path)
+    await world.started(proposal_profile="campaign-increment")
+    cycle, run, _ = await world.delivered("cyc_inc000000001", _added("total"))
+    transition = world.campaigns.transition
+
+    async def before_the_inventory(campaign_id, change, **kw):
+        if change.operation is ControlOperation.PROMOTE:
+            binding = {k: v for k, v in change.binding.items() if k != "accepted_pages"}
+            change = dataclasses.replace(change, binding=binding)
+        return await transition(campaign_id, change, **kw)
+
+    world.campaigns.transition = before_the_inventory
+
+    await world.progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    [promote] = await world.promotions(cycle.cycle_id)
+    [decide] = await world.decisions(cycle.cycle_id)
+    assert decide.binding["unbuilt"] == (
+        f"the accepted-page inventory can't be read: campaign {CID}'s promotion of "
+        f"{cycle.cycle_id} (control-log row {promote.seq}, {promote.entry_id}) was written before "
+        "SIP-0109 §24dq, and records none of the pages it accepted. Its next proposal is refused "
+        "(§24dr item 4): abort the Campaign and contribute its accepted increments (§24dc), or "
+        "let it finish without proposing"
+    )
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
+    assert await world.campaigns.pending_launch_intents() == []
 
 
 async def test_a_capture_built_on_another_commit_than_the_head_is_refused(tmp_path):

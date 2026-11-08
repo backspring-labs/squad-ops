@@ -46,24 +46,45 @@ ANCHOR_NOT_UNIQUE = "the change request names an anchor another page carries"
 FROM_MANIFEST, FROM_CHANGE_REQUEST = "approved_manifest", "change_request"
 FROM_ACCEPTED_PAGE = "accepted_page"
 #: §24dq: the key naming the accepted-page inventory, on a PROMOTE row's binding (the pages that
-#: increment added) and on a repository-backed increment's ``campaign_proposal`` block (every page
-#: the campaign's accepted increments added, pinned at its launch).
+#: increment's acceptance held: §24dr item 2) and on a repository-backed increment's
+#: ``campaign_proposal`` block (every page the campaign's accepted increments added, pinned at its
+#: launch). §24dr item 4: both write it on every repository-backed increment, an empty list for
+#: none, so a row or a block without it is one written before §24dq, never an empty inventory.
 ACCEPTED_PAGES = "accepted_pages"
+#: §24dr item 4: why an inventory can't be read, the start of every ``AcceptedPagesUnreadable``.
+INVENTORY_UNREADABLE = "the accepted-page inventory can't be read"
 
 
-def pages_added_and_held(evaluation: Mapping[str, Any] | None) -> list[dict[str, Any]]:
-    """The pages an accepted increment added, as its acceptance read them (§24dq): each route the
-    renderer judged from the change request (``FROM_CHANGE_REQUEST``) and held, with the anchor it
-    was held by and every test id its page's elements carried, the anchor first. Read from the
-    stored evaluation's ``renderings``, so a replayed promotion writes the same record (#1943).
-    Every id, not only the root: a later page's fallback renders this whole view (§24cp item 6).
-    A sample application's evaluation has no ``renderings``, and gives none: its pages are its
-    manifest's."""
+class AcceptedPagesUnreadable(ValueError):
+    """§24dr items 4 and 5: an accepted-page inventory that can't be read. A record names no route
+    or no anchor, or a row or a launch block written before §24dq carries none, though the
+    campaign may have accepted a page. Never read as empty: an inventory missing a page is what
+    lets a later page reuse its anchor unseen (#2783)."""
+
+    def __init__(self, why: str) -> None:
+        super().__init__(f"{INVENTORY_UNREADABLE}: {why}")
+
+
+def pages_held(evaluation: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """The pages an accepted increment's acceptance held, as it read them (§24dq, §24dr item 2):
+    each route the renderer judged from the change request (``FROM_CHANGE_REQUEST``), and each
+    page of the inventory its launch pinned (``accepted_root`` on its record, a pinned route's
+    too), that held. Each with its anchor (an inventory page's accepted root, kept) and every test
+    id its page's elements carried now, the anchor first. So a page an increment changes is
+    recorded again with the ids it carries now, and the fold's later row replaces the earlier.
+    Read from the stored evaluation's ``renderings``, so a replayed promotion writes the same
+    record (#1943). Every id, not only the root: a later page's fallback renders this whole view
+    (§24cp item 6). A sample application's evaluation has no ``renderings``, and gives none: its
+    pages are its manifest's."""
     record = (evaluation or {}).get("renderings")
     pages = []
     for r in (record or {}).get("routes") or () if isinstance(record, Mapping) else ():
-        anchor = r.get("anchor")
-        if r.get("source") != FROM_CHANGE_REQUEST or r.get("held") != str(Held.HELD) or not anchor:
+        if r.get("held") != str(Held.HELD):
+            continue
+        anchor = r.get("accepted_root") or (
+            r.get("anchor") if r.get("source") == FROM_CHANGE_REQUEST else None
+        )
+        if not anchor:
             continue
         others = sorted({str(t) for t in r.get("seen") or ()} - {anchor})
         pages.append(
@@ -72,18 +93,27 @@ def pages_added_and_held(evaluation: Mapping[str, Any] | None) -> list[dict[str,
     return sorted(pages, key=lambda p: p["route"])
 
 
-def page_inventory(records: Any) -> dict[str, tuple[str, ...]]:
+def page_inventory(records: Any, *, required: bool = False) -> dict[str, tuple[str, ...]]:
     """§24dq: the accepted-page inventory a launch block carries, as each page's route and the test
-    ids its page carried at acceptance, its anchor first. A block composed before §24dq names none.
+    ids its page carried at acceptance, its anchor first. ``required``: the block is a
+    repository-backed increment's, which carries one since §24dr item 4, empty for none.
 
     Raises:
-        ValueError: A record names no route or no anchor. The inventory is the only record of
-            those pages' anchors, so one it can't read is refused, never skipped: skipping it would
-            let a later page reuse that anchor unseen."""
+        AcceptedPagesUnreadable: A record names no route or no anchor, or a ``required``
+            inventory is absent. The inventory is the only record of those pages' anchors, so one
+            it can't read is refused, never skipped: skipping it would let a later page reuse that
+            anchor unseen."""
+    if records is None and required:
+        raise AcceptedPagesUnreadable(
+            "the launch pinned none, so it was written by a runtime-api from before SIP-0109 "
+            "§24dq: launch the increment again on a runtime-api that pins one"
+        )
     pages: dict[str, tuple[str, ...]] = {}
     for record in records or ():
         if not isinstance(record, Mapping) or not record.get("route") or not record.get("anchor"):
-            raise ValueError(f"an accepted page names no route or no anchor: {record!r}")
+            raise AcceptedPagesUnreadable(
+                f"an accepted page names no route or no anchor: {record!r}"
+            )
         anchor = str(record["anchor"])
         others = [str(t) for t in record.get("testids") or () if str(t) != anchor]
         pages[str(record["route"])] = (anchor, *dict.fromkeys(others))
@@ -136,10 +166,12 @@ def route_record(
     read: Mapping[str, Any],
     start: dict[str, Any] | None,
     sources: Mapping[str, str] | None = None,
+    accepted_roots: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """What was started and what each route's page showed: its view's root anchor, the path it
     was read at, the test ids its elements carried (``None`` for a page never read), and why a
-    blocked one wasn't read."""
+    blocked one wasn't read. A page of the accepted-page inventory names the root it was accepted
+    with (``accepted_root``, §24dr item 2), which its promotion records it by again."""
 
     def seen(route: str) -> list[str] | None:
         reading = read.get(route)
@@ -158,6 +190,11 @@ def route_record(
                 "read_at": read[r.path].path if r.path in read else None,
                 "seen": seen(r.path),
                 "detail": r.detail or None,
+                **(
+                    {"accepted_root": accepted_roots[r.path]}
+                    if r.path in (accepted_roots or {})
+                    else {}
+                ),
             }
             for r in results
         ],
@@ -181,6 +218,7 @@ def routes_blocked(
 __all__ = [
     "ACCEPTED_PAGES",
     "ANCHOR_NOT_UNIQUE",
+    "INVENTORY_UNREADABLE",
     "FROM_ACCEPTED_PAGE",
     "NO_ANCHOR",
     "NO_MANIFEST",
@@ -190,10 +228,11 @@ __all__ = [
     "SHARED_ANCHOR",
     "SECRET_NOT_AVAILABLE",
     "START_FAILED",
+    "AcceptedPagesUnreadable",
     "ProductRoutes",
     "RouteRenderer",
     "page_inventory",
-    "pages_added_and_held",
+    "pages_held",
     "route_record",
     "requested_routes",
     "routes_blocked",

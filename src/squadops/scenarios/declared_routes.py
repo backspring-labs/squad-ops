@@ -31,7 +31,7 @@ Nothing here reads a suite or a scenario's steps: the runner is asked to run non
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 import yaml
@@ -109,6 +109,18 @@ def _shared_roots(anchors: dict[str, tuple[str, ...]]) -> dict[str, str]:
     }
 
 
+def _reused(
+    added: Mapping[str, str], *readings: Mapping[str, Iterable[str]]
+) -> dict[str, list[str]]:
+    """Each added route whose anchor another page carries in any of ``readings``
+    (``anchor_conflicts``), with every such page, sorted."""
+    reused: dict[str, set[str]] = {}
+    for reading in readings:
+        for route, others in anchor_conflicts(added, reading).items():
+            reused.setdefault(route, set()).update(others)
+    return {route: sorted(others) for route, others in reused.items()}
+
+
 class DeclaredStartRoutes:
     """Renders a product's client routes on its candidate, started by ``runner`` from the
     product's declaration (a ``campaigns.product_routes.RouteRenderer``). ``runner`` is ``None``
@@ -139,6 +151,10 @@ class DeclaredStartRoutes:
         page is judged by its own anchor whatever the request names; an added one by the
         request's (§24cp). None at all is not applicable (§24bv point 3).
 
+        An added page's anchor is held unique (§24cp item 6) against the manifest's views, every
+        page of the inventory (a pinned one's too: §24dr item 3), the other pages the request
+        adds, and every page as this candidate rendered it (§24dr item 1). A reused one is blocked.
+
         Raises:
             CandidateNotDelivered: The candidate's content isn't the revision delivery verified.
         """
@@ -165,17 +181,6 @@ class DeclaredStartRoutes:
         # view's anchor is the one its criteria name (§24cp). With none it can block, and never
         # hold (§8.3's evidence is the anchor).
         anchors.update({r: (requested_routes[r],) if requested_routes[r] else () for r in added})
-        # §24cp: an added route's anchor another page carries shows nothing of its own view (the
-        # app's fallback renders that other view on a page never built), so it's blocked. Another
-        # page is the approved manifest's, or one an earlier increment added (§24dq), which no
-        # manifest names.
-        reused = anchor_conflicts(
-            {r: requested_routes[r] for r in added},
-            pages_carrying(
-                declared_routes(manifest) if manifest else {},
-                {r: accepted_pages[r] for r in earlier},
-            ),
-        )
         seeds = {r: s for r, s in route_seeds(manifest).items() if r in pinned} if manifest else {}
         start, unstartable = product_start(configuration)
         if unstartable is not None or start is None:
@@ -221,6 +226,17 @@ class DeclaredStartRoutes:
                 named, f"{START_FAILED}: {evaluation.start_detail}", started, sources
             )
         read = {r.route: r for r in evaluation.routes}
+        # §24cp: an added route's anchor another page carries shows nothing of its own view (the
+        # app's fallback renders that other view on a page never built), so it's blocked. Another
+        # page is the approved manifest's, or one of the inventory (§24dq), a pinned one's too
+        # (§24dr item 3: a route both name is judged by its pin's root, and its accepted ids stay
+        # taken), or any page as this candidate rendered it (§24dr item 1): the recorded ids are
+        # what the pages carried when accepted, and a candidate can put the anchor on another.
+        reused = _reused(
+            {r: requested_routes[r] for r in added},
+            pages_carrying(declared_routes(manifest) if manifest else {}, accepted_pages),
+            {r: reading.testids for r, reading in read.items() if reading.testids is not None},
+        )
         judged = {
             r.path: r
             for r in route_rendering(
@@ -256,7 +272,10 @@ class DeclaredStartRoutes:
                 )
                 result = RouteResult(route, result.held, detail=why)
             results.append(result)
-        return ProductRoutes(tuple(results), route_record(results, anchors, read, started, sources))
+        roots = {r: ids[0] for r, ids in accepted_pages.items() if ids}
+        return ProductRoutes(
+            tuple(results), route_record(results, anchors, read, started, sources, roots)
+        )
 
 
 __all__ = ["DeclaredStartRoutes", "product_start"]

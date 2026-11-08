@@ -132,25 +132,29 @@ def proposal_context_from(
             shown_goal_statements=shown_goal_statements,
             product=None
             if basis.has_manifest
-            else product_context(product or {}, block.get(ACCEPTED_PAGES)),
+            else product_context(product or {}, block.get(ACCEPTED_PAGES), required=True),
             backlog=backlog_rail((product or {}).get("goals")),
         )
     except (KeyError, TypeError, ValueError) as e:
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
 
 
-def product_context(product: dict, accepted_pages: Any = None) -> ProductContext:
+def product_context(
+    product: dict, accepted_pages: Any = None, *, required: bool = False
+) -> ProductContext:
     """The rails' reading of a ``product_proposal`` input: each public surface as ``(kind,
     value)``, each runner's placement, and the client routes acceptance already judges (§24cp).
     An input composed before §24cp names no routes, so every page criterion reads as adding one,
     and must name its anchor: stricter, never looser.
 
     ``accepted_pages`` is the inventory the launch block pinned (§24dq): the pages earlier
-    increments added, each judged by the anchor it was accepted with.
+    increments added, each judged by the anchor it was accepted with. ``required``: the block is a
+    repository-backed increment's, which carries one since §24dr item 4, so a block without it was
+    launched by a runtime-api from before §24dq, and is refused rather than read as empty.
 
     Raises:
-        ValueError: A page of the inventory names no route or no anchor
-            (``product_routes.page_inventory``)."""
+        ValueError: A page of the inventory names no route or no anchor, or a ``required`` one is
+            absent (``product_routes.page_inventory``)."""
     profile = product["profile"]
     return ProductContext(
         surfaces=tuple(
@@ -160,7 +164,7 @@ def product_context(product: dict, accepted_pages: Any = None) -> ProductContext
         test_files=tuple(str(g) for g in profile.get("test_files") or ()),
         judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
         route_anchors=_route_anchors(product.get("approved_manifest")),
-        accepted_pages=tuple(page_inventory(accepted_pages).items()),
+        accepted_pages=tuple(page_inventory(accepted_pages, required=required).items()),
     )
 
 

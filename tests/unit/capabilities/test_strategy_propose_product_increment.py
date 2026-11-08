@@ -78,6 +78,8 @@ def _inputs(*, product: bool = True) -> dict:
                     "requirements": "repo:file:README.md@current",
                 },
                 "prior_criteria": [],
+                # §24dr item 4: every repository-backed launch pins one, empty for none.
+                "accepted_pages": [],
             },
         },
         "source_repository": {
@@ -380,6 +382,21 @@ async def test_an_inventory_the_proposal_cant_read_fails_it_and_proposes_nothing
 
     assert not result.success
     assert "names no route or no anchor" in result.error
+    ctx.ports.llm.chat_stream_with_usage.assert_not_awaited()
+
+
+async def test_a_block_an_old_runtime_api_launched_with_no_inventory_fails_the_proposal():
+    """SIP-0109 §24dr item 4, the skew a mixed deploy makes: a runtime-api from before §24dq
+    launched the proposal, so its block names no inventory. Bug caught: the new nat reading it as
+    an empty one, so a page reusing an accepted page's anchor passes the rails, as before #2783."""
+    ctx = _ctx(_fenced(_ADDS_A_PAGE))
+    inputs = _after_totals([])
+    del inputs["resolved_config"]["campaign_proposal"]["accepted_pages"]
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert not result.success
+    assert "the accepted-page inventory can't be read: the launch pinned none" in result.error
     ctx.ports.llm.chat_stream_with_usage.assert_not_awaited()
 
 

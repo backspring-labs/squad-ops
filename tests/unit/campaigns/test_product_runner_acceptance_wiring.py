@@ -128,7 +128,7 @@ def _f1_bundle(repo) -> dict:
     }
 
 
-def _increment(world_, *, frozen: bool, request: str = STORED, pages: list | None = None):
+def _increment(world_, *, frozen: bool, request: str = STORED, pages: list | None = ()):
     """The world's cycle as a repository-backed increment's implementation sees it: its block names
     the campaign branch, its launch pinned F1 (when ``frozen``) and the accepted-page inventory
     (``pages``, §24dq), and its approved change request (R1, a summary line in the report module)
@@ -157,8 +157,10 @@ def _increment(world_, *, frozen: bool, request: str = STORED, pages: list | Non
         request.encode(),
     )
     block = {**_cycle().execution_overrides["campaign_proposal"], "frozen_criteria": pins}
-    if pages:
-        block["accepted_pages"] = pages
+    # §24dr item 4: every repository-backed launch pins one, empty for none; ``None`` is a block
+    # an old runtime-api launched.
+    if pages is not None:
+        block["accepted_pages"] = list(pages)
     increment = dataclasses.replace(
         cycle,
         kind="increment",
@@ -169,7 +171,7 @@ def _increment(world_, *, frozen: bool, request: str = STORED, pages: list | Non
 
 
 async def _judged(
-    world_, changes: dict, *, frozen: bool = True, request: str = STORED, pages: list | None = None
+    world_, changes: dict, *, frozen: bool = True, request: str = STORED, pages: list | None = ()
 ) -> dict:
     repo, vault, executor, cycle, run = _increment(
         world_, frozen=frozen, request=request, pages=pages
@@ -820,3 +822,21 @@ async def test_a_page_never_built_whose_anchor_the_candidate_put_on_an_accepted_
         " (/totals)" in document["blocked"]
     )
     assert document["verdict"] != "accepted"
+
+
+async def test_an_increment_an_old_runtime_api_launched_with_no_inventory_is_never_judged(world):  # noqa: F811
+    """SIP-0109 §24dr item 4: the launch was written by a runtime-api from before §24dq, so its
+    block names no inventory, and the increment reaches this one's acceptance. Bug caught: the
+    missing inventory read as empty, so a page reusing an accepted page's anchor holds through
+    the fallback, as before #2783."""
+    _routed(world, pages=_TALLY_PAGES)
+    repo, vault, executor, cycle, run = _increment(world, frozen=False, pages=None)
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    with pytest.raises(
+        _ExecutionError,
+        match="increment acceptance: the accepted-page inventory can't be read: the launch pinned",
+    ):
+        await _end_of_plan(executor, cycle, run, vault, {REPORT: report + _LINE})
+
+    assert _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE) == []

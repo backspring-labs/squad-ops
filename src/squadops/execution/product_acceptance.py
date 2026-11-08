@@ -155,8 +155,10 @@ async def evaluate_product_increment(
     # the inventory its launch pinned, as the frozen criteria are.
     requested = requested_routes(change_request)
     try:
+        # §24dr item 4: required. A block without one was launched by a runtime-api from before
+        # §24dq, and reading it as empty is the false acceptance #2783 is.
         accepted_pages = page_inventory(
-            (resolved.get("campaign_proposal") or {}).get(ACCEPTED_PAGES)
+            (resolved.get("campaign_proposal") or {}).get(ACCEPTED_PAGES), required=True
         )
     except ValueError as e:
         raise ProductAcceptanceRefused(str(e)) from e

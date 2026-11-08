@@ -99,7 +99,12 @@ from squadops.campaigns.models import (
     TransitionResult,
 )
 from squadops.campaigns.prior_cycle import evaluation_findings, prior_cycle_brief
-from squadops.campaigns.product_routes import ACCEPTED_PAGES, pages_added_and_held
+from squadops.campaigns.product_routes import (
+    ACCEPTED_PAGES,
+    AcceptedPagesUnreadable,
+    page_inventory,
+    pages_held,
+)
 from squadops.campaigns.proposed_behaviours import (
     QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
     merged_entries,
@@ -516,15 +521,41 @@ def frozen_criteria(log: list) -> tuple[dict, ...]:
 
 def accepted_pages(log: list) -> tuple[dict, ...]:
     """§24dq: the accepted-page inventory, every page the campaign's accepted increments added
-    with the test ids acceptance held it by (``product_routes.pages_added_and_held``), from the
-    control log's applied promotions, in route order. Each PROMOTE row names the accepted tree it
-    made, so the inventory read after a row is that tree's. A later row's record of a route
-    replaces an earlier one's."""
+    with the test ids acceptance last held it by (``product_routes.pages_held``), from the control
+    log's applied promotions, in route order. Each PROMOTE row names the accepted tree it made, so
+    the inventory read after a row is that tree's. A later row's record of a route replaces an
+    earlier one's: a page an increment changed is recorded again with its ids then (§24dr item 2).
+
+    Read before a proposal launches (§24dr item 5), so a record it can't read escalates the
+    Campaign before the proposal runs, naming the row, rather than failing the proposal's task.
+
+    Raises:
+        AcceptedPagesUnreadable: An applied promotion of a repository-backed increment carries no
+            inventory (written before §24dq: §24dr item 4), or one of its records names no route
+            or no anchor. A calibration's promotion adds no page, and is never read for one."""
     pages: dict[str, dict] = {}
     for entry in log:
-        if entry.operation is ControlOperation.PROMOTE and entry.outcome is ControlOutcome.APPLIED:
-            for page in entry.binding.get(ACCEPTED_PAGES) or ():
-                pages[page["route"]] = dict(page)
+        if entry.operation is not ControlOperation.PROMOTE or entry.outcome is not (
+            ControlOutcome.APPLIED
+        ):
+            continue
+        on_branch = "commit" in entry.binding and "calibration_record_id" not in entry.binding
+        row = (
+            f"campaign {entry.campaign_id}'s promotion of {entry.target} (control-log row "
+            f"{entry.seq}, {entry.entry_id})"
+        )
+        if on_branch and ACCEPTED_PAGES not in entry.binding:
+            raise AcceptedPagesUnreadable(
+                f"{row} was written before SIP-0109 §24dq, and records none of the pages it "
+                "accepted. Its next proposal is refused (§24dr item 4): abort the Campaign and "
+                "contribute its accepted increments (§24dc), or let it finish without proposing"
+            )
+        try:
+            records = page_inventory(entry.binding.get(ACCEPTED_PAGES))
+        except AcceptedPagesUnreadable as e:
+            raise AcceptedPagesUnreadable(f"{row}: {e}") from e
+        for route, ids in records.items():
+            pages[route] = {"route": route, "anchor": ids[0], "testids": list(ids)}
     return tuple(pages[r] for r in sorted(pages))
 
 
@@ -1013,7 +1044,7 @@ class CampaignProgress:
         accepted = promotion.accepted
         assert accepted.commit is not None
         frozen = await self._freeze_bundles(cycle, last_run, evaluation)
-        pages = pages_added_and_held(evaluation)
+        pages = pages_held(evaluation)
         result = await self._campaigns.transition(
             campaign.campaign_id,
             CampaignTransition(
@@ -1043,9 +1074,11 @@ class CampaignProgress:
                         if (evaluation or {}).get("readings")
                         else {}
                     ),
-                    # §24dq: the pages it added, with the ids acceptance held them by. No
-                    # manifest learns them (§24bv point 5), so this row is their only record.
-                    **({ACCEPTED_PAGES: pages} if pages else {}),
+                    # §24dq: the pages it added, and the inventory's that held again (§24dr
+                    # item 2), with the ids acceptance held them by. No manifest learns them
+                    # (§24bv point 5), so this row is their only record. Written on every one,
+                    # empty for none (§24dr item 4): a row without it predates §24dq.
+                    ACCEPTED_PAGES: pages,
                 },
                 accepted=accepted,
             ),
@@ -2174,7 +2207,12 @@ class CampaignProgress:
         assert accepted is not None  # ``_propose_launch`` reads it first
         log = await self._campaigns.control_log(campaign.campaign_id)
         frozen = frozen_criteria(log)
-        pages = accepted_pages(log)
+        try:
+            # §24dr item 5: read before the proposal runs, so an unreadable record escalates the
+            # Campaign naming its row; the proposal's handler reading it again is the backstop.
+            pages = accepted_pages(log)
+        except AcceptedPagesUnreadable as e:
+            return str(e)
         built = [c for c in (accepted.cycle_id, abandoned_cycle_id) if c is not None]
         proposed = await self._qa_proposed_behaviours(built)
         unapproved = [
