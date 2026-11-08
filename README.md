@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v2.6.0 — a Project's goal set: an owner-ordered backlog of goals drives a Campaign one item at a time, what's learned returns to the goal set as a new revision, and the record shows it (SIP-0115). The claim is the machinery; how well a Project's product improves is an operator's work on the released line.
+**Current Status**: v2.6.1 — the 2.6 line's first patch: a rebuilt console plugin reaches the browser, the selected model engine comes back after a reboot, and a deploy runs the Caddyfile it pulled. v2.6.0 — a Project's goal set: an owner-ordered backlog of goals drives a Campaign one item at a time, what's learned returns to the goal set as a new revision, and the record shows it (SIP-0115). The claim is the machinery; how well a Project's product improves is an operator's work on the released line.
 
 ---
 
@@ -173,12 +173,12 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v2.6.0 — **Project Goals and Backlog (SIP-0115):** a Project keeps a goal set of goals, expected results and an ordered backlog; a Campaign proposes the next eligible item of the revision it reads, runs it through its cycles to a named ending, and reads a new revision without being interrupted. Candidates, assessments and promotions return learning to the goal set, and an operator reaches all of it through scoped principals. A product runs on its own stack, and the console gains a read-only Campaigns view. Read on battle-trainer; the unattended overnight claim moved to 2.7.
+**Current**: v2.6.1 — the 2.6 line's first patch (console plugins cached by version, the engine back after a reboot, a deploy that restarts Caddy on a Caddyfile change, Home's Create Cycle, and qa briefs against criterion tests that assert nothing). v2.6.0 — **Project Goals and Backlog (SIP-0115):** a Project keeps a goal set of goals, expected results and an ordered backlog; a Campaign proposes the next eligible item of the revision it reads, runs it through its cycles to a named ending, and reads a new revision without being interrupted. Candidates, assessments and promotions return learning to the goal set, and an operator reaches all of it through scoped principals. A product runs on its own stack, and the console gains a read-only Campaigns view. Read on battle-trainer; the unattended overnight claim moved to 2.7.
 
 ---
 
 ## Current Status
-**Framework Version**: 2.6.0
+**Framework Version**: 2.6.1
 **Development Status**: Verified canonical app build (SIP-0098/0099/0100/0102 golden-path arc: contract-owned acceptance, deterministic scaffolding, frozen-file enforcement, sandbox audit) with complete verification-evidence integrity (SIP-0096: earned verdicts, disclosed waivers, inert detection) on stabilized multi-agent orchestration (post-SIP-0097 decomposition, extended by the 1.5 extraction of context assembly, planning, and typed-check governance into declared registries) with the Agent Runtime State platform (SIP-0089: runtime modes, duty scheduler, FocusLease, RuntimeActivity), console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, maintainer-only cycle replay (SIP-0101 minimum slice), agent build capabilities, Prefect task-scoped log streaming, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics

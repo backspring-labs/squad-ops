@@ -5,9 +5,26 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-### Fixed
+## [2.6.1] — 2026-11-07
 
-- A rebuilt console plugin reaches a browser without emptying its cache: Continuum 1.0.3 versions each plugin bundle's URL by its content, caches the current one for good and revalidates the rest (backspring-labs/continuum#4).
+The 2.6 line's first patch (`docs/plans/2-6-1-plan.md`): what an operator meets first on 2.6.0, fixed small.
+
+### Fixed
+- **A rebuilt console plugin reaches a browser without emptying its cache** (PRs #2958, #2959, backspring-labs/continuum#4):
+  Continuum 1.0.3 versions each plugin bundle's URL by its content, caches the current one for good and revalidates the
+  rest, and answers 304 for an unchanged file. #2958's Caddy `no-cache` stopgap is removed.
+- **The selected model engine comes back after a reboot** (#2932 ask 1, PR #2962): TensorFold runs `--restart
+  unless-stopped`. The switch's removal, compose's stop and the watchdog's kill all keep a deselected engine down.
+- **A deploy runs the Caddyfile it pulled** (#2960, PR #2963): Caddy mounts the file singly, so a pull never reached it
+  and a reload re-read the old one. Every deploy compares the two and restarts Caddy when they differ.
+- **Home's Create Cycle opens the Cycles create form** (#2909, PR #2964): it called a window function the console never
+  defines. It now hands the request to the Cycles panel, as the Campaigns link to the goals panel does.
+- **The qa briefs show a criterion test that asserts on something it made sure is there** (#2933, PR #2965): a non-empty
+  check before a loop and the suite's own fixture, on both stacks; a qa repair keeps the suite's fixture.
+
+### Moved to 2.7
+- A suite handed to the product's runner reading as handed off rather than failed (#2949's remainder).
+- D1: a criterion that passes on the head on qa's first emission refused to qa rather than abandoned at row 19 (#2933).
 
 ## [2.6.0] — 2026-11-07
 
