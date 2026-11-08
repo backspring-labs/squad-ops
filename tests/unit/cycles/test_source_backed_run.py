@@ -1306,8 +1306,21 @@ def test_the_change_is_each_paths_latest_accepted_entry(entries, changes, left_o
             ],
             set(),
         ),
+        # #2949: a hand-off's bank is never the run's accepted state either.
+        (
+            [
+                _REWRITTEN,
+                _stored(
+                    "art_rm",
+                    "tally/notify.py",
+                    DELETION_ARTIFACT_TYPE,
+                    emission_status="handed_off",
+                ),
+            ],
+            set(),
+        ),
     ],
-    ids=["removed", "brought-back", "removed-last", "failed-emission"],
+    ids=["removed", "brought-back", "removed-last", "failed-emission", "handed-off-emission"],
 )
 def test_a_paths_removal_stands_until_something_writes_it_again(entries, gone):
     assert deleted_paths(entries) == gone

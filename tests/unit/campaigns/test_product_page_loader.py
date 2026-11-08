@@ -492,6 +492,8 @@ def increment(vault: _Vault, request: str, *, frozen=()) -> Cycle:
                 },
                 "prior_criteria": [],
                 "frozen_criteria": list(frozen),
+                # SIP-0109 §24dr item 4: a repository-backed launch pins an inventory.
+                "accepted_pages": [],
                 "max_revisions": 2,
             },
             "plan_artifact_refs": ["art_cr"],
