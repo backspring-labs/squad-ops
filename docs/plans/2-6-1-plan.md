@@ -6,6 +6,11 @@ plan and start executing it. You can merge on green CI". That was the reply to s
 owner chose to leave out #2954, #2944, #2935's remainder, #2839, #2931 and #2921 (§4). This plan says how each item
 is built and verified, and what it leaves out.
 
+**Later the same evening the owner moved two parts to 2.7.** The owner answered "yes to both": item 4 to 2.7, and D1
+built as option (a). Reading the code then showed D1 needs the dispatcher's success path to fail a succeeded qa
+task, so the owner chose, at ~20:45 ET, to cut 2.6.1 without it and build it first in 2.7 ("option 1"). Item 4 and
+D1 are recorded where they stand below.
+
 **What 2.6.1 is.** A patch on the 2.6 line (CLAUDE.md, #281: urgent or small fixes, either lane). Each item is a defect
 in something an operator running Campaigns on 2.6.0 meets now. None changes a design, and none needs a ruling to
 build, except D1 (§3), which is an option the owner can take or leave without blocking the line.
@@ -16,7 +21,6 @@ build, except D1 (§3), which is an option the owner can take or leave without b
 > - a rebuilt console plugin reaches the browser on a normal reload;
 > - a config change the deploy made is the config that runs;
 > - after a reboot the selected model engine comes back, and nothing else does;
-> - a suite handed to the product's runner reads as handed off, not as failed;
 > - a criterion test that asserts nothing is less likely to be written, and is named when it is;
 > - the console's buttons do what they say.
 
@@ -73,7 +77,16 @@ build, except D1 (§3), which is an option the owner can take or leave without b
   unreadable container file, which must be reported, not taken as a match. The live check is a deploy where the
   Caddyfile changed.
 
-### 4. A suite handed to the product's runner reads as handed off (#2949's remainder)
+### 4. A suite handed to the product's runner reads as handed off (#2949's remainder) — moved to 2.7
+
+**Moved to 2.7 by the owner, 2026-11-07.** The emission is banked before the product's runner judges it
+(`_admit_failed_emission` comes before `_judged_on_product_runner`), and the vault is write-once (the
+`ArtifactVaultPort` has no metadata update). So the banked emission can't be relabelled after a pass. The fix needs
+either judging before banking, which touches #1323's authorize-before-hold and #971's banking, or a record of the
+runner's judgement that the cycle assessment's `failed_emissions` reads. If the runner fails the suite, that first
+emission really is the failed attempt, so a hand-off can't simply be left out of the count. What follows is the
+analysis as it was written.
+
 
 - **The defect:** #2953 fixed `test_report.md`'s wording. The hand-off's emission is still banked
   `emission_status=failed` (`dispatched_flow_executor.py:5262-5295`), the marker every unsuccessful emission gets,
@@ -137,7 +150,7 @@ build, except D1 (§3), which is an option the owner can take or leave without b
   record's deploy id: that record names `dep_bd2a684d602a`, built before the version bump. The deploy that ran after
   it was `dep_623daddbf654`.
 
-## 3. Decision for the owner
+## 3. Decision for the owner — ruled, and moved to 2.7
 
 - **D1. A criterion that passes on the head on qa's first emission.** Today row 19 abandons the item, uncounted.
   Option (a): it is refused to qa as a criterion that doesn't fail on the head, spending a repair round, as a
@@ -146,6 +159,12 @@ build, except D1 (§3), which is an option the owner can take or leave without b
   nothing about the work. One round costs less than a backlog item moved on with its behaviour missing, which is what
   BT-2 and BT-9 both show. It changes what row 19 does, so it needs a SIP-0109 amendment, and it is built in 2.6.1
   only on the owner's yes. Otherwise it goes to 2.7.
+- **Ruled (a), and moved to 2.7 (the owner, 2026-11-07).** The head check runs after the qa task's emission is
+  accepted (`dispatched_flow_executor.py:2356`), and nothing fails a succeeded task, which is why the check can only
+  end the run. Option (a) needs a succeeded qa result to become a failure before acceptance, so the correction loop
+  sends it to `qa.test_repair`. It also needs the round's "ends the same way" to sit beside §24dh's refusal, which
+  starts from an emission that failed on the head. That takes the typed-check seam table and a wiring test through
+  a live dispatch, so the owner chose to build it first in 2.7. #2933 stays open for it.
 
 ## 4. Not in 2.6.1
 
@@ -157,3 +176,4 @@ build, except D1 (§3), which is an option the owner can take or leave without b
 - **#2931:** an empty artifact after a power loss strands a re-attached run. Real but rare, and the fix is medium.
 - **#2921:** the console's Signal view holds the browser's connections for minutes. Medium, and its own console item.
 - **#2932's ask 2:** an agent consuming a redelivered task while its engine is unreachable.
+- **Item 4 (#2949's remainder) and D1 (#2933's remainder):** moved to 2.7 by the owner, as recorded above.
