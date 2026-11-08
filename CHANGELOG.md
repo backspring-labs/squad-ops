@@ -17,6 +17,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
 
+### Changed
+- **An outside operator's pull request is held to its branch's boundary by a policy the repository doesn't
+  hold** (#2975, PR #2991): `operator branch checks` runs on `pull_request_target` from the default branch,
+  never runs the pull request's code, and reads the policy from the `OPERATOR_BRANCH_POLICY` repository
+  variable, which only an administrator can change. It fails closed on a missing or malformed policy, an
+  undeclared role, an unresolved commit identity or a foreign author, and the check's own files are out of
+  bounds to every operator branch. It is now the required check, and the check it replaces is removed
+  with its script and its in-repository boundary file.
+
 ### Fixed
 - **A product's repaired suite is read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance
   found a repaired suite by the stack's collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/`
