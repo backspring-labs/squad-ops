@@ -5,6 +5,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **A scripted squad for machinery cycles** (#2495): the `machinery` squad profile's agents all name the model
+  `scripted`, and every call they make is answered from a recorded script
+  (`--set llm_script=<name>@<version>`, scripts in `src/squadops/llm/llm_scripts/`), with no model loaded. The
+  answers sit behind the existing LLM port, so dispatch, emission, correction and acceptance run their normal
+  paths, and every other profile keeps the engine on the same deploy. A missing answer fails the task naming its
+  key `(task_type, occurrence, call)`; it never falls back to a model. Cycle create refuses a scripted squad with
+  no script, an unpinned or stale version, or a mixed squad, and refuses a script named on a model squad. A
+  scripted cycle produces no Cross-Cycle Memory observation, and its calls are charted under the engine
+  `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
+  carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
+
 ### Fixed
 - **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
   write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release

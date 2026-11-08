@@ -104,14 +104,32 @@ def test_a_missing_answer_names_the_key_it_looked_for_and_what_the_script_holds(
     ("change", "message"),
     [
         (("script: frame-twice", "script: other"), "declares script 'other'"),
-        (("task_type: strategy.analyze_prd\n    occurrence: 2", "task_type: strategy.analyse\n    occurrence: 2"), "'strategy.analyse' is not a task type"),
-        (("occurrence: 2", "occurrence: 1"), "holds two answers for strategy.analyze_prd occurrence 1 call 1"),
+        (
+            (
+                "task_type: strategy.analyze_prd\n    occurrence: 2",
+                "task_type: strategy.analyse\n    occurrence: 2",
+            ),
+            "'strategy.analyse' is not a task type",
+        ),
+        (
+            ("occurrence: 2", "occurrence: 1"),
+            "holds two answers for strategy.analyze_prd occurrence 1 call 1",
+        ),
         (("occurrence: 2", "occurrence: 0"), "occurrence must be a whole number from 1"),
         (("termination: stop", "termination: done"), "termination must be one of"),
-        (("latency_seconds: 2.5", "latency_seconds: -1"), "latency_seconds must be a non-negative number"),
-        (("completion_tokens: 40", "completion_tokens: lots"), "completion_tokens must be a non-negative whole number"),
-        (("replay_latency: true", "replay_latency: yes please"), "replay_latency must be true or false"),
-        (("    content: \"not: [a plan\"\n", ""), "content must be a string"),
+        (
+            ("latency_seconds: 2.5", "latency_seconds: -1"),
+            "latency_seconds must be a non-negative number",
+        ),
+        (
+            ("completion_tokens: 40", "completion_tokens: lots"),
+            "completion_tokens must be a non-negative whole number",
+        ),
+        (
+            ("replay_latency: true", "replay_latency: yes please"),
+            "replay_latency must be true or false",
+        ),
+        (('    content: "not: [a plan"\n', ""), "content must be a string"),
         (("description:", "descripton:"), "unknown keys ['descripton']"),
     ],
 )

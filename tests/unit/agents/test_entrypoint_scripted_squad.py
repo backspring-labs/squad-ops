@@ -56,7 +56,11 @@ def _config():
     """The fields ``_create_ports`` reads, as a deploy's config would carry them."""
     return SimpleNamespace(
         llm=SimpleNamespace(
-            provider="ollama", url="http://unreachable.invalid:1", timeout=5, api_key=None, model=None
+            provider="ollama",
+            url="http://unreachable.invalid:1",
+            timeout=5,
+            api_key=None,
+            model=None,
         ),
         prompts=SimpleNamespace(asset_source_provider="filesystem"),
         telemetry=SimpleNamespace(backend="null", otlp_endpoint=None),
@@ -148,7 +152,11 @@ async def test_a_re_rolled_task_is_answered_from_the_next_occurrence_through_the
     ]
     # The usage ledger the run sums read the recorded figures, one call each.
     assert [
-        (r["llm_usage"]["calls"], r["llm_usage"]["prompt_tokens"], r["llm_usage"]["completion_tokens"])
+        (
+            r["llm_usage"]["calls"],
+            r["llm_usage"]["prompt_tokens"],
+            r["llm_usage"]["completion_tokens"],
+        )
         for r in (first, reroll)
     ] == [(1, 1500, 120), (1, 1600, 140)]
     assert runner.engine.asked == []

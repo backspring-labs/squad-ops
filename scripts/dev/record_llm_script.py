@@ -135,15 +135,24 @@ def build_script(
     replay_latency: bool,
 ) -> tuple[bytes, list[str]]:
     """The script file's bytes, and what the recording could not recover."""
-    attempts: dict[tuple[str, int], _Attempt] = {}
+    written: list[tuple[str, str, int | None, StoredFile]] = []
     skipped = 0
     for f in stored:
         writer = _writer(f.ref)
         if writer is None:
             skipped += 1
             continue
-        task_type, task_id = writer
-        attempt = int((f.ref.metadata or {}).get("attempt") or 1)
+        stamped = (f.ref.metadata or {}).get("attempt")
+        written.append((*writer, int(stamped) if stamped is not None else None, f))
+    # Only a banked failed attempt is stamped with its attempt (#1436). The accepted emission is
+    # stored unstamped, and it is the attempt after the last banked one.
+    banked: dict[str, int] = {}
+    for _, task_id, stamped, _ in written:
+        if stamped is not None:
+            banked[task_id] = max(banked.get(task_id, 0), stamped)
+    attempts: dict[tuple[str, int], _Attempt] = {}
+    for task_type, task_id, stamped, f in written:
+        attempt = stamped if stamped is not None else banked.get(task_id, 0) + 1
         entry = attempts.setdefault((task_id, attempt), _Attempt(task_type, task_id, attempt, []))
         entry.files.append(f)
     if not attempts:

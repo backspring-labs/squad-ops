@@ -254,9 +254,7 @@ async def test_a_seed_is_refused_rather_than_dropped(port):
         await port.chat_stream_with_usage(MSG, model="scripted", seed=7)
 
 
-async def test_the_listing_names_scripted_with_the_library_s_version_and_no_weights(
-    port, library
-):
+async def test_the_listing_names_scripted_with_the_library_s_version_and_no_weights(port, library):
     """What the create-time check and the deploy record read. Bugs caught: `scripted` missing
     from the listing (every machinery cycle refused as 'model not pulled'), and a pull of it
     reaching the engine."""
