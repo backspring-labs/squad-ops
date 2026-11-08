@@ -79,6 +79,7 @@ async def test_a_reached_source_records_ready_at_the_base_refs_commit():
         "diagnostic": None,
         "actor": "owner",
         "idempotency_key": "v-1",
+        "expected_baseline": None,
     }
 
 
@@ -116,15 +117,43 @@ async def test_a_sample_application_has_nothing_to_validate():
 
 
 async def test_a_ready_project_adopts_its_upstreams_commit_when_re_validated():
-    """E.4.4's reconciliation of a drift finding (FR-21). Bug caught: a READY Project refused, so
-    a product whose upstream moved can never adopt it and no Cycle can pin the new commit."""
+    """E.4.4's reconciliation of a drift finding (FR-21). Bugs caught: a READY Project refused, so
+    a product whose upstream moved can never adopt it and no Cycle can pin the new commit; the
+    adoption not fenced on the baseline read before the fetch (H.30), so a stale one overwrites a
+    newer adoption."""
     registry = _Registry(status=ProjectLifecycleStatus.READY, baseline="b" * 40)
 
     await _validate(registry, _Clone())
 
     assert registry.recorded == {
         "commit": COMMIT, "diagnostic": None, "actor": "owner", "idempotency_key": "v-1",
+        "expected_baseline": "b" * 40,
     }  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("bound", "adopted"), [(COMMIT, COMMIT), ("e" * 40, None)], ids=["the target", "moved past"]
+)
+async def test_a_bounded_re_validation_adopts_only_its_target(bound, adopted):
+    """H.30's bounded delegation. Bug caught: the check's re-validation adopting whatever the
+    upstream reads at its own fetch, which the sync that recorded the merge never verified."""
+    registry = _Registry(status=ProjectLifecycleStatus.READY, baseline="b" * 40)
+
+    if adopted is None:
+        with pytest.raises(SourceUnavailable, match="upstream_moved|past") as raised:
+            await validate_project(
+                "prj-tally", registry=registry, repository=_Clone(), actor="owner",
+                idempotency_key="v-1", adopt_only=bound,
+            )  # fmt: skip
+        assert raised.value.reason == "upstream_moved"
+    else:
+        await validate_project(
+            "prj-tally", registry=registry, repository=_Clone(), actor="owner",
+            idempotency_key=lambda c: f"k-{c[:4]}", adopt_only=bound,
+        )  # fmt: skip
+    assert (registry.recorded or {}).get("commit") == adopted
+    if adopted is not None:
+        assert registry.recorded["idempotency_key"] == f"k-{COMMIT[:4]}"
 
 
 @pytest.mark.parametrize(

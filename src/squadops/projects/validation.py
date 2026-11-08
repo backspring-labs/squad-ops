@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from squadops.projects.models import ProjectLifecycleStatus, ProjectSource, SourceUnavailable
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from squadops.cycles.models import Project
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
@@ -28,13 +28,19 @@ async def validate_project(
     registry: ProjectRegistryPort,
     repository: SourceRepositoryPort,
     actor: str,
-    idempotency_key: str,
+    idempotency_key: str | Callable[[str], str],
     tokens: Mapping[str, str] | None = None,
+    adopt_only: str | None = None,
 ) -> tuple[Project, bool]:
     """Reach the Project's source through the managed clone and record what was found. A READY
     Project is re-validated (E.4.4): its development baseline moves to the upstream's commit, the
     reconciliation a drift finding asks for. A private repository is reached with the Project's
-    token in ``tokens``, for this fetch only."""
+    token in ``tokens``, for this fetch only.
+
+    The record is fenced on the baseline read here (H.30): a validation that another one overtook
+    raises ``ProjectBaselineMovedError`` and writes nothing. ``idempotency_key`` is the caller's,
+    or a function of the commit the fetch resolved. ``adopt_only`` bounds a re-validation to one
+    commit: an upstream that has moved past it is refused (``upstream_moved``), never adopted."""
     project = await registry.get_project(project_id)
     if project.source is None:
         # deferred (pair): squadops.cycles imports this package at load
@@ -47,7 +53,7 @@ async def validate_project(
     token = (tokens or {}).get(project_id)
     if project.lifecycle_status == ProjectLifecycleStatus.READY:
         return await _revalidate(
-            project, project.source, registry, repository, actor, idempotency_key, token
+            project, project.source, registry, repository, actor, idempotency_key, token, adopt_only
         )
     commit, diagnostic = None, None
     try:
@@ -70,8 +76,13 @@ async def validate_project(
         commit=commit,
         diagnostic=diagnostic,
         actor=actor,
-        idempotency_key=idempotency_key,
+        idempotency_key=_key(idempotency_key, commit or "unresolved"),
+        expected_baseline=project.development_baseline_commit,
     )
+
+
+def _key(idempotency_key: str | Callable[[str], str], commit: str) -> str:
+    return idempotency_key(commit) if callable(idempotency_key) else idempotency_key
 
 
 async def _revalidate(
@@ -80,8 +91,9 @@ async def _revalidate(
     registry: ProjectRegistryPort,
     repository: SourceRepositoryPort,
     actor: str,
-    idempotency_key: str,
+    idempotency_key: str | Callable[[str], str],
     token: str | None,
+    adopt_only: str | None,
 ) -> tuple[Project, bool]:
     """FR-21's reconciliation: adopt the upstream's commit as the development baseline. A source
     that can't be reached, or a tree the sandbox can't carry, is raised, never recorded: a READY
@@ -99,10 +111,17 @@ async def _revalidate(
         )
     if resolved == project.development_baseline_commit:
         return project, False  # the upstream is the baseline: nothing to adopt
+    if adopt_only is not None and resolved != adopt_only:
+        raise SourceUnavailable(
+            f"the upstream is at {resolved}, past {adopt_only}, the commit this re-validation "
+            "may adopt: sync again first",
+            reason="upstream_moved",
+        )
     return await registry.record_validation(
         project.project_id,
         commit=resolved,
         diagnostic=None,
         actor=actor,
-        idempotency_key=idempotency_key,
+        idempotency_key=_key(idempotency_key, resolved),
+        expected_baseline=project.development_baseline_commit,
     )

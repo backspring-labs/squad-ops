@@ -12,6 +12,7 @@ Project's records keep keys and replays as the Postgres registry does. Tokens ar
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 from typing import get_args
 
@@ -23,12 +24,17 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from adapters.cycles.factory import create_project_registry
+from adapters.tools.git_source import fetch_unauthorized
 from adapters.tools.github_review_request import GitHubReviewRequests
 from squadops.api.cycle_schemas import IntegrationCheckRowResponse
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.projects import router as projects_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
+from squadops.cycles.models import ProjectBaselineMovedError
 from squadops.projects.integration_check import WaitsOn
+from squadops.projects.models import SourceUnavailable
+from squadops.projects.validation import validate_project
+from tests.fixtures.project_writes import KeyedProjectWrites, validation_record_contract
 from tests.fixtures.shared_contract.repository import _git
 from tests.unit.api.test_campaign_calibration_record import PROJECT
 from tests.unit.api.test_unintegrated_increments import _OWNER, INCREMENT, _integrated_at
@@ -80,54 +86,18 @@ class _Forge:
 
 
 class _CheckWorld(_World):
-    """The close's world, with the forge above and the Project's writes a check makes: each
-    contribution's state, a sync and a validation, keyed as the Postgres registry keys them (a
-    key replays its record, and a key with other content is refused)."""
+    """The close's world, with the forge above and the Project's writes a check makes, kept as the
+    Postgres registry keeps them (``tests.fixtures.project_writes``)."""
 
     def __init__(self, tmp_path) -> None:
         super().__init__(tmp_path)
         self.forge = _Forge()
         self.contribution = self.contributing(sandbox=self.reading_sandbox)
-        self.keys: dict[str, tuple[str, object]] = {}
-        self.validations: list[str] = []
-        projects = self.projects
-        projects.record_contribution_state = self._record_state
-        projects.record_sync = self._record_sync
-        projects.record_validation = self._record_validation
+        self.writes = KeyedProjectWrites(self.projects, self.book.recorded)
 
-    async def _record_state(self, project_id, cycle_id, run_id, *, state, integrated_commit, actor):
-        [held] = [c for c in self.book.recorded if (c.cycle_id, c.run_id) == (cycle_id, run_id)]
-        updated = dataclasses.replace(held, state=state, integrated_commit=integrated_commit)
-        self.book.recorded[self.book.recorded.index(held)] = updated
-        return updated
-
-    def _replayed(self, key: str, digest: str):
-        held = self.keys.get(key)
-        if held is None:
-            return None
-        assert held[0] == digest, f"idempotency key {key!r} recorded different content"
-        return held[1]
-
-    async def _record_sync(self, document, *, actor, idempotency_key, request_hash):
-        stored = self._replayed(idempotency_key, request_hash)
-        if stored is not None:
-            return stored, True
-        self.projects.syncs.append(document)
-        self.keys[idempotency_key] = (request_hash, document)
-        return document, False
-
-    async def _record_validation(self, project_id, *, commit, diagnostic, actor, idempotency_key):
-        if self._replayed(idempotency_key, f"validate:{project_id}") is not None:
-            return self.projects.project, True
-        assert commit is not None, "a READY Project's re-validation records the commit it adopts"
-        self.validations.append(commit)
-        self.projects.project = dataclasses.replace(
-            self.projects.project,
-            development_baseline_commit=commit,
-            integrated_upstream_commit=commit,
-        )
-        self.keys[idempotency_key] = (f"validate:{project_id}", None)
-        return self.projects.project, False
+    @property
+    def validations(self) -> list[str]:
+        return self.writes.validations
 
     async def contributed(self):
         """The Campaign closed by its increment, at an integrated commit that doesn't carry it, and
@@ -326,7 +296,7 @@ async def test_a_failed_revalidation_is_reported_and_the_next_check_tries_it_aga
         assert (row["standing"], row["waits_on"]) == ("merged_not_synced", "revalidation")
         assert "capability_gap" in row["clears_when"]
     assert (len(world.projects.syncs), world.validations) == (1, [])
-    assert second["sync"] is None
+    assert second["sync"]["replayed"] is True  # the retry reads the upstream again, recording none
 
 
 async def test_with_nothing_pending_the_check_records_nothing_and_reads_no_forge(tmp_path):
@@ -394,3 +364,182 @@ def test_a_sample_application_is_refused_never_answered_clear():
 
     assert resp.status_code == 409, resp.text
     assert resp.json()["detail"]["error"]["code"] == "NO_SOURCE_REPOSITORY"
+
+
+class _HeldClone:
+    """The managed clone, with its next fetch held once it has resolved, until ``release``: a
+    validation paused between its fetch and its record, as a slow request is."""
+
+    def __init__(self, clone) -> None:
+        self.clone = clone
+        self.held, self.release = asyncio.Event(), asyncio.Event()
+
+    def __getattr__(self, name):
+        return getattr(self.clone, name)
+
+    async def sync(self, *args, **kwargs):
+        resolved = await self.clone.sync(*args, **kwargs)
+        if not self.held.is_set():
+            self.held.set()
+            await self.release.wait()
+        return resolved
+
+
+def _outside_commit(world: _CheckWorld) -> str:
+    """An outside developer's commit on the product's main branch."""
+    (world.repo.path / "OUTSIDE.md").write_text("an outside change\n")
+    _git(world.repo.path, "add", "OUTSIDE.md")
+    _git(world.repo.path, "commit", "-q", "-m", "outside", env=_OWNER)
+    return _git(world.repo.path, "rev-parse", "HEAD").strip()
+
+
+async def test_a_validation_another_overtook_writes_nothing_and_the_next_check_clears(tmp_path):
+    """The outside review's sequence (item 1). The owner's manual validation A fetches the upstream
+    at U1 and is held before it records. The owner squash-merges the request (U2), and the draft's
+    check B syncs and adopts U2. Then A records. Bugs caught: A writing U1 over B's U2, so the merge
+    is out of the integrated commit again; the next check stuck, its validation key spent at U2 and
+    replayed over a Project left at U1; a manual validation outside the fence."""
+    world = _CheckWorld(tmp_path)
+    client = await world.contributed()
+    u1 = _outside_commit(world)
+    held = _HeldClone(world.clones)
+    a = asyncio.create_task(
+        validate_project(
+            PROJECT,
+            registry=world.projects,
+            repository=held,
+            actor="owner",
+            idempotency_key="manual-a",
+            tokens={PROJECT: TOKEN},
+        )  # fmt: skip
+    )
+    await held.held.wait()
+    merge = world.squash_merged()
+
+    b = client.post(CHECK, json={"token": TOKEN}).json()
+    held.release.set()
+    [outcome] = await asyncio.gather(a, return_exceptions=True)
+    after = client.post(CHECK, json={"token": TOKEN}).json()
+
+    assert (b["clear"], b["revalidated_at"]) == (True, merge)
+    assert world.projects.project.development_baseline_commit == merge != u1
+    assert (after["clear"], after["integrated_commit"]) == (True, merge)
+    assert isinstance(outcome, ProjectBaselineMovedError) and outcome.held == merge
+    assert world.validations == [merge]
+
+
+async def test_the_registry_stand_in_keeps_the_validation_record_contract(tmp_path):
+    """The outside review's item 2. Bug caught: a stand-in whose validation keys never replay, or
+    that moves a newer adoption back, so the tests above pass on behaviour Postgres doesn't have.
+    The same contract runs on Postgres in the registry's integration tests."""
+    world = _CheckWorld(tmp_path)
+
+    await validation_record_contract(
+        world.projects, PROJECT, baseline=world.projects.project.development_baseline_commit
+    )
+
+
+async def test_a_closed_request_the_owner_reopens_and_merges_clears_by_the_steps_its_row_names(
+    tmp_path,
+):
+    """The outside review's item 4. The check reads only pending contributions, so a closed one's
+    recovery is the owner's sync and re-validation. Bugs caught: the row's instruction stopping at
+    the merge, so the owner merges and the draft keeps waiting; the steps it names not clearing it."""
+    world = _CheckWorld(tmp_path)
+    client = await world.contributed()
+    world.book.recorded[0] = dataclasses.replace(world.book.recorded[0], state="closed")
+
+    [row] = client.post(CHECK, json={"token": TOKEN}).json()["remaining"]
+    _git(world.repo.path, "merge", "-q", "--no-ff", "-m", "reopened", BRANCH, env=_OWNER)
+    merge = _git(world.repo.path, "rev-parse", "HEAD").strip()
+    owner = world.client(Role.ADMIN)
+    synced = owner.post(
+        f"/api/v1/projects/{PROJECT}/syncs", json={"idempotency_key": "o-1", "token": TOKEN}
+    )
+    validated = owner.post(
+        f"/api/v1/projects/{PROJECT}/validate", json={"idempotency_key": "o-2", "token": TOKEN}
+    )
+    after = client.post(CHECK, json={"token": TOKEN}).json()
+
+    assert row["waits_on"] == "closed_unmerged"
+    assert f"/api/v1/projects/{PROJECT}/syncs" in row["clears_when"]
+    assert "validate" in row["clears_when"] and "merge commit" in row["clears_when"]
+    assert (synced.status_code, validated.status_code) == (201, 200), validated.text
+    assert (after["clear"], after["integrated_commit"]) == (True, merge)
+
+
+@pytest.mark.parametrize("merged", [True, False], ids=["merged", "not merged"])
+async def test_a_patch_export_is_read_by_ancestry_with_no_token_and_no_forge(tmp_path, merged):
+    """The outside review's answer 5. Bugs caught: a patch export, which has no review request,
+    answered ``no_token`` or ``no_forge`` though nothing on the forge is read; its merge missed;
+    its wait worded as a review request's."""
+    world = _CheckWorld(tmp_path)
+    client = await world.contributed()
+    world.book.recorded[0] = dataclasses.replace(
+        world.book.recorded[0], mode="patch_export", review_url=None, branch=None
+    )
+    if merged:
+        _git(world.repo.path, "merge", "-q", "--no-ff", "-m", "applied", BRANCH, env=_OWNER)
+    client.app.state.review_requests = None
+
+    body = client.post(CHECK, json={}).json()
+
+    assert body["merge_state_unread"] is None
+    assert body["sync"] is not None and world.forge.requests == []
+    if merged:
+        assert (body["clear"], body["revalidated_at"]) == (True, body["integrated_commit"])
+    else:
+        [row] = body["remaining"]
+        assert row["waits_on"] == "merge" and "ancestry" in row["clears_when"]
+
+
+@pytest.mark.parametrize(
+    ("passed", "reason", "says"),
+    [
+        (None, "fetch_unauthorized", "with no token"),
+        (TOKEN, "fetch_unauthorized", "refused the token"),
+    ],
+    ids=["no token", "a refused token"],
+)
+async def test_a_fetch_refused_for_its_credentials_is_told_from_a_missing_token(
+    tmp_path, passed, reason, says
+):
+    """Answer 5's second half. A patch export needs no forge token, but its fetch may still need
+    the repository's. Bugs caught: the remote's refusal answered as an ordinary outage, or as
+    ``no_token`` when a token was passed and refused; the token named in the answer."""
+    world = _CheckWorld(tmp_path)
+    client = await world.contributed()
+    world.book.recorded[0] = dataclasses.replace(
+        world.book.recorded[0], mode="patch_export", review_url=None, branch=None
+    )
+
+    async def refused(*args, **kwargs):
+        raise SourceUnavailable(
+            "git fetch failed: fatal: Authentication failed for 'https://forge.example.invalid/'",
+            reason="unauthorized",
+        )
+
+    world.clones.sync = refused
+    resp = client.post(CHECK, json={"token": passed} if passed else {})
+
+    unread = resp.json()["merge_state_unread"]
+    assert (unread["reason"], says in unread["message"]) == (reason, True)
+    assert TOKEN not in resp.text
+    assert world.validations == []
+
+
+@pytest.mark.parametrize(
+    ("message", "unauthorized"),
+    [
+        ("git fetch failed: fatal: could not read Username for 'https://x': terminal prompts disabled", True),
+        ("git fetch failed: remote: Invalid username or password.", True),
+        ("git clone failed: fatal: Authentication failed for 'https://x/'", True),
+        ("git fetch failed: The requested URL returned error: 403", True),
+        ("git fetch failed: fatal: unable to access 'https://x/': Could not resolve host: x", False),
+        ("git fetch failed: fatal: couldn't find remote ref refs/heads/main", False),
+    ],
+)  # fmt: skip
+def test_a_fetch_refused_for_its_credentials_is_named_unauthorized(message, unauthorized):
+    """Bug caught: a credential refusal read as the source being down, so the answer never says a
+    token is missing or refused; or a network fault read as a credential problem."""
+    assert fetch_unauthorized(message) is unauthorized

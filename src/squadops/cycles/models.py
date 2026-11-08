@@ -198,6 +198,17 @@ class ProjectStateConflictError(CycleError):
     again here (re-validation against drift is E.4.4's)."""
 
 
+class ProjectBaselineMovedError(ProjectStateConflictError):
+    """Raised when a validation would adopt a commit over a development baseline that moved after
+    its caller read it (SIP-0112 H.30, #2862): another validation adopted ``held`` in between.
+    Nothing is written. The caller reads the Project again, and validates again if it still must.
+    """
+
+    def __init__(self, message: str, *, held: str | None) -> None:
+        super().__init__(message)
+        self.held = held
+
+
 class DevelopmentConfigurationNotFoundError(CycleError):
     """Raised when a Project has no Development Configuration, or not the revision asked for."""
 
