@@ -16,6 +16,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   scripted cycle produces no Cross-Cycle Memory observation, and its calls are charted under the engine
   `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
+- **The draft's integration check** (#2862, SIP-0112 H.30): `POST /api/v1/projects/{id}/integration-check`
+  (`campaigns:manage`), or `squadops projects check-integration <project> [--token-from-gh]`. Before the next
+  Campaign is drafted on a repository-backed Project, it syncs where a contribution is pending, reading each
+  review request's merge on the forge, re-validates where one merged, and answers what is still not in, each row
+  with what it waits on. The forge is only read. One sync is recorded per upstream commit. With no token (the
+  request's, else the one the deploy holds for the Project) the merge is answered unread, `no_token`, never "not
+  merged". It replaces the host-side merge sweep and its timer, which the owner ruled against on 2026-11-08 and
+  which was never installed.
 
 ### Fixed
 - **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic

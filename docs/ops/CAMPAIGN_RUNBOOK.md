@@ -310,6 +310,11 @@ accepted work stays on the campaign branch until the supervisor opens it:
   `contribution_failed` row naming why, and the same command tries again.
 - **Read what isn't in yet:** `squadops projects unintegrated <project>`. Nothing listed means every
   accepted increment is in the Project's integrated commit.
+- **After the owner merges it, before the next draft:** `squadops projects check-integration <project>
+  --token-from-gh`. It syncs, re-validates the Project where the merge is in, and lists what still waits, each
+  row with what clears it. It only reads the forge. `merge_state_unread` means the merge wasn't read, never that
+  it isn't merged. After a re-validation, record the configuration and capture the baseline at the new commit
+  before a cycle starts (SIP-0112 H.30).
 - **`contribution_closed`:** the request was closed unmerged, and it keeps blocking. The command above
   can't reopen it. The owner reopens it on the forge, merges it with a merge commit, and re-validates
   the Project. If the work won't land, the owner says so, which clears it and can't be undone:

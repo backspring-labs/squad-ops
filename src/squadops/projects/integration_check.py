@@ -36,7 +36,6 @@ from typing import Any
 
 from squadops.campaigns.models import CampaignState
 from squadops.campaigns.unintegrated import Standing, UnintegratedIncrement, unintegrated_increments
-from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.models import ProjectLifecycleStatus, SourceUnavailable
 from squadops.projects.sync import SyncRefused, sync_project, unreconciled
 from squadops.projects.validation import validate_project
@@ -161,6 +160,9 @@ async def check_integration(
     """Sync and re-validate ``project_id`` where its unintegrated set asks for it, then answer the
     set that remains. ``tokens`` holds the Project's token, the request's or the deploy's; it is
     used for this request's fetch and forge reads only, and never recorded."""
+    # deferred (pair): squadops.ports imports this package at load
+    from squadops.ports.projects.review_request import ReviewRequestFailed
+
     project = await registry.get_project(project_id)
     if project.source is None:
         raise NoSourceRepository(

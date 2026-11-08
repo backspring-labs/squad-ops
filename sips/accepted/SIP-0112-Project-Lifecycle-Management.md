@@ -136,7 +136,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a product's suite judged on its own runner on the product's tree at the pin, with the files a run's artifacts hold back (a lockfile) (H.19) | **shipped** | 2.6.0, PR #2902, closes #2900 |
 | a source-backed change that deletes a file | **shipped** (H.23): the `delete:<path>` form, judged against the task's view and grant, applied to the delivery candidate, named in `changed_paths` and absent from the capture | 2.6.0, PR #2923, closes #2612 |
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
-| a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.28; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #2995, closes #2862 |
+| a merged contribution syncs its Project, so the integrated commit includes the work | **placed** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, #2862 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect) | 2.8.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
@@ -3335,3 +3335,72 @@ integrated.
 **Who ruled it.** The owner: the 2.7 plan's R2 kept #2862 in 2.7 as the line's named exception (2026-11-08), and the
 credential is the owner's ruling of the same day, above.
 
+## H.30 The draft checks integration where it is drafted, in place of H.28's timer (2026-11-08; E.4.3, E.4.4, FR-21; SIP-0109 §24dc, §24ds; #2862; the owner's ruling of 2026-11-08, option 1; the Spark lane)
+
+**What changed.** H.28 is superseded. Its host timer (`scripts/dev/ops/merge_sweep.py`,
+`infra/systemd/squadops-merge-sweep.*`) and its test are removed. They were never installed. In their place, the
+next Campaign's draft checks integration when it needs to:
+`POST /api/v1/projects/{id}/integration-check` (`campaigns:manage`, 200, `IntegrationCheckResponse`), or
+`squadops projects check-integration <project> [--token-from-gh]`. In one request it:
+1. **reads the Project's unintegrated set** (SIP-0109 §24dc item 7). With no row `contribution_pending` or
+   `merged_not_synced`, it records nothing and answers the set;
+2. **syncs, for a `contribution_pending` row** (E.4.4): the managed clone fetches the base ref, and each pending
+   review request's state is read on the forge. A request merged into the base ref (a squash merge's new commit
+   included) is recorded integrated against the commit that took it. The sync's idempotency key is the upstream
+   commit's (`integration-check:<project>:sync:<commit>`), so a second check at that commit records no second sync: it
+   replays the first. A manual `POST …/syncs` keeps its caller's key;
+3. **re-validates, for a `merged_not_synced` row**, under a key named for the synced commit: the development
+   baseline and the integrated commit move to the upstream's commit, and the row is carried. New cycles then wait for
+   configure and baseline capture there, as after any re-validation (the owner's ruling of 2026-11-05). The answer's
+   `next_step` says so;
+4. **reads the set again** and answers it: `clear` when it is empty, so the draft may proceed. Otherwise each row
+   says what it waits on: `campaign_open`, `contribution_not_opened`, `merge`, `merge_state_unread`, `revalidation`
+   or `closed_unmerged`, with `clears_when` in words. A sync that read drift the Project hasn't reconciled is
+   answered too (`unreconciled`, #2608).
+
+**It only reads the forge.** The fetch is the managed clone's, and the forge is asked only `review_request_state`, a
+`GET`. Nothing is pushed, commented, merged or labelled.
+
+**The token.** The request's `token`, else the one the deploy holds for the Project in
+`projects.review_request_tokens`, the order the sync and validate routes already read. It is used for that request's
+reads only, and never recorded. No new credential is stored and no host script reads a password. With neither, a
+pending row's merge isn't read, and the answer says so, `merge_state_unread: {reason: no_token}`, never "not merged".
+The sync would otherwise answer `pending` without a forge reading, so it isn't run. The other typed reasons are
+`no_forge`, `sync_refused`, `source_unavailable` and `forge_unavailable`. A re-validation that fails is answered in
+`validation_failed` with its reason. Neither is retried here. The next check tries again, and says so.
+
+**Where the gate is.** It stays the supervisor's, where SIP-0109 §24dc and #2863 placed it. #2863 built the signal and
+left refusing a draft while the set is non-empty to the supervisor's side. A draft is composed from the
+product read at the integrated commit (#2855's `source-file`) before any Campaign is created. So a check at
+`POST /api/v1/campaigns` would run after that read. It would either let through a draft composed from the commit
+before the merge, or refuse every creation while any row stands, which is a policy nobody has ruled. The check is the
+supervisor's first call, ahead of that read. SIP-0109 §24ds records the change on the supervisor's side.
+
+**Scope.** `campaigns:manage` is the drafting seat, the supervisor's and the owner's. That seat can now cause a sync
+and a re-validation, which on their own routes need `admin:write`. They happen only where the set asks for them, and
+they move the baseline only to the upstream's commit. This is the ruling's own design: the draft step syncs and
+re-validates.
+
+**The evidence.** `tests/unit/api/test_integration_check.py` enters at the route, as the runtime mounts it, for the
+supervisor's seat. It runs over `test_close_contribution`'s world: a real managed clone, real deliveries, the
+contribution opened through `POST /api/v1/campaigns/{id}/contributions`, the owner's squash merge made in the fixture's
+repository, and the forge the real GitHub adapter over a recorded transport. The tests show:
+- a merged request is integrated, the baseline and the integrated commit move to the merge, the answer is clear, and
+  the read route lists nothing;
+- the forge sees one `GET` with the caller's token. Nothing is opened, and the product's refs are unchanged;
+- an open request keeps the draft waiting, names the row and its address, and moves nothing;
+- a second check at the same upstream commit replays the sync and records no second one;
+- no token gives `no_token`, with no sync and no forge request;
+- the request's token wins over the held one, and the held one is used when none is passed;
+- a forge refusal gives `forge_unavailable`, with no sync recorded and nothing validated;
+- a merge the sandbox can't carry (a symlink) gives `validation_failed: capability_gap`, and the next check tries again;
+- with nothing pending, nothing is recorded and the forge isn't read;
+- triage and viewer seats get 403, and a sample application gets 409 `NO_SOURCE_REPOSITORY`.
+
+Eight mutations, each on a commit and restored by commit, were caught: the no-token guard removed; a key per call; no
+re-validation; re-validation on a pending row; a forge refusal swallowed; no re-read after the sync; the token order
+swapped; the route's scope lowered to `cycles:read`.
+
+**Who ruled.** The owner, 2026-11-08: "I don't like the design that relies on a timer"; option 1, no timer, the check
+at the point of use. The route's shape, its home on the supervisor's side and its answer are the implementer's design
+under that ruling, for the owner's outside review in the PR.

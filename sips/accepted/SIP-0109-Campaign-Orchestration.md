@@ -6725,3 +6725,25 @@ discrimination and never a false hold: the worst a missing loader can do is read
 **Who ruled it.** The 2.7 plan's Track A row for #2799 names option 1, the framework-placed loader. The owner adopted
 the plan on 2026-11-08, with the line's judgement calls delegated. The scope above and the loader's shape are the
 Spark lane's calls under it.
+
+### 24ds. The supervisor's draft gate asks for the integration check first (2026-11-08, §24dc item 7; SIP-0112 H.30; #2862; the owner's ruling of 2026-11-08, option 1)
+
+**What changed.** §24dc's first "What remains" item said a merge is known only by a sync, so a request merged on the
+forge stood `contribution_pending` until someone ran `POST /api/v1/projects/{id}/syncs`. SIP-0112 H.30 answers it at
+the draft. The gate stays the supervisor's, as §24dc placed it, and its first call changes:
+- **before it reads the product** to compose the next Campaign (#2855's `source-file`), the supervisor calls
+  `POST /api/v1/projects/{id}/integration-check` (`campaigns:manage`), with its own forge token or none. The check
+  syncs where a row is `contribution_pending`, re-validates where one is `merged_not_synced`, and answers the set
+  that remains;
+- **`clear: true`** means the draft may proceed. It reads the product at the `integrated_commit` the answer names;
+- **otherwise the draft waits** and says why, from each remaining row's `waits_on` and `clears_when`. A
+  `merge_state_unread` reason (`no_token`, `no_forge`, `sync_refused`, `source_unavailable`, `forge_unavailable`)
+  means the merge wasn't read, never that it isn't merged.
+
+`GET …/unintegrated-increments` is unchanged and stays read-only. A Campaign's creation still doesn't read the set:
+the reasons are in H.30's "Where the gate is".
+
+**The evidence.** SIP-0112 H.30's.
+
+**Who ruled.** The owner, 2026-11-08: no timer, and the check at the point of use (option 1). Keeping the gate on the
+supervisor's side, and the call's shape, are the implementer's, for the owner's outside review in the PR.
