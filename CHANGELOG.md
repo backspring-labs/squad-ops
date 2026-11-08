@@ -22,8 +22,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   review request's merge on the forge, re-validates where one merged, and answers what is still not in, each row
   with what it waits on. The forge is only read. One sync is recorded per upstream commit. With no token (the
   request's, else the one the deploy holds for the Project) the merge is answered unread, `no_token`, never "not
-  merged". It replaces the host-side merge sweep and its timer, which the owner ruled against on 2026-11-08 and
-  which was never installed.
+  merged". A patch export is read by ancestry with no forge token, and a fetch refused for its credentials is
+  `fetch_unauthorized`. Its re-validation is bounded: a READY Project, after its own sync, at that sync's commit. It
+  replaces the host-side merge sweep and its timer, which the owner ruled against on 2026-11-08 and which was never
+  installed.
+- **A validation is fenced on the baseline it read** (#2862, SIP-0112 H.30): one that another validation overtook
+  writes nothing, and `POST /api/v1/projects/{id}/validate` answers 409 `BASELINE_MOVED`, so a slow validation can
+  no longer move a newer adoption back.
 
 ### Fixed
 - **A product's repaired suite is read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance
