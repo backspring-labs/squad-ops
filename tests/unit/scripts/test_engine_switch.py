@@ -87,6 +87,19 @@ def test_the_serve_command_carries_every_pin_the_recipe_names():
     assert "127.0.0.1:8090:8080" in cmd  # never published beyond the host's loopback
 
 
+def test_the_engine_comes_back_after_a_reboot_unless_it_was_stopped():
+    """#2932: started with no policy, TensorFold stayed down after the 11-05 power loss while every
+    compose service came back. Bug caught: the policy dropped, set to ``always`` (which restarts a
+    container the watchdog killed on memory pressure, at the next daemon start), or placed after the
+    image, where the engine reads it as its own argument and docker never sees it."""
+    cmd = es.serve_command(RECIPE)
+    options = cmd[: cmd.index(RECIPE["image"])]
+    serve = cmd[cmd.index(RECIPE["image"]) :]
+
+    assert options[options.index("--restart") + 1] == "unless-stopped"
+    assert "--restart" not in serve
+
+
 def test_key_registry_selects_squadops_without_disabling_independent_callers(tmp_path):
     path = tmp_path / "keys"
     original = (

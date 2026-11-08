@@ -307,6 +307,12 @@ def serve_command(recipe: dict[str, Any], network: str | None = None) -> list[st
         "docker",
         "run",
         "-d",
+        # #2932: back after a reboot or a crash, as Ollama's compose service is. The engines never
+        # run together, and this keeps them apart: the switch removes this container, compose
+        # stops Ollama's, and the watchdog's `docker kill` counts as a manual stop too. Docker
+        # restarts none of those (a killed `unless-stopped` container stayed down, 2026-11-07).
+        "--restart",
+        "unless-stopped",
         "--name",
         TF_CONTAINER,
         "--device",
