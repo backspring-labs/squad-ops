@@ -10,7 +10,7 @@ patterns and outcomes, and the raw model outputs of S6 stay out of this reposito
 | S2. Rojo and Script Sync | **done:** a Rojo build reads the Script Sync layout correctly with one sync rule kept in Project metadata; the game's modules need a loader to run under Lune |
 | S4. the network path | **done:** the MacBook reaches the Spark's runtime API outward over Tailscale |
 | S5. the designer test | **done:** partial pass, with one finding that narrows the plan's §2.2 (below) |
-| S6. a first Luau probe | **held by the Spark session for the owner's confirmation there;** it runs on TensorFold, the engine the deploy serves `full` from |
+| S6. a first Luau probe | **done:** six of six samples correct in their Luau and Roblox API use. One context-induced logic error (shared by both samples of one task), tests that run nowhere as delivered, and the output format broken on the largest task (findings below) |
 
 ## S2. Rojo and Script Sync
 
@@ -76,15 +76,92 @@ the plan before the plan gate can check them. That's read in the code before rev
 
 ## S6. A first Luau probe
 
-The run plan went to the Spark session on 2026-11-08. It has three tasks at `f2113a6`, each prompted twice to the
-`full` profile's dev model, a syntax check with pinned Lune, and the review rubric fixed before the run:
+**Label: "S6 first probe — not a quality rate, no context selection measured."** The Spark session ran it on
+2026-11-08, 14:20–14:31Z, with no cycle or Campaign active, after the owner confirmed in that session.
+
+**The tasks,** at `f2113a6`, each prompted twice:
 - T1: a shared pricing rule and its spec file;
 - T2: a server bounty kind wired to a new Forge signal;
 - T3: a client coach hint.
 
-**The two large files were left out on purpose** (an item table and the UI controller, about 28 KB and 31 KB). So the
-probe doesn't measure context selection, which the plan's full-path gate does. Findings, without the game's code,
-come here when the outputs return.
+The two largest files (about 28 KB and 31 KB) were left out on purpose.
+
+- **Engine and model, as the squad reaches them:**
+  - TensorFold `squadops-tensorfold:0.6.6-cb2ebf05`, recipe `qwen27b-nvfp4`;
+  - served id `qwen3.8-27b-tf-nvfp4`;
+  - checkpoint `nvidia/Qwen3.8-27B-NVFP4@482ca0f3`, drafter `z-lab/Qwen3.8-27B-DFlash2@50307d4c`.
+
+  The run plan's "`qwen3.6:27b` on Ollama" was wrong: the deploy serves `full` from TensorFold, and Ollama is
+  stopped.
+- **Options:** sent through the deployed TensorFold adapter inside neo's container, as a `development.develop` call:
+  temperature 1.0, top_p 0.95, top_k 20, min_p 0, thinking on at medium effort, max_tokens 14,336.
+  - The deployed profile (`full-38-tf`) caps neo at 12,288 completion tokens.
+  - No sample reached the cap (the largest was 11,382), so the difference changed no output.
+
+| sample | prompt / completion / reasoning tokens | tok/s | wall time | format |
+|---|---|---|---|---|
+| T1-1 | 2,470 / 10,849 / 7,659 | 65.3 | 167 s | as asked |
+| T1-2 | 2,470 / 11,382 / 7,753 | 71.0 | 160 s | as asked |
+| T2-1 | 6,250 / 6,760 / 931 | 129.9 | 54 s | **no parseable block:** no fences; files separated by bare `-- path:` lines |
+| T2-2 | 6,250 / 7,266 / 1,319 | 116.2 | 63 s | **no parseable block:** `-- path:` placed before each fence, not inside it |
+| T3-1 | 7,926 / 7,208 / 3,391 | 75.9 | 98 s | as asked |
+| T3-2 | 7,926 / 9,050 / 5,107 | 74.3 | 122 s | as asked |
+
+- **Compile check:** Lune 0.11.1 (digest-checked), in the sandbox image with no network, a read-only filesystem and
+  no capabilities. All 14 files compile: T1's six, T3's two, and T2's six from a lenient extraction made only for
+  this check. The strict reading of T2 stands as a format failure.
+- **Not executed:** T1's spec (it needs the S2 loader) and anything engine-coupled.
+- **Already a finding:**
+  - both samples of the largest multi-file task broke the stated output contract, each in a different way, while
+    the single-file and small tasks kept it;
+  - an emission parser for this specialty can't assume the fence contract holds on a three-file change.
+- **The review** (on the MacBook, against the rubric fixed before the run). The outputs came by message, not ssh,
+  and all ten digests matched what the Spark holds.
+  - **Exactness:**
+    - every code file the model returned was rebuilt here from the original plus only the task's change, and its
+      digest matched;
+    - so across six samples, the only change beyond the task is one header comment updated to match (T2-1).
+
+  | | T1 (shared rule + test) | T2 (server, across services) | T3 (client hint) |
+  |---|---|---|---|
+  | complete | both | both | both |
+  | follows the file's conventions | both | both | both |
+  | Roblox API errors | none | none | none |
+  | logic errors | none | none in the change | **both samples, the same one** (below) |
+  | output format | kept | **broken in both,** two different ways | kept |
+  | unrequested changes | none | one comment (T2-1) | none |
+
+  - **The logic error is context, not reasoning.**
+    - T3 computes free bag slots from the saved capacity and counts every item. The game's own helpers add the
+      boss-floor bonus slots and skip equipped gear, and the client's inventory and shop screens already use them.
+    - The helper's module wasn't in the task's context, so both samples reinvented the rule wrongly. This is the
+      failure the plan's full-path gate exists to measure: context selection, on a 1.7 MB tree.
+  - **Server wiring was right.**
+    - T2 added a signal through the game's own Signal module, fired it only on success, hooked it into the bounty
+      flow and left saved data's shape alone.
+    - The new dependency between the two services creates no require cycle.
+    - Neither sample named the deploy-time edge a reviewer would: a new kind reshuffles the current period's seeded
+      set, so a board saved before a deploy restores its progress onto different bounties.
+  - **The tests run nowhere as delivered.**
+    - T1-1 wrote a Studio-side script in `tests/`, a folder Script Sync never syncs into Studio.
+    - T1-2 wrote its own instance-to-file loader (the S2 idea), but in Lua 5.x (`io.open`, the four-argument
+      `load`), neither of which exists in Luau, and with an instance map missing seven modules the code under test
+      requires. By reading; not run.
+    - In both, the "never below 1 gold" case can't fail with the configured discount.
+  - **The output format held on single-file and small changes and broke on the three-file change,** in both samples:
+    - T2-1 used no fences at all;
+    - T2-2 put the path line before each fence instead of inside it.
+  - **Cost:** 54–167 s per sample; T1 spent about 7,700 reasoning tokens on a small task.
+- **What it tells the playbooks** (an input to phase 2f, not a rate):
+  1. **ship the loader and the test convention** as tooling (where tests live, which runner, how a module loads
+     under Lune), rather than leave each task to write one;
+  2. **give each task the module that owns its concept** (here, the item helpers for bag space). The code map is
+     the starting point, and the full-path gate measures whether it's enough;
+  3. **the emission parser can't rely on the fence contract** for multi-file changes: parse the two shapes seen
+     here, or ask for one file per block and repair;
+  4. **ask for deploy-time effects on saved state** in server changes.
+- **For the gate:** the model's Luau and Roblox API use was right in every sample. The risks it shows are context
+  selection, test tooling and output format, all of them things the specialty provides. Six samples give no rate.
 
 ## S4. The network path
 
