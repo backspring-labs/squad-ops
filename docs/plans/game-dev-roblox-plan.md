@@ -144,8 +144,13 @@ in the derived profile, like Python or JavaScript. Studio, play sessions and the
 - **Resolved once, pinned for the Campaign.**
   - At Campaign creation, the squad profile's `specialties` field is resolved to the specialty's declaration, its
     operations and their handlers, result readers, playbooks and permissions.
-  - The resolution's digest goes in the Campaign snapshot, beside the fragment hashes the prompt stamp already
-    records.
+  - The resolution's digest goes where a cycle's squad is already pinned: the profile snapshot
+    (`compute_profile_snapshot_hash` in `cycles/lifecycle.py`, stamped as each cycle's `squad_profile_snapshot_ref`).
+    That hash covers every field that decides how a cycle executes, so the profile's `specialties` field and the
+    specialty's digest enter it.
+  - A Campaign's bound snapshot is the precedent for a recorded re-binding: SIP-0110 Appendix A §3.7, the `rebind`
+    event in `campaigns/models.py`.
+  - The Spark session doesn't expect 2.7 to change either (2026-11-08).
 - **Detection, since in-tree code can't be replayed.** A redeploy can't keep an old version of in-tree code running.
   So every cycle re-resolves and compares digests. A different digest stops the Campaign with a named reason. It
   never runs on a changed specialty under the old snapshot.
@@ -194,6 +199,15 @@ so no port opens on the MacBook.
 | **cancel** | the registry marks the assignment cancelled. The worker sees it at its next heartbeat, stops, resets (below), and submits `interrupted` |
 | **expiry** | an expired lease frees the assignment for a new attempt. It doesn't prove the old play session stopped, so the next claim on that worker begins with reconcile-and-reset |
 
+- **Built on 2.7's conventions** (the Spark session, 2026-11-08):
+  - **Fencing follows #2932's echo convention:** a fresh identity per dispatch, echoed in the reply; a stale reply is
+    dropped and counted.
+  - **It needs a durable fencing token of its own.** #2932's dispatch identity is deliberately in-memory, because a
+    resume mints a new one. A worker's lease crosses the network and outlives a runtime restart, so the convention
+    is reused and the storage is not.
+  - **The worker's evidence goes through the vault's `store()`** and inherits #2931's durability: content is
+    committed before metadata, and metadata before the index. A corrupt artifact a run needs is a typed error that
+    fails or escalates the run.
 - **Two outcomes kept apart:**
   - `not_executed`: failed before execution began (staging, sync, verification of the tested state);
   - `interrupted`: interrupted after the play session started.
@@ -415,15 +429,32 @@ So local rehearsals run only while the MacBook stack isn't producing evidence fo
 the main checkout with `--no-deps`; running `up` from a worktree took Postgres down on 2026-10-18. Specialty
 profiles and worker registrations exist only in that local stack until 2.8.
 
-**Contracts shared with 2.7's branches:** reuse 2.7's dispatch-freshness conventions and artifact durability
-behaviour as they land, rather than building competing versions. The Spark session names which.
+**Settled with the Spark session (2026-11-08),** answering this plan's note. The 2.7 plan is #2971.
+- **Files 2.7 is expected to change** (each PR lists its own):
 
-**What to settle with the Spark session:** the note beside this plan's PR. In short:
-- 2.7's restructured files;
-- the shared contracts;
-- S6's box time;
-- the 2.7 plan's §5a entry;
-- the demonstration's slot in 2.8.
+  | file or package | issue |
+  |---|---|
+  | `projects/profile_derivation.py` | #2775 |
+  | `prompts/` (the manifest and stamp regenerate) | #2933, #2935 |
+  | `execution/dispatched_flow_executor.py`, `execution/reply_router.py` | #2932, #2949 |
+  | `campaigns/` | R3's control-log allowance, #2783 |
+  | `adapters/cycles/filesystem_artifact_vault.py` | #2931, then a filtered-listing index |
+  | `capabilities/handlers/route_rendering.py` | #2776 |
+  | `adapters/sandbox/scenario_runner.py` | #2798 |
+  | `squadops.embeddings`, removed | #2736 |
+
+- **Expected unchanged:** `orchestration/handler_registry.py`, `bootstrap/handlers.py`, `tasks/task_types.py`,
+  `sandbox/findings` and the profile snapshot hash.
+- **A wire-contract change to build on:** the task envelope and the reply payload gain a dispatch identity (#2932).
+  `qa.run_remote_operation` carries it.
+- **Shared contracts:** #2932 and #2931, as §2.5 uses them.
+- **S6's window:** open during 2.7's early build, while no Campaign runs. Closed from the pinned deploy onward (2.7
+  plan §4.1: the shakeout pairs, the z_continuum increment, the soak). The Spark session runs the probe from a run
+  plan, labelled as this plan says, and tells the owner, who can veto.
+- **The 2.7 plan's §5a** records Q45 and Q46 as ruled on 2026-10-31, the open question as whether revision 3
+  replaces their foundation (§8), and this plan as a 2.8 input, unplaced.
+- **2.8:** recorded as the MacBook lane's input to the 2.8 plan's draft: the demonstration's gate and counted run,
+  and the worker registry's migration deploy when 2.8 opens. The slot is the owner's ruling.
 
 ## 6. Risks
 
