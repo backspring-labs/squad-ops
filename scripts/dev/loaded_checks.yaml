@@ -2375,3 +2375,33 @@ checks:
       inputs = {"source_repository": {"commit": "c", "map": ""}, "resolved_config": {"development_profile": "fullstack_fastapi_react"}}
       print(s.source_backed(inputs), s.source_backed({}), s.product_conventions_template(inputs))
     expect: True False request.source_repository_conventions_fullstack_fastapi_react
+  - id: "2799"
+    what: a vitest product's page criterion's runner places a page loader, delivery writes it over the squad's copy, and a retest forwards the scope that names it (SIP-0109 §24dp, #2799)
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace as N
+      from squadops.campaigns.criterion_placement import runner_placements
+      from squadops.capabilities.context_assembly import RETEST_PRESENCE_KEYS
+      from squadops.execution.source_delivery import with_framework_files
+      r = N(runner="vitest", checks=("web",), covers=("web/**",), roots=("web",), file_pattern="*.test.*", single_file_argv=("{name}",), holds=lambda p: p.endswith(".test.jsx"))
+      [p] = runner_placements((r,), (), ("web/a.test.jsx",))
+      print(p.page_loader, with_framework_files({"x": b"squad"}, {"x": b"framework"}, {})["x"].decode(), "increment_test_scope" in RETEST_PRESENCE_KEYS)
+    expect: web/criterion_page_loader.js framework True
+  - id: "2799-nat"
+    what: the proposal's rails store a vitest page criterion's page loader with its placed file (SIP-0109 §24dp, #2799)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.change_request import PlacedCriterionFile
+      from squadops.campaigns.criterion_placement import RunnerPlacement, page_loader_for
+      p = RunnerPlacement("vitest", ("web",), ("web/**",), "web/criterion_{criterion}.test.jsx", page_loader="web/criterion_page_loader.js")
+      print(page_loader_for("web/criterion_T3.test.jsx", (p,)), PlacedCriterionFile("T3", "web/criterion_T3.test.jsx", "x").page_loader)
+    expect: web/criterion_page_loader.js x
+  - id: "2799-eve"
+    what: the qa author of a vitest product's page criterion is shown the page loader and how to load its view through it (SIP-0109 §24dp, #2799)
+    container: squadops-eve
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.campaigns.page_loader import page_loader_source
+      asset = pathlib.Path(p.__file__).parent / "request_templates" / "request.increment_page_loader_appendix.md"
+      print(asset.is_file(), "loadView(path, name = 'default')" in page_loader_source("w/criterion_page_loader.js"))
+    expect: "True True"
