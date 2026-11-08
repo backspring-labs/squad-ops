@@ -24,7 +24,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   as a pinned one and refuse an added page's anchor that one carries. The proposer is shown those pages and their ids.
   Acceptance renders them in the expected set, so a candidate that drops one is rejected, and a page never built
   that reuses one's anchor is blocked, never held. A product with no approved manifest is covered by the same
-  inventory.
+  inventory. After its outside review (§24dr): an added page's anchor is also held unique against the candidate's
+  own rendered pages; each promotion records the inventory's pages again with the ids they carry now; a pinned
+  route's inventory ids stay taken at acceptance. A launch or promotion from before the inventory is refused rather
+  than read as empty: the proposal and acceptance refuse a block without one, and a Campaign whose log has such a
+  promotion escalates before its next proposal, naming the row. Both the runtime-api and nat images have to answer
+  their loaded checks (`2783-runtime`, `2783-nat`) before the fix is relied on.
 - **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
   write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release
   capture, the verification-set driver and triage, which read the vault as another user. Files are 0644 again, as

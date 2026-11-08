@@ -173,6 +173,8 @@ def route_record(
     blocked one wasn't read. A page of the accepted-page inventory names the root it was accepted
     with (``accepted_root``, §24dr item 2), which its promotion records it by again."""
 
+    roots = accepted_roots or {}
+
     def seen(route: str) -> list[str] | None:
         reading = read.get(route)
         return (
@@ -190,11 +192,7 @@ def route_record(
                 "read_at": read[r.path].path if r.path in read else None,
                 "seen": seen(r.path),
                 "detail": r.detail or None,
-                **(
-                    {"accepted_root": accepted_roots[r.path]}
-                    if r.path in (accepted_roots or {})
-                    else {}
-                ),
+                **({"accepted_root": roots[r.path]} if r.path in roots else {}),
             }
             for r in results
         ],

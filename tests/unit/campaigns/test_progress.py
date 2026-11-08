@@ -3192,4 +3192,7 @@ async def test_a_rebase_that_supersedes_the_items_repair_proposes_the_item_again
         "campaign_branch",
         "upstream_moved",
     )
+    # SIP-0109 §24dr item 4: pinned on every repository-backed launch, empty for none, so the
+    # proposal and acceptance can tell it from a block an old runtime-api wrote.
+    assert block["accepted_pages"] == []
     assert isinstance(unaware, str) and "no pending backlog item" in unaware

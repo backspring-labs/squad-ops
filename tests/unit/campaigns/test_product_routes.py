@@ -714,6 +714,8 @@ async def test_a_page_an_earlier_increment_added_is_judged_by_its_accepted_ancho
     assert (archive.held, archive.missing) == (held, missing)
     [record] = [r for r in routes.record["routes"] if r["route"] == "/shelves/archive"]
     assert (record["source"], record["anchor"]) == ("accepted_page", "archive-view")
+    # §24dr item 2: the root its promotion records it under again.
+    assert record["accepted_root"] == "archive-view"
 
 
 async def test_an_accepted_page_is_judged_by_its_accepted_anchor_whatever_the_request_names(
@@ -799,3 +801,5 @@ async def test_a_pinned_page_the_inventory_also_names_keeps_its_accepted_ids_at_
     assert held["/add"] == ("held", "")
     [record] = [r for r in routes.record["routes"] if r["route"] == "/add"]
     assert (record["source"], record["anchor"]) == ("approved_manifest", "add-shelf-view")
+    assert record["accepted_root"] == "add-shelf-view"
+    assert "accepted_root" not in next(r for r in routes.record["routes"] if r["route"] == "/")
