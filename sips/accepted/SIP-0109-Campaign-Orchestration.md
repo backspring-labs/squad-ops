@@ -6539,7 +6539,9 @@ as an assertion on a tree without the page.
    At delivery, the loader is written into the candidate over whatever the squad wrote at its path
    (`source_delivery.with_framework_files`). So the tree verified, captured and judged holds it as the framework
    wrote it.
-4. **The evaluator counts the loader a placed test file** (`evaluate_on_runner(placed_support=...)`). So:
+4. **The evaluator counts the loader a placed test file.** It reads the loaders from its inputs
+   (`increment_evaluation_inputs`' `increment_page_loaders`, present only when one is placed) and hands them to
+   `evaluate_on_runner(placed_support=...)`. So:
    - a bundle whose test imports it is frozen with it (§8.1);
    - the accepted tree's overlay takes it from the bundle, since the accepted tree has none;
    - a later increment's re-run of the frozen criterion, and a rebase's (§24cd point 5), load the view through the
@@ -6597,7 +6599,7 @@ discrimination and never a false hold: the worst a missing loader can do is read
   - the qa author's prompt through `generate_task_plan` and the handler;
   - the suite and its retest on the product's runner (`judge_on_product_runner`, `reexecute_repaired_suite`);
   - the head check (`check_criteria_on_head`).
-- **Thirteen mutants, each caught,** among them: the evaluator ignoring the loader, delivery writing none or keeping
+- **Fourteen mutants, each caught,** among them: the evaluator ignoring the loader, delivery writing none or keeping
   the squad's copy, the run tree, the retest and the head check without it, a loader placed for any runner or where its
   runner collects it, and the appendix without the loader's source.
 
