@@ -23,23 +23,25 @@ reason: no start declaration, one the runner can't read, a declared evaluation s
 resolved before #2421's approval record), no runner, or a start that failed. A route whose view
 declares no anchor is blocked too: nothing on its page could show its view rendered. A route the
 approved change request adds is judged by the anchor its criteria name for its view (SIP-0109
-§24cp), or blocked where they name none.
+§24cp), or blocked where they name none. A page an earlier accepted increment added is judged by
+the anchor it was accepted with, from the inventory the increment's launch pinned (§24dq).
 
 Nothing here reads a suite or a scenario's steps: the runner is asked to run none.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import yaml
 
 from squadops.campaigns.acceptance import Held, RouteResult, route_rendering
-from squadops.campaigns.change_request import anchor_conflicts
+from squadops.campaigns.change_request import anchor_conflicts, pages_carrying
 from squadops.campaigns.increment_tree import declared_routes, route_seeds, unseeded_routes
 from squadops.campaigns.product_routes import (
     ANCHOR_NOT_UNIQUE,
+    FROM_ACCEPTED_PAGE,
     FROM_CHANGE_REQUEST,
     NO_ANCHOR,
     NO_ANCHOR_REQUESTED,
@@ -124,37 +126,55 @@ class DeclaredStartRoutes:
         candidate: SandboxTree,
         verified_candidate_revision: str | None,
         requested_routes: Mapping[str, str],
+        accepted_pages: Mapping[str, Sequence[str]],
     ) -> ProductRoutes:
         """Each route the increment is expected to serve, rendered on the candidate started from
         its declaration, and judged as a sample application's is (§8.3). The expected set is the
         routes the profile names, pinned from the approved manifest (so a route the candidate drops
-        reads broken), and the routes the approved change request's criteria are asserted on
-        (``requested_routes``, each with the anchor its criteria name, ``""`` for none), which the
-        candidate adds or changes. A pinned route is judged by its manifest's anchor whatever the
-        request names; an added one by the request's (§24cp). None at all is not applicable
-        (§24bv point 3).
+        reads broken); the pages the campaign's accepted increments added (``accepted_pages``, the
+        inventory its launch pinned, each with the test ids its page carried when it was accepted,
+        its anchor first: §24dq), pinned the same way by that anchor; and the routes the approved
+        change request's criteria are asserted on (``requested_routes``, each with the anchor its
+        criteria name, ``""`` for none), which the candidate adds or changes. A pinned or accepted
+        page is judged by its own anchor whatever the request names; an added one by the
+        request's (§24cp). None at all is not applicable (§24bv point 3).
 
         Raises:
             CandidateNotDelivered: The candidate's content isn't the revision delivery verified.
         """
         pinned = tuple(profile.client_routes or ())
-        added = tuple(r for r in dict.fromkeys(requested_routes) if r not in pinned)
-        named = (*pinned, *added)
-        sources = {r: FROM_CHANGE_REQUEST for r in added}
+        earlier = tuple(r for r in accepted_pages if r not in pinned)
+        added = tuple(
+            r for r in dict.fromkeys(requested_routes) if r not in pinned and r not in earlier
+        )
+        named = (*pinned, *earlier, *added)
+        sources = {
+            **{r: FROM_ACCEPTED_PAGE for r in earlier},
+            **{r: FROM_CHANGE_REQUEST for r in added},
+        }
         if not named:
             return ProductRoutes((), None)
         manifest = _manifest(initialization) if pinned else None
         if pinned and manifest is None:
             return routes_blocked(named, NO_MANIFEST, sources=sources)
         anchors = {r: declared_routes(manifest).get(r, ()) for r in pinned} if manifest else {}
+        # §24dq: a page an earlier increment added is judged by the anchor it was accepted with,
+        # as a pinned one is by its manifest's: a candidate that drops it reads broken.
+        anchors.update({r: tuple(accepted_pages[r]) for r in earlier})
         # A product's change request carries no manifest delta (§24bv point 5): an added route's
         # view's anchor is the one its criteria name (§24cp). With none it can block, and never
         # hold (§8.3's evidence is the anchor).
         anchors.update({r: (requested_routes[r],) if requested_routes[r] else () for r in added})
         # §24cp: an added route's anchor another page carries shows nothing of its own view (the
-        # app's fallback renders that other view on a page never built), so it's blocked.
+        # app's fallback renders that other view on a page never built), so it's blocked. Another
+        # page is the approved manifest's, or one an earlier increment added (§24dq), which no
+        # manifest names.
         reused = anchor_conflicts(
-            {r: requested_routes[r] for r in added}, declared_routes(manifest) if manifest else {}
+            {r: requested_routes[r] for r in added},
+            pages_carrying(
+                declared_routes(manifest) if manifest else {},
+                {r: accepted_pages[r] for r in earlier},
+            ),
         )
         seeds = {r: s for r, s in route_seeds(manifest).items() if r in pinned} if manifest else {}
         start, unstartable = product_start(configuration)
@@ -217,7 +237,7 @@ class DeclaredStartRoutes:
                     f"{ANCHOR_NOT_UNIQUE} ({', '.join(reused[route])})"
                     if route in reused
                     else NO_ANCHOR_REQUESTED
-                    if route in sources
+                    if sources.get(route) == FROM_CHANGE_REQUEST
                     else NO_ANCHOR
                 )
                 results.append(RouteResult(route, Held.BLOCKED_UNVERIFIED, detail=why))

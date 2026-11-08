@@ -41,8 +41,52 @@ SHARED_ANCHOR = (
 #: the build never made would read held there, where the app's fallback renders that other view.
 #: The rails refuse such a request; one stored before the rule is blocked by this.
 ANCHOR_NOT_UNIQUE = "the change request names an anchor another page carries"
-#: Where a route in the expected set came from (the record's ``source``).
+#: Where a route in the expected set came from (the record's ``source``). An accepted page is one
+#: an earlier increment added and acceptance held (SIP-0109 §24dq).
 FROM_MANIFEST, FROM_CHANGE_REQUEST = "approved_manifest", "change_request"
+FROM_ACCEPTED_PAGE = "accepted_page"
+#: §24dq: the key naming the accepted-page inventory, on a PROMOTE row's binding (the pages that
+#: increment added) and on a repository-backed increment's ``campaign_proposal`` block (every page
+#: the campaign's accepted increments added, pinned at its launch).
+ACCEPTED_PAGES = "accepted_pages"
+
+
+def pages_added_and_held(evaluation: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """The pages an accepted increment added, as its acceptance read them (§24dq): each route the
+    renderer judged from the change request (``FROM_CHANGE_REQUEST``) and held, with the anchor it
+    was held by and every test id its page's elements carried, the anchor first. Read from the
+    stored evaluation's ``renderings``, so a replayed promotion writes the same record (#1943).
+    Every id, not only the root: a later page's fallback renders this whole view (§24cp item 6).
+    A sample application's evaluation has no ``renderings``, and gives none: its pages are its
+    manifest's."""
+    record = (evaluation or {}).get("renderings")
+    pages = []
+    for r in (record or {}).get("routes") or () if isinstance(record, Mapping) else ():
+        anchor = r.get("anchor")
+        if r.get("source") != FROM_CHANGE_REQUEST or r.get("held") != str(Held.HELD) or not anchor:
+            continue
+        others = sorted({str(t) for t in r.get("seen") or ()} - {anchor})
+        pages.append({"route": str(r["route"]), "anchor": str(anchor), "testids": [anchor, *others]})
+    return sorted(pages, key=lambda p: p["route"])
+
+
+def page_inventory(records: Any) -> dict[str, tuple[str, ...]]:
+    """§24dq: the accepted-page inventory a launch block carries, as each page's route and the test
+    ids its page carried at acceptance, its anchor first. A block composed before §24dq names none.
+
+    Raises:
+        ValueError: A record names no route or no anchor. The inventory is the only record of
+            those pages' anchors, so one it can't read is refused, never skipped: skipping it would
+            let a later page reuse that anchor unseen."""
+    pages: dict[str, tuple[str, ...]] = {}
+    for record in records or ():
+        if not isinstance(record, Mapping) or not record.get("route") or not record.get("anchor"):
+            raise ValueError(f"an accepted page names no route or no anchor: {record!r}")
+        anchor = str(record["anchor"])
+        others = [str(t) for t in record.get("testids") or () if str(t) != anchor]
+        pages[str(record["route"])] = (anchor, *dict.fromkeys(others))
+    return pages
+
 
 
 def requested_routes(change_request: str) -> dict[str, str]:
@@ -81,6 +125,7 @@ class RouteRenderer(Protocol):
         candidate: Any,
         verified_candidate_revision: str | None,
         requested_routes: Mapping[str, str],
+        accepted_pages: Mapping[str, Sequence[str]],
     ) -> ProductRoutes: ...
 
 
@@ -133,7 +178,9 @@ def routes_blocked(
 
 
 __all__ = [
+    "ACCEPTED_PAGES",
     "ANCHOR_NOT_UNIQUE",
+    "FROM_ACCEPTED_PAGE",
     "NO_ANCHOR",
     "NO_MANIFEST",
     "NO_RUNNER",
@@ -144,6 +191,8 @@ __all__ = [
     "START_FAILED",
     "ProductRoutes",
     "RouteRenderer",
+    "page_inventory",
+    "pages_added_and_held",
     "route_record",
     "requested_routes",
     "routes_blocked",

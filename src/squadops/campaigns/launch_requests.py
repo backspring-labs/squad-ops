@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from squadops.campaigns.calibration_record import BINDING_KEY, CalibrationRecord
 from squadops.campaigns.change_request import IncrementBasis
+from squadops.campaigns.product_routes import ACCEPTED_PAGES
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -89,6 +90,8 @@ def increment_launch(
     abandoned: dict | None = None,
     qa_proposed: list[dict] | None = None,
     unapproved: list[dict] | None = None,
+    *,
+    accepted_pages: tuple[dict, ...] = (),
 ) -> LaunchRequest:
     """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
     against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
@@ -105,6 +108,11 @@ def increment_launch(
 
     ``unapproved`` is each proposal the campaign ruled on and never approved, by its last ruling
     (#2593), when there is any.
+
+    ``accepted_pages`` is the accepted-page inventory (§24dq): every page a repository-backed
+    campaign's accepted increments added, with the test ids acceptance held it by. Pinned at
+    launch as ``frozen`` is, so the proposal's rails and the increment's acceptance read the same
+    pages. A sample application's pages are its manifest's, so it's given none.
 
     **A repository-backed increment's intent binds no tree** (§24cd point 1). Its accepted tree is
     the campaign branch's head, which a rebase can move between this decision and the drain
@@ -182,6 +190,12 @@ def increment_launch(
                         },
                         "prior_criteria": [f["criterion_id"] for f in frozen],
                         "frozen_criteria": [dict(f) for f in frozen],
+                        # §24dq: only when there is one, so every other block is unchanged.
+                        **(
+                            {ACCEPTED_PAGES: [dict(p) for p in accepted_pages]}
+                            if accepted_pages
+                            else {}
+                        ),
                         "max_revisions": policy.max_proposal_revisions,
                         # Row 13 (#1692): why the increment this one replaces was abandoned. Its
                         # own key, read by the proposal alone — never ``prior_cycle``, which tells
@@ -220,6 +234,8 @@ CONTINUED_KEYS = (
     "objective",
     "prior_criteria",
     "frozen_criteria",
+    # §24dq: a repair's or retry's acceptance judges the pages its increment's launch pinned.
+    ACCEPTED_PAGES,
     "max_revisions",
 )
 

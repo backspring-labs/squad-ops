@@ -105,9 +105,13 @@ PAGES = {
 CHANGES = {"shelfkeeper/web.py": b"PAGES = 5\n"}
 
 
-async def render_product_routes(*, runner, requested_routes=None, **kw) -> ProductRoutes:
+async def render_product_routes(
+    *, runner, requested_routes=None, accepted_pages=None, **kw
+) -> ProductRoutes:
     """The renderer the runtime root builds over the sandbox's runner, rendering once."""
-    return await DeclaredStartRoutes(runner).render(requested_routes=requested_routes or {}, **kw)
+    return await DeclaredStartRoutes(runner).render(
+        requested_routes=requested_routes or {}, accepted_pages=accepted_pages or {}, **kw
+    )
 
 
 def _configuration(start=START) -> DevelopmentConfiguration:
@@ -151,6 +155,7 @@ async def _render(tmp_path, *, pages=PAGES, configuration=None, runner="sandbox"
         candidate=candidate,
         verified_candidate_revision=kw.pop("verified", revision),
         requested_routes=kw.pop("requested", {}),
+        accepted_pages=kw.pop("accepted", {}),
     )
 
 

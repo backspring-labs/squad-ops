@@ -99,6 +99,7 @@ from squadops.campaigns.models import (
     TransitionResult,
 )
 from squadops.campaigns.prior_cycle import evaluation_findings, prior_cycle_brief
+from squadops.campaigns.product_routes import ACCEPTED_PAGES, pages_added_and_held
 from squadops.campaigns.proposed_behaviours import (
     QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
     merged_entries,
@@ -511,6 +512,23 @@ def frozen_criteria(log: list) -> tuple[dict, ...]:
         for criterion in entry.binding.get("frozen_criteria") or ():
             frozen[criterion["criterion_id"]] = dict(criterion)
     return tuple(frozen.values())
+
+
+def accepted_pages(log: list) -> tuple[dict, ...]:
+    """§24dq: the accepted-page inventory, every page the campaign's accepted increments added
+    with the test ids acceptance held it by (``product_routes.pages_added_and_held``), from the
+    control log's applied promotions, in route order. Each PROMOTE row names the accepted tree it
+    made, so the inventory read after a row is that tree's. A later row's record of a route
+    replaces an earlier one's."""
+    pages: dict[str, dict] = {}
+    for entry in log:
+        if (
+            entry.operation is ControlOperation.PROMOTE
+            and entry.outcome is ControlOutcome.APPLIED
+        ):
+            for page in entry.binding.get(ACCEPTED_PAGES) or ():
+                pages[page["route"]] = dict(page)
+    return tuple(pages[r] for r in sorted(pages))
 
 
 def _approved_version(log: list, block: Mapping) -> Any:
@@ -998,6 +1016,7 @@ class CampaignProgress:
         accepted = promotion.accepted
         assert accepted.commit is not None
         frozen = await self._freeze_bundles(cycle, last_run, evaluation)
+        pages = pages_added_and_held(evaluation)
         result = await self._campaigns.transition(
             campaign.campaign_id,
             CampaignTransition(
@@ -1027,6 +1046,9 @@ class CampaignProgress:
                         if (evaluation or {}).get("readings")
                         else {}
                     ),
+                    # §24dq: the pages it added, with the ids acceptance held them by. No
+                    # manifest learns them (§24bv point 5), so this row is their only record.
+                    **({ACCEPTED_PAGES: pages} if pages else {}),
                 },
                 accepted=accepted,
             ),
@@ -2149,11 +2171,13 @@ class CampaignProgress:
         profile and gaps, the previous verification, the requirements source) is composed at its
         run, at the head its cycle pins (``execution.product_proposal``). Rows 6, 7, 13 and 16's
         inputs are the sample application's: the frozen criteria, the abandoned increment's
-        brief, what qa proposed, and each proposal never approved (§24w, §24br, §24bu)."""
+        brief, what qa proposed, and each proposal never approved (§24w, §24br, §24bu). Beside
+        them, the pages its accepted increments added (§24dq), which no manifest names."""
         accepted = campaign.accepted
         assert accepted is not None  # ``_propose_launch`` reads it first
         log = await self._campaigns.control_log(campaign.campaign_id)
         frozen = frozen_criteria(log)
+        pages = accepted_pages(log)
         built = [c for c in (accepted.cycle_id, abandoned_cycle_id) if c is not None]
         proposed = await self._qa_proposed_behaviours(built)
         unapproved = [
@@ -2165,7 +2189,9 @@ class CampaignProgress:
             for entry in unapproved_rulings(log)
         ]
         try:
-            return increment_launch(campaign, None, frozen, abandoned, proposed, unapproved)
+            return increment_launch(
+                campaign, None, frozen, abandoned, proposed, unapproved, accepted_pages=pages
+            )
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
 
