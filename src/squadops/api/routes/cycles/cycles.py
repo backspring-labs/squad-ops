@@ -95,12 +95,14 @@ from squadops.cycles.preflight import (
     model_registration_decision,
     required_check_tooling_decision,
     required_roles_decision,
+    scripted_squad_decision,
     source_backed_stack_decision,
     stack_development_profile_decision,
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
+from squadops.llm.script import ScriptLibrary
 from squadops.memory.pinning import cycle_binding, pin_standalone_cycle
 from squadops.memory.records import RecordRefused, Source, SourceKind
 from squadops.memory.reference_binding import bound_for_cycle
@@ -240,6 +242,9 @@ async def _run_create_preflight(
         # different completion budget than a registered model on the same capability —
         # silently, until it shows up as an odd result in a measurement window.
         model_registration_decision(profile),
+        # #2495: a scripted squad names a script the deploy holds, at the version it holds; a
+        # script no agent reads is refused, so a model run is never labelled scripted.
+        scripted_squad_decision(profile, config, ScriptLibrary.packaged()),
         # SIP-0096 §6.5: a required check whose tooling is knowably absent is a
         # create-time reject, never a mid-run blocked_unverified surprise.
         required_check_tooling_decision(

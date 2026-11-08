@@ -212,6 +212,8 @@ _EXPECTED_FACTORY_CALLS: dict[str, dict[str, int]] = {
     # two are an if/else over one selector) and the two deploy-registry calls.
     "squadops.api.runtime": {
         "create_llm_provider": 2,
+        # #2495: each LLM binding serves the scripted model beside its engine.
+        "with_scripted_model": 2,
         "create_queue_adapter": 1,
         "create_a2a_client": 1,
         "create_project_registry": 1,
@@ -228,6 +230,7 @@ _EXPECTED_FACTORY_CALLS: dict[str, dict[str, int]] = {
     },
     "squadops.agents.entrypoint": {
         "create_llm_provider": 1,
+        "with_scripted_model": 1,
         "create_queue_adapter": 1,
         "create_filesystem_provider": 1,
         "create_prompt_repository": 1,
