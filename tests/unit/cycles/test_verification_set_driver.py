@@ -7009,7 +7009,7 @@ class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:
             async def ensure_subscribed(self, agent_id):
                 return None
 
-            def register(self, task_id):
+            def register(self, task_id, dispatch_id):
                 return asyncio.get_running_loop().create_future()
 
             def cancel(self, task_id):

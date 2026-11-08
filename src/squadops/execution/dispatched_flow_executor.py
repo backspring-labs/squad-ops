@@ -1228,6 +1228,69 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         *,
         reentry: bool = False,
     ) -> None:
+        """Execute a full cycle (``_execute_workloads``), and end it when its execution raises
+        outside a run.
+
+        #2931: ``execute_run`` maps every failure inside a run to a terminal status, but the loop
+        around the runs (re-entry's position lookup, the forwarding rebuild, a gate's reading)
+        had no handler. An exception there escaped to the campaign launcher, which only logged it,
+        so a re-attached run stayed ``running`` with no owner and its campaign waited with no row.
+        Now the cycle's latest run, when still live, is failed with the escape named, and the cycle
+        ends ``run_failed`` through the completion boundary, so its campaign hears it and acts as
+        on any failed run. The exception is raised on, so it is still logged where it was. A
+        cancellation, and a failure while the process is stopping (#1929, left for the re-attach),
+        are left as they were."""
+        try:
+            await self._execute_workloads(cycle_id, first_run_id, profile_id, reentry=reentry)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if not self._stopping:
+                await self._end_escaped_cycle(cycle_id, exc)
+            raise
+
+    async def _end_escaped_cycle(self, cycle_id: str, exc: Exception) -> None:
+        """Fail the cycle's live run and end the cycle ``run_failed`` (#2931). Never raises: a
+        failure here is logged beside the escape it was ending."""
+        registry = self._cycle_registry
+        if registry is None:
+            return
+        try:
+            if await registry.get_cycle_end(cycle_id) is not None:
+                return  # it ended before the escape: nothing is left to end
+            runs = [
+                r
+                for r in await registry.list_runs(cycle_id)
+                if r.status != RunStatus.CANCELLED.value
+            ]
+            if not runs:
+                return
+            latest = max(runs, key=lambda r: r.run_number)
+            if latest.status in (RunStatus.RUNNING.value, RunStatus.QUEUED.value):
+                await self._safe_transition(
+                    latest.run_id,
+                    RunStatus.FAILED,
+                    failure_reason=(
+                        f"the cycle's execution raised outside a run: {type(exc).__name__}: {exc}"
+                    ),
+                )
+            ended = await registry.get_run(latest.run_id)
+            await self._cycle_completion.end(cycle_id, ended, CycleStopReason.RUN_FAILED)
+            logger.error(
+                "cycle_execution_escaped_and_ended",
+                extra={"cycle_id": cycle_id, "run_id": latest.run_id, "error": type(exc).__name__},
+            )
+        except Exception:
+            logger.exception("cycle_execution_escape_not_ended", extra={"cycle_id": cycle_id})
+
+    async def _execute_workloads(
+        self,
+        cycle_id: str,
+        first_run_id: str,
+        profile_id: str | None = None,
+        *,
+        reentry: bool = False,
+    ) -> None:
         """Execute a full cycle by iterating over workload_sequence.
 
         ``reentry`` is an adapter-internal keyword extension, as ``execute_run``'s

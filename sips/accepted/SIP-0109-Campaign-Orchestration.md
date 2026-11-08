@@ -6475,6 +6475,33 @@ and run in the sandbox at each accepted increment, are unchanged.
 **Who ruled it.** The owner, 2026-11-08: R4 of `docs/plans/2-7-0-plan.md`, "close #2938's SquadOps remainder after the
 numbered scope amendment and a linked product-side record for the viewer work".
 
+### 24dn. A re-attached cycle whose execution raises outside a run ends `run_failed` (2026-11-08, §12a, §24am; #2931; the Spark lane, the 2.7 plan's Track B)
+
+**What changed.** §12a's startup re-attach resumes a cycle the process died inside. `execute_run` maps a failure
+inside a run to a terminal status, but nothing handled one in the loop around the runs: re-entry's position lookup, the
+forwarding rebuild, a gate's reading. After the 2026-11-05 power loss, an empty artifact metadata file made that loop
+raise during a re-attach. The launcher only logged it (`campaign_cycle_execution_raised`), so the run stayed `running`
+with no owner and the Campaign stayed `building` with no row.
+
+Now such an escape ends the cycle through the completion boundary, as any failed run does:
+1. **The cycle's latest run, when still live** (`running` or `queued`), is failed. Its failure reason names the escape.
+2. **A completed run is left completed.**
+3. **The cycle ends `run_failed`,** so its Campaign hears it and repairs, counts or escalates by its own rules.
+
+The exception is still raised, so the launcher still logs it.
+
+**Left as they were:**
+- a cancellation;
+- a failure while the process is stopping, which §24am leaves for the next re-attach (#1929);
+- a cycle whose ending is already recorded.
+
+**The evidence.** `tests/unit/cycles/test_execute_cycle.py::TestAnEscapeOutsideARunEndsTheCycle`, entered at
+`execute_cycle`, the call the launcher's re-attach makes. The vault half of #2931 is in the adapter: an unreadable record
+no longer fails a listing, and a read that needs it gets a typed error.
+
+**Who ruled it.** The owner adopted the 2.7 plan on 2026-11-08 (its Track B and §4.2), with the line's judgement
+calls delegated.
+
 ### 24do. A pass on the head says the test proved nothing about the work: qa's first emission is refused to its author too (2026-11-08, §8.2, §10 row 19, §24cz, §24dh; #2933; the owner's ruling D1, option (a), of 2026-11-07, and the 2.7 plan adopted 2026-11-08)
 
 **Why.** §24dh refused a repaired test that passes on the head and left one form open ("Not covered (a)"): a test that's

@@ -2594,3 +2594,103 @@ async def test_a_run_the_shutdown_interrupts_ends_no_cycle(executor, mock_regist
         await executor.execute_cycle("cyc_001", "run_001")
 
     executor._cycle_completion.end.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# #2931: an execution that raises outside a run ends its cycle
+# ---------------------------------------------------------------------------
+
+
+class TestAnEscapeOutsideARunEndsTheCycle:
+    """#2931. Entered at ``execute_cycle``, the call the campaign launcher's startup re-attach makes
+    (``CampaignLaunch._execute``). Before, an exception in the loop around the runs escaped to the
+    launcher, which only logged it: the re-attached run stayed ``running`` and its campaign waited."""
+
+    def _escaping(self, executor, mock_registry, run_status: str = "running"):
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.get_cycle_end.return_value = None
+        live = _make_run("run_002", 2, run_status, "implementation")
+        mock_registry.list_runs.return_value = [
+            _make_run("run_001", 1, "completed", "framing"),
+            live,
+        ]
+        mock_registry.get_run.return_value = live
+        executor._starting_workload_index = AsyncMock(
+            side_effect=ValueError("metadata doesn't parse")
+        )
+        executor._cycle_completion = MagicMock(end=AsyncMock())
+        return live
+
+    async def test_the_live_run_fails_naming_the_escape_and_the_cycle_ends_run_failed(
+        self, executor, mock_registry
+    ):
+        """Bug caught: the run left ``running`` with no owner; the cycle never ended, so the
+        campaign never heard it; or the escape swallowed, so the launcher logged nothing."""
+        from squadops.cycles.cycle_end import CycleStopReason
+
+        live = self._escaping(executor, mock_registry)
+
+        with pytest.raises(ValueError, match="metadata doesn't parse"):
+            await executor.execute_cycle("cyc_001", "run_002", reentry=True)
+
+        mock_registry.update_run_status.assert_awaited_once_with(
+            "run_002",
+            RunStatus.FAILED,
+            failure_reason="the cycle's execution raised outside a run: ValueError: metadata "
+            "doesn't parse",
+        )
+        executor._cycle_completion.end.assert_awaited_once_with(
+            "cyc_001", live, CycleStopReason.RUN_FAILED
+        )
+
+    async def test_a_completed_run_is_left_completed_and_the_cycle_still_ends(
+        self, executor, mock_registry
+    ):
+        """A re-entry at a gate after a completed run. Bug caught: a completed run rewritten as
+        failed, or a cycle left without an ending because its run was already terminal."""
+        from squadops.cycles.cycle_end import CycleStopReason
+
+        done = self._escaping(executor, mock_registry, run_status="completed")
+
+        with pytest.raises(ValueError):
+            await executor.execute_cycle("cyc_001", "run_002", reentry=True)
+
+        mock_registry.update_run_status.assert_not_awaited()
+        executor._cycle_completion.end.assert_awaited_once_with(
+            "cyc_001", done, CycleStopReason.RUN_FAILED
+        )
+
+    @pytest.mark.parametrize("case", ["stopping", "already-ended", "cancelled"])
+    async def test_nothing_is_ended_when_the_escape_isnt_the_cycles_failure(
+        self, executor, mock_registry, case
+    ):
+        """Bug caught: a restart's own failure recorded as the run's (#1929: the re-attach then
+        skips it); a second ending written over a recorded one; or a cancellation read as a
+        failure."""
+        self._escaping(executor, mock_registry)
+        if case == "stopping":
+            executor._stopping = True
+        elif case == "already-ended":
+            mock_registry.get_cycle_end.return_value = object()
+        else:
+            executor._starting_workload_index = AsyncMock(side_effect=asyncio.CancelledError())
+
+        with pytest.raises((ValueError, asyncio.CancelledError)):
+            await executor.execute_cycle("cyc_001", "run_002", reentry=True)
+
+        mock_registry.update_run_status.assert_not_awaited()
+        executor._cycle_completion.end.assert_not_awaited()
+
+    async def test_a_failure_while_ending_is_logged_and_the_escape_still_raises(
+        self, executor, mock_registry, caplog
+    ):
+        """Bug caught: the ending's own failure replacing the escape, so the launcher logs the
+        wrong error, or nothing."""
+        self._escaping(executor, mock_registry)
+        executor._cycle_completion.end.side_effect = RuntimeError("pool closed")
+
+        with pytest.raises(ValueError, match="metadata doesn't parse"):
+            await executor.execute_cycle("cyc_001", "run_002", reentry=True)
+
+        assert any(r.getMessage() == "cycle_execution_escape_not_ended" for r in caplog.records)

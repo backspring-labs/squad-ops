@@ -26,8 +26,11 @@ from squadops.tasks.models import TaskResult
 pytestmark = [pytest.mark.unit]
 
 
-def _reply(task_id: str, *, status: str = "SUCCEEDED", outputs=None, extra=None) -> str:
-    """Agent reply envelope (entrypoint.py shape): payload is the TaskResult."""
+def _reply(
+    task_id: str, *, status: str = "SUCCEEDED", outputs=None, extra=None, dispatch="d1"
+) -> str:
+    """Agent reply envelope (entrypoint.py shape): payload is the TaskResult, and the metadata
+    echoes the send it answers (#2932), ``d1`` unless a test says otherwise."""
     payload = {"task_id": task_id, "status": status}
     if outputs is not None:
         payload["outputs"] = outputs
@@ -36,7 +39,7 @@ def _reply(task_id: str, *, status: str = "SUCCEEDED", outputs=None, extra=None)
     return json.dumps(
         {
             "action": "comms.task.result",
-            "metadata": {"correlation_id": "c"},
+            "metadata": {"correlation_id": "c", **({"dispatch_id": dispatch} if dispatch else {})},
             "payload": payload,
         }
     )
@@ -119,7 +122,7 @@ async def test_register_and_resolve_by_task_id():
     q = FakeQueue()
     router = ReplyRouter(q)
     await router.ensure_subscribed("neo")
-    fut = router.register("t1")
+    fut = router.register("t1", "d1")
 
     await q.deliver("neo_replies", _reply("t1", outputs={"x": 1}))
     result = await asyncio.wait_for(fut, timeout=1.0)
@@ -136,9 +139,9 @@ async def test_duplicate_register_raises():
     silently overwriting (which would strand the first waiter)."""
     q = FakeQueue()
     router = ReplyRouter(q)
-    router.register("t1")
+    router.register("t1", "d1")
     with pytest.raises(DuplicateRegistration):
-        router.register("t1")
+        router.register("t1", "d1")
 
 
 async def test_late_reply_dropped_and_counted():
@@ -167,7 +170,7 @@ async def test_malformed_reply_survives_consumer():
 
     assert router.metrics()["malformed_replies"] == 2
 
-    fut = router.register("t9")
+    fut = router.register("t9", "d1")
     await q.deliver("neo_replies", _reply("t9"))
     result = await asyncio.wait_for(fut, timeout=1.0)
     assert result.task_id == "t9"
@@ -181,17 +184,18 @@ async def test_from_dict_failure_fails_future_but_consumer_lives():
     router = ReplyRouter(q)
     await router.ensure_subscribed("neo")
 
-    bad_fut = router.register("t_bad")
+    bad_fut = router.register("t_bad", "d1")
     await q.deliver(
         "neo_replies",
-        json.dumps({"payload": {"task_id": "t_bad"}}),  # no status -> from_dict raises
+        # no status -> from_dict raises; it names the send, so it reaches the parse (#2932)
+        json.dumps({"metadata": {"dispatch_id": "d1"}, "payload": {"task_id": "t_bad"}}),
     )
     with pytest.raises(TypeError):
         await asyncio.wait_for(bad_fut, timeout=1.0)
     assert router.metrics()["from_dict_failures"] == 1
 
     # Consumer still healthy: a subsequent good reply resolves.
-    good_fut = router.register("t_ok")
+    good_fut = router.register("t_ok", "d1")
     await q.deliver("neo_replies", _reply("t_ok"))
     assert (await asyncio.wait_for(good_fut, timeout=1.0)).task_id == "t_ok"
 
@@ -202,7 +206,7 @@ async def test_stop_fails_pending_futures_and_cancels_subscriptions():
     q = FakeQueue()
     router = ReplyRouter(q)
     await router.ensure_subscribed("neo")
-    fut = router.register("t1")
+    fut = router.register("t1", "d1")
 
     await router.stop()
 
@@ -234,4 +238,54 @@ async def test_fails_fast_once_stopped():
     with pytest.raises(ReplyRouterStopped):
         await router.ensure_subscribed("neo")
     with pytest.raises(ReplyRouterStopped):
-        router.register("t1")
+        router.register("t1", "d1")
+
+
+# ---------------------------------------------------------------------------
+# #2932: a reply resolves a waiter only for the send it was registered for
+# ---------------------------------------------------------------------------
+
+
+async def test_a_stale_failure_arriving_first_leaves_the_waiter_for_the_current_send():
+    """#2932's case. After a reboot the agent failed the broker's redelivery of the old send
+    (its engine was down), and that FAILED reply waited under the task id a resume re-dispatches.
+    Bug caught: the waiter popped by task id alone, so the resumed send resolves with the old
+    failure, and the current send's real reply is then dropped as late."""
+    q = FakeQueue()
+    router = ReplyRouter(q)
+    await router.ensure_subscribed("neo")
+    fut = router.register("t1", "d2")
+
+    await q.deliver("neo_replies", _reply("t1", status="FAILED", dispatch="d1"))
+    assert not fut.done()
+    await q.deliver("neo_replies", _reply("t1", outputs={"x": 2}, dispatch="d2"))
+    result = await asyncio.wait_for(fut, timeout=1.0)
+
+    assert result == TaskResult(task_id="t1", status="SUCCEEDED", outputs={"x": 2})
+    assert router.metrics()["stale_drops"] == 1
+    assert router.metrics()["pending_futures"] == 0
+
+
+async def test_a_reply_that_names_no_send_answers_no_current_send():
+    """Bug caught: a reply with no dispatch id (one in flight across the rebuild that brought the
+    echo in) read as the current send's, which is the ambiguity #2932 removes."""
+    q = FakeQueue()
+    router = ReplyRouter(q)
+    await router.ensure_subscribed("neo")
+    fut = router.register("t1", "d2")
+
+    await q.deliver("neo_replies", _reply("t1", dispatch=None))
+
+    assert not fut.done()
+    assert router.metrics()["stale_drops"] == 1
+    router.cancel("t1")
+    assert router.metrics()["pending_futures"] == 0
+
+
+async def test_a_waiter_that_names_no_send_is_refused():
+    """Bug caught: a waiter registered with no send id, which every reply would then miss, so
+    the dispatch waits out its full per-task timeout."""
+    router = ReplyRouter(FakeQueue())
+
+    with pytest.raises(ValueError, match="names the send"):
+        router.register("t1", "")
