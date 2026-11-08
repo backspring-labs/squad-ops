@@ -460,3 +460,43 @@ class TestProjectsUnintegrated:
 
         assert result.exit_code == 1
         assert "every accepted increment" not in result.output
+
+
+class TestProjectsCheckIntegration:
+    """SIP-0112 H.30 (#2862): the draft's integration check, from the CLI."""
+
+    @patch("squadops.cli.commands.projects.print_table")
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_a_waiting_row_and_an_unread_merge_are_both_printed(self, mock_get_client, table):
+        """Bugs caught: the route's path or body wrong; a token sent that wasn't asked for; the
+        unread reason dropped, so a waiting row reads as an ordinary wait."""
+        client = MagicMock()
+        client.post.return_value = {
+            "project_id": "prj-shelfnote", "clear": False, "revalidated_at": None,
+            "next_step": None, "validation_failed": None,
+            "merge_state_unread": {"reason": "no_token", "message": "no token for prj-shelfnote"},
+            "remaining": [{"campaign_id": "cmp_a", "cycle_id": "cyc_1",
+                           "waits_on": "merge_state_unread", "clears_when": "pass a token"}],
+        }  # fmt: skip
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["projects", "check-integration", "prj-shelfnote"])
+
+        assert result.exit_code == 0, result.output
+        client.post.assert_called_once_with(
+            "/api/v1/projects/prj-shelfnote/integration-check", json={}
+        )
+        assert "merge_state_unread: no_token" in " ".join(result.output.split())
+        assert table.call_args.args[1] == [["cmp_a", "cyc_1", "merge_state_unread", "pass a token"]]
+
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_a_refusal_is_an_error_exit(self, mock_get_client):
+        """Bug caught: a sample application's 409 printed as a clear gate."""
+        mock = MagicMock()
+        mock.post.side_effect = CLIError("NO_SOURCE_REPOSITORY: a sample application", 1)
+        mock_get_client.return_value = mock
+
+        result = runner.invoke(app, ["projects", "check-integration", "group_run"])
+
+        assert result.exit_code == 1
+        assert "every accepted increment" not in result.output

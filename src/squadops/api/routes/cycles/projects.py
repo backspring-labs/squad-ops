@@ -20,6 +20,10 @@ from squadops.api.cycle_schemas import (
     InheritedBaselineResponse,
     InitializationRequest,
     InitializationResponse,
+    IntegrationCheckFailureResponse,
+    IntegrationCheckRequest,
+    IntegrationCheckResponse,
+    IntegrationCheckRowResponse,
     ProjectRegistrationRequest,
     ProjectRegistrationResponse,
     ProjectResponse,
@@ -53,6 +57,7 @@ from squadops.projects.development_configuration import (
     DevelopmentConfiguration,
 )
 from squadops.projects.initialization import InitializationRefused, initialize_project
+from squadops.projects.integration_check import Failure, NoSourceRepository, check_integration
 from squadops.projects.models import SourceUnavailable
 from squadops.projects.registration import RegistrationRefused, prepare_registration
 from squadops.projects.sync import SyncRefused, sync_project
@@ -315,7 +320,8 @@ async def list_unintegrated_increments(
     yet (SIP-0109 §24dc, #2863), each with where it stands: ``not_contributed``,
     ``contribution_pending``, ``merged_not_synced`` or ``contribution_closed``. Empty when every
     one is integrated, so a supervisor can gate a draft on it. Read-only: the managed clone reads
-    the history, and nothing reaches the forge, so a merge reads as pending until a sync records it.
+    the history, and nothing reaches the forge, so a merge reads as pending until a sync records it:
+    ``POST /api/v1/projects/{id}/integration-check`` (SIP-0112 H.30) is the draft's write.
 
     ``contribution_closed`` keeps blocking, with the closed request's ``review_url``. Its recovery
     is the owner's: on the forge, reopen the request and merge it with a merge commit, then sync and
@@ -349,6 +355,81 @@ async def list_unintegrated_increments(
         )
         for i in increments
     ]
+
+
+def _failure(failure: Failure | None) -> IntegrationCheckFailureResponse | None:
+    if failure is None:
+        return None
+    return IntegrationCheckFailureResponse(reason=str(failure.reason), message=failure.message)
+
+
+@router.post("/{project_id}/integration-check")
+async def check_project_integration(
+    request: Request,
+    project_id: str,
+    body: IntegrationCheckRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
+) -> IntegrationCheckResponse:
+    """The integration check the next Campaign's draft makes (SIP-0112 H.30, #2862), in one
+    request: where the Project's unintegrated set (``GET …/unintegrated-increments``) has a row
+    ``contribution_pending``, sync, reading each pending review request's merge on the forge; where
+    a row stands ``merged_not_synced``, re-validate, so the integrated commit carries it; then
+    answer the set that remains, each row with what it waits on. ``clear`` means the draft may
+    proceed.
+
+    The supervisor's and the owner's (``campaigns:manage``): the draft is theirs. The token is the
+    request's, else the one the deploy holds for the Project, for this request's reads only. With
+    neither, a pending row's merge isn't read, and ``merge_state_unread`` says so (``no_token``).
+    The forge is only read. One sync is recorded per upstream commit, so a check repeated there
+    replays it. A sync or re-validation that fails is answered with its reason, never retried
+    here."""
+    try:
+        check = await check_integration(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            campaigns=get_campaign_registry(request),
+            goal_sets=get_goal_set_registry(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+            actor=identity.user_id if identity is not None else "anonymous",
+        )
+    except NoSourceRepository as e:
+        raise http_error(409, "NO_SOURCE_REPOSITORY", str(e)) from e
+    return IntegrationCheckResponse(
+        project_id=project_id,
+        clear=check.clear,
+        integrated_commit_before=check.integrated_commit_before,
+        integrated_commit=check.integrated_commit,
+        sync=(
+            SourceSyncResponse(document=dict(check.sync), replayed=check.sync_replayed)
+            if check.sync is not None
+            else None
+        ),
+        merge_state_unread=_failure(check.merge_state_unread),
+        revalidated_at=check.revalidated_at,
+        validation_failed=_failure(check.validation_failed),
+        unreconciled=dict(check.unreconciled) if check.unreconciled is not None else None,
+        next_step=check.next_step,
+        remaining=[
+            IntegrationCheckRowResponse(
+                campaign_id=w.increment.campaign_id,
+                campaign_state=w.increment.campaign_state,
+                cycle_id=w.increment.cycle_id,
+                title=w.increment.title,
+                commit=w.increment.commit,
+                standing=w.increment.standing.value,
+                review_url=w.increment.review_url,
+                waits_on=w.waits_on.value,
+                clears_when=w.clears_when,
+            )
+            for w in check.remaining
+        ],
+    )
 
 
 @router.post("/{project_id}/initializations", status_code=201)
