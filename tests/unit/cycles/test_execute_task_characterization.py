@@ -157,7 +157,16 @@ class _ScriptedDispatcher:
         return "tr_char"
 
     async def dispatch_with_retry(
-        self, enriched, envelope, cycle, run_id, *, flow_run_id, task_run_id, handle_task_outcome
+        self,
+        enriched,
+        envelope,
+        cycle,
+        run_id,
+        *,
+        flow_run_id,
+        task_run_id,
+        handle_task_outcome,
+        screen_success,
     ):
         self._trace.add(
             "dispatch_with_retry",

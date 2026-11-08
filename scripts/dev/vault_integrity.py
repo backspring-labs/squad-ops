@@ -12,6 +12,10 @@ A record is corrupt when it exists but can't be read whole, by the same reading 
   content's rename and the metadata's leaves one; it is no artifact, and is named so it can be read;
 - ``stray_temp_files``: a ``*.tmp`` beside a record, a write that never reached its rename.
 
+A directory's ``.listing.json`` (#2973) is the listing's cache of its artifacts' metadata, not a
+record: the pass reads every record from its own metadata, and a listing rebuilds a summary that is
+behind or doesn't parse. A stray temp file of one is named, as any write that never landed.
+
     python scripts/dev/vault_integrity.py [VAULT_DIR] [--under PROJECT[/CYCLE[/RUN]]]
 
 VAULT_DIR is ``data/artifacts`` when not given. The output is JSON on stdout: each kind's count and
