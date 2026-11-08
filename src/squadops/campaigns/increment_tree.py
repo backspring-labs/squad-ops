@@ -432,6 +432,14 @@ def increment_evaluation_inputs(
             {"criterion_id": criterion_id, "path": path}
             for criterion_id, path in replaced_criterion_files(resolved_config, change_request)
         ],
+        # #2799: the page loaders the request placed beside its page criteria's files, the
+        # framework's test files, which a bundle whose test imports one is frozen with. Only
+        # when one is placed, as the test scope's ``page_loaders``, so every other input is as it was.
+        **(
+            {"increment_page_loaders": list(loaders)}
+            if (loaders := placed_page_loaders(load_stored_change_request(change_request)))
+            else {}
+        ),
     }
 
 

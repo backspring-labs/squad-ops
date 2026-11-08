@@ -69,6 +69,8 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
     if isinstance(loaders, list) and loaders:
         # deferred (cycle): campaigns.increment_tree loads this module
         from squadops.campaigns.increment_tree import page_loader_lines
+
+        # deferred (cycle): importing the campaigns package loads campaigns.increment_tree
         from squadops.campaigns.page_loader import page_loader_source
 
         how = await renderer.render(

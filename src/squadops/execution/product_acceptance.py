@@ -41,7 +41,6 @@ from squadops.campaigns.acceptance_run import (
     evaluation_document,
     frozen_criteria_from,
 )
-from squadops.campaigns.change_request import load_stored_change_request, placed_page_loaders
 from squadops.campaigns.increment_tree import (
     INCREMENT_EVALUATION_ARTIFACT_TYPE,
     INCREMENT_EVALUATION_FILENAME,
@@ -175,8 +174,8 @@ async def evaluate_product_increment(
         routes=routes.results,
         replaced=replaced,
         # #2799: the page loaders delivery wrote into the candidate, which the bundles of the
-        # tests that import them are frozen with.
-        placed_support=placed_page_loaders(load_stored_change_request(change_request)),
+        # tests that import them are frozen with. The inputs name them only where one is placed.
+        placed_support=tuple(inputs.get("increment_page_loaders") or ()),
     )
     # #2938: what the product's own measurements say of the candidate. It reports, so it runs after
     # the verdict is formed and can't change it.
