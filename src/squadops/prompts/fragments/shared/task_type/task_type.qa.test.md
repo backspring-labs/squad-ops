@@ -1,7 +1,7 @@
 ---
 fragment_id: task_type.qa.test
 layer: task_type
-version: "0.9.27"
+version: "0.9.28"
 roles: ["qa"]
 ---
 # Task: Generate and Execute Tests (qa.test)
@@ -110,5 +110,22 @@ declare vitest), frontend UI tests are real deliverables:
   A test you can't name such a fault for protects nothing; leave it out.
 - **Each acceptance criterion your task carries still gets its test,** one that fails on an
   implementation without the behaviour the criterion states. That is never optional.
+- **A criterion's test asserts on something it has made sure is there.** An assertion inside a
+  loop over an empty collection never runs, so the test passes having checked nothing. Run before
+  the work, that pass reads as the criterion already met, and the work it asks for is dropped.
+  Read the fixture the suite provides rather than writing a stand-in for it, and assert the
+  collection holds what the case needs before looping over it:
+
+  ```js
+  const { orders } = handle(readFixture('orders.json'));
+  assert.ok(orders.length > 0, 'the fixture yields orders');  // a loop over none asserts nothing
+  for (const order of orders) assert.equal(order.status, 'held');
+  ```
+
+  ```python
+  orders = handle(load_fixture("orders.json"))["orders"]
+  assert orders, "the fixture yields orders"  # a loop over none asserts nothing
+  assert all(order["status"] == "held" for order in orders)
+  ```
 - **Beyond those, writing no further test is a correct answer.** A test that asserts what another
   already asserts costs a run and catches nothing new.
