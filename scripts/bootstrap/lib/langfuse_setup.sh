@@ -193,23 +193,23 @@ _write_langfuse_env() {
 
     # Update public key
     if grep -q '^SQUADOPS__LANGFUSE__PUBLIC_KEY=' "$env_file"; then
-        sed -i "s|^SQUADOPS__LANGFUSE__PUBLIC_KEY=.*|SQUADOPS__LANGFUSE__PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}|" "$env_file"
+        sed_in_place "s|^SQUADOPS__LANGFUSE__PUBLIC_KEY=.*|SQUADOPS__LANGFUSE__PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}|" "$env_file"
     else
         echo "SQUADOPS__LANGFUSE__PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}" >> "$env_file"
     fi
 
     # Update secret key
     if grep -q '^SQUADOPS__LANGFUSE__SECRET_KEY=' "$env_file"; then
-        sed -i "s|^SQUADOPS__LANGFUSE__SECRET_KEY=.*|SQUADOPS__LANGFUSE__SECRET_KEY=${LANGFUSE_SECRET_KEY}|" "$env_file"
+        sed_in_place "s|^SQUADOPS__LANGFUSE__SECRET_KEY=.*|SQUADOPS__LANGFUSE__SECRET_KEY=${LANGFUSE_SECRET_KEY}|" "$env_file"
     else
         echo "SQUADOPS__LANGFUSE__SECRET_KEY=${LANGFUSE_SECRET_KEY}" >> "$env_file"
     fi
 
     # Set prompt asset source to langfuse
     if grep -q '^SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=' "$env_file"; then
-        sed -i "s|^SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=.*|SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse|" "$env_file"
+        sed_in_place "s|^SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=.*|SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse|" "$env_file"
     elif grep -q '^# *SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=' "$env_file"; then
-        sed -i "s|^# *SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=.*|SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse|" "$env_file"
+        sed_in_place "s|^# *SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=.*|SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse|" "$env_file"
     else
         echo "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse" >> "$env_file"
     fi

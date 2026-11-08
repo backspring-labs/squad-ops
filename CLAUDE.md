@@ -397,6 +397,17 @@ fix was refused (#1259). The table goes in the PR's Evidence section.
 
 **Structure**:
 - Permanent utilities: `scripts/dev/`
+- **Shared scripts run on every bootstrap profile as it ships, with nothing extra installed** (#2402):
+  `dev-mac` (macOS, bash 3.2, BSD userland), `dev-pc` and `local-spark`.
+  - **bash 3.2 is the floor:** no `mapfile`/`readarray`, associative arrays, case-changing expansions,
+    namerefs, `wait -n`, `globstar` or `coproc`.
+  - **Only flags BSD and GNU share:** no `grep -P`, bare `sed -i` (use `sed_in_place` in
+    `scripts/bootstrap/lib/common.sh`), `readlink -f`, `date -d`, `stat -c`, `sort -V` or `find -printf`.
+    When the portable form gets awkward, write it in Python; the venv is on every profile.
+  - **A newer tool is a declared requirement:** the bootstrap profile installs it and `squadops doctor`
+    checks it.
+  - **A script written for one box says so** in its header (`# Platform: local-spark`) and checks the
+    platform. `tests/unit/architecture/test_shell_portability.py` holds the rest to the rule.
 - Maintainer-only: `scripts/maintainer/`
 - Temp migrations: `scripts/dev/migrations/temp_*.py`
 - New SIP drafts go in `sips/proposed/` (unnumbered)
