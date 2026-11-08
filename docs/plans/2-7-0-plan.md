@@ -340,6 +340,7 @@ Each ruling is recorded as the owner gave it, in the second review round.
     identified.
   - SIP-0112 stays open.
 - **R2. #2862 is in, and #2954 moves to 2.8.**
+  - **The credential, ruled again on 2026-11-08:** the host's current GitHub access, used only to read, in place of a separate read-only token (SIP-0112 H.28).
   - #2862 corrects stale Project state after a merged contribution. It uses the read-only fetch credential already
     chosen, the sync and its revalidation gates, and a visible `unreconciled` result when synchronization fails.
   - #2954 changes what the next proposal receives, and the adopted 2.6.1 plan classed it as a feature. Deferring it

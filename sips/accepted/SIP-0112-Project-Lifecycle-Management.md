@@ -136,7 +136,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a product's suite judged on its own runner on the product's tree at the pin, with the files a run's artifacts hold back (a lockfile) (H.19) | **shipped** | 2.6.0, PR #2902, closes #2900 |
 | a source-backed change that deletes a file | **shipped** (H.23): the `delete:<path>` form, judged against the task's view and grant, applied to the delivery candidate, named in `changed_paths` and absent from the capture | 2.6.0, PR #2923, closes #2612 |
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
-| a merged contribution syncs its Project, so the integrated commit includes the work | **placed** (the 2.6 plan, adopted 2026-11-03; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08, as the line's one named exception: it corrects stale Project state through the existing sync) | 2.7.0, #2862 |
+| a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.28; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #2862's sweep (this PR), closes #2862 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect) | 2.8.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
@@ -3294,3 +3294,44 @@ and #2862 moved to 2.7 on the owner's rulings of 2026-11-07. No Project needs a 
 Shelfnote and `z_continuum` all run from their repositories.
 
 **Who ruled.** The owner, 2026-11-07, on the implementer's recommendation.
+
+## H.28 A merged contribution syncs its Project, from a host-side sweep on the host's own forge access (2026-11-08; E.4.3, E.4.4, FR-21; #2862; the Spark lane)
+
+**What changed.** E.4.4's sync recorded where each pending contribution stands, but only when someone ran it. After the
+owner merged a contribution's review request, the Project's `integrated_upstream_commit` stayed put, and the next
+Campaign read a product without the merged work. The merge sweep (`scripts/dev/ops/merge_sweep.py`) now runs on a host
+timer (`infra/systemd/squadops-merge-sweep.*`, every 15 minutes, so detection is by polling):
+1. **It reads.** For each repository-backed Project, it lists the contributions and reads each pending one's review
+   request on the forge. Every forge call is a `GET`; the sweep never pushes, comments, merges or edits.
+2. **It records a sync** for a Project with a merged one. E.4.4's sync marks the contribution integrated against the
+   commit that took it (a squash merge's included) and names the drift.
+3. **It re-validates the Project,** so the development baseline advances and new cycles wait for configure and
+   baseline capture, as after any sync (the owner's ruling of 2026-11-05). A validation that never landed is retried on
+   the next run.
+4. **A refused sync or validation is reported, never retried in silence.** The run exits 1, and a sync that can't
+   reconcile reads `unreconciled` on the Project, as before.
+
+**The credential, as the owner ruled it.** On 2026-11-05 the owner chose a read-only credential for the sweep's fetch.
+On 2026-11-08 the owner replaced that with the host's current access: "can you just accomplish the goal with your
+current access and just not write anything you shouldn't". So the sweep uses the host's GitHub CLI login, passed with
+each sync and validation request for that request alone, as `--token-from-gh` already does. The deploy stores no token,
+and the sweep writes none. The guarantee that it only reads is the code's, held by a test: that login's token has full
+repository scope, and a fine-grained read-only token can replace it in the same slot later. The sweep signs in to the
+runtime as `squadops-admin` (syncs and validations need `admin:write`), under its own CLI config home, so it never
+overwrites another login on the box. The password reaches the CLI in its environment, never as an argument.
+
+**The evidence.** `tests/unit/scripts/test_merge_sweep.py`:
+- a merged contribution syncs, then validates;
+- nothing is recorded for an unmerged, integrated or unlinked contribution;
+- a refused sync reports and never validates;
+- a validation that never landed is retried;
+- a dry run records nothing;
+- every forge call is a `GET`;
+- the sign-in keeps the password out of the arguments, uses its own config home, and signs in to the deploy's realm.
+
+A dry run on the Spark's deploy read every Project and acted on none, since every contribution there was already
+integrated.
+
+**Who ruled it.** The owner: the 2.7 plan's R2 kept #2862 in 2.7 as the line's named exception (2026-11-08), and the
+credential is the owner's ruling of the same day, above.
+
