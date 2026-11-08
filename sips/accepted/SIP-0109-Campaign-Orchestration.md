@@ -143,6 +143,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold; an added page whose path needs a seed is refused, and a dev repair keeps the anchors (§24co item 11's remainder, §24cp items 1–5) | **shipped** | 2.5.0, PR #2780, closes #2779 |
 | a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **placed** (re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): a design change to §7.2's change request, which needs its own design and an outside review; until then the refusal stands) | 2.8.0, #2781 |
 | the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp, not built) | **placed** (the 2.6 plan's Track B, adopted 2026-11-03) | 2.7.0, #2783 |
+| the accepted-page inventory across Campaigns on one product: a second Campaign shown the pages an earlier one's increments added (§24dq, not built) | **unplaced**: for the supervisor to place | #2997 |
+| retiring a page from the accepted-page inventory, and re-rendering the accepted pages at a rebase onto a moved upstream (§24dq, not built) | **unplaced, deliberately**: a removed accepted page is rejected, as a removed pinned route is, until a change request can say it retires one | §24dq |
 | a Campaign on a repository-backed Project, read live, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co): the calibration record and its baseline reading, the proposal from the product's tree, the instruction binding at each cycle's own commit, the launch, the refusal at a moved upstream and the rebase onto the reconciled commit, increments judged at delivery on the product's runners, and the anchored page | **shipped**, read on the 2.5 cut's final deploy (the cut's pre-registration §14b): IR-2, IR-3 (a)–(e), IR-4, IR-6's calibration half, IR-7 and IR-8 hold. Narrowed by the owner (2026-10-29: "Narrow the claim, go to cut"): no product increment was accepted, so the row below carries the rest | 2.5.0, PRs #2820 and #2825 with the release PR, closes #2619 |
 | a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading). The 2.7 plan (§4.5) reads it on one counted increment on `prj-z-continuum`, the product that meets all three readings' preconditions, with BT-11's records (battle-trainer PR #11) as the historical promotion and push; `z_continuum`'s page surface is not applicable, so it doesn't wait on #2799. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.7.0, #2827 |
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
@@ -6501,3 +6503,140 @@ no longer fails a listing, and a read that needs it gets a typed error.
 
 **Who ruled it.** The owner adopted the 2.7 plan on 2026-11-08 (its Track B and §4.2), with the line's judgement
 calls delegated.
+
+### 24dq. The accepted-page inventory: the pages accepted increments added, recorded at promotion, read by the rails, the proposer and acceptance (2026-11-08, §7.2, §8.3, §9.1, §12a, §24ap, §24bv point 5, §24co items 11 and 13, §24cp item 6; #2783; the 2.7 plan's Track A, adopted by the owner 2026-11-08; the implementer's design under it, for the owner's outside review)
+
+**Why.** §24cp item 6 made an added page's anchor unique against two sets: the approved manifest's routes, with every
+test id their views carry, and the other pages the same request adds. A page an earlier increment added was in
+neither. A product's change request carries no manifest delta (§24bv point 5), so no manifest learns that page, and it
+isn't in the next request. So a later request could name that page's anchor for a page it adds. Where the candidate
+never built the new page, the single-page app's fallback rendered the earlier page there, and the new page read held.
+§24co item 13's shared-root rule couldn't catch it: it compares the anchors the renderer knew. A product with no
+approved manifest knew none of its pages' ids at all. §24cp's "Not built here" named this as #2783.
+
+**What changed.**
+1. **The record: the PROMOTE row on a campaign branch** (`_promote_onto_branch`, `campaigns/progress.py`).
+   - Its binding gains `accepted_pages`, written only when the increment added a page. Each entry is a page the
+     change request added (`source: change_request`) that acceptance held, with the anchor it held by and every test
+     id its page's elements carried, the anchor first (`product_routes.pages_added_and_held`).
+   - It's read from the stored `increment_evaluation`'s `renderings` (§24co item 9). Before this item, nothing read
+     that record. Reading it keeps the binding a function of stored data (#1943), so a replayed promotion writes the
+     same row.
+   - Every id, not only the root: the fallback renders the whole earlier view, as §24cp item 6 reasoned for a pinned
+     view.
+   - A row is keyed by its accepted tree's identity (`promote:<cycle>:<identity>`), so the record is keyed by the tree
+     it made.
+2. **The inventory: the fold of every applied PROMOTE row's pages** (`progress.accepted_pages`, beside
+   `frozen_criteria`). A refused row adds nothing, and a row that added no page keeps the earlier ones.
+3. **It reaches the proposal's input, as the frozen criteria do (§24ap).** `_propose_on_branch` pins it on the launch
+   block as `campaign_proposal.accepted_pages` (`increment_launch`), only when it isn't empty. `CONTINUED_KEYS` carries
+   it into a repair's or retry's block, so a continuation's acceptance reads the same pages. A sample application's
+   launch carries none: its pages are its manifest's.
+4. **The rails** (`_anchor_refusals`, `campaigns/change_request.py`). The proposal handler reads the block's inventory
+   into `ProductContext.accepted_pages` (`planning/proposal.product_context`).
+   - **An accepted page is judged like a pinned one.** A criterion on it names no anchor, or is refused as
+     `anchor_on_judged_route`, since acceptance reads it by the anchor it was accepted with.
+   - **An added page's anchor is unique against its ids too.** `anchor_conflicts` now reads the manifest's views and
+     the inventory, merged per route by one function, `pages_carrying`, which the renderer calls too. A reuse is
+     refused as `anchor_not_unique`, naming the earlier page.
+   - **A product with no approved manifest** is covered by the same inventory. `route_anchors` is empty there, so the
+     inventory is all the rails hold against.
+   - An inventory record the handler can't read (no route or no anchor) fails the proposal
+     (`product_routes.page_inventory`). It's the only record of those anchors, so it's never skipped.
+5. **The proposer is told** (`request.proposal_judged_routes`, version 2). Each accepted page is listed with the pages
+   acceptance already reads: `` - `/totals`, added by an earlier increment: its page carries `totals-view`,
+   `totals-row` ``. The asset gains one sentence: each of those ids is taken. The section renders when the profile
+   pins a page or the inventory holds one, so a launch with neither is shown what it was before.
+6. **The renderer's expected set** (`DeclaredStartRoutes.render`, `scenarios/declared_routes.py`). The
+   `RouteRenderer` protocol takes `accepted_pages`, required, and `evaluate_product_increment` hands it the block's
+   inventory.
+   - **The earlier pages join the expected set at acceptance.** Each is judged by its recorded anchor, as a pinned route
+     is by its manifest's. So a candidate that drops one reads broken, and the increment is rejected. Its record
+     names `source: accepted_page`.
+   - **An added page reusing one of their ids** is blocked, `the change request names an anchor another page carries
+     (<page>)`, on a request stored before item 4. Where it reuses the earlier page's root, that page is blocked too, by
+     §24co item 13.
+   - A route that's in the inventory and pinned by the profile is judged once, by its pin. A route that's in the
+     inventory and named by the request is judged by its recorded anchor, whatever the request names.
+
+**The choice: a record written at acceptance, not the frozen criteria's anchors.** The issue named both sources. A
+frozen criterion's record would have to carry its `client_route` anchor, and the inventory would be read from those
+records. That was rejected for three reasons:
+- **A criterion can be retired** (`retired_criteria`), and the page it was on stays in the tree. An inventory read
+  from the frozen criteria would lose that page's anchor, and reopen this issue's failure.
+- **A criterion freezes only with a bundle** (`new_bundles`). What it records is what the request asserted, not what
+  acceptance held.
+- **The renderer's own reading is the evidence.** The ids recorded are the ones the page's elements carried when it
+  held, at that tree. A criterion names one anchor.
+
+The PROMOTE row is written at acceptance, keyed by the accepted tree's identity, and part of the transition's replay
+identity, so it's the record the plan's scope asks for.
+
+**The seam table** (CLAUDE.md, typed checks): where an added page's anchor is checked, and what each seam sees.
+
+| seam | process | what it reads | on a tree without the earlier page |
+|------|---------|---------------|------------------------------------|
+| promotion (`_promote_onto_branch`) | runtime-api | the stored evaluation's `renderings`: the routes judged from the change request that held | records nothing for that page: an unheld page is never recorded |
+| launch (`_propose_on_branch`, `increment_launch`) | runtime-api | the control log's applied PROMOTE rows | the inventory still names the page: it was accepted on an earlier tree |
+| continuation (`_bound_launch`, `CONTINUED_KEYS`) | runtime-api | the failed cycle's block | carries the pinned inventory unchanged |
+| the rails (`validate_proposal`, `_anchor_refusals`) | nat, the proposal task | the launch block's inventory, beside the input's approved manifest | no tree is read: the anchor is refused as taken |
+| the proposer's prompt (`product_sections`) | nat | the same block | lists the page and its ids |
+| acceptance (`evaluate_product_increment`, `DeclaredStartRoutes.render`) | runtime-api, the sandbox's runner reading pages | the block's inventory, pinned at launch, rendered on the candidate | the earlier page reads broken (its anchor missing), and the increment is rejected; an added page reusing its anchor is blocked |
+| unchanged: the plan gate, the authors' views (`increment_views`, the test scope's `views`), and the rebase's frozen bundles | runtime-api, the roles | the change request's own pages | not affected |
+
+**Rollout.**
+- **What stays byte-identical:** every PROMOTE binding of an increment that added no page, every sample
+  application's launch block, and every launch block of a campaign with no accepted page. Each key is written only
+  when set.
+- **A skewed deploy fails closed:**
+  - a new runtime-api with an old nat: the old rails ignore the inventory, and acceptance blocks the reuse after the
+    build;
+  - an old runtime-api with a new nat: the old launch writes no inventory, and the new rails read none, as before.
+- **The one replay hazard** is a promotion of an increment that added a page, attempted on the old runtime-api and
+  re-heard on the new one. Its binding then differs, and the replay is refused as a conflicting key (#1943's class).
+  The 2.7 plan deploys nothing while a Campaign runs (§4.2), so no promotion straddles a deploy.
+- **The loaded checks** `2783-runtime` and `2783-nat` (`scripts/dev/loaded_checks.yaml`) each answer their `expect`
+  on the source.
+
+**Not built here:**
+- **The inventory is one Campaign's.** A second Campaign on the same product starts with none, so the pages an
+  earlier Campaign's contribution added are known to it nowhere, as before this item. Filed as #2997.
+- **A page is never retired from the inventory.** A change that removes an accepted page is rejected, as one that
+  removes a pinned route is. Retiring one would be a typed field of §7.2's request, with its own design.
+- **A rebase onto a moved upstream** (§24cm) runs the frozen bundles, and doesn't render the accepted pages.
+- **An id the earlier page hid in markup** (§24co item 13) isn't recorded. A fallback rendering of that page doesn't
+  count it either, so the two readings agree.
+
+**Evidence.**
+- **The wiring, entered at the live callers:**
+  - `test_campaign_branch.py::test_the_pages_an_accepted_increment_added_reach_its_promotion_and_the_next_launch`:
+    `CampaignProgress.cycle_ended` on Tally's real campaign branch. The PROMOTE row records `/totals` and the ids its
+    page carried, not the pinned `/`, and row 7's launch block carries it. An increment with no page writes no key
+    (`test_an_accepted_increment_moves_the_branch_to_its_capture`).
+  - `test_strategy_propose_product_increment.py`: `handle()` with the real assets, on a product with no approved
+    manifest. The proposer is shown `/totals` and its ids, `/summary` reusing `totals-row` is returned as
+    `[anchor_not_unique]`, and only the revision's own anchor is stored. An unreadable inventory fails the task before
+    the model is asked.
+  - `test_product_runner_acceptance_wiring.py`, at the executor's end of plan (`_execute_sequential`): **the issue's
+    acceptance case.** The launch pinned `/totals`, and the request, stored before the rule, adds `/summary` naming
+    `totals-view`. The candidate never builds `/summary`, and the fallback renders the totals view there. `/summary`
+    and `/totals` read blocked, and the increment isn't accepted. A candidate that drops `/totals` is rejected with
+    `route /totals: missing totals-view`.
+  - `test_progress.py::test_a_continuation_carries_the_increments_keys_and_its_own_lineage_and_nothing_else`: a
+    retry's block carries the inventory.
+- **The rails:** `test_product_change_request.py` refuses a reused root and another recorded id, beside a manifest and
+  on a product with none, and judges a criterion on an accepted page by its accepted anchor.
+- **The renderer:** `test_product_routes.py` judges an accepted page held, or broken when the candidate drops it,
+  beside a manifest and with none, and blocks a page never built that reuses its root or another id.
+- **The record and the fold:** `test_accepted_pages.py`.
+- **Twenty mutants, each caught** (listed in PR #PR_TBD's evidence): in the rails, the inventory not judged or not held
+  against, and the merge keeping one reading; in the record, a pinned page recorded, only the root, a malformed record
+  skipped, only the root read back; at promotion, the key never written or always written; in the fold, a refused row
+  counted, only the latest row read; at launch, the inventory not passed, the block never carrying it, a continuation
+  dropping it; in the proposal, the rails or the prompt never reading it; at acceptance, the inventory not handed over,
+  the pages not in the expected set, the reuse not checked against them, or an accepted page judged as added.
+
+**Who ruled it.** The 2.7 plan's Track A row for #2783 sets the scope, adopted by the owner on 2026-11-08. Reading the
+record from the PROMOTE row and not the frozen criteria, recording every id the page carried, judging an accepted page
+like a pinned one, and blocking the reuse at the renderer too are the implementer's choices. It changes what a
+proposal is shown, so it takes the outside review SIP-0112 H.12 provides before it merges.

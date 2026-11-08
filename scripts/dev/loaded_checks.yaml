@@ -2375,3 +2375,23 @@ checks:
       inputs = {"source_repository": {"commit": "c", "map": ""}, "resolved_config": {"development_profile": "fullstack_fastapi_react"}}
       print(s.source_backed(inputs), s.source_backed({}), s.product_conventions_template(inputs))
     expect: True False request.source_repository_conventions_fullstack_fastapi_react
+  - id: "2783-runtime"
+    what: an accepted increment's added pages are recorded with every id their page carried, a continuation carries the inventory, and acceptance's renderer takes it (SIP-0109 §24dq, #2783)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.launch_requests import CONTINUED_KEYS
+      from squadops.campaigns.product_routes import pages_added_and_held
+      from squadops.scenarios.declared_routes import DeclaredStartRoutes
+      r = {"renderings": {"routes": [{"route": "/t", "source": "change_request", "held": "held", "anchor": "t-view", "seen": ["t-row", "t-view"]}]}}
+      print(pages_added_and_held(r), "accepted_pages" in CONTINUED_KEYS, "accepted_pages" in inspect.signature(DeclaredStartRoutes.render).parameters)
+    expect: "[{'route': '/t', 'anchor': 't-view', 'testids': ['t-view', 't-row']}] True True"
+  - id: "2783-nat"
+    what: the rails read the launch block's accepted-page inventory and hold an added page's anchor unique against every id those pages carried (SIP-0109 §24dq, #2783)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.change_request import anchor_conflicts, pages_carrying
+      from squadops.capabilities.handlers.planning.proposal import product_context
+      c = product_context({"profile": {}}, [{"route": "/t", "anchor": "t-view", "testids": ["t-view", "t-row"]}])
+      print(c.accepted_pages, anchor_conflicts({"/s": "t-row"}, pages_carrying(dict(c.route_anchors), dict(c.accepted_pages))))
+    expect: "(('/t', ('t-view', 't-row')),) {'/s': ['/t']}"

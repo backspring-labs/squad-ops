@@ -18,6 +18,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
 
 ### Fixed
+- **A product's change request can't reuse the anchor of a page an earlier increment added** (#2783, SIP-0109 §24dq):
+  the PROMOTE row on a campaign branch records each page the increment added and acceptance held, with every test id
+  its page carried. The next launch pins that inventory beside the frozen criteria. The rails judge an accepted page
+  as a pinned one and refuse an added page's anchor that one carries. The proposer is shown those pages and their ids.
+  Acceptance renders them in the expected set, so a candidate that drops one is rejected, and a page never built
+  that reuses one's anchor is blocked, never held. A product with no approved manifest is covered by the same
+  inventory.
 - **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
   write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release
   capture, the verification-set driver and triage, which read the vault as another user. Files are 0644 again, as
