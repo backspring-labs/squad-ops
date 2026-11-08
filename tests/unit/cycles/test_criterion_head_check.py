@@ -102,12 +102,15 @@ class _Squad:
         suites: tuple[str, ...] = (_CRITERION,),
         repaired: str = _CRITERION,
         decided: str = "abort",
+        image_fails: bool = False,
     ) -> None:
         self.sent: list[Any] = []
         self.removes = removes
         self.suites = list(suites)
         self.repaired = repaired
         self.decided = decided
+        #: The first qa emission fails in the qa image only on ``tests_pass`` (#2818).
+        self.image_fails = image_fails
 
     def types(self) -> list[str]:
         return [str(e.task_type) for e in self.sent]
@@ -148,6 +151,22 @@ class _Squad:
                     else {}
                 ),
             }
+            if (
+                task_type == "qa.test"
+                and self.image_fails
+                and "retest_files" not in envelope.inputs
+            ):
+                # #2818: the qa image couldn't run the product's suite; its runner can.
+                self.image_fails = False
+                outputs["validation_result"] = {
+                    "passed": False,
+                    "checks": [{"check": "tests_pass", "passed": False, "executed": True}],
+                }
+                outputs["test_result"] = {"executed": True, "exit_code": 1, "tests_passed": False}
+                outputs["outcome_class"] = "semantic_failure"
+                return TaskResult(
+                    task_id=envelope.task_id, status="FAILED", outputs=outputs, error="tests_pass"
+                )
         return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
 
     async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
@@ -370,6 +389,54 @@ async def test_after_the_refusal_a_re_dispatched_emission_that_fails_on_the_head
     record = _record(vault)
     assert record is not None
     assert record["criteria"][0]["reading"] == "fails_on_head"
+
+
+async def test_a_suite_the_products_runner_passes_is_read_on_the_head_before_it_is_accepted():
+    """#2818's path, the one battle-trainer's suites take: the qa image can't run the suite, the
+    product's runner passes it, and that pass is the emission's. Bug caught: the runner's pass
+    accepted unread, so a test that passes on the head is never refused and fails the run
+    without the round the ruling grants."""
+    sandbox = _Sandbox()
+    built, squad_, cycle, implementation, vault, envelopes, seeded = await _increment(
+        sandbox, squad_answers=_Squad(image_fails=True)
+    )
+
+    with pytest.raises(_ExecutionError) as ended:
+        await _run_plan(built, cycle, implementation, envelopes, seeded)
+
+    assert squad_.types()[2:6] == [
+        "qa.test",
+        "data.analyze_failure",
+        "governance.correction_decision",
+        "qa.test_repair",
+    ]
+    evidence = squad_.sent[5].inputs["failure_evidence"]
+    assert [c["path"] for c in evidence[CRITERIA_PASS_ON_HEAD_KEY]["criteria"]] == [SUITE]
+    assert ended.value.terminal is None
+    assert _record(vault) is None
+
+
+async def test_the_record_never_holds_a_pass_on_the_head():
+    """§24do at the writer: whatever its caller, the record ``_already_met_stated`` reads never
+    carries a criterion that passed on the head. Bug caught: a reading with a pass stored, so the
+    next proposal is told the head already meets the criterion."""
+    from squadops.campaigns.criterion_head import CriterionHeadReading, HeadReading
+    from squadops.execution.criterion_head_check import CriterionHeadCheck, store_head_check
+
+    built, _squad, cycle, implementation, vault, _envelopes, _seeded = await _increment(_Sandbox())
+    passed = CriterionHeadReading("R1", SUITE, HeadReading.ALREADY_MET)
+    failed = CriterionHeadReading("R2", "checks/check_criterion_R2.py", HeadReading.FAILS_ON_HEAD)
+
+    stored = await store_head_check(
+        cycle, implementation.run_id, CriterionHeadCheck("a" * 40, (failed, passed), ()), vault
+    )
+    assert (stored, _record(vault)) == (None, None)
+
+    stored = await store_head_check(
+        cycle, implementation.run_id, CriterionHeadCheck("a" * 40, (failed,), ()), vault
+    )
+    assert stored is not None
+    assert _record(vault)["criteria"] == [failed.as_dict()]
 
 
 async def test_a_cycle_that_pins_no_source_is_untouched():
