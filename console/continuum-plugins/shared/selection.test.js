@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { announce, openNav, takeAnnounced } from './selection.js';
+import { OPEN_CREATE_CYCLE, announce, openCreateCycle, openNav, takeAnnounced } from './selection.js';
 
 class FakeEvent {
   constructor(type, { detail }) {
@@ -72,4 +72,29 @@ test('openNav answers false, and clicks nothing, when the shell shows no such en
   assert.equal(openNav('Projects', doc), false);
   assert.deepEqual(doc.clicked, []);
   assert.equal(openNav('Projects', undefined), false);
+});
+
+// #2909: Home's "Create Cycle" called a window function the console never defines, so it did
+// nothing. Bugs caught: the request lost because the Cycles panel isn't mounted when it's sent;
+// the wrong perspective opened; a request left behind to reopen the form on a later visit.
+test("Home's Create Cycle opens Cycles with the request held for the panel that mounts", () => {
+  const win = fakeWindow();
+  const doc = fakeDocument(['Home', 'Cycles', 'Campaigns']);
+
+  assert.equal(openCreateCycle({ win, doc }), true);
+
+  assert.deepEqual(doc.clicked, ['Cycles']);
+  assert.deepEqual(win.heard, [[OPEN_CREATE_CYCLE, {}]]);
+  assert.deepEqual(takeAnnounced(OPEN_CREATE_CYCLE, win), {});
+  assert.equal(takeAnnounced(OPEN_CREATE_CYCLE, win), null);
+});
+
+test('with no Cycles entry, Create Cycle says so and keeps the request for the next visit', () => {
+  const win = fakeWindow();
+  const doc = fakeDocument(['Home']);
+
+  assert.equal(openCreateCycle({ win, doc }), false);
+
+  assert.deepEqual(doc.clicked, []);
+  assert.deepEqual(takeAnnounced(OPEN_CREATE_CYCLE, win), {});
 });

@@ -1,7 +1,7 @@
 // A selection one view hands to another in a different perspective.
 //
 // The plugins talk through window `CustomEvent`s (`squadops:select-project`,
-// `squadops:select-campaign`), and the pinned shell (Continuum v1.0.2) mounts only the open
+// `squadops:select-campaign`), and the pinned shell (Continuum v1.0.3) mounts only the open
 // perspective's panels (docs/architecture/console-fit-check-2-6.md §1). So an event dispatched
 // for a panel in another perspective reaches no listener: the panel isn't mounted yet. Two parts
 // close that, with no shell change:
@@ -29,6 +29,19 @@ export function takeAnnounced(name, win = globalThis) {
   const { [name]: _taken, ...rest } = win[STORE];
   win[STORE] = rest;
   return held;
+}
+
+/** Home's "Create Cycle" asks the Cycles perspective to open its create form (#2909). */
+export const OPEN_CREATE_CYCLE = 'squadops:open-create-cycle';
+
+/**
+ * Opens the Cycles perspective with its create form open. The form is the Cycles panel's own
+ * (`CycleCreateModal`), so the request is announced for that panel to take when it mounts, or to
+ * hear while it is mounted. Answers whether the perspective was opened.
+ */
+export function openCreateCycle({ win = globalThis, doc = globalThis.document } = {}) {
+  announce(OPEN_CREATE_CYCLE, {}, win);
+  return openNav('Cycles', doc);
 }
 
 /** Clicks the shell's left-nav entry labelled `label`; false when the shell shows none. */
