@@ -1229,12 +1229,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     async def _end_escaped_cycle(self, cycle_id: str, exc: Exception) -> None:
         """Fail the cycle's live run and end the cycle ``run_failed`` (#2931). Never raises: a
         failure here is logged beside the escape it was ending."""
+        registry = self._cycle_registry
+        if registry is None:
+            return
         try:
-            if await self._cycle_registry.get_cycle_end(cycle_id) is not None:
+            if await registry.get_cycle_end(cycle_id) is not None:
                 return  # it ended before the escape: nothing is left to end
             runs = [
                 r
-                for r in await self._cycle_registry.list_runs(cycle_id)
+                for r in await registry.list_runs(cycle_id)
                 if r.status != RunStatus.CANCELLED.value
             ]
             if not runs:
@@ -1248,7 +1251,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         f"the cycle's execution raised outside a run: {type(exc).__name__}: {exc}"
                     ),
                 )
-            ended = await self._cycle_registry.get_run(latest.run_id)
+            ended = await registry.get_run(latest.run_id)
             await self._cycle_completion.end(cycle_id, ended, CycleStopReason.RUN_FAILED)
             logger.error(
                 "cycle_execution_escaped_and_ended",
