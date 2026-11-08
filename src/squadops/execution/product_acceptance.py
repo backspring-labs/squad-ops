@@ -173,6 +173,9 @@ async def evaluate_product_increment(
         retired=retired,
         routes=routes.results,
         replaced=replaced,
+        # #2799: the page loaders delivery wrote into the candidate, which the bundles of the
+        # tests that import them are frozen with. The inputs name them only where one is placed.
+        placed_support=tuple(inputs.get("increment_page_loaders") or ()),
     )
     # #2938: what the product's own measurements say of the candidate. It reports, so it runs after
     # the verdict is formed and can't change it.

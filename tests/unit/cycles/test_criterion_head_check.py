@@ -1,6 +1,6 @@
-"""#2890 (SIP-0109 §24cz): a criterion already met is found as soon as its test exists, run on
-the campaign branch's head before the run delivers, and the increment ends
-``criteria_not_checkable``.
+"""#2890 (SIP-0109 §24cz): a criterion's test is run on the campaign branch's head as soon as it
+exists, before the run delivers. Since #2933's D1 (§24do) a pass there is refused to the suite's
+author, once, and a later pass fails the run: no run ends ``criteria_not_checkable``.
 
 Entered where the live increment cycle enters: ``_execute_sequential`` on the shared fixture's
 Tally, its tree seeded as provisioning seeds it, its plan ``generate_task_plan``'s from the stored
@@ -29,12 +29,18 @@ from squadops.cycles.correction_signature import (
     repair_not_applied_in_round,
 )
 from squadops.cycles.deletions import DELETIONS_KEY
-from squadops.cycles.failure_attribution import TerminalKind
+from squadops.cycles.failure_evidence import CRITERIA_PASS_ON_HEAD_KEY
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.execution.binding_holds import BindingHolds
-from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
+from squadops.execution.criterion_head_check import EMISSION_PASSES_ON_HEAD_MARKER
+from squadops.execution.dispatched_flow_executor import (
+    DispatchedFlowExecutor,
+    RunState,
+    _Budget,
+    _ExecutionError,
+)
 from squadops.execution.source_checkout import seed_checkout_artifacts
 from squadops.projects.derived_profile import parse_profile
 from squadops.sandbox.models import RevisionOrigin
@@ -86,43 +92,96 @@ _FAILS_ON_HEAD = {
 
 class _Squad:
     """The dispatcher: the developer writes the report and removes ``removes``, the qa author
-    writes the criterion's file."""
+    writes the criterion's file, a ``suites`` text an emission (the last one again after that),
+    and its repair writes ``repaired``. The correction's lead decides ``decided``."""
 
-    def __init__(self, removes: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        removes: tuple[str, ...] = (),
+        *,
+        suites: tuple[str, ...] = (_CRITERION,),
+        repaired: str = _CRITERION,
+        decided: str = "abort",
+        image_fails: bool = False,
+    ) -> None:
         self.sent: list[Any] = []
         self.removes = removes
+        self.suites = list(suites)
+        self.repaired = repaired
+        self.decided = decided
+        #: The first qa emission fails in the qa image only on ``tests_pass`` (#2818).
+        self.image_fails = image_fails
+
+    def types(self) -> list[str]:
+        return [str(e.task_type) for e in self.sent]
+
+    def _suite(self) -> str:
+        return self.suites.pop(0) if len(self.suites) > 1 else self.suites[0]
 
     async def dispatch_task(self, envelope, run_id, **_kwargs) -> TaskResult:
         self.sent.append(envelope)
-        if envelope.task_type == "development.develop":
-            artifacts = [{"name": NAMED, "content": _DEVELOPED, "type": "source"}]
+        task_type = str(envelope.task_type)
+        if task_type == "data.analyze_failure":
+            outputs = {"classification": "work_product", "analysis_summary": "the suite"}
+        elif task_type == "governance.correction_decision":
+            outputs = {
+                "correction_path": self.decided,
+                "decision_rationale": "a model's call",
+                # A lead's patch names what it changes; its abort names nothing.
+                "affected_task_types": ["qa.test"] if self.decided == "patch" else [],
+            }
         else:
-            artifacts = [
-                {"name": SUITE, "content": _CRITERION, "type": "test"},
-                {"name": "test_report.md", "content": "1 passed", "type": "test_report"},
-            ]
-        return TaskResult(
-            task_id=envelope.task_id,
-            status="SUCCEEDED",
-            outputs={
+            if task_type == "development.develop":
+                artifacts = [{"name": NAMED, "content": _DEVELOPED, "type": "source"}]
+            else:
+                text = {"qa.test_repair": self.repaired, "qa.test": None}.get(task_type, _CRITERION)
+                text = self._suite() if text is None else text
+                artifacts = [
+                    {"name": SUITE, "content": text, "type": "test"},
+                    {"name": "test_report.md", "content": "1 passed", "type": "test_report"},
+                ]
+            outputs = {
                 "summary": "done",
                 "artifacts": artifacts,
                 "validation_result": {"passed": True, "checks": []},
                 "test_result": {"executed": True, "exit_code": 0, "tests_passed": True},
                 **(
                     {DELETIONS_KEY: list(self.removes)}
-                    if envelope.task_type == "development.develop"
+                    if task_type == "development.develop"
                     else {}
                 ),
-            },
-        )
+            }
+            if (
+                task_type == "qa.test"
+                and self.image_fails
+                and "retest_files" not in envelope.inputs
+            ):
+                # #2818: the qa image couldn't run the product's suite; its runner can.
+                self.image_fails = False
+                outputs["validation_result"] = {
+                    "passed": False,
+                    "checks": [{"check": "tests_pass", "passed": False, "executed": True}],
+                }
+                outputs["test_result"] = {"executed": True, "exit_code": 1, "tests_passed": False}
+                outputs["outcome_class"] = "semantic_failure"
+                return TaskResult(
+                    task_id=envelope.task_id, status="FAILED", outputs=outputs, error="tests_pass"
+                )
+        return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
 
     async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
         return None
 
 
 async def _increment(
-    sandbox, profile=_READ_PROFILE, *, with_repository: bool = True, tree=None, removes=()
+    sandbox,
+    profile=_READ_PROFILE,
+    *,
+    with_repository: bool = True,
+    tree=None,
+    removes=(),
+    squad_answers: _Squad | None = None,
+    source_pinned: bool = True,
 ):
     """The Tally increment composed as the live run composes it, ready to run its plan: the
     change request forwarded to the cycle, the tree seeded, the executor over a fake sandbox."""
@@ -150,7 +209,7 @@ async def _increment(
     cycles = AsyncMock()
     cycles.get_run.return_value = implementation
     cycles.get_latest_checkpoint.return_value = None
-    dispatcher = _Squad(removes)
+    dispatcher = squad_answers if squad_answers is not None else _Squad(removes)
     built = DispatchedFlowExecutor(
         cycle_registry=cycles, artifact_vault=vault, queue=AsyncMock(),
         squad_profile=AsyncMock(), project_registry=registry, campaign_registry=None,
@@ -171,17 +230,20 @@ async def _increment(
     envelopes = generate_task_plan(
         cycle, implementation, squad(), plan=plan(NAMED), change_request=STORED
     )
+    if not source_pinned:
+        # A sample application's increment: no source the cycle pins.
+        cycle = dataclasses.replace(cycle, source_context=None)
     return built, dispatcher, cycle, implementation, vault, envelopes, seeded
 
 
-async def _run_plan(built, cycle, implementation, envelopes, seeded):
+async def _run_plan(built, cycle, implementation, envelopes, seeded, ledger=None):
     await built._execute_sequential(
         envelopes,
         implementation.run_id,
         cycle,
         seed_artifact_refs=list(seeded),
         profile=squad(),
-        ledger=RunLedger(),
+        ledger=ledger if ledger is not None else RunLedger(),
     )
 
 
@@ -195,59 +257,228 @@ def _record(vault: Vault) -> dict | None:
     return written[0] if written else None
 
 
-async def test_a_criterion_passing_on_the_head_ends_the_run_before_it_delivers():
-    """The spike's item 1: the criterion's file passes on the head with nothing changed."""
+async def test_a_first_emission_passing_on_the_head_is_refused_to_its_author_then_fails_the_run():
+    """#2933 D1 (SIP-0109 §24do), the BT-2 and BT-9 shape: qa's first emission, as the agent
+    reported it succeeded, passes on the head. Entered at ``_execute_sequential``, the live loop.
+
+    Bugs caught: the emission accepted and the increment abandoned at row 19 as "already met"
+    (§24cz's ending, which threw away BT-2's correct change); the refusal sent to a dev repair,
+    which can only bend the product to a test that proves nothing; the lead's ``abort`` deciding
+    the path, so the round the ruling grants is never spent; the repair not told which file passed
+    on which head; and, once the allowance is spent, the run ending with a terminal kind (an
+    uncounted abandonment) or a record that tells the next proposal the head meets R1."""
     sandbox = _Sandbox()
-    built, dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(sandbox)
+    ledger = RunLedger()
+    built, squad_, cycle, implementation, vault, envelopes, seeded = await _increment(
+        sandbox, squad_answers=_Squad(decided="abort")
+    )
+
+    with pytest.raises(_ExecutionError) as ended:
+        await _run_plan(built, cycle, implementation, envelopes, seeded, ledger)
+
+    # The emission went to its own author's repair, never a dev repair, never a terminal end.
+    # Then the repair's rewrite passed the head too (§24dh refused it), qa's re-dispatched
+    # emission did as well, and the allowance was spent: the run failed there.
+    assert squad_.types() == [
+        "governance.define_done",
+        "development.develop",
+        "qa.test",
+        "data.analyze_failure",
+        "governance.correction_decision",
+        "qa.test_repair",
+        "qa.test",  # the repair's retest
+        "qa.test",  # re-dispatched after §24dh refused the repair
+    ]
+    repair = squad_.sent[5]
+    assert repair.inputs["expected_artifacts"] == [SUITE]
+    evidence = repair.inputs["failure_evidence"]
+    assert evidence[CRITERIA_PASS_ON_HEAD_KEY] == {
+        "head_commit": CONTEXT.pinned_commit,
+        "criteria": [{"criterion_id": "R1", "path": SUITE, "tests_passed": 1}],
+    }
+    [told] = evidence["prior_repair_rejections"]
+    assert told.startswith(f"qa.test attempt 1: {EMISSION_PASSES_ON_HEAD_MARKER} (R1 ({SUITE}: 1")
+    assert CONTEXT.pinned_commit[:12] in told
+    # The lead said abort; the rule patched it, and said so.
+    [override] = ledger.path_overrides
+    assert (override.proposed, override.path, override.reason) == (
+        "abort",
+        "patch",
+        "criterion_passes_on_head",
+    )
+    # An ordinary failure: no terminal kind, so the campaign repairs it and counts it.
+    assert ended.value.terminal is None
+    assert "R1" in str(ended.value) and "§24do" in str(ended.value)
+    built._deliver_source_change.assert_not_awaited()
+    # The tree the file ran on is the head: the product's own report, not the developer's, and
+    # none of the product's own tests (H.19).
+    assert sandbox.seeded[NAMED] == product_tree()[NAMED]
+    assert sandbox.seeded[SUITE] == _CRITERION
+    assert "checks/check_area_0.py" not in sandbox.seeded
+    assert sandbox.commands[0]["command"] == ("python3", "-m", "pytest", "-q", SUITE)
+    # Nothing tells the next proposal the head meets R1.
+    assert _record(vault) is None
+
+
+class _HeadByContent(_Sandbox):
+    """The head's answer by what the criterion's file says: ``failing`` texts fail there."""
+
+    def __init__(self, failing: tuple[str, ...]) -> None:
+        super().__init__()
+        self.failing = failing
+
+    async def run_declared_command(self, *, revision, command, working_dir, setup, findings_reader):
+        fails = self.seeded.get(command[-1]) in self.failing
+        self.exits = {SUITE: 1} if fails else {}
+        self.readings = {SUITE: _FAILS_ON_HEAD} if fails else {}
+        return await super().run_declared_command(
+            revision=revision,
+            command=command,
+            working_dir=working_dir,
+            setup=setup,
+            findings_reader=findings_reader,
+        )
+
+
+#: A criterion's test that discriminates: red on the head, which reports no total.
+_DISCRIMINATING = (
+    "from tally.report import render\n\n\ndef test_total():\n"
+    "    assert render([3, 4]) == 'total 7'\n"
+)
+
+
+async def test_the_refused_emissions_repair_that_fails_on_the_head_is_accepted_and_delivered():
+    """The round the refusal buys, spent well: the suite's author rewrites the test so it fails
+    on the head, the repair is accepted, and the run goes on to delivery with the reading recorded.
+    Bug caught: a refused emission whose sound repair is still failed, or abandoned, because the
+    first emission's pass was remembered as the task's reading."""
+    sandbox = _HeadByContent(failing=(_DISCRIMINATING,))
+    built, squad_, cycle, implementation, vault, envelopes, seeded = await _increment(
+        sandbox, squad_answers=_Squad(repaired=_DISCRIMINATING, decided="patch")
+    )
+
+    await _run_plan(built, cycle, implementation, envelopes, seeded)
+
+    assert squad_.types()[2:] == [
+        "qa.test",
+        "data.analyze_failure",
+        "governance.correction_decision",
+        "qa.test_repair",
+        "qa.test",  # the repair's retest
+    ]
+    built._deliver_source_change.assert_awaited_once()
+    record = _record(vault)
+    assert record is not None
+    assert record["criteria"] == [{"criterion_id": "R1", "path": SUITE, "reading": "fails_on_head"}]
+
+
+async def test_after_the_refusal_a_re_dispatched_emission_that_fails_on_the_head_is_delivered():
+    """The allowance is the head's to spend, not the run's: once spent, the next emission is read
+    as any other is, and one that discriminates goes on. Bug caught: a spent allowance read as
+    "fail every later reading", so a sound suite qa wrote on its second try fails the run."""
+    sandbox = _HeadByContent(failing=(_DISCRIMINATING,))
+    built, squad_, cycle, implementation, vault, envelopes, seeded = await _increment(
+        sandbox, squad_answers=_Squad(suites=(_CRITERION, _DISCRIMINATING), decided="patch")
+    )
+
+    await _run_plan(built, cycle, implementation, envelopes, seeded)
+
+    # The repair kept the passing test (§24dh refused it), and qa's re-dispatch discriminated.
+    assert squad_.types()[-3:] == ["qa.test_repair", "qa.test", "qa.test"]
+    built._deliver_source_change.assert_awaited_once()
+    record = _record(vault)
+    assert record is not None
+    assert record["criteria"][0]["reading"] == "fails_on_head"
+
+
+async def test_a_suite_the_products_runner_passes_is_read_on_the_head_before_it_is_accepted():
+    """#2818's path, the one battle-trainer's suites take: the qa image can't run the suite, the
+    product's runner passes it, and that pass is the emission's. Bug caught: the runner's pass
+    accepted unread, so a test that passes on the head is never refused and fails the run
+    without the round the ruling grants."""
+    sandbox = _Sandbox()
+    built, squad_, cycle, implementation, vault, envelopes, seeded = await _increment(
+        sandbox, squad_answers=_Squad(image_fails=True)
+    )
 
     with pytest.raises(_ExecutionError) as ended:
         await _run_plan(built, cycle, implementation, envelopes, seeded)
 
-    assert ended.value.terminal is not None
-    assert ended.value.terminal.kind is TerminalKind.CRITERIA_NOT_CHECKABLE
-    assert "R1" in str(ended.value) and CONTEXT.pinned_commit[:12] in str(ended.value)
-    # The plan ran through its qa task, and the run went no further: nothing was delivered or
-    # judged (the implementation workload: the definition of done, development, then qa).
-    assert [str(e.task_type) for e in dispatcher.sent] == [
-        "governance.define_done",
-        "development.develop",
+    assert squad_.types()[2:6] == [
         "qa.test",
+        "data.analyze_failure",
+        "governance.correction_decision",
+        "qa.test_repair",
     ]
-    built._deliver_source_change.assert_not_awaited()
-    # The tree the file ran on is the head: the product's own report, not the developer's.
-    assert sandbox.seeded[NAMED] == product_tree()[NAMED]
-    assert sandbox.seeded[SUITE] == _CRITERION
-    assert "tally/ledger_00.py" in sandbox.seeded
-    # The product's own tests are left out, by the runners in the dispatched inputs (H.19).
-    assert "checks/check_area_0.py" not in sandbox.seeded
-    [command] = sandbox.commands
-    assert command["command"] == ("python3", "-m", "pytest", "-q", SUITE)
-    assert command["reader"] == "pytest"
-    # The record, in acceptance's word for the same finding.
-    record = _record(vault)
-    assert record is not None
-    assert record["criteria"] == [
-        {"criterion_id": "R1", "path": SUITE, "reading": "no_baseline_failure"}
-    ]
-    assert (record["head_commit"], record["increment_id"]) == (
-        CONTEXT.pinned_commit,
-        "prop_tally0001",
+    evidence = squad_.sent[5].inputs["failure_evidence"]
+    assert [c["path"] for c in evidence[CRITERIA_PASS_ON_HEAD_KEY]["criteria"]] == [SUITE]
+    assert ended.value.terminal is None
+    assert _record(vault) is None
+
+
+async def test_the_record_never_holds_a_pass_on_the_head():
+    """§24do at the writer: whatever its caller, the record ``_already_met_stated`` reads never
+    carries a criterion that passed on the head. Bug caught: a reading with a pass stored, so the
+    next proposal is told the head already meets the criterion."""
+    from squadops.campaigns.criterion_head import CriterionHeadReading, HeadReading
+    from squadops.execution.criterion_head_check import CriterionHeadCheck, store_head_check
+
+    built, _squad, cycle, implementation, vault, _envelopes, _seeded = await _increment(_Sandbox())
+    passed = CriterionHeadReading("R1", SUITE, HeadReading.ALREADY_MET)
+    failed = CriterionHeadReading("R2", "checks/check_criterion_R2.py", HeadReading.FAILS_ON_HEAD)
+
+    stored = await store_head_check(
+        cycle, implementation.run_id, CriterionHeadCheck("a" * 40, (failed, passed), ()), vault
     )
-    assert record["runs"][0]["passed"] is True
+    assert (stored, _record(vault)) == (None, None)
+
+    stored = await store_head_check(
+        cycle, implementation.run_id, CriterionHeadCheck("a" * 40, (failed,), ()), vault
+    )
+    assert stored is not None
+    assert _record(vault)["criteria"] == [failed.as_dict()]
+
+
+async def test_a_cycle_that_pins_no_source_is_untouched():
+    """A sample application's increment: no head to read. Bug caught: the screen refusing, or
+    failing, an emission with nothing to read it against."""
+    sandbox = _Sandbox()
+    built, _squad, cycle, implementation, vault, envelopes, _seeded = await _increment(
+        sandbox, source_pinned=False
+    )
+    qa = next(e for e in envelopes if e.task_type == "qa.test")
+    emitted = await _Squad().dispatch_task(qa, implementation.run_id)
+    state = RunState(budget=_Budget(seconds=None, started=0.0))
+    state.produced.stored_artifacts.extend(_stored_suite(vault, cycle, implementation))
+
+    screened = await built._screen_on_head(emitted, qa, qa, cycle, implementation.run_id, state)
+    await built._fail_if_criteria_pass_on_head(qa, qa, cycle, implementation.run_id, state)
+
+    assert screened is emitted
+    assert state.correction.refused_on_head == set()
+    assert sandbox.commands == []
+    assert _record(vault) is None
 
 
 async def test_a_criterion_failing_on_the_head_proceeds_to_delivery_with_its_reading_recorded():
     """The ordinary increment: the head lacks the behaviour, so the run goes on to be delivered
     and judged, and the reading says what the head showed."""
     sandbox = _Sandbox(exits={SUITE: 1}, readings={SUITE: _FAILS_ON_HEAD})
-    built, _dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(sandbox)
+    built, dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(sandbox)
 
     await _run_plan(built, cycle, implementation, envelopes, seeded)
 
     built._deliver_source_change.assert_awaited_once()
+    # No correction, and the head read once: the screen's reading is the one recorded.
+    assert dispatcher.types() == ["governance.define_done", "development.develop", "qa.test"]
+    assert len(sandbox.commands) == 1
     record = _record(vault)
     assert record is not None
     assert record["criteria"] == [{"criterion_id": "R1", "path": SUITE, "reading": "fails_on_head"}]
+    assert (record["head_commit"], record["increment_id"]) == (
+        CONTEXT.pinned_commit,
+        "prop_tally0001",
+    )
 
 
 @pytest.mark.parametrize(
@@ -266,7 +497,7 @@ async def test_where_the_check_cant_run_the_run_proceeds_and_says_why(
     """§24cz: never a failed or ended run for a check that couldn't run; acceptance stays the last
     line. Bug caught: a product whose runner names no reader (Tally's unittest, §24ci (a)), or a
     runtime with no sandbox, ending every increment or failing every run."""
-    built, _dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
+    built, dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
         sandbox, profile, with_repository=with_repository
     )
 
@@ -274,6 +505,8 @@ async def test_where_the_check_cant_run_the_run_proceeds_and_says_why(
         await _run_plan(built, cycle, implementation, envelopes, seeded)
 
     built._deliver_source_change.assert_awaited_once()
+    # §24do: a head that can't be read refuses nothing.
+    assert dispatcher.types() == ["governance.define_done", "development.develop", "qa.test"]
     assert _record(vault) is None
     assert any(
         "criterion head check" in r.getMessage() and logged in r.getMessage()
@@ -344,34 +577,33 @@ async def test_a_node_products_tracked_lockfile_doesnt_turn_the_check_into_a_ski
     which hold it back so ``npm ci`` installs nothing. Either way the check reads nothing on every
     Node product, skipping with a log line, and battle-trainer spends the cycle row 16 would."""
     sandbox = _Sandbox(readings={SUITE: {**_reading(1, 1), "reader": "vitest"}})
-    built, _dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
+    built, dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
         sandbox, _NODE_PROFILE, tree=_NODE_TREE
     )
 
     with pytest.raises(_ExecutionError) as ended:
         await _run_plan(built, cycle, implementation, envelopes, seeded)
 
-    assert ended.value.terminal is not None
-    assert ended.value.terminal.kind is TerminalKind.CRITERIA_NOT_CHECKABLE
+    # The check read the head (its pass was refused, then failed the run): not a skip.
+    assert ended.value.terminal is None
+    assert "qa.test_repair" in dispatcher.types()
     assert sandbox.origin == RevisionOrigin.GIT_CHECKOUT
     assert sandbox.seeded["package-lock.json"] == _NODE_TREE["package-lock.json"]
     # The pin is the seed; the only thing patched on it is the criterion's file.
     assert sandbox.patched == {SUITE: _CRITERION}
-    [command] = sandbox.commands
+    command = sandbox.commands[0]
     assert (command["command"], command["reader"]) == (
         ("npx", "vitest", "run", SUITE),
         "vitest",
     )
-    record = _record(vault)
-    assert record is not None
-    assert record["criteria"][0]["reading"] == "no_baseline_failure"
+    assert _record(vault) is None
 
 
 async def test_a_file_development_removed_is_still_on_the_head():
     """H.23 read the other way from the re-judged suite: that tree is the run's, this one is the
     head's, and a removal is development's work. Bug caught: ``_removed`` applied here too, so a
-    criterion that a file is gone passes on "the head" and an increment that discriminates ends
-    ``criteria_not_checkable``."""
+    criterion that a file is gone passes on "the head" and an increment that discriminates is
+    refused (§24cz then ended it ``criteria_not_checkable``)."""
     gone = "tally/ledger_00.py"
     sandbox = _Sandbox(exits={SUITE: 1}, readings={SUITE: _FAILS_ON_HEAD})
     built, dispatcher, cycle, implementation, vault, envelopes, seeded = await _increment(
@@ -471,7 +703,7 @@ async def test_a_repaired_suite_that_fails_on_the_head_is_accepted():
 
 async def test_a_repair_that_leaves_the_criterion_files_alone_runs_nothing_on_the_head():
     """A dev repair of a qa failure: the test is the one qa wrote, so the task's own check judges
-    it, and a pass there is still row 19's."""
+    it: since §24do a pass there fails the run (``_fail_if_criteria_pass_on_head``)."""
     sandbox = _Sandbox()
     repair = [{"name": NAMED, "content": _DEVELOPED, "type": "source"}]
 
@@ -492,25 +724,62 @@ async def test_a_head_that_cant_be_read_leaves_the_repair_to_the_tasks_own_check
     assert carry == {}
 
 
-async def test_after_a_refusal_a_later_pass_on_the_head_fails_the_run_and_never_reads_as_met():
-    """The re-dispatched emission passes on the head too: a failure the campaign repairs and
-    counts, with no row 19 and no record to tell the next proposal the head meets it."""
+@pytest.mark.parametrize(
+    ("spent", "says"),
+    [
+        (lambda state, qa: state.correction.refused_on_head.add(qa.task_id), "§24do"),
+        (
+            lambda state, qa: state.correction.rejection_carry.setdefault(qa.task_id, []).append(
+                f"correction attempt 1: {REPAIR_SUITE_PASSES_ON_HEAD_MARKER} (R1)"
+            ),
+            "§24dh",
+        ),
+        (lambda state, qa: None, "a repair the head check didn't read"),
+    ],
+    ids=["emission-refused", "repair-refused", "accepted-through-a-repair"],
+)
+async def test_a_pass_on_the_head_once_stored_fails_the_run_and_never_reads_as_met(spent, says):
+    """The stored emission passes on the head: after its emission or a repair of it was refused,
+    or accepted through a repair the screen never sees (a dev repair of a failed qa suite). A
+    failure the campaign repairs and counts, with no row 19 and no record to tell the next
+    proposal the head meets it. Bug caught: any of these read as already met."""
     sandbox = _Sandbox()
     built, _squad, cycle, implementation, vault, envelopes, _seeded = await _increment(sandbox)
     qa = next(e for e in envelopes if e.task_type == "qa.test")
-    stored = _stored_suite(vault, cycle, implementation)
+    state = RunState(budget=_Budget(seconds=None, started=0.0))
+    state.produced.stored_artifacts.extend(_stored_suite(vault, cycle, implementation))
+    spent(state, qa)
 
     with pytest.raises(_ExecutionError) as ended:
-        await built._end_if_criteria_met_on_head(
-            qa,
-            qa,
-            cycle,
-            implementation.run_id,
-            stored,
-            [f"correction attempt 1: {REPAIR_SUITE_PASSES_ON_HEAD_MARKER} (R1)"],
-        )
+        await built._fail_if_criteria_pass_on_head(qa, qa, cycle, implementation.run_id, state)
 
     assert ended.value.terminal is None
-    assert "R1" in str(ended.value) and "§24dh" in str(ended.value)
+    assert "R1" in str(ended.value) and says in str(ended.value)
     assert sandbox.seeded[SUITE] == _CRITERION
     assert _record(vault) is None
+
+
+async def test_the_screen_reads_the_head_once_and_a_spent_allowance_reads_nothing_before_storage():
+    """Bug caught: the head run twice for every qa success (the screen and again after the
+    collection, each a product setup in the sandbox), or a spent allowance refusing again."""
+    sandbox = _Sandbox(exits={SUITE: 1}, readings={SUITE: _FAILS_ON_HEAD})
+    built, _squad, cycle, implementation, vault, envelopes, _seeded = await _increment(sandbox)
+    qa = next(e for e in envelopes if e.task_type == "qa.test")
+    emitted = await _Squad().dispatch_task(qa, implementation.run_id)
+    state = RunState(budget=_Budget(seconds=None, started=0.0))
+
+    screened = await built._screen_on_head(emitted, qa, qa, cycle, implementation.run_id, state)
+    state.produced.stored_artifacts.extend(_stored_suite(vault, cycle, implementation))
+    await built._fail_if_criteria_pass_on_head(qa, qa, cycle, implementation.run_id, state)
+
+    assert screened is emitted
+    assert len(sandbox.commands) == 1
+    assert _record(vault)["criteria"][0]["reading"] == "fails_on_head"
+
+    state.correction.refused_on_head.add(qa.task_id)
+    passing = _Sandbox()
+    built._sandbox = passing
+    assert await built._screen_on_head(emitted, qa, qa, cycle, implementation.run_id, state) is (
+        emitted
+    )
+    assert passing.commands == []

@@ -1648,7 +1648,10 @@ class CorrectionRunner:
         # path. The record then says an analyzer and a lead were not in this loop.
         analyzed = "analyze" in declared_correction_steps(cycle.resolved_config())
         affected = tuple(decision_outputs.get("affected_task_types", []))
-        if not decided and not affected:
+        # The same holds where a declared decision's path was overridden (SIP-0109 §24do: a lead's
+        # `abort` of a refusal on the head names nothing to change, and the rule patches it).
+        rule_chose = not decided or decision_outputs.get("correction_path") != correction_path
+        if rule_chose and not affected:
             affected = (envelope.task_type,)
         # 6. Store plan delta as artifact
         delta = PlanDelta(

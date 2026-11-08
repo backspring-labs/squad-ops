@@ -37,8 +37,10 @@ from squadops.campaigns.criterion_placement import (
     CRITERION_STEM,
     RunnerPlacement,
     Unplaceable,
+    page_loader_for,
     place_criterion,
 )
+from squadops.campaigns.page_loader import page_loader_path
 from squadops.cycles.acceptance_check_spec import parse_method_path
 from squadops.cycles.manifest_gates import assess_winnability
 from squadops.cycles.verification_contract import VerificationContract
@@ -171,6 +173,10 @@ class PlacedCriterionFile:
 
     criterion_id: str
     path: str
+    #: #2799, on a page criterion under a vitest runner only: the framework's page loader beside
+    #: ``path``, which its test loads the view through (``campaigns.page_loader``). Placed with the
+    #: file and hashed with it; left out of the document and its hash when empty, as ``anchor``.
+    page_loader: str = ""
 
 
 @dataclass(frozen=True)
@@ -470,6 +476,11 @@ def _authored_fields(payload: dict) -> dict:
             {k: v for k, v in c.items() if k not in ("paths", "anchor") or v}
             for c in out["criteria"]
         ]
+    if "criterion_files" in out:
+        # #2799: a placed file's page loader only where it has one.
+        out["criterion_files"] = [
+            {k: v for k, v in f.items() if k != "page_loader" or v} for f in out["criterion_files"]
+        ]
     return out
 
 
@@ -501,7 +512,9 @@ def load_stored_change_request(document: str) -> ChangeRequest:
         raise ChangeRequestError(f"the stored change request's basis is unknown: {e}") from e
     try:
         placed = tuple(
-            PlacedCriterionFile(str(f["criterion_id"]), str(f["path"]))
+            PlacedCriterionFile(
+                str(f["criterion_id"]), str(f["path"]), str(f.get("page_loader") or "")
+            )
             for f in data.get("criterion_files") or ()
         )
         authored = {k: v for k, v in data.items() if k not in _derived_fields(basis)}
@@ -540,6 +553,12 @@ def load_stored_change_request(document: str) -> ChangeRequest:
     )
 
 
+def placed_page_loaders(request: ChangeRequest) -> tuple[str, ...]:
+    """#2799: the page loaders the request's placement put beside its page criteria's files, once
+    each, in order: the framework's files, written into every tree a criterion's test runs on."""
+    return tuple(dict.fromkeys(f.page_loader for f in request.criterion_files if f.page_loader))
+
+
 def placement_inconsistency(request: ChangeRequest) -> str | None:
     """Why a request's criterion placement can't be its own (§24cj), or ``None``. A sample
     application's places nothing: its stack does. A campaign branch's places each criterion
@@ -565,6 +584,17 @@ def placement_inconsistency(request: ChangeRequest) -> str | None:
         stem = re.escape(CRITERION_STEM + criterion_module_name(f.criterion_id))
         if not re.search(stem + r"(?![A-Za-z0-9_])", f.path.rsplit("/", 1)[-1]):
             return f"criterion {f.criterion_id}'s file {f.path} is not named for it"
+    kinds = {c.id: c.surface_kind for c in request.criteria}
+    for f in placed:
+        # #2799: the rails place a loader only beside a page criterion's file, at the loader's
+        # one path for it, and every reader writes or freezes the file at that path.
+        if f.page_loader and kinds.get(f.criterion_id) is not SurfaceKind.CLIENT_ROUTE:
+            return f"criterion {f.criterion_id} is no page criterion, and places a page loader"
+        if f.page_loader and f.page_loader != page_loader_path(f.path):
+            return (
+                f"criterion {f.criterion_id}'s page loader {f.page_loader} is not the one beside "
+                f"its file {f.path}"
+            )
     return None
 
 
@@ -1036,11 +1066,17 @@ def _validate_product_proposal(
             )
             continue
         try:
-            placed.append(
-                PlacedCriterionFile(c.id, place_criterion(c.id, paths, product.placements))
-            )
+            path = place_criterion(c.id, paths, product.placements)
         except Unplaceable as e:
             refusals.append(ProposalRefusal(RefusalKind.UNPLACEABLE_CRITERION, str(e)))
+            continue
+        # #2799: a page criterion's test loads its view through the loader its runner places.
+        loader = (
+            page_loader_for(path, product.placements)
+            if c.surface_kind is SurfaceKind.CLIENT_ROUTE
+            else ""
+        )
+        placed.append(PlacedCriterionFile(c.id, path, loader))
     if not any(r.kind in _IDENTITY_REFUSALS for r in refusals):
         # A collision the ids already show is named once, by them.
         refusals.extend(_placed_collision_refusals(placed))

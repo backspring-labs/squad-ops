@@ -18,7 +18,7 @@ import functools
 import logging
 import os
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
@@ -137,7 +137,12 @@ from squadops.events.types import EventType
 from squadops.execution.binding_holds import BindingFill, BindingHolds
 from squadops.execution.correction_repair import CorrectionRepair
 from squadops.execution.correction_runner import CorrectionRunner
-from squadops.execution.criterion_head_check import check_criteria_on_head
+from squadops.execution.criterion_head_check import (
+    check_criteria_on_head,
+    refusal_entry,
+    refused_on_head,
+    store_head_check,
+)
 from squadops.execution.cycle_completion import CycleCompletion
 from squadops.execution.execution_errors import (
     _CancellationError,
@@ -480,6 +485,12 @@ class _Correction:
     #: #994: task ids whose repair was accepted and stored this run — a rewind after one
     #: discards known-good state, so the correction policy is told.
     accepted_repair_task_ids: set[str] = dataclasses.field(default_factory=set)
+    #: SIP-0109 §24do (#2933): qa task ids whose emission has had its one refusal for a criterion
+    #: passing on the head. Kept here, not read from the carry, which keeps its last three entries.
+    refused_on_head: set[str] = dataclasses.field(default_factory=set)
+    #: §24do: the head's reading of the emission about to be accepted, by task id, taken before
+    #: its acceptance and recorded after its collection (``_fail_if_criteria_pass_on_head``).
+    head_readings: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -650,10 +661,15 @@ class _TaskOutcomeRouter:
             result, _envelope, _enriched, cycle, run_id
         )
         if judged is not None and judged.status == TaskResultStatus.SUCCEEDED:
-            _record_task_evidence(result)
-            _holder["patched_result"] = judged
-            state.correction.accepted_repair_task_ids.add(_envelope.task_id)
-            return "accept_patch"
+            # SIP-0109 §24do: the runner's pass is the emission's, read on the head before it is
+            # accepted, as an emission the agent reported succeeded is.
+            screened = await self.screen(judged)
+            if screened.status == TaskResultStatus.SUCCEEDED:
+                _record_task_evidence(result)
+                _holder["patched_result"] = judged
+                state.correction.accepted_repair_task_ids.add(_envelope.task_id)
+                return "accept_patch"
+            judged = screened
         if judged is not None:
             # #2877: the qa image couldn't run the suite; the correction loop reads the product
             # runner's reading of it, not the image's "not run".
@@ -711,6 +727,13 @@ class _TaskOutcomeRouter:
             # carries no validation_result/test_result → nothing is recorded.
             _record_task_evidence(result)
         return action
+
+    async def screen(self, result: TaskResult) -> TaskResult:
+        """The dispatcher's ``screen_success``, and the router's for a pass on the product's
+        runner: ``result`` before it is accepted, or the failure it is refused as (§24do)."""
+        return await self.executor._screen_on_head(
+            result, self.envelope, self.enriched, self.cycle, self.run_id, self.state
+        )
 
     def record_evidence(self, task_result) -> None:
         # The body is shared with the fan-out path (#1148) — see ``record_task_evidence``.
@@ -2289,6 +2312,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 flow_run_id=flow_run_id,
                 task_run_id=task_run_id,
                 handle_task_outcome=router.route,
+                screen_success=router.screen,
             )
         except Exception:
             # Correction aborted (raised inside dispatch_with_retry). Record the
@@ -2412,18 +2436,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             cycle, run_id, state.produced.stored_artifacts, state.authored
         )
 
-        # #2890 (SIP-0109 §24cz): a repository-backed increment's criterion files, now stored as
-        # the qa task wrote them, run on the campaign branch's head before the run goes on to
-        # deliver. One that already passes there is met already: the run ends here, and the
-        # campaign proposes anew rather than spend the delivery, the acceptance and a repair.
-        await self._end_if_criteria_met_on_head(
-            envelope,
-            enriched,
-            cycle,
-            run_id,
-            state.produced.stored_artifacts,
-            state.correction.rejection_carry.get(envelope.task_id) or (),
-        )
+        # #2890 (SIP-0109 §24cz), §24do: a repository-backed increment's criterion files, now
+        # stored, as read on the campaign branch's head before the run goes on to deliver. The
+        # reading is recorded; a file that passes there fails the run (an emission's first pass
+        # was refused before it was accepted, so this is the pass after it, or one nothing read).
+        await self._fail_if_criteria_pass_on_head(envelope, enriched, cycle, run_id, state)
 
         # ----------------------------------------------------------
         # SIP-0070: Pulse boundary evaluation (after task, before gate)
@@ -4894,42 +4911,108 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             read_profile=self._derived_profile_for,
         )
 
-    async def _end_if_criteria_met_on_head(
+    async def _screen_on_head(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        state: RunState,
+    ) -> TaskResult:
+        """SIP-0109 §24do (#2933): an emission the qa task reported succeeded, its criterion files
+        read on the campaign branch's head before it is accepted (§24cz's check, moved ahead of the
+        acceptance). A pass there says the test can't tell this run's work from its absence, never
+        that the head meets the criterion, so the first is refused to the suite's author: the
+        emission becomes the failure the correction loop routes to ``qa.test_repair`` (the locus
+        reads the head's reading), spending a repair round, and the next round is told which files
+        passed on which head, as §24dh's is.
+
+        The allowance is one refusal per task. Once it's spent, here or by §24dh refusing a repair
+        of the task, the emission goes on unread, and ``_fail_if_criteria_pass_on_head`` reads it
+        once it's stored. A check that doesn't apply or can't run refuses nothing (§24cz), and
+        nothing here writes the record."""
+        task_id = envelope.task_id
+        if self._head_refusal_spent(task_id, state):
+            return result
+        emitted = {
+            str(a.get("name")): str(a.get("content") or "")
+            for a in (result.outputs or {}).get("artifacts") or ()
+            if isinstance(a, dict) and a.get("name")
+        }
+        check = await self._read_criteria_on_head(
+            envelope, enriched, cycle, run_id, state.produced.stored_artifacts, repaired=emitted
+        )
+        if check is None or not check.already_met:
+            # The reading, or that none could be taken, for the step after the collection.
+            state.correction.head_readings[task_id] = check
+            return result
+        state.correction.refused_on_head.add(task_id)
+        attempt = int(envelope.inputs.get("prior_attempts") or 0) + 1
+        _record_repair_rejection(
+            state.correction.rejection_carry,
+            task_id,
+            refusal_entry(envelope.task_type, attempt, check),
+        )
+        logger.warning(
+            "criterion head check %s: refused to the suite's author: %s pass on the head %s "
+            "(SIP-0109 §24do)",
+            task_id,
+            check.passing_files(),
+            check.head_commit[:12],
+        )
+        return refused_on_head(result, check)
+
+    @staticmethod
+    def _head_refusal_spent(task_id: str, state: RunState) -> bool:
+        """Whether the task has had its one refusal for passing on the head: its emission's
+        (§24do), or a repair of it (§24dh, read from the carry)."""
+        return task_id in state.correction.refused_on_head or any(
+            REPAIR_SUITE_PASSES_ON_HEAD_MARKER in str(e)
+            for e in state.correction.rejection_carry.get(task_id) or ()
+        )
+
+    async def _fail_if_criteria_pass_on_head(
         self,
         envelope: TaskEnvelope,
         enriched: TaskEnvelope,
         cycle: Any,
         run_id: str,
-        stored_artifacts: list[tuple[str, ArtifactRef]],
-        repair_rejections: Sequence[str],
+        state: RunState,
     ) -> None:
-        """#2890 (SIP-0109 §24cz): the qa task's criterion files run on the campaign branch's
-        head (``criterion_head_check``). A criterion already met there ends the run with its own
-        terminal kind, which the completion boundary records as the cycle's ending. A check that
-        doesn't apply or can't run leaves the run to proceed as it did.
+        """#2890 (SIP-0109 §24cz), §24do: the qa task's criterion files on the campaign branch's
+        head, once its emission is stored. The screen's reading of that emission is used where it
+        took one, so the head runs once. Otherwise it is read now: the allowance was spent, or the
+        emission was accepted through a repair, which no screen sees.
 
-        #2933 (§24dh): after a repair of this task was refused for passing on the head, a later
-        emission that passes there is no finding about the product either. The run fails as a
-        failure, which the campaign repairs and counts, and never reads as a clean abandonment."""
-        refused = any(REPAIR_SUITE_PASSES_ON_HEAD_MARKER in str(e) for e in repair_rejections)
-        check = await self._read_criteria_on_head(
-            envelope, enriched, cycle, run_id, stored_artifacts, write_record=not refused
-        )
-        if check is None or not check.already_met:
+        A reading in which nothing passed is recorded (``criterion_head_check``). A pass fails the
+        run with no terminal kind: the campaign reads an ordinary failure, repairs it and counts
+        it, and no record tells the next proposal the head meets the criterion (§24dh's backstop,
+        now every path's). A check that doesn't apply or can't run leaves the run to proceed."""
+        task_id = envelope.task_id
+        if task_id in state.correction.head_readings:
+            check = state.correction.head_readings.pop(task_id)
+        else:
+            check = await self._read_criteria_on_head(
+                envelope, enriched, cycle, run_id, state.produced.stored_artifacts
+            )
+        if check is None:
             return
-        if refused:
+        if not check.already_met:
+            await store_head_check(cycle, run_id, check, self._artifact_vault)
+            return
+        passing = ", ".join(check.already_met)
+        head = check.head_commit[:12]
+        if self._head_refusal_spent(task_id, state):
             raise _ExecutionError(
-                f"{', '.join(check.already_met)}: after a repair was refused for passing on the "
-                f"head, the suite still passes on {check.head_commit[:12]}, so it can't tell this "
-                "run's work from its absence, and nothing shows the head meets it (SIP-0109 §24dh)"
+                f"{passing}: after the suite was refused for passing on the head, it still passes "
+                f"on {head}, so it can't tell this run's work from its absence, and nothing shows "
+                "the head meets it (SIP-0109 §24dh, §24do)"
             )
         raise _ExecutionError(
-            f"criteria already met on the campaign branch's head {check.head_commit[:12]}: "
-            f"{', '.join(check.already_met)}. Their tests pass with no change to the product, so "
-            "the increment can't be checked; the campaign proposes anew (SIP-0109 §24cz)",
-            terminal=RunTerminalDecision(
-                kind=TerminalKind.CRITERIA_NOT_CHECKABLE, task_id=envelope.task_id
-            ),
+            f"{passing}: the suite, accepted through a repair the head check didn't read, passes "
+            f"on the campaign branch's head {head} without this run's work, so it can't tell the "
+            "work from its absence, and nothing shows the head meets it (SIP-0109 §24do)"
         )
 
     async def _read_repaired_suite_on_head(
@@ -4943,13 +5026,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     ) -> Any:
         """#2933 (SIP-0109 §24dh): a repair's criterion files on the head, before it's accepted."""
         return await self._read_criteria_on_head(
-            envelope,
-            enriched,
-            cycle,
-            run_id,
-            stored_artifacts,
-            repaired=repaired,
-            write_record=False,
+            envelope, enriched, cycle, run_id, stored_artifacts, repaired=repaired
         )
 
     async def _read_criteria_on_head(
@@ -4960,7 +5037,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         run_id: str,
         stored_artifacts: list[tuple[str, ArtifactRef]],
         *,
-        write_record: bool,
         repaired: Mapping[str, str] | None = None,
     ) -> Any:
         return await check_criteria_on_head(
@@ -4976,7 +5052,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             repository=self._source_repository,
             read_profile=self._derived_profile_for,
             repaired=repaired,
-            write_record=write_record,
         )
 
     async def _derived_profile_for(self, cycle: Any) -> Any:

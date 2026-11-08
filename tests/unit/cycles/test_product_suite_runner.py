@@ -169,6 +169,8 @@ class _Profile:
 _CYCLE = SimpleNamespace(
     project_id="prj_x",
     source_context=SimpleNamespace(development_configuration_revision=3, pinned_commit="c0ffee"),
+    # No increment basis: the head check (§24cz, §24do) doesn't apply to this cycle.
+    resolved_config=lambda: {},
 )
 
 
@@ -401,6 +403,7 @@ def _executor() -> DispatchedFlowExecutor:
     executor._project_registry = _PROJECTS
     executor._source_repository = _Repository()
     executor._derived_profile_for = _profile_of(_Profile())
+    executor._artifact_vault = None
     return executor
 
 
@@ -421,9 +424,15 @@ async def test_the_router_accepts_a_product_suite_judged_passed_without_routing_
 
     envelope = _envelope(_INPUTS)
     state = SimpleNamespace(
-        produced=SimpleNamespace(all_artifact_refs=[]),
+        produced=SimpleNamespace(all_artifact_refs=[], stored_artifacts=[]),
         ownership=SimpleNamespace(bound_record=None, compliance_counter={}),
-        correction=SimpleNamespace(accepted_repair_task_ids=set()),
+        # SIP-0109 §24do: the router screens the runner's pass on the head before accepting it.
+        correction=SimpleNamespace(
+            accepted_repair_task_ids=set(),
+            refused_on_head=set(),
+            rejection_carry={},
+            head_readings={},
+        ),
     )
     router = _TaskOutcomeRouter(
         executor=executor,
@@ -697,9 +706,15 @@ async def test_the_router_hands_the_correction_loop_the_products_reading():
 
     envelope = _envelope(_INPUTS)
     state = SimpleNamespace(
-        produced=SimpleNamespace(all_artifact_refs=[]),
+        produced=SimpleNamespace(all_artifact_refs=[], stored_artifacts=[]),
         ownership=SimpleNamespace(bound_record=None, compliance_counter={}),
-        correction=SimpleNamespace(accepted_repair_task_ids=set()),
+        # SIP-0109 §24do: the router screens the runner's pass on the head before accepting it.
+        correction=SimpleNamespace(
+            accepted_repair_task_ids=set(),
+            refused_on_head=set(),
+            rejection_carry={},
+            head_readings={},
+        ),
     )
     router = _TaskOutcomeRouter(
         executor=executor,

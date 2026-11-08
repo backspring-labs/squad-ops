@@ -434,6 +434,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.cycle_repair_current_files",
             "request.increment_test_scope_appendix",
             "request.increment_views_appendix",
+            # #2799: a page criterion's test on a vitest product, from its test scope.
+            "request.increment_page_loader_appendix",
             *_SHARED_CONTEXT_TEMPLATES,
             *_CYCLE_TASK_RETRY_TEMPLATES,
         ),
@@ -713,6 +715,8 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         "request.disputed_checks_appendix",
         # SIP-0109 §24cp: a dev repair of a view a repository-backed change adds.
         "request.increment_views_appendix",
+        # #2799: a qa repair of a page criterion's test on a vitest product, from its test scope.
+        "request.increment_page_loader_appendix",
         *_DEVELOP_APPENDIX_TEMPLATES,
     ),
     # #2810: it carries the whole accepted tree for its own evaluation (#1229) and the failed
@@ -767,6 +771,10 @@ RETEST_PRESENCE_KEYS: tuple[str, ...] = (
     # failed task's run did (``qa_run_tree``), and this is what marks the run a product's. The
     # retest renders no prompt and memory never composes it, so no prompt or budget reads it.
     "source_repository",
+    # #2799: a vitest product's page criterion's test loads its view through the page loader the
+    # scope names, which the retest's run tree lays beside the suite as the failed task's did
+    # (``qa_run_tree``). No prompt reads it here either.
+    "increment_test_scope",
 )
 
 
