@@ -489,14 +489,15 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             raise _StartFailed(f"the app published no port {start.ports}: {e}") from e
         base = f"http://{host}:{port}"
         api = f"http://{api_host}:{api_port}{start.api_path}"
-        if not await self._ready(base, host, port, start):
+        last = await self._ready(base, host, port, start)
+        if last is not None:
             try:
                 logs = await self._container.logs(container_id)
             except ToolContainerError:
                 logs = ""
             raise _StartFailed(
                 f"not ready at {start.ready_path or f'port {start.port}'} "
-                f"within {start.ready_timeout:g}s",
+                f"within {start.ready_timeout:g}s; its last answer was {last}",
                 tuple(logs.splitlines()[-DIAGNOSTIC_LINES:]),
             )
         # §4.2: measured before any scenario writes to the instance, so every tree is measured
@@ -742,10 +743,12 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
     ) -> QualityReading:
         host, port = await address(self._container, container_id, spec, start.port)
         api_host, api_port = await address(self._container, container_id, spec, start.api_port)
-        if not await self._ready(f"http://{host}:{port}", host, port, start):
+        last = await self._ready(f"http://{host}:{port}", host, port, start)
+        if last is not None:
             return QualityReading.not_measured(
                 NotMeasured.START_FAILED,
-                f"the seeded instance wasn't ready within {start.ready_timeout:g}s",
+                f"the seeded instance wasn't ready within {start.ready_timeout:g}s; "
+                f"its last answer was {last}",
             )
         timings["start_s"] = round(time.monotonic() - began, 3)
         seeding = time.monotonic()
@@ -815,26 +818,34 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             except ToolContainerError:
                 pass  # teardown converges: the container may already be gone
 
-    async def _ready(self, base: str, host: str, port: int, start: _Start) -> bool:
+    async def _ready(self, base: str, host: str, port: int, start: _Start) -> str | None:
+        """``None`` once the start answers as declared, or what its last poll answered when the
+        deadline passes (#2798: a readiness URL that answered 403 on every poll read only as
+        "not ready", and the status that said why was thrown away)."""
         deadline = time.monotonic() + start.ready_timeout
         async with self._http() as client:
             while True:
-                if await self._answers(client, base, host, port, start):
-                    return True
+                ready, answer = await self._answers(client, base, host, port, start)
+                if ready:
+                    return None
                 if time.monotonic() >= deadline:
-                    return False
+                    return answer
                 await asyncio.sleep(self._poll)
 
     async def _answers(
         self, client: httpx.AsyncClient, base: str, host: str, port: int, start: _Start
-    ) -> bool:
+    ) -> tuple[bool, str]:
+        """Whether one poll found the start ready, and what it answered, for the failure detail."""
         if start.ready_kind == ReadinessKind.TCP:
-            return await _tcp_answers(host, port, connect_timeout=self._poll + 1.0)
+            held = await _tcp_answers(host, port, connect_timeout=self._poll + 1.0)
+            return held, "a connection held open" if held else "no connection held open"
         try:
             response = await client.get(base + start.ready_path)
-        except (httpx.HTTPError, OSError):
-            return False  # connection refused while the app boots is expected
-        return not start.require_2xx or 200 <= response.status_code < 300
+        except (httpx.HTTPError, OSError) as e:
+            # connection refused while the app boots is expected; kept in case it never stops
+            return False, f"no HTTP answer ({type(e).__name__})"
+        ready = not start.require_2xx or 200 <= response.status_code < 300
+        return ready, f"HTTP {response.status_code}"
 
 
 def browse_answer(answer: Mapping[str, Any], tag: str) -> BrowseAnswer:
