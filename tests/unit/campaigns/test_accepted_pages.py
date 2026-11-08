@@ -9,6 +9,7 @@ acceptance's readings are each in their own module's tests.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 
 import pytest
@@ -90,3 +91,44 @@ def test_a_page_the_inventory_cant_read_is_refused_never_skipped(records):
 
     assert page_inventory(None) == {}
     assert page_inventory([_page("/t", "t-view", "t-row", "t-view")]) == {"/t": ("t-view", "t-row")}
+
+
+def _rendered(route: str, source: str, anchor: str, *seen: str) -> dict:
+    """What acceptance's renderer recorded of one held page (``product_routes.route_record``)."""
+    return {"renderings": {"routes": [
+        {"route": route, "source": source, "held": "held", "anchor": anchor, "seen": list(seen)},
+    ]}}  # fmt: skip
+
+
+def test_an_id_a_later_increment_put_on_an_accepted_page_is_taken_for_the_next_proposal():
+    """The outside review's item 2 (SIP-0109 §24dr), over three increments: the first adds
+    ``/totals``; the second changes it, and its accepted page now carries ``totals-share`` too;
+    the third proposes ``/summary`` naming ``totals-share``. Each promotion's record is written by
+    the recorder from what acceptance held, folded as the launch folds it, and read by the rails
+    as the proposal's handler reads the block. Bug caught: an accepted page's ids recorded only
+    when it was added, so the id the second increment gave it is free for a page never built."""
+    from squadops.campaigns.change_request import RefusalKind, validate_proposal
+    from tests.unit.campaigns.test_product_change_request import (
+        _WITH_PAGES,
+        _context,
+        _on_a_page,
+        _request,
+    )
+
+    first = _rendered("/totals", "change_request", "totals-view", "totals-view")
+    second = _rendered("/totals", "accepted_page", "totals-view", "totals-view", "totals-share")
+    log = [_promotion(1, pages_added_and_held(first)), _promotion(2, pages_added_and_held(second))]
+    product = dataclasses.replace(
+        _WITH_PAGES,
+        judged_routes=(),
+        accepted_pages=tuple(page_inventory(list(accepted_pages(log))).items()),
+    )
+
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/summary", "totals-share")]), _context(product=product)
+    )
+
+    assert accepted_pages(log) == ({"route": "/totals", "anchor": "totals-view", "testids": ["totals-view", "totals-share"]},)  # fmt: skip
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.ANCHOR_NOT_UNIQUE
+    assert "and /totals already carries it" in refusal.detail

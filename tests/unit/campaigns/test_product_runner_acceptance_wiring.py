@@ -782,3 +782,41 @@ async def test_a_candidate_that_drops_an_earlier_increments_page_is_rejected(wor
     assert document["verdict"] == "rejected"
     [totals] = [r for r in document["renderings"]["routes"] if r["route"] == "/totals"]
     assert (totals["source"], totals["anchor"]) == ("accepted_page", "totals-view")
+
+
+#: ``/totals`` as the earlier increment's acceptance held it: its root alone.
+_TOTALS_ROOT_ONLY = {"route": "/totals", "anchor": "totals-view", "testids": ["totals-view"]}
+#: The candidate's ``/totals``: the accepted view, with a summary panel this candidate put in it.
+_TOTALS_WITH_SUMMARY = (
+    '<html><body><section data-testid="totals-view"><div data-testid="summary-view"></div>'
+    "</section></body></html>"
+)
+
+
+async def test_a_page_never_built_whose_anchor_the_candidate_put_on_an_accepted_page_never_holds(  # noqa: F811
+    world,
+):
+    """The outside review's item 1 (SIP-0109 §24dr), at the executor's end of plan. The launch
+    pinned ``/totals`` with ``totals-view`` alone. This candidate puts ``summary-view`` inside
+    ``/totals``, and the request asserts R1 on ``/summary``, naming ``summary-view``. The candidate
+    never builds ``/summary``, and the app's fallback renders ``/totals`` there. No recorded id is
+    reused, so only the candidate's own pages show it. Bug caught: the anchor held unique against
+    the recorded ids alone, so ``/summary`` reads held on a page that doesn't exist."""
+    repo = world[0]
+    _routed(world, pages={**_TALLY_PAGES, f"{_APP}/totals": _TOTALS_WITH_SUMMARY, f"{_APP}/summary": _TOTALS_WITH_SUMMARY})  # fmt: skip
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(
+        world,
+        {REPORT: report + _LINE, R1: _R1_TEST},
+        request=_adds_page("summary-view", route="/summary"),
+        pages=[_TOTALS_ROOT_ONLY],
+    )
+
+    held = {r["path"]: r["held"] for r in document["routes"]}
+    assert held == {"*": "held", "/": "held", "/summary": "blocked_unverified", "/totals": "held"}
+    assert (
+        "route /summary: not rendered: the change request names an anchor another page carries"
+        " (/totals)" in document["blocked"]
+    )
+    assert document["verdict"] != "accepted"

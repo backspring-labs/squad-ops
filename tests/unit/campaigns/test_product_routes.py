@@ -769,3 +769,33 @@ async def test_a_page_never_built_reusing_an_earlier_increments_anchor_never_hol
         "the change request names an anchor another page carries (/shelves/archive)",
     )
     assert held["/shelves/archive"] == archive
+
+
+async def test_a_pinned_page_the_inventory_also_names_keeps_its_accepted_ids_at_acceptance(
+    tmp_path,
+):
+    """The renderer's counterpart of the rails' ``test_a_page_the_manifest_and_the_inventory_both_
+    name_keeps_both_their_ids`` (the outside review's item 3, SIP-0109 §24dr). The profile pins
+    ``/add`` by its manifest's ``add-shelf-view``; the inventory names ``/add`` too, with
+    ``add-shelf-note``, which its page showed when it was accepted and this reading of it doesn't.
+    A request stored before the rails refused it adds ``/shelves/recent`` naming
+    ``add-shelf-note``; the candidate never builds it, and the fallback renders the add view there
+    with its note. Bug caught: the pinned route's inventory ids dropped from the uniqueness check,
+    so ``/shelves/recent`` reads held on a page that doesn't exist."""
+    pages = {**PAGES, _RECENT: _dom("add-shelf-view", "add-shelf-note")}
+
+    routes = await _render(
+        tmp_path,
+        pages=pages,
+        accepted={"/add": ("add-shelf-view", "add-shelf-note")},
+        requested={"/shelves/recent": "add-shelf-note"},
+    )
+
+    held = _held(routes)
+    assert held["/shelves/recent"] == (
+        "blocked_unverified",
+        "the change request names an anchor another page carries (/add)",
+    )
+    assert held["/add"] == ("held", "")
+    [record] = [r for r in routes.record["routes"] if r["route"] == "/add"]
+    assert (record["source"], record["anchor"]) == ("approved_manifest", "add-shelf-view")
