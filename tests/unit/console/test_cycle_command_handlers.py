@@ -18,7 +18,7 @@ from tests.unit.console.console_settings import compose_settings
 
 class CommandExecuteRequestBody(BaseModel):
     """The pinned shell's body for ``POST /api/commands/execute``, field for field: Continuum
-    v1.0.2 (``console/continuum.lock``, sha ``43369054``), ``src/continuum/adapters/web/api.py:78-84``.
+    v1.0.3 (``console/continuum.lock``, sha ``7bbb8e52``), ``src/continuum/adapters/web/api.py:79-85``.
     Unknown keys are dropped, as pydantic's default has it there too (#2903's ``params``). Module
     level because FastAPI resolves a route's annotations against the module's globals, and this
     module postpones its annotations."""
@@ -653,9 +653,9 @@ class TestTheBodyThePluginsPost:
     """#2903/#2904: a plugin posts ``{command_id, args}`` and, when the bus asks, the same body
     with ``confirmed: true`` (``console/continuum-plugins/shared/commands.js``). Entered at the
     console app's command route, through its middleware, with a stand-in for the pinned shell's
-    route (Continuum v1.0.2, sha ``43369054``; the test env has no ``continuum``,
+    route (Continuum v1.0.3, sha ``7bbb8e52``; the test env has no ``continuum``,
     ``_stub_continuum_and_bff``): the body model's four fields and defaults
-    (``adapters/web/api.py:78-84``), a ``confirm``-level command answered ``pending`` until
+    (``adapters/web/api.py:79-85``), a ``confirm``-level command answered ``pending`` until
     ``confirmed`` (``app/command_bus.py:293-303``), the handler called with ``args`` (``:357``) in
     its own task under ``wait_for``, and an exception answered 200 ``failed`` (``:401-421``). The
     danger levels are the plugins' own manifests'.

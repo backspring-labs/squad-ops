@@ -1,6 +1,6 @@
 continuum:
   git_url: https://github.com/backspring-labs/continuum.git
-  ref: v1.0.2
-  resolved_sha: "43369054b7a55c5045de104d68059d342301b517"
-  version: "1.0.2"
-  updated_at: "2026-03-15"
+  ref: v1.0.3
+  resolved_sha: "7bbb8e52c9547cc6ee6d6b24b20de5f86b456c1c"
+  version: "1.0.3"
+  updated_at: "2026-11-07"

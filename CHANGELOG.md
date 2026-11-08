@@ -7,7 +7,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ### Fixed
 
-- The console's plugin bundles are revalidated on each load, so a rebuilt plugin reaches a browser without emptying its cache.
+- A rebuilt console plugin reaches a browser without emptying its cache: Continuum 1.0.3 versions each plugin bundle's URL by its content, caches the current one for good and revalidates the rest (backspring-labs/continuum#4).
 
 ## [2.6.0] — 2026-11-07
 

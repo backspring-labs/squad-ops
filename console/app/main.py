@@ -316,7 +316,7 @@ COMMAND_HANDLERS = {
 _runtime: ContinuumRuntime | None = None
 
 
-#: The perspectives the shell ships (Continuum v1.0.2): a plugin's panel or nav target names one of
+#: The perspectives the shell ships (Continuum v1.0.3): a plugin's panel or nav target names one of
 #: these, or one this console adds below.
 BUILTIN_PERSPECTIVES = ("signal", "research", "time", "discovery", "systems")
 
