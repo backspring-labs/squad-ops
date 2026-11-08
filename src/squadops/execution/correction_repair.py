@@ -43,6 +43,7 @@ from squadops.cycles.failure_evidence import (
     _locus_from_scaffold_classification,
     absent_anchor_cases,
     classify_failure_locus,
+    criteria_passing_on_head,
     decision_disputes_own_artifact,
     failing_cases_from_evidence,
     own_artifact_signal,
@@ -621,6 +622,26 @@ def _locus_and_repair_target(
 
     failure_locus = classify_failure_locus(failure_evidence)
     own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
+    # SIP-0109 §24do (#2933): qa's emission was refused because a criterion's test passes on the
+    # head. The target is that test's file: the suite's other files weren't the refusal's reason.
+    on_head = list(
+        dict.fromkeys(str(row["path"]) for row in criteria_passing_on_head(failure_evidence))
+    )
+    if failure_locus == FailureLocus.OWN_ARTIFACT and on_head:
+        target = [f for f in own_expected if f in on_head] or on_head
+        logger.info(
+            "correction_repair_locus: own_artifact — criterion_passes_on_head: %s pass on the "
+            "head without this run's work; %s re-authors %s (SIP-0109 §24do)",
+            ", ".join(on_head),
+            failed_task_type,
+            ", ".join(target),
+        )
+        return (
+            failure_locus,
+            target,
+            failed_inputs.get("subtask_focus"),
+            failed_inputs.get("subtask_description"),
+        )
     # #970 (1.6.5 D): under fill mode the shells are merge products, never in
     # ``expected_artifacts``, so aiming the own-artifact repair at the plan's declared
     # file left a failing FILL structurally unreachable — roll 6 of the 1.6.4 set
