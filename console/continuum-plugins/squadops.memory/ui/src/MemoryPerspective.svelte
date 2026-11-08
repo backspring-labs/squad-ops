@@ -134,7 +134,21 @@
             <td>{excerpt(r.current.body)}</td>
           </tr>
         {:else}
-          <tr><td colspan="5" class="muted">No records.</td></tr>
+          <tr><td colspan="5" class="muted empty">
+            {#if !error}
+              <!-- #2974: an empty table said only "No records", so a reader couldn't tell unused
+                   memory from broken memory. It says what was read, and what makes a record. -->
+              <p>No {status === 'all' ? '' : status} records
+                {#if projectId}for <strong>{projectId}</strong>{:else}of your own{/if}{#if kind || scope}
+                matching these filters{/if}.</p>
+              <p>A memory record is made by a cycle's task instruction
+                (<code>squadops cycles create … --instruction</code>), a note captured from a chat, or a
+                record written through <code>/api/v1/memory-records</code>.</p>
+              <p>Lessons learned across cycles are a separate surface: they are drafted from a cycle's
+                observations and approved by the owner (<code>squadops lessons</code>), and are not
+                listed here.</p>
+            {/if}
+          </td></tr>
         {/each}
       </tbody>
     </table>
