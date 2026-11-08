@@ -31,6 +31,7 @@ from squadops.memory.observations import (
     VOCABULARY_PROPOSAL,
     Observation,
     ObservationSource,
+    ineligibility,
     observe_cycle,
     observe_proposal_rulings,
 )
@@ -156,6 +157,8 @@ def test_a_rounds_attribution_decides_whether_and_how_it_is_observed(category, l
             id="replay",
         ),
         pytest.param({"execution_mode": "replay"}, id="half-declared-replay"),
+        # #2495: a recording's plans and rounds, not a model's.
+        pytest.param({"llm_script": "shelf-flag@0123456789ab"}, id="scripted"),
     ],
 )
 def test_a_diagnostic_or_a_replay_produces_no_observation(overrides):
@@ -165,6 +168,16 @@ def test_a_diagnostic_or_a_replay_produces_no_observation(overrides):
     run = _run("run_a", decisions=[_rejected()])
 
     assert observe_cycle(cycle, [run], {"run_a": _summary("run_a", _MOCK_MISUSE)}, []) == []
+
+
+def test_a_script_named_by_the_request_profile_s_defaults_is_still_scripted():
+    """#2495. Bug caught: the exclusion read only the --set overrides, so a request profile that
+    carried the script let a scripted cycle's rejections become lessons for real models."""
+    cycle = dataclasses.replace(
+        _cycle(), applied_defaults={"llm_script": "shelf-flag@0123456789ab"}
+    )
+
+    assert ineligibility(cycle) == "scripted"
 
 
 def _entry(seq: int, operation, binding: dict, *, target="run_p1", outcome=ControlOutcome.APPLIED):

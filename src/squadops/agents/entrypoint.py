@@ -35,6 +35,7 @@ from squadops.comms.task_delivery import DISPATCH_ID_METADATA_KEY, delivery_key
 from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY, FinishedTasks
 from squadops.config import load_config
 from squadops.config.path_resolver import PathResolver
+from squadops.llm.call_scope import LLMCallScope, use_llm_call_scope
 from squadops.llm.models import LLMRequest
 from squadops.ports.comms.queue import AckPolicy
 from squadops.prompts.assembler import PromptAssembler
@@ -470,7 +471,7 @@ class AgentRunner:
             create_queue_adapter,
             create_task_attempts,
         )
-        from adapters.llm.factory import create_llm_provider
+        from adapters.llm.factory import create_llm_provider, with_scripted_model
         from adapters.prompts import create_prompt_repository
         from adapters.telemetry.factory import (
             create_llm_observability_provider,
@@ -499,12 +500,16 @@ class AgentRunner:
             f"(used only when a task names no model; squad-profile models take precedence)",
             extra={"agent_id": self.agent_id},
         )
-        llm = create_llm_provider(
-            provider=config.llm.provider,
-            base_url=config.llm.url,
-            default_model=llm_model,
-            timeout_seconds=config.llm.timeout,
-            api_key=config.llm.api_key,
+        # #2495: the engine, also serving the model `scripted` from recorded scripts, so a
+        # `machinery` squad's calls are answered from its cycle's script on this same deploy.
+        llm = with_scripted_model(
+            create_llm_provider(
+                provider=config.llm.provider,
+                base_url=config.llm.url,
+                default_model=llm_model,
+                timeout_seconds=config.llm.timeout,
+                api_key=config.llm.api_key,
+            )
         )
 
         # Create prompt service
@@ -1173,7 +1178,11 @@ class AgentRunner:
                 raise RuntimeError("AgentRunner.system not initialized")
             orchestrator = self.system.orchestrator
             bound = declared_task_bound(envelope)
-            with use_correlation_context(ctx):
+            # #2495: and the task each LLM call serves, which a scripted answer is keyed by.
+            with (
+                use_correlation_context(ctx),
+                use_llm_call_scope(LLMCallScope.from_envelope(envelope)),
+            ):
                 # #1648: run as the current task, so a cancel notice for its run stops it here.
                 if flow_run_id is not None or task_run_id is not None:
                     with use_run_ids(flow_run_id=flow_run_id, task_run_id=task_run_id):

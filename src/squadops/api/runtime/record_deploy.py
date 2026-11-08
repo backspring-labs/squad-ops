@@ -186,7 +186,7 @@ def _agent_instances(path: Path) -> list[dict[str, Any]]:
 
 async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
     from adapters.cycles.factory import create_squad_profile_port
-    from adapters.llm.factory import create_llm_provider
+    from adapters.llm.factory import create_llm_provider, with_scripted_model
 
     config, pool = await _deploy_config_and_pool()
     try:
@@ -195,12 +195,16 @@ async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
         profiles = create_squad_profile_port(
             profile_selector, **({"pool": pool} if profile_selector == "postgres" else {})
         )
-        llm = create_llm_provider(
-            provider=config.llm.provider,
-            base_url=config.llm.url,
-            timeout_seconds=float(config.llm.timeout),
-            api_key=config.llm.api_key,
-            **({"default_model": config.llm.model} if config.llm.model else {}),
+        # #2495: the port the deploy's other processes use, so `scripted` is recorded as served,
+        # with the script library's version as its digest.
+        llm = with_scripted_model(
+            create_llm_provider(
+                provider=config.llm.provider,
+                base_url=config.llm.url,
+                timeout_seconds=float(config.llm.timeout),
+                api_key=config.llm.api_key,
+                **({"default_model": config.llm.model} if config.llm.model else {}),
+            )
         )
         return await record_deploy(
             facts,
