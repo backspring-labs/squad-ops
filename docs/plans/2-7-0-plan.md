@@ -340,11 +340,13 @@ Each ruling is recorded as the owner gave it, in the second review round.
     identified.
   - SIP-0112 stays open.
 - **R2. #2862 is in, and #2954 moves to 2.8.**
+  - **The credential, ruled again on 2026-11-08:** the host's current GitHub access, used only to read, in place of a separate read-only token (SIP-0112 H.28).
   - #2862 corrects stale Project state after a merged contribution. It uses the read-only fetch credential already
     chosen, the sync and its revalidation gates, and a visible `unreconciled` result when synchronization fails.
   - #2954 changes what the next proposal receives, and the adopted 2.6.1 plan classed it as a feature. Deferring it
     keeps the owner's feature-free instruction.
 - **R3. One automatic re-proposal after row 19.**
+  - **Dropped on 2026-11-08** by SIP-0115 §10f: SIP-0109 §24do (#2992, D1) left no path that ends an item at row 19, so the rule had nothing to act on.
   - The abandonment's reason is kept and shown to the replacement proposal.
   - The retry allowance is derived from the control log, so a restart, a reorder or an unrelated goal revision can't
     reset it.

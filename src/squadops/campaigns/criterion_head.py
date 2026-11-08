@@ -6,13 +6,16 @@ by the increment cycle's qa task. Today the first reading of that test against t
 is acceptance's, at the run's delivery (``no_baseline_failure``, §8.2), on a cycle already spent.
 The check runs the criterion's file on the product's own runner against the head the cycle was
 pinned at, with no development emission on the tree, and records each criterion's reading here.
-A criterion whose file passes there is **already met**: nothing the cycle builds can make it
-discriminate, so the run ends (``CycleEnding.CRITERIA_NOT_CHECKABLE``) and the campaign proposes
-anew, told which criteria the head already meets, as row 16's abandonment tells it (#2315).
+Until §24do (#2933) a criterion whose file passed there read as **already met**: the run ended
+(``CycleEnding.CRITERIA_NOT_CHECKABLE``) and the campaign proposed anew, told which criteria the head
+already met, as row 16's abandonment tells it (#2315). The owner's ruling of 2026-11-07 reads such a
+pass as a test that proved nothing about the work, never as the behaviour existing, so the executor
+refuses it to the suite's author and no new record holds one (``store_head_check``).
 
 The record is the run's ``criterion_head_check`` artifact. Its ``criteria`` rows carry the same
 word acceptance's ``discriminations`` carry for the same finding (``no_baseline_failure``), so
-``already_met_on_head`` and ``progress.already_met`` read one vocabulary.
+``already_met_on_head`` and ``progress.already_met`` read one vocabulary. ``already_met_on_head``
+still reads that word, for a record a run stored before §24do and a cycle re-heard after it.
 
 The sandbox run itself is ``execution.criterion_head_check``; this module is the record alone.
 """

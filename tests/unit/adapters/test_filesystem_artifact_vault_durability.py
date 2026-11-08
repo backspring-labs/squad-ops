@@ -66,8 +66,8 @@ async def test_a_crash_before_the_metadata_leaves_no_artifact(tmp_path, monkeypa
 
 
 async def test_each_write_is_fsynced_and_renamed_in_order(tmp_path, monkeypatch):
-    """Bug caught: a rename with no fsync, which a power loss can undo or leave empty; or the index
-    made durable before the metadata it points at."""
+    """Bug caught: a rename with no fsync, which a power loss can undo or leave empty; or the index,
+    or the listing summary (#2973), made durable before the metadata it points at."""
     vault = FilesystemArtifactVault(base_dir=tmp_path)
     synced: list[str] = []
     real_fsync = os.fsync
@@ -81,8 +81,9 @@ async def test_each_write_is_fsynced_and_renamed_in_order(tmp_path, monkeypatch)
     await vault.store(_ref(1), b"x")
 
     art = vault._artifact_dir_for_ref(_ref(1)).name
-    # content's temp file, its directory; metadata's temp file, its directory; the index's, the vault's
-    assert synced == [".tmp", art, ".tmp", art, ".tmp", tmp_path.name]
+    # content's temp file, its directory; metadata's, its directory; the index's, the vault's; the
+    # run's listing summary's, the run's
+    assert synced == [".tmp", art, ".tmp", art, ".tmp", tmp_path.name, ".tmp", "run_1"]
 
 
 @pytest.mark.parametrize(
@@ -207,6 +208,7 @@ async def test_the_integrity_pass_reads_a_whole_vault_clean_and_scopes_to_a_subt
     bad = await vault.store(_ref(2, run="run_2"), b"x")
     _meta(vault, bad).write_bytes(b"")
     module = _integrity()
+    assert len(list(tmp_path.rglob(".listing.json"))) == 2  # #2973's summaries: not records
 
     assert sum(map(len, module.check(tmp_path, "proj/cyc_1/run_1").values())) == 0
     assert module.check(tmp_path, "proj/cyc_1/run_2")["metadata_unreadable"] == [

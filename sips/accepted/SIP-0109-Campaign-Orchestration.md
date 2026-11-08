@@ -146,7 +146,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, read live, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co): the calibration record and its baseline reading, the proposal from the product's tree, the instruction binding at each cycle's own commit, the launch, the refusal at a moved upstream and the rebase onto the reconciled commit, increments judged at delivery on the product's runners, and the anchored page | **shipped**, read on the 2.5 cut's final deploy (the cut's pre-registration §14b): IR-2, IR-3 (a)–(e), IR-4, IR-6's calibration half, IR-7 and IR-8 hold. Narrowed by the owner (2026-10-29: "Narrow the claim, go to cut"): no product increment was accepted, so the row below carries the rest | 2.5.0, PRs #2820 and #2825 with the release PR, closes #2619 |
 | a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading). The 2.7 plan (§4.5) reads it on one counted increment on `prj-z-continuum`, the product that meets all three readings' preconditions, with BT-11's records (battle-trainer PR #11) as the historical promotion and push; `z_continuum`'s page surface is not applicable, so it doesn't wait on #2799. §24dp (#2799) ships the page loader in 2.7, so a page criterion for a page the change adds on a vitest product (`prj-shelfnote`'s T3 to T5) can discriminate too, though no counted reading has read it. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.7.0, #2827 |
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
-| D1: a criterion test that passes on the head at qa's first emission is refused to `qa.test_repair`, as §24dh refuses a repaired one; when the allowance is spent, §24dh's backstop reads an ordinary counted failure, and no record tells the next proposal the behaviour is met | **placed** (the 2.7 plan, adopted 2026-11-08; option (a), ruled by the owner on 2026-11-07) | 2.7.0, #2933 |
+| D1: a criterion test that passes on the head at qa's first emission is refused to `qa.test_repair`, as §24dh refuses a repaired one; when the allowance is spent, §24dh's backstop reads an ordinary counted failure, and no record tells the next proposal the behaviour is met | **shipped** (§24do; option (a), ruled by the owner on 2026-11-07; the 2.7 plan, adopted 2026-11-08) | 2.7.0, PR #2992, closes #2933 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
 | a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
 | the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
@@ -6502,6 +6502,125 @@ no longer fails a listing, and a read that needs it gets a typed error.
 **Who ruled it.** The owner adopted the 2.7 plan on 2026-11-08 (its Track B and §4.2), with the line's judgement
 calls delegated.
 
+### 24do. A pass on the head says the test proved nothing about the work: qa's first emission is refused to its author too (2026-11-08, §8.2, §10 row 19, §24cz, §24dh; #2933; the owner's ruling D1, option (a), of 2026-11-07, and the 2.7 plan adopted 2026-11-08)
+
+**Why.** §24dh refused a repaired test that passes on the head and left one form open ("Not covered (a)"): a test that's
+empty on qa's **first** emission still ended at row 19 as already met. `cmp_ff52e424aea1`'s BT-9 (`cyc_5e313d0c7a3d`) was
+that form. `test/criterion_BT9_T1.test.js` iterated `unit.blocked` as an array while `play()` returns a number, so the loop
+never ran, all 16 tests passed having checked nothing, and row 19 abandoned the item. Measured on that head, 340 of 480
+tanks over the 160 games had a blocked run of 100 ticks or more. Nothing separates such a test from a test of a criterion
+the head really meets, so the owner ruled on the pass itself.
+
+**The rule.** A pass on the head says the test proved nothing about the work, never that the behaviour exists.
+
+**What changed.**
+1. **The refusal, before acceptance.** On a repository-backed increment, an emission the qa task reported succeeded is
+   read on the head before anything accepts it (§24cz's check, moved ahead of the collection). The read happens at the
+   dispatcher's success (`TaskDispatcher.dispatch_with_retry`'s `screen_success`, which is the executor's
+   `_screen_on_head`), and at a pass on the product's runner (#2818), which is the same emission's. The tree is the head,
+   with the run's stored criterion files and the emission's files laid over them. The first emission that passes there
+   becomes a failure (`criterion_head_check.refused_on_head`). It keeps the emission's files and verification rows, adds
+   the head's reading under `criteria_pass_on_head`, and has a semantic failure's outcome. So:
+   - **the correction loop sends it to `qa.test_repair`, deterministically.** The locus classifier reads
+     `criteria_pass_on_head` as the suite's own defect (`classify_failure_locus`), and the repair's target is the file
+     that passed (`_locus_and_repair_target`). The correction policy patches it whatever the lead decided, **`abort`
+     included** (`correction_policy`'s fourth anchor, `criterion_passes_on_head`). The override is disclosed on the
+     ledger and the event, as every override is. The lead's `abort` is not the hard stop the first anchor protects: the
+     refusal is the executor's own reading, and an abort would end the run without the round the ruling grants.
+   - **One repair round is spent**, as §24dh's refusal spends one.
+   - **The round is told** which criterion files passed on which head, in the rejection carry (the repair brief's
+     "prior repair rejected" block), as §24dh's next round is.
+   - The reading is diagnostic, not a check. It stays out of `validation_result.checks`, because a failed row there would
+     stay failed in the run's ledger after a repair that passes.
+2. **The allowance is one refusal per task** (`_Correction.refused_on_head`), kept in run state. It isn't read from the
+   carry, which keeps only three entries. §24dh refusing a repair of the task spends it too.
+3. **When the allowance is spent, §24dh's backstop applies, on every path.** After the collection,
+   `_fail_if_criteria_pass_on_head` uses the screen's reading, so the head is run once per success. It reads the head
+   itself where no screen did: the allowance spent, or an emission accepted through a repair, which no screen sees.
+   A pass there fails the run with no terminal kind. The campaign reads an ordinary failure (row 8, repaired) and
+   counts it. It is never `criteria_not_checkable`.
+4. **No record holds a pass.** `criterion_head_check` is stored only for a reading in which nothing passed on the head
+   (`store_head_check` refuses any other). `_already_met_stated` reads that record for the next proposal's "already met",
+   and a pass on the head is no evidence of it. A reading in which every file failed is stored as §24cz stored it.
+
+**Row 19 and `criteria_not_checkable` after this.** No executor path ends a run `criteria_not_checkable` any more. The
+first pass is refused, and every later pass is an ordinary failure. What stays is every reader of the ending: the terminal
+kind, the `CycleStopReason` (migration 2003), `CycleEnding.CRITERIA_NOT_CHECKABLE`, row 19 and `already_met_on_head`.
+The stop reason is persisted, and a cycle that ended that way before this deploy is re-heard as that after a restart. So
+row 19 is now reached only by an ending recorded before this change. **This bears on R3** (#2935's remainder: one automatic
+re-proposal after a row-19 ending, SIP-0115 §5.3). That design has no new ending to act on. Nothing here rules on it: R3
+is for the owner to re-read before it's built.
+
+**Preserved.** Every new criterion must still discriminate: acceptance's discrimination read (§24cl) is unchanged and stays
+the last line. A head that can't be read refuses nothing, as in §24cz: no sandbox, no clone, no runner with a test-id
+reader, a sandbox error, a read that fails. A cycle that pins no source is untouched, and so is every task that isn't the
+qa suite's author. §24dh's refusal of a repair is unchanged.
+
+**Divergence from the 2.6.1 plan's wording.** The 2.6.1 plan's option (a) said the item "is abandoned only if the round ends
+the same way". The adopted 2.7 plan's contract replaced that: the round ending the same way is an ordinary counted
+failure, never row 19. This section builds the 2.7 contract.
+
+**Accepted cost**, §24dh's, now on the first emission. A criterion the head really meets now takes the failure path and is
+counted. That includes a guard criterion, one saying a behaviour stays as it is, which passes on the head by nature (#2935's
+T2). It doesn't get the uncounted abandonment. §24di's brief keeps such a half inside the criterion that changes it. A
+pass can't tell a met criterion from an empty test, and the failure path is the one that can't lose work silently.
+
+**The seam table** (CLAUDE.md, typed checks: every seam that evaluates the qa task's criteria, the tree each one sees, and
+the outcome on a tree that lacks the criterion's file):
+
+| seam | where | the tree | the file absent |
+|---|---|---|---|
+| the emission (`qa.test`) | the qa role's container | the accepted workspace, development's emission, its own emission | the task's expected artifact is absent: a failed emission, the correction loop's (unchanged) |
+| **the screen** (this section) | runtime-api, the sandbox, before the emission is accepted: the dispatcher's success, and a pass on the product's runner | the head (the pin's non-test files, seeded as a checkout), the run's stored criterion files, and the emission's files laid over them; nothing else of the run's | no criterion file among the emission's files: nothing read, the emission goes on, and the step after the collection reads nothing either |
+| the re-judged suite (#2818, #2877) | runtime-api, the sandbox, on a failed `qa.test` | the pin seeded as a checkout, the run's tree on it (development's emission and its removals), the emitted tests beside it | not re-judged (unchanged); a pass it gives is now screened |
+| the qa repair (`qa.test_repair`) | the qa role's container | the accepted workspace, the refused emission's files (`forwarded_failed_artifacts`), its own patch | its target is the file that passed on the head; an empty emission is refunded (#1053), unchanged |
+| the verifier (patch verification) | runtime-api | the accepted workspace, the refused emission's artifacts, the repair's patch laid over them | the failed task's typed criteria on that overlay, as for any qa repair (unchanged) |
+| the file-owned gate (#870) | runtime-api, inside patch verification | the same overlay, and the contract's criteria owned by the patched files | no file of the overlay owns a criterion: the gate adds nothing (unchanged) |
+| the retest (#2881) | runtime-api, the qa image or the product's runner | the failed task's own suite with the repaired files | unchanged |
+| §24dh's read of the repair | runtime-api, the sandbox, before the repair is accepted | the head, the stored criterion files, the repair's rewritten criterion files over them | the repair rewrote no criterion file: nothing read, and the step after the collection reads the stored ones |
+| **the step after the collection** (`_fail_if_criteria_pass_on_head`) | runtime-api, the sandbox, once the qa task's emission is stored | the head, the stored criterion files as delivery reads them (the path's latest accepted content from a test author) | no criterion file stored: not checked, logged; the cycle proceeds |
+| acceptance (§24cl) | runtime-api, the sandbox, at delivery | the head and the candidate, the criterion's bundle frozen from the candidate on each | `BundleIncomplete`: `not_run`, blocked, never met (unchanged) |
+
+**The evidence.** The rule and the ruling are #2933's two live cases: `cmp_0a5376d902b5` BT-2 (a repaired test, §24dh) and
+`cmp_ff52e424aea1` BT-9 (a first emission, this section). Tests, each naming the bug it catches:
+- `tests/unit/cycles/test_criterion_head_check.py`, entered at `_execute_sequential` on the shared fixture's Tally, each
+  task dispatched by the executor's own dispatcher. **The wiring test** is
+  `test_a_first_emission_passing_on_the_head_is_refused_to_its_author_then_fails_the_run`. A first emission that passes on
+  the head dispatches `data.analyze_failure`, `governance.correction_decision` and then `qa.test_repair`, never
+  `development.correction_repair`. The lead's `abort` is overridden on the ledger. The repair is given the head's reading
+  and the refusal's carry. Its rewrite still passes (§24dh), the re-dispatch does too, and the run fails with no terminal
+  kind and no record. Beside it:
+  - a repair that fails on the head is accepted and delivered;
+  - a re-dispatch that discriminates is delivered;
+  - a product-runner pass is screened;
+  - a criterion failing on the head proceeds, reading the head once;
+  - the four can't-read cases and the two failed reads refuse nothing;
+  - a cycle with no source is untouched;
+  - the record never holds a pass;
+  - every post-collection pass fails with no kind.
+- `tests/unit/cycles/test_task_dispatcher.py`: a screened success is routed and its re-dispatch screened, with the events in
+  order.
+- `tests/unit/cycles/test_correction_policy.py`: the fourth anchor; `tests/unit/cycles/test_failure_evidence.py`: the
+  refused result's locus and target.
+- `tests/unit/campaigns/test_progress.py`, entered at `CycleCompletion.end`: such a failed run is row 8, repaired, counted,
+  and nothing it launches carries `already_met`.
+
+The tests were mutation-checked: removing the screen, the dispatcher's call to it, the product-runner screen, the policy
+anchor, the locus, the repair target or the record's guard each turns a named test red.
+
+**Not covered.** The refusal can't stop a vacuous test from being written; it spends a round on one. The repair brief's
+fixture and non-empty guidance is prompt work (the 2.6.1 plan's item 5). The refusal's carry line is evidence text, written
+where §24dh's is.
+
+**Who ruled it.** The owner, 2026-11-07: D1, option (a), "yes to both", built first in 2.7 (the 2.6.1 plan §3). The 2.7 plan,
+adopted 2026-11-08, wrote out the contract: refused to `qa.test_repair` before acceptance, §24dh's backstop once the
+allowance is spent, never `criteria_not_checkable`, no record. The implementer chose:
+- the screen at the dispatcher's success and at the product runner's pass;
+- the outputs key in place of a check row;
+- the policy anchor overriding `abort`;
+- the allowance kept in run state;
+- the read after the collection reusing the screen's reading.
+
 ### 24dp. A page criterion on a vitest product loads its view through a page loader the framework places (2026-11-08, §8.1, §8.2, §24ci (a), §24cj, §24cp, §24cz; SIP-0112 H.4, H.7; #2799; the 2.7 plan's Track A, adopted by the owner 2026-11-08, option 1; the Spark lane's design under it)
 
 **What was wrong.** A page criterion's test on a vitest product imported the view its change adds. On the accepted tree
@@ -6558,7 +6677,7 @@ containment judges nothing on a product, which has no stack):
 | the qa repair, and its retest | the qa container; the retest on the product's runner | the scope's loaders beside the repaired suite (the retest forwards the scope) | as above, every round |
 | a dev repair of a qa failure (#2881) | the product's runner | the failed suite, the patched source and the scope's loaders | as above |
 | the verifier (patch acceptance) | runtime-api | the retest's reading, and §24dh's head reading, each on a tree with the loaders | as above, or no reading |
-| the head check (§24cz) | the sandbox, on the pin | the pin, the criterion files and the change request's loaders | fails at its import on every head, so an already-met page reads `fails_on_head`, never met |
+| the head check (§24cz) | the sandbox, on the pin | the pin, the criterion files and the change request's loaders | fails at its import on every head, so a test that would pass there is never refused to its author (§24do) |
 | delivery | the sandbox | the head and the squad's change, with the framework's loaders over it | the bundle can't be frozen whole (`BundleIncomplete`): not run, blocked |
 | the evaluator, accepted side | the sandbox | the accepted tree's product files and the bundle: test, loader, support files | `only_setup_failures`, as before this change |
 | the evaluator, candidate side | the sandbox | the candidate's product files and the same bundle | the same |
