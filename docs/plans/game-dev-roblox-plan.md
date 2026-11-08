@@ -438,7 +438,7 @@ profiles and worker registrations exist only in that local stack until 2.8.
   | `prompts/` (the manifest and stamp regenerate) | #2933, #2935 |
   | `execution/dispatched_flow_executor.py`, `execution/reply_router.py` | #2932, #2949 |
   | `campaigns/` | R3's control-log allowance, #2783 |
-  | `adapters/cycles/filesystem_artifact_vault.py` | #2931, then a filtered-listing index |
+  | `adapters/cycles/filesystem_artifact_vault.py` | #2931, then the filtered-listing index (#2973) |
   | `capabilities/handlers/route_rendering.py` | #2776 |
   | `adapters/sandbox/scenario_runner.py` | #2798 |
   | `squadops.embeddings`, removed | #2736 |
