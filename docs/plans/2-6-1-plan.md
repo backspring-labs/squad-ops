@@ -112,11 +112,14 @@ build, except D1 (§3), which is an option the owner can take or leave without b
 - **The defect:** `console/continuum-plugins/squadops.home/ui/src/HomeSummary.svelte:24-26` calls
   `window.squadops.executeCommand`, which the console never defines (`console/app/main.py` defines `apiFetch`). The
   button does nothing.
-- **The fix:** go through `console/continuum-plugins/shared/commands.js`, the helper #2903/#2904 added for every
-  plugin's command body, as the other plugins do.
-- **The test:** a node test that the button's handler posts the command through the shared helper's body, in the
-  confined node image (`node --test <file>.test.js`). The live check is a press on the deployed console that reaches
-  the command bus.
+- **Not the command bus:** `squadops.open_create_cycle` has no handler there (`COMMAND_HANDLERS`,
+  `console/app/main.py`), and the form it names is the Cycles panel's own `CycleCreateModal`, opened in the browser.
+- **The fix:** the cross-perspective hand-off the Campaigns link to the goals panel uses (`shared/selection.js`).
+  Home announces `squadops:open-create-cycle` and opens the Cycles perspective. The Cycles panel opens its form on
+  the request, on mount or while mounted, and taking it clears it.
+- **The test:** node tests in the confined image (`node --test <file>.test.js`) that the request opens Cycles and is
+  held exactly once, and is kept when the shell shows no Cycles entry. The live check is a click on the deployed
+  console that lands on Cycles with the form open.
 
 ---
 
