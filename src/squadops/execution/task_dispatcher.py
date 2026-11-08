@@ -468,7 +468,9 @@ class TaskDispatcher:
         # Open the agent's reply subscription and register our future BEFORE
         # publishing, so a fast reply can't arrive before we're listening.
         await self._reply_router.ensure_subscribed(envelope.agent_id)
-        fut = self._reply_router.register(envelope.task_id)
+        fut = self._reply_router.register(
+            envelope.task_id, envelope.metadata[DISPATCH_ID_METADATA_KEY]
+        )
 
         message = {
             "action": "comms.task",
