@@ -6,8 +6,8 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
-- **The vault's metadata is readable again by its readers on the host** (a regression in 2.6.1's PR #2968): the atomic
-  write kept `mkstemp`'s 0600, so every metadata file written after the 2.6.1 deploy was unreadable to the release
+- **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
+  write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release
   capture, the verification-set driver and triage, which read the vault as another user. Files are 0644 again, as
   `write_text` left them.
 
