@@ -14,9 +14,9 @@ set_env_value() {
         return 0
     fi
     if grep -q "^${key}=" "$env_file"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+        sed_in_place "s|^${key}=.*|${key}=${value}|" "$env_file"
     elif grep -q "^# *${key}=" "$env_file"; then
-        sed -i "s|^# *${key}=.*|${key}=${value}|" "$env_file"
+        sed_in_place "s|^# *${key}=.*|${key}=${value}|" "$env_file"
     else
         echo "${key}=${value}" >> "$env_file"
     fi
@@ -47,10 +47,10 @@ ensure_env_file() {
         local realm="squadops-${DEPLOYMENT_PROFILE}"
 
         if grep -q '^# *SQUADOPS_PROFILE=' "$env_file"; then
-            sed -i "s|^# *SQUADOPS_PROFILE=.*|SQUADOPS_PROFILE=${DEPLOYMENT_PROFILE}|" "$env_file"
+            sed_in_place "s|^# *SQUADOPS_PROFILE=.*|SQUADOPS_PROFILE=${DEPLOYMENT_PROFILE}|" "$env_file"
             success "Set SQUADOPS_PROFILE=${DEPLOYMENT_PROFILE} in .env"
         elif grep -q '^SQUADOPS_PROFILE=' "$env_file"; then
-            sed -i "s|^SQUADOPS_PROFILE=.*|SQUADOPS_PROFILE=${DEPLOYMENT_PROFILE}|" "$env_file"
+            sed_in_place "s|^SQUADOPS_PROFILE=.*|SQUADOPS_PROFILE=${DEPLOYMENT_PROFILE}|" "$env_file"
             success "Updated SQUADOPS_PROFILE=${DEPLOYMENT_PROFILE} in .env"
         else
             echo "SQUADOPS_PROFILE=${DEPLOYMENT_PROFILE}" >> "$env_file"
@@ -58,7 +58,7 @@ ensure_env_file() {
         fi
 
         if grep -q '^SQUADOPS_REALM=' "$env_file"; then
-            sed -i "s|^SQUADOPS_REALM=.*|SQUADOPS_REALM=${realm}|" "$env_file"
+            sed_in_place "s|^SQUADOPS_REALM=.*|SQUADOPS_REALM=${realm}|" "$env_file"
             success "Updated SQUADOPS_REALM=${realm} in .env"
         else
             echo "SQUADOPS_REALM=${realm}" >> "$env_file"
@@ -67,9 +67,9 @@ ensure_env_file() {
 
         local host="${SQUADOPS_HOST:-localhost}"
         if grep -q '^SQUADOPS_HOST=' "$env_file"; then
-            sed -i "s|^SQUADOPS_HOST=.*|SQUADOPS_HOST=${host}|" "$env_file"
+            sed_in_place "s|^SQUADOPS_HOST=.*|SQUADOPS_HOST=${host}|" "$env_file"
         elif grep -q '^# *SQUADOPS_HOST=' "$env_file"; then
-            sed -i "s|^# *SQUADOPS_HOST=.*|SQUADOPS_HOST=${host}|" "$env_file"
+            sed_in_place "s|^# *SQUADOPS_HOST=.*|SQUADOPS_HOST=${host}|" "$env_file"
         else
             echo "SQUADOPS_HOST=${host}" >> "$env_file"
         fi
