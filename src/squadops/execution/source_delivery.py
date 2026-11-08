@@ -50,7 +50,7 @@ from uuid import uuid4
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.cycles.deletions import is_deletion
 from squadops.cycles.delivered_tree import WORKSPACE_ARTIFACT_TYPES
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
 from squadops.cycles.task_outcome import TaskOutcome
@@ -125,9 +125,9 @@ def squad_changes(
     left_out: set[str] = set()
     for art_id, ref in stored_artifacts:
         producer = ref.metadata.get("producing_task_type", "")
-        # As the executor's own resolution reads the workspace: a failed emission is never
+        # As the executor's own resolution reads the workspace: a banked emission is never
         # input, and a repair candidate is unaccepted until it is re-stored as the task's own.
-        if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
+        if banked_as(ref.metadata.get("emission_status")) is not None:
             continue
         if producer in REPAIR_TASK_TYPES or producer == SOURCE_CHECKOUT:
             continue

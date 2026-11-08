@@ -327,7 +327,7 @@ class _Recorders:
         return enriched
 
     async def admit_failed_emission(
-        self, result, envelope, cycle, run_id, refs, *, bound_record, compliance_counter
+        self, result, envelope, cycle, run_id, refs, *, bound_record, compliance_counter, **kw
     ):
         self._trace.add(
             "admit_failed_emission",
@@ -340,7 +340,10 @@ class _Recorders:
             compliance_counter=compliance_counter,
         )
         label = f"{result.outputs['label']}+admitted"
-        return dataclasses.replace(result, outputs={**result.outputs, "label": label})
+        admitted = dataclasses.replace(result, outputs={**result.outputs, "label": label})
+        # #2949: the router's reading on the product's runner is taken inside the admission.
+        await kw["read_hand_off"](admitted)
+        return admitted
 
     async def handle_task_outcome(self, **kwargs):
         holder = kwargs["patched_result_holder"]

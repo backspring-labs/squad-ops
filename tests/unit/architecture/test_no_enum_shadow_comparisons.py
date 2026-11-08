@@ -70,7 +70,7 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # the code, and the executor's `"error"` entry went with them rather than staying
     # behind as a rule about a comparison that is no longer there. (Its `"failed"` entry for
     # #971's `emission_status` marker went too, once the marker became
-    # `emission_integrity.EMISSION_STATUS_FAILED`.)
+    # `emission_integrity.EmissionStatus.FAILED`.)
     ("src/squadops/execution/patch_acceptance.py", "failed"),
     ("src/squadops/execution/patch_acceptance.py", "error"),
     # The repair half of the protocol left the runner with #1152 step 5; the entry moved

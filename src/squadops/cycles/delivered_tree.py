@@ -2,8 +2,10 @@
 
 Per filename, the latest **workspace** artifact (``source``, ``test``, ``config``) the run
 accepted, where:
-- **a failed emission is never delivered** (#971). It is banked as triage evidence, and is often
-  the only copy of its file, so last-wins would deliver bytes already proven not to work;
+- **a banked emission is never delivered** (#971). A failed one is banked as triage evidence, and
+  is often the only copy of its file, so last-wins would deliver bytes already proven not to work.
+  A handed-off one (#2949) is the qa image's copy of a suite whose accepted copy is stored as the
+  task's own;
 - **a repair candidate is never delivered.** It is unaccepted by construction: an accepted repair
   is re-stored under its task's own type (#389), so taking a candidate would deliver a rejected
   repair that happens to be newer (pf-54);
@@ -22,7 +24,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 
 #: The artifact types a run's application is made of.
@@ -63,7 +65,7 @@ def delivered_files(stored: Iterable[StoredArtifact]) -> dict[str, str]:
     for art in sorted(stored, key=lambda a: (a.created_at, a.artifact_id)):
         if art.artifact_type not in WORKSPACE_ARTIFACT_TYPES:
             continue
-        if art.emission_status == EMISSION_STATUS_FAILED:
+        if banked_as(art.emission_status) is not None:
             continue
         if art.producing_task_type in REPAIR_TASK_TYPES:
             continue

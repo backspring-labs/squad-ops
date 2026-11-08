@@ -412,7 +412,8 @@ async def test_the_router_accepts_a_product_suite_judged_passed_without_routing_
     as a live cycle's failed ``qa.test`` does, and asserts the correction loop is never asked."""
     executor = _executor()
 
-    async def admit(result, *_a, **_k):
+    async def admit(result, *_a, read_hand_off, **_k):
+        await read_hand_off(result)
         return result
 
     executor._admit_failed_emission = admit
@@ -694,7 +695,8 @@ async def test_the_router_hands_the_correction_loop_the_products_reading():
     )
     executor._derived_profile_for = _profile_of(_Profile(_VITEST))
 
-    async def admit(result, *_a, **_k):
+    async def admit(result, *_a, read_hand_off, **_k):
+        await read_hand_off(result)
         return result
 
     executor._admit_failed_emission = admit
@@ -741,6 +743,142 @@ async def test_the_router_hands_the_correction_loop_the_products_reading():
     assert row["judged_on"] == PRODUCT_RUNNER and row["executed"] is True
     assert router.held["result"] is asked[0]
     assert state.correction.accepted_repair_task_ids == set()
+
+
+# --- #2949: the bank says a hand-off was one ------------------------------------------------
+
+
+class _Vault:
+    """Records what the bank stores, as the vault keeps it: the ref with its metadata."""
+
+    def __init__(self) -> None:
+        self.stored: list[Any] = []
+
+    async def store(self, ref, content):
+        self.stored.append(ref)
+        return ref
+
+
+async def _handed_off_result() -> TaskResult:
+    """A ``qa.test`` on a product only its own runner runs (SIP-0112 H.26), as the qa handler
+    reports it: the row is the handler's own (``run_suite`` on ``product_runner``)."""
+    from squadops.capabilities.handlers.test_runner import failed_tests_pass_row, run_suite
+    from squadops.stacks.development_profiles import TEST_FRAMEWORK_PRODUCT_RUNNER
+
+    left = await run_suite(
+        TEST_FRAMEWORK_PRODUCT_RUNNER, [], [{"path": _VITEST_FILE, "content": "test('t')\n"}]
+    )
+    assert left.left_to_the_product_runner
+    return _failed(failed_tests_pass_row(left), tests=(_VITEST_FILE,))
+
+
+def _banking_router(executor, *, screen=None):
+    """The router as ``_execute_task`` builds it, over the real admission and bank."""
+    executor._artifact_vault = _Vault()
+    executor._cycle_registry = AsyncMock()
+    asked: list[TaskResult] = []
+
+    async def next_action(result, *_args):
+        asked.append(result)
+        return "fail"
+
+    envelope = _envelope(_INPUTS)
+    state = SimpleNamespace(
+        produced=SimpleNamespace(all_artifact_refs=[], stored_artifacts=[]),
+        ownership=SimpleNamespace(bound_record=None, compliance_counter={}),
+        correction=SimpleNamespace(
+            accepted_repair_task_ids=set(),
+            refused_on_head=set(),
+            rejection_carry={},
+            head_readings={},
+        ),
+    )
+    router = _TaskOutcomeRouter(
+        executor=executor,
+        state=state,
+        envelope=envelope,
+        enriched=envelope,
+        cycle=SimpleNamespace(**vars(_CYCLE), cycle_id="cyc_x"),
+        run_id="run_1",
+        flow_run_id=None,
+        profile=None,
+        interface_manifest=None,
+        budget_guard=lambda: None,
+        ledger=None,
+    )
+    object.__setattr__(router, "next_action", next_action)
+    object.__setattr__(router, "record_evidence", lambda _r: None)
+    if screen is not None:
+        object.__setattr__(router, "screen", screen)
+    return router, asked
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "reading", "action", "banked"),
+    [
+        # The issue's shape: the runner passes the suite the image left to it.
+        (0, _vitest_reading(1, 1), "accept_patch", "handed_off"),
+        # The runner fails it: that attempt really is a failed one, and counts as one.
+        (1, _vitest_reading(0, 1, _RED_KEY), "fail", "failed"),
+    ],
+    ids=["runner-passes", "runner-fails"],
+)
+async def test_a_suite_handed_to_the_products_runner_is_banked_as_what_the_runner_made_it(
+    exit_code, reading, action, banked
+):
+    """Wiring, #2949: enters at ``_TaskOutcomeRouter.route``, the dispatcher's
+    ``handle_task_outcome`` for the failed ``qa.test`` a hand-off reports, over the real admission,
+    bank and ``_store_artifact``. Bug caught: the hand-off banked ``emission_status=failed`` seconds
+    before the runner passed the task, so the run's evidence and the scorecard read a failure the
+    task never had; and, the other way, a runner's failure banked as a hand-off and hidden from the
+    failed-emission counts."""
+    executor = _executor()
+    executor._sandbox = _Sandbox(exits={_VITEST_FILE: exit_code}, readings={_VITEST_FILE: reading})
+    executor._derived_profile_for = _profile_of(_Profile(_VITEST))
+    router, asked = _banking_router(executor)
+
+    assert await router.route(await _handed_off_result()) == action
+
+    stored = executor._artifact_vault.stored
+    assert sorted(r.filename for r in stored) == [_VITEST_FILE, "test_report.md"]
+    assert {r.metadata["emission_status"] for r in stored} == {banked}
+    assert {r.metadata["attempt"] for r in stored} == {1}
+    assert router.state.produced.all_artifact_refs == [r.artifact_id for r in stored]
+    assert len(asked) == (0 if action == "accept_patch" else 1)
+
+
+async def test_a_pass_the_head_refuses_banks_the_hand_off_as_failed():
+    """SIP-0109 §24do: the runner's pass is refused to the suite's author when it passes on the
+    head, so the attempt failed, and the correction loop is asked about the refusal. Bug caught:
+    a hand-off banked as handed off though nothing accepted the runner's pass."""
+    executor = _executor()
+    executor._sandbox = _Sandbox(readings={_VITEST_FILE: _vitest_reading(1, 1)})
+    executor._derived_profile_for = _profile_of(_Profile(_VITEST))
+    refusal = TaskResult(task_id="t_qa", status=TaskResultStatus.FAILED, error="passes on head")
+
+    async def refuse(_result):
+        return refusal
+
+    router, asked = _banking_router(executor, screen=refuse)
+
+    assert await router.route(await _handed_off_result()) == "fail"
+
+    assert {r.metadata["emission_status"] for r in executor._artifact_vault.stored} == {"failed"}
+    assert asked == [refusal]
+
+
+async def test_a_suite_the_image_ran_and_failed_stays_banked_failed_when_the_runner_passes_it():
+    """#2818's shape, a Python product whose suite fails in the qa image on a dependency only the
+    product's setup installs: the runner's pass is accepted, but the image ran the suite and
+    failed it, which is not a hand-off. Bug caught: every overruled failure relabelled a hand-off,
+    widening the marker past what the issue's designed hand-off is."""
+    executor = _executor()
+    router, asked = _banking_router(executor)
+
+    assert await router.route(_failed(_TESTS_PASS_RED)) == "accept_patch"
+
+    assert {r.metadata["emission_status"] for r in executor._artifact_vault.stored} == {"failed"}
+    assert asked == []
 
 
 # #2881: a dev repair's retest. Its ``retest_files`` are the repaired source, which no runner holds,
