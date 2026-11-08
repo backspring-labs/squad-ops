@@ -14,7 +14,7 @@ recommendations on the other decisions", made this SIP 2.6.0's headline (D1) and
 Proposed 2026-10-30.
 **Authors:** Jason Ladd (the owner's direction, 2026-10-30); drafted by the Spark lane's supervisor
 **Created:** 2026-10-30
-**Targets:** what its ledger still names, in 2.7: the crew's reading on three accepted items in one Campaign (the owner's ruling of 2026-11-07, recorded in `docs/plans/2-6-0-plan.md`). Slice 6 is not placed.
+**Targets:** what its ledger still names: in 2.7, an operator's reading on three accepted items in one Campaign (the owner's ruling of 2026-11-07, recorded in `docs/plans/2-6-0-plan.md`); in 2.8, an operator's assessment in the digest and the next proposal (#2954, the 2.7 plan's R2). Slice 6 is not placed.
 **Builds on:** SIP-0112 (Project Lifecycle Management: the Project Record), SIP-0109 (Campaign Orchestration: the
 objective and its requirements source), SIP-0113 (Outcome Evaluation: the held-out suite), SIP-0069 (the console's
 Continuum plugins)
@@ -59,7 +59,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 - **The Continuum Runtime Console** (proposed, partly absorbed). The goals panel here is a SIP-0069 plugin. The
   duty view that SIP keeps is unrelated.
 
-## Delivery ledger (current as of 2026-11-07)
+## Delivery ledger (current as of 2026-11-08)
 
 | part | status | where |
 |---|---|---|
@@ -70,7 +70,8 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | §6's squad and system candidates: a cycle's or a proposal's findings recorded as candidates by the runtime, with no principal of its own | **unplaced**, deliberately: not built in slice 3 (§10c) | — |
 | slice 4: the console's goals panel: a panel of the Projects plugin, its edit a confirm-level command (`squadops.revise_goal_set`). §8.3's latest assessment of each expected result is not shown: no assessment record exists until slice 5 (§5.7), and showing it in the panel is that slice's | **shipped** | 2.6.0, PR #2916, closes #2887 |
 | slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7), shown in the console (as built: §10d) | **shipped** | 2.6.0, PR #2927, closes #2888 |
-| a crew's assessment shown in the Campaign digest and the next proposal | **placed** | 2.7, #2954 |
+| an operator's assessment shown in the Campaign digest and the next proposal | **placed** (re-placed from 2.7 by the 2.7 plan's R2, the owner, 2026-11-08: it changes what the next proposal receives, so it is feature work) | 2.8, #2954 |
+| an item ended at §10 row 19 gets one automatic re-proposal, shown the abandonment's reason; the allowance is derived from the control log, so a restart, a reorder or an unrelated goal revision can't reset it, and a second row-19 ending leaves the item abandoned (a §5.3 amendment) | **placed** (the 2.7 plan's R3, the owner, 2026-11-08) | 2.7.0, #2935 |
 | slice 6: the repository export | **unplaced**, deliberately: not in 2.6 (the plan's D1, ruled 2026-11-03) | — |
 
 **What closes this SIP:** slices 1–5 shipped and read live on a Campaign whose backlog reached three accepted items,

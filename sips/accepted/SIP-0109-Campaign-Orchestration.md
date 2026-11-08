@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-11-07)
+## Delivery ledger (current as of 2026-11-08)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -141,16 +141,17 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, the supervisor's review-request push: the campaign branch pushed as `squadops/<campaign>` with the supervisor's own token, leased on the last push and refused over a branch someone else moved (§24ci (b), §24cn) | **shipped** | 2.5.0, PR #2772 |
 | a Campaign on a repository-backed Project, point 3's route rendering on a product: the profile's client routes rendered on the candidate, started in the sandbox from contract 7's start, read by the evaluator image's Chromium and judged by their views' root anchors (§24bv point 3, §24cl item 6, §24co; SIP-0102 §11k) | **shipped** | 2.5.0, PR #2777 |
 | a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold; an added page whose path needs a seed is refused, and a dev repair keeps the anchors (§24co item 11's remainder, §24cp items 1–5) | **shipped** | 2.5.0, PR #2780, closes #2779 |
-| a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **placed** (the 2.6 plan's Track B, adopted 2026-11-03; deferrable) | 2.7.0, #2781 |
+| a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **placed** (re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): a design change to §7.2's change request, which needs its own design and an outside review; until then the refusal stands) | 2.8.0, #2781 |
 | the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp, not built) | **placed** (the 2.6 plan's Track B, adopted 2026-11-03) | 2.7.0, #2783 |
 | a Campaign on a repository-backed Project, read live, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co): the calibration record and its baseline reading, the proposal from the product's tree, the instruction binding at each cycle's own commit, the launch, the refusal at a moved upstream and the rebase onto the reconciled commit, increments judged at delivery on the product's runners, and the anchored page | **shipped**, read on the 2.5 cut's final deploy (the cut's pre-registration §14b): IR-2, IR-3 (a)–(e), IR-4, IR-6's calibration half, IR-7 and IR-8 hold. Narrowed by the owner (2026-10-29: "Narrow the claim, go to cut"): no product increment was accepted, so the row below carries the rest | 2.5.0, PRs #2820 and #2825 with the release PR, closes #2619 |
-| a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading); waits on #2799. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.7.0, #2827 |
+| a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading). The 2.7 plan (§4.5) reads it on one counted increment on `prj-z-continuum`, the product that meets all three readings' preconditions, with BT-11's records (battle-trainer PR #11) as the historical promotion and push; `z_continuum`'s page surface is not applicable, so it doesn't wait on #2799. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.7.0, #2827 |
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
+| D1: a criterion test that passes on the head at qa's first emission is refused to `qa.test_repair`, as §24dh refuses a repaired one; when the allowance is spent, §24dh's backstop reads an ordinary counted failure, and no record tells the next proposal the behaviour is met | **placed** (the 2.7 plan, adopted 2026-11-08; option (a), ruled by the owner on 2026-11-07) | 2.7.0, #2933 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
 | a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
 | the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
-| the replay viewer showing a new version with no step by hand (§24dj) | **placed** (the 2.6 plan's Track F, the owner, 2026-11-06) | 2.7.0, #2938 |
-| the operator's box lease outside Campaigns (§9.3) | **placed** (the 2.6 plan's Track C, adopted 2026-11-03) | 2.7.0, #2287 |
+| the replay viewer showing a new version with no step by hand (§24dj) | **dropped** (§24dm): the viewer is the product's own tool | battle-trainer PR #3 |
+| the operator's box lease outside Campaigns (§9.3) | **placed** (re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): a new capability) | 2.8.0, #2287 |
 | a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
@@ -6461,3 +6462,15 @@ guarantee "no launch beside a crew model" (§24 and its readers) reads "no launc
 unchanged. No route, scope or field changed. Earlier sections keep their words as the record of their rulings.
 
 **Who ruled it.** The owner, 2026-11-07, as SIP-0115 §10e records.
+
+### 24dm. The replay viewer is the product's own tool (2026-11-08, §24dj; #2938; the owner's ruling R4 in the 2.7 plan)
+
+**What changed.** §24dj left one part of #2938 open: the replay viewer recording a new version with no step by hand. That
+viewer isn't SquadOps code. It lives in battle-trainer's own repository (`tools/viewer/`, battle-trainer PR #3), and
+SquadOps has nothing to build for it. So the ledger row is dropped from this SIP's scope. §24dj's readings, report-only
+and run in the sandbox at each accepted increment, are unchanged.
+
+**The evidence.** §24dj's "Not built" paragraph, and battle-trainer PR #3, which carries the viewer's versioning.
+
+**Who ruled it.** The owner, 2026-11-08: R4 of `docs/plans/2-7-0-plan.md`, "close #2938's SquadOps remainder after the
+numbered scope amendment and a linked product-side record for the viewer work".
