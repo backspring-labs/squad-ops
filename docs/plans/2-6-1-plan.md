@@ -68,7 +68,7 @@ build, except D1 (§3), which is an option the owner can take or leave without b
   `rebuild_and_deploy.sh` has no Caddy step at all.
 - **The fix:** after the console step, `rebuild_and_deploy.sh` compares the Caddyfile the container reads with the
   checkout's. When they differ it restarts Caddy (not a reload, for the reason above), then confirms they match. It
-  prints both hashes either way. The deploy record names the step.
+  prints both hashes either way, and a failure fails the deploy.
 - **The test:** the comparison is a function with a unit test over a matching pair, a differing pair, and an
   unreadable container file, which must be reported, not taken as a match. The live check is a deploy where the
   Caddyfile changed.
