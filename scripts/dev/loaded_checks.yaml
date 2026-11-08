@@ -2405,3 +2405,22 @@ checks:
       asset = pathlib.Path(p.__file__).parent / "request_templates" / "request.increment_page_loader_appendix.md"
       print(asset.is_file(), "loadView(path, name = 'default')" in page_loader_source("w/criterion_page_loader.js"))
     expect: "True True"
+  - id: "2827-repaired-suite-runners"
+    what: patch acceptance reads a product's repaired suite by the product's own runners, and a sample application's by its stack (SIP-0112 H.29)
+    container: squadops-runtime-api
+    code: |
+      from squadops.execution.patch_acceptance import _repaired_suite_files, suite_runners
+      runners = suite_runners({"source_repository": {"runners": [{"roots": ["app"], "file_pattern": "*.test.ts"}]}})
+      files = [{"name": "app/runs.test.ts"}, {"name": "__tests__/runs.test.ts"}]
+      config = {"development_profile": "nextjs_ts"}
+      print(_repaired_suite_files(files, config, runners), _repaired_suite_files(files, config, suite_runners({})))
+    expect: "['app/runs.test.ts'] ['__tests__/runs.test.ts']"
+  - id: "2827-planless-qa-view"
+    what: a plan-less test author's prompt slots the product's view, and the scaffold's harness is a sample application's block (SIP-0112 H.29)
+    container: squadops-eve
+    code: |
+      import pathlib, squadops.prompts as p
+      t = pathlib.Path(p.__file__).parent / "request_templates"
+      text = (t / "request.qa_test.test_validate.md").read_text()
+      print("{{source_repository_section}}" in text, "Test boundary" in text, (t / "request.qa_test_scaffold_harness_block.md").is_file())
+    expect: True False True

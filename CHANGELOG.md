@@ -18,6 +18,16 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
 
 ### Fixed
+- **A product's repaired suite is read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance
+  found a repaired suite by the stack's collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/`
+  rule (#1534). A product made from that blueprint runs under it, so a repair placed where the product's vitest
+  collects it was never retested, and one placed by the scaffold's rule was. Now the dispatched task's runners (their
+  roots and file pattern) decide, and a sample application, or a product with no runner, keeps the stack's reading.
+- **A plan-less product cycle's test author is shown the product** (SIP-0112 H.29, #2827 item 2): the monolithic qa
+  prompt (`request.qa_test.test_validate`, version 6) shows the product's repository view, its map, conventions,
+  checks and runners, as a plan's task is shown it. The scaffold's harness paragraph is now a sample application's
+  block only, and a sample application's prompt renders byte for byte as before. Where the view shows a stack's
+  conventions for a product, the profile's test supplement is left out in their favour, as the developer's is.
 - **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
   write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release
   capture, the verification-set driver and triage, which read the vault as another user. Files are 0644 again, as

@@ -126,7 +126,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **shipped**: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), a blueprint's conventions without its test placement (H.13), a product's qa suite run on the product's tree (H.15, #2815), with SIP-0109 §24bv point 5's proposal input and point 6's `qa.evaluate_increment` drop shipped there; read live on the 2.5 cut's final deploy on `z_shelfnote` and `z_continuum` (the cut's pre-registration §14b). Narrowed by the owner (2026-10-29): no product increment was accepted, and H.13's two unbuilt items remain, so the row below carries them | 2.5.0, closes #2619 with the release PR |
-| H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), read on one counted increment on `prj-z-continuum` by the 2.7 plan's §4.5 (#2818 shipped in 2.5.1; the 2.6 spikes' accepted increments are uncounted; SIP-0109 §24dp, #2799, ships in 2.7 the page loader a vitest product's page criteria discriminate through, which no counted reading has read); and H.13's two items not built (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing) | 2.7.0, #2827 |
+| H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), read on one counted increment on `prj-z-continuum` by the 2.7 plan's §4.5 (#2818 shipped in 2.5.1; the 2.6 spikes' accepted increments are uncounted; SIP-0109 §24dp, #2799, ships in 2.7 the page loader a vitest product's page criteria discriminate through, which no counted reading has read); and H.13's two items (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing). H.13's two items are built in 2.7 (H.29), and the counted increment remains, so #2827 stays open | 2.7.0, #2827 |
 | H.4's remainder for a product with no blueprint: its development profile selected from the derived facts, a neutral profile and a named gap in place of a silent `python_cli`, and QA evidence that says where its suite ran (H.26, superseding H.13's "no blueprint" paragraph) | **shipped** | 2.6.0, PR #2941, closes #2937 |
 | a size preflight: before a Campaign starts on a product, every task type it dispatches rendered against the product's tree at the pinned commit, a binding that can't fit named as a blocking gap (H.21) | **shipped** (H.21): measured at the start route on the live path's own counter, a floor, `prompt_over_window` and `size_unmeasured` | 2.6.0, PR #2919, closes #2889 |
 | a dev repair's retest of a product's qa suite judged on the product's runner: the failed task's own tests, with the patched source overlaid on the tree | **shipped** | 2.6.0, PR #2898, closes #2881 |
@@ -3335,3 +3335,88 @@ integrated.
 **Who ruled it.** The owner: the 2.7 plan's R2 kept #2862 in 2.7 as the line's named exception (2026-11-08), and the
 credential is the owner's ruling of the same day, above.
 
+## H.29 A product's repaired suite is read by its own runners, and a plan-less test author is shown the product (2026-11-08; H.13's "Not built here", H.26; #2827; the Spark lane)
+
+**What changed.** H.13 left two items unbuilt, and #2827 carries them. Both are built here. H.13's third item, the repairs
+(`qa.test_repair`, `development.correction_repair`), isn't one of #2827's and is unchanged.
+
+1. **Patch acceptance reads a product's repaired suite by the product's runners.** A repaired suite is what
+   `_repaired_suite_files` finds in the patch, and two decisions read it: whether a structurally unevaluable verdict is
+   decided by the retest (`retest_decides`, #1586), and whether the retest runs at all (#1269). It read the stack's
+   collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/` rule (#1534), which a product made from
+   that blueprint runs under (H.13's pin). So a repair placed where the product's vitest collects it was never retested,
+   and one placed by the scaffold's rule was.
+   - **On a repository-backed product's task,** a repaired suite is a file one of the product's runners holds: under
+     that runner's roots, named by its file pattern (`runner_holds`). That is the rule `Runner.holds`, the qa run tree
+     and the product runner's retest (`suite_under_judgement`) already use. The runners are the dispatched task's
+     (`suite_runners`, from `source_repository.runners` on the enriched envelope), since the base envelope carries no
+     view.
+   - **A sample application,** and a product whose view names no runner, keep the stack's vocabulary. With no runner, the
+     qa image's run is the only one there is.
+   - **What the stack's vocabulary still decides.** Plan validation (`validate_check_applicability`) reads it only where
+     `tests_pass` is required, and no profile a product runs on requires it (`campaign-increment-source` names no
+     `required_checks`). It is unchanged. The repair's emission veto (`correction_repair`) keeps its `__tests__/` clause,
+     which over-matches on purpose.
+2. **A plan-less product cycle's test author is shown the product.** A plan's `qa.test` takes the focused prompt, which
+   shows the product's repository view. A plan-less cycle's takes the monolithic prompt, `request.qa_test.test_validate`,
+   which showed none of it, and it carried a paragraph about the scaffold's test harness, which a product doesn't have.
+   - **Template version 6** slots the view (`source_repository_section`): the map, the stack's conventions for a
+     product, how the product is checked, and where its runners find a test. The task's step names the deletion form
+     it may use, as on the focused path.
+   - **The harness paragraph** is its own asset, `request.qa_test_scaffold_harness_block`, rendered only for a sample
+     application. A sample application's prompt is byte for byte what version 5 rendered.
+   - **Where the view shows the stack's conventions,** the profile's test supplement is withheld in their favour, as the
+     developer's system supplement is (H.13 point 2). `nextjs_ts`'s supplement places tests under `__tests__/` and calls
+     the scaffold's `@/lib/store`. `node_vitest`'s, the one a plan-less cycle is pinned to (H.26 point 5), only names
+     vitest, which its conventions say too ("A test is vitest, run by the product's own runner").
+   - **The files the prompt shows** are unchanged: the stack's source files (`qa_prompt_contents.source_files`), which the
+     composer counts. The monolithic path has no suite and no task text to trace imports from, so #2953's tracer, the
+     focused path's, has nothing to start from. The source files are the code a suite can call. The composer already
+     counted the view among the shared context slots, and the qa contract now lists the harness block too.
+3. **The pin is unchanged.** H.13 point 3 kept a plan-less cycle off a blueprint's profile because "only the plan's tasks
+   are shown the product". That reason is superseded for the test author, and the rule stands on the developer's: its
+   monolithic prompt (`request.development_develop.code_generate`) still lays files out by the profile's
+   `file_structure_guidance` and `example_structure`. So a plan-less cycle on a product made from a blueprint runs as
+   H.26 point 5 says, and its test author is shown the view, with no conventions block and `python_cli`'s supplement.
+
+**The evidence:**
+- **The repaired suite** (`tests/unit/cycles/test_outcome_routing.py`,
+  `TestAProductsRepairedSuiteIsReadByTheProductsRunners`). The tests enter at `_try_accept_patch`, as the correction loop
+  calls it, on the config `prepare_cycle` pins for a product made from `nextjs_ts`, with the enriched envelope carrying
+  a view whose vitest collects `*.test.ts` under `app`. The failed task is #1586's shape, an emission failure with prose
+  criteria only. In each case:
+  - `app/runs/runs.test.ts` is retested and accepted on the pass;
+  - `__tests__/runs.test.ts` and `app/runs/runs.spec.ts` end the round as a deadlock, with no retest;
+  - a sample application reads both the other way;
+  - a product whose view names no runner keeps the stack's reading.
+- **The plan-less test author** (`tests/unit/cycles/test_planless_test_author_product_view.py`). The tests enter at
+  `prepare_cycle` on `implement` with no plan, then at `QATestHandler.handle` with the cycle's own `resolved_config()`
+  and the shipped assets:
+  - a Python product, a Node product and a product made from `fullstack_fastapi_react` are each shown the map and their
+    runner, with no harness paragraph and none of the skeleton's placements;
+  - the Node product is shown `node_vitest`'s conventions in place of its supplement;
+  - an operator-named `nextjs_ts` shows the blueprint's conventions and neither "Place tests in __tests__/" nor
+    `@/lib/store`;
+  - a product with no runner is shown its map and no runner block;
+  - a sample application keeps the harness, between its files and its supplement.
+- **H.26's monolithic-prompt test** (`test_the_monolithic_test_prompt_names_vitest_not_pytest`) now reads vitest from the
+  conventions, where it read the supplement. `pytest` still never appears.
+- **Ten mutants, each caught:**
+  - the runners read from the base envelope;
+  - the source-backed test inverted;
+  - the runner rule never taken;
+  - each of the two readers left on the stack's vocabulary;
+  - a runner's roots ignored;
+  - the view never rendered;
+  - the harness shown to a product, or withheld from a sample application;
+  - the supplement kept beside the conventions.
+- **Loaded checks:** `2827-repaired-suite-runners` (the runtime) and `2827-planless-qa-view` (the qa agent), each run on
+  the source.
+
+**Not built.**
+- The plan-less developer's skeleton prose, which is why the pin stays (point 3).
+- Plan validation's reading, for the reason in point 1.
+- #2827's counted increment on `prj-z-continuum` (the 2.7 plan's §4.5). It remains, and #2827 stays open for it.
+
+**Who ruled.** The Spark lane built it, within H.13's rule ("the profile's prose for the skeleton is withheld wherever the
+product's repository view is shown"), under the supervisor's brief for #2827's item 2. The owner reviews it on the PR.
