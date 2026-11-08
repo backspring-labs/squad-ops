@@ -11,8 +11,11 @@ evaluation does (``built_on_identity``).
 its tree changed by the spec's edits, evaluated by the same path. Each edit replaces the one
 occurrence of its ``old`` text in a file of the tree. The edits are applied where the tree is read
 (the vault), so nothing else in the path changes, and a spec that doesn't apply is refused before
-anything runs. Its records are written under the faulted tree's own identity, and the output names
-them a diagnostic, with the tree they were made from.
+anything runs. **Its records are never written** (#2765): a diagnostic's evaluation stored against
+the real cycle read, to "the cycle's latest evaluation", as the cycle's own, so a fault-injected tree
+stood in for the tree the cycle built. It runs through a store that reads from the real one and
+writes nothing. The output names each reading a diagnostic, under the faulted tree's own identity,
+with the tree it was made from, and keeps its outcomes, as the only record of it.
 
 The output (stdout, JSON) holds what a campaign's package shows of a record, with each outcome's
 first failing step, runner and step seconds. Never a goal or evidence, which are held out: the
@@ -132,9 +135,10 @@ async def read(
     readings = []
     for cycle, source, diagnostic in trees:
         built_on = await built_on_identity(campaigns, cycle)
+        writes_to = store if diagnostic is None else UnwrittenStore(store)
         for n in range(1, times + 1):
             record = await evaluate_cycle(
-                store=store,
+                store=writes_to,
                 runner=runner,
                 vault=source,
                 cycle=cycle,
@@ -156,6 +160,25 @@ async def read(
                 reading["diagnostic"] = diagnostic
             readings.append(reading)
     return {"suite_digest": suite_digest, "times": times, "readings": readings}
+
+
+class UnwrittenStore:
+    """A diagnostic's store (#2765): every read reaches the real store, so the evaluation sees the
+    same approved suite, and the record and evidence an evaluation saves are kept here, never
+    written. A diagnostic is never a reading, so it never joins the cycle's evaluations."""
+
+    def __init__(self, store: Any) -> None:
+        self._store = store
+        self.unwritten: list[Any] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._store, name)
+
+    async def save_evaluation(self, record: Any) -> None:
+        self.unwritten.append(record)
+
+    async def save_evidence(self, *args: Any, **kwargs: Any) -> None:
+        return None
 
 
 def _fault_spec(text: str) -> dict:

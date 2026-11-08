@@ -175,6 +175,58 @@ async def test_record_refuses_a_re_measure_of_a_tree_the_cycle_didnt_evaluate(id
     assert await store.remeasures_for_cycle("cyc_c1inc1") == []
 
 
+async def test_a_later_evaluation_of_another_tree_doesnt_refuse_a_re_measure_of_the_real_one():
+    """#2765. Bug caught: a diagnostic's evaluation, stored later against the same cycle under the
+    faulted tree's identity, read as "the cycle's latest evaluation", so a real re-measure of the
+    tree the cycle built was refused, or filed against the diagnostic's row."""
+    from datetime import UTC, datetime
+
+    from squadops.scenarios.evaluation import EvaluationRecord
+
+    store = await _evaluated_store("b" * 64)
+    [latest] = [
+        r
+        for r in await store.evaluations_for_cycle("cyc_c1inc1")
+        if r.evaluation_id == "evl_latest"
+    ]
+    stray = EvaluationRecord(
+        **{**latest.__dict__, "evaluation_id": "evl_diagnostic", "campaign_id": None,
+           "evaluated_tree_identity": "e" * 64, "evaluated_at": latest.evaluated_at.replace(hour=5)}
+    )  # fmt: skip
+    await store.save_evaluation(stray)
+
+    await _load().record_remeasures(
+        store, _Cycle(), "b" * 64, "p", [(None, None, None)], datetime.now(UTC)
+    )
+
+    [row] = await store.remeasures_for_cycle("cyc_c1inc1")
+    assert row.evaluation_id == "evl_latest"
+
+
+async def test_a_refused_write_keeps_the_readings_and_says_why():
+    """#2765. Bug caught: a refused ``--record`` raising past the print, so a completed measurement
+    was lost with the write; or a refusal reported as recorded."""
+    module = _load()
+
+    async def refused():
+        raise ValueError("cyc_x's evaluations read aaa, and this re-measured bbb")
+
+    class _Row:
+        remeasure_id = "rqm_1"
+
+    async def wrote():
+        return [_Row()]
+
+    assert await module.recorded(refused, "2.7 window") == {
+        "provenance": "2.7 window",
+        "refused": "ValueError: cyc_x's evaluations read aaa, and this re-measured bbb",
+    }
+    assert await module.recorded(wrote, "2.7 window") == {
+        "provenance": "2.7 window",
+        "remeasures": ["rqm_1"],
+    }
+
+
 # §10y (#2637): the positive control, `--fault`, and S1's failing-id spreads. Invented tree.
 
 _TREE = {

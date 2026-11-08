@@ -9,8 +9,10 @@ a second instance, seeded from the Project's declared quality seed and measured 
 stdout as JSON, for the window's record.
 
 **Nothing is written** unless ``--record PROVENANCE`` names the series. Then each re-measure is
-written as a ``quality_remeasures`` row (§10n ruling 1) against the cycle's latest evaluation,
-through a pool opened for that alone, after measuring. Never an evaluation record: a re-measure
+written as a ``quality_remeasures`` row (§10n ruling 1) against the cycle's latest evaluation **of the
+tree it measured** (#2765: a stray later row, such as a diagnostic's, can't refuse a real re-measure),
+through a pool opened for that alone, after measuring. A refused write still prints the readings,
+with why it was refused, so a measurement is never lost. Never an evaluation record: a re-measure
 there would replace the cycle's real record in every package rebuilt after.
 
 Runs in the runtime image as root, with the runtime's own config, and through its sandbox client:
@@ -205,19 +207,21 @@ async def record_remeasures(
     store: Any, cycle: Any, identity: str, provenance: str, readings: list, measured_at: Any
 ) -> list:
     """Each re-measure written as its own row (§10n ruling 1), against the cycle's latest
-    evaluation: the tree the evaluation read, or nothing is written. Refused when the cycle has no
-    evaluation to re-measure, or when the tree measured isn't the one it evaluated."""
+    evaluation of the tree it measured, or nothing is written. Refused when the cycle has no
+    evaluation to re-measure, or none of the tree measured. Another tree's later evaluation is
+    passed over, not read as the cycle's (#2765)."""
     from squadops.scenarios.evaluation import QualityRemeasure, new_remeasure_id
 
     evaluations = await store.evaluations_for_cycle(cycle.cycle_id)
     if not evaluations:
         raise ValueError(f"{cycle.cycle_id} has no evaluation to re-measure")
-    evaluation = max(evaluations, key=lambda r: r.evaluated_at)
-    if evaluation.evaluated_tree_identity != identity:
+    of_tree = [r for r in evaluations if r.evaluated_tree_identity == identity]
+    if not of_tree:
+        read = sorted({r.evaluated_tree_identity for r in evaluations})
         raise ValueError(
-            f"{cycle.cycle_id}'s evaluation read {evaluation.evaluated_tree_identity}, and this "
-            f"re-measured {identity}"
+            f"{cycle.cycle_id}'s evaluations read {', '.join(read)}, and this re-measured {identity}"
         )
+    evaluation = max(of_tree, key=lambda r: r.evaluated_at)
     written = [
         QualityRemeasure(
             remeasure_id=new_remeasure_id(),
@@ -239,6 +243,16 @@ async def record_remeasures(
     for remeasure in written:
         await store.save_remeasure(remeasure)
     return written
+
+
+async def recorded(write: Any, provenance: str) -> dict:
+    """The ``recorded`` entry of the output: the rows ``write`` wrote, or why it was refused. A
+    refusal never raises past here, so the readings measured before it are still printed (#2765)."""
+    try:
+        written = await write()
+    except Exception as e:  # noqa: BLE001 — any refusal, so the measurement is still printed
+        return {"provenance": provenance, "refused": f"{type(e).__name__}: {e}"}
+    return {"provenance": provenance, "remeasures": [r.remeasure_id for r in written]}
 
 
 async def main(
@@ -302,17 +316,20 @@ async def main(
 
         from adapters.scenarios.postgres_scenario_store import PostgresScenarioStore
 
-        # Opened only now, after measuring, for the re-measure rows alone.
-        writer = await create_pool(config.database().url, min_size=1, max_size=1)
-        try:
-            written = await record_remeasures(
-                PostgresScenarioStore(writer), cycle, identity, record, readings, datetime.now(UTC)
-            )
-        finally:
-            await writer.close()
-        doc["recorded"] = {"provenance": record, "remeasures": [r.remeasure_id for r in written]}
+        async def write() -> list:
+            # Opened only now, after measuring, for the re-measure rows alone.
+            writer = await create_pool(config.database().url, min_size=1, max_size=1)
+            try:
+                return await record_remeasures(
+                    PostgresScenarioStore(writer), cycle, identity, record, readings,
+                    datetime.now(UTC),
+                )  # fmt: skip
+            finally:
+                await writer.close()
+
+        doc["recorded"] = await recorded(write, record)
     print(json.dumps(doc, indent=2))
-    return 0 if started else 1
+    return 0 if started and "refused" not in doc.get("recorded", {}) else 1
 
 
 if __name__ == "__main__":

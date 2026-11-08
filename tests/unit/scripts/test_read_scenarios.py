@@ -148,9 +148,10 @@ async def test_each_reading_is_the_services_record_written_with_no_campaign_and_
 
 
 async def test_a_fault_is_read_by_the_same_path_on_its_own_tree_and_named_a_diagnostic(world):
-    """Ruling 13, #1251's rule. Bug caught: the runner handed the original tree (the diagnostic
-    then reads the outcome the fault was meant to remove), the record named by the tree it was
-    made from, or the edit leaking into another cycle's reading."""
+    """Ruling 13, #1251's rule, and #2765. Bug caught: the runner handed the original tree (the
+    diagnostic then reads the outcome the fault was meant to remove), the record named by the tree
+    it was made from, the edit leaking into another cycle's reading, or the diagnostic's record
+    stored against the real cycle, where "the cycle's latest evaluation" reads it as the cycle's."""
     module, store, suite = world
     runner = _Runner()
     edits = [{"path": "frontend/index.html", "old": "<button>Go</button>", "new": ""}]
@@ -176,8 +177,9 @@ async def test_a_fault_is_read_by_the_same_path_on_its_own_tree_and_named_a_diag
         "made_from": FileTree.of(TREE).identity,
         "edited": ["frontend/index.html"],
     }
-    [record] = await store.evaluations_for_cycle("cyc_cal")
-    assert record.evaluated_tree_identity == diagnostic["tree"]
+    assert await store.evaluations_for_cycle("cyc_cal") == []
+    [record] = await store.evaluations_for_cycle("cyc_other")
+    assert record.evaluated_tree_identity == plain["tree"]
 
 
 @pytest.mark.parametrize(
