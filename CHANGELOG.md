@@ -17,6 +17,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
 
+### Changed
+- **An outside operator's pull request is held to its branch's boundary by a policy the repository doesn't
+  hold** (#2975, PR #2991): `operator branch checks` runs on `pull_request_target` from the default branch,
+  never runs the pull request's code, and reads the policy from the `OPERATOR_BRANCH_POLICY` repository
+  variable, which only an administrator can change. It fails closed on a missing or malformed policy, an
+  undeclared role, an unresolved commit identity or a foreign author, and the check's own files are out of
+  bounds to every operator branch. It is now the required check, and the check it replaces is removed
+  with its script and its in-repository boundary file.
+
 ### Fixed
 - **A suite handed to the product's own runner is banked as handed off, not failed** (#2949): on a product
   only its own runner runs (SIP-0112 H.26), every `qa.test` banked its emission `emission_status=failed`
