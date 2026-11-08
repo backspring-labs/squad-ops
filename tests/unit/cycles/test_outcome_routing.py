@@ -2683,17 +2683,21 @@ class TestRetestIsKeyedOnWhatThePatchContains:
         would miss the very case this fixes."""
         from squadops.execution.patch_acceptance import _repaired_suite_files
 
-        assert _repaired_suite_files([{"name": self._SUITE, "type": "code"}], self._CONFIG) == [
-            self._SUITE
-        ]
-        assert _repaired_suite_files([{"name": "backend/routes.py"}], self._CONFIG) == []
+        # A sample application's run: no product runners (SIP-0112 H.29), so the stack decides.
+        sample = ()
+        assert _repaired_suite_files(
+            [{"name": self._SUITE, "type": "code"}], self._CONFIG, sample
+        ) == [self._SUITE]
+        assert _repaired_suite_files([{"name": "backend/routes.py"}], self._CONFIG, sample) == []
         # The other stack answers with its own conventions, not pytest's.
         assert _repaired_suite_files(
-            [{"name": "__tests__/runs.test.ts"}], {"development_profile": "nextjs_ts"}
+            [{"name": "__tests__/runs.test.ts"}], {"development_profile": "nextjs_ts"}, sample
         ) == ["__tests__/runs.test.ts"]
         assert (
             _repaired_suite_files(
-                [{"name": "backend/tests/test_runs.py"}], {"development_profile": "nextjs_ts"}
+                [{"name": "backend/tests/test_runs.py"}],
+                {"development_profile": "nextjs_ts"},
+                sample,
             )
             == []
         )
