@@ -1,6 +1,6 @@
 # 2.7.0 plan: the 2.6 line's debts, closed
 
-**Status: DRAFT for review (2026-11-08, revision 2).** The owner asked for a 2.7 plan that closes as many of the 44 open
+**Status: DRAFT for review (2026-11-08, revision 3).** The owner asked for a 2.7 plan that closes as many of the 44 open
 issues as it can, while keeping 2.7 free of new features. Nothing here is built until the owner adopts it. §6 lists
 the rulings the plan needs.
 
@@ -19,6 +19,7 @@ changed:
 - **Added:**
   - where the soak runs (R6): the issue says battle-trainer's real repository;
   - the operator-name guard (R7);
+  - the four open design pull requests (§5a), and #2872 (R8), in revision 3;
   - what R1 costs SIP-0112.
 
 **What 2.7 is.** An odd minor, so a stabilization release, feature-free by rule (CLAUDE.md, #281). Every committed item
@@ -133,7 +134,7 @@ closed count without changing the 44:
   5. Track D last, because the soak is cut evidence and has to run on the final code.
   6. Track C fits anywhere.
 - **Each issue is its own PR,** with `Closes #N` or `Refs #N — remaining: …`, merged on green with main's CI finished
-  at its tip, under whatever merge grant the owner gives for the line (R8).
+  at its tip, under whatever merge grant the owner gives for the line (R9).
 - **Each changed seam has a wiring test** that enters at the caller the live cycle uses (TEST_QUALITY_STANDARD 6a), and
   each typed-check change has the seam table (CLAUDE.md, typed checks). D1, #2949 and #2799 need both.
 - **Each SIP change is a numbered amendment in the PR that diverges:**
@@ -194,6 +195,19 @@ closed count without changing the 44:
 - **#2723:** held-out suite revision 7. A suite revision needs its own independent review and validation rolls, and no
   2.7 claim reads the held-out suite.
 
+## 5a. Open design pull requests (not counted in the 44)
+
+Four pull requests propose designs or plans, and none of them builds anything. **Merging a proposed SIP or a draft
+plan isn't a feature, so 2.7 can carry their reviews.** Accepting one and building it is feature work, for a feature
+line.
+
+| PR | What | State on 2026-11-08 | In 2.7 |
+|---|---|---|---|
+| #2872 | Battle Training Squad Harness, the owner's draft SIP, with its intake check | Conflicts with main. Its intake predates 2.6. 46 added lines name the operator | Brought current and merged as proposed (R8). Its Q49 and Q50 gate simulator-scored held-out play (the 2.6 plan, D2), so acceptance waits for the 2.8 plan |
+| #2405 | Game Development Platform, a proposed SIP at revision 2 | Q37–Q39 ruled on 2026-10-31 under the owner's delegation | Review continues. Nothing placed |
+| #2841 | Game Capability Packs and Squad Composition, stacked on #2405 | Mergeable. Q45 conflicts with the 3.x deferral of Capability-Backed Agents | Merges after #2405. Q45 is the owner's |
+| #2848 | Nebulus, the proving Project plan: a fictional bank | A draft. Its environment is #2847, which is out of 2.7 (§5). 9 added lines name the operator | Stays a draft until #2847 is placed. Its names are fixed when it's next revised |
+
 ## 6. Rulings for the owner
 
 - **R1. Move #2287, #2421, #2709 and #950 to 2.8, with #2781's row.** **Recommended: yes.** They are new capabilities,
@@ -246,5 +260,18 @@ closed count without changing the 44:
     so the repository no longer names the operator.
   - Removing the guard would leave an outside party's pull requests unconstrained by path.
   - Renaming a required check and its rulesets is a change to branch protection, which is the owner's act.
-- **R8. A merge grant for the line,** as for 2.6.1: merge on green, with main's CI finished at its tip. The rulings stay
+- **R8. #2872, the Battle Training Squad Harness.** The owner wrote its body before the ruling of 2026-11-07 that
+  SquadOps names no operator. The body names the operator's personas, messaging platform, broker and launch scripts.
+  **Recommended:** keep the SquadOps side and move the operator's side out:
+  - **What stays:** what SquadOps builds or decides, which is:
+    - a held-out suite for a product that isn't served over HTTP or as a page (Q50: a step that runs a simulation and
+      reads its score);
+    - which role may run a sealed cohort (Q49: SIP-0113 §4.1 keeps held-out suites away from every squad role);
+    - the simulator reading that shipped as §24dj, the first part of I1.
+  - **What moves out:** the operator's internals go to the operator's own repository.
+  - **Then:** rebase onto main, redo the intake against 2.6.1 (SIP-0115 shipped, §24dj shipped), and merge as proposed,
+    unnumbered.
+  - **Editing the owner's text is the owner's call.** The alternative is to say "operator" for each name and change
+    nothing else.
+- **R9. A merge grant for the line,** as for 2.6.1: merge on green, with main's CI finished at its tip. The rulings stay
   the owner's.
