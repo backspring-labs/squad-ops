@@ -1,0 +1,214 @@
+version: 2.6.1
+tag: v2.6.1
+previous_tag: v2.6.0
+date: '2026-11-07'
+commit: b897e42f862f5a2e98993030f79c247bfcfffc93
+narrative: "The 2.6 line's first patch (`docs/plans/2-6-1-plan.md`): what an operator\
+  \ meets first on 2.6.0, fixed small.\n\n### Fixed\n- **A rebuilt console plugin\
+  \ reaches a browser without emptying its cache** (PRs #2958, #2959, backspring-labs/continuum#4):\n\
+  \  Continuum 1.0.3 versions each plugin bundle's URL by its content, caches the\
+  \ current one for good and revalidates the\n  rest, and answers 304 for an unchanged\
+  \ file. #2958's Caddy `no-cache` stopgap is removed.\n- **The selected model engine\
+  \ comes back after a reboot** (#2932 ask 1, PR #2962): TensorFold runs `--restart\n\
+  \  unless-stopped`. The switch's removal, compose's stop and the watchdog's kill\
+  \ all keep a deselected engine down.\n- **A deploy runs the Caddyfile it pulled**\
+  \ (#2960, PR #2963): Caddy mounts the file singly, so a pull never reached it\n\
+  \  and a reload re-read the old one. Every deploy compares the two and restarts\
+  \ Caddy when they differ.\n- **Home's Create Cycle opens the Cycles create form**\
+  \ (#2909, PR #2964): it called a window function the console never\n  defines. It\
+  \ now hands the request to the Cycles panel, as the Campaigns link to the goals\
+  \ panel does.\n- **The qa briefs show a criterion test that asserts on something\
+  \ it made sure is there** (#2933, PR #2965): a non-empty\n  check before a loop\
+  \ and the suite's own fixture, on both stacks; a qa repair keeps the suite's fixture.\n\
+  - **The console's Signal view no longer holds the runtime API for seconds** (#2921,\
+  \ PR #2968): its artifact panels read\n  every page of every Project's artifacts,\
+  \ and each page walked all of a Project's metadata on the event loop, so a\n  5\
+  \ ms call on Home could take 9 s. The panels read each Project's newest page, and\
+  \ the vault's walk runs in a worker\n  thread, with metadata written whole and renamed\
+  \ into place.\n\n### Moved to 2.7\n- A suite handed to the product's runner reading\
+  \ as handed off rather than failed (#2949's remainder).\n- D1: a criterion that\
+  \ passes on the head on qa's first emission refused to qa rather than abandoned\
+  \ at row 19 (#2933)."
+pull_requests:
+- number: 2967
+  title: 'chore(release): 2.6.1 — what an operator meets first on 2.6.0, fixed small'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2968
+  title: 'fix(console,vault): the Signal view no longer holds the runtime API for
+    seconds'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2921
+  merged_at: '2026-11-08'
+- number: 2966
+  title: 'docs(plans): 2.6.1 — item 4 and D1 move to 2.7, on the owner''s rulings'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2965
+  title: 'fix(prompts): a criterion test asserts on something it made sure is there'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2964
+  title: 'fix(console): Home''s Create Cycle opens the Cycles create form'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2909
+  merged_at: '2026-11-08'
+- number: 2963
+  title: 'fix(ops): a deploy makes Caddy run the checkout''s Caddyfile'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2960
+  merged_at: '2026-11-08'
+- number: 2962
+  title: 'fix(ops): the selected model engine comes back after a reboot'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2961
+  title: 'docs(plans): the 2.6.1 plan — what an operator meets first on 2.6.0, fixed
+    small'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2959
+  title: 'chore(console): pin Continuum 1.0.3, whose bundle URLs carry their version'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2958
+  title: 'fix(console): a plugin bundle is revalidated on each load'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-07'
+- number: 2957
+  title: 'docs(release): the v2.6.0 package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-07'
+sip_moves: []
+sip_amendments: []
+cycles:
+- cycle_id: cyc_a8c1b78ef675
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_e6acda62f855
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-ordered
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots:
+- prefect-flow-run-shakeout-fastapi-react-accepted-after-one-qa-repair-round.png
+- shakeout-a-run-s-detail.png
+- shakeout-the-create-run-form.png
+- shakeout-the-run-list.png
+showcase:
+  cycle_id: cyc_a8c1b78ef675
+  reason: the shakeout on the final deploy, accepted 21 of 21 after one qa repair
+    round; 2.6.1 adds no feature to show, so the pictures are of the sample application
+    it built
+  role: shakeout
+records:
+  asset: squadops-2.6.1-records.tar.gz
+  sha256: b9f05178124978c52bf86d2097d12fa04fb5dade57080655c556d7b9ff8955ed
+  files: 6
+  campaigns: []
+  engine_records: []
+  bytes: 5217
+  attached_at: '2026-11-08T04:15:42Z'
+  scanned:
+    secret_values: 70
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
+    heldout_markers: 155
+  withheld: []
