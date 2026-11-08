@@ -86,6 +86,22 @@ def _rec(art_id, filename, created_at, *, kind="source", **meta) -> StoredArtifa
             ],
             "art_ok",
         ),
+        # #2949: a hand-off's bank is the qa image's copy; the accepted copy is the task's own.
+        (
+            [
+                _rec(
+                    "art_ok", "test/criterion_T1.test.js", "2026-09-01 10:00:00+00:00", kind="test"
+                ),
+                _rec(
+                    "art_bank",
+                    "test/criterion_T1.test.js",
+                    "2026-09-01 10:30:00+00:00",
+                    kind="test",
+                    emission_status="handed_off",
+                ),
+            ],
+            "art_ok",
+        ),
     ],
     ids=[
         "produced-beats-newer-stub",
@@ -93,6 +109,7 @@ def _rec(art_id, filename, created_at, *, kind="source", **meta) -> StoredArtifa
         "latest-seed",
         "repair-candidate",
         "failed-emission",
+        "handed-off-emission",
     ],
 )
 def test_one_file_is_delivered_by_the_rule(records, expected):
@@ -109,8 +126,11 @@ def test_one_file_is_delivered_by_the_rule(records, expected):
             "art_only_bad", "backend/main.py", "2026-09-01 10:30:00+00:00", emission_status="failed"
         ),
         _rec("art_plan", "implementation_plan.yaml", "2026-09-01 10:00:00+00:00", kind="document"),
+        _rec(
+            "art_only_bank", "test/t.test.js", "2026-09-01 10:30:00+00:00", emission_status="other"
+        ),
     ],
-    ids=["only-copy-failed", "a-document"],
+    ids=["only-copy-failed", "a-document", "a-marker-this-version-does-not-know"],
 )
 def test_a_file_with_nothing_deliverable_is_absent_not_its_last_copy(record):
     """#971's narrower trap: the failed emission is often the only copy of its file."""

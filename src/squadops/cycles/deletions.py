@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.models import ArtifactType
 
 #: The task outputs key that carries a step's accepted removals, as repository paths.
@@ -44,13 +44,13 @@ def deleted_paths(
     stored_artifacts: Iterable[tuple[str, Any]], *, skip_producers: Iterable[str] = ()
 ) -> frozenset[str]:
     """The paths whose latest stored entry is a removal: the run's accepted state has no file
-    there. A failed emission is never accepted state, and neither is an entry from one of
-    ``skip_producers`` (a repair's candidates, until re-stored as the task's own)."""
+    there. A banked emission (failed or handed off) is never accepted state, and neither is an
+    entry from one of ``skip_producers`` (a repair's candidates, until re-stored as the task's own)."""
     skipped = frozenset(skip_producers)
     latest: dict[str, bool] = {}
     for _art_id, ref in stored_artifacts:
         metadata = getattr(ref, "metadata", None) or {}
-        if metadata.get("emission_status") == EMISSION_STATUS_FAILED:
+        if banked_as(metadata.get("emission_status")) is not None:
             continue
         if metadata.get("producing_task_type", "") in skipped:
             continue

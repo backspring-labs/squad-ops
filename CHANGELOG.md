@@ -17,6 +17,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
 
+### Changed
+- **An outside operator's pull request is held to its branch's boundary by a policy the repository doesn't
+  hold** (#2975, PR #2991): `operator branch checks` runs on `pull_request_target` from the default branch,
+  never runs the pull request's code, and reads the policy from the `OPERATOR_BRANCH_POLICY` repository
+  variable, which only an administrator can change. It fails closed on a missing or malformed policy, an
+  undeclared role, an unresolved commit identity or a foreign author, and the check's own files are out of
+  bounds to every operator branch. It is now the required check, and the check it replaces is removed
+  with its script and its in-repository boundary file.
+
 ### Fixed
 - **A product's change request can't reuse the anchor of a page an earlier increment added** (#2783, SIP-0109 §24dq):
   the PROMOTE row on a campaign branch records each page the increment added and acceptance held, with every test id
@@ -30,6 +39,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   than read as empty: the proposal and acceptance refuse a block without one, and a Campaign whose log has such a
   promotion escalates before its next proposal, naming the row. Both the runtime-api and nat images have to answer
   their loaded checks (`2783-runtime`, `2783-nat`) before the fix is relied on.
+- **A suite handed to the product's own runner is banked as handed off, not failed** (#2949): on a product
+  only its own runner runs (SIP-0112 H.26), every `qa.test` banked its emission `emission_status=failed`
+  seconds before the runner passed the task. The router now takes the runner's reading before the bank, and an
+  emission whose hand-off the runner passed is banked `handed_off`. It stays out of every workspace, delivered
+  tree and deliverable, as a failed one does, and the scorecard's `failed_emissions` and the verification-set
+  records no longer count it. A runner that fails the suite, a pass refused on the head, and a suite the image
+  ran and failed still bank `failed`. Stored rows read as they did. The Prefect task run, the agent's activity
+  and `task.failed` still read the hand-off as failed (#3000).
 - **A product's repaired suite is read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance
   found a repaired suite by the stack's collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/`
   rule (#1534). A product made from that blueprint runs under it, so a repair placed where the product's vitest

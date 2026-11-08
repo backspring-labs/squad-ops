@@ -18,7 +18,7 @@ import functools
 import logging
 import os
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
@@ -70,7 +70,7 @@ from squadops.cycles.correction_signature import (
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
-from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EmissionStatus, banked_as
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.flow_runs import end_open_flow_runs
@@ -163,7 +163,7 @@ from squadops.execution.product_acceptance import (
     evaluate_product_increment,
     evaluated_at_delivery,
 )
-from squadops.execution.product_suite import judge_on_product_runner
+from squadops.execution.product_suite import judge_on_product_runner, left_to_the_product_runner
 from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
@@ -569,6 +569,17 @@ class RunState:
     authored: tuple[Any, Any] = (None, None)
 
 
+@dataclasses.dataclass
+class _RunnerReading:
+    """The product runner's reading of one failed attempt (#2818), taken while it is admitted."""
+
+    #: The runner's pass, accepted as the task's verdict.
+    accepted: TaskResult | None = None
+    #: Otherwise the runner's reading in place of the image's (#2877), or the head's refusal of
+    #: its pass (§24do); ``None`` when the runner read nothing, and the agent's result stands.
+    judged: TaskResult | None = None
+
+
 @dataclasses.dataclass(frozen=True)
 class _TaskOutcomeRouter:
     """One task's routing of its failed attempts, built once per task by ``_execute_task``.
@@ -643,6 +654,9 @@ class _TaskOutcomeRouter:
         # bank stores (#971) — both must see the same authorized set, or a path
         # the producer may not write is admitted here and the repair that fixes
         # it is refused at storage for touching it.
+        # #2949: the product runner reads the admitted result before it is banked, so the bank's
+        # marker says what the attempt was: handed off when the runner's pass is accepted.
+        reading = _RunnerReading()
         result = await executor._admit_failed_emission(
             result,
             _envelope,
@@ -651,25 +665,17 @@ class _TaskOutcomeRouter:
             state.produced.all_artifact_refs,
             bound_record=state.ownership.bound_record,
             compliance_counter=state.ownership.compliance_counter,
+            read_hand_off=lambda admitted: self.read_on_product_runner(admitted, reading),
         )
         _holder["result"] = result
         if ledger is not None:
             record_absent_emission(ledger, result, _envelope)
-        # #2818: a product's suite failing only ``tests_pass`` in the qa image is run again on
-        # the product's own runner, after its configured setup; a pass there judges the task.
-        judged = await executor._judged_on_product_runner(
-            result, _envelope, _enriched, cycle, run_id
-        )
-        if judged is not None and judged.status == TaskResultStatus.SUCCEEDED:
-            # SIP-0109 §24do: the runner's pass is the emission's, read on the head before it is
-            # accepted, as an emission the agent reported succeeded is.
-            screened = await self.screen(judged)
-            if screened.status == TaskResultStatus.SUCCEEDED:
-                _record_task_evidence(result)
-                _holder["patched_result"] = judged
-                state.correction.accepted_repair_task_ids.add(_envelope.task_id)
-                return "accept_patch"
-            judged = screened
+        if reading.accepted is not None:
+            _record_task_evidence(result)
+            _holder["patched_result"] = reading.accepted
+            state.correction.accepted_repair_task_ids.add(_envelope.task_id)
+            return "accept_patch"
+        judged = reading.judged
         if judged is not None:
             # #2877: the qa image couldn't run the suite; the correction loop reads the product
             # runner's reading of it, not the image's "not run".
@@ -727,6 +733,35 @@ class _TaskOutcomeRouter:
             # carries no validation_result/test_result → nothing is recorded.
             _record_task_evidence(result)
         return action
+
+    async def read_on_product_runner(
+        self, result: TaskResult, reading: _RunnerReading
+    ) -> EmissionStatus:
+        """#2818: a product's suite failing only ``tests_pass`` in the qa image is run again on the
+        product's own runner, after its configured setup; a pass there judges the task. #2877: a
+        suite the image couldn't run is read there whatever else failed. SIP-0109 §24do: the
+        runner's pass is the emission's, read on the head before it is accepted, as an emission
+        the agent reported succeeded is.
+
+        The reading goes into ``reading``. The return is what the bank marks the emission
+        (#2949): handed off when the qa image left the suite to the product's runner and the
+        runner's pass is accepted, so the hand-off never reads as a failure the runner then
+        passed. Failed otherwise, as before: the runner failed the suite or couldn't run it, the
+        pass was refused on the head, or the image ran the suite and failed it (#2818's missing
+        dependency), which is a failed attempt the runner overruled, not a hand-off."""
+        # Read off the image's own row before the runner's reading is laid over it.
+        handed_off = left_to_the_product_runner(result)
+        judged = await self.executor._judged_on_product_runner(
+            result, self.envelope, self.enriched, self.cycle, self.run_id
+        )
+        if judged is not None and judged.status == TaskResultStatus.SUCCEEDED:
+            screened = await self.screen(judged)
+            if screened.status == TaskResultStatus.SUCCEEDED:
+                reading.accepted = judged
+                return EmissionStatus.HANDED_OFF if handed_off else EmissionStatus.FAILED
+            judged = screened
+        reading.judged = judged
+        return EmissionStatus.FAILED
 
     async def screen(self, result: TaskResult) -> TaskResult:
         """The dispatcher's ``screen_success``, and the router's for a pass on the product's
@@ -1927,17 +1962,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if not filter_spec:
             return {}
 
-        # #971: a FAILED emission is never workspace input, for any caller. Unlike the
+        # #971: a banked emission is never workspace input, for any caller. Unlike the
         # repair-candidate exclusion below this one is unconditional and takes no flag —
         # a candidate is merely unaccepted (the correction loop legitimately reads its
         # own accumulation), whereas an emission that failed its checks is known-bad.
         # Storing it is a triage instrument (#971); letting it compose a workspace would
         # feed known-bad bytes to the next task and, on the acceptance workspace, into
-        # the assembled deliverable.
+        # the assembled deliverable. A handed-off one (#2949) is the qa image's copy of a
+        # suite whose accepted copy is stored as the task's own.
         stored_artifacts = [
             (art_id, ref)
             for art_id, ref in stored_artifacts
-            if ref.metadata.get("emission_status") != EMISSION_STATUS_FAILED
+            if banked_as(ref.metadata.get("emission_status")) is None
         ]
 
         if not include_repair_candidates:
@@ -2018,7 +2054,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         Three rules, all of them the reason this does not simply read
         ``artifact_contents``:
 
-        * A **failed** emission is never notes (#971) — the same unconditional rule the
+        * A **banked** emission is never notes (#971) — the same unconditional rule the
           workspace composer applies. A builder attempt that failed its checks may still
           have written a notes file; rendering it would hand the test author a fact from
           an emission the framework rejected.
@@ -2036,7 +2072,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for art_id, ref in stored_artifacts:
             if PurePosixPath(str(ref.filename)).name != ASSEMBLY_NOTES_DOCUMENT:
                 continue
-            if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
+            if banked_as(ref.metadata.get("emission_status")) is not None:
                 continue
             if ref.metadata.get("producing_task_type", "") in REPAIR_TASK_TYPES:
                 continue
@@ -5275,7 +5311,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         tell them apart, and a timestamp cluster is a heuristic in an evidence
         instrument).
 
-        ``emission_status`` (#971) marks an emission that did NOT pass. It is
+        ``emission_status`` (#971) marks a banked emission (``EmissionStatus``): one that did
+        NOT pass, or one the qa image handed to the product's runner (#2949). It is
         provenance, not a type: ``producing_task_type`` stays truthful, because a
         failed ``qa.test`` emission really was produced by ``qa.test`` and every
         post-hoc reader — triage, the analyzer audit, the replay harness — wants to
@@ -5305,7 +5342,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             metadata["written_by_task_type"] = writer.task_type
             metadata["written_by_role"] = writer.role
         if emission_status:
-            metadata["emission_status"] = emission_status
+            # A plain string on the record: the vocabulary is the core's (``EmissionStatus``).
+            metadata["emission_status"] = str(emission_status)
         if attempt is not None:
             metadata["attempt"] = attempt
         ref = ArtifactRef(
@@ -5333,8 +5371,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         *,
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
+        read_hand_off: Callable[[Any], Awaitable[EmissionStatus]] | None = None,
     ) -> Any:
         """Authorize a failed attempt's emission, bank what survives, return it (#1323).
+
+        ``read_hand_off`` (#2949) reads the authorized result before it is banked and returns
+        what the bank marks it. It is the router's reading on the product's runner, so a suite
+        the qa image handed to that runner, which passed it, is banked handed off, never failed.
+        An emission that wrote where it may not is banked failed whatever the runner read.
 
         The failed result is used twice downstream: ``_try_accept_patch`` overlays the
         repair on ITS artifacts to build the tree the verifier sees, and
@@ -5373,7 +5417,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 result = dataclasses.replace(
                     result, outputs={**(result.outputs or {}), "artifacts": enforced}
                 )
-        await self._store_failed_emission(result, envelope, cycle, run_id, all_artifact_refs)
+        status = EmissionStatus.FAILED
+        try:
+            if read_hand_off is not None:
+                read = await read_hand_off(result)
+                status = EmissionStatus.FAILED if dropped else read
+        finally:
+            # The bank runs whatever the reading did: evidence never waits on it.
+            await self._store_failed_emission(
+                result, envelope, cycle, run_id, all_artifact_refs, emission_status=status
+            )
         if dropped and compliance_counter is not None:
             # After the bank, so the budget's terminal failure never costs the evidence.
             self._enforce_compliance_budget(dropped, cycle, envelope, compliance_counter)
@@ -5386,6 +5439,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         cycle: Cycle,
         run_id: str,
         all_artifact_refs: list[str],
+        *,
+        emission_status: EmissionStatus = EmissionStatus.FAILED,
     ) -> None:
         """Bank a failed attempt's emission so the failure can be READ afterwards (#971).
 
@@ -5396,8 +5451,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         13 of the 17 rejected implementation runs in the 08-14→08-23 census are
         unreadable for exactly this reason.
 
-        **Triage only.** The emission is recorded and never used: marked
-        ``emission_status="failed"``, kept out of the run's ``stored_artifacts``
+        **Triage only.** The emission is recorded and never used: marked with its
+        ``emission_status`` (``failed``, or ``handed_off`` for a suite the product's runner
+        passed, #2949), kept out of the run's ``stored_artifacts``
         list, and filtered unconditionally by ``_resolve_artifact_contents``. Two
         independent guarantees, because the failure mode is feeding known-bad bytes
         to the next task or into the assembled deliverable. ``audit_delivered_app``
@@ -5430,7 +5486,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     run_id,
                     envelope,
                     producing_task_type=envelope.task_type,
-                    emission_status=EMISSION_STATUS_FAILED,
+                    emission_status=emission_status,
                     attempt=attempt,
                 )
                 new_refs.append(ref.artifact_id)

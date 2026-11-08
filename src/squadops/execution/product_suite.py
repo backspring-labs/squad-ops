@@ -45,6 +45,7 @@ from squadops.capabilities.handlers.source_repository import source_backed
 from squadops.capabilities.qa_run_tree import product_runners, product_tree, suite_run_tree
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import row_is_blocking_failure
+from squadops.stacks.development_profiles import TEST_FRAMEWORK_PRODUCT_RUNNER
 from squadops.tasks.models import TaskResult, TaskResultStatus
 from squadops.tasks.task_types import authors_qa_suite
 
@@ -113,6 +114,19 @@ def _tests_pass_row(result: TaskResult) -> Mapping[str, Any] | None:
     checks = ((result.outputs or {}).get("validation_result") or {}).get("checks") or []
     return next(
         (c for c in checks if isinstance(c, Mapping) and c.get("check") == _TESTS_PASS), None
+    )
+
+
+def left_to_the_product_runner(result: TaskResult) -> bool:
+    """Whether the qa image left ``result``'s suite to the product's own runner without running it
+    (SIP-0112 H.26): its ``tests_pass`` row is not executed, on the ``product_runner`` framework.
+    The row's reading of the agent's ``RunTestsResult.left_to_the_product_runner`` (#2949). A suite
+    the image ran and failed, for a dependency it lacks (#2818), was not left to the runner."""
+    row = _tests_pass_row(result)
+    return (
+        row is not None
+        and row.get("executed") is False
+        and row.get("runner") == TEST_FRAMEWORK_PRODUCT_RUNNER
     )
 
 
