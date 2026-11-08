@@ -14,6 +14,7 @@ Layout:
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import hashlib
 import json
@@ -51,15 +52,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         return {}
 
     def _save_index(self, index: dict[str, str]) -> None:
-        # Atomic write via temp file + rename
-        fd, tmp = tempfile.mkstemp(dir=self._base_dir, suffix=".tmp")
-        try:
-            with open(fd, "w") as f:
-                json.dump(index, f, indent=2)
-            Path(tmp).replace(self._index_path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
+        _write_json_atomically(self._index_path, index)
 
     def _update_index(self, artifact_id: str, rel_path: str) -> None:
         index = self._load_index()
@@ -130,7 +123,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         for key in ("created_at",):
             if meta.get(key) is not None:
                 meta[key] = str(meta[key])
-        meta_path.write_text(json.dumps(meta, indent=2))
+        _write_json_atomically(meta_path, meta)
 
         rel_path = str(art_dir.relative_to(self._base_dir))
         self._update_index(artifact.artifact_id, rel_path)
@@ -171,7 +164,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         for key in ("created_at",):
             if meta.get(key) is not None:
                 meta[key] = str(meta[key])
-        meta_path.write_text(json.dumps(meta, indent=2))
+        _write_json_atomically(meta_path, meta)
         return updated
 
     async def list_artifacts(
@@ -199,8 +192,19 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         else:
             scan_dir = self._base_dir
 
-        self._collect_artifacts(
-            scan_dir, results, project_id, cycle_id, run_id, artifact_type, promotion_status
+        # #2921: the walk reads every metadata file under the scan directory (group_run's alone is
+        # ~54,000, about 3 s). On the event loop it held every other request for that long, so it
+        # runs in a worker thread. A metadata file is written whole and renamed into place
+        # (`_write_json_atomically`), so the walk never reads one half-written.
+        await asyncio.to_thread(
+            self._collect_artifacts,
+            scan_dir,
+            results,
+            project_id,
+            cycle_id,
+            run_id,
+            artifact_type,
+            promotion_status,
         )
         # #1976: newest first, then by id, so a page is stable. The walk's order is the
         # filesystem's. Timestamps compare as ISO text, as progress sorts them: text never raises
@@ -305,3 +309,17 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         path = self._baselines_path_for_project(project_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(baselines, indent=2))
+
+
+def _write_json_atomically(path: Path, data: object) -> None:
+    """Writes ``data`` as JSON to a temporary file beside ``path``, then renames it into place: a
+    reader sees the old file or the new one, never a partial write (#2921: the artifact listing
+    reads metadata files from a worker thread while the vault writes them)."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with open(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        Path(tmp).replace(path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
