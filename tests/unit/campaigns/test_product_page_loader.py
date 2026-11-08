@@ -843,8 +843,8 @@ async def test_the_suite_on_the_products_runner_and_its_retest_run_beside_the_lo
 async def test_the_head_check_runs_a_page_criterion_beside_the_loader():
     """§24cz's check, entered at ``check_criteria_on_head``, which the executor calls once the qa
     task's files are stored. Bug caught: the head check running a page criterion's test without the
-    loader, so it fails at its import on every head, and a page the head already serves is never
-    read as met."""
+    loader, so it fails at its import on every head, and a test that checks nothing about a page
+    the head already serves is never refused to its author (§24do)."""
     from squadops.execution.criterion_head_check import check_criteria_on_head
     from tests.unit.cycles.test_product_suite_runner import _PROJECTS, _Repository, _Sandbox
 
@@ -860,7 +860,6 @@ async def test_the_head_check_runs_a_page_criterion_beside_the_loader():
         task_type="qa.test", task_id=qa.task_id, inputs=qa.inputs, cycle=cycle, run_id="run_impl",
         stored_artifacts=[("art_p1", vault.stored["art_p1"][0])], vault=vault, sandbox=sandbox,
         projects=_PROJECTS, repository=_Repository(HEAD), read_profile=read_profile,
-        write_record=False,
     )  # fmt: skip
 
     assert checked is not None
