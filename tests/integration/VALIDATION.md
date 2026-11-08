@@ -74,8 +74,8 @@ else:
 ## Rules Reference
 
 From `tests/integration/README.md`:
-- **Line 238**: "Use real services - Avoid mocking external services in integration tests"
-- **Line 257**: "Real Integration - Tests use actual services, not mocks"
+- **The rules, 1**: "Use real services - Avoid mocking external services in integration tests"
+- **The rules, 2**: "Real Integration - Tests use actual services, not mocks"
 
 From `SQUADOPS_BUILD_PARTNER_PROMPT.md`:
 - **No deceptive simulations** - real implementation or nothing
