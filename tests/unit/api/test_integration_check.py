@@ -286,14 +286,18 @@ async def test_the_token_is_the_requests_else_the_one_held_for_the_project(
 async def test_a_refused_forge_read_is_reported_and_nothing_is_validated(tmp_path):
     """The forge answers 503 while the merge is in the repository. Bugs caught: the refusal
     swallowed, so the row reads "not merged"; the Project re-validated anyway, moving its baseline
-    on a sync that never recorded what it took; the sync retried in silence."""
+    on a sync that never recorded what it took; the sync retried in silence; the token echoed in
+    the answer."""
     world = _CheckWorld(tmp_path)
     client = await world.contributed()
     world.squash_merged()
     world.forge.status = 503
     before = world.projects.project
 
-    body = client.post(CHECK, json={"token": TOKEN}).json()
+    resp = client.post(CHECK, json={"token": TOKEN})
+
+    body = resp.json()
+    assert TOKEN not in resp.text  # the refusal's message never carries the token
 
     assert body["merge_state_unread"]["reason"] == "forge_unavailable"
     assert "503" in body["merge_state_unread"]["message"]
