@@ -1,0 +1,26 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ❯ src/__tests__/criterion_P1.test.jsx (1 test | 1 failed) 1010ms
+   × P1: the trail search page > lists a trail matching the query 1010ms
+     → Unable to find an element by: [data-testid="trail-search-view"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [0mcriterion view not found: no module at ../views/TrailSearchView.jsx[0m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [0mcriterion view not found: no module at ../views/TrailSearchView.jsx[0m
+  [36m</div>[39m
+[36m</body>[39m
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  16:54:04
+   Duration  1.41s (transform 32ms, setup 69ms, collect 37ms, tests 1.01s, environment 160ms, prepare 33ms)
+

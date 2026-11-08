@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ✓ src/__tests__/criterion_P1.test.jsx (1 test) 24ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  16:54:07
+   Duration  400ms (transform 28ms, setup 67ms, collect 26ms, tests 24ms, environment 154ms, prepare 26ms)
+

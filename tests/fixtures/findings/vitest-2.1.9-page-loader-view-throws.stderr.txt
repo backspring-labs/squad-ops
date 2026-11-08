@@ -1,0 +1,14 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/criterion_P4.test.jsx > P4: a view that exists and throws as it loads > renders
+ReferenceError: undefinedThing is not defined
+ ❯ src/views/BrokenView.jsx:1:1
+      1| undefinedThing.call()
+       | ^
+      2| export default function BrokenView() {
+      3|   return null
+ ❯ Module.loadView src/__tests__/criterion_page_loader.js:35:18
+ ❯ src/__tests__/criterion_P4.test.jsx:7:24
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

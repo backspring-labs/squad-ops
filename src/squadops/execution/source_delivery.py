@@ -30,7 +30,9 @@ content, that differ from the checkout's, and the checkout's files they removed 
 H.23). A removal is applied to the candidate as the patch's ``None`` for its path, and named in
 the verification's ``changed_paths`` like a write. A file it rewrites keeps the checkout's CRLF
 line endings when the original used them throughout. A run's own documents (plans, reports) are
-never part of the product.
+never part of the product. On a repository-backed increment, the files its change request placed
+for the framework (the page loaders its page criteria's tests import, #2799) are laid over the
+squad's change, as the framework writes them, whatever the squad emitted at their paths.
 """
 
 from __future__ import annotations
@@ -158,6 +160,51 @@ def squad_changes(
         if checkout.get(path) != content:
             changes[path] = content
     return changes, tuple(sorted(left_out - set(latest)))
+
+
+def with_framework_files(
+    changes: Mapping[str, bytes | None],
+    placed: Mapping[str, bytes],
+    checkout: Mapping[str, bytes],
+) -> dict[str, bytes | None]:
+    """The squad's ``changes`` with the framework's ``placed`` files over them (#2799): each one
+    written where the checkout doesn't hold it as it is, and the squad's own change at its path
+    dropped where it does. So the candidate holds every placed file as the framework wrote it,
+    whatever the squad emitted there."""
+    merged = dict(changes)
+    for path, content in placed.items():
+        if checkout.get(path) == content:
+            merged.pop(path, None)
+        else:
+            merged[path] = content
+    return merged
+
+
+async def placed_framework_files(cycle: Cycle, vault: Any) -> dict[str, bytes]:
+    """#2799: the framework's files a repository-backed increment's change request placed: the
+    page loaders its page criteria's tests import. Laid over the squad's change at delivery
+    (``with_framework_files``), so the candidate verified, captured and judged holds them as the
+    framework wrote them, and the bundles frozen from it carry them. Empty for every other run,
+    and for a change request that placed none."""
+    # deferred (cycle): campaigns.increment_tree loads the cycles package, which loads this one
+    from squadops.campaigns.increment_tree import (
+        approved_change_request,
+        increment_basis,
+        increment_page_loader_files,
+    )
+
+    basis = increment_basis(cycle.resolved_config())
+    if basis is None or not basis.evaluated_at_delivery:
+        return {}
+    try:
+        document = await approved_change_request(vault, cycle)
+        files = increment_page_loader_files(document) if document is not None else {}
+    except ValueError as e:
+        # The acceptance after delivery would refuse it too: nothing is judged unread.
+        raise SourceDeliveryRefused(
+            f"the increment's approved change request can't be read for the files it placed: {e}"
+        ) from e
+    return {p: c.encode("utf-8") for p, c in files.items()}
 
 
 def _is_product_file(
@@ -301,6 +348,14 @@ async def deliver_source_change(
     if not changes:
         named = f"; it left out what isn't the product's: {', '.join(left_out)}" if left_out else ""
         raise SourceDeliveryRefused(f"the run changed no file of the product{named}")
+    changes = with_framework_files(
+        changes, await placed_framework_files(cycle, vault), checkout.files
+    )
+    if not changes:
+        raise SourceDeliveryRefused(
+            "the run changed no file of the product: its one change was a file the framework "
+            "places, which the head already holds"
+        )
     binary = sorted(
         p for p, c in changes.items() if c is not None and _is_binary(checkout.files.get(p))
     )

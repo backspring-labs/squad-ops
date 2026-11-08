@@ -13,7 +13,9 @@ one (the emission, the execute-only retest, the contract probes and the lint rea
   config its runtime reads (a plugin manifest, a template, a settings file), and its own test
   support (a ``conftest.py``, a fixture file, a helper under ``__tests__/``). A product reads files
   the stack's filter doesn't call source, so its suite on the source files alone failed a criterion
-  the product met: #2815's runtime discovered its plugins from manifests that weren't there.
+  the product met: #2815's runtime discovered its plugins from manifests that weren't there. An
+  increment's page loaders (#2799), which its test scope names, are laid in too: the framework's
+  files, which a page criterion's test imports and delivery writes only into the candidate.
 
 The product's own tests are left out, so the run judges the suite under test and nothing else. A
 test is either of two things:
@@ -72,7 +74,13 @@ def suite_run_tree(inputs: Mapping[str, Any]) -> dict[str, str]:
     profile = get_development_profile(effective_development_profile(inputs.get("resolved_config")))
     if not source_backed(inputs):
         return source_files(inputs.get("artifact_contents", {}), profile)
-    return product_tree(inputs.get("artifact_contents") or {}, product_runners(inputs))
+    # deferred (cycle): campaigns.increment_tree loads the capabilities package
+    from squadops.campaigns.increment_tree import scope_page_loader_files
+
+    return {
+        **product_tree(inputs.get("artifact_contents") or {}, product_runners(inputs)),
+        **scope_page_loader_files(inputs.get("increment_test_scope")),
+    }
 
 
 def product_runners(inputs: Mapping[str, Any]) -> tuple[tuple[tuple[str, ...], str], ...]:
