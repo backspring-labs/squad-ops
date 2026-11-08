@@ -11,6 +11,10 @@ built as option (a). Reading the code then showed D1 needs the dispatcher's succ
 task, so the owner chose, at ~20:45 ET, to cut 2.6.1 without it and build it first in 2.7 ("option 1"). Item 4 and
 D1 are recorded where they stand below.
 
+**Then the owner added a seventh item.** While the release PR waited, the owner asked why the console's Home is so slow.
+It was #2921, which §4 had left out as medium, and it was worse than judged: it stalled the whole runtime API. The
+owner ruled "put it in 2.6.1" (item 7).
+
 **What 2.6.1 is.** A patch on the 2.6 line (CLAUDE.md, #281: urgent or small fixes, either lane). Each item is a defect
 in something an operator running Campaigns on 2.6.0 meets now. None changes a design, and none needs a ruling to
 build, except D1 (§3), which is an option the owner can take or leave without blocking the line.
@@ -22,7 +26,8 @@ build, except D1 (§3), which is an option the owner can take or leave without b
 > - a config change the deploy made is the config that runs;
 > - after a reboot the selected model engine comes back, and nothing else does;
 > - a criterion test that asserts nothing is less likely to be written, and is named when it is;
-> - the console's buttons do what they say.
+> - the console's buttons do what they say;
+> - the console's Signal view no longer holds the runtime API for seconds.
 
 ---
 
@@ -134,6 +139,20 @@ analysis as it was written.
   held exactly once, and is kept when the shell shows no Cycles entry. The live check is a click on the deployed
   console that lands on Cycles with the form open.
 
+### 7. The Signal view no longer holds the runtime API for seconds (#2921, added by the owner)
+
+- **The defect:** the flow-metrics panel beside Home read every page of every Project's artifacts every 30 s, to show
+  the 10 newest, and the artifacts list read them all once. Each page made the vault walk all of a Project's metadata
+  (`filesystem_artifact_vault.py`, `_collect_artifacts`; group_run's ~54,000 files, ~3 s) on the event loop, so every
+  other request waited: a `py-spy` dump caught the main thread there at 100% CPU, and a 5 ms call took up to 9 s.
+- **The fix:** both panels read each Project's newest page and say so on screen. The vault's walk runs in a worker
+  thread, and metadata is written to a temporary file and renamed into place, so the walk never reads a partial
+  file.
+- **The tests:** a slow listing leaves a concurrent request served first, and a failed write leaves the old file
+  (both fail on main); the newest page is one request at offset 0. The live check is the same requests timed with
+  the Signal view open.
+- **Left for later:** an index in place of the walk.
+
 ---
 
 ## 2. How the line is built and verified
@@ -174,6 +193,6 @@ analysis as it was written.
 - **#2839:** a dev repair that rewrites product code around a missing dependency. A design change, already placed in
   2.7.
 - **#2931:** an empty artifact after a power loss strands a re-attached run. Real but rare, and the fix is medium.
-- **#2921:** the console's Signal view holds the browser's connections for minutes. Medium, and its own console item.
+- **#2921:** moved into 2.6.1 by the owner as item 7.
 - **#2932's ask 2:** an agent consuming a redelivered task while its engine is unreachable.
 - **Item 4 (#2949's remainder) and D1 (#2933's remainder):** moved to 2.7 by the owner, as recorded above.
