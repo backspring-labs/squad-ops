@@ -162,9 +162,7 @@ async def evaluate_product_increment(
         raise ProductAcceptanceRefused(str(e)) from e
     if route_renderer is None:
         routes = routes_blocked(
-            tuple(
-                dict.fromkeys((*(profile.client_routes or ()), *accepted_pages, *requested))
-            ),
+            tuple(dict.fromkeys((*(profile.client_routes or ()), *accepted_pages, *requested))),
             "no route renderer: this runtime wires none",
         )
     else:

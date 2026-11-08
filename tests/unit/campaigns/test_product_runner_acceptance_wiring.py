@@ -724,7 +724,11 @@ async def test_a_missing_added_route_reusing_a_pinned_views_anchor_is_never_held
 # --- SIP-0109 §24dq (#2783): the pages earlier increments added, judged at delivery -----------
 
 #: ``/totals``, which an earlier increment added and acceptance held, as the launch pinned it.
-_TOTALS_PAGE = {"route": "/totals", "anchor": "totals-view", "testids": ["totals-view", "totals-row"]}
+_TOTALS_PAGE = {
+    "route": "/totals",
+    "anchor": "totals-view",
+    "testids": ["totals-view", "totals-row"],
+}
 _TOTALS_VIEW = (
     '<html><body><section data-testid="totals-view"><p data-testid="totals-row"></p></section>'
     "</body></html>"

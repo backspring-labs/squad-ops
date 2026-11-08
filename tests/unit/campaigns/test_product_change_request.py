@@ -659,3 +659,21 @@ def test_a_criterion_on_an_earlier_increments_page_is_judged_by_its_accepted_anc
     )
 
     assert [r.kind for r in verdict.refusals] == refused
+
+
+@pytest.mark.parametrize("anchor", ["totals-link", "totals-row"], ids=["the-manifests", "accepted"])
+def test_a_page_the_manifest_and_the_inventory_both_name_keeps_both_their_ids(anchor):
+    """A route a later profile pins that an earlier increment added (its pin moved after the
+    acceptance). Bug caught: one reading replacing the other, so an id only the manifest's view
+    declares (or only the accepted page showed) is free to reuse."""
+    product = dataclasses.replace(
+        _ANCHORED_PAGES,
+        route_anchors=(("/totals", ("totals-view", "totals-link")),),
+        accepted_pages=_TOTALS,
+    )
+
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/summary", anchor)]), _context(product=product)
+    )
+
+    assert [r.kind for r in verdict.refusals] == [RefusalKind.ANCHOR_NOT_UNIQUE]

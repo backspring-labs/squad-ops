@@ -522,10 +522,7 @@ def accepted_pages(log: list) -> tuple[dict, ...]:
     replaces an earlier one's."""
     pages: dict[str, dict] = {}
     for entry in log:
-        if (
-            entry.operation is ControlOperation.PROMOTE
-            and entry.outcome is ControlOutcome.APPLIED
-        ):
+        if entry.operation is ControlOperation.PROMOTE and entry.outcome is ControlOutcome.APPLIED:
             for page in entry.binding.get(ACCEPTED_PAGES) or ():
                 pages[page["route"]] = dict(page)
     return tuple(pages[r] for r in sorted(pages))

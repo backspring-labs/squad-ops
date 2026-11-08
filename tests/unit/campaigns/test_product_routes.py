@@ -716,6 +716,24 @@ async def test_a_page_an_earlier_increment_added_is_judged_by_its_accepted_ancho
     assert (record["source"], record["anchor"]) == ("accepted_page", "archive-view")
 
 
+async def test_an_accepted_page_is_judged_by_its_accepted_anchor_whatever_the_request_names(
+    tmp_path,
+):
+    """A request stored before the rails refused it names another anchor for the accepted page it
+    changes. Bug caught: the page judged as one the request adds, by the anchor it names, so a
+    change can rewrite the page to show only that id and the accepted anchor holds nothing."""
+    routes = await _render(
+        tmp_path,
+        pages={**PAGES, _ARCHIVE: _dom("archive-view", "archive-row")},
+        accepted=_ACCEPTED,
+        requested={"/shelves/archive": "archive-v2"},
+    )
+
+    assert _held(routes)["/shelves/archive"] == ("held", "")
+    [record] = [r for r in routes.record["routes"] if r["route"] == "/shelves/archive"]
+    assert (record["source"], record["anchor"]) == ("accepted_page", "archive-view")
+
+
 @_BESIDE
 @pytest.mark.parametrize(
     ("reused", "archive"),

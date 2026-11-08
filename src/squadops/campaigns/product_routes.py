@@ -66,7 +66,9 @@ def pages_added_and_held(evaluation: Mapping[str, Any] | None) -> list[dict[str,
         if r.get("source") != FROM_CHANGE_REQUEST or r.get("held") != str(Held.HELD) or not anchor:
             continue
         others = sorted({str(t) for t in r.get("seen") or ()} - {anchor})
-        pages.append({"route": str(r["route"]), "anchor": str(anchor), "testids": [anchor, *others]})
+        pages.append(
+            {"route": str(r["route"]), "anchor": str(anchor), "testids": [anchor, *others]}
+        )
     return sorted(pages, key=lambda p: p["route"])
 
 
@@ -86,7 +88,6 @@ def page_inventory(records: Any) -> dict[str, tuple[str, ...]]:
         others = [str(t) for t in record.get("testids") or () if str(t) != anchor]
         pages[str(record["route"])] = (anchor, *dict.fromkeys(others))
     return pages
-
 
 
 def requested_routes(change_request: str) -> dict[str, str]:

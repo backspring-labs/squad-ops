@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 from squadops.campaigns.calibration_record import BINDING_KEY, CalibrationRecord
 from squadops.campaigns.change_request import IncrementBasis
-from squadops.campaigns.product_routes import ACCEPTED_PAGES
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -24,6 +23,7 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchRequest,
 )
+from squadops.campaigns.product_routes import ACCEPTED_PAGES
 from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
 
 if TYPE_CHECKING:
