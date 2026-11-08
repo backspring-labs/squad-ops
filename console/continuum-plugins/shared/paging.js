@@ -17,3 +17,15 @@ export async function fetchAllPages(apiFetch, url) {
     if (page.length < PAGE_LIMIT) return { ok: true, status: resp.status, items };
   }
 }
+
+// The newest page of the list at `url`: `{ ok, status, items, more }`, where `more` says a full page
+// came back, so the list holds more than it shows. The runtime API returns artifacts newest first.
+// #2921: a panel that shows the latest few reads this, not every page. Each page of a project's
+// artifacts makes the API walk all of them, so reading every page cost the square of the project.
+export async function fetchNewestPage(apiFetch, url, limit = PAGE_LIMIT) {
+  const join = url.includes('?') ? '&' : '?';
+  const resp = await apiFetch(`${url}${join}limit=${limit}&offset=0`);
+  if (!resp.ok) return { ok: false, status: resp.status, items: [], more: false };
+  const items = await resp.json();
+  return { ok: true, status: resp.status, items, more: items.length >= limit };
+}
