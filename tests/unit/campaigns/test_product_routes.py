@@ -674,3 +674,80 @@ async def test_an_added_route_whose_anchor_another_page_carries_never_holds(
             f"the change request names an anchor another page carries ({other})",
         )
     assert held["/"] == home
+
+
+# --- §24dq (#2783): the pages earlier increments added join the expected set at acceptance ---
+
+#: ``/shelves/archive``, which an earlier increment added and acceptance held, with the ids its
+#: page carried then, its anchor first: the inventory the increment's launch pinned.
+_ACCEPTED = {"/shelves/archive": ("archive-view", "archive-row")}
+_RECENT = f"http://{APP_IP}:5173/shelves/recent"
+#: The two places an inventory is read beside: a blueprint's pinned routes, and a product with no
+#: approved manifest, where nothing else names a page.
+_BESIDE = pytest.mark.parametrize(
+    "beside",
+    [{}, {"profile": _profile(), "initialization": None}],
+    ids=["beside-the-manifests-routes", "a-product-with-no-manifest"],
+)
+
+
+@_BESIDE
+@pytest.mark.parametrize(
+    ("page", "held", "missing"),
+    [
+        (_dom("archive-view", "archive-row"), Held.HELD, ()),
+        (_dom("not-found-view"), Held.BROKEN, ("archive-view",)),
+    ],
+    ids=["the-candidate-keeps-it", "the-candidate-drops-it"],
+)
+async def test_a_page_an_earlier_increment_added_is_judged_by_its_accepted_anchor(
+    tmp_path, beside, page, held, missing
+):
+    """An accepted page is pinned by the anchor it was accepted with, as a manifest's route is by
+    its manifest's. Bugs caught: the inventory never reaching the expected set, so a candidate that
+    drops an accepted page is accepted; or a product with no manifest judging none of its pages."""
+    routes = await _render(
+        tmp_path, pages={**PAGES, _ARCHIVE: page}, accepted=_ACCEPTED, **dict(beside)
+    )
+
+    [archive] = [r for r in routes.results if r.path == "/shelves/archive"]
+    assert (archive.held, archive.missing) == (held, missing)
+    [record] = [r for r in routes.record["routes"] if r["route"] == "/shelves/archive"]
+    assert (record["source"], record["anchor"]) == ("accepted_page", "archive-view")
+
+
+@_BESIDE
+@pytest.mark.parametrize(
+    ("reused", "archive"),
+    [
+        ("archive-view", ("blocked_unverified", SHARED_ANCHOR.format(other="/shelves/recent"))),
+        ("archive-row", ("held", "")),
+    ],
+    ids=["the-accepted-pages-root", "another-id-it-carried"],
+)
+async def test_a_page_never_built_reusing_an_earlier_increments_anchor_never_holds(
+    tmp_path, beside, reused, archive
+):
+    """The issue's acceptance case at the renderer, for a request stored before the rails refused
+    it: ``/shelves/recent`` names an anchor ``/shelves/archive`` carried when it was accepted. The
+    candidate never builds ``/shelves/recent``, and the app's fallback renders the archive view
+    there. Where the reused anchor is the archive view's root, that page can't be told from the new
+    one either (§24co item 13). Bug caught: ``/shelves/recent`` read held, an increment accepted
+    with a page that doesn't exist."""
+    archive_view = _dom("archive-view", "archive-row")
+    pages = {**PAGES, _ARCHIVE: archive_view, _RECENT: archive_view}
+
+    routes = await _render(
+        tmp_path,
+        pages=pages,
+        accepted=_ACCEPTED,
+        requested={"/shelves/recent": reused},
+        **dict(beside),
+    )
+
+    held = _held(routes)
+    assert held["/shelves/recent"] == (
+        "blocked_unverified",
+        "the change request names an anchor another page carries (/shelves/archive)",
+    )
+    assert held["/shelves/archive"] == archive
