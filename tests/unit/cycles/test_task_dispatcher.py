@@ -1098,15 +1098,18 @@ class TestARestartedRuntimesRedispatchIsAnsweredNotRerun:
         restarted = TaskDispatcher(queue=mock_queue, reply_router=reply_router, task_timeout=5.0)
         agent = self._agent()
 
-        runs, replies = [], []
+        runs, replies, sends = [], [], []
         for dispatcher in (before, restarted, restarted):  # the original, the copy, a retry
             message = await self._sent(dispatcher, mock_queue, envelope)
             await agent._handle_task_envelope(message, message["metadata"])
             runs.append(agent.system.orchestrator.submit_task.await_count)
-            replies.append(agent._queue.publish.call_args.args[1])
+            replies.append(json.loads(agent._queue.publish.call_args.args[1]))
+            sends.append(message["payload"]["metadata"]["dispatch_id"])
 
         assert runs == [1, 1, 2]  # the copy is answered, the retry runs
-        assert replies[1] == replies[0]  # with the reply the original sent
+        # with the reply the original sent, named as the answer to the copy's own send (#2932)
+        assert replies[1]["payload"] == replies[0]["payload"]
+        assert [r["metadata"]["dispatch_id"] for r in replies] == sends
 
 
 class _SendRecord(TaskAttemptsPort):

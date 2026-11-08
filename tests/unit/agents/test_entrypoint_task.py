@@ -164,6 +164,22 @@ class TestHandleTaskEnvelope:
         assert published["payload"]["task_id"] == "task_123"
         assert published["payload"]["status"] == "SUCCEEDED"
 
+    async def test_the_reply_echoes_the_send_it_answers(self, runner) -> None:
+        """#2932. Entered at the agent's task handler. Bug caught: a reply that doesn't name its
+        send, so the runtime can't tell it from a reply to an earlier send of the same task."""
+        import dataclasses
+
+        envelope = _sample_envelope()
+        envelope = dataclasses.replace(
+            envelope, metadata={**envelope.metadata, "dispatch_id": "d7"}
+        )
+        payload = _make_envelope_payload(envelope, reply_queue="neo_replies")
+
+        await runner._handle_task_envelope(payload, payload["metadata"])
+
+        published = json.loads(runner._queue.publish.call_args.args[1])
+        assert published["metadata"] == {"correlation_id": "corr_001", "dispatch_id": "d7"}
+
     async def test_error_returns_failed_result(self, runner) -> None:
         """If orchestrator raises, a FAILED TaskResult is published."""
         runner.system.orchestrator.submit_task.side_effect = RuntimeError("LLM timeout")
@@ -674,3 +690,34 @@ class TestACancelledRunsTaskIsDropped:
         runs.add(["run_old"], now=0.0)
         runs.add(["run_new"], now=CancelledRuns.TTL_SECONDS + 1)
         assert not runs.is_cancelled("run_old") and runs.is_cancelled("run_new")
+
+
+class TestTheReplyNamesItsSend:
+    """#2932: the reply helpers the three reply paths share."""
+
+    def test_a_replayed_reply_is_restamped_as_the_answer_to_this_send(self) -> None:
+        """#1929's replay answers a restarted runtime's re-dispatch with the reply an earlier boot
+        was sent. Bug caught: the replay keeping the earlier send's id, so the router drops the
+        very answer #1929 exists to give, and the runtime waits out its timeout."""
+        from squadops.agents.entrypoint import _answering
+
+        recorded = json.dumps(
+            {
+                "action": "comms.task.result",
+                "metadata": {"correlation_id": "c1", "dispatch_id": "d-old"},
+                "payload": {"task_id": "t1", "status": "SUCCEEDED"},
+            }
+        )
+
+        replayed = json.loads(_answering(recorded, {"dispatch_id": "d-new", "role": "dev"}))
+
+        assert replayed["metadata"] == {"correlation_id": "c1", "dispatch_id": "d-new"}
+        assert replayed["payload"] == {"task_id": "t1", "status": "SUCCEEDED"}
+
+    @pytest.mark.parametrize("metadata", [None, {}, {"dispatch_id": ""}, "not-a-mapping"])
+    def test_an_envelope_with_no_send_id_yields_a_reply_that_names_none(self, metadata) -> None:
+        """A task dispatched before #2333, or an envelope too broken to read. Bug caught: a
+        made-up id, or a crash on the reply that exists to say the task wasn't run."""
+        from squadops.agents.entrypoint import _reply_metadata
+
+        assert _reply_metadata("c1", metadata) == {"correlation_id": "c1"}

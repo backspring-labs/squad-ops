@@ -31,7 +31,7 @@ from squadops._version import resolve_git_sha
 from squadops.agents import readiness
 from squadops.agents.base import PortsBundle
 from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY, cancelled_run_ids, control_queue
-from squadops.comms.task_delivery import delivery_key
+from squadops.comms.task_delivery import DISPATCH_ID_METADATA_KEY, delivery_key
 from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY, FinishedTasks
 from squadops.config import load_config
 from squadops.config.path_resolver import PathResolver
@@ -1077,7 +1077,7 @@ class AgentRunner:
                 json.dumps(
                     {
                         "action": "comms.task.result",
-                        "metadata": {"correlation_id": correlation_id},
+                        "metadata": _reply_metadata(correlation_id, envelope_data.get("metadata")),
                         "payload": result.to_dict(),
                     }
                 ),
@@ -1140,7 +1140,8 @@ class AgentRunner:
                 extra={"agent_id": self.agent_id, "task_id": envelope.task_id},
             )
             if reply_queue:
-                await self._queue.publish(reply_queue, replay)
+                # #2932: the earlier boot's reply answers this send, so it carries this send's id.
+                await self._queue.publish(reply_queue, _answering(replay, envelope.metadata))
             await self._mark_completed(envelope)
             return
 
@@ -1215,7 +1216,7 @@ class AgentRunner:
         if reply_queue:
             response = {
                 "action": "comms.task.result",
-                "metadata": {"correlation_id": envelope.correlation_id},
+                "metadata": _reply_metadata(envelope.correlation_id, envelope.metadata),
                 "payload": result.to_dict(),
             }
             reply = json.dumps(response)
@@ -1288,6 +1289,32 @@ def setup_signal_handlers(runner: AgentRunner) -> None:
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
+
+
+def _reply_metadata(correlation_id: Any, envelope_metadata: Any) -> dict[str, Any]:
+    """A reply's metadata: its correlation, and the send it answers, echoed from the envelope
+    (#2932). The runtime's reply router resolves a waiter only for the send it registered."""
+    metadata: dict[str, Any] = {"correlation_id": correlation_id}
+    dispatch = (
+        (envelope_metadata or {}).get(DISPATCH_ID_METADATA_KEY)
+        if isinstance(envelope_metadata, dict)
+        else None
+    )
+    if dispatch:
+        metadata[DISPATCH_ID_METADATA_KEY] = dispatch
+    return metadata
+
+
+def _answering(reply: str, envelope_metadata: Any) -> str:
+    """``reply``, a recorded reply message, restamped as the answer to this send (#2932, #1929)."""
+    import json
+
+    message = json.loads(reply)
+    message["metadata"] = {
+        **(message.get("metadata") or {}),
+        **_reply_metadata((message.get("metadata") or {}).get("correlation_id"), envelope_metadata),
+    }
+    return json.dumps(message)
 
 
 def _resolve_role() -> str | None:
