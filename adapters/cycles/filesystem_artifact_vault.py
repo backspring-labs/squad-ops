@@ -10,7 +10,8 @@ fsynced, renamed into place, and followed by an fsync of its directory:
 1. the content;
 2. the metadata, carrying the content's ``content_hash`` and ``size_bytes``. **Its rename is the
    commit point:** an artifact exists when its metadata is readable and its content matches it;
-3. the artifact-id index.
+3. the artifact-id index;
+4. the listing summary of the artifact's run (below).
 
 ``store()`` returns only then, so a checkpoint in Postgres can never reference an artifact the
 disk didn't keep. A crash before step 2 leaves content with no metadata, which is no artifact.
@@ -21,11 +22,31 @@ the size or hash its metadata records) is ``ArtifactUnreadableError`` to a read 
 retrieve, a metadata read, a baseline's resolution. A listing skips it and names it in a structured
 warning (``artifact_record_unreadable``), so one damaged file can't fail a listing for another run.
 
+Listing (#2973). A listing reads, for each directory of artifacts in its scope (a run's, or a
+project's unattached ones), that directory's listing summary (``.listing.json``): each artifact's
+project, cycle, run, type, promotion status and creation time, and the identity of the metadata file
+they were read from (inode, size, mtime). It is a cache of the metadata, never a record of its own:
+
+- an artifact directory the summary doesn't name, or whose metadata isn't the file its entry was
+  read from (a rewrite renames a new file into place, so its identity changes), is read from its
+  metadata, and an entry whose directory or metadata is gone is dropped. So a crash between the
+  metadata's rename and the summary's write, a lost race between a listing's repair and a store,
+  or a summary that is missing or doesn't parse, never hides a committed artifact or lists a
+  stale one: the summary is behind, and the listing reads the tree where it is;
+- a summary a listing found behind is written back, by the same writer;
+- the page a listing returns is read from its metadata, so a record damaged since it was summarized
+  is skipped and named, as the walk did.
+
+A listing finds an artifact where ``store()`` put it, ``<project>/<cycle>/<run>/`` or
+``<project>/_unattached/``, the assumption the walk's narrowing to a project already made.
+
 Layout:
   <base_dir>/
     <project_id>/<cycle_id>/<run_id>/<artifact_id>/metadata.json + <filename>
+    <project_id>/<cycle_id>/<run_id>/.listing.json
     <project_id>/.baselines.json
     <project_id>/_unattached/<artifact_id>/metadata.json + <filename>
+    <project_id>/_unattached/.listing.json
     _index.json   (artifact_id → relative path)
 """
 
@@ -39,6 +60,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 from squadops.cycles.artifact_names import artifact_filename_refusal
 from squadops.cycles.models import ArtifactNotFoundError, ArtifactRef, ArtifactUnreadableError
@@ -47,6 +69,65 @@ from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_DIR = Path("data/artifacts")
+
+#: Where a project's artifacts attached to no run live (the layout above).
+UNATTACHED = "_unattached"
+#: A directory of artifacts' listing summary (#2973): a cache of its artifacts' metadata.
+LISTING_SUMMARY = ".listing.json"
+#: The summary's format. A summary in another is read as missing, and rebuilt from the tree.
+_LISTING_FORMAT = 1
+
+
+class _Listed(NamedTuple):
+    """One artifact as its directory's listing summary holds it: what a listing filters and sorts
+    on, with the identity of the metadata file it was read from."""
+
+    artifact_id: str
+    project_id: str
+    cycle_id: str | None
+    run_id: str | None
+    artifact_type: str
+    promotion_status: str
+    #: ``str(created_at)``: the listing's sort key, as the walk computed it.
+    created_at: str
+    #: The metadata file's (inode, size, mtime_ns) when this entry was read from it.
+    metadata_identity: tuple[int, int, int]
+
+    @classmethod
+    def of(cls, ref: ArtifactRef, stat: os.stat_result) -> _Listed:
+        return cls(
+            ref.artifact_id,
+            ref.project_id,
+            ref.cycle_id,
+            ref.run_id,
+            ref.artifact_type,
+            ref.promotion_status,
+            str(ref.created_at),
+            _identity(stat),
+        )
+
+
+class _Filters(NamedTuple):
+    """A listing's filters. Each is applied when it is truthy, as the walk applied them."""
+
+    project_id: str | None
+    cycle_id: str | None
+    run_id: str | None
+    artifact_type: str | None
+    promotion_status: str | None
+
+    def match(self, record: ArtifactRef | _Listed) -> bool:
+        return not (
+            (self.project_id and record.project_id != self.project_id)
+            or (self.cycle_id and record.cycle_id != self.cycle_id)
+            or (self.run_id and record.run_id != self.run_id)
+            or (self.artifact_type and record.artifact_type != self.artifact_type)
+            or (self.promotion_status and record.promotion_status != self.promotion_status)
+        )
+
+
+def _identity(stat: os.stat_result) -> tuple[int, int, int]:
+    return (stat.st_ino, stat.st_size, stat.st_mtime_ns)
 
 
 class FilesystemArtifactVault(ArtifactVaultPort):
@@ -127,7 +208,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
     def _artifact_dir_for_ref(self, ref: ArtifactRef) -> Path:
         if ref.cycle_id and ref.run_id:
             return self._base_dir / ref.project_id / ref.cycle_id / ref.run_id / ref.artifact_id
-        return self._base_dir / ref.project_id / "_unattached" / ref.artifact_id
+        return self._base_dir / ref.project_id / UNATTACHED / ref.artifact_id
 
     def _baselines_path_for_project(self, project_id: str) -> Path:
         return self._base_dir / project_id / ".baselines.json"
@@ -154,14 +235,11 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         )
 
         meta_path = art_dir / "metadata.json"
-        meta = dataclasses.asdict(updated)
-        for key in ("created_at",):
-            if meta.get(key) is not None:
-                meta[key] = str(meta[key])
-        _write_json_atomically(meta_path, meta)
+        self._write_metadata(meta_path, updated)
 
         rel_path = str(art_dir.relative_to(self._base_dir))
         self._update_index(artifact.artifact_id, rel_path)
+        self._record_in_listing(art_dir)
 
         logger.info("Stored artifact %s at %s", artifact.artifact_id, vault_uri)
         return updated
@@ -207,11 +285,8 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             return ref  # Idempotent
 
         updated = dataclasses.replace(ref, promotion_status="promoted")
-        meta = dataclasses.asdict(updated)
-        for key in ("created_at",):
-            if meta.get(key) is not None:
-                meta[key] = str(meta[key])
-        _write_json_atomically(meta_path, meta)
+        self._write_metadata(meta_path, updated)
+        self._record_in_listing(art_dir)
         return updated
 
     async def list_artifacts(
@@ -225,40 +300,13 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         limit: int | None = None,
         offset: int = 0,
     ) -> list[ArtifactRef]:
-        results: list[ArtifactRef] = []
         if not self._base_dir.exists():
-            return results
-
-        # Determine narrowest scan directory
-        if project_id and cycle_id and run_id:
-            scan_dir = self._base_dir / project_id / cycle_id / run_id
-        elif project_id and cycle_id:
-            scan_dir = self._base_dir / project_id / cycle_id
-        elif project_id:
-            scan_dir = self._base_dir / project_id
-        else:
-            scan_dir = self._base_dir
-
-        # #2921: the walk reads every metadata file under the scan directory (group_run's alone is
-        # ~54,000, about 3 s). On the event loop it held every other request for that long, so it
-        # runs in a worker thread. A metadata file is written whole and renamed into place
-        # (`_write_json_atomically`), so the walk never reads one half-written.
-        await asyncio.to_thread(
-            self._collect_artifacts,
-            scan_dir,
-            results,
-            project_id,
-            cycle_id,
-            run_id,
-            artifact_type,
-            promotion_status,
-        )
-        # #1976: newest first, then by id, so a page is stable. The walk's order is the
-        # filesystem's. Timestamps compare as ISO text, as progress sorts them: text never raises
-        # on a naive timestamp beside an aware one.
-        results.sort(key=lambda r: r.artifact_id)
-        results.sort(key=lambda r: str(r.created_at), reverse=True)
-        return results[offset:] if limit is None else results[offset : offset + limit]
+            return []
+        filters = _Filters(project_id, cycle_id, run_id, artifact_type, promotion_status)
+        # #2921: a listing reads the disk, so it runs in a worker thread, off the event loop. Every
+        # file it reads is written whole and renamed into place (`_write_atomically`), so it never
+        # reads one half-written while a store writes.
+        return await asyncio.to_thread(self._listing, filters, limit, offset)
 
     async def set_baseline(self, project_id: str, artifact_type: str, artifact_id: str) -> None:
         # Verify artifact exists via index
@@ -301,6 +349,208 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             raise ArtifactNotFoundError(f"Artifact not found: {artifact_id}")
         return self._base_dir / rel_path
 
+    def _listing(self, filters: _Filters, limit: int | None, offset: int) -> list[ArtifactRef]:
+        """A listing's page (#2973): its scope's listing summaries, brought up to date with the
+        tree, filtered and sorted; then the page's records, read from their metadata."""
+        groups = self._listing_groups(filters)
+        if groups is None:
+            return self._walk_listing(filters, limit, offset)
+        candidates: list[tuple[Path, str, _Listed]] = []
+        for group in groups:
+            for name, listed in self._current_listing(group).items():
+                if filters.match(listed):
+                    candidates.append((group, name, listed))
+        # #1976: newest first, then by id, so a page is stable. Timestamps compare as ISO text, as
+        # progress sorts them: text never raises on a naive timestamp beside an aware one.
+        candidates.sort(key=lambda c: c[2].artifact_id)
+        candidates.sort(key=lambda c: c[2].created_at, reverse=True)
+        page: list[ArtifactRef] = []
+        damaged: dict[Path, list[str]] = {}
+        for group, name, _ in candidates[offset:]:
+            if limit is not None and len(page) >= limit:
+                break
+            meta_path = group / name / "metadata.json"
+            try:
+                ref = self._load_metadata(meta_path)
+            except FileNotFoundError:
+                continue  # removed since the summary was read
+            except ArtifactUnreadableError as e:
+                # Damaged in place since it was summarized, its file's identity unchanged (the
+                # vault's own writes rename a new file into place). Skipped and named, as the walk
+                # skips it, and dropped from its summary, so the next listing's offsets don't
+                # count it.
+                self._name_unreadable(meta_path, e)
+                damaged.setdefault(group, []).append(name)
+                continue
+            if filters.match(ref):  # rewritten since, by a store the listing raced
+                page.append(ref)
+        for group, names in damaged.items():
+            summary = self._load_listing_summary(group)
+            for name in names:
+                summary.pop(name, None)
+            self._save_listing_summary_or_name_it(group, summary)
+        return page
+
+    def _walk_listing(self, filters: _Filters, limit: int | None, offset: int) -> list[ArtifactRef]:
+        """A listing by walking every metadata file under its narrowest directory: the listing
+        before #2973, kept for a scope the layout can't name (an id spelled ``_unattached``)."""
+        if filters.project_id and filters.cycle_id and filters.run_id:
+            scan_dir = self._base_dir / filters.project_id / filters.cycle_id / filters.run_id
+        elif filters.project_id and filters.cycle_id:
+            scan_dir = self._base_dir / filters.project_id / filters.cycle_id
+        elif filters.project_id:
+            scan_dir = self._base_dir / filters.project_id
+        else:
+            scan_dir = self._base_dir
+        results: list[ArtifactRef] = []
+        self._collect_artifacts(scan_dir, results, *filters)
+        results.sort(key=lambda r: r.artifact_id)
+        results.sort(key=lambda r: str(r.created_at), reverse=True)
+        return results[offset:] if limit is None else results[offset : offset + limit]
+
+    def _listing_groups(self, filters: _Filters) -> list[Path] | None:
+        """Every directory of artifacts a listing with ``filters`` must read, by the layout: each
+        run directory its project, cycle and run filters allow, and each project's unattached
+        directory, unless the listing names both a project and a cycle (as the walk scanned only
+        that cycle's directory). ``None`` for a scope the layout can't name."""
+        if UNATTACHED in (filters.project_id, filters.cycle_id, filters.run_id):
+            return None
+        projects = (
+            [self._base_dir / filters.project_id]
+            if filters.project_id
+            else _subdirectories(self._base_dir)
+        )
+        with_unattached = not (filters.project_id and filters.cycle_id)
+        groups: list[Path] = []
+        for project in projects:
+            if with_unattached and (project / UNATTACHED).is_dir():
+                groups.append(project / UNATTACHED)
+            if filters.cycle_id:
+                cycles = [project / filters.cycle_id]
+            else:
+                cycles = [c for c in _subdirectories(project) if c.name != UNATTACHED]
+            for cycle in cycles:
+                if filters.run_id:
+                    if (cycle / filters.run_id).is_dir():
+                        groups.append(cycle / filters.run_id)
+                else:
+                    groups.extend(_subdirectories(cycle))
+        return groups
+
+    def _current_listing(self, group: Path) -> dict[str, _Listed]:
+        """``group``'s artifacts, by directory name, from its listing summary where the summary is
+        current and from their metadata where it is behind; written back when it was behind."""
+        # Strings, not Paths, per artifact: a project holds tens of thousands, and building a Path
+        # for each cost a listing more than reading its summaries did.
+        directory = str(group)
+        names = _subdirectory_names(directory)
+        summary = self._load_listing_summary(group)
+        current: dict[str, _Listed] = {}
+        changed = False
+        for name in names:
+            meta_path = f"{directory}/{name}/metadata.json"
+            listed = summary.get(name)
+            try:
+                if listed is None or listed.metadata_identity != _identity(os.stat(meta_path)):
+                    listed = self._listed_from_metadata(Path(meta_path))
+                    changed = True
+            except FileNotFoundError:
+                continue  # content with no metadata, which is no artifact; or removed since
+            except ArtifactUnreadableError as e:
+                self._name_unreadable(Path(meta_path), e)
+                continue
+            current[name] = listed
+        if changed or current.keys() != summary.keys():
+            self._save_listing_summary_or_name_it(group, current)
+        return current
+
+    def _listed_from_metadata(self, meta_path: Path) -> _Listed:
+        """``meta_path``'s artifact as a summary entry. The identity is the open file's, so an entry
+        never pairs one file's fields with another's identity, however a write races the read."""
+        with open(meta_path, "rb") as f:
+            stat = os.fstat(f.fileno())
+            text = f.read()
+        return _Listed.of(self._parsed_metadata(meta_path, text), stat)
+
+    def _record_in_listing(self, art_dir: Path) -> None:
+        """The artifact just committed to ``art_dir``, into its directory's listing summary, read
+        back from its metadata as a listing would read it. After the commit point the artifact
+        exists, and a summary is a cache a listing repairs, so a summary that can't be written is
+        named, not raised: the store did not fail."""
+        group = art_dir.parent
+        try:
+            listed = self._listed_from_metadata(art_dir / "metadata.json")
+            summary = self._load_listing_summary(group)
+            summary[art_dir.name] = listed
+            self._save_listing_summary(group, summary)
+        except (OSError, ArtifactUnreadableError) as e:
+            self._name_unwritten_summary(group, e)
+
+    def _load_listing_summary(self, group: Path) -> dict[str, _Listed]:
+        """``group``'s listing summary, or ``{}`` (every entry behind) when it is missing, can't be
+        read, doesn't parse or is in another format."""
+        path = group / LISTING_SUMMARY
+        try:
+            data = json.loads(path.read_bytes())
+            if data.get("format") != _LISTING_FORMAT:
+                return {}
+            return {
+                name: _Listed._make([*fields[:-1], tuple(fields[-1])])
+                for name, fields in data["artifacts"].items()
+            }
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            logger.warning(
+                "artifact_listing_summary_unreadable",
+                extra={"path": str(path.relative_to(self._base_dir))},
+            )
+            return {}
+
+    def _save_listing_summary(self, group: Path, summary: dict[str, _Listed]) -> None:
+        data = {
+            "format": _LISTING_FORMAT,
+            "fields": list(_Listed._fields),
+            "artifacts": {name: list(listed) for name, listed in sorted(summary.items())},
+        }
+        _write_atomically(
+            group / LISTING_SUMMARY, json.dumps(data, separators=(",", ":")).encode(), METADATA_MODE
+        )
+
+    def _save_listing_summary_or_name_it(self, group: Path, summary: dict[str, _Listed]) -> None:
+        """A listing's repair, written back so the next listing reads it. A listing that can't
+        write it (a reader without write access to the vault) still answers from the tree."""
+        try:
+            self._save_listing_summary(group, summary)
+        except OSError as e:
+            self._name_unwritten_summary(group, e)
+
+    def _name_unwritten_summary(self, group: Path, error: Exception) -> None:
+        logger.warning(
+            "artifact_listing_summary_unwritten",
+            extra={
+                "path": str((group / LISTING_SUMMARY).relative_to(self._base_dir)),
+                "reason": f"{type(error).__name__}: {error}",
+            },
+        )
+
+    def _name_unreadable(self, meta_path: Path, error: ArtifactUnreadableError) -> None:
+        # #2931: one damaged record failed every listing that walked past it, a completed run's
+        # included. It is skipped and named; a read that needs it still refuses.
+        logger.warning(
+            "artifact_record_unreadable",
+            extra={"path": str(meta_path.relative_to(self._base_dir)), "reason": str(error)},
+        )
+
+    @staticmethod
+    def _write_metadata(meta_path: Path, ref: ArtifactRef) -> None:
+        """``ref`` as ``meta_path``'s metadata: the commit point."""
+        meta = dataclasses.asdict(ref)
+        for key in ("created_at",):
+            if meta.get(key) is not None:
+                meta[key] = str(meta[key])
+        _write_json_atomically(meta_path, meta)
+
     def _collect_artifacts(
         self,
         scan_dir: Path,
@@ -317,30 +567,19 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             try:
                 ref = self._load_metadata(meta_path)
             except ArtifactUnreadableError as e:
-                # #2931: one damaged record failed every listing that walked past it, a completed
-                # run's included. It is skipped and named; a read that needs it still refuses.
-                logger.warning(
-                    "artifact_record_unreadable",
-                    extra={"path": str(meta_path.relative_to(self._base_dir)), "reason": str(e)},
-                )
+                self._name_unreadable(meta_path, e)
                 continue
-            if project_id and ref.project_id != project_id:
-                continue
-            if cycle_id and ref.cycle_id != cycle_id:
-                continue
-            if run_id and ref.run_id != run_id:
-                continue
-            if artifact_type and ref.artifact_type != artifact_type:
-                continue
-            if promotion_status and ref.promotion_status != promotion_status:
-                continue
-            results.append(ref)
+            if _Filters(project_id, cycle_id, run_id, artifact_type, promotion_status).match(ref):
+                results.append(ref)
 
     def _load_metadata(self, meta_path: Path) -> ArtifactRef:
         """The record ``meta_path`` holds, or ``ArtifactUnreadableError`` naming the artifact when
         it doesn't parse (an empty file after a power loss, #2931) or doesn't hold an artifact."""
+        return self._parsed_metadata(meta_path, meta_path.read_bytes())
+
+    def _parsed_metadata(self, meta_path: Path, text: bytes) -> ArtifactRef:
         try:
-            return self._parse_metadata(meta_path.read_text())
+            return self._parse_metadata(text)
         except (ValueError, TypeError, KeyError) as e:
             raise ArtifactUnreadableError(
                 f"Artifact {meta_path.parent.name} is unreadable: its metadata doesn't parse "
@@ -348,7 +587,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             ) from e
 
     @staticmethod
-    def _parse_metadata(text: str) -> ArtifactRef:
+    def _parse_metadata(text: str | bytes) -> ArtifactRef:
         data = json.loads(text)
         if not isinstance(data, dict):
             raise TypeError("metadata is not an object")
@@ -392,6 +631,19 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 METADATA_MODE = 0o644
 #: A content file's mode: as `write_bytes` left it under the default umask, before #2931.
 CONTENT_MODE = 0o644
+
+
+def _subdirectory_names(directory: str | Path) -> list[str]:
+    """The names of ``directory``'s subdirectories, or none when it isn't one."""
+    try:
+        with os.scandir(directory) as entries:
+            return [e.name for e in entries if e.is_dir()]
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def _subdirectories(directory: Path) -> list[Path]:
+    return [directory / name for name in _subdirectory_names(directory)]
 
 
 def _write_json_atomically(path: Path, data: object) -> None:
