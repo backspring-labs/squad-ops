@@ -3540,9 +3540,7 @@ class TestAProductsRepairedSuiteIsReadByTheProductsRunners:
         )
         if view is None:
             return base, base
-        return base, dataclasses.replace(
-            base, inputs={**base.inputs, "source_repository": view}
-        )
+        return base, dataclasses.replace(base, inputs={**base.inputs, "source_repository": view})
 
     @staticmethod
     def _emission_failed():
