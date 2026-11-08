@@ -21,6 +21,10 @@ The 2.6 line's first patch (`docs/plans/2-6-1-plan.md`): what an operator meets 
   defines. It now hands the request to the Cycles panel, as the Campaigns link to the goals panel does.
 - **The qa briefs show a criterion test that asserts on something it made sure is there** (#2933, PR #2965): a non-empty
   check before a loop and the suite's own fixture, on both stacks; a qa repair keeps the suite's fixture.
+- **The console's Signal view no longer holds the runtime API for seconds** (#2921, PR #2968): its artifact panels read
+  every page of every Project's artifacts, and each page walked all of a Project's metadata on the event loop, so a
+  5 ms call on Home could take 9 s. The panels read each Project's newest page, and the vault's walk runs in a worker
+  thread, with metadata written whole and renamed into place.
 
 ### Moved to 2.7
 - A suite handed to the product's runner reading as handed off rather than failed (#2949's remainder).

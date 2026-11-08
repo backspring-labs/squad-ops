@@ -1,16 +1,20 @@
 # 2.6.1 cut record — what the deploy ran, and what the cut doesn't cover
 
-**The line:** `docs/plans/2-6-1-plan.md`, adopted 2026-11-07, with item 4 and D1 moved to 2.7 the same evening (the
-plan's own record of both rulings).
+**The line:** `docs/plans/2-6-1-plan.md`, adopted 2026-11-07. Item 4 and D1 moved to 2.7 the same evening, and the
+owner added item 7 (#2921) while the release PR waited. The plan records all three rulings.
 
 ## 1. The deploy the cut was read on
 
-- **`dep_b2d017bd1db9`,** built from `7f2552af` (#2965, the line's last code change) with
-  `rebuild_and_deploy.sh all`, 2026-11-07 ~21:00 ET. No Campaign was active and no run was running when it was
-  built. `verify_loaded.py`: 249 loaded, 0 not.
-- **What the tag adds beyond it:**
-  - #2966, which records the owner's two moves to 2.7 in the plan and ROADMAP;
-  - this release's commit: the version bump, the version markers, the changelog, the ROADMAP timeline, the open-issues
+- **`dep_22a327b5006a`,** with every service built from `699230a1` (#2968, the line's last code change),
+  2026-11-07 ~22:20 ET.
+  - The runtime API and the console were rebuilt first (`dep_c60c90b8afe7`), then the agents, so the deploy is one
+    commit throughout.
+  - No Campaign was active and no run was running for either build.
+  - `verify_loaded.py`: 249 loaded, 0 not.
+- **An earlier deploy, `dep_b2d017bd1db9` (`7f2552af`), carried items 1–6** before item 7 was added. Its shakeout,
+  `cyc_e6acda62f855`, was accepted with 22 of 22 criteria verified. It isn't the cut's run, because #2968 changed
+  how every cycle's artifacts are stored and listed.
+- **What the tag adds beyond it:** this release's commit: the version bump, the version markers, the changelog, the ROADMAP timeline, the open-issues
     snapshot and this record.
 
   All of it is prose, plus `pyproject.toml`'s version. The difference is additive: no code that ran differs from the
@@ -25,21 +29,26 @@ plan's own record of both rulings).
 | 3. A deploy runs the Caddyfile it pulled | the deploy's own step | it ran and read a match (`6e3326fa586f` on both sides), so it restarted nothing |
 | 5. Criterion test briefs | the agents' `task_type.qa.test.md` | version 0.9.28 in the dev and qa agents |
 | 6. Home's Create Cycle | the served Home and Cycles bundles | both carry `squadops:open-create-cycle`, and Home no longer calls `window.squadops.executeCommand` |
+| 7. The Signal view doesn't hold the API | requests timed through the API, before and after | before: the API at 100% CPU, a `py-spy` dump on `_collect_artifacts` on the main thread, and one `GET …/cycles` at 5 ms on one try and 9 s on the next. After: five `hello_squad` cycle reads at 6–34 ms while a `group_run` artifact listing ran for 2.3 s; each Project's cycles at 3–8 ms; the API at 0.5% CPU. Both panels' bundles carry the "newest" note |
 
 ## 3. The cut's run
 
-- **`cyc_e6acda62f855`,** `group_run`, `full-38-tf`, `validated-fullstack`, memory disabled. It is the line's
-  shakeout: the package's plumbing run, not a measure of any item.
-- **Runs:** framing `run_c03dd06196c7` (15m32s) and implementation `run_d12635bdaf4b` (5m49s), both completed.
+- **`cyc_a8c1b78ef675`,** `group_run`, `full-38-tf`, `validated-fullstack`, memory disabled, on the final deploy. It
+  is the line's shakeout: the package's plumbing run, not a measure of any item.
+- **Runs:** framing `run_f135bc0d9796` (14m40s) and implementation `run_074f728d7c0f` (7m44s), both completed.
   `progress_plan_review` was approved by `system:no_open_questions`.
-- **Verdict:** `accepted`, criteria 22 of 22 verified (the cycle's assessment).
-- **Rounds:** one. The exit rule in CLAUDE.md is a pair on one deploy with no new seam finding, and this run found
-  none. No item of 2.6.1 changes the cycle's path, so a single run was registered rather than a pair.
+- **Verdict:** `accepted`, criteria 21 of 21 verified (the cycle's assessment).
+- **Rounds:** two, one per deploy, and neither found a seam defect. CLAUDE.md's exit rule is a pair on one deploy
+  with no new seam finding, and the final deploy had a single run. Item 7 is the only item on a cycle's path (the
+  vault stores and lists every artifact), and the run stored and read its artifacts through it. A pair wasn't
+  registered.
 
 ## 4. What the cut doesn't cover
 
 - **Item 3's restart path ran only in tests.** The deploy read a match, because Caddy had already been restarted by
   hand after #2958. The restart, the wait and the recheck run live at the next deploy that follows a Caddyfile change.
+- **Item 7 has no index.** The walk still reads every metadata file under a Project, about 2.3 s for group_run, now
+  off the event loop. An index in its place is later work.
 - **Item 6 is unread in a browser.** The bundles carry the hand-off, but a click on Home's Create Cycle landing on
   Cycles with the form open needs a logged-in browser, which the owner is asked to do.
 - **Item 2's reboot is unread on this box.** The policy is set and Docker's handling of a kill was tested, but no
