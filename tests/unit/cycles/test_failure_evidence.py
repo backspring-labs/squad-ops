@@ -1276,3 +1276,46 @@ class TestSuiteFilesNamedUnanimously:
         assert self._named(["./tests/test_runs.py", "tests/test_runs.py"], ["test_assertions"]) == [
             "tests/test_runs.py"
         ]
+
+
+def test_a_refusal_on_the_head_reaches_the_suites_author_for_the_passing_file_only():
+    """SIP-0109 §24do (#2933), the path the correction loop takes: the refused result's
+    ``build_failure_evidence`` → ``_locus_and_repair_target`` → ``repair_steps_for``. Bugs caught:
+    the refusal routed to the dev chain (the suite passed with dev's work, so no app failure names
+    the suite and the classifier's default is dev); or the qa repair re-authoring every file of
+    the suite when one of them passed on the head."""
+    from squadops.cycles.failure_evidence import CRITERIA_PASS_ON_HEAD_KEY
+    from squadops.cycles.task_plan import repair_steps_for
+    from squadops.execution.correction_repair import _locus_and_repair_target
+
+    passing, sound = "test/criterion_T2.test.js", "test/criterion_T1.test.js"
+    envelope = TaskEnvelope(
+        task_id="task-run_x-m005-qa.test", agent_id="eve", cycle_id="cyc_x", pulse_id="pulse",
+        project_id="proj", task_type="qa.test", correlation_id="corr", causation_id=None,
+        trace_id="trace", span_id="span", inputs={}, metadata={},
+    )  # fmt: skip
+    result = TaskResult(
+        task_id=envelope.task_id,
+        status="FAILED",
+        outputs={
+            "validation_result": {"passed": True, "checks": []},
+            "artifacts": [],
+            CRITERIA_PASS_ON_HEAD_KEY: {
+                "head_commit": "3cd2f452421c" + "0" * 28,
+                "criteria": [{"criterion_id": "T2", "path": passing, "tests_passed": 3}],
+            },
+        },
+        error="T2: the test passes on the campaign branch's head",
+    )
+    evidence = build_failure_evidence(envelope, result, prior_plan_deltas_count=0)
+
+    locus, target, _, _ = _locus_and_repair_target(
+        "qa.test", evidence, {"expected_artifacts": [sound, passing]}
+    )
+
+    assert locus == FailureLocus.OWN_ARTIFACT
+    assert target == [passing]
+    assert repair_steps_for("qa.test", locus) == [("qa.test_repair", "qa")]
+    # Without the reading, the same passing suite is no own-artifact failure.
+    del evidence[CRITERIA_PASS_ON_HEAD_KEY]
+    assert classify_failure_locus(evidence) == FailureLocus.UNKNOWN
