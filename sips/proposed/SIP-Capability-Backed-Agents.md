@@ -740,21 +740,25 @@ for the same reason.
   rules** (27a–27f) are governed for 2.x by Agent Skillsets (`sips/proposed/SIP-Agent-Skillsets.md`). It restates
   them against SIP-0112's Project and Development Configuration and SIP-0072's development profile. Where the two
   differ, Agent Skillsets governs.
-- **The changes of substance, recorded there:**
-  - agents are what is equipped: each carries *skillsets* for a cycle, its roles' base skillsets plus those the
-    stack's development profile assigns to its roles (its §5). §27b named the stack by `build_profile` and
-    `dev_capability`; the second has since been renamed `development_profile` (#922);
-  - a *skillset* is a spec binding capabilities, the skills loaded for them and the tools they may call, in one
+- **The changes of substance, recorded there** (its revision 2, after the owner's outside review):
+  - the work declares the skillsets it requires on its development profile; each agent declares the skillsets it
+    carries on its squad profile; cycle preflight checks the agent each responsibility routes to (its §5, §9).
+    Selecting a stack equips no one. §27b named the stack by `build_profile` and `dev_capability`; the second has
+    since been renamed `development_profile` (#922);
+  - a *skillset* is a spec binding capabilities, the skills loaded for them and the tools they may request, in one
     directory a capability pack will carry unchanged (its §4). It is the part of §7's pack manifest 2.x needs: the
-    capability-skill contract and the tool requirements, with roles standing in for the binding contract;
+    capability-skill contract and the tool requirements, with roles standing in for the binding contract. In 3.x
+    packs supply more definitions, content and providers, and the same coverage check applies;
+  - the base set of capabilities is explicit and versioned, so registering a handler enables nothing (its §6);
   - §9 named the adopted `SKILL.md` bundles "skill packs / playbooks". They are *skills* inside a skillset, and
     *playbook* is kept for what a squad follows (the owner, 2026-11-09).
 - **§17 item 1** (core vocabulary and contracts) is delivered in part: the four layers and the skillset spec,
   without the pack, binding, working-set and evidence vocabulary.
 - **Everything else stays deferred to 3.x:** pack loading and packaging (§7), Switchboard and the pack interface
-  (§21), per-agent capability bindings beyond roles (§8), working sets (§10), memory (§11), the workspace and
-  evidence ledger (§12), the design pack (§13), activation and permissions (§14–15), and §17 items 2–10. Model-side
-  tool use (§9) stays here too: Agent Skillsets has a capability's handler invoke tools, never the model (its Q59).
+  (§21), dynamic recruitment and routing by capability (§8), working sets (§10), memory (§11), the workspace and
+  evidence ledger (§12), the design pack (§13), activation and the general permission model (§14–15), and §17 items
+  2–10. Model-side tool use (§9) stays here too: Agent Skillsets has a capability's handler invoke tools, never the
+  model, and a skillset requests tools within existing authority without granting any (its Q59).
 
 **Evidence.**
 - The game-dev-roblox plan's spikes (2026-11-08, PR #2972) need, in 2.8, a step a stack enables, skills for its
@@ -766,7 +770,8 @@ for the same reason.
 
 **Who ruled it.** The owner, 2026-11-09: "agree, pull it forward and draft the assembly SIP"; then, on the draft,
 that agents carry the equipment, as a *skillset*, and "for an agent and a skillset, I'd need a spec that could be
-distributed in the capability pack". The same ruling answers Q51 (raised on PR #2841, whether this SIP takes an
+distributed in the capability pack"; then its outside review's answers, as rulings ("make the revision and yes they
+can be rulings"). The same ruling answers Q51 (raised on PR #2841, whether this SIP takes an
 amendment now that the game work builds none of its mechanism): it takes this one.
 
 ## 24. References
