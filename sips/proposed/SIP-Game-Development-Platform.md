@@ -14,6 +14,7 @@ original_filename: "SIP-Game-Development-Platform.md"
 ## Engine integration plugins (Roblox, Godot, Unity) and Remote Tool Execution
 
 **Status:** Proposed (the owner's draft, filed 2026-10-17)  
+**Revision 4 pending (2026-11-09):** Agent Skillsets (PR #3006), split from Capability-Backed Agents on the owner's direction, replaces §R3's *specialty*: the `game_dev_roblox` development profile assigns skillsets to the dev and QA roles, and the specialty's *playbooks* become skills (*playbook* is kept for what a squad follows). §R3 reads as superseded wherever Agent Skillsets differs, and nothing here is built until the owner's outside review of Agent Skillsets and its acceptance.  
 **Target Version:** TBD  
 **Author:** Framework Committee  
 **Roles Impacted:** Lead, Strategy, Dev, QA, Data  
