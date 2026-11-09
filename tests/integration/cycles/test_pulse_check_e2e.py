@@ -108,7 +108,7 @@ class _E2EReplyRouter:
     async def ensure_subscribed(self, agent_id):
         pass
 
-    def register(self, task_id):
+    def register(self, task_id, dispatch_id):
         fut = asyncio.get_running_loop().create_future()
         fut.set_result(
             TaskResult(

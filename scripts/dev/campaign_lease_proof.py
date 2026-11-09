@@ -2,10 +2,10 @@
 """The live-lease proof (#1802; #1908 precondition 4), tracked (#1956).
 
 Five steps around a supervisor's approval on a live deploy, proving the box lease holds a launch
-for the crew and releases it only when the box is quiet:
+for the operator and releases it only when the box is quiet:
 
 1. a short lease is acquired, and a ``cycles create`` is refused ``supervisor_holds_the_box``;
-2. the lease expires with a stand-in crew model resident, and a create is refused ``box_not_quiet``;
+2. the lease expires with a stand-in operator model resident, and a create is refused ``box_not_quiet``;
 3. the lease is re-acquired and the increment's ruling approved while it is held: the framing run
    waits (``run_start_waiting_for_box``);
 4. the lease is released with the model still resident: the run still waits, and a create is still

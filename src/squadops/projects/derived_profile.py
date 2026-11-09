@@ -64,8 +64,14 @@ GAPS: Mapping[str, Mapping[str, str]] = {
     "runner_not_scopable": {DISCLOSED: "criterion_scoping"},
     "no_test_id_reader": {DISCLOSED: "per_test_reading"},
     "lint_without_reader": {DISCLOSED: "per_finding_comparison"},
+    # H.26: no development profile fits. Disclosed while a runner can verify the work, and a
+    # Campaign's refusal when none can, since nothing could judge its increments.
+    "stack_unmatched": {BLOCKING: "campaigns", DISCLOSED: "stack_guidance"},
 }
 RUNNERS = ("pytest", "unittest", "vitest", "jest", "other")
+#: The runners whose test files are JavaScript: a product tested only by these is shown its
+#: authoring examples in JavaScript (#2876).
+JAVASCRIPT_RUNNERS = frozenset({"vitest", "jest"})
 #: A public surface a criterion may assert on (§24bv point 5): a base URL the start declaration
 #: serves, a command-line entry point, or a package's public interface.
 SURFACES: Mapping[str, str] = {
@@ -122,9 +128,16 @@ class Runner:
 
     def holds(self, path: str) -> bool:
         """Whether ``path`` (repository-relative) is one of this runner's test files."""
-        file = PurePosixPath(path)
-        under = any(r == "." or file.is_relative_to(r) for r in self.roots)
-        return under and fnmatch(file.name, self.file_pattern)
+        return runner_holds(self.roots, self.file_pattern, path)
+
+
+def runner_holds(roots: Iterable[str], file_pattern: str, path: str) -> bool:
+    """A runner's test file: ``path`` (repository-relative) under one of its ``roots`` (``.`` is
+    the whole tree), and its file name ``file_pattern``. The one rule, for a ``Runner`` and for a
+    task's view of one (the qa run tree, #2817)."""
+    file = PurePosixPath(path)
+    under = any(r == "." or file.is_relative_to(r) for r in roots)
+    return under and fnmatch(file.name, file_pattern)
 
 
 @dataclass(frozen=True)

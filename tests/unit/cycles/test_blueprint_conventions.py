@@ -14,7 +14,7 @@ Bugs caught:
   backend files go under backend/" beside runners that find the product's tests elsewhere;
 - a product with no blueprint, or a sample application, shown anything other than what it was;
 - the pin seeding a skeleton, overriding an operator's choice, or reaching a plan-less cycle, whose
-  test author is never shown the product's runners.
+  developer's monolithic prompt lays files out by the profile's skeleton prose.
 """
 
 from __future__ import annotations
@@ -80,8 +80,9 @@ async def prepare_cycle_with(ports, profile, **values):
         (_made_from("fullstack_fastapi_react"), {}, "fullstack_fastapi_react",
          "fullstack_fastapi_react"),
         (_made_from("nextjs_ts"), {}, "nextjs_ts", "nextjs_ts"),
-        # z_continuum's shape: imported, no blueprint. The default stands, as in 2.4.
-        (_PLAIN, {}, None, "python_cli"),
+        # z_continuum's shape: imported, no blueprint. It runs what it ran in 2.4, now pinned and
+        # recorded (H.26).
+        (_PLAIN, {}, "python_cli", "python_cli"),
         # a baseline captured before profiles: nothing to read a blueprint from
         (DerivedProfileNotFoundError("prj-tally"), {}, None, "python_cli"),
         # the operator's choice stands, as a supplied contract_ref does
@@ -106,9 +107,10 @@ async def test_a_products_cycle_runs_under_its_blueprints_profile_and_seeds_noth
 
 
 async def test_a_plan_less_cycle_and_a_sample_application_are_never_pinned():
-    """A plan-less task isn't shown the product's runners (the monolithic qa prompt has no
-    repository view), so the profile's skeleton prose would place its tests. A sample application
-    has no pin to read a blueprint from: the registry isn't asked."""
+    """A plan-less developer's monolithic prompt lays files out by the profile's skeleton prose
+    (``file_structure_guidance``, ``example_structure``), though its test author is shown the
+    product since H.29. A sample application has no pin to read a blueprint from: the registry
+    isn't asked."""
     blueprint = _made_from("fullstack_fastapi_react")
 
     planless = await _prepared(

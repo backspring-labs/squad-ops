@@ -330,12 +330,183 @@ class DevelopmentConfigurationRecordedResponse(BaseModel):
     replayed: bool
 
 
+class GoalSetRevisionRequest(BaseModel):
+    """Write a Project's next goal-set revision (SIP-0115 §4, §8.1). ``expected_revision`` is
+    the latest one (0 for the first), so a concurrent edit is refused rather than silently
+    superseded. ``goal_set`` is validated by the domain, which names the field it refuses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=2000)
+    #: Where the change came from, when a conversation (§6): a link, never its content.
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+    goal_set: dict[str, Any]
+
+
+class GoalSetRevisionResponse(BaseModel):
+    """One goal-set revision: who wrote it, why, and the goal set as stored. ``change`` names the
+    action that wrote it when it was one of slice 3's (``{"kind": candidate_added |
+    candidate_promoted | candidate_dropped | item_split, "subject", "position"?, "split_into"?,
+    "campaign_id"?}``), and is absent on a revision written as a whole document."""
+
+    project_id: str
+    revision: int
+    author: str
+    reason: str
+    source_ref: str | None
+    created_at: datetime
+    goal_set: dict[str, Any]
+    change: dict[str, Any] | None = None
+
+
+class GoalSetRecordedResponse(BaseModel):
+    revision: GoalSetRevisionResponse
+    idempotency_key: str
+    replayed: bool
+
+
+class GoalSetActionRequest(BaseModel):
+    """What every action on a goal set carries (SIP-0115 §6, slice 3): the revision it acts on
+    (never 0: an action is on a written goal set), why, where it came from, and its key. The
+    content it adds is validated by the domain, which names the field it refuses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=2000)
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
+class AssessmentRequest(BaseModel):
+    """An assessment of one expected result (SIP-0115 §5.7, Q43). The vocabulary and what each
+    reading requires are the domain's, which names the field it refuses. ``source_ref`` is the
+    operator's source statement, required of the operator and optional for the owner. ``log_seq`` is the
+    Campaign's control-log row the evidence was read at: the ``log_seq`` of
+    ``GET /api/v1/campaigns/{id}/assessments``, read before the evidence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    campaign_id: str = Field(min_length=1, max_length=200)
+    expected_result: str = Field(min_length=1, max_length=64)
+    goals_revision: int = Field(ge=1)
+    log_seq: int = Field(ge=0)
+    reading: str
+    cause: str | None = None
+    issue: int | None = None
+    evidence: dict[str, Any]
+    reason: str = Field(min_length=1, max_length=2000)
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+    supersedes: list[int] = Field(default_factory=list)
+
+
+class AssessmentResponse(BaseModel):
+    """One assessment as recorded (§5.7). ``sequence`` is its place in the goal set's own order,
+    and what a later assessment names in ``supersedes``. ``log_seq`` is the Campaign's control-log
+    row its evidence was read at, comparable only within that Campaign."""
+
+    project_id: str
+    sequence: int
+    campaign_id: str
+    expected_result: str
+    goals_revision: int
+    reading: str
+    cause: str | None = None
+    issue: int | None = None
+    evidence: dict[str, Any]
+    supersedes: list[int]
+    log_seq: int
+    reason: str
+    source_ref: str | None = None
+    author: str
+    created_at: datetime
+
+
+class AssessmentRecordedResponse(BaseModel):
+    """An assessment written, or replayed under its key."""
+
+    assessment: AssessmentResponse
+    idempotency_key: str
+    replayed: bool
+
+
+class ResultStandingResponse(BaseModel):
+    """One expected result as a Campaign's assessments leave it (§5.7). ``statement`` and
+    ``surface`` define it at the revision the Campaign reads, which a pinned Campaign may hold
+    apart from the latest. ``standing`` is ``current``, ``stale``, ``conflicting`` or
+    ``unassessed``; ``assessments`` holds the latest alone, or, while conflicting, each that
+    disagrees, newest first."""
+
+    expected_result: str
+    statement: str
+    surface: dict[str, str]
+    standing: str
+    assessments: list[AssessmentResponse]
+
+
+class CampaignAssessmentsResponse(BaseModel):
+    """Each expected result of the revision a Campaign reads now, derived, never stored.
+    ``log_seq`` is the Campaign's last control-log row at this read: what an assessment made from
+    evidence read after it states as its own."""
+
+    campaign_id: str
+    project_id: str
+    revision: int
+    log_seq: int
+    results: list[ResultStandingResponse]
+
+
+class CandidateRequest(GoalSetActionRequest):
+    """Add a candidate (§5.4): ``id``, ``title``, ``description``, ``found_by``, ``found_at``
+    (the time of the write when absent) and ``evidence``, as §4 names them."""
+
+    candidate: dict[str, Any]
+
+
+class CandidatePromotionRequest(GoalSetActionRequest):
+    """Promote a candidate into the backlog (§5.4, Q41), keeping its id: at ``position`` (from 1;
+    the end when absent) serving ``serves``. The operator names the Campaign it acts within and may
+    only append."""
+
+    serves: list[str] = Field(min_length=1)
+    position: int | None = Field(default=None, ge=1)
+    campaign_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class CandidateDropRequest(GoalSetActionRequest):
+    """Drop a candidate (§5.4), with the reason. The operator names the Campaign it acts within."""
+
+    campaign_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class BacklogItemSplitRequest(GoalSetActionRequest):
+    """Split a backlog item (§5.5a) into ``into``, two or more parts (``id``, ``title``,
+    ``description``, ``serves`` defaulting to the parent's, ``size``) that take its place in
+    order. The operator names the Campaign it acts within."""
+
+    into: list[dict[str, Any]]
+    campaign_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 class InheritedBaselineRequest(BaseModel):
     """Capture a Project's inherited baseline (SIP-0112 FR-20, E.4.2)."""
 
     model_config = ConfigDict(extra="forbid")
 
     idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class SourceFileResponse(BaseModel):
+    """A file of a registered product, read from the managed clone at the Project's integrated
+    commit: the commit a Campaign's ``repo:file:<path>@current`` requirements resolve to (#2855)."""
+
+    project_id: str
+    path: str
+    commit: str
+    content: str
 
 
 class InheritedBaselineResponse(BaseModel):
@@ -377,6 +548,24 @@ class ContributionResponse(BaseModel):
     replayed: bool = False
 
 
+class UnintegratedIncrementResponse(BaseModel):
+    """An increment a Campaign accepted that the Project's integrated commit doesn't carry yet
+    (SIP-0109 §24dc, #2863), and where it stands."""
+
+    campaign_id: str
+    campaign_state: str
+    cycle_id: str
+    #: The backlog item's title, for an increment that served one; ``null`` otherwise.
+    title: str | None
+    #: The commit that holds the increment on its Campaign's branch now.
+    commit: str
+    standing: Literal[
+        "not_contributed", "contribution_pending", "merged_not_synced", "contribution_closed"
+    ]
+    #: Its Campaign's review request, when its contribution opened one.
+    review_url: str | None
+
+
 class InitializationRequest(BaseModel):
     """Make a greenfield Project's first commit from an approved interface manifest (SIP-0112
     FR-01, E.4.6)."""
@@ -414,6 +603,60 @@ class SourceSyncResponse(BaseModel):
 
     document: dict[str, Any]
     replayed: bool = False
+
+
+class IntegrationCheckRequest(BaseModel):
+    """The integration check a Campaign's draft makes (SIP-0112 H.30, #2862)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The caller's own forge token, for this check's fetch and review-request reads only. Without
+    #: one, the token the deploy holds for the Project is used, if it holds one.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class IntegrationCheckFailureResponse(BaseModel):
+    """Why a step of the check didn't happen: a typed reason, and the message."""
+
+    reason: str
+    message: str
+
+
+class IntegrationCheckRowResponse(UnintegratedIncrementResponse):
+    """A row still listed after the check, with what it waits on and what clears it."""
+
+    waits_on: Literal[
+        "campaign_open",
+        "contribution_not_opened",
+        "merge",
+        "merge_state_unread",
+        "revalidation",
+        "closed_unmerged",
+    ]
+    clears_when: str
+
+
+class IntegrationCheckResponse(BaseModel):
+    """What the check did, and the set that remains: ``clear`` when it is empty, so a draft may
+    proceed."""
+
+    project_id: str
+    clear: bool
+    integrated_commit_before: str | None
+    integrated_commit: str | None
+    #: The sync the check recorded, or replayed at the same upstream commit; ``null`` when none ran.
+    sync: SourceSyncResponse | None
+    #: Why a pending row's merge state wasn't read; ``null`` when it was, or none was pending.
+    merge_state_unread: IntegrationCheckFailureResponse | None
+    #: The commit the development baseline moved to; ``null`` when it didn't move.
+    revalidated_at: str | None
+    validation_failed: IntegrationCheckFailureResponse | None
+    #: The latest sync, when it read drift past the baseline that new cycles are refused on.
+    unreconciled: dict[str, Any] | None
+    #: What the Project needs before a cycle starts, when the check moved its baseline or read
+    #: drift that isn't reconciled.
+    next_step: str | None
+    remaining: list[IntegrationCheckRowResponse]
 
 
 class ProjectRegistrationResponse(BaseModel):

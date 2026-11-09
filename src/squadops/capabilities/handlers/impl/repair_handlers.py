@@ -42,6 +42,7 @@ from squadops.capabilities.handlers.cycle.fill_mode_brief import (
     render_repair_fill_section,
 )
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
+from squadops.capabilities.handlers.emitted_deletions import read_deletions
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.increment_test_scope import (
     increment_test_scope_section,
@@ -91,7 +92,8 @@ def _artifacts_from_fenced_blocks(content: str, fallback_name: str) -> list[dict
     Falls back to a single markdown wrap when no fenced blocks are found
     so the LLM output is not silently dropped.
     """
-    extracted = extract_fenced_files(content)
+    # #2612: the repair handlers read the response's removals themselves (``read_deletions``).
+    extracted = extract_fenced_files(content, deletions_taken=True)
     if not extracted:
         return [
             {
@@ -271,7 +273,13 @@ class _RepairPromptMixin:
     context to the LLM. Used by both repair handlers below.
     """
 
+    #: Each handler declares its own, on `_CycleTaskHandler`'s field.
+    _task_type: str
+    _role: str
     _request_template_id = "request.cycle_repair_task"
+    #: #2813: a repair's call, its anchored-edit retry included, is refused by name over the
+    #: model's window rather than sent.
+    _guards_prompt_window = True
 
     def _build_render_variables(
         self,
@@ -420,8 +428,12 @@ class _RepairPromptMixin:
         decision_section = decision_section_kind(inputs.get("correction_decision"))
         inputs = {**inputs, **(await self._render_output_form(context, inputs))}
         current = await self._render_current_files_section(context, inputs)
+        imported = await self._render_imported_files_section(context, inputs)
         if current:
-            inputs = {**inputs, "current_files_section": current}
+            inputs = {
+                **inputs,
+                "current_files_section": f"{current}\n\n{imported}" if imported else current,
+            }
         anchored, offered = await self._render_anchored_edit_section(context, inputs)
         if anchored:
             inputs = {**inputs, "anchored_edit_section": anchored}
@@ -565,6 +577,23 @@ class _RepairPromptMixin:
         """The scaffold's shells, by path — the files a fill-mode repair fills by slot (§9.3)."""
         return scaffold_shell_paths(inputs)
 
+    async def _render_imported_files_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The code a qa repair's suite calls, to read, or "". Non-qa roles, no import, no
+        renderer → "". Shown through ``repair_prompt_contents.imported_files``, which the composer
+        counts."""
+        if self._role != "qa":
+            return ""
+        shown = repair_prompt_contents.imported_files(inputs)
+        renderer = getattr(context.ports, "request_renderer", None)
+        if not shown or renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_repair_imported_files", {"imported_files": shown}
+        )
+        return rendered.content
+
     async def _render_current_files_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
@@ -623,6 +652,31 @@ class _RepairPromptMixin:
         return rendered.content, offered
 
     def _artifacts_from_response(
+        self, content: str, inputs: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """The response's files (``_files_from_response``), and its removals (#2612), judged
+        against the failed task's view under the repairing step's grant. A refused removal refuses
+        the repair, named, as a refused edit does; a response refused already is returned as is.
+        """
+        artifacts, outputs = self._files_from_response(content, inputs)
+        if "emission_failure" in outputs:
+            return artifacts, outputs
+        files = [a for a in artifacts if not a.get("emission_fallback")]
+        removals = read_deletions(
+            content, inputs, self._task_type, (str(a.get("name") or "") for a in files)
+        )
+        if not removals.found:
+            return artifacts, outputs
+        if removals.refused:
+            refused = removals.outputs()
+            refused["emission_failure"]["expected_artifacts"] = list(
+                inputs.get("expected_artifacts") or []
+            )
+            return [], {**outputs, **refused}
+        # The extraction fallback stands for "no file was emitted": a removal is what was.
+        return files, {**outputs, **removals.outputs()}
+
+    def _files_from_response(
         self, content: str, inputs: dict[str, Any]
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Apply the response's anchored edits to the repair's base, or read it as before.
@@ -1385,7 +1439,7 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
             for f in fills.fills
         ]
         rest = strip_fill_blocks(content) if fills.fills else content
-        if fill_artifacts and not extract_fenced_files(rest):
+        if fill_artifacts and not extract_fenced_files(rest, deletions_taken=True):
             return fill_artifacts
         return fill_artifacts + _artifacts_from_fenced_blocks(rest, self._artifact_name)
 

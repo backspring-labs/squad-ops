@@ -30,7 +30,7 @@ from typing import Any
 
 import yaml
 
-from squadops.cycles.acceptance_check_spec import check_subject_paths
+from squadops.cycles.acceptance_check_spec import paths_read, repointed_anchor
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     PlanSummary,
@@ -440,9 +440,11 @@ def _criterion_files_to_qa(
     the criterion, and a file only a development task names doesn't count.
 
     - The file leaves the development task's ``expected_artifacts``, and so do the task's typed
-      checks that read it (``check_subject_paths``): the task no longer writes it, and a check
-      on a file the task's own tree lacks fails at its evaluation whatever its code does. The
-      task's provenance becomes ``modified``, its reason naming each file and its writer.
+      checks that read it (``paths_read``): the task no longer writes it, and a check
+      on a file the task's own tree lacks fails at its evaluation whatever its code does. A
+      whole-project check that names it only as its blame anchor (``frontend_compiles``) is kept,
+      anchored on a file the task keeps (#2804). The task's provenance becomes ``modified``, its
+      reason naming each file and its writer.
     - A development task left with nothing to write is dropped: its whole deliverable is the qa
       tasks'. Returned by focus key, for the provenance of the qa tasks that take its place, for
       the edges that pointed at it, and for its operator note: its description, prose criteria
@@ -492,8 +494,7 @@ def _criterion_files_to_qa(
                 list(takers),
             )
             continue
-        checks = [c for c in task.acceptance_criteria if not _reads_any(c, given)]
-        dropped_checks = len(task.acceptance_criteria) - len(checks)
+        checks, dropped_checks, repointed = _checks_kept(task.acceptance_criteria, given, remaining)
         kept.append(
             (
                 dataclasses.replace(task, expected_artifacts=remaining, acceptance_criteria=checks),
@@ -505,8 +506,14 @@ def _criterion_files_to_qa(
                         f"{', '.join(given)} are written by qa task(s) {', '.join(takers)}, "
                         "which claim them too, so they left this task's expected_artifacts"
                         + (
-                            f", with the {dropped_checks} typed check(s) it held on them."
+                            f", with the {dropped_checks} typed check(s) it held on them"
                             if dropped_checks
+                            else ""
+                        )
+                        + (
+                            f"; {repointed} whole-project check(s) anchored on them now anchor "
+                            "on a file it keeps."
+                            if repointed
                             else "."
                         )
                     ),
@@ -517,11 +524,32 @@ def _criterion_files_to_qa(
     return kept, dropped
 
 
-def _reads_any(criterion: Any, paths: Sequence[str]) -> bool:
-    """Whether ``criterion`` is a typed check that reads one of ``paths``."""
-    return isinstance(criterion, TypedCheck) and bool(
-        check_subject_paths(criterion.check, criterion.params) & set(paths)
-    )
+def _checks_kept(
+    criteria: Sequence[Any], given: Sequence[str], kept_files: Sequence[str]
+) -> tuple[list[Any], int, int]:
+    """The task's acceptance criteria once ``given`` leave it, with how many typed checks were
+    dropped and how many re-pointed (#2795, #2804). A check that reads a given file, as its
+    evaluator resolves it (``paths_read``: an argv against its ``cwd``, a glob over the files),
+    fails on the task's tree whatever its code does, so it is dropped. A whole-project check that
+    names a given file only as its blame anchor (``repointed_anchor``) guards the task's kept
+    files too, so it is kept, anchored on one of them."""
+    kept: list[Any] = []
+    dropped = repointed = 0
+    for criterion in criteria:
+        if not isinstance(criterion, TypedCheck):
+            kept.append(criterion)
+            continue
+        read = paths_read(criterion.check, criterion.params, given)
+        if not read:
+            kept.append(criterion)
+            continue
+        params = repointed_anchor(criterion.check, criterion.params, read, kept_files)
+        if params is None:
+            dropped += 1
+            continue
+        kept.append(dataclasses.replace(criterion, params=params))
+        repointed += 1
+    return kept, dropped, repointed
 
 
 def _record_taken_places(

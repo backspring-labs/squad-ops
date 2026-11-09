@@ -1,7 +1,7 @@
 <svelte:options customElement="squadops-obs-artifacts" />
 
 <script>
-  import { fetchAllPages } from '../../../shared/paging.js';
+  import { PAGE_LIMIT, fetchNewestPage } from '../../../shared/paging.js';
   import { onMount, onDestroy } from 'svelte';
 
   let artifacts = $state([]);
@@ -55,7 +55,8 @@
       const allArtifacts = [];
       for (const proj of projects.slice(0, 10)) {
         try {
-          const listed = await fetchAllPages(
+          // #2921: each Project's newest page, not every page; the API lists newest first.
+          const listed = await fetchNewestPage(
             apiFetch,
             `${apiBase}/api/v1/projects/${proj.project_id}/artifacts`
           );
@@ -97,6 +98,7 @@
   {:else if artifacts.length === 0}
     <div class="empty">No artifacts yet</div>
   {:else}
+    <div class="scope">By type, over each Project's newest {PAGE_LIMIT}</div>
     <div class="type-summary">
       {#each Object.entries(typeCounts) as [type, count]}
         <span class="type-chip" style="border-color: {typeColor(type)}">
@@ -156,4 +158,5 @@
   .art-meta { display: block; font-size: var(--continuum-font-size-xs, 0.75rem); color: var(--continuum-text-muted, #94a3b8); }
   .art-age { font-size: var(--continuum-font-size-xs, 0.75rem); color: var(--continuum-text-muted, #94a3b8); flex-shrink: 0; }
   .loading, .empty { color: var(--continuum-text-muted, #94a3b8); font-size: var(--continuum-font-size-sm, 0.875rem); padding: var(--continuum-space-md, 16px); }
+  .scope { color: var(--continuum-text-muted, #94a3b8); font-size: var(--continuum-font-size-sm, 0.875rem); margin: 0 0 var(--continuum-space-sm, 8px) 0; }
 </style>

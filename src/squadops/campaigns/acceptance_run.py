@@ -219,6 +219,8 @@ def evaluation_document(
         "candidate_tree": candidate.identity,
         "verdict": str(acceptance.verdict),
         "unmet": list(acceptance.unmet),
+        # #2849: new criteria kept as preservation checks, already met and still met.
+        "preserved": list(acceptance.preserved),
         "blocked": list(acceptance.blocked),
         "discriminations": [
             {

@@ -61,7 +61,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-30)
+## Delivery ledger (current as of 2026-11-07)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -3833,6 +3833,107 @@ E.4.3's open question (§5an).
 
 **Who ruled it.** No new design ruling: §5ak names exact rendering as the next step once such a hold is seen, and §5an
 did it for one seam.
+
+## 5ap. `qa.test`'s monolithic count held to the focused path's standard (2026-11-03, §5an; #2809; the owner's go on 2.5.1)
+
+§5an's second reader found that the monolithic path, unlike the focused one, was counted by a rule that could drift
+from the handler's. This section records what changed and what stays.
+
+**What changed.**
+1. **One plan rule.** `qa_prompt_contents.validation_plan` chooses the plan: the first file, in the contents' order,
+   whose name carries `VALIDATION_PLAN`. Both the handler's monolithic prompt and the budget call it.
+   - Before, the handler had its own literal and a first-match rule (`_resolve_artifact_content`), and the budget
+     counted every file of the name.
+   - The handler falls back to the vault only when the function finds no plan.
+2. **Shown twice, counted twice.** A source file whose name carries the plan's is shown as the plan and again among
+   the sources. It is now counted under the plan section's name as well as its own. Before, a dict merge counted it
+   once.
+3. **§5an's wording is corrected.** "The validation plan and the stack's source and support files, never a test or a
+   document" now reads: never a file the stack names a test. The source and support files can include a
+   `tests/conftest.py` or an `index.html`, and the plan is itself a document. The module docstring is corrected to
+   match. §5an's table row "with every file whose name names the plan" now reads "with the plan the handler shows".
+
+**What stays, named** (#2809's items 2, 5, 6 and 7):
+- **A plan loaded from the vault is not counted.**
+  - When the executor's 512 KB resolution limit stops before the plan, the handler loads it from the vault (D3). The
+    estimate is pure and reads only `artifact_contents`, so it doesn't see the plan. The count is short by the plan.
+  - It doesn't overflow unchecked: `qa.test`'s prompt guard (`prompt_guard._guard_prompt_size`) runs on both prompt
+    paths and refuses a prompt over the window by name.
+  - The focused path, the one Campaigns take, loads no plan.
+- **A profile that doesn't resolve raises `ValueError` inside `_supply_the_dispatch`.** This is unreachable in
+  practice, because a develop task on the same profile fails first.
+- **The registry's names are checked by the guard test in CI, not when the module is imported.** That is
+  unchanged, since the issue made it optional.
+- **About 13 characters of framing per file** over JSON's count now rely on the slack of the templates a path doesn't
+  render. That is unchanged.
+
+**Evidence:**
+- `test_qa_prompt_contents.py::test_the_monolithic_plan_is_the_first_of_its_name_shown_and_counted_alike` and
+  `…::test_a_plan_that_is_also_a_source_is_counted_as_often_as_it_is_shown`. Each enters at the handler's step 1a
+  (`_compose_user_prompt`) and at the count's function. Both fail on §5an's rule.
+- §5an's characterization tests are unchanged and pass: the monolithic prompt's head, and the composer's count per
+  path.
+
+**Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2809. The vault
+case is named rather than built: counting it would put vault I/O into a pure estimator, and the agent-side guard
+already refuses the overflow.
+
+## 5aq. A repair's call is guarded agent-side, its anchored-edit retry included (2026-11-03, §5ao; SIP-0073; #2813; the owner's go on 2.5.1)
+
+**What changed.** The correction repairs (development, builder and qa) now refuse a prompt over the model's window by
+name, as `development.develop` and `qa.test` already did.
+- **How.** The guard is SIP-0073's `_guard_prompt_size`, called on the base handler's generic path when a handler
+  declares `_guards_prompt_window` (`_CycleTaskHandler.handle`). `_RepairPromptMixin` declares it.
+- **What it covers.** It runs on every call through that path. That includes the anchored-edit retry, whose refusal
+  lines §5ao named as uncounted, because those lines can't be computed from the envelope.
+- **What it reserves.** The completion budget the call actually sends (`max_tokens` in its kwargs). It reserves 0 when
+  none is sent, which is the most lenient bound, for a model with no registry entry.
+- **What it does with an overflow.** A prompt over the window fails the step with
+  `PROMPT_EXCEEDS_CONTEXT_WINDOW`. It is never sent.
+- **No truncation** (`truncatable=False`). Develop's guard cuts from the prior-analysis section to the end of the
+  prompt. A repair's template puts its `closing_instruction` (the output form) after `prior_outputs`, so that cut
+  would send the repair without being told what to produce.
+
+**Why the guard and not a bound in the count.** #2813 proposed either one:
+- a bound in the composer's count: the edits a response may carry × the longest refusal line;
+- or the guard.
+
+A bound would inflate every repair's binding budget by a worst case that a measured retry (about 400 tokens) never
+approaches. The guard is exact on the prompt actually built. With the guard in place, the composer's count is an
+estimate again, and no longer the only check on the call.
+
+**What it doesn't change:** a prompt that fits is sent byte for byte as before. Handlers riding the generic path that
+aren't repairs stay unguarded, as before.
+
+**Evidence:**
+- `test_repair_anchored_edits.py::test_a_retry_whose_refusal_lines_pass_the_window_is_refused_by_name_not_sent`
+  enters at `DevelopmentCorrectionRepairHandler.handle` with the real templates. The model is registered with a
+  window between the first call's prompt and the retry's, so the first call is sent and the retry is refused by name.
+  Without the change, the retry was sent: a second model call.
+- `…::test_a_repair_that_fits_its_window_is_sent_as_before` is the control.
+- The repair-prompt characterization goldens are unchanged.
+
+**Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2813. The choice of
+the guard over a bound is the supervisor's, for the reason above.
+
+## 5ar. The embeddings port and its Ollama adapter removed (2026-11-08, §5am, §A.3.10; #2736; the Spark lane, the 2.7 plan's Track C)
+
+**What changed.** §5am kept the embeddings port (`squadops.ports.embeddings`), its domain models
+(`squadops.embeddings`) and its Ollama adapter (`adapters.embeddings`) when the legacy agent store retired,
+for §A.3.10's optional semantic index. Nothing has built or called them since: no composition root
+constructs them, and no task or chat path reaches them. They are removed. A port with no consumer can't
+be tested at a wiring seam, and its design dates from SIP-042's store, not this substrate.
+
+**What it leaves.** §A.3.10 is unchanged: a semantic index, if one is ever placed, is derived from the
+Postgres records, and its build designs the port it needs against the substrate as it stands then.
+Nothing in memory's reads or writes changes.
+
+**The evidence.** The removal leaves the unit and architecture suites green: no import of the three
+packages remained outside them and their own tests. `docs/architecture/overview.md` loses their entries,
+with the package counts in CLAUDE.md beside it.
+
+**Who ruled it.** The owner adopted the 2.7 plan on 2026-11-08, whose Track C takes #2736's
+recommendation 2 (remove).
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

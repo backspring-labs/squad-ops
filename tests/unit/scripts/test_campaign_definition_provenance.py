@@ -79,9 +79,9 @@ def test_a_definition_reconciles_and_a_changed_limit_is_named():
 
 
 def test_a_definition_from_before_one_supervisor_bound_reconciles_as_the_registry_maps_it():
-    """§24al: a stored policy with a crew's and an owner's bound runs under the crew's."""
+    """§24al: a stored policy with an operator's and an owner's bound runs under the operator's."""
     legacy = {k: v for k, v in _POLICY.items() if k != "ruling_bound_s"}
-    legacy |= {"crew_ruling_bound_s": 1800, "owner_ruling_bound_s": 600}
+    legacy |= {"seat_ruling_bound_s": 1800, "owner_ruling_bound_s": 600}
 
     assert prov.differences({**_spec(), "policy": legacy}, _stored()) == []
     assert prov.differences({**_spec(), "policy": legacy}, _stored(policy=legacy)) == []

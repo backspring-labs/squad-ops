@@ -12,6 +12,7 @@ import asyncio
 import pytest
 
 from squadops.campaigns.acceptance import (
+    Discrimination,
     DiscriminationReason,
     FrozenResult,
     Held,
@@ -198,3 +199,56 @@ def test_the_increment_is_accepted_only_when_everything_holds(runs):
         IncrementVerdict.BLOCKED_UNVERIFIED,
         ("frozen B2: the verifier bundle is missing",),
     )
+
+
+_DISC = Discrimination("T17", True, DiscriminationReason.DISCRIMINATES, ("test_sort",))
+
+
+@pytest.mark.parametrize(
+    ("others", "verdict", "preserved"),
+    [
+        # The unattended run's item 5: four discriminate, T21 already met and still met.
+        (
+            (
+                _DISC,
+                Discrimination(
+                    "T21", False, DiscriminationReason.NO_BASELINE_FAILURE, candidate_passed=True
+                ),
+            ),
+            IncrementVerdict.ACCEPTED,
+            ("T21",),
+        ),
+        # Already met but broken by the change: a regression, never a preservation check.
+        (
+            (
+                _DISC,
+                Discrimination(
+                    "T21", False, DiscriminationReason.NO_BASELINE_FAILURE, candidate_passed=False
+                ),
+            ),
+            IncrementVerdict.REJECTED,
+            (),
+        ),
+        # Nothing discriminates: rejected, so row 16 tells the next proposal which were met.
+        (
+            (
+                Discrimination(
+                    "T21", False, DiscriminationReason.NO_BASELINE_FAILURE, candidate_passed=True
+                ),
+            ),
+            IncrementVerdict.REJECTED,
+            (),
+        ),
+    ],
+    ids=["kept-beside-a-discriminating-one", "broken-on-the-candidate", "none-discriminates"],
+)
+def test_an_already_met_criterion_beside_a_discriminating_one_is_kept_as_preservation(
+    others, verdict, preserved
+):
+    """#2849 (§24ct). Bug caught: one already-met criterion rejecting an increment whose other
+    criteria discriminate (the 2.6 spike's unattended run, item 5, ended the Campaign at row 4); or
+    the rule keeping a criterion the change broke, or accepting an increment that shows no change."""
+    acceptance = increment_acceptance(others, (), ())
+
+    assert acceptance.verdict is verdict
+    assert acceptance.preserved == preserved

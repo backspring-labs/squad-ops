@@ -280,6 +280,20 @@ async def squadops_set_active_profile(args: dict, context: dict) -> dict:
     return resp.json()
 
 
+async def squadops_revise_goal_set(args: dict, context: dict) -> dict:
+    """Write a Project's next goal-set revision (SIP-0115 §8.3, slice 4, #2887): the goals panel's
+    edit. ``expected_revision`` is the revision the edit began from, so a revision written first
+    by someone else is the API's 409 ``STALE_GOAL_SET_REVISION``, relayed to the panel as is."""
+    project_id = args["project_id"]
+    body = {k: v for k, v in args.items() if k != "project_id"}
+    resp = await _api_request(
+        "POST", f"/api/v1/projects/{project_id}/goal-set/revisions", json=body
+    )
+    if resp.status_code >= 400:
+        return {"error": resp.text, "status_code": resp.status_code}
+    return resp.json()
+
+
 # ── Command handler registry ────────────────────────────────────────────────
 
 COMMAND_HANDLERS = {
@@ -294,6 +308,7 @@ COMMAND_HANDLERS = {
     "squadops.set_baseline": squadops_set_baseline,
     "squadops.download_artifact": squadops_download_artifact,
     "squadops.set_active_profile": squadops_set_active_profile,
+    "squadops.revise_goal_set": squadops_revise_goal_set,
 }
 
 # ── Application lifecycle ───────────────────────────────────────────────────
@@ -301,7 +316,7 @@ COMMAND_HANDLERS = {
 _runtime: ContinuumRuntime | None = None
 
 
-#: The perspectives the shell ships (Continuum v1.0.2): a plugin's panel or nav target names one of
+#: The perspectives the shell ships (Continuum v1.0.3): a plugin's panel or nav target names one of
 #: these, or one this console adds below.
 BUILTIN_PERSPECTIVES = ("signal", "research", "time", "discovery", "systems")
 
@@ -315,6 +330,12 @@ CUSTOM_PERSPECTIVES = (
         "Memory",
         "/memory",
         "Memory records: their sources, revisions, uses and, apart, their effect (SIP-0110 §A.3.11)",
+    ),
+    (
+        "campaigns",
+        "Campaigns",
+        "/campaigns",
+        "Campaigns: state, increment, ledger, digest and escalations; read-only (SIP-0069 §14)",
     ),
 )
 
@@ -503,6 +524,7 @@ async def proxy_chat_stream(path: str, request: Request):
         _api_client.build_request(
             "POST",
             f"/api/v1/chat/{path}",
+            params=request.query_params.multi_items(),
             content=body if body else None,
             headers=headers,
         ),
@@ -555,7 +577,9 @@ async def proxy_chat_get(path: str, request: Request):
         headers["Authorization"] = authorization
 
     assert _api_client is not None
-    resp = await _api_client.get(f"/api/v1/chat/{path}", headers=headers)
+    resp = await _api_client.get(
+        f"/api/v1/chat/{path}", params=request.query_params.multi_items(), headers=headers
+    )
 
     return FastAPIResponse(
         content=resp.content,
@@ -604,6 +628,7 @@ async def proxy_runtime_api(path: str, request: Request):
     resp = await _api_client.request(
         request.method,
         f"/api/v1/{path}",
+        params=request.query_params.multi_items(),
         content=body if body else None,
         headers=headers,
     )

@@ -96,6 +96,15 @@ def _app(health: int = 200):
     return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
+def _refusing_app():
+    """Nothing listens at the readiness URL: every poll is refused, as while an app boots."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
 def _runner(tmp_path, container, app=None, **kw) -> ContainerScenarioRunner:
     return ContainerScenarioRunner(
         container=container,
@@ -170,16 +179,32 @@ async def test_a_blueprint_tree_starts_by_its_stacks_environment_contract(tmp_pa
     ("container", "app", "detail"),
     [
         (_Container(setup_exit=2), _app(), "setup step 1 exited 2"),
-        (_Container(), _app(health=503), "not ready at /healthz"),
+        (
+            _Container(),
+            _app(health=503),
+            "not ready at /healthz within 0.05s; its last answer was HTTP 503",
+        ),
+        # #2798's case: a preview server refusing a Host it doesn't know answers 403 every poll.
+        (
+            _Container(),
+            _app(health=403),
+            "not ready at /healthz within 0.05s; its last answer was HTTP 403",
+        ),
+        (
+            _Container(),
+            _refusing_app(),
+            "not ready at /healthz within 0.05s; its last answer was no HTTP answer (ConnectError)",
+        ),
     ],
-    ids=["setup-fails", "readiness-times-out"],
+    ids=["setup-fails", "readiness-times-out", "readiness-refused-403", "nothing-listens"],
 )
 async def test_a_tree_that_cannot_start_runs_no_scenario_and_says_why(
     tmp_path, container, app, detail
 ):
     """Contract 7's readiness timeout. Bug caught: scenarios run against an app that never
     became ready, read as the product's failures; or a failed start's evidence (the build's
-    output, the app's own last lines) dropped."""
+    output, the app's own last lines, and what its readiness URL last answered, #2798)
+    dropped."""
     result = await _evaluate(
         _runner(tmp_path, container, app=app, blueprint_ready_timeout_seconds=0.05),
         declared=DeclaredStart(**{**DECLARED.__dict__, "ready_timeout_seconds": 0.05}),
@@ -301,6 +326,7 @@ async def test_a_tcp_readiness_is_a_connection_the_app_holds(tmp_path, listener,
     assert result.started is ready
     if not ready:
         assert "not ready at port 18407" in result.start_detail
+        assert result.start_detail.endswith("its last answer was no connection held open")
 
 
 def _any_port_app():

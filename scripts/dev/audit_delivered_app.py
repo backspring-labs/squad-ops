@@ -20,7 +20,8 @@ The deliverable is selected the way the release capture selects it
   would pick a *rejected* repair that boots.
 
 #971 adds the second exclusion: an emission marked ``emission_status="failed"``
-is banked for triage and is never deliverable. The trap there is narrower and
+is banked for triage and is never deliverable (nor is one banked ``handed_off``, #2949, whose
+accepted copy is stored as its task's own). The trap there is narrower and
 worse — a failed emission is often the ONLY copy of its file (nothing re-emitted
 it before the run died), so latest-per-filename would audit bytes already proven
 not to work and report on an application the run never produced.

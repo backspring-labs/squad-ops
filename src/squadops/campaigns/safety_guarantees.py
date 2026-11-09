@@ -45,7 +45,7 @@ NO_STALE_RULING = "no stale or conflicting ruling honoured"
 NO_LOST_RULING = "no ruling lost"
 NO_DUPLICATE_LAUNCH = "no duplicate launch"
 NO_PARTIAL_PROMOTION = "no partial promotion"
-NO_LAUNCH_BESIDE_CREW = "no launch beside a crew model"
+NO_LAUNCH_BESIDE_OPERATOR = "no launch beside an operator model"
 PACKAGE_COMPLETE = "an evidence package complete at close"
 
 _BOUND_KINDS = {CycleKind.RETRY.value, CycleKind.REPAIR.value}
@@ -274,7 +274,7 @@ def no_partial_promotion(doc: Mapping[str, Any]) -> GuaranteeReading:
     return GuaranteeReading(NO_PARTIAL_PROMOTION, GuaranteeStatus.HELD)
 
 
-def no_launch_beside_crew(doc: Mapping[str, Any]) -> GuaranteeReading:
+def no_launch_beside_operator(doc: Mapping[str, Any]) -> GuaranteeReading:
     """No cycle launched while the supervisor held the box. The box's model check refuses a launch
     beside an undeclared model before it is marked (``launch_blocked`` rows); a run start that
     waited on it shows only in the runtime's log, which the package doesn't carry."""
@@ -292,9 +292,9 @@ def no_launch_beside_crew(doc: Mapping[str, Any]) -> GuaranteeReading:
             broken.append(f"row {r['seq']} launched {r['binding'].get('cycle_id')} under the lease")
     blocked = len(_applied(rows, ControlOperation.LAUNCH_BLOCKED))
     if broken:
-        return GuaranteeReading(NO_LAUNCH_BESIDE_CREW, GuaranteeStatus.VIOLATED, tuple(broken))
+        return GuaranteeReading(NO_LAUNCH_BESIDE_OPERATOR, GuaranteeStatus.VIOLATED, tuple(broken))
     return GuaranteeReading(
-        NO_LAUNCH_BESIDE_CREW,
+        NO_LAUNCH_BESIDE_OPERATOR,
         GuaranteeStatus.HELD,
         (f"{blocked} launch(es) the box held back; run starts are read in the runtime's log",),
     )
@@ -331,7 +331,7 @@ READERS = (
     no_lost_ruling,
     no_duplicate_launch,
     no_partial_promotion,
-    no_launch_beside_crew,
+    no_launch_beside_operator,
     package_complete,
 )
 

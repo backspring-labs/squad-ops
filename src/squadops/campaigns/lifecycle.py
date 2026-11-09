@@ -148,6 +148,10 @@ def transition_request_hash(transition: CampaignTransition) -> str:
     """
     payload = dataclasses.asdict(transition)
     payload.pop("idempotency_key")
+    # §24dc: what a closing row records of its contribution is the registry's derivation, read under
+    # its lock, never the caller's content: an abort stored without it replays, and so does one
+    # whose log has moved since.
+    payload.pop("repository_backed")
     # §24cc, §24bv point 2: a tree is hashed as it was before it could name a calibration record
     # or a commit, so a promotion committed then still replays after a restart on this code.
     for added in ("calibration_record_id", "commit"):
@@ -174,14 +178,21 @@ def creation_request_hash(
     plan gate (§24bj) enters only when it is not ``supervised``: a creation stored before it existed
     ran supervised and was hashed without it, so its retry still replays. The stack (§24bs) enters
     only when declared, for the same reason, and so do the objective's work class (SIP-0113
-    §4.6, #2418) and its requirements source (SIP-0109 §24bv point 5)."""
+    §4.6, #2418), its requirements source (SIP-0109 §24bv point 5), its goal set and
+    ``stop_when`` (SIP-0115 §5.1, §5.6), and the policy's ``unattended_resume`` (§24da): a
+    declared class is part of the definition the hash names, and an empty one is today's
+    behaviour, hashed as before."""
     policy = dataclasses.asdict(campaign.policy)
     if policy["plan_gate"] is PlanGate.SUPERVISED:
         del policy["plan_gate"]
     if policy["stack"] is None:
         del policy["stack"]
+    if not policy["unattended_resume"]:
+        del policy["unattended_resume"]
+    else:
+        policy["unattended_resume"] = [str(c) for c in policy["unattended_resume"]]
     objective = dataclasses.asdict(campaign.objective)
-    for key in ("work_class", "requirements"):
+    for key in ("work_class", "requirements", "goals", "stop_when"):
         if objective[key] is None:
             del objective[key]
     content = {
@@ -230,12 +241,14 @@ def adjudicate(
         if applied_with_key.request_hash == transition_request_hash(transition):
             return Adjudication(replay=applied_with_key)
         return Adjudication(refusal=RefusalReason.CONFLICTING_IDEMPOTENCY_KEY)
-    if transition.operation.records_only:
+    if transition.operation.records_only and not transition.operation.needs_a_live_campaign:
         return Adjudication()
     if campaign.state is CampaignState.COMPLETED:
         return Adjudication(refusal=RefusalReason.CAMPAIGN_COMPLETED)
     if transition.expected_state is not None and transition.expected_state is not campaign.state:
         return Adjudication(refusal=RefusalReason.STALE_STATE)
+    if transition.operation.records_only:
+        return Adjudication()
     assert transition.next_state is not None  # guaranteed by CampaignTransition for non-record ops
     if transition.next_state not in LEGAL_TRANSITIONS[campaign.state]:
         return Adjudication(refusal=RefusalReason.ILLEGAL_TRANSITION)
@@ -298,8 +311,11 @@ def control_log_entry(
     committed_at: datetime,
     refusal: RefusalReason | None,
     launch_id: str | None,
+    derived: dict | None = None,
 ) -> ControlLogEntry:
-    """The row a control operation writes, applied or refused. A refusal leaves the state as it was."""
+    """The row a control operation writes, applied or refused. A refusal leaves the state as it
+    was. ``derived`` is what the registry adds to the row's binding, read under its lock (§24dc),
+    outside the request's hash."""
     applied = refusal is None
     next_state = (
         transition.next_state if applied and transition.next_state is not None else campaign.state
@@ -315,7 +331,7 @@ def control_log_entry(
         target=transition.target,
         idempotency_key=transition.idempotency_key,
         request_hash=transition_request_hash(transition),
-        binding=dict(transition.binding),
+        binding={**transition.binding, **(derived or {})},
         outcome=ControlOutcome.APPLIED if applied else ControlOutcome.REFUSED,
         refusal=refusal,
         prior_state=campaign.state,

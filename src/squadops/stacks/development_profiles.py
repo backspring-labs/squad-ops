@@ -9,7 +9,10 @@ Mirrors the BuildProfile registry pattern in build_profiles.py.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import dataclasses
+import hashlib
+import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +26,9 @@ from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOBS
 TEST_FRAMEWORK_PYTEST = "pytest"
 TEST_FRAMEWORK_VITEST = "vitest"
 TEST_FRAMEWORK_BOTH = "both"
+#: The suite isn't run in the qa image at all: only the product's own runner, in the sandbox after
+#: its configured setup, can read it (SIP-0112 H.26). A profile with this value is for a product.
+TEST_FRAMEWORK_PRODUCT_RUNNER = "product_runner"
 
 
 #: vitest's default ``include`` — what a vitest harness collects when its config names no
@@ -108,6 +114,27 @@ class DevelopmentProfile:
     #: Empty means a product's cycle is never pinned to this profile from its blueprint, and a
     #: source-backed run under it is shown the prose above, as before.
     product_conventions_template: str = ""
+
+
+#: What a product's source and tests look like when no blueprint says (SIP-0112 H.26). The product's
+#: runners decide what is collected. These are the vocabulary a profile must still state.
+_NODE_SOURCE_EXTENSIONS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+_ANY_SOURCE_EXTENSIONS = (
+    *_NODE_SOURCE_EXTENSIONS,
+    ".py",
+    ".go",
+    ".rs",
+    ".java",
+    ".rb",
+    ".luau",
+    ".lua",
+)
+_NODE_TEST_PATTERNS = tuple(
+    f"*.{kind}.{ext}"
+    for kind in ("test", "spec")
+    for ext in ("js", "jsx", "mjs", "cjs", "ts", "tsx")
+)
+_PYTHON_TEST_PATTERNS = ("test_*.py", "*_test.py")
 
 
 # ---------------------------------------------------------------------------
@@ -555,6 +582,52 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         fill_only_template="request.development_develop_fill_only_appendix_nextjs_ts",
         product_conventions_template="request.source_repository_conventions_nextjs_ts",
     ),
+    # ── node_vitest ───────────────────────────────────────────────────────────
+    # A Node product with no blueprint, tested by vitest (SIP-0112 H.26). Only ever a product's:
+    # it has no skeleton, so it says nothing of where a file or a test goes.
+    "node_vitest": DevelopmentProfile(
+        name="node_vitest",
+        system_prompt_supplement=(
+            "You are changing an existing JavaScript or TypeScript product that runs on Node.\n"
+            "Emit each file as a fenced code block with the language and path separated by a "
+            "colon, for example:\n"
+            "```javascript:<the file's path in the product>\n\n"
+            "Paths must be clean relative paths with no colons in the path or spaces."
+        ),
+        file_structure_guidance="",
+        example_structure="",
+        test_framework=TEST_FRAMEWORK_PRODUCT_RUNNER,
+        test_prompt_supplement="You are generating vitest test files, in JavaScript or TypeScript.",
+        source_filter=_NODE_SOURCE_EXTENSIONS,
+        test_file_patterns=_NODE_TEST_PATTERNS,
+        collected_test_patterns=_NODE_TEST_PATTERNS,
+        max_completion_tokens=12000,
+        test_timeout_seconds=180,
+        build_support_files=("package.json",),
+        product_conventions_template="request.source_repository_conventions_node_vitest",
+    ),
+    # ── product_neutral ───────────────────────────────────────────────────────
+    # A product no profile matches (SIP-0112 H.26): no stack advice at all, so nothing here
+    # contradicts what its runners say. Each task reads its runners by the paths it touches.
+    "product_neutral": DevelopmentProfile(
+        name="product_neutral",
+        system_prompt_supplement=(
+            "You are changing an existing product. Its files show its languages and conventions.\n"
+            "Emit each file as a fenced code block with the language and path separated by a "
+            "colon, for example:\n"
+            "```text:<the file's path in the product>\n\n"
+            "Paths must be clean relative paths with no colons in the path or spaces."
+        ),
+        file_structure_guidance="",
+        example_structure="",
+        test_framework=TEST_FRAMEWORK_PRODUCT_RUNNER,
+        test_prompt_supplement="",
+        source_filter=_ANY_SOURCE_EXTENSIONS,
+        test_file_patterns=_NODE_TEST_PATTERNS + _PYTHON_TEST_PATTERNS,
+        collected_test_patterns=_NODE_TEST_PATTERNS + _PYTHON_TEST_PATTERNS,
+        max_completion_tokens=12000,
+        test_timeout_seconds=180,
+    ),
 }
 
 
@@ -614,6 +687,91 @@ def blueprint_development_profile(blueprint_stack: str | None) -> str:
     name = development_profile_for(blueprint_stack or "")
     profile = DEVELOPMENT_PROFILES.get(name)
     return name if profile is not None and profile.product_conventions_template else ""
+
+
+#: Where a cycle's development profile came from (SIP-0112 H.26).
+ORIGIN_OPERATOR, ORIGIN_BLUEPRINT, ORIGIN_DERIVED = "operator", "blueprint", "derived"
+NEUTRAL_DEVELOPMENT_PROFILE = "product_neutral"
+_PYTHON_RUNNERS = frozenset({"pytest", "unittest"})
+_NODE_RUNNERS = frozenset({"vitest", "jest"})
+
+
+@dataclass(frozen=True)
+class ProfileSelection:
+    """The profile a repository-backed product's cycle runs under, and why."""
+
+    name: str
+    origin: str
+    #: Whether a profile fits the product's stack. ``False`` is ``product_neutral``'s no-advice run.
+    matched: bool = True
+
+    def to_record(self) -> dict[str, str]:
+        return {
+            "name": self.name,
+            "origin": self.origin,
+            "fingerprint": development_profile_fingerprint(self.name),
+        }
+
+
+def select_development_profile(
+    runners: Iterable[str], blueprint_stack: str | None
+) -> ProfileSelection:
+    """The profile derived facts name for a product (SIP-0112 H.26, finishing H.4). Runner names are
+    the deciding fact: they say what really executes the product's tests, where a manifest only
+    says what it holds. A blueprint with product conventions wins. Otherwise one kind of runner
+    picks its profile, and anything else, mixed runners included, is ``product_neutral``: each
+    task then reads the runners by the paths it touches, so no one profile can contradict them."""
+    blueprint = blueprint_development_profile(blueprint_stack)
+    if blueprint:
+        return ProfileSelection(blueprint, ORIGIN_BLUEPRINT)
+    kinds = set(runners)
+    if kinds and kinds <= _PYTHON_RUNNERS:
+        return ProfileSelection(DEFAULT_DEVELOPMENT_PROFILE, ORIGIN_DERIVED)
+    if kinds == {"vitest"}:
+        return ProfileSelection("node_vitest", ORIGIN_DERIVED)
+    return ProfileSelection(NEUTRAL_DEVELOPMENT_PROFILE, ORIGIN_DERIVED, matched=False)
+
+
+def development_profile_conflict(name: str, runners: Iterable[str]) -> str | None:
+    """Why an operator's profile contradicts a product's runners, or ``None``. A profile that runs
+    a framework the product has no runner for would tell its agents to write tests nothing runs.
+    A product with no runner has nothing to contradict, and a profile that defers to the product's
+    runners can't contradict them."""
+    kinds = set(runners)
+    framework = get_development_profile(name).test_framework
+    if not kinds or framework == TEST_FRAMEWORK_PRODUCT_RUNNER:
+        return None
+    needs = {
+        TEST_FRAMEWORK_PYTEST: (_PYTHON_RUNNERS,),
+        TEST_FRAMEWORK_VITEST: (_NODE_RUNNERS,),
+        TEST_FRAMEWORK_BOTH: (_PYTHON_RUNNERS, _NODE_RUNNERS),
+    }[framework]
+    if all(kinds & need for need in needs):
+        return None
+    return f"{name} runs {framework}, and the product's runners are {', '.join(sorted(kinds))}"
+
+
+def development_profile_fingerprint(name: str) -> str:
+    """What identifies a profile's behaviour, so a retry or replay can tell it changed (H.26): a
+    digest of its whole definition. A prompt asset it names is covered by name, not by content."""
+    document = json.dumps(dataclasses.asdict(get_development_profile(name)), sort_keys=True)
+    return hashlib.sha256(document.encode()).hexdigest()[:16]
+
+
+def development_profile_drift(overrides: Mapping[str, Any] | None) -> dict[str, str] | None:
+    """How a cycle's pinned profile has changed since it was selected, or ``None`` (H.26). A retry
+    stays on the pinned name and runs what is deployed, so the change is named, not refused."""
+    selection = (overrides or {}).get("development_profile_selection")
+    if not isinstance(selection, Mapping) or selection.get("name") not in DEVELOPMENT_PROFILES:
+        return None
+    current = development_profile_fingerprint(selection["name"])
+    if current == selection.get("fingerprint"):
+        return None
+    return {
+        "name": selection["name"],
+        "selected": str(selection.get("fingerprint")),
+        "current": current,
+    }
 
 
 def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:

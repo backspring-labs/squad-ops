@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+from adapters.cycles.factory import create_project_registry
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.api.error_handlers import register_domain_error_handlers
@@ -66,6 +67,7 @@ async def world():
     register_domain_error_handlers(app)
     app.state.campaign_registry = campaigns
     app.state.cycle_registry = MemoryCycleRegistry()
+    app.state.project_registry = create_project_registry("config")
     app.state.artifact_vault = vault
     app.state.campaign_progress = CampaignProgress(
         campaigns=campaigns,
@@ -78,6 +80,7 @@ async def world():
         outcome_section=None,
         intervention_section=None,
         campaign_branch=None,
+        goal_sets=None,
     )
     app.state.authz_port = KeycloakAuthzAdapter()
     await campaigns.create_campaign(

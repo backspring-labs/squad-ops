@@ -7,6 +7,7 @@ from squadops.api.routes.cycles.cycle_request_profiles import (
     router as cycle_request_profiles_router,
 )
 from squadops.api.routes.cycles.cycles import router as cycles_router
+from squadops.api.routes.cycles.goal_sets import router as goal_sets_router
 from squadops.api.routes.cycles.models import router as models_router
 from squadops.api.routes.cycles.profiles import router as profiles_router
 from squadops.api.routes.cycles.projects import router as projects_router
@@ -14,6 +15,7 @@ from squadops.api.routes.cycles.runs import router as runs_router
 
 __all__ = [
     "projects_router",
+    "goal_sets_router",
     "cycles_router",
     "runs_router",
     "profiles_router",

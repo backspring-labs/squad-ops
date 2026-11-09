@@ -221,8 +221,7 @@ def _real_dir_with_files(path: Path) -> int:
 def within_roots(main: Path, path: Path) -> bool:
     """Whether the sweep may judge a worktree: one beside the main checkout, or under its
     ``.claude/worktrees/``. Git lists every worktree of the repository wherever it lives, and a
-    checkout another tool keeps at a pinned commit (the nostromo crews' ``squadops-reviewed``,
-    detached on main) read as finished work and was marked for removal (#2751). Anything else is
+    checkout another tool keeps at a pinned commit (detached on main, under ``~/.config``) read as finished work and was marked for removal (#2751). Anything else is
     kept and named, for a person to remove by hand if it is ours."""
     resolved, root = path.resolve(), main.resolve()
     return resolved.parent == root.parent or (root / ".claude" / "worktrees") in resolved.parents

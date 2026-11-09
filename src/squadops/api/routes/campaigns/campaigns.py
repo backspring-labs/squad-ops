@@ -3,7 +3,7 @@
 Each operation is a control-log transition through ``CampaignRegistryPort``, acknowledged only
 after its row commits. The scopes are the owner's ruling of 2026-10-02:
 - **read** (``campaigns:read``): the campaign and its control log;
-- **supervise** (``campaigns:supervise``, the crew's supervisor): pause, classify, the box lease,
+- **supervise** (``campaigns:supervise``, the operator's supervisor): pause, classify, the box lease,
   and ruling at the increment gate;
 - **manage** (``campaigns:manage``, the supervisor and the owner; #1940, SIP-0109 §24az, revising
   that ruling at the owner's request of 2026-10-03): create, start, abort, materialize the package,
@@ -19,23 +19,33 @@ projection, carries completeness (§13).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from squadops.api.campaign_schemas import (
     AcceptedTreeDTO,
+    BacklogItemResponse,
+    BacklogResponse,
+    CampaignContributionRequest,
     CampaignCreateRequest,
+    CampaignGoalsDTO,
     CampaignObjectiveDTO,
     CampaignPolicyDTO,
     CampaignResponse,
     ClassificationRequest,
+    ContributionDismissalRequest,
     ControlLogEntryResponse,
     ControlRequest,
     ControlResultResponse,
     EscalationAnswerRequest,
     EscalationResponse,
+    GateGoalEvidenceResponse,
+    GoalDelegationRequest,
     LeaseRequest,
     LeaseResponse,
     LeaseResultResponse,
@@ -47,20 +57,28 @@ from squadops.api.campaign_schemas import (
     ReviewPushResponse,
     WorkClassDTO,
 )
+from squadops.api.cycle_schemas import (
+    CampaignAssessmentsResponse,
+    ContributionResponse,
+    ResultStandingResponse,
+)
 from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
+from squadops.api.routes.cycles.goal_sets import assessment_response
 from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.api.runtime.deps import (
     get_artifact_vault,
     get_audit_port,
     get_box_reader,
+    get_campaign_contribution,
     get_campaign_launch,
     get_campaign_progress,
     get_campaign_registry,
     get_cycle_event_bus,
     get_cycle_registry,
+    get_goal_set_registry,
     get_memory_records,
     get_memory_store,
     get_project_registry,
@@ -68,17 +86,34 @@ from squadops.api.runtime.deps import (
     get_review_requests,
     get_scenario_store,
     get_source_repository,
+    get_squad_profile_port,
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
+from squadops.campaigns.backlog import campaign_backlog, gate_goal_evidence
 from squadops.campaigns.calibration_record import (
     CalibrationRecord,
     record_for,
     recorded_calibration,
 )
 from squadops.campaigns.continuation import PendingAction
-from squadops.campaigns.escalation import Escalation, answer_refusal, answer_transition, escalations
+from squadops.campaigns.contribution_dismissal import dismissal_refusal, dismissal_transition
+from squadops.campaigns.escalation import (
+    DelegatedMove,
+    Escalation,
+    answer_refusal,
+    answer_transition,
+    definition_hash,
+    delegation_binding,
+    delegation_verdict,
+    escalating_row,
+    escalations,
+    pending_plan_gate_escalation,
+    requested_move,
+    spent_on_increment,
+)
 from squadops.campaigns.gate import increment_sequence_refusal
+from squadops.campaigns.goal_delegation import goal_delegation_transition
 from squadops.campaigns.launch_blocking import (
     escalated_by_a_blocked_launch,
     escalated_by_a_refused_launch,
@@ -88,6 +123,7 @@ from squadops.campaigns.ledger import ledger
 from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
+    CampaignGoals,
     CampaignObjective,
     CampaignOutcome,
     CampaignPolicy,
@@ -98,7 +134,10 @@ from squadops.campaigns.models import (
     ControlOperationRefused,
     ControlOutcome,
     ProposalClassification,
+    RefusalReason,
+    ResumeNotDelegated,
     ResumeReservedToOwner,
+    StopWhen,
     TransitionResult,
     WorkClass,
 )
@@ -112,10 +151,13 @@ from squadops.campaigns.projection import project
 from squadops.campaigns.repository_backed import creation_refusal
 from squadops.campaigns.review_push import ReviewPushRefused, push_review
 from squadops.cycles.gate_attribution import compose_decided_by
-from squadops.cycles.models import CycleStatus, ProjectNotFoundError
+from squadops.cycles.models import CycleStatus, GoalSetNotFoundError, ProjectNotFoundError
+from squadops.execution.size_preflight import size_preflight
 from squadops.memory.pinning import pin_campaign
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.contribution import ContributionRefused
+from squadops.projects.goal_set import surface_document
+from squadops.projects.goal_set_assessments import CampaignHasNoGoalSet, campaign_assessments
 from squadops.projects.models import SourceUnavailable
 from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
 
@@ -207,6 +249,127 @@ async def apply_control(
     return result
 
 
+async def refuse_delegated_resume(
+    request: Request, campaign_id: str, transition: CampaignTransition, identity: Identity | None
+) -> NoReturn:
+    """§24da: a resume the campaign did not delegate to the operator's supervisor principal. The
+    refusal is recorded as ``transition``'s row (``resume_not_delegated``, its binding naming
+    the principal's claim and why), projected to the audit, and raised as the 403."""
+    entry = await _registry(request).refuse(
+        campaign_id, transition, RefusalReason.RESUME_NOT_DELEGATED
+    )
+    _project_to_audit(request, entry, identity)
+    raise ResumeNotDelegated(entry)
+
+
+async def delegated_plan_gate_answer(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None,
+    *,
+    run_id: str,
+    gate_name: str,
+    decidable: Callable[[], Awaitable[None]],
+) -> None:
+    """§24da, the ``plan_gate`` class, at the gate's answer path (#2837): a caller on
+    ``campaigns:supervise`` without ``campaigns:control`` answers a plan gate the tier escalated
+    only when the campaign declared ``plan_gate`` and the owner holds no pause. The answer is
+    recorded as a ``resume`` row that moves nothing, before the gate decision; the refusal as a
+    ``resume_not_delegated`` row, and the gate is not decided. A gate no escalation holds is the
+    supervisor's as #2837 made it, and records nothing here.
+
+    The caller has validated the request. ``decidable`` raises what the registry would refuse the
+    decision with, and runs after the verdict, so a refused delegation is still recorded and an
+    applied row is never written for an answer that can't happen."""
+    if holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
+        return
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    log = await registry.control_log(campaign_id)
+    escalating = pending_plan_gate_escalation(
+        log, campaign.state, run_id=run_id, gate_name=gate_name
+    )
+    if escalating is None:
+        return
+    verdict = delegation_verdict(
+        campaign,
+        escalating,
+        held=owner_held(campaign, log),
+        move=DelegatedMove.GATE_ANSWER,
+        spent={},
+    )
+    actor, role = actor_from(identity)
+    escalation_id = str(escalating.binding.get("escalation_id"))
+    transition = CampaignTransition(
+        operation=ControlOperation.RESUME,
+        actor=actor,
+        actor_role=role,
+        reason=f"the plan gate {gate_name} on {run_id} ({escalation_id}) answered by {actor} "
+        "under the campaign's unattended_resume",
+        idempotency_key=f"unattended:{escalation_id}",
+        next_state=campaign.state,
+        expected_state=campaign.state,
+        target=run_id,
+        binding=delegation_binding(verdict, definition_hash=definition_hash(log)),
+    )
+    if not verdict.allowed:
+        await refuse_delegated_resume(request, campaign_id, transition, identity)
+    await decidable()
+    await apply_control(request, campaign_id, transition, identity)
+
+
+def _with_delegation(transition: CampaignTransition, delegated: dict | None) -> CampaignTransition:
+    """The resume's row carrying the delegation it was made under (§24da), when it was."""
+    if delegated is None:
+        return transition
+    return dataclasses.replace(transition, binding={**transition.binding, **delegated})
+
+
+async def _delegated_resume(
+    request: Request,
+    campaign: Campaign,
+    log: list[ControlLogEntry],
+    body: ResumeRequest,
+    identity: Identity | None,
+    *,
+    held: str,
+    action: PendingAction | None,
+) -> dict:
+    """§24da: the operator's supervisor principal, asking to resume what only the owner could. The
+    verdict reads the row that escalated the campaign, its declared classes, the move asked for
+    and the increment's spent repairs and retries. Allowed, the resume goes on by the owner's own
+    path and its row carries the returned binding; refused, the refusal is recorded and raised."""
+    registry = _registry(request)
+    verdict = delegation_verdict(
+        campaign,
+        escalating_row(campaign, log),
+        held=held,
+        move=requested_move(action),
+        spent=spent_on_increment(await registry.launch_intents(campaign.campaign_id)),
+        asked=action.value if action is not None else None,
+    )
+    binding = delegation_binding(verdict, definition_hash=definition_hash(log))
+    if verdict.allowed:
+        return binding
+    actor, role = actor_from(identity)
+    await refuse_delegated_resume(
+        request,
+        campaign.campaign_id,
+        CampaignTransition(
+            operation=ControlOperation.RESUME,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            next_state=campaign.state,
+            expected_state=campaign.state,
+            target=verdict.escalation.get("target"),
+            binding=binding,
+        ),
+        identity,
+    )
+
+
 async def launch_pending(request: Request, result: TransitionResult) -> list[str]:
     """Drain the launch intents (§12b) when this row wrote one, and name the cycle this row's
     intent launched. A replay drains too: its intent may be pending still, if the first attempt
@@ -256,6 +419,12 @@ async def create_campaign(
                 target_accepted_increments=body.objective.target_accepted_increments,
                 work_class=WorkClass(**body.objective.work_class.model_dump()),
                 requirements=body.objective.requirements,
+                goals=(
+                    CampaignGoals(**body.objective.goals.model_dump())
+                    if body.objective.goals
+                    else None
+                ),
+                stop_when=body.objective.stop_when,
             ),
             policy=CampaignPolicy(**body.policy.model_dump()),
             state=CampaignState.DRAFT,
@@ -307,9 +476,25 @@ async def _require_project_rules(request: Request, campaign: Campaign) -> None:
         project = await get_project_registry(request).get_project(campaign.project_id)
     except ProjectNotFoundError:
         return
-    refusal = creation_refusal(campaign, repository_backed=project.source is not None)
+    refusal = creation_refusal(
+        campaign,
+        repository_backed=project.source is not None,
+        latest_goal_set_revision=(
+            await _latest_goal_set_revision(request, campaign.project_id)
+            if campaign.objective.goals is not None
+            else None
+        ),
+    )
     if refusal:
         raise ValueError(refusal)
+
+
+async def _latest_goal_set_revision(request: Request, project_id: str) -> int | None:
+    """SIP-0115 §5.1: the Project's latest goal-set revision, or ``None`` when none is written."""
+    try:
+        return (await get_goal_set_registry(request).get_revision(project_id)).revision
+    except GoalSetNotFoundError:
+        return None
 
 
 async def _pinnable_scenario_store(request: Request, digest: str | None):
@@ -432,9 +617,21 @@ async def _calibration_record(request: Request, campaign: Campaign) -> Calibrati
         return None
     if campaign.state is not CampaignState.DRAFT:
         return recorded_calibration(await _registry(request).control_log(campaign.campaign_id))
-    return await record_for(
+    record = await record_for(
         get_project_registry(request), project, campaign_id=campaign.campaign_id
     )
+    # #2889: every task the Campaign dispatches is rendered on the product's tree at the record's
+    # commit, and one that can't fit its model's window refuses the start, before anything is
+    # written, as a blocking gap does.
+    await size_preflight(
+        campaign,
+        project,
+        record,
+        registry=get_project_registry(request),
+        repository=get_source_repository(request),
+        squad_profiles=get_squad_profile_port(request),
+    )
+    return record
 
 
 async def _pin_memory(request: Request, campaign) -> None:
@@ -554,6 +751,78 @@ async def push_review_request(
     )
 
 
+@router.post("/{campaign_id}/contributions", status_code=201)
+async def open_campaign_contribution(
+    request: Request,
+    campaign_id: str,
+    body: CampaignContributionRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
+) -> ContributionResponse:
+    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc): the supervisor's
+    act, with its own token, when the Campaign's closing row says one is due. The close itself
+    opens nothing. One per Campaign, recorded as the Project's contribution, pending; a Campaign
+    already contributed is answered with it. Each failed attempt is a ``contribution_failed``
+    row on the Campaign. Merging stays the owner's."""
+    actor, role = actor_from(identity)
+    try:
+        contribution, replayed = await get_campaign_contribution(request).open(
+            campaign_id,
+            token=body.token.get_secret_value(),
+            actor=actor,
+            actor_role=role,
+        )
+    except ContributionRefused as e:
+        raise http_error(409, "CONTRIBUTION_REFUSED", str(e)) from e
+    except (SourceUnavailable, ReviewRequestFailed) as e:
+        raise http_error(502, "CONTRIBUTION_FAILED", str(e)) from e
+    return ContributionResponse(contribution=contribution.to_document(), replayed=replayed)
+
+
+@router.post("/{campaign_id}/contribution-dismissal", status_code=201)
+async def dismiss_campaign_contribution(
+    request: Request,
+    campaign_id: str,
+    body: ContributionDismissalRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """The owner declares a closed, unmerged contribution won't land (SIP-0109 §24dg, #2926): a
+    ``contribution_dismissed`` row, which clears it from the Project's unintegrated increments so it
+    stops blocking the operator's gate. ``campaigns:control``, the owner's alone: the operator opens a
+    contribution, and must not be able to write off work the owner hasn't. The contribution's record
+    stays ``closed``, and the row says who and why. Anything but a closed, unmerged contribution is
+    409 ``CONTRIBUTION_NOT_DISMISSABLE``, nothing written. A retry with its key replays, whatever
+    has happened to the contribution since. Re-opening is not built."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    log = await registry.control_log(campaign_id)
+    held = await get_project_registry(request).contributions(campaign.project_id)
+    contribution = next((c for c in held if c.campaign_id == campaign_id), None)
+    replay = any(
+        e.operation is ControlOperation.CONTRIBUTION_DISMISSED
+        and e.outcome is ControlOutcome.APPLIED
+        and e.idempotency_key == body.idempotency_key
+        for e in log
+    )
+    if not replay:
+        refusal = dismissal_refusal(campaign_id, contribution, log)
+        if refusal is not None:
+            raise http_error(409, "CONTRIBUTION_NOT_DISMISSABLE", refusal)
+    assert contribution is not None  # a replay's row was written over one, and none is deleted
+    actor, role = actor_from(identity)
+    try:
+        transition = dismissal_transition(
+            contribution,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            source_ref=body.source_ref,
+        )
+    except ValueError as e:
+        raise HTTPException(422, _validation(str(e))) from e
+    return _result(await apply_control(request, campaign_id, transition, identity))
+
+
 @router.get("/{campaign_id}/escalations")
 async def list_escalations(
     request: Request,
@@ -622,17 +891,157 @@ async def read_ledger(
 ) -> list[LedgerEntryResponse]:
     """The proposal ledger (§9.4), read from the control log and the launch outbox: per proposal
     version, its submission, its ruling, the cycles that carried it with their outcomes (#2578),
-    and its classification."""
+    and its classification.
+
+    **It is what a gate's reviewer reads** (SIP-0115 §8.5). On a goal-set Campaign each version names
+    its ``backlog_item`` and ``goals_revision``, and the one a gate can be open on, its item
+    ``proposed`` or ``in_increment``, carries ``goal_evidence``: the goal, the item and the expected
+    results it serves, as the revision it is bound to holds them (§5.5a). A requirements Campaign's
+    rows carry none of the three."""
     import dataclasses
 
     registry = _registry(request)
-    await registry.get_campaign(campaign_id)
+    campaign = await registry.get_campaign(campaign_id)
+    evidence: dict[tuple[str, int], GateGoalEvidenceResponse] = {}
+    if campaign.objective.goals is not None:
+        read = await gate_goal_evidence(
+            campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
+        )
+        evidence = {key: GateGoalEvidenceResponse(**doc) for key, doc in read.items()}
     return [
-        LedgerEntryResponse(**dataclasses.asdict(e))
+        LedgerEntryResponse(
+            **dataclasses.asdict(e), goal_evidence=evidence.get((e.proposal_id, e.version))
+        )
         for e in ledger(
             await registry.control_log(campaign_id), await registry.launch_intents(campaign_id)
         )
     ]
+
+
+@router.get("/{campaign_id}/backlog")
+async def read_backlog(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> BacklogResponse:
+    """A goal-set Campaign's backlog (SIP-0115 §4): each item's status derived from the control
+    log and the launch outbox at the revision the Campaign reads now, its pinned one or the
+    latest. Read like the ledger it is derived beside (``campaigns:read``). A Campaign naming no
+    goal set has none: 404 ``CAMPAIGN_HAS_NO_GOAL_SET``."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    goals = campaign.objective.goals
+    if goals is None:
+        raise http_error(
+            404,
+            "CAMPAIGN_HAS_NO_GOAL_SET",
+            f"campaign {campaign_id} names no goal set (objective.goals), so it has no backlog",
+        )
+    view, _revisions = await campaign_backlog(
+        campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
+    )
+    following = view.next_item
+    return BacklogResponse(
+        campaign_id=campaign_id,
+        project_id=campaign.project_id,
+        revision=view.revision,
+        reads="pinned" if goals.pinned is not None else "current",
+        next_item=following.item_id if following else None,
+        done=view.done,
+        items=[
+            BacklogItemResponse(
+                item_id=i.item_id,
+                title=i.title,
+                serves=list(i.serves),
+                status=i.status.value,
+                label=i.label,
+                position=i.position,
+                proposal_id=i.proposal_id,
+                version=i.version,
+                cycle_id=i.cycle_id,
+                revision=i.revision,
+                row=i.row,
+                reason=i.reason,
+                removed_in=i.removed_in,
+                results_changed_in=i.results_changed_in,
+                split_into=list(i.split_into),
+            )
+            for i in view.items
+        ],
+    )
+
+
+@router.get("/{campaign_id}/assessments")
+async def read_assessments(
+    request: Request,
+    campaign_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
+) -> CampaignAssessmentsResponse:
+    """How each expected result of the revision the Campaign reads now stands (SIP-0115 §5.7): the
+    latest assessment in this Campaign, or the ones that conflict, derived and never stored. Per
+    Campaign, as the backlog is: what makes one stale is this Campaign's acceptances. A Campaign
+    naming no goal set has none: 404 ``CAMPAIGN_HAS_NO_GOAL_SET``."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(campaign_id)
+    try:
+        read = await campaign_assessments(
+            campaign, goal_sets=get_goal_set_registry(request), campaigns=registry
+        )
+    except CampaignHasNoGoalSet as e:
+        raise http_error(404, "CAMPAIGN_HAS_NO_GOAL_SET", str(e)) from e
+    return CampaignAssessmentsResponse(
+        campaign_id=campaign_id,
+        project_id=campaign.project_id,
+        revision=read.revision,
+        log_seq=read.log_seq,
+        results=[
+            ResultStandingResponse(
+                expected_result=r.expected_result,
+                statement=r.result.statement,
+                surface=surface_document(r.result.surface),
+                standing=r.standing.value,
+                assessments=[assessment_response(a) for a in r.assessments],
+            )
+            for r in read.results
+        ],
+    )
+
+
+@router.post("/{campaign_id}/goal-delegation", status_code=201)
+async def grant_goal_delegation(
+    request: Request,
+    campaign_id: str,
+    body: GoalDelegationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """The owner grants the operator this Campaign's goal-set curation (SIP-0115 Q41, §10c; SIP-0109
+    §24dd): the row the operator's promotion, drop and split within it read. ``campaigns:control``,
+    which is the owner's alone: the supervisor can create a Campaign, and must not be able to
+    authorize itself on one. It moves no state, lasts the Campaign's life, and a completed Campaign
+    refuses it (409 ``CONTROL_OPERATION_REFUSED``, recorded); a retry with its key replays. A
+    Campaign naming no goal set has nothing to delegate: 404 ``CAMPAIGN_HAS_NO_GOAL_SET``."""
+    campaign = await _registry(request).get_campaign(campaign_id)
+    if campaign.objective.goals is None:
+        raise http_error(
+            404,
+            "CAMPAIGN_HAS_NO_GOAL_SET",
+            f"campaign {campaign_id} names no goal set (objective.goals), so it has nothing to "
+            "delegate",
+        )
+    actor, role = actor_from(identity)
+    try:
+        transition = goal_delegation_transition(
+            campaign,
+            actor=actor,
+            actor_role=role,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            source_ref=body.source_ref,
+            expected_state=CampaignState(body.expected_state) if body.expected_state else None,
+        )
+    except ValueError as e:
+        raise HTTPException(422, _validation(str(e))) from e
+    return _result(await apply_control(request, campaign_id, transition, identity))
 
 
 @router.post("/{campaign_id}/pause")
@@ -654,16 +1063,22 @@ async def resume_campaign(
     body: ResumeRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
-    """The owner's word (§10, §17), or the supervisor's on its own pause (#1940, §24az).
+    """The owner's word (§10, §17), or the supervisor's on its own pause (#1940, §24az), or the
+    operator's supervisor principal's on an escalation the campaign delegated to it (§24da).
 
     Who may resume is read from the row that held the campaign (``owner_held``): an escalation,
-    a limit's pause and the owner's pause need ``campaigns:control``, and a supervisor asking is
-    refused 403 before anything is written.
+    a limit's pause and the owner's pause need ``campaigns:control``. A caller on
+    ``campaigns:supervise`` without it asks for a delegated resume (``_delegated_resume``): the
+    escalation's class must be in the campaign's ``unattended_resume``, the resume the move that
+    class permits within its limit, and the owner must hold no pause; otherwise it is refused
+    403 ``RESUME_NOT_DELEGATED``, and the refusal is a control-log row. Anyone else is refused
+    403 before anything is written.
 
     - **Paused by a limit:** the action the decision held is executed as recorded, never
       recomputed, and a launch action's intent is written in this row.
     - **Paused by the supervisor:** the campaign returns to the state it was paused from.
-    - **Escalated:** the action this ruling names is executed the same way.
+    - **Escalated:** the action this ruling names is executed the same way. A delegated resume's
+      row says so (``delegated``, the class, the escalation and the definition hash).
 
     Anything else refuses the resume as stale, and the refusal is recorded.
     """
@@ -672,9 +1087,6 @@ async def resume_campaign(
     registry = _registry(request)
     log = await registry.control_log(campaign_id)
     campaign = await registry.get_campaign(campaign_id)
-    held_by_owner = owner_held(campaign, log)
-    if held_by_owner is not None and not holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
-        raise ResumeReservedToOwner(campaign_id, held_by_owner)
     held = held_action(log) if campaign.state is CampaignState.PAUSED else None
     named = None
     if body.action is not None:
@@ -682,6 +1094,14 @@ async def resume_campaign(
             named = PendingAction(body.action)
         except ValueError as e:
             raise HTTPException(422, _validation(f"unknown action {body.action!r}")) from e
+    held_by_owner = owner_held(campaign, log)
+    delegated: dict | None = None
+    if held_by_owner is not None and not holds_scopes(request, Scope.CAMPAIGNS_CONTROL):
+        if not holds_scopes(request, Scope.CAMPAIGNS_SUPERVISE):
+            raise ResumeReservedToOwner(campaign_id, held_by_owner)
+        delegated = await _delegated_resume(
+            request, campaign, log, body, identity, held=held_by_owner, action=named
+        )
 
     refused = escalated_by_a_refused_launch(campaign, log)
     if refused is not None:
@@ -706,7 +1126,9 @@ async def resume_campaign(
             role,
             expected_state=CampaignState.ESCALATED,
         )
-        result = await apply_control(request, campaign_id, transition, identity)
+        result = await apply_control(
+            request, campaign_id, _with_delegation(transition, delegated), identity
+        )
         launched = await _retry_launch(request, launch_id, result)
         return await _after_drain(request, result, launched, launch_id=launch_id)
     if campaign.state is CampaignState.ESCALATED and named is None:
@@ -721,7 +1143,11 @@ async def resume_campaign(
                 role,
                 expected_state=CampaignState.ESCALATED,
             )
-            return _result(await apply_control(request, campaign_id, transition, identity))
+            return _result(
+                await apply_control(
+                    request, campaign_id, _with_delegation(transition, delegated), identity
+                )
+            )
         raise HTTPException(422, _validation("an escalated campaign resumes on a named action"))
     if held is not None and named is not None and named is not held:
         raise HTTPException(
@@ -741,7 +1167,9 @@ async def resume_campaign(
             )
         except CannotLaunch as e:
             raise HTTPException(422, _validation(str(e))) from e
-        result = await apply_control(request, campaign_id, transition, identity)
+        result = await apply_control(
+            request, campaign_id, _with_delegation(transition, delegated), identity
+        )
         return await _after_drain(request, result, await launch_pending(request, result))
     paused_from = _paused_from(log)
     target = (
@@ -755,7 +1183,9 @@ async def resume_campaign(
         role,
         expected_state=CampaignState.PAUSED,
     )
-    return _result(await apply_control(request, campaign_id, transition, identity))
+    return _result(
+        await apply_control(request, campaign_id, _with_delegation(transition, delegated), identity)
+    )
 
 
 @router.get("/{campaign_id}/lease")
@@ -946,21 +1376,38 @@ async def abort_campaign(
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
     """Abort: terminal (§12a). Every cycle the campaign launched that has not ended is
-    cancelled by the existing cancel path, and no continuation follows."""
+    cancelled by the existing cancel path, and no continuation follows. A repository-backed
+    campaign's abort row records its contribution, as a terminal decision's does: derived under
+    the Campaign's lock, from the log as the row commits on it. It opens nothing (§24dc)."""
     actor, role = actor_from(identity)
-    transition = _transition(
-        ControlOperation.ABORT,
-        CampaignState.COMPLETED,
-        body,
-        actor,
-        role,
-        outcome=CampaignOutcome.ABORTED,
+    transition = dataclasses.replace(
+        _transition(
+            ControlOperation.ABORT,
+            CampaignState.COMPLETED,
+            body,
+            actor,
+            role,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+        repository_backed=await _repository_backed(request, campaign_id),
     )
     result = await apply_control(request, campaign_id, transition, identity)
     cancelled = await _cancel_launched_cycles(request, campaign_id)
     if not result.replayed:
         await _materialize_after_close(request, campaign_id)
     return _result(result, cancelled_cycles=cancelled)
+
+
+async def _repository_backed(request: Request, campaign_id: str) -> bool:
+    """Whether the abort's row says what is due (§24dc) though the Campaign has no branch yet: its
+    Project has a repository. A Project that can't be found has no contribution to name, and never
+    blocks the abort: a Campaign with a branch is read as repository-backed from its log."""
+    campaign = await _registry(request).get_campaign(campaign_id)
+    try:
+        project = await get_project_registry(request).get_project(campaign.project_id)
+    except ProjectNotFoundError:
+        return False
+    return project.source is not None
 
 
 @router.post("/{campaign_id}/package")
@@ -1111,6 +1558,14 @@ def _campaign(c: Campaign) -> CampaignResponse:
                 else None
             ),
             requirements=c.objective.requirements,
+            goals=(
+                CampaignGoalsDTO.model_validate(
+                    {"goal_set": c.objective.goals.goal_set, "revision": c.objective.goals.revision}
+                )
+                if c.objective.goals
+                else None
+            ),
+            stop_when="backlog_done" if c.objective.stop_when == StopWhen.BACKLOG_DONE else None,
         ),
         policy=CampaignPolicyDTO(
             **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}

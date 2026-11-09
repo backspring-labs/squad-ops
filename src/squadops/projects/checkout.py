@@ -191,12 +191,17 @@ def manifest_of(
     )
 
 
-def repository_map(manifest: CheckoutManifest) -> str:
-    """Every path with its size, or, past the path limit, every directory with its count."""
+def repository_map(manifest: CheckoutManifest, deleted: Iterable[str] = ()) -> str:
+    """Every path with its size, or, past the path limit, every directory with its count. A path
+    the run has removed (#2612) is named as removed."""
     paths = sorted(manifest.sizes)
+    removed = frozenset(deleted)
     if len(paths) <= MAP_PATH_LIMIT:
         return "\n".join(
-            f"- `{p}` ({manifest.sizes[p]} bytes{_held_back_note(manifest, p)})" for p in paths
+            f"- `{p}` (removed by this run)"
+            if p in removed
+            else f"- `{p}` ({manifest.sizes[p]} bytes{_held_back_note(manifest, p)})"
+            for p in paths
         )
     counts: dict[str, int] = {}
     for p in paths:
@@ -230,14 +235,24 @@ def source_repository_input(
     manifest: CheckoutManifest,
     current: Mapping[str, str],
     named: Iterable[str],
+    *,
+    deleted: Iterable[str] = (),
 ) -> dict[str, Any]:
     """The task's ``source_repository`` input: the map, the product's checks and test runners, its
     instruction files and the current content of the files it names. ``current`` holds each path's latest content: the
-    squad's own when it has changed the file, the checkout's otherwise."""
-    focus = focus_paths(manifest, named)
+    squad's own when it has changed the file, the checkout's otherwise.
+
+    It also carries, as data no prompt renders, what a removal is judged against (#2612): every
+    path at the commit (the map collapses past its limit), the ones no task changes (binary
+    files, generated lockfiles), and the ones the run has already removed."""
+    removed = sorted(set(deleted) & manifest.sizes.keys())
+    focus = [p for p in focus_paths(manifest, named) if p not in removed]
     return {
         "commit": manifest.commit,
-        "map": repository_map(manifest),
+        "map": repository_map(manifest, removed),
+        "paths": sorted(manifest.sizes),
+        "held_back": sorted(manifest.held_back),
+        "deleted": removed,
         "checks": [{"id": i, "argv": list(a)} for i, a in manifest.checks],
         "runners": [r.as_dict() for r in manifest.runners],
         "instructions": {p: current[p] for p in manifest.instruction_paths if p in current},

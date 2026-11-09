@@ -18,23 +18,38 @@ from squadops.api.cycle_schemas import (
     RunResumeRequest,
     TaskInstructionDTO,
 )
-from squadops.api.middleware.auth import require_scopes
+from squadops.api.errors import http_error
+from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
 from squadops.api.runtime.deps import (
     get_artifact_vault,
+    get_campaign_registry,
     get_cycle_event_bus,
     get_cycle_registry,
     get_flow_executor,
+    get_goal_set_registry,
     get_memory_records,
     get_reference_resolvers,
 )
 from squadops.auth.models import Identity, Scope
-from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
-from squadops.campaigns.models import ProposalBinding
+from squadops.campaigns.backlog import BACKLOG_ITEM_KEY, GOALS_REVISION_KEY, campaign_backlog
+from squadops.campaigns.backlog import goals_revised as goals_revised_reason
+from squadops.campaigns.gate import (
+    GOALS_REVISED,
+    INCREMENT_RULING_GATE,
+    RETURNED_AS,
+    ruling_transition,
+)
+from squadops.campaigns.models import (
+    ControlLogEntry,
+    ControlOperation,
+    ControlOutcome,
+    ProposalBinding,
+)
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.cycles.gate_attribution import compose_decided_by
-from squadops.cycles.gate_decisions import record_gate_decision
+from squadops.cycles.gate_decisions import record_gate_decision, refuse_undecidable
 from squadops.cycles.lifecycle import (
     TERMINAL_STATES,
     compute_config_hash,
@@ -54,12 +69,14 @@ from squadops.cycles.models import (
     validate_workload_type,
 )
 from squadops.events.types import EventType
+from squadops.memory.observations import PLAN_REVIEW_GATE
 from squadops.memory.pinning import cycle_binding
 from squadops.memory.records import RecordRefused, Source, SourceKind, TaskTarget
 from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.memory.records import RecordConflict
+from squadops.stacks.development_profiles import development_profile_drift
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +158,11 @@ async def create_run(
         workload_type=validated_wt,
     )
     created = await registry.create_run(run)
+    # SIP-0112 H.26: a retry stays on the pinned profile and runs what is deployed, so a change in
+    # what that profile does since it was selected goes on the record.
+    drift = development_profile_drift(cycle.execution_overrides)
+    if drift:
+        logger.warning("run_development_profile_drift", extra={"run_id": created.run_id, **drift})
 
     # SIP-0077: run.created
 
@@ -157,6 +179,7 @@ async def create_run(
             "run_number": created.run_number,
             "initiated_by": created.initiated_by,
             "workload_type": created.workload_type,
+            **({"development_profile_drift": drift} if drift else {}),
         },
     )
 
@@ -229,9 +252,37 @@ async def cancel_run(
 async def _gate_scopes(request: Request, gate_name: str) -> Identity | None:
     """The increment gate is the campaign supervisor's (``campaigns:supervise``); every other
     gate is a cycle write. One route, so a campaign's ruling goes through the existing gate path
-    (SIP-0109 §9.2) and an operator's cycle writes never reach it."""
-    scope = Scope.CAMPAIGNS_SUPERVISE if gate_name == INCREMENT_RULING_GATE else Scope.CYCLES_WRITE
-    return await require_scopes(scope)(request)
+    (SIP-0109 §9.2) and an operator's cycle writes never reach it.
+
+    #2837: the plan gate is a cycle write, or the campaign supervisor's on a cycle a campaign
+    launched, as the runbook says the supervisor answers plan gates. Which cycle it is is read in
+    the route (``_supervisor_answers_a_campaign_plan_gate``), since the scope check can't see it."""
+    if gate_name == INCREMENT_RULING_GATE:
+        return await require_scopes(Scope.CAMPAIGNS_SUPERVISE)(request)
+    if gate_name == PLAN_REVIEW_GATE and not holds_scopes(request, Scope.CYCLES_WRITE):
+        return await require_scopes(Scope.CAMPAIGNS_SUPERVISE)(request)
+    return await require_scopes(Scope.CYCLES_WRITE)(request)
+
+
+async def _supervisor_answers_a_campaign_plan_gate(
+    request: Request,
+    registry,
+    cycle_id: str,
+) -> str | None:
+    """#2837: a caller ruling the plan gate on ``campaigns:supervise`` alone may do so only on a
+    cycle a campaign launched. An operator's own cycle stays a cycle write. Returns that campaign,
+    whose delegation the route reads once the request is valid; ``None`` for a cycle writer."""
+    if holds_scopes(request, Scope.CYCLES_WRITE):
+        return None
+    cycle = await registry.get_cycle(cycle_id)
+    campaign_id = getattr(cycle, "campaign_id", None)
+    if campaign_id is None:
+        raise http_error(
+            403,
+            "FORBIDDEN",
+            "the plan gate of a cycle no campaign launched is a cycle write (cycles:write)",
+        )
+    return campaign_id
 
 
 #: The decisions a ruling's task instructions may go with: an approval launches the work they direct.
@@ -313,6 +364,74 @@ async def _store_ruling_instructions(request: Request, records: tuple) -> None:
             continue  # the ruling was repeated: its first attempt stored this one
 
 
+async def _goals_revised(
+    request: Request, campaign_id: str, binding: ProposalBinding
+) -> str | None:
+    """SIP-0115 §5.5a: why the proposal ``binding`` names is returned as ``goals_revised`` at its
+    ruling, or ``None``. Only a ``current`` Campaign reads a later revision; a pinned one never
+    does. The backlog is read at the latest revision with this proposal left out, so its item
+    reads as it would for a fresh proposal."""
+    campaigns = get_campaign_registry(request)
+    campaign = await campaigns.get_campaign(campaign_id)
+    goals = campaign.objective.goals
+    if goals is None or goals.pinned is not None:
+        return None
+    submitted = [
+        e.binding
+        for e in await campaigns.control_log(campaign_id)
+        if e.operation is ControlOperation.SUBMIT
+        and e.outcome is ControlOutcome.APPLIED
+        and e.binding.get("proposal_id") == binding.proposal_id
+        and e.binding.get("version") == binding.version
+    ]
+    if not submitted or not submitted[-1].get(BACKLOG_ITEM_KEY):
+        return None
+    view, revisions = await campaign_backlog(
+        campaign,
+        goal_sets=get_goal_set_registry(request),
+        campaigns=campaigns,
+        leaving_out=(binding.proposal_id, binding.version),
+    )
+    by_number = {r.revision: r for r in revisions}
+    recorded = submitted[-1].get(GOALS_REVISION_KEY)
+    bound = by_number.get(int(recorded)) if recorded is not None else None
+    if bound is None:
+        return None
+    return goals_revised_reason(
+        item_id=str(submitted[-1][BACKLOG_ITEM_KEY]),
+        bound=bound,
+        latest=by_number[view.revision],
+        view_at_latest=view,
+    )
+
+
+async def _committed_ruling(
+    request: Request, campaign_id: str, run_id: str, key: str
+) -> ControlLogEntry | None:
+    """The applied ``rule`` row ``key`` already wrote on ``run_id``'s gate, or ``None`` (SIP-0109
+    §24cy item 5). A ruling's row commits before its gate decision is recorded, and a process that
+    dies between the two is retried with the same key: the retry replays what the row committed,
+    and never reads the goal set again."""
+    log = await get_campaign_registry(request).control_log(campaign_id)
+    return next(
+        (
+            e
+            for e in reversed(log)
+            if e.operation is ControlOperation.RULE
+            and e.outcome is ControlOutcome.APPLIED
+            and e.target == run_id
+            and e.idempotency_key == key
+        ),
+        None,
+    )
+
+
+def _asked_of(committed: ControlLogEntry) -> str:
+    """The decision a committed ruling was asked for: the one it recorded, or the one a
+    ``goals_revised`` return stood in for (``requested``)."""
+    return str(committed.binding.get("requested") or committed.binding.get("decision"))
+
+
 async def _rule_increment(
     request: Request,
     registry,
@@ -320,13 +439,15 @@ async def _rule_increment(
     run_id: str,
     body: GateDecisionRequest,
     identity: Identity | None,
-) -> bool:
+) -> tuple[bool, GateDecisionRequest]:
     """SIP-0109 §9.2: the ruling's control-log row first, checked in its own transaction
     against the proposal at the gate and the accepted tree; the gate decision follows it.
 
     A stale, conflicting or illegal ruling is refused there and recorded (409), and decides
     nothing. Returns whether the gate decision is still to be recorded: a repeated ruling
-    replays its row, and records the decision only if the first attempt never did.
+    replays its row, and records the decision only if the first attempt never did. And the
+    decision to record: the one asked for, or (SIP-0115 §5.5a) a return as ``goals_revised``,
+    whose notes are its reason, when the goal set was revised past the proposal's item.
     """
     # deferred (cycle): api.routes.campaigns.campaigns loads this module
     from squadops.api.routes.campaigns.campaigns import actor_from, apply_control
@@ -352,6 +473,34 @@ async def _rule_increment(
     # deferred (cycle): as _ruling_instructions' own import
     from squadops.api.routes.memory.interventions import dispatch_turn, turn_of
 
+    binding = ProposalBinding(**body.binding.model_dump())
+    asked = GateDecisionValue(body.decision)
+    assert body.idempotency_key is not None  # ``missing`` refused a ruling without one above
+    committed = await _committed_ruling(request, cycle.campaign_id, run_id, body.idempotency_key)
+    returned_as_revised: str | None = None
+    if committed is not None and _asked_of(committed) == asked.value:
+        # §24cy item 5: the key already ruled this gate. Replay the row as committed, whatever the
+        # goal set says now: a return keeps its recorded reason, a decision stands as asked. A
+        # retry asking another decision falls through, and the registry refuses it as a conflict.
+        if committed.binding.get(RETURNED_AS) == GOALS_REVISED:
+            returned_as_revised = committed.reason
+    elif asked in (GateDecisionValue.APPROVED, GateDecisionValue.REJECTED):
+        # SIP-0115 §5.5a: an approval or a rejection, never the supervisor's own return (nor a
+        # decision the gate refuses as illegal).
+        revised = await _goals_revised(request, cycle.campaign_id, binding)
+        if revised is not None:
+            returned_as_revised = f"{GOALS_REVISED}: {revised}"
+    if returned_as_revised is not None:
+        # SIP-0115 §5.5a: returned with its reason, not ruled; the revision reads the new goals.
+        body = body.model_copy(
+            update={
+                "decision": GateDecisionValue.RETURNED_FOR_REVISION.value,
+                "notes": returned_as_revised,
+                "classification": None,
+                "classification_rationale": None,
+                "task_instructions": [],
+            }
+        )
     # #2545: the ruling's task instructions are checked against the cycle's dispatches and stored
     # in the unit's dispatch turn, so none of its dispatches composes between the two.
     async with dispatch_turn(request, turn_of(cycle) if body.task_instructions else None):
@@ -359,22 +508,23 @@ async def _rule_increment(
         try:
             transition = ruling_transition(
                 GateDecisionValue(body.decision),
-                ProposalBinding(**body.binding.model_dump()),
+                binding,
                 run_id=run_id,
                 actor=actor,
                 actor_role=role,
-                reason=reason,
+                reason=returned_as_revised if returned_as_revised is not None else reason,
                 idempotency_key=body.idempotency_key,
                 classification=body.classification,
                 classification_rationale=body.classification_rationale,
                 instruction_ids=tuple(r.record_id for r in instructions),
+                goals_revised_from=asked if returned_as_revised is not None else None,
             )
         except ValueError as e:  # §24bi: a return names what went wrong, or it is refused
             raise ValidationError(str(e)) from e
         await apply_control(request, cycle.campaign_id, transition, identity)
         await _store_ruling_instructions(request, instructions)
     run = await registry.get_run(run_id)
-    return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions)
+    return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions), body
 
 
 @router.post("/{run_id}/gates/{gate_name}")
@@ -389,9 +539,13 @@ async def gate_decision(
 ) -> RunResponse:
 
     registry = get_cycle_registry(request)
+    answering_for = None
+    if gate_name == PLAN_REVIEW_GATE:
+        answering_for = await _supervisor_answers_a_campaign_plan_gate(request, registry, cycle_id)
 
     if gate_name == INCREMENT_RULING_GATE:
-        if not await _rule_increment(request, registry, cycle_id, run_id, body, identity):
+        record, body = await _rule_increment(request, registry, cycle_id, run_id, body, identity)
+        if not record:
             return run_to_response(await registry.get_run(run_id))
     elif (
         any(
@@ -438,6 +592,22 @@ async def gate_decision(
     )
     # #1986: one recorder for every decider: the row, the promotion an approval implies
     # (SIP-0086), and one `gate.decided` shape (SIP-0077 §7.3).
+
+    # SIP-0109 §24da: when the tier escalated this gate, the supervisor's answer is the
+    # ``plan_gate`` class's delegated resume. Its row says the answer happened, so it comes after
+    # every check above and only for a decision the registry would take.
+    if answering_for is not None:
+        # deferred (cycle): api.routes.campaigns.campaigns loads this module
+        from squadops.api.routes.campaigns.campaigns import delegated_plan_gate_answer
+
+        await delegated_plan_gate_answer(
+            request,
+            answering_for,
+            identity,
+            run_id=run_id,
+            gate_name=gate_name,
+            decidable=lambda: refuse_undecidable(registry, run_id, decision),
+        )
 
     updated = await record_gate_decision(
         registry,

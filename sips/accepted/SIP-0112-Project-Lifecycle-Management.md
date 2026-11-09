@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-30)
+## Delivery ledger (current as of 2026-11-08)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -126,13 +126,24 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **shipped**: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), a blueprint's conventions without its test placement (H.13), a product's qa suite run on the product's tree (H.15, #2815), with SIP-0109 §24bv point 5's proposal input and point 6's `qa.evaluate_increment` drop shipped there; read live on the 2.5 cut's final deploy on `z_shelfnote` and `z_continuum` (the cut's pre-registration §14b). Narrowed by the owner (2026-10-29): no product increment was accepted, and H.13's two unbuilt items remain, so the row below carries them | 2.5.0, closes #2619 with the release PR |
-| H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), waiting on #2818 and #2799; and H.13's two items not built (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing) | 2.6.0, #2827 |
-| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.6.0, #2709 |
+| H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), read on one counted increment on `prj-z-continuum` by the 2.7 plan's §4.5 (#2818 shipped in 2.5.1; the 2.6 spikes' accepted increments are uncounted; SIP-0109 §24dp, #2799, ships in 2.7 the page loader a vitest product's page criteria discriminate through, which no counted reading has read); and H.13's two items (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing). H.13's two items are built in 2.7 (H.29), and the counted increment remains, so #2827 stays open | 2.7.0, #2827 |
+| H.4's remainder for a product with no blueprint: its development profile selected from the derived facts, a neutral profile and a named gap in place of a silent `python_cli`, and QA evidence that says where its suite ran (H.26, superseding H.13's "no blueprint" paragraph) | **shipped** | 2.6.0, PR #2941, closes #2937 |
+| a size preflight: before a Campaign starts on a product, every task type it dispatches rendered against the product's tree at the pinned commit, a binding that can't fit named as a blocking gap (H.21) | **shipped** (H.21): measured at the start route on the live path's own counter, a floor, `prompt_over_window` and `size_unmeasured` | 2.6.0, PR #2919, closes #2889 |
+| a dev repair's retest of a product's qa suite judged on the product's runner: the failed task's own tests, with the patched source overlaid on the tree | **shipped** | 2.6.0, PR #2898, closes #2881 |
+| a private Node package that declares a module interface is a package surface (H.17) | **shipped** | 2.6.0, PR #2879, closes #2875 |
+| the qa plan proposer's worked example in its product's runner's terms (pytest, or vitest/jest) | **shipped** | 2.6.0, PR #2880, closes #2876 |
+| a product's suite that the qa image couldn't run read on the product's own runner, whatever else failed (H.18) | **shipped** | 2.6.0, PR #2878, closes #2877 |
+| a product's suite judged on its own runner on the product's tree at the pin, with the files a run's artifacts hold back (a lockfile) (H.19) | **shipped** | 2.6.0, PR #2902, closes #2900 |
+| a source-backed change that deletes a file | **shipped** (H.23): the `delete:<path>` form, judged against the task's view and grant, applied to the delivery candidate, named in `changed_paths` and absent from the capture | 2.6.0, PR #2923, closes #2612 |
+| a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
+| a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #3002, closes #2862 |
+| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect) | 2.8.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
-| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional. The 2.6 plan ships it or drops it by a numbered amendment, since the SIP closes in 2.6 (the owner, 2026-10-23) | — |
+| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
 
-**What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It closes in 2.6
-(the owner, 2026-10-23). Greenfield creation (E.4.6)
+**What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It was to close in 2.6
+(the owner, 2026-10-23). It can't close before 2.8: E.4.5 (#2709) moved there by the 2.7 plan's R1 (the owner,
+2026-11-08). Greenfield creation (E.4.6)
 is in the completion scope by the owner's ruling of 2026-10-17 (Q34), and leaves it only by a numbered
 amendment the owner rules. The 2.4 cut requires it shipped (G6, ruled the same day).
 
@@ -2698,3 +2709,850 @@ hold is absent from the run, as it is from the product the squad delivers, and t
 
 **Who ruled.** The supervisor (the Spark lane), under the owner's 2.5 grants, on #2815's proposed fix: the run tree
 split from the prompt's files, and the prompt unchanged.
+
+## H.16 What a product's run tree admits, bounded: the framework's pytest configuration, a runner's pattern under its roots, and the limit past 512 KB (2026-11-03; H.15; #2817; the owner's go on 2.5.1)
+
+H.15's second reader found that the tree H.15 admits needed bounding (#2817). Three things changed, and one sentence
+of H.15 is corrected.
+
+1. **The qa image's suite runs under the framework's own, empty pytest configuration** (`pytest -c <the null
+   device> --rootdir=<the run root>`, `test_runner.run_generated_tests`), never the configuration in the tree.
+   - **What broke.** H.15 put a product's `pyproject.toml`, `pytest.ini`, `setup.cfg` and `tox.ini` in the run tree,
+     and the qa image's `pytest .` read them:
+     - `python_files = ["check_*.py"]` collected nothing (exit 5);
+     - `addopts = "--doctest-modules"` ran the product's doctests;
+     - `required_plugins` named a plugin the qa image, which carries pytest alone, doesn't have;
+     - `filterwarnings = error` failed the suite on a warning;
+     - `strict_config = true` refused the run on a key the qa image's pytest doesn't know.
+   - **What it doesn't change.** Conftest files still load, because they are the tree's test support. A sample
+     application ships no pytest configuration, so its runs are unchanged.
+   - **Why the framework's configuration, not neutralized options.** The issue's alternative was to clear the
+     selection options one by one (`-o addopts= -o python_files=…`). That would leave every option nobody listed
+     still governing the run.
+   - **The product's own runner is unaffected.** It still runs the suite under the product's configuration in the
+     sandbox (`execution/product_suite`, #2818).
+2. **A product runner's `file_pattern` names a test only under that runner's roots** (`qa_run_tree.product_tree`,
+   through `derived_profile.runner_holds`, which `Runner.holds` now calls too: one rule).
+   - H.15 matched the pattern by file name anywhere. So unittest's `test*.py` rooted at `tests` dropped a source
+     module `orchard/testing.py`, and a runner's `*.py` dropped every Python file, `conftest.py` and source included.
+   - H.15's line "a test is … one the product's runners declare (their `file_pattern`)" now reads: **one a product's
+     runner holds, under its roots.**
+3. **H.15's sentence on a tree that lacks a file is corrected.** It said "a file the workspace doesn't hold is
+   absent from the run, as it is from the product the squad delivers". That holds only below `artifact_contents`'
+   512 KB resolution limit. Past it, the product holds a file the run doesn't (`dispatched_flow_executor.py`,
+   `artifact_contents` truncation). That is a gap, named and not built.
+
+**Not built** (#2817's P3, recorded in `qa_run_tree`'s docstring):
+- The stack patterns are path-blind. A product helper named like a test (`tests/test_utils.py`) or a source named like
+  one (`ab_test.py`) is left out of the run, as the qa image's `pytest .` would collect it.
+- A product with no derived profile has only the stacks' JavaScript extensions, so a `.test.mjs`, `.cjs`, `.mts` or
+  `.cts` file stays in its run tree.
+
+**The evidence:**
+- **Wiring:** `test_test_runner.py::TestTheProductsPytestConfigDoesNotGovernTheSuite` runs real pytest through
+  `run_generated_tests`, the call every qa path (emission, retest, probes) reaches through `run_suite`, with each
+  configuration above in the tree.
+  - Each of the five configurations fails before the change and passes after it.
+  - A conftest fixture still reaches the suite.
+- **The qa image itself:** checked by hand in the qa container (pytest 9.2.0). The product's configuration refused
+  the run; `-c /dev/null --rootdir` ran it and passed.
+- **The run tree:** `test_qa_run_tree.py::test_a_runners_pattern_names_a_test_only_under_its_roots` covers a rooted
+  `test*.py`, a rooted `*.py`, and a runner rooted at `.`. The first two fail before the change.
+
+**Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2817. The choice
+of the framework's configuration over neutralized options is the supervisor's, for the reason in point 1.
+
+## H.17 A private package that declares a module interface is a package surface (2026-11-03; H.7; #2875; the MacBook lane, for the owner's ruling in review)
+
+**What was found** (#2875). `battle-trainer` (`prj-battle-trainer`) is a Node library. Its first commit's `package.json`
+was `{"name": "battle-trainer", "private": true, …}` with no `main` or `exports`, so its derived profile listed no
+public surface. On the MacBook (2.5.0), campaign `cmp_c20d825c8131` had both increment proposals refused:
+"[unknown_surface] criterion C1: no command 'controller.tick' among the product's declared surfaces (it declares
+none of that kind)". The proposer had nothing it could name. The product's workaround (`1f9e195`) dropped `private`
+and added `main`.
+
+**What H.7 says, and why it was right in part.** H.7's public surfaces include "a `package.json` `name` that isn't
+private". The rule keeps an application's own `package.json` out of the surfaces: a Next.js app at the root is
+private and its surfaces are its pages and endpoints. But `private` means only that npm won't publish the package.
+Every unpublished library is private too, so the rule gave every repository-backed Node library that isn't published
+no surface at all.
+
+**What changed** (`profile_derivation._node_package_has_an_interface`). H.7's line now reads: **a root `package.json`
+`name` that isn't private, or that declares a module interface (`main`, `exports` or `module`).**
+- An application declares none of the three, so it stays out, as H.7 intended.
+- A library declares what it exports, published or not.
+- Nested `package.json` files are still not read for surfaces (`tree.json("package.json")` reads the root), so
+  continuum's and shelfnote's private frontends are unchanged.
+
+**On a tree that lacks a file.** The rule reads `package.json`'s fields and no file they name, so a `main` pointing at
+a missing file still declares the surface. A criterion on it fails at acceptance on the product's runner, as any
+criterion on missing code does.
+
+**The evidence:**
+- **Wiring:** `test_the_proposal_rails_read_a_private_librarys_package_from_its_profile` derives the profile and hands
+  its document to `planning.proposal.product_context`, the reading the proposal's `unknown_surface` refusal is decided
+  on (`ProductContext.serves`).
+- **Seams:** six `package.json` shapes, from a private app (no surface) to a private library with `main`, `exports` or
+  `module` (a surface), a public package, and one with no name.
+- **Mutant:** the old rule fails four of them.
+
+**Who ruled.** Proposed by the MacBook lane on 2026-11-03, under the owner's direction to fix the seams battle-trainer
+found. The owner rules on it in review.
+
+## H.18 A product's suite that the qa image couldn't run is read on the product's own runner, whatever else failed (2026-11-03; E.4.3, H.15; #2877, and #2818 recorded; the MacBook lane, for the owner's ruling in review)
+
+**What was found** (#2877). `battle-trainer` (`prj-battle-trainer`) is a Node library whose derived profile names vitest
+as its only runner. On the MacBook (2.5.0, `d0ef8ed2`), its first increment `cyc_0fbf09b7b96e` (campaign
+`cmp_3efdd75b38dd`) and that increment's repair `cyc_9a6ba22faa37` both ended `plan_defect` on `qa.test`
+(`term_-qa.test_02`, `tighten_acceptance`).
+- **Every round's `tests_pass` came from the qa image,** whose pytest collects no `.test.js` file: "tests not run: no
+  pytest-discoverable test files — backend tests must be Python files named test_*.py", exit -1.
+- **The suite also had a real defect:** `vi` used without being imported (`acceptance:undefined_names`).
+- **The failure analysis** (`art_0a14df16615e`) told the repair "the test should be a Python file named according to
+  pytest conventions": the image's wording, passed on as guidance.
+
+**#2818 recorded.** 2.5.1 built a re-judging of this kind (`execution/product_suite`, PR #2835) and recorded it in
+no amendment. When a product's `qa.test` fails and `tests_pass` is its only failing check (beside checks that fail in
+the qa image for the same reason, #2838), the runtime runs the emitted suite again on the product's runner in the
+sandbox, after the Development Configuration's install and build steps. A pass there judges the task passed. Anything
+else leaves the agent's result for the correction loop.
+
+**The cause.** #2818's condition was built for a suite the image *ran* and failed, because a dependency the product
+installs was missing. A suite the image can't run at all gets the same treatment, so the product's runner was never
+consulted while a real defect stood beside it. Three readers then took the image's non-execution for a failure:
+- **the correction loop's progress signature,** where the "not run" row repeats every round as a carried failure;
+- **the failure analysis,** which reads the row, the validation summary, the task's error and the stored test report;
+- **#2818's own condition,** which waits for that row to be the only failure.
+
+**What changed** (`product_suite.why_not_reread`, `reread`; the router's hook in `_TaskOutcomeRouter.route`):
+1. **A product's `qa.test` whose `tests_pass` the qa image didn't execute** (its row reads `executed: false`) is run
+   on the product's runner, whatever else failed beside it.
+2. **Its reading replaces the image's** in every field the analysis reads: the `tests_pass` row (`judged_on:
+   product_runner`, the runner's failing test ids as `file::id`, the end of its output), the `test_result`, the
+   validation summary, the task's error, and the stored test report.
+   - The image's row and test result are kept as `agent_tests_pass_row` and `agent_test_result`, apart from the
+     evidence (`failure_evidence.build_failure_evidence` reads neither).
+3. **The task stays failed** unless #2818's condition also holds. The correction loop then reads the product runner's
+   result, and its signature moves when the suite does.
+4. **A suite the image ran is untouched,** as are a sample application's run, a test no product runner holds, and a
+   run that can't be judged.
+
+**The seams that evaluate a product's qa criteria** (H.15's table, the rows this changes):
+
+| seam | runs in | before | after |
+|---|---|---|---|
+| qa emission's `tests_pass`, routed (`_TaskOutcomeRouter.route`) | eve runs; the runtime-api re-reads | the image's reading, re-judged only when it was the only failure | on a run the image didn't execute: the product runner's reading, in the sandbox, on H.15's run tree plus the suite |
+| qa retest after a repair (`reexecute_repaired_suite`) | eve runs; the runtime-api re-reads | as above | as above, on the repaired files |
+| the qa task's own typed checks, a repair's, the runtime's verifier, the increment's acceptance | as in H.15 | unchanged | unchanged |
+
+**On a tree that lacks a file.** The run is H.15's tree with the emitted suite beside it. A file that tree doesn't
+hold is absent, the suite fails on the product's runner as the product would, and that failure is what the correction
+loop reads. A file no product runner holds is never run (`run_on_product_runner` returns nothing), and the agent's
+result stands.
+
+**The evidence:**
+- **Wiring:** `test_the_router_hands_the_correction_loop_the_products_reading` enters at `_TaskOutcomeRouter.route`, as
+  `cyc_0fbf09b7b96e`'s failed `qa.test` did. It asserts the correction loop is asked once, about the product runner's
+  reading, and that the patch is never accepted on it.
+- **The analysis:** `test_the_analysis_reads_the_products_runner_and_never_the_images_words` builds the evidence
+  `data.analyze_failure` receives and asserts no "pytest" in it.
+- **Seams:** four shapes (a defect beside a red or a green suite; a red or a green suite alone), and the two cases
+  left alone (a suite the image ran; a file no runner holds).
+- **Mutants:** the router not handing on the re-read, and the re-read removed. Each fails five tests.
+
+**Who ruled.** Proposed by the MacBook lane on 2026-11-03, under the owner's direction to fix the seams battle-trainer
+found ("proceed as far as you can on the line of fixes"). The owner rules on it in review.
+
+## H.19 The product runner's tree is the product's own at the pin, with what the run changed laid over it (2026-11-04; E.4.3, H.15, H.16, H.18; #2900; the MacBook lane, for the owner's ruling in review)
+
+**What was found** (#2900). With H.18 on the MacBook (main `2da8e096`), battle-trainer's suite was read on vitest as
+designed, and every run ended before a test started: `unexecuted: setup_failed`, four times in one increment
+(campaign `cmp_c59db96e4a87`, cycle `cyc_062ca03bd617`, implementation `run_a60bd2e2…`: the emission, two
+corrections and the retest). The product's install is `npm ci`, and `npm ci` installs nothing without
+`package-lock.json`. The product's own baseline passed at the same commit, because it reads the clone.
+
+**The cause.** A run's artifacts hold back what no task's view carries, binary files and generated lockfiles
+(`checkout.manifest_of`'s `held_back`; `source_checkout` stores no artifact for them, so a context resolution never
+spends its budget on them). Its comment says verification and capture read them from the clone, and they do. The
+product runner's tree did not: `judge_on_product_runner` built it from `suite_run_tree(inputs)`, which is
+`product_tree(artifact_contents)`, so the sandbox got the product's source without its lockfile. #2818's re-judge has
+the same base. It was hidden because, before H.18, an npm product's suite was rarely re-judged at all.
+
+**What changed** (`product_suite._product_tree_at_pin`, `judge_on_product_runner`):
+1. **The base is the product's tree at the cycle's pin,** read from the managed clone
+   (`SourceRepositoryPort.tree_at(project, source_context.pinned_commit)`), as bytes, through the same filter H.16
+   bounds (`qa_run_tree.product_tree`, now generic over text and bytes): its non-test files, the product's own tests
+   left out.
+2. **What the run has is laid over it:** `suite_run_tree(inputs)` (the run's accepted emissions), then a retest's
+   repaired files (#2881's overlay), with the suite beside them. A file the run changed reads as the run has it; a
+   file the run's artifacts hold back reads as the commit has it.
+3. **No tree at the pin judges nothing.** With no repository, or a clone that doesn't hold the pin, the agent's
+   result stands, as for every judgement that can't run (#2845). Falling back to the artifacts' tree would read
+   `setup_failed` in place of the suite's result.
+4. **The pin is seeded as the checkout it is** (`RevisionOrigin.GIT_CHECKOUT`, with its executable bits), and the
+   run's tree and the suite are a patch on it, as source delivery assembles a candidate. The sandbox refuses a
+   derived-state name (`package-lock.json`, `dist/`) from any origin but a checkout's tracked set (X-2), so the first
+   build, which seeded the whole tree as an acceptance assembly, was refused on the MacBook's live check:
+   `derived-state path is not revision content: 'package-lock.json'` (`run_1f672fe2…`, four times).
+5. **No held-back file enters the vault or a view.** The prompt-budget rule stays as it is. The bytes go only to the
+   sandbox, which takes text or bytes per file (`SandboxPort.seed_workspace`, X-2).
+
+**The seams that evaluate a product's qa criteria** (H.18's table, the rows this changes):
+
+| seam | runs in | before | after |
+|---|---|---|---|
+| qa emission's `tests_pass`, re-judged or re-read (`_TaskOutcomeRouter.route`) | eve runs; the runtime-api re-reads | the run's artifacts' tree plus the suite: no held-back file | the product's tree at the pin, the run's tree over it, the suite beside it |
+| qa retest after a repair (`reexecute_repaired_suite`) | eve runs; the runtime-api re-reads | as above, with #2881's overlay | as above, with #2881's overlay on top |
+| the qa image's own run, the typed checks, the verifier, the increment's acceptance | as in H.18 | unchanged | unchanged |
+
+**On a tree that lacks a file.** A file the run deleted still reads from the pin, because a run's artifacts carry no
+deletion. That is the limit #2612 (Track B) carries for every source-backed tree, and this judgement has it too.
+
+**The evidence:**
+- **Wiring:** `test_the_products_suite_runs_on_the_pinned_tree_with_its_held_back_lockfile` enters at the executor's
+  `_judged_on_product_runner` with a product whose lockfile and a binary are held back. It asserts both reach the
+  sandbox byte for byte, the pin is seeded as a checkout with the run's tree as a patch, the run's own `app/main.py`
+  replaces the pin's, the product's own test stays out, and the suite is judged. Its fake sandbox refuses paths by
+  the sandbox's own rule (`workspace._safe_relpath`), which the first build's fake did not, so the unit tests passed
+  while the live run was refused.
+- **The error case:** `test_no_readable_tree_at_the_pin_judges_nothing` (no repository; a clone that refuses the
+  pin) asserts the agent's result stands and the sandbox is never asked.
+- **The mutants:** the tree built without the clone's base fails the wiring test (`KeyError: 'package-lock.json'`),
+  and so does the pin seeded as an acceptance assembly (`'acceptance_assembly' == 'git_checkout'`).
+
+**Who ruled.** Proposed by the MacBook lane on 2026-11-04. The Spark lane handed the issue over and chose the shape
+(the clone's tree as the base, for parity with the baseline and the acceptance, rather than stored artifacts no view
+shows). The owner rules on it in review.
+
+## H.20 A regression found at a source-backed run's end of plan gets one repair round from the correction budget (2026-11-04; E.4.3; #2613, #2410's slice 2b point 3; the Spark lane, for the owner's ruling in review)
+
+**What E.4.3 shipped, and what it deferred.** A source-backed run's candidate is verified at the end of the plan by the
+product's own checks, on the product's runner in the sandbox (`source_delivery.deliver_source_change`). A FAIL the
+baseline didn't have (`no-introduced-regression/v2` reads `regressed`) failed the run there. #2410's slice 2b design
+(2026-10-18, point 3) routes that failure into the existing correction chain with the failing checks' evidence,
+bounded by the cycle's correction budget, and verifies the candidate again. It was deferred "if a live run shows it's
+needed" (#2613) and placed in 2.6 by the plan's Track B (adopted 2026-11-03).
+
+**What changed** (`DispatchedFlowExecutor._repair_source_regression`; `source_delivery.regression_failure`,
+`regression_subject`; `verification.RepairOf`):
+1. **One round, in the plan's own chain.** A regressed delivery enters `_dispatch_correction_protocol`, where an
+   in-plan failure enters it. The same budget check runs, the round is billed to the same run counter, and the
+   profile's declared steps run: analyze, decide, repair. There is no second loop and no flag: a non-source-backed run
+   never reaches delivery, so IR-10's counted pair is unchanged.
+2. **The failed task is the plan's last source author** (its last suite author in a plan that authors only tests). Its
+   envelope carries the write grant and the workspace a repair of the product's code works under, enriched again
+   from the run's stored artifacts as a kept repair's is (#1522).
+3. **The evidence is the product runner's reading, and nothing else** (#2913). Each blocking check becomes a failed
+   row: its id, `judged_on: product_runner`, its attribution, why it blocks (`why_blocking`), the exit code, and the
+   stdout and stderr tails the sandbox returned. The summary names the runner's image and toolchain, the inherited
+   failures and the changed paths. Nothing is re-run in an agent's image.
+4. **The repair is stored as the failed task's own,** and the candidate is delivered again: seeded, patched,
+   verified, and captured only when accepted.
+5. **A repaired candidate owes its regressed checks a passing run.** Its verification carries `repair_of`: the
+   regressed verification's artifact and its blocking checks. Each must execute and pass. A check that regressed and
+   then couldn't run (a timeout, a missing tool) blocks, since UNVERIFIED blocks nothing on its own while another
+   check passes, and missing evidence grants no waiver.
+6. **The run fails as it did before,** with the verification naming the checks, when:
+   - the plan's own rounds already spent the budget ("no repair round: the run's correction budget (N) is spent");
+   - the round decides anything but a patch, or its repair writes no file of the product;
+   - the repaired candidate regresses again, or can't run a check it owes. **No second round is taken,** even with
+     budget left.
+
+Both verifications are kept on the run. A Campaign's promotion reads the latest (`campaign_branch`), which is the
+repaired one.
+
+**The seams that evaluate a regressed run's criteria** (CLAUDE.md's typed-check table):
+
+| seam | runs in | tree it sees | before | after | on a tree that lacks a file |
+|---|---|---|---|---|---|
+| the end-of-plan verification (`deliver_source_change`) | runtime-api, X-3a in the sandbox | the pinned commit plus the squad's accepted changes | `regressed` fails the run | `regressed` enters one correction round | absent from the candidate, as from the product; the product's checks read it so |
+| the analysis (`data.analyze_failure`) | the data role's container | none: it reads the failure evidence | not reached | the product runner's rows, as stored in the verification | n/a |
+| the repair (`development.correction_repair`) | the repairing role's container | the failed task's workspace as the run's stored artifacts hold it | not reached | the same evidence; its emission is bounded by the failed task's grant | a file the repair doesn't write keeps its accepted content |
+| the in-plan patch verifier (`_try_accept_patch`, the retest) | runtime-api | the failed task's overlay | n/a | **not run**: the re-delivery is this round's verdict | n/a |
+| the repaired candidate's verification | runtime-api, X-3a in the sandbox | the pinned commit plus the accepted changes and the repair | n/a | must pass every check that regressed (`repair_of`), and introduce none | as above |
+| the increment's acceptance (SIP-0109 §24cd point 6) | runtime-api, the sandbox | the captured candidate | after an accepted delivery | unchanged: after the repaired delivery, when accepted | unchanged |
+
+**The evidence:**
+- **Wiring:** `test_a_regression_is_repaired_in_one_round_from_the_product_runners_reading` enters at
+  `_execute_sequential`'s end of plan, with the shared fixture through the real managed clone and sandbox service, and
+  the real correction runner down to the agents' queue. It asserts the analysis and the repair each receive exactly
+  the stored verification's row for `report` (exit code 1, the unittest output), that one round runs, that the second
+  verification names the first and passes `report`, and that the captured commit holds the repair.
+- **Error cases:** a spent budget (no step dispatched); a repair that regresses again (one round, two regressed
+  verifications, nothing captured); a regressed check that times out on the repaired candidate; a round that decides
+  `abort`, and one whose repair writes nothing. The policy: `test_a_repaired_candidate_owes_its_regressed_checks_a_passing_run`.
+- **Mutants**, each against the committed tree: the runner's stderr dropped from the evidence; the budget check
+  removed; `repair_of`'s owed checks ignored; the repair not stored; a regressed repaired candidate captured; a second
+  round. Each fails at least one of the tests above.
+
+**Who ruled.** The design is #2410's slice 2b point 3, written by the MacBook lane on 2026-10-18; the owner placed it
+in 2.6 with the plan's Track B (2026-11-03). Points 2 and 5 (which task the round is about, and the owed passing run)
+and "one round, even with budget left" are this implementation's decisions, built by the Spark lane on 2026-11-04.
+The owner rules on them in review.
+
+## H.21 A size preflight at a repository-backed Campaign's start: a task that can't fit its model's window is a blocking gap, named before the first cycle (2026-11-04; E.4.3, H.4 point 4; SIP-0109 §24bv point 1, §24db; SIP-0110 §3.6; #2889, with #2805 and #2810 recorded; the Spark lane, for the owner's ruling in review)
+
+**What was found.** #2805 and #2810 were each found live, one at a time, an hour into a Campaign on `z_continuum`:
+a task whose prompt, as the composer counts it (SIP-0110 §3.6, `capabilities.prompt_budget`), left no room on the
+65,536-token window for a 1,330-token binding instruction, so it was held on its binding and the Campaign escalated.
+Each was an estimate that counted a product-sized input whole where the handler shows a part of it. The 2.6 plan's
+Track A placed a preflight (#2889): the proving product will be larger than `z_continuum`, and the next such task should
+be named before the first cycle, not found in it.
+
+**What was built.**
+1. **Where it runs.** At the start of a Campaign on a repository-backed Project, after its calibration record is read
+   and before anything is written (`api.routes.campaigns`'s `_calibration_record`, then
+   `squadops.execution.size_preflight`). It is the one place every such Campaign passes before its first cycle, and the
+   one that already refuses a start on a blocking gap (SIP-0109 §24bv point 1, 409 `CALIBRATION_REFUSED`). A sample
+   application's Campaign has no record and no product tree, and is never measured.
+2. **What it measures.** Each task type the Campaign's increments can dispatch, read by
+   `cycles.task_plan.dispatched_task_steps` (each workload's steps, its plan's build types, the correction steps, every
+   repair the tables route a failure to, the pulse chain), which the #2810 guard
+   (`tests/unit/cycles/test_product_cycle_budgets.py`) now reads too. Each is measured on the model its squad binds the
+   role to, with:
+   - the envelope the increment's run composes from the product: the tree at the record's commit and its manifest
+     (`source_checkout.checkout_of`, `seeded_files`, split from the run's seeding), its curated contents and acceptance
+     workspace selected and capped by the executor's own rule (`ArtifactFilter.selects`,
+     `ARTIFACT_CONTENTS_LIMIT_BYTES`, which `_resolve_artifact_contents` now reads), the `source_repository` view, and a
+     repair's forwarded tree and failed files (`repair_forwarded_inputs`);
+   - the first increment's resolved config, from the request `launch_requests.increment_launch` builds once the record
+     is promoted;
+   - counted by `prompt_without_memory_tokens`, with `completion_reserve`, against the model's window from the model
+     registry. The composer's own estimate is what holds a task live, so it is what the preflight reads.
+3. **A floor, so it refuses only what can't fit.** What a cycle hasn't produced yet is left out: the squad's own
+   outputs, the plan, a failure's evidence, and memory's sections. A task that names files (a build step, a repair) is
+   measured naming the smallest file of one top-level directory, and its size is the least over the product's
+   directories. A plan naming only root-level files is left out: `qa.test` would be shown those files alone
+   (`package_scoped`), and every product would fit. A binding over its window at the floor can't fit on a plan that
+   names files in the product's directories. One under it can still be held by a larger plan, and the composer still
+   holds it then.
+4. **The refusals**, each 409 `CALIBRATION_REFUSED` with nothing written:
+   - **`blocking_gap`, gap `prompt_over_window`**: each binding over its window, by task type, role, model, prompt
+     tokens, completion reserve and window, in the message and in `details.bindings`. It closes by binding the role to
+     a model with a larger window, or by a smaller product. It isn't a derived profile's gap (contract 8): it is read
+     from the Campaign's squad and profiles as well as the product.
+   - **`size_unmeasured`** (new, SIP-0109 §24db): a binding whose model the registry has no window for, or that has no
+     model; a squad or proposal profile that can't be read; a tree that can't be read (`SourceUnavailable`, by its
+     reason), one a run can't carry, or one past 2.4's limits on what a run takes on (`CheckoutTooLarge`, reason
+     `too_large`). Require, don't default: none is read as fitting.
+
+**What it doesn't do.**
+- It doesn't count the binding instructions. A task that fits with no room for its project instructions is still held
+  live, as §3.6 holds it. Reading them would need the Campaign's memory snapshot, which is pinned after the start's row
+  is written.
+- It doesn't measure `qa.evaluate_increment`: a repository-backed increment is judged at delivery (SIP-0109 §24cd
+  point 6), so its plan doesn't carry one.
+- A plan task's role is the build table's (`development.develop` on dev, `qa.test` on qa, `builder.assemble` on
+  builder). A plan that gives a build type to another role is measured on the table's role's model.
+- The sizes are logged (`size_preflight campaign=… <task type> prompt=… reserve=… window=…`) and are not kept in the
+  calibration record, whose id is derived from its content.
+
+**The evidence:**
+- **Wiring:** entered at `POST /api/v1/campaigns/{id}/start` over the real launch service and completion path
+  (`tests/unit/api/test_campaign_calibration_record.py`), on `full-38-tf` (the 65,536-token window #2805 and #2810 were
+  found on):
+  - a product of about 92,000 tokens in four packages, larger than the window, starts as before, every binding
+    measured;
+  - a product whose source is one package is refused, naming `qa.test` on `qwen3.8-27b-tf-nvfp4`, its size and its
+    window, with only the create row in the log: at about 90,000 tokens, past the window; at about 40,000, a prompt of
+    about 59,000 tokens inside it but over it with the 12,288 its completion reserves;
+  - five unmeasurable cases (an unregistered model, no model, a tree past 384 KB, an unreadable tree, a proposal
+    profile the deploy doesn't hold) are each refused as `size_unmeasured`;
+  - the wiring test that captures Tally's baseline in a real managed clone starts unaffected, and a sample
+    application's start is never measured (its world holds no clone).
+- **Mutants**, each run against a commit and restored by commit. Killed: the route not calling the preflight (7
+  tests), root files read as a plan's named file (1), an unknown window skipped (2), a plan task's named files dropped
+  so its contents count whole (1, the #2805 class), `CheckoutTooLarge` not caught (1), the completion reserve left out
+  of the fit (1, after a case was added for it), and the enumeration dropping repairs (2). One survives, equivalently:
+  the 512 KB resolution cap not applied. 2.4's 384 KB limit on a checkout's source and config refuses every tree that
+  could reach it, so on this path it can't bind; it is kept so the preflight and the executor stop at the same place
+  if the limit moves.
+
+**Who ruled.** Placed in 2.6.0 by the 2.6 plan (Track A), adopted on the owner's rulings of 2026-11-03. The seam, the
+floor and the `size_unmeasured` cause are the Spark lane's design under the supervisor's brief for #2889, for the owner's
+ruling in review.
+
+## H.22 A Campaign's contribution is one of the Project's contributions, made through E.4.3's path (2026-11-04; E.4.3, E.4.4, FR-06; SIP-0109 §24dc; #2861, #2863; the implementer's design under the supervisor's brief, for the owner)
+
+E.4.3 contributes one run's captured change, keyed by its cycle and run. SIP-0109 §24dc has a closed Campaign
+contribute its branch's accepted state. What that changes here:
+1. **The record.** A Campaign's contribution is a row of `project_contributions` like a run's: the Campaign's id where
+   the cycle id stands and `campaign` where the run id does, one per Campaign. Its `commit` is the branch's head (with
+   the criterion files moved, item 2), its `parent_commit` the branch's base, its `state` `pending`. Its document
+   carries `campaign_id`, `null` on a run's. No migration: the table's shape and checks already hold it. A sync
+   (E.4.4) reads its standing as any contribution's: integrated when upstream's history holds its commit, or when its
+   review request merged and the merge is there; closed when the request closed unmerged.
+2. **The path.** `contribute_campaign` sits beside `contribute` in `projects/contribution.py` and shares its checks
+   (`_review_target`) and its forge call. Its push is `push_capture`'s, never forced, of the contribution commit kept at
+   `refs/squadops/<campaign>/contribution` (or the campaign branch's own ref, when nothing moved) to
+   `squadops/<campaign>`. The port is unchanged. The commit is the head with each criterion file renamed out of the
+   `criterion_` stem and moved off the root (#2860's interim, made the rule), committed whole by `commit_tree`; a tree
+   the clone can't commit whole (a symlink, a submodule) is refused, named.
+3. **The moved tree is verified first.** `contribute_campaign` requires `verify`, which holds the tree before the
+   commit: the runner's placement after the move, and each live criterion run on its runner in the sandbox. A failure,
+   or no sandbox or derived profile, opens nothing (SIP-0109 §24dc item 4).
+4. **The token comes with the supervisor's request, and only with it.** Unlike a run's contribution there is no fallback
+   to `projects.review_request_tokens`: the owner chose to drop that path on 2026-11-04, keeping SIP-0109 §24ci (b) as
+   ruled. A close opens nothing, so this path runs only at `POST /api/v1/campaigns/{id}/contributions`.
+5. **A run's contribution of an increment counts.** SIP-0109 §24dc's signal reads an accepted cycle's per-run records
+   beside its Campaign's, so an increment contributed through `POST /api/v1/projects/{id}/contributions`, squash-merged
+   and synced, isn't listed.
+
+**Unchanged.** `POST /api/v1/projects/{id}/contributions` and its record for a run; patch export; the refusal of
+`direct_push`.
+
+**The evidence.** `tests/unit/campaigns/test_close_contribution.py`, over a real managed clone and the fixture's own
+repository as the product: the pushed branch holds `tests/test_campaign_<hash>_T1.py` and not the root file, on the
+head, and the record's parent is the branch's base; a criterion the move breaks opens nothing.
+`tests/unit/api/test_unintegrated_increments.py` reads a recorded merge's standing as a sync leaves it, and a per-run
+record's.
+
+**What remains.** A closed contribution can't be re-opened through this path: `squadops campaigns contribute` answers
+the closed record. SIP-0109 §24dc names the owner's recovery on the forge and what's missing.
+
+**Who ruled.** The owner ruled the token (item 4) on 2026-11-04. The rest is the implementer's design under the
+supervisor's brief for #2861, for the owner's review in the PR.
+
+## H.23 A source-backed change can remove a file: the deletion form (2026-11-04; E.4.3; #2612, #2484's deferred form; the Spark lane, for the owner's ruling in review)
+
+**What E.4.3 shipped, and what it deferred.** The capture side already round-tripped a removed file (`commit_tree`, tested in
+#2484), and the sandbox's patch took `None` for a path. The squad had no way to say it: every fence was a file written, so
+a change whose right shape removes a file could only empty it or leave it, the product's checks ran against both, and
+the contribution couldn't express the intent. The plan's Track B placed it in 2.6 (adopted 2026-11-03).
+
+**What changed:**
+1. **The form.** A strict fence whose language is `delete`, naming the path, with nothing inside:
+
+   ````
+   ```delete:tally/legacy_report.py
+   ```
+   ````
+
+   `extract_fenced_files` never reads it as a file. It wrote an empty file at the path before. `extract_fenced_deletions`
+   reads it; a body inside the fence or an unsafe path is malformed and named, never guessed into a removal.
+2. **It is judged where the emission is read** (`handlers/emitted_deletions.read_deletions`), against the task's
+   `source_repository` input, which gains `paths`, `held_back` and `deleted` as data no prompt renders (the map collapses
+   past 400 paths). Refused, by name, with the rest of the emission (all or nothing, as an anchored edit's transaction is):
+   - a step with no grant (`TaskType.deletion_grant`), or a run that changes no product;
+   - a path not in the product's tree at the commit, or one an earlier task removed;
+   - a binary file or a generated lockfile, which no task changes;
+   - a path the same emission writes;
+   - for a test step, a path none of the product's runners holds (`runner_holds`).
+3. **The grants.** `development.develop` and `development.correction_repair` may remove any text file of the product;
+   `qa.test` and `qa.test_repair` only a test a runner holds. A product with no runner holds none, so its test steps can
+   remove nothing and aren't shown the form.
+4. **It rides beside the artifacts, never among them.** A handler hands accepted removals on as `outputs["deletions"]`,
+   because every reader of a task's artifacts reads files, and a removal read as one is an empty file. Storage records
+   each as a `deletion` artifact, ordered among the writes, so a later write of the path brings it back
+   (`cycles/deletions.deleted_paths`).
+5. **Delivery applies it like a patch.** `squad_changes` gives a removed checkout file `None`; the candidate lacks the
+   path, the sandbox's patch removes it, the cut's identity is checked as before (a removed file's mode drops out with
+   it), `changed_paths` names it, and the capture and the `patch_export` contribution have it gone.
+6. **The product's own checks are its verdict.** Nothing inside the plan judges a removal. A removal that breaks a
+   check regresses like any change, and takes H.20's round.
+7. **A task that names the file it removes meets its expected artifacts.** A task names a file to be shown it, so the
+   removed path leaves the expected list for that emission's validation (`without_removed`).
+8. **The prompt.** The product's appendix gains `request.source_repository_deletion_product` or `_tests`, with a shown
+   fence, for a step that may use it. A test step's example is built from its product's first runner (#2876's concern).
+   Plan and framing authors see none. About 120 tokens.
+
+**Every handler that parses an emission:**
+
+| reader | step | handling |
+|---|---|---|
+| `develop.handle` | `development.develop` | reads and judges it; a refusal fails the emission by name |
+| `QATestHandler._settle_emission` | `qa.test` (its re-take too) | as above, under the test grant |
+| `_RepairPromptMixin._artifacts_from_response` | the dev and qa repairs | as above; a refusal returns no file, and reaches the round as a dropped write (#2521's channel) |
+| the same | `builder.assemble_repair` | refused by name: no grant |
+| `_self_evaluate` | a pass of develop or qa | refused: the first emission is where a removal is judged. Named in the task's evidence (`deletions_refused`), and the pass's files stand |
+| `builder`, `governance`, `_plan_authoring`, `_plan_authoring_service` | no grant | never a file; refused in the log by path. They author documents, and nothing on the task's record names it. The form is never shown to them |
+
+**Every path that applies an emission:**
+
+| path | runs in | handling |
+|---|---|---|
+| a succeeded task (`_collect_artifacts_and_checkpoint`) | runtime-api | stored after its files |
+| a failed task's own removal, its patch accepted (`_accept_patch`) | runtime-api | rides the corrected result, which is the failed one, and is stored |
+| the same, its repair kept (`_keep_progress`, #1522) | runtime-api | stored with the kept set, since the next round starts from a retest that carries none |
+| a repair's removal, inside the plan (`_route_correction_path`) | runtime-api | **refused**, by name (`REPAIR_REMOVAL_REFUSED_MARKER`): spent, not refunded, nothing applied. The verifier and the retest materialize the workspace overlaid with files, so an accepted round would rest on a verdict that read the file as present (SIP-0107 §20). The task's own emission is where it goes |
+| a repair's removal, in H.20's round (`_repair_source_regression`) | runtime-api | stored with its files; the next delivery is the verdict, and names it |
+| a repair's refused removal, in H.20's round | runtime-api | fails the run, naming the path and why |
+| the overlay and the retest (`overlay_artifacts`, `reexecute_repaired_suite`) | runtime-api, the qa image | never carry one: they read artifacts. Under the first row's rule the file stays in the tree they judge until the removal is accepted |
+
+**The seams that read a task's tree** (CLAUDE.md's typed-check table):
+
+| seam | runs in | tree it sees | on a tree that lacks the file |
+|---|---|---|---|
+| emission, typed checks (`_validated`) | the role's container | accepted workspace plus its own emission; its own removal not applied | a criterion naming the file reads the workspace copy until the removal is accepted |
+| a later task's typed checks and view (`_resolve_artifact_contents`, `task_source_repository`) | runtime-api, then the role's container | accepted workspace, the removed path gone; the map says `removed by this run` | absent, read as `file_not_found`, as a planner's check on a file the plan removed should |
+| agent-side repair | the repairing role's container | accepted workspace plus the failed task's files, the patch | as above |
+| the verifier (`verify_patched_artifacts`) | runtime-api | accepted workspace, the failed task's artifacts, the patch | as above; a failed task's unaccepted removal isn't applied |
+| the qa suite (`qa_run_tree`) | the qa image | `artifact_contents`, tests left out | absent once accepted, so the suite reads the product without it; a removed test was never in this tree |
+| the product runner's re-reading (`product_suite`) | the sandbox | `suite_run_tree`, the same | as above. H.19 seeds this tree from the pin, which still holds an accepted removal, so its patch names `source_repository["deleted"]` as removed; a file written since wins |
+| delivery (`deliver_source_change`) | runtime-api, X-3a in the sandbox | the pinned commit plus the accepted changes and removals | absent; the product's checks read it so |
+| the increment's acceptance (`SandboxTree`) | the sandbox | the delivered candidate | absent: `content` drops a `None`, and the patch removes it |
+
+**Known limits, not built:**
+- A file the squad added earlier in the run isn't in the view, so it can't be removed: refused `not_in_view`.
+- A repair isn't taught the form. Its prompt doesn't render the appendix, and inside the plan the form would be refused.
+- A Campaign's allowed scope is read at the plan gate, on the footprint. It isn't read again on an emission, a write's or a removal's.
+- A plan's typed criterion that requires the removed file fails, as it should, but no plan form states a removal.
+
+**The evidence:**
+- **Wiring:** `test_a_removal_the_developer_emits_is_absent_from_the_captured_commit` enters at the task's dispatch
+  envelope, through the real develop handler, storage, `_execute_sequential`'s end of plan and delivery, to the real
+  managed clone. It asserts the captured tree lacks both files, `changed_paths` names them, and the patch removes them.
+  `test_a_removal_a_regressions_repair_makes_is_delivered_with_it` enters at the same end of plan through the real
+  correction runner and repair handler.
+- **Error cases:** a path outside the view, a held-back file, a path removed twice, one written and removed in one
+  emission, a test step outside its grant and inside it, a product with no runner, a malformed fence, a removal that
+  breaks a check, an executable file, a refused removal in H.20's round, a removal inside the plan.
+- **Mutants**, each against the committed tree and restored by commit: 22, each failing at least one test. Among them:
+  the removal never reaching the candidate; the candidate keeping a removed file's mode; the fence read as a file; each
+  refusal removed; a repair handed no view; a repair's removal accepted inside the plan; storage dropping one; H.20's
+  round dropping one; a kept round losing one; a `None` in an increment's tree. One survived first, the view keeping a
+  removed file, and found that only the instruction files read past the focus filter; it has its test.
+
+**Who ruled.** The shape is #2612's, written on 2026-10-21 and placed by the owner with the plan's Track B (2026-11-03).
+The fence's spelling, the two grants, all-or-nothing refusal, carrying removals outside the artifact list, refusing a
+repair's removal inside the plan, and refusing a self-evaluation pass's are this implementation's decisions, built by
+the Spark lane on 2026-11-04. The owner rules on them in review.
+
+## H.24 A suite that fails on the product's runner is read there, not in the qa image (2026-11-04; H.6, #2835, #2877, #2913; the Spark lane)
+
+**What changed.** A product's `qa.test` is run again on the product's runner. A pass there judged the task, and #2877 replaced the
+image's reading when the image didn't execute the suite. A **failure** there left the agent's result, so an image that
+*did* execute and failed for its own reasons stayed the evidence. Now, when every run exited, the task stays failed on
+the runner's reading (`product_suite.reread`), with the image's row kept beside it. A run that didn't exit is no reading:
+the agent's result stands, as before.
+
+**The evidence.** Shelfnote's `cmp_5947cfb57197` (2026-11-04), SN-6, cycles `cyc_e175b361d33f` and `cyc_4aa34f8b2bc6`. The qa
+image lacked the declared `python-slugify` and died at `conftest.py` (exit 4). The runner read `PATCH /books/{id}` answering
+400. The analysis read the first and called it an environment issue, the repair changed nothing, and correction ended as
+`plan_defect` twice, which ended the Campaign at SIP-0109 §10 row 4. `tests/unit/cycles/test_product_suite_runner.py`:
+`test_the_image_failing_on_a_dependency_it_lacks_never_reaches_the_analysis`, and `test_a_run_that_never_exited_leaves_the_agents_result`.
+
+**What remains.** The runner runs only when `tests_pass` fails beside nothing but `ENVIRONMENT_SENSITIVE` checks. An image failure
+beside another failing check is still the image's reading. Not seen live, so not built.
+
+**Who ruled.** The Spark lane, under the 2.6 merge grant: the fix follows #2877's rule, and #2913 records the defect.
+
+## H.26 A repository-backed product runs on its own stack, and its evidence says so (2026-11-06; H.4, H.6, H.11, H.13, H.24; #2937; the Spark lane)
+
+**What changed.** H.4 directs deriving a product's stack, and H.13 built that only for a product made from a blueprint. Its
+"no blueprint" paragraph, which keeps such a product on 2.4's behaviour, is **superseded**.
+
+1. **Selection.** `prepare_cycle` selects the profile from the derived facts at the pin (`select_development_profile`).
+   Runners decide, because they say what really executes the product's tests.
+
+   | derived facts | profile | origin |
+   |---|---|---|
+   | a blueprint whose profile has product conventions | that profile | `blueprint` |
+   | every runner is pytest or unittest | `python_cli`, unchanged | `derived` |
+   | every runner is vitest | `node_vitest` | `derived` |
+   | anything else: jest, `other`, mixed runners, no runner | `product_neutral`, with `stack_unmatched` | `derived` |
+
+2. **Provenance.** The cycle records `development_profile_selection`: name, origin and a fingerprint of the profile's whole
+   definition. A named profile stands, with origin `operator`, unless it runs a framework the product has no runner for,
+   which is refused (`development_profile_conflict`). A retry stays on the pinned name, runs what is deployed, and records
+   any change on `run.created`. A replay across a changed profile is refused: `development_profile_fingerprint` joins the
+   compatibility elements.
+3. **What no profile fits.** `product_neutral` gives no stack advice. Each task reads the runners by the paths it touches
+   (`runner_for`), so a mixed product is resolved by its footprint and no global profile contradicts it. H.6's table gains
+   `stack_unmatched`: disclosed (`stack_guidance`) while a runner can verify the work, blocking (`campaigns`) when none can.
+   A standalone Cycle still runs, so nothing that worked is refused.
+4. **Evidence.** `node_vitest` and `product_neutral` take the test framework `product_runner`: the qa image doesn't run the
+   suite, or any build or boot check, because the product's toolchain is the sandbox's. So there is no change of failure
+   shape to get past #2877's re-read. The product's runner now reads every `tests_pass` failure, whether or not the image
+   executed the suite, which **closes H.24's remainder** for every product. A run that never exited stays no reading, unless
+   the image read nothing either. `judged_passed` rewrites `test_report.md` as `reread` does, and the report names what ran,
+   on which runner, in the sandbox, with the image's own attempt beside it.
+5. **The pin** H.13 names as `_pin_blueprint_conventions` is now `_pin_development_profile`. **A plan-less cycle** gets `node_vitest` or `product_neutral`, which hold no skeleton placement. A plan-less Python or
+   blueprint cycle stays as it was.
+
+**The evidence.** A live Campaign on battle-trainer (2026-11-06, #2937): every `qa.test` logged `framework=pytest executed=False`, and
+`test_report.md` said no tests ran on a task whose suite then passed 3 of 3 on vitest. `why_not_reread` stopped at the image's
+`executed` flag, and only `reread` rewrote the report. `tests/unit/cycles/test_product_stack_selection.py` enters at
+`prepare_cycle` and the real handlers. Read from the deploy's stored profiles, battle-trainer selects `node_vitest`, and
+`z_shelfnote` and `z_continuum` keep what they ran.
+
+**Not built.** The fingerprint covers a prompt asset by name, not by content. A stored profile gains `stack_unmatched` only when
+next derived. Profiles for other stacks are out of scope, and `product_neutral` serves them. None of this teaches the squad a
+product's domain contract: that stays Project instructions and approved lessons (SIP-0110), and #2938 measures play.
+
+**Who ruled.** The owner: "every Project needs a stack" (2026-11-06). The outside review the owner relayed the same day set the
+five requirements and the placement ahead of the counted Campaign. It asked to test the transition to `run_node_tests`; the
+Spark lane removed that transition instead, and said so in revision 3 on #2937.
+
+## H.27 Direct attachment doesn't ship in 2.6, and this SIP stays open past it (2026-11-07; E.4.7, FR-02)
+
+**What changed.** The owner ruled on 2026-10-23 that this SIP closes in 2.6, so its ledger said the 2.6 plan would ship E.4.7
+or drop it. It does neither. E.4.7 stays optional and unbuilt, and the line that closes the SIP decides it.
+
+**The evidence.** The SIP can't close in 2.6 whichever way E.4.7 goes: #2709 (E.4.5) was outside 2.6 from the plan's adoption,
+and #2862 moved to 2.7 on the owner's rulings of 2026-11-07. No Project needs a checkout written in place: battle-trainer,
+Shelfnote and `z_continuum` all run from their repositories.
+
+**Who ruled.** The owner, 2026-11-07, on the implementer's recommendation.
+
+## H.28 A merged contribution syncs its Project, from a host-side sweep on the host's own forge access (2026-11-08; E.4.3, E.4.4, FR-21; #2862; the Spark lane)
+
+**What changed.** E.4.4's sync recorded where each pending contribution stands, but only when someone ran it. After the
+owner merged a contribution's review request, the Project's `integrated_upstream_commit` stayed put, and the next
+Campaign read a product without the merged work. The merge sweep (`scripts/dev/ops/merge_sweep.py`) now runs on a host
+timer (`infra/systemd/squadops-merge-sweep.*`, every 15 minutes, so detection is by polling):
+1. **It reads.** For each repository-backed Project, it lists the contributions and reads each pending one's review
+   request on the forge. Every forge call is a `GET`; the sweep never pushes, comments, merges or edits.
+2. **It records a sync** for a Project with a merged one. E.4.4's sync marks the contribution integrated against the
+   commit that took it (a squash merge's included) and names the drift.
+3. **It re-validates the Project,** so the development baseline advances and new cycles wait for configure and
+   baseline capture, as after any sync (the owner's ruling of 2026-11-05). A validation that never landed is retried on
+   the next run.
+4. **A refused sync or validation is reported, never retried in silence.** The run exits 1, and a sync that can't
+   reconcile reads `unreconciled` on the Project, as before.
+
+**The credential, as the owner ruled it.** On 2026-11-05 the owner chose a read-only credential for the sweep's fetch.
+On 2026-11-08 the owner replaced that with the host's current access: "can you just accomplish the goal with your
+current access and just not write anything you shouldn't". So the sweep uses the host's GitHub CLI login, passed with
+each sync and validation request for that request alone, as `--token-from-gh` already does. The deploy stores no token,
+and the sweep writes none. The guarantee that it only reads is the code's, held by a test: that login's token has full
+repository scope, and a fine-grained read-only token can replace it in the same slot later. The sweep signs in to the
+runtime as `squadops-admin` (syncs and validations need `admin:write`), under its own CLI config home, so it never
+overwrites another login on the box. The password reaches the CLI in its environment, never as an argument.
+
+**The evidence.** `tests/unit/scripts/test_merge_sweep.py`:
+- a merged contribution syncs, then validates;
+- nothing is recorded for an unmerged, integrated or unlinked contribution;
+- a refused sync reports and never validates;
+- a validation that never landed is retried;
+- a dry run records nothing;
+- every forge call is a `GET`;
+- the sign-in keeps the password out of the arguments, uses its own config home, and signs in to the deploy's realm.
+
+A dry run on the Spark's deploy read every Project and acted on none, since every contribution there was already
+integrated.
+
+**Who ruled it.** The owner: the 2.7 plan's R2 kept #2862 in 2.7 as the line's named exception (2026-11-08), and the
+credential is the owner's ruling of the same day, above.
+
+## H.29 A product's repaired suite is read by its own runners, and a plan-less test author is shown the product (2026-11-08; H.13's "Not built here", H.26; #2827; the Spark lane)
+
+**What changed.** H.13 left two items unbuilt, and #2827 carries them. Both are built here. H.13's third item, the repairs
+(`qa.test_repair`, `development.correction_repair`), isn't one of #2827's and is unchanged.
+
+1. **Patch acceptance reads a product's repaired suite by the product's runners.** A repaired suite is what
+   `_repaired_suite_files` finds in the patch, and two decisions read it: whether a structurally unevaluable verdict is
+   decided by the retest (`retest_decides`, #1586), and whether the retest runs at all (#1269). It read the stack's
+   collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/` rule (#1534), which a product made from
+   that blueprint runs under (H.13's pin). So a repair placed where the product's vitest collects it was never retested,
+   and one placed by the scaffold's rule was.
+   - **On a repository-backed product's task,** a repaired suite is a file one of the product's runners holds: under
+     that runner's roots, named by its file pattern (`runner_holds`). That is the rule `Runner.holds`, the qa run tree
+     and the product runner's retest (`suite_under_judgement`) already use. The runners are the dispatched task's
+     (`suite_runners`, from `source_repository.runners` on the enriched envelope), since the base envelope carries no
+     view.
+   - **A sample application,** and a product whose view names no runner, keep the stack's vocabulary. With no runner, the
+     qa image's run is the only one there is.
+   - **What the stack's vocabulary still decides.** Plan validation (`validate_check_applicability`) reads it only where
+     `tests_pass` is required, and no profile a product runs on requires it (`campaign-increment-source` names no
+     `required_checks`). It is unchanged. The repair's emission veto (`correction_repair`) keeps its `__tests__/` clause,
+     which over-matches on purpose.
+2. **A plan-less product cycle's test author is shown the product.** A plan's `qa.test` takes the focused prompt, which
+   shows the product's repository view. A plan-less cycle's takes the monolithic prompt, `request.qa_test.test_validate`,
+   which showed none of it, and it carried a paragraph about the scaffold's test harness, which a product doesn't have.
+   - **Template version 6** slots the view (`source_repository_section`): the map, the stack's conventions for a
+     product, how the product is checked, and where its runners find a test. The task's step names the deletion form
+     it may use, as on the focused path.
+   - **The harness paragraph** is its own asset, `request.qa_test_scaffold_harness_block`, rendered only for a sample
+     application. A sample application's prompt is byte for byte what version 5 rendered.
+   - **Where the view shows the stack's conventions,** the profile's test supplement is withheld in their favour, as the
+     developer's system supplement is (H.13 point 2). `nextjs_ts`'s supplement places tests under `__tests__/` and calls
+     the scaffold's `@/lib/store`. `node_vitest`'s, the one a plan-less cycle is pinned to (H.26 point 5), only names
+     vitest, which its conventions say too ("A test is vitest, run by the product's own runner").
+   - **The files the prompt shows** are unchanged: the stack's source files (`qa_prompt_contents.source_files`), which the
+     composer counts. The monolithic path has no suite and no task text to trace imports from, so #2953's tracer, the
+     focused path's, has nothing to start from. The source files are the code a suite can call. The composer already
+     counted the view among the shared context slots, and the qa contract now lists the harness block too.
+3. **The pin is unchanged.** H.13 point 3 kept a plan-less cycle off a blueprint's profile because "only the plan's tasks
+   are shown the product". That reason is superseded for the test author, and the rule stands on the developer's: its
+   monolithic prompt (`request.development_develop.code_generate`) still lays files out by the profile's
+   `file_structure_guidance` and `example_structure`. So a plan-less cycle on a product made from a blueprint runs as
+   H.26 point 5 says, and its test author is shown the view, with no conventions block and `python_cli`'s supplement.
+
+**The evidence:**
+- **The repaired suite** (`tests/unit/cycles/test_outcome_routing.py`,
+  `TestAProductsRepairedSuiteIsReadByTheProductsRunners`). The tests enter at `_try_accept_patch`, as the correction loop
+  calls it, on the config `prepare_cycle` pins for a product made from `nextjs_ts`, with the enriched envelope carrying
+  a view whose vitest collects `*.test.ts` under `app`. The failed task is #1586's shape, an emission failure with prose
+  criteria only. In each case:
+  - `app/runs/runs.test.ts` is retested and accepted on the pass;
+  - `__tests__/runs.test.ts` and `app/runs/runs.spec.ts` end the round as a deadlock, with no retest;
+  - a sample application reads both the other way;
+  - a product whose view names no runner keeps the stack's reading.
+- **The plan-less test author** (`tests/unit/cycles/test_planless_test_author_product_view.py`). The tests enter at
+  `prepare_cycle` on `implement` with no plan, then at `QATestHandler.handle` with the cycle's own `resolved_config()`
+  and the shipped assets:
+  - a Python product, a Node product and a product made from `fullstack_fastapi_react` are each shown the map and their
+    runner, with no harness paragraph and none of the skeleton's placements;
+  - the Node product is shown `node_vitest`'s conventions in place of its supplement;
+  - an operator-named `nextjs_ts` shows the blueprint's conventions and neither "Place tests in __tests__/" nor
+    `@/lib/store`;
+  - a product with no runner is shown its map and no runner block;
+  - a sample application keeps the harness, between its files and its supplement.
+- **H.26's monolithic-prompt test** (`test_the_monolithic_test_prompt_names_vitest_not_pytest`) now reads vitest from the
+  conventions, where it read the supplement. `pytest` still never appears.
+- **Ten mutants, each caught:**
+  - the runners read from the base envelope;
+  - the source-backed test inverted;
+  - the runner rule never taken;
+  - each of the two readers left on the stack's vocabulary;
+  - a runner's roots ignored;
+  - the view never rendered;
+  - the harness shown to a product, or withheld from a sample application;
+  - the supplement kept beside the conventions.
+- **Loaded checks:** `2827-repaired-suite-runners` (the runtime) and `2827-planless-qa-view` (the qa agent), each run on
+  the source.
+
+**Not built.**
+- The plan-less developer's skeleton prose, which is why the pin stays (point 3).
+- Plan validation's reading, for the reason in point 1.
+- #2827's counted increment on `prj-z-continuum` (the 2.7 plan's §4.5). It remains, and #2827 stays open for it.
+
+**Who ruled.** The Spark lane built it, within H.13's rule ("the profile's prose for the skeleton is withheld wherever the
+product's repository view is shown"), under the supervisor's brief for #2827's item 2. The owner reviews it on the PR.
+
+## H.30 The draft checks integration where it is drafted, in place of H.28's timer (2026-11-08; E.4.3, E.4.4, FR-21; SIP-0109 §24dc, §24ds; #2862; the owner's ruling of 2026-11-08, option 1; the Spark lane)
+
+**What changed.** H.28 is superseded. Its host timer (`scripts/dev/ops/merge_sweep.py`,
+`infra/systemd/squadops-merge-sweep.*`) and its test are removed. They were never installed. In their place, the
+next Campaign's draft checks integration when it needs to:
+`POST /api/v1/projects/{id}/integration-check` (`campaigns:manage`, 200, `IntegrationCheckResponse`), or
+`squadops projects check-integration <project> [--token-from-gh]`. In one request it:
+1. **reads the Project's unintegrated set** (SIP-0109 §24dc item 7). With no row `contribution_pending` or
+   `merged_not_synced`, it records nothing and answers the set;
+2. **syncs** (E.4.4), for either kind of row: the managed clone fetches the base ref, and each pending review
+   request's state is read on the forge. A request merged into the base ref (a squash merge's new commit included)
+   is recorded integrated against the commit that took it. A patch export, and a merge with a merge commit, are
+   read by ancestry alone, with no forge and no forge token. The sync's idempotency key is the upstream commit's
+   (`integration-check:<project>:sync:<commit>`), so a second check at that commit records no second sync: it
+   replays the first. A manual `POST …/syncs` keeps its caller's key;
+3. **re-validates, within a bounded delegation** (below), when a row stands `merged_not_synced` and the sync
+   completed: the development baseline and the integrated commit move to the commit the sync read, and the row is
+   carried. New cycles then wait for configure and baseline capture there, as after any re-validation (the owner's
+   ruling of 2026-11-05). The answer's `next_step` says so;
+4. **reads the set again,** as recorded, and answers it: `clear` when it is empty, so the draft may proceed.
+   Otherwise each row says what it waits on: `campaign_open`, `contribution_not_opened`, `merge`,
+   `merge_state_unread`, `revalidation` or `closed_unmerged`, with `clears_when` in words. A sync that read drift
+   the Project hasn't reconciled is answered too (`unreconciled`, #2608).
+
+**It only reads the forge.** The fetch is the managed clone's, and the forge is asked only `review_request_state`, a
+`GET`. Nothing is pushed, commented, merged or labelled.
+
+**The token.** The request's `token`, else the one the deploy holds for the Project in
+`projects.review_request_tokens`, the order the sync and validate routes already read. It is used for that request's
+reads only, and never recorded. No new credential is stored and no host script reads a password.
+- **A pending review request needs a token and a forge.** Without them its merge isn't read, the sync isn't run
+  (it would answer `pending` without a reading), and the answer says so: `merge_state_unread: {reason: no_token}`
+  or `no_forge`, never "not merged".
+- **A fetch the remote refused for its credentials** is `fetch_unauthorized`, with or without a token passed, told
+  apart from the missing review-request token. The managed clone names it `unauthorized`
+  (`adapters/tools/git_source.py`, `fetch_unauthorized`).
+- The other reasons are `sync_refused`, `source_unavailable` and `forge_unavailable`.
+
+**A sync that was needed and didn't complete advances nothing.** No re-validation follows it, and the rows are
+answered as they are recorded after it, since a sync can record one contribution before a later one's read fails. A
+re-validation that doesn't adopt is answered in `validation_failed` with its reason. Neither is retried inside the
+request; the next check syncs and tries again.
+
+**The fence: a validation never moves a newer adoption back.** `record_validation` takes the development baseline its
+caller read before it fetched (`expected_baseline`, ProjectRegistryPort). Under the Project's row lock, a baseline
+that has moved since, and isn't the commit being adopted, means another validation adopted in between. Nothing is
+written, and `ProjectBaselineMovedError` names the commit held: 409 `BASELINE_MOVED` on `POST …/validate`, and
+`validation_failed: baseline_moved` in the check, which reads the Project again. One already at the commit is
+answered as it stands. The fence is in the registry's write, so a manual validation is fenced as the check's is. A
+key that recorded before replays, and the replay says the key was used, not where the Project is now: the check's
+validation key names the move, `integration-check:<project>:validate:<baseline read>:<commit adopted>`. So a later
+check that reads another baseline has a key of its own, and a spent key never holds a retry back.
+
+**The bounded delegation.** `campaigns:manage` doesn't otherwise imply validation authority: `POST …/syncs` and
+`POST …/validate` stay `admin:write`. The check may re-validate only:
+- a READY Project (`not_ready` otherwise);
+- after its own sync completed, for a row whose contribution that sync, or an earlier one, recorded integrated;
+- at exactly the commit that sync read (`validate_project(adopt_only=…)`). An upstream that moved between the sync's
+  fetch and the validation's is refused, `upstream_moved`, never adopted unread. The next check syncs it;
+- through the fence above.
+
+The Development Configuration and inherited baseline are still required at the new commit before a cycle. The
+exception is recorded in `squadops.auth.models` (the scope's comment) and the campaign runbook's approval boundary.
+
+**`contribution_closed`.** The check reads only pending contributions, so it does nothing for a closed one, and its
+row says the whole recovery. The owner reopens the request and merges it with a merge commit (a squash merge of a
+closed request can't be read), then syncs and re-validates the Project (`POST …/syncs`, then `POST …/validate`).
+Otherwise the owner dismisses it (SIP-0109 §24dg).
+
+**Where the gate is.** It stays the supervisor's, where SIP-0109 §24dc and #2863 placed it. #2863 built the signal and
+left refusing a draft while the set is non-empty to the supervisor's side. A draft is composed from the
+product read at the integrated commit (#2855's `source-file`) before any Campaign is created. So a check at
+`POST /api/v1/campaigns` would run after that read. It would either let through a draft composed from the commit
+before the merge, or refuse every creation while any row stands, which is a policy nobody has ruled. The check is the
+supervisor's first call, ahead of that read. SIP-0109 §24ds records the change on the supervisor's side, and its
+contract: the draft reads the product at the `integrated_commit` the check answered.
+
+**The evidence.** `tests/unit/api/test_integration_check.py` enters at the route, as the runtime mounts it, for the
+supervisor's seat. It runs over `test_close_contribution`'s world: a real managed clone, real deliveries, the
+contribution opened through `POST /api/v1/campaigns/{id}/contributions`, the owner's merges made in the fixture's
+repository, and the forge the real GitHub adapter over a recorded transport. The Project's writes keep the Postgres
+registry's replay and fence (`tests/fixtures/project_writes.py`), and one contract,
+`validation_record_contract`, holds both: the stand-in in the unit tests, and Postgres in
+`test_postgres_project_registry_integration.py`, which also races two validations from one baseline. The tests show:
+- a merged request is integrated, the baseline and the integrated commit move to the merge, the answer is clear, and
+  the read route lists nothing;
+- the forge sees one `GET` with the caller's token. Nothing is opened, and the product's refs are unchanged;
+- an open request keeps the draft waiting, names the row and its address, and moves nothing;
+- a second check at the same upstream commit replays the sync and records no second one;
+- no token gives `no_token`, with no sync and no forge request;
+- the request's token wins over the held one, and the held one is used when none is passed;
+- a forge refusal gives `forge_unavailable`, with no sync recorded and nothing validated;
+- a merge the sandbox can't carry (a symlink) gives `validation_failed: capability_gap`, and the next check tries again;
+- with nothing pending, nothing is recorded and the forge isn't read;
+- triage and viewer seats get 403, and a sample application gets 409 `NO_SOURCE_REPOSITORY`;
+- the review's race: a manual validation reads U1 and is held, the owner squash-merges (U2), and the check adopts U2.
+  The held validation then writes nothing (`ProjectBaselineMovedError`), and the next check is clear;
+- a closed request the owner reopens and merges clears by the steps its row names;
+- a patch export is read by ancestry with no token and no forge, merged or not, and a fetch refused for its
+  credentials is `fetch_unauthorized`, with no token or with one refused;
+- `tests/unit/projects/test_integration_check_partial_sync.py`:
+  - a sync that fails part-way re-validates nothing and answers what it recorded, for a row merged before the check
+    and for one the failing sync recorded;
+  - an upstream that moves after the sync is refused `upstream_moved` and adopted by the next check;
+  - an upstream rewound and restored is adopted again.
+
+Mutations, each on a commit and restored by commit:
+- **First round, eight, all caught:** the no-token guard removed; a key per call; no re-validation;
+  re-validation on a pending row; a forge refusal swallowed; no re-read after the sync; the token order swapped;
+  the route's scope lowered to `cycles:read`.
+- **After the review, nine, all caught:** the Postgres fence off; the stand-in's fence off; the stand-in's replay
+  read by payload; validation after a failed sync; no re-read after a failed sync; a validation key named for the
+  target alone; no adoption bound; a patch export requiring a token; a credential refusal read as an outage. Two
+  survived the first run: the target-only key and no adoption bound. Each has a test now (the rewound upstream, and
+  the upstream that moves after the sync).
+
+**Revised after the owner's outside review of PR #3002 (2026-11-08).** H.30 hasn't merged, so it is revised in place.
+The review, at `99625329`, asked for four changes and answered the packet's five questions. The sections above are
+the revised design:
+1. **The fence and the move-named key** (item 1). The review reproduced the failure: two checks, one at U1 and one at
+   U2, with the U1 validation finishing last. It wrote U1 over U2, and every later check replayed U2's spent key over
+   a Project left at U1. The new race regression fails on `99625329` the same way: the baseline is left at U1, and
+   the next check answers `revalidation` for good.
+2. **The test stand-in replays by key** (item 2). It had stored `None` and read `None` as "not recorded", so no
+   validation key ever replayed. One contract now holds the stand-in and Postgres.
+3. **No validation after a failed sync, and rows as recorded** (item 3).
+4. **The closed row's whole recovery** (item 4).
+5. **Answer 2, the bounded delegation, and answer 5, ancestry without a token,** as above. Answers 1, 3 and 4 keep
+   option (b), the held token for reads, and the 200 answer. Answer 1's source-file check is the supervisor's, in
+   SIP-0109 §24ds.
+
+**Who ruled.** The owner, 2026-11-08: "I don't like the design that relies on a timer"; option 1, no timer, the check
+at the point of use. The owner's outside review of PR #3002 ruled the four changes and the five answers above. The
+route's shape, its home on the supervisor's side, the fence's place in the registry and the answer's fields are the
+implementer's design under those rulings.

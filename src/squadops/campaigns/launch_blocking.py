@@ -10,7 +10,7 @@ that still refuses writes the next attempt's row; and the attempt that reaches
 resume returns the campaign to ``launch_blocked`` with its attempts counted afresh.
 
 Every attempt is a control-log row carrying its attempt number, the refusal and its reasons, so
-the guarantee "no launch beside a crew model" is read from the log.
+the guarantee "no launch beside an operator model" is read from the log.
 
 **A refusal by the cycle-create path is different in kind.** Its preflight refuses a squad that
 cannot run the workloads, a model the backend has not pulled or a sandbox out of step, and its

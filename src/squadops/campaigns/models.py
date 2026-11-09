@@ -137,6 +137,18 @@ class ControlOperation(StrEnum):
     #: the commit, and the lease it was pushed under. A record, accepted on a completed campaign,
     #: since the push is made at the Campaign's close.
     REVIEW_PUSHED = "review_pushed"
+    #: A supervisor's attempt to open a closed Campaign's contribution failed (§24dc, #2861): why,
+    #: as the contribution path refused it or the product or forge answered. A record, accepted
+    #: on a completed campaign. The contribution stays due for the supervisor's next request.
+    CONTRIBUTION_FAILED = "contribution_failed"
+    #: The owner delegated this Campaign's goal-set curation to the operator (SIP-0115 Q41, §10c;
+    #: SIP-0109 §24dd): what lets the operator promote, drop or split within it. A record of a grant
+    #: for the Campaign's life, so a live Campaign alone takes one (``needs_a_live_campaign``).
+    GOAL_DELEGATION_GRANTED = "goal_delegation_granted"
+    #: The owner declared a closed, unmerged contribution won't land (§24dg, #2926): who, why, and
+    #: the commit and review request it names. A record, accepted on a completed campaign, since a
+    #: contribution exists only after the close. It clears the unintegrated set's row.
+    CONTRIBUTION_DISMISSED = "contribution_dismissed"
 
     @property
     def records_only(self) -> bool:
@@ -145,6 +157,8 @@ class ControlOperation(StrEnum):
         It is the one kind accepted on a completed campaign: a launch the launcher had already
         made before an abort committed is still a cycle that exists, and its record must say so;
         a proposal's classification is read the morning after, when the campaign may have ended.
+        A record that grants something for the Campaign's life is the exception
+        (``needs_a_live_campaign``): on a completed one there is no life left to grant it for.
         """
         return self in (
             ControlOperation.MARK_LAUNCHED,
@@ -157,7 +171,15 @@ class ControlOperation(StrEnum):
             ControlOperation.REBIND,
             ControlOperation.INSTRUCT,
             ControlOperation.REVIEW_PUSHED,
+            ControlOperation.CONTRIBUTION_FAILED,
+            ControlOperation.GOAL_DELEGATION_GRANTED,
+            ControlOperation.CONTRIBUTION_DISMISSED,
         )
+
+    @property
+    def needs_a_live_campaign(self) -> bool:
+        """A record-only operation a completed campaign refuses, as it refuses a move."""
+        return self is ControlOperation.GOAL_DELEGATION_GRANTED
 
     @property
     def changes_the_lease(self) -> bool:
@@ -174,6 +196,36 @@ class ProposalClassification(StrEnum):
     AMBIGUOUS_MANIFEST_DELTA = "ambiguous_manifest_delta"
     #: A sound proposal implemented badly: not a feature-writing defect (§9.4).
     SOUND_PROPOSAL_BUILT_BADLY = "sound_proposal_built_badly"
+
+
+class ResumableClass(StrEnum):
+    """An escalation class a Campaign may delegate to the operator's supervisor principal (§24da; the
+    2.6 plan's D6, ruled 2026-11-03). Declared in ``policy.unattended_resume``; a class absent
+    from this table is never declarable: an upstream conflict, a limit's pause, a security
+    finding and the owner's pause stay the owner's."""
+
+    #: A plan gate the plan-review tier escalated (§24bj, §24bk): resumed by answering the gate.
+    PLAN_GATE = "plan_gate"
+    #: A cycle's own failure the decision escalated (§10 rows 9, 11 and 14): resumed by a repair
+    #: or a retry, within the policy's per-increment limits.
+    IN_CYCLE_FAILURE = "in_cycle_failure"
+    #: A launch the box kept refusing past ``launch_blocked_attempts`` (§9.3): resumed by the
+    #: relaunch, once the box is quiet.
+    LAUNCH_BLOCKED = "launch_blocked"
+
+    @property
+    def covers(self) -> str:
+        """The escalation this class covers, in words."""
+        return _COVERS[self]
+
+
+_COVERS: dict[ResumableClass, str] = {
+    ResumableClass.PLAN_GATE: "a plan gate the plan-review tier escalated, answered at the gate",
+    ResumableClass.IN_CYCLE_FAILURE: (
+        "a repair or retry after a cycle's own failure, within the per-increment limits"
+    ),
+    ResumableClass.LAUNCH_BLOCKED: "the relaunch after the box refused past the policy's count",
+}
 
 
 class ControlOutcome(StrEnum):
@@ -207,6 +259,11 @@ class RefusalReason(StrEnum):
     RUN_IN_FLIGHT = "run_in_flight"
     BOX_HELD = "box_held"
     NOT_LEASE_HOLDER = "not_lease_holder"
+    #: The operator's supervisor principal asked to resume an escalation the campaign did not delegate
+    #: to it (§24da): a class outside ``policy.unattended_resume``, a never-class, a move the class
+    #: doesn't permit or past its limit, or a campaign the owner holds. The route decides it and
+    #: records it; the row's binding says which.
+    RESUME_NOT_DELEGATED = "resume_not_delegated"
 
 
 class LaunchIntentState(StrEnum):
@@ -259,6 +316,16 @@ class ControlOperationRefused(CampaignError):
         super().__init__(
             f"{entry.operation} on campaign {entry.campaign_id} refused: {entry.refusal}"
         )
+
+
+class ResumeNotDelegated(ControlOperationRefused):
+    """A resume the operator's supervisor principal asked for that the campaign did not delegate to
+    it (§24da), refused and recorded: ``entry`` is the ``resume_not_delegated`` row, and its
+    binding's ``why`` is the message."""
+
+    def __init__(self, entry: ControlLogEntry) -> None:
+        self.entry = entry
+        CampaignError.__init__(self, str(entry.binding.get("why") or entry.refusal))
 
 
 # =============================================================================
@@ -377,6 +444,59 @@ def parse_requirements_source(text: str) -> RequirementsSource:
     )
 
 
+#: SIP-0115 §5.5: a Campaign that reads its goal set's latest revision at each proposal and each
+#: continuation decision, rather than one revision for its life.
+GOALS_CURRENT = "current"
+
+
+@dataclass(frozen=True)
+class CampaignGoals:
+    """``objective.goals`` (SIP-0115 §5.1; SIP-0109 §24cy): the goal set a repository-backed
+    Campaign works through, one backlog item per increment, in place of a requirements source.
+
+    ``goal_set`` names the Project whose goal set it is. A Project has one (Q44), so it is the
+    Project's id, required and checked against the Campaign's at creation: a definition copied
+    to another Project is refused rather than read against that Project's goals. ``revision`` is
+    a revision number, pinned for the Campaign's life, or ``current``: the latest at each read
+    (§5.5)."""
+
+    goal_set: str
+    revision: int | str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.goal_set, str) or not self.goal_set.strip():
+            raise ValueError(
+                "objective.goals.goal_set is required: the Project whose goal set it is"
+            )
+        revision = self.revision
+        if revision == GOALS_CURRENT:
+            return
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+            raise ValueError(
+                f"objective.goals.revision is a revision number (1 or more), or "
+                f"{GOALS_CURRENT!r} for the latest at each read, not {revision!r}"
+            )
+
+    @property
+    def pinned(self) -> int | None:
+        """The revision pinned for the Campaign's life, or ``None`` when it reads the latest."""
+        return None if self.revision == GOALS_CURRENT else int(self.revision)
+
+    @classmethod
+    def from_stored(cls, stored: Mapping[str, Any] | None) -> CampaignGoals | None:
+        return cls(**stored) if stored else None
+
+
+class StopWhen:
+    """What else stops a Campaign in success at §10 row 3, beside ``target_accepted_increments``
+    (SIP-0115 §5.6). Constants, not an enum, as ``PrdTier``'s are."""
+
+    #: Every item of the goal set's revision, read at the decision, is accepted in this Campaign
+    #: or removed (SIP-0115 §5.5a).
+    BACKLOG_DONE = "backlog_done"
+    ALL = frozenset({BACKLOG_DONE})
+
+
 @dataclass(frozen=True)
 class CampaignObjective:
     """What the campaign is for (§15): the statement, the scope it may touch, how success reads.
@@ -399,11 +519,33 @@ class CampaignObjective:
     #: head, or a stored artifact's id. Required at creation for one, refused for a sample
     #: application (``requirements_source_refusal``); ``None`` on every other campaign.
     requirements: str | None = None
+    #: SIP-0115 §5.1 (§24cy): a repository-backed Project's goal set, named in place of its
+    #: requirements source, never beside it. ``None`` on every other campaign.
+    goals: CampaignGoals | None = None
+    #: SIP-0115 §5.6 (§24cy): ``backlog_done``, read at §10 row 3 beside the target. Only with
+    #: ``goals``.
+    stop_when: str | None = None
 
     def __post_init__(self) -> None:
         _require_text("CampaignObjective", statement=self.statement, measurement=self.measurement)
         if self.requirements is not None:
             parse_requirements_source(self.requirements)
+        if self.requirements is not None and self.goals is not None:
+            raise ValueError(
+                "objective names goals or requirements, never both: the goal set is the "
+                "Campaign's requirements (SIP-0115 §5.1)"
+            )
+        if self.stop_when is not None:
+            if self.stop_when not in StopWhen.ALL:
+                raise ValueError(
+                    f"objective.stop_when must be one of {sorted(StopWhen.ALL)}, "
+                    f"got {self.stop_when!r}"
+                )
+            if self.goals is None:
+                raise ValueError(
+                    f"objective.stop_when {self.stop_when!r} reads a goal set's backlog, and the "
+                    "objective names no goals"
+                )
         target = self.target_accepted_increments
         if target is not None and (isinstance(target, bool) or not isinstance(target, int)):
             raise ValueError(
@@ -432,6 +574,11 @@ _POSITIVE_POLICY_FIELDS = frozenset(
         "launch_blocked_attempts",
     }
 )
+
+
+#: A stored policy's two seat bounds, from before §24al: the supervisor seat's and the owner's.
+_SEAT_BOUND = "_ruling_bound_s"
+_OWNER_BOUND = "owner_ruling_bound_s"
 
 
 @dataclass(frozen=True)
@@ -471,19 +618,25 @@ class CampaignPolicy:
     # stack, as a cycle that overrides none runs its profile's; a policy stored before it was
     # declarable reads as that.
     stack: str | None = None
+    # §24da (the 2.6 plan's D6): the escalation classes the operator's supervisor principal may
+    # resume on its own, fixed at creation and part of the creation hash when set. Empty, nothing
+    # is delegated: every escalation waits for the owner, as before; a policy stored before it
+    # was declarable reads as that.
+    unattended_resume: tuple[ResumableClass, ...] = ()
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
-        """A stored policy, as written. One stored before §24al carries two seat bounds, a crew's
-        and an owner's; its supervisor's bound is the first of them, the crew's. One stored before
+        """A stored policy, as written. One stored before §24al carries two seat bounds, a supervisor's
+        and an owner's; its supervisor's bound is the first of them. One stored before
         §24bj declares no plan gate, and ran supervised. A terminal row needs no migration, and its
         record keeps the values it ran under."""
         values = dict(data)
-        if "ruling_bound_s" not in values and "crew_ruling_bound_s" in values:
-            values["ruling_bound_s"] = values.pop("crew_ruling_bound_s")
-            values.pop("owner_ruling_bound_s", None)
-        if "plan_gate" not in values:
-            values["plan_gate"] = PlanGate.SUPERVISED
+        if "ruling_bound_s" not in values:
+            seat = next((k for k in values if k.endswith(_SEAT_BOUND) and k != _OWNER_BOUND), None)
+            if seat is not None:
+                values["ruling_bound_s"] = values.pop(seat)
+                values.pop(_OWNER_BOUND, None)
+        values.setdefault("plan_gate", PlanGate.SUPERVISED)
         return cls(**values)
 
     def __post_init__(self) -> None:
@@ -516,6 +669,31 @@ class CampaignPolicy:
                 f"CampaignPolicy.stack {self.stack!r} is not a stack a campaign can run on: it "
                 "needs a scaffold that declares where a criterion's test file lives (§8.1)"
             )
+        object.__setattr__(self, "unattended_resume", _resumable_classes(self.unattended_resume))
+
+
+def _resumable_classes(declared: Any) -> tuple[ResumableClass, ...]:
+    """``policy.unattended_resume`` read (§24da): each entry a resumable class, named once. A
+    class outside the table is refused by name, with the table; a never-class is just such a
+    name, since it is not in the table."""
+    if isinstance(declared, str) or not isinstance(declared, (list, tuple)):
+        raise ValueError(
+            "CampaignPolicy.unattended_resume is a list of escalation classes, one of "
+            f"{[c.value for c in ResumableClass]}, got {declared!r}"
+        )
+    classes: list[ResumableClass] = []
+    for entry in declared:
+        try:
+            cls = ResumableClass(entry)
+        except ValueError:
+            raise ValueError(
+                f"CampaignPolicy.unattended_resume: {entry!r} is not an escalation class the "
+                f"operator's supervisor may resume; the classes are {[c.value for c in ResumableClass]}"
+            ) from None
+        if cls in classes:
+            raise ValueError(f"CampaignPolicy.unattended_resume names {cls.value!r} twice")
+        classes.append(cls)
+    return tuple(classes)
 
 
 @dataclass(frozen=True)
@@ -722,8 +900,15 @@ class CampaignTransition:
     submitted: SubmittedProposal | None = None
     ruling: IncrementRuling | None = None
     supersedes: str | None = None
+    #: A closing row's ask (§24dc): the registry derives what the row records of the Campaign's
+    #: contribution, under its lock. ``True`` or ``False`` says whether the caller read the Project
+    #: as repository-backed, and a Campaign with a branch is one whatever it read. ``None`` derives
+    #: nothing. Never the caller's content: it is left out of the request's hash.
+    repository_backed: bool | None = None
 
     def __post_init__(self) -> None:
+        if self.repository_backed is not None and self.next_state is not CampaignState.COMPLETED:
+            raise ValueError("only a row that completes the campaign records its contribution")
         _require_text(
             "CampaignTransition",
             actor=self.actor,

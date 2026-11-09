@@ -200,18 +200,37 @@ class TestFourDimensions:
                 (IndicatorState.UNASKABLE, None),
             ),
             ((), (IndicatorState.ASKED_NONE, 0)),
+            # #2949: a hand-off the product's runner passed is not a failed attempt.
+            (
+                (
+                    ArtifactRecord("a1", "run_i1", "document", "qa.test", "t-qa", "failed", 1),
+                    ArtifactRecord("a2", "run_i1", "test", "qa.test", "t-qb", "handed_off", 1),
+                    ArtifactRecord("a3", "run_i1", "document", "qa.test", "t-qb", "handed_off", 1),
+                ),
+                (IndicatorState.OBSERVED, 1),
+            ),
+            (
+                (ArtifactRecord("a1", "run_i1", "test", "qa.test", "t-qa", "handed_off", 1),),
+                (IndicatorState.ASKED_NONE, 0),
+            ),
         ],
-        ids=["stamped", "pre-1.7.5 stamp", "none banked"],
+        ids=["stamped", "pre-1.7.5 stamp", "none banked", "beside a hand-off", "only a hand-off"],
     )
     def test_failed_emissions_count_attempts_by_stamp_or_are_unaskable(self, banked, expected):
-        """Bug caught: two artifacts of one attempt counted as two emissions, or an unstamped
-        bank read as a number (#1436)."""
+        """Bug caught: two artifacts of one attempt counted as two emissions, an unstamped bank
+        read as a number (#1436), or a hand-off counted as a failed attempt (#2949)."""
         outcome, evidence = _accepted_cycle()
         evidence = CycleEvidence(**{**evidence.__dict__, "artifacts": banked})
 
-        ind = assess(outcome, evidence, assessor=ASSESSOR).indicator("failed_emissions")
+        assessment = assess(outcome, evidence, assessor=ASSESSOR)
+        ind = assessment.indicator("failed_emissions")
 
         assert (ind.state, ind.value) == expected
+        # The artifact count reads the same failures, and cites only them.
+        failed = [a.artifact_id for a in banked if a.emission_status == "failed"]
+        artifacts = assessment.indicator("failed_emission_artifacts")
+        assert artifacts.value == len(failed)
+        assert [r.id for r in artifacts.refs] == failed
 
     def test_framing_rerolls_and_plan_defect_terminations_cite_their_runs_and_artifacts(self):
         outcome, evidence = _accepted_cycle()

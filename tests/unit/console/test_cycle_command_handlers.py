@@ -6,12 +6,28 @@ import importlib
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from tests.unit.console.console_settings import compose_settings
+
+
+class CommandExecuteRequestBody(BaseModel):
+    """The pinned shell's body for ``POST /api/commands/execute``, field for field: Continuum
+    v1.0.3 (``console/continuum.lock``, sha ``7bbb8e52``), ``src/continuum/adapters/web/api.py:79-85``.
+    Unknown keys are dropped, as pydantic's default has it there too (#2903's ``params``). Module
+    level because FastAPI resolves a route's annotations against the module's globals, and this
+    module postpones its annotations."""
+
+    command_id: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = False
+    confirmed: bool = False
+
 
 # The console main.py imports from continuum and auth_bff which aren't installed
 # in the test environment. We inject stubs so we can import the command handler
@@ -105,9 +121,9 @@ def _load_main():
 class TestCommandHandlerRegistry:
     """Verify COMMAND_HANDLERS maps all expected command IDs."""
 
-    def test_registry_has_11_handlers(self):
+    def test_registry_has_12_handlers(self):
         main = _load_main()
-        assert len(main.COMMAND_HANDLERS) == 11
+        assert len(main.COMMAND_HANDLERS) == 12
 
     def test_registry_contains_all_expected_keys(self):
         main = _load_main()
@@ -123,6 +139,7 @@ class TestCommandHandlerRegistry:
             "squadops.set_baseline",
             "squadops.download_artifact",
             "squadops.set_active_profile",
+            "squadops.revise_goal_set",
         }
         assert set(main.COMMAND_HANDLERS.keys()) == expected
 
@@ -295,6 +312,28 @@ class TestSetActiveProfileHandler:
         assert result == {"profile_id": "full"}
         call_args = mock_req.call_args
         assert "/api/v1/squad-profiles/active" in call_args[0][1]
+
+
+class TestReviseGoalSetHandler:
+    """SIP-0115 slice 4 (#2887): the goals panel's edit. Bug caught: the API's 409, a revision
+    written first by someone else, reaching the panel as anything but that refusal with its
+    status and its envelope, so the panel can't say plainly what happened."""
+
+    async def test_a_stale_revision_is_relayed_with_the_apis_status_and_envelope(self):
+        main = _load_main()
+        envelope = (
+            '{"detail": {"error": {"code": "STALE_GOAL_SET_REVISION", "message": '
+            "\"Project p-1's goal set is at revision 3; revision 3 doesn't follow it\", "
+            '"details": null}}}'
+        )
+        mock_resp = MagicMock(status_code=409, text=envelope)
+
+        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp):
+            result = await main.squadops_revise_goal_set(
+                {"project_id": "p-1", "expected_revision": 2, "reason": "r", "goal_set": {}}, {}
+            )
+
+        assert result == {"error": envelope, "status_code": 409}
 
 
 class TestCreateCycleBodyCleaning:
@@ -608,6 +647,195 @@ class TestCommandsRunAsTheirCaller:
             client.get("/api/v1/projects")
 
         assert seen == ["Bearer user-token"]
+
+
+class TestTheBodyThePluginsPost:
+    """#2903/#2904: a plugin posts ``{command_id, args}`` and, when the bus asks, the same body
+    with ``confirmed: true`` (``console/continuum-plugins/shared/commands.js``). Entered at the
+    console app's command route, through its middleware, with a stand-in for the pinned shell's
+    route (Continuum v1.0.3, sha ``7bbb8e52``; the test env has no ``continuum``,
+    ``_stub_continuum_and_bff``): the body model's four fields and defaults
+    (``adapters/web/api.py:79-85``), a ``confirm``-level command answered ``pending`` until
+    ``confirmed`` (``app/command_bus.py:293-303``), the handler called with ``args`` (``:357``) in
+    its own task under ``wait_for``, and an exception answered 200 ``failed`` (``:401-421``). The
+    danger levels are the plugins' own manifests'.
+
+    Bugs caught: a handler reading its arguments from anywhere but the ``args`` dict the bus hands
+    it; the args a plugin sends being ones its handler doesn't take (the old ``params`` body
+    reached every handler as ``{}``); a confirm-level command running on the first post.
+    """
+
+    #: The args each plugin sends, verbatim from its source.
+    GATE = {"project_id": "p-1", "cycle_id": "c-1", "run_id": "r-1", "gate_name": "plan_review"}
+    GATE_PATH = "/api/v1/projects/p-1/cycles/c-1/runs/r-1/gates/plan_review"
+    #: The goals panel's revision body: every key of the API's ``GoalSetRevisionRequest``.
+    GOAL_SET_REVISION = {
+        "expected_revision": 2,
+        "reason": "Move the export item first",
+        "idempotency_key": "console-goals-k-1",
+        "goal_set": {"goal": "A reading log", "backlog": []},
+    }
+
+    @staticmethod
+    def _danger_levels() -> dict[str, str]:
+        import tomllib
+
+        plugins = Path(__file__).parents[3] / "console" / "continuum-plugins"
+        return {
+            command["id"]: command.get("danger_level", "safe")
+            for manifest in plugins.glob("squadops.*/plugin.toml")
+            for command in tomllib.loads(manifest.read_text(encoding="utf-8"))
+            .get("contributions", {})
+            .get("command", [])
+        }
+
+    @classmethod
+    def _client(cls, main, seen: list):
+        import asyncio
+        import json
+
+        import httpx
+        from fastapi.testclient import TestClient
+
+        def runtime_api(request: httpx.Request) -> httpx.Response:
+            if request.headers.get("content-type", "").startswith("multipart/"):
+                body = request.content.decode()
+            else:
+                body = json.loads(request.content) if request.content else None
+            seen.append((request.method, request.url.path, body))
+            return httpx.Response(200, json={"id": "made"})
+
+        main._api_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(runtime_api), base_url="http://runtime-api:8001"
+        )
+        levels = cls._danger_levels()
+
+        async def continuum_command_route(body: CommandExecuteRequestBody) -> dict:
+            level = levels[body.command_id]
+            answer = {"command_id": body.command_id, "danger_level": level, "result": {}}
+            if level in ("confirm", "danger") and not body.confirmed:
+                return {**answer, "status": "pending", "requires_confirmation": True}
+            handler = main.COMMAND_HANDLERS[body.command_id]
+            try:
+                result = await asyncio.wait_for(handler(body.args, {}), timeout=5)
+            except Exception as e:  # the bus's own catch (command_bus.py:401)
+                return {**answer, "status": "failed", "error": str(e)}
+            return {**answer, "status": "success", "result": result}
+
+        main.app.add_api_route(main.COMMAND_ROUTE, continuum_command_route, methods=["POST"])
+        return TestClient(main.app)
+
+    @pytest.mark.parametrize(
+        ("command_id", "args", "sent"),
+        [
+            (
+                "squadops.gate_approve",
+                GATE,
+                ("POST", GATE_PATH, {"decision": "approved"}),
+            ),
+            (
+                "squadops.create_cycle",
+                {"project_id": "p-1", "squad_profile_id": "full", "prd_ref": "a-1"},
+                (
+                    "POST",
+                    "/api/v1/projects/p-1/cycles",
+                    {"squad_profile_id": "full", "prd_ref": "a-1"},
+                ),
+            ),
+        ],
+        ids=["GateDecisionCard", "CycleCreateModal"],
+    )
+    def test_the_args_a_plugin_posts_reach_its_handler_and_the_runtime_api(
+        self, command_id, args, sent
+    ):
+        main = _load_main()
+        seen: list = []
+        client = self._client(main, seen)
+
+        resp = client.post(main.COMMAND_ROUTE, json={"command_id": command_id, "args": args})
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success", resp.json()
+        assert resp.json()["result"] == {"id": "made"}
+        assert seen == [sent]
+
+    def test_the_prd_a_plugin_posts_reaches_the_runtime_api_as_a_file(self):
+        main = _load_main()
+        seen: list = []
+        client = self._client(main, seen)
+        # CycleCreateModal's ingest, verbatim.
+        args = {
+            "project_id": "p-1",
+            "filename": "prd.md",
+            "artifact_type": "documentation",
+            "media_type": "text/markdown",
+            "content": "# A product\n",
+        }
+
+        resp = client.post(
+            main.COMMAND_ROUTE, json={"command_id": "squadops.ingest_artifact", "args": args}
+        )
+
+        assert resp.json()["status"] == "success", resp.json()
+        [(method, path, form)] = seen
+        assert (method, path) == ("POST", "/api/v1/projects/p-1/artifacts/ingest")
+        assert 'filename="prd.md"' in form and "# A product" in form
+
+    @pytest.mark.parametrize(
+        ("command_id", "args", "sent"),
+        [
+            (
+                "squadops.gate_reject",
+                GATE,
+                ("POST", GATE_PATH, {"decision": "rejected"}),
+            ),
+            (
+                "squadops.set_active_profile",
+                {"profile_id": "full"},
+                ("POST", "/api/v1/squad-profiles/active", {"profile_id": "full"}),
+            ),
+            (
+                # GoalsPanel's edit, as `goals.js`'s `revisionArgs` builds it.
+                "squadops.revise_goal_set",
+                {"project_id": "p-1", **GOAL_SET_REVISION},
+                ("POST", "/api/v1/projects/p-1/goal-set/revisions", GOAL_SET_REVISION),
+            ),
+        ],
+        ids=["GateDecisionCard-reject", "ProjectsProfiles", "GoalsPanel"],
+    )
+    def test_a_confirm_level_command_runs_only_on_the_re_post_with_confirmed(
+        self, command_id, args, sent
+    ):
+        main = _load_main()
+        seen: list = []
+        client = self._client(main, seen)
+        body = {"command_id": command_id, "args": args}
+
+        asked = client.post(main.COMMAND_ROUTE, json=body).json()
+
+        assert (asked["status"], asked["requires_confirmation"]) == ("pending", True)
+        assert asked["danger_level"] == "confirm"
+        assert seen == [], "nothing ran: the bus asked first"
+
+        confirmed = client.post(main.COMMAND_ROUTE, json={**body, "confirmed": True}).json()
+
+        assert confirmed["status"] == "success", confirmed
+        assert seen == [sent]
+
+    def test_the_old_body_reaches_the_handler_as_nothing_and_the_bus_answers_200_failed(self):
+        """#2903's shape: ``params`` is not a field of the body, so it is dropped."""
+        main = _load_main()
+        seen: list = []
+        client = self._client(main, seen)
+
+        resp = client.post(
+            main.COMMAND_ROUTE, json={"command_id": "squadops.gate_approve", "params": self.GATE}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "failed"
+        assert "project_id" in resp.json()["error"]
+        assert seen == []
 
 
 class TestConfigJsEndpoint:

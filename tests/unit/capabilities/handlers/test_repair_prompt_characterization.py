@@ -325,3 +325,47 @@ def test_the_cases_exercise_what_the_extraction_moves():
     )
     assert "`tests/test_orbit.py:10` › test_moon_3" in frames["case_frames"]
     assert "test_missing.py" not in frames["case_frames"]
+
+
+_QA_SUITE = "test/criterion_T1.test.js"
+_QA_TREE = {
+    _QA_SUITE: 'import { play } from "../tools/play.mjs";\nconst total = play().count;\n',
+    "tools/play.mjs": "export const play = () => ({ shots: 3 });\n",
+    "tools/viewer.mjs": "export const view = 1;\n",
+}
+
+
+@pytest.mark.parametrize(
+    ("handler_class", "shown"),
+    [
+        (QATestRepairHandler, "`tools/play.mjs`:\n```\nexport const play"),
+        (DevelopmentCorrectionRepairHandler, None),
+    ],
+)
+async def test_a_qa_repair_is_shown_the_code_its_suite_imports(handler_class, shown):
+    """Entered at ``handle()``, where the cycle enters a repair. Bug caught: a qa repair shown only
+    the suite it may edit, so it guesses the helper's field names (``cyc_8e691eb2bccf``'s
+    ``result.shots[side]`` and ``result.squadShots``); a dev repair is sent no such section."""
+    ctx, _calls, renderer = _context(_edit(_QA_SUITE, "play().count", "play().shots"))
+
+    await handler_class().handle(
+        ctx,
+        _inputs(
+            [_QA_SUITE],
+            failed_task_type="qa.test",
+            acceptance_workspace_files=dict(_QA_TREE),
+        ),
+    )
+
+    imported = [
+        c["variables"]["imported_files"]
+        for c in renderer.calls
+        if c["template"] == "request.qa_test_repair_imported_files"
+    ]
+    if shown is None:
+        assert imported == []
+    else:
+        assert len(imported) == 1
+        assert shown in imported[0]
+        assert "tools/viewer.mjs" not in imported[0]
+        assert _QA_SUITE not in imported[0]

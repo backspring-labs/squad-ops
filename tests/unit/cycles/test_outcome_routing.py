@@ -777,6 +777,8 @@ class TestAcceptPatch:
         from squadops.cycles.verification_normalize import normalize_task_checks
 
         failed = self._failed_builder_result_1318()
+        # #2612: the corrected result is the failed one, so a removal it made is stored with it.
+        failed.outputs["deletions"] = ["old_start.sh"]
         holder: dict = {}
         action = await executor._try_accept_patch(
             self._builder_envelope_1318(),
@@ -786,6 +788,7 @@ class TestAcceptPatch:
         )
         assert action == "accept_patch"
         corrected = holder["patched_result"]
+        assert corrected.outputs["deletions"] == ["old_start.sh"]
         rows = corrected.outputs["validation_result"]["checks"]
 
         # The spine row is re-derived from the PATCHED set, and it passes.
@@ -1170,6 +1173,29 @@ class TestAcceptPatchRetest:
         assert entry.startswith(
             "correction attempt 0: repaired suite retest cleared 2 of 3 failure(s) and added none"
         )
+
+    async def test_a_kept_repair_keeps_the_failed_tasks_removals(self, executor, cycle):
+        """#2612. The next round starts from the retest, whose result carries no removal. Bug
+        caught: a removal the failed task made lost with a kept round, so the file stays in a
+        candidate the task's author meant to drop it from."""
+        from squadops.execution.patch_acceptance import KEPT_OUTPUTS_KEY
+
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest_failing("c")
+        )
+        failed = self._round_failing("a", "b", "c")
+        failed.outputs["deletions"] = ["tests/test_old.py"]
+        holder: dict = {}
+        await executor._try_accept_patch(
+            self._qa_envelope(),
+            failed,
+            self._repair(),
+            holder,
+            repair_rejection_carry={},
+            **self._kwargs(cycle),
+        )
+
+        assert holder[KEPT_OUTPUTS_KEY]["deletions"] == ["tests/test_old.py"]
 
     @pytest.mark.parametrize(
         "round_titles, retest_titles, round_extra",
@@ -2657,17 +2683,21 @@ class TestRetestIsKeyedOnWhatThePatchContains:
         would miss the very case this fixes."""
         from squadops.execution.patch_acceptance import _repaired_suite_files
 
-        assert _repaired_suite_files([{"name": self._SUITE, "type": "code"}], self._CONFIG) == [
-            self._SUITE
-        ]
-        assert _repaired_suite_files([{"name": "backend/routes.py"}], self._CONFIG) == []
+        # A sample application's run: no product runners (SIP-0112 H.29), so the stack decides.
+        sample = ()
+        assert _repaired_suite_files(
+            [{"name": self._SUITE, "type": "code"}], self._CONFIG, sample
+        ) == [self._SUITE]
+        assert _repaired_suite_files([{"name": "backend/routes.py"}], self._CONFIG, sample) == []
         # The other stack answers with its own conventions, not pytest's.
         assert _repaired_suite_files(
-            [{"name": "__tests__/runs.test.ts"}], {"development_profile": "nextjs_ts"}
+            [{"name": "__tests__/runs.test.ts"}], {"development_profile": "nextjs_ts"}, sample
         ) == ["__tests__/runs.test.ts"]
         assert (
             _repaired_suite_files(
-                [{"name": "backend/tests/test_runs.py"}], {"development_profile": "nextjs_ts"}
+                [{"name": "backend/tests/test_runs.py"}],
+                {"development_profile": "nextjs_ts"},
+                sample,
             )
             == []
         )
@@ -3447,3 +3477,157 @@ class TestQaSuiteRepairAfterAnEmissionFailureIsRetested:
         assert action == "break_correction"
         assert holder == {}
         executor._correction_runner.reexecute_repaired_suite.assert_not_awaited()
+
+
+class TestAProductsRepairedSuiteIsReadByTheProductsRunners:
+    """SIP-0112 H.29: a repository-backed product's repaired suite is the files its own runners
+    hold, not what its stack's vocabulary collects. ``nextjs_ts``'s collects under the scaffold's
+    ``__tests__/`` only (#1534), and a product made from that blueprint runs under it (H.13's pin),
+    though its own vitest collects wherever its configuration says.
+
+    Entered at ``_try_accept_patch``, as the correction loop calls it, with the dispatched
+    (enriched) envelope carrying the product's view, on the config ``prepare_cycle`` pins for a
+    product made from ``nextjs_ts``. The failed task is #1586's shape: it failed at emission, so the
+    suite the repair carries is the only evidence a retest could run. Bugs caught: a product's
+    repair placed where its runner collects it never retested (the round ends as a deadlock); one
+    placed by the scaffold's rule, where the product's runner never looks, retested as if it
+    counted; a sample application's reading changed."""
+
+    #: A Next.js product whose vitest collects ``*.test.ts`` under ``app`` (invented).
+    _VIEW = {
+        "commit": "c" * 40,
+        "map": "- `app/runs/page.tsx`\n- `app/runs/route.ts`",
+        "checks": [{"id": "unit", "argv": ["npx", "vitest", "run"]}],
+        "runners": [
+            {"runner": "vitest", "checks": ["unit"], "roots": ["app"],
+             "file_pattern": "*.test.ts", "covers": ["app/**"]},
+        ],
+        "instructions": {},
+        "existing_files": {},
+    }  # fmt: skip
+    _SUITE = "import { test } from 'vitest'\ntest('lists runs', () => {})\n"
+
+    @pytest.fixture
+    async def nextjs_config(self, monkeypatch):
+        from tests.unit.cycles.test_blueprint_conventions import _made_from, _prepared
+
+        monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
+        prepared = await _prepared(_made_from("nextjs_ts"))
+        config = prepared.cycle.resolved_config()
+        assert config["development_profile"] == "nextjs_ts"
+        return config
+
+    @staticmethod
+    def _envelopes(config, expected, view):
+        import dataclasses
+
+        from squadops.tasks.models import TaskEnvelope
+
+        base = TaskEnvelope(
+            task_id="task_6",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="prj-tally",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": config,
+                "artifact_contents": {},
+                "expected_artifacts": [expected],
+                "acceptance_criteria": ["The run list shows every run."],
+            },
+            metadata={"role": "qa"},
+        )
+        if view is None:
+            return base, base
+        return base, dataclasses.replace(base, inputs={**base.inputs, "source_repository": view})
+
+    @staticmethod
+    def _emission_failed():
+        return TaskResult(
+            task_id="task_6",
+            status="FAILED",
+            outputs={
+                "artifacts": [],
+                "validation_result": {"passed": False, "checks": []},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="qa emission carried no suite",
+        )
+
+    @staticmethod
+    def _kwargs(cycle):
+        return {
+            "run_id": "run_001",
+            "cycle": cycle,
+            "correction_attempts": 0,
+            "prior_outputs": {},
+            "all_artifact_refs": [],
+            "stored_artifacts": [],
+            "completed_task_ids": [],
+            "plan_delta_refs": [],
+            "profile": None,
+            "flow_run_id": None,
+        }
+
+    @pytest.mark.parametrize(
+        ("path", "view", "retested"),
+        [
+            # the product's runner collects it, though the scaffold's rule doesn't
+            ("app/runs/runs.test.ts", _VIEW, True),
+            # the scaffold's rule collects it, though the product's runner never looks there
+            ("__tests__/runs.test.ts", _VIEW, False),
+            # under the runner's root, but not a name it takes
+            ("app/runs/runs.spec.ts", _VIEW, False),
+            # a sample application keeps the stack's reading, both ways
+            ("__tests__/runs.test.ts", None, True),
+            ("app/runs/runs.test.ts", None, False),
+            # a product with no runner to read keeps the stack's reading
+            ("__tests__/runs.test.ts", {**_VIEW, "runners": []}, True),
+        ],
+        ids=[
+            "product-runner-holds",
+            "scaffold-rule-only",
+            "product-pattern-misses",
+            "sample-scaffold-rule",
+            "sample-outside-rule",
+            "product-without-runners",
+        ],
+    )
+    async def test_a_repaired_suite_is_the_one_its_runner_collects(
+        self, executor, cycle, nextjs_config, path, view, retested
+    ):
+        retest = AsyncMock(
+            return_value=TaskResult(
+                task_id="retest",
+                status="SUCCEEDED",
+                outputs={"test_result": {"executed": True, "exit_code": 0, "tests_passed": True}},
+            )
+        )
+        executor._correction_runner.reexecute_repaired_suite = retest
+        base, enriched = self._envelopes(nextjs_config, path, view)
+        holder: dict = {}
+
+        action = await executor._try_accept_patch(
+            base,
+            self._emission_failed(),
+            [{"name": path, "content": self._SUITE}],
+            holder,
+            enriched_envelope=enriched,
+            **self._kwargs(cycle),
+        )
+
+        if retested:
+            assert action == "accept_patch"
+            assert holder["patched_result"].outputs["test_result"]["tests_passed"] is True
+            retest.assert_awaited_once()
+            assert [a["name"] for a in retest.await_args.args[3]] == [path]
+        else:
+            # nothing could decide: no typed criteria, no prior result and no suite in the patch
+            assert action == "break_correction"
+            assert holder == {}
+            retest.assert_not_awaited()

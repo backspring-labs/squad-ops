@@ -6,9 +6,10 @@ every framing stage after them is shown it verbatim.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
@@ -172,3 +173,69 @@ def test_an_increment_authors_no_manifest():
     accepted interface and the approved delta with a fresh one."""
     with pytest.raises(CycleError, match="authors no manifest"):
         build_planning_steps(None, authors_manifest=True, increment=True)
+
+
+NOTES = "An empty search returns the whole shelf, in its usual order."
+
+
+@pytest.mark.parametrize(("notes", "shown"), [(NOTES, True), (None, False)], ids=["notes", "none"])
+async def test_the_reviewers_notes_reach_every_framing_stage_and_its_prompt(notes, shown):
+    """#2854, entered at ``generate_task_plan`` (what the framing run's provisioning calls) and
+    carried to the prompt the technical design sends. Bugs caught: the reviewer's approval notes
+    stored and never shown, so guidance for the build is lost unless the proposal is returned;
+    and an empty section shown when the ruling had none."""
+    from squadops.capabilities.handlers.planning.framing import DevelopmentDesignPlanHandler
+
+    plan = generate_task_plan(
+        _cycle(True), FRAMING, PROFILE, change_request=STORED_REQUEST, ruling_notes=notes
+    )
+
+    assert all(("increment_ruling_notes" in e.inputs) is shown for e in plan)
+    [design] = [e for e in plan if e.task_type == "development.design_plan"]
+    prompt = await _prompt(DevelopmentDesignPlanHandler(), dict(design.inputs, prd="the PRD"))
+
+    assert ("The reviewer's notes on the approval" in prompt) is shown
+    assert (f"```\n{NOTES}\n```" in prompt) is shown
+
+
+def _ruled(*decisions: tuple[str, str | None]) -> Run:
+    from squadops.campaigns.gate import INCREMENT_RULING_GATE
+    from squadops.cycles.models import GateDecision
+
+    return dataclasses.replace(
+        Run("run_p", "cyc_inc", 1, "completed", "system", "cfg", workload_type="proposal"),
+        gate_decisions=tuple(
+            GateDecision(INCREMENT_RULING_GATE, d, "ripley", NOW, notes=n) for d, n in decisions
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("increment", "rulings", "expected"),
+    [
+        (True, [("approved", f"  {NOTES}\n")], NOTES),
+        (True, [("approved_with_refinements", NOTES)], NOTES),
+        (True, [("returned_for_revision", "add a seam table"), ("approved", None)], None),
+        (True, [("approved", NOTES), ("rejected", "out of scope")], None),
+        (True, [], None),
+        (False, [("approved", NOTES)], None),
+    ],
+    ids=[
+        "approved",
+        "with refinements",
+        "a return's notes",
+        "rejected last",
+        "none",
+        "not an increment",
+    ],
+)
+async def test_the_notes_read_are_the_approving_rulings_own(increment, rulings, expected):
+    """Bugs caught: a returned proposal's reasons shown to the framing of the version that was
+    approved without them; a later rejection's notes read as guidance; notes read for a cycle
+    that is not an increment."""
+    from squadops.campaigns.increment_tree import approved_ruling_notes
+
+    registry = MagicMock()
+    registry.list_runs = AsyncMock(return_value=[_ruled(*rulings), FRAMING])
+
+    assert await approved_ruling_notes(registry, _cycle(increment)) == expected

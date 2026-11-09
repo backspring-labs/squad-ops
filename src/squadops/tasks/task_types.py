@@ -146,6 +146,13 @@ class TaskType(StrEnum):
         return self is TaskType.STRATEGY_PROPOSE_INCREMENT
 
     @property
+    def deletion_grant(self) -> DeletionGrant | None:
+        """What this step may remove from a source-backed run's product (#2612, SIP-0112 H.23):
+        ``PRODUCT`` for the steps that author its source, ``TESTS`` for the steps that author its
+        suite alone, ``None`` for every other step, whose deletion form is refused by name."""
+        return _DELETION_GRANTS.get(self)
+
+    @property
     def domain(self) -> str:
         """The dotted prefix — the role family that owns the step."""
         return self.value.split(".", 1)[0]
@@ -158,6 +165,29 @@ class TaskType(StrEnum):
         writes no rows, and the accepted patch still owes the row on the patched set
         (#1364)."""
         return self.domain == "builder"
+
+
+class DeletionGrant(StrEnum):
+    """The files a step's deletion form may remove (#2612)."""
+
+    #: Any text file of the product's tree the task's view lists.
+    PRODUCT = "product_file"
+    #: Only a file one of the product's own test runners holds as a test.
+    TESTS = "product_test"
+
+
+_DELETION_GRANTS: dict[TaskType, DeletionGrant] = {
+    TaskType.DEVELOPMENT_DEVELOP: DeletionGrant.PRODUCT,
+    TaskType.DEVELOPMENT_CORRECTION_REPAIR: DeletionGrant.PRODUCT,
+    TaskType.QA_TEST: DeletionGrant.TESTS,
+    TaskType.QA_TEST_REPAIR: DeletionGrant.TESTS,
+}
+
+
+def deletion_grant(task_type: object) -> DeletionGrant | None:
+    """``TaskType.deletion_grant`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return member.deletion_grant if member else None
 
 
 def _member_or_none(value: object) -> TaskType | None:

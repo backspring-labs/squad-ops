@@ -17,6 +17,7 @@ Pure functions — the caller owns storage, events, and the carry.
 from __future__ import annotations
 
 import ast
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -82,10 +83,49 @@ def emission_integrity_instruction(name: str, error: str) -> str:
 # instruction the model reads renders from the managed template asset.
 
 EMISSION_FAILURE_KEY = "emission_failure"
-#: #971: the ``emission_status`` artifact-metadata value marking a banked emission that did
-#: not pass — a string field's own vocabulary, not a run or task status.
-EMISSION_STATUS_FAILED = "failed"
+
+
+class EmissionStatus(StrEnum):
+    """The ``emission_status`` artifact-metadata vocabulary: what the bank marks an emission it
+    keeps for reading (#971). A string field's own vocabulary, not a run or task status.
+
+    Every value is a banked emission, and a banked emission is evidence, never the run's
+    accepted state: no workspace, delivered tree or deliverable is composed from one. They
+    differ in what the attempt was:
+
+    - ``failed``: the attempt failed (#971), and the scorecard and the verification-set records
+      count it;
+    - ``handed_off`` (#2949): the qa image left the suite to the product's own runner (SIP-0112
+      H.26), whose pass was accepted as the task's verdict. Not a failure, a pass or an executed
+      test: the runner's run is the reading, and it is stored as the task's own.
+    """
+
+    FAILED = "failed"
+    HANDED_OFF = "handed_off"
+
+    @property
+    def is_failure(self) -> bool:
+        """Whether the banked emission is a failed attempt, which failure counts read."""
+        return self is EmissionStatus.FAILED
+
+
+def banked_as(value: object) -> EmissionStatus | None:
+    """The bank's marker as a stored artifact's ``emission_status`` holds it, or ``None`` for an
+    artifact the run stored as its own (no marker). A row from before #2949 reads as it did,
+    ``failed``. A marker this version doesn't know is read as ``failed`` too: kept out of every
+    tree and counted, since leaving out a banked emission is the safe direction and counting it
+    never hides a failure."""
+    if not value:
+        return None
+    try:
+        return EmissionStatus(str(value))
+    except ValueError:
+        return EmissionStatus.FAILED
+
+
 EMISSION_FAILURE_NO_FENCED_BLOCKS = "no_fenced_blocks"
+#: #2612: the emission named a removal its step may not make; its `refusals` say which and why.
+EMISSION_FAILURE_DELETION_REFUSED = "deletion_refused"
 
 # #998: what KIND of nothing. Three zero-extraction shapes with three different remedies,
 # previously indistinguishable in the evidence — a correction decision that cannot tell
@@ -277,6 +317,10 @@ def emission_retry_reason_line(marker: dict[str, Any]) -> str:
         return (
             f"no fenced code block carrying a file path could be extracted "
             f"from the {chars}-character response.{shape}"
+        )
+    if reason == EMISSION_FAILURE_DELETION_REFUSED:
+        return "its removals were refused: " + "; ".join(
+            str(r) for r in marker.get("refusals") or ()
         )
     return f"the response failed emission extraction ({reason})."
 

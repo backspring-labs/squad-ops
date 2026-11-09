@@ -98,6 +98,28 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         run: npm install -g --no-audit --no-fund $(grep -vE '^\s*#|^\s*$' agents/instances/qa/npm-global-packages.txt)
 
+      # #2903/#2904: the helpers the console plugins bundle (the command bus body, paging) are
+      # plain ES modules with no runner of their own; node's own runs their tests, as the
+      # console image's node 20 can.
+      - name: The console plugins' shared helpers
+        if: needs.changes.outputs.code == 'true'
+        working-directory: console/continuum-plugins/shared
+        run: npm test
+
+      # SIP-0115 slice 4 (#2887): the goals panel's reads and its write (`goals.js`), under node's
+      # own runner as the shared helpers are. No install: the tests import only plain modules.
+      - name: The Projects plugin's goals panel
+        if: needs.changes.outputs.code == 'true'
+        working-directory: console/continuum-plugins/squadops.projects/ui
+        run: npm test
+
+      # #2834 (the 2.6 plan's Track G): the Campaigns plugin's reads (`campaigns.js`), under node's
+      # own runner as the goals panel's are. No install: the tests import only plain modules.
+      - name: The Campaigns plugin's reads
+        if: needs.changes.outputs.code == 'true'
+        working-directory: console/continuum-plugins/squadops.campaigns/ui
+        run: npm test
+
       # Runs `ruff check .` + `ruff format --check .` (lint + format, fail-stop) +
       # the test-quality lint + the full unit regression suite. The repo-wide
       # format sweep landed in #196, so the format check is now gated here.
@@ -294,6 +316,23 @@ jobs:
           pip install -r tests/requirements.txt -c ci-constraints.txt
       - name: mypy against its baseline
         run: python scripts/dev/mypy_ratchet.py
+
+  console-plugins:
+    # #2928: the plugins' `npm test` runs their plain modules under node and never compiles a
+    # `.svelte` file, so a compile error passed every check and first failed at the console image's
+    # build. Its own job so whether it is required stays the owner's call.
+    name: console plugins compile
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build every plugin, as the console image does
+        run: bash scripts/dev/build_console_plugins.sh
 
   dependency-audit:
     # #1205: nothing scanned the pins for advisories, and since #1203 every image installs

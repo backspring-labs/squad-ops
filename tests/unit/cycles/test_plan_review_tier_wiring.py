@@ -297,7 +297,7 @@ async def _reach_the_gate(
         return_value=GateDecision(
             gate_name=GATE,
             decision=GateDecisionValue.APPROVED.value,
-            decided_by="human:crew-supervisor",
+            decided_by="human:operator-supervisor",
             decided_at=NOW,
             notes="answered",
         )

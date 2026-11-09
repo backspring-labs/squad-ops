@@ -24,11 +24,17 @@ from pathlib import Path
 from squadops.core.bounded_run import run_bounded
 from squadops.cycles.patch_verification import materialize
 from squadops.stacks.app_invocation import JS_SUITE_SUFFIXES
-from squadops.stacks.development_profiles import TEST_FRAMEWORK_BOTH, TEST_FRAMEWORK_VITEST
+from squadops.stacks.development_profiles import (
+    TEST_FRAMEWORK_BOTH,
+    TEST_FRAMEWORK_PRODUCT_RUNNER,
+    TEST_FRAMEWORK_VITEST,
+)
 
 logger = logging.getLogger(__name__)
 
 _STDOUT_LIMIT = 64 * 1024  # 64 KB
+#: What a qa task says of a suite only the product's runner can run (#2949).
+LEFT_TO_THE_PRODUCT_RUNNER = "left to the product's runner, whose result is this task's verdict"
 
 
 @dataclass(frozen=True)
@@ -96,7 +102,19 @@ class RunTestsResult:
         return self.executed and self.exit_code == 0
 
     @property
+    def left_to_the_product_runner(self) -> bool:
+        """The suite went to the product's own runner (SIP-0112 H.26). A hand-off, not a result:
+        this task's verdict is that runner's (#2949)."""
+        return (
+            not self.executed
+            and self.runner == TEST_FRAMEWORK_PRODUCT_RUNNER
+            and self.test_file_count > 0
+        )
+
+    @property
     def summary(self) -> str:
+        if self.left_to_the_product_runner:
+            return LEFT_TO_THE_PRODUCT_RUNNER
         if not self.executed:
             return f"tests not run: {self.error}" if self.error else "tests not run"
         if self.exit_code == 0:
@@ -178,6 +196,18 @@ def _source_dir_pythonpath(workspace: str, source_files: list[dict[str, str]]) -
     return os.pathsep.join(parts)
 
 
+#: The suite runs under the framework's own, empty pytest configuration, never the tree's (#2817):
+#: a repository-backed product's ``pyproject.toml``, ``pytest.ini``, ``setup.cfg`` or ``tox.ini``
+#: is in the run tree, and its ``python_files`` stopped the suite being collected (exit 5), its
+#: ``addopts`` ran the product's doctests, and ``required_plugins``, ``filterwarnings = error`` or
+#: ``--strict-config`` would refuse or fail a run in the qa image, which carries pytest alone.
+#: ``--rootdir`` keeps node ids relative to the run root, as without a config. Conftest files
+#: still load: they are the tree's test support. A sample application ships no pytest config,
+#: so its runs are unchanged. The product's own runner (``execution/product_suite``) still runs
+#: under the product's configuration.
+_FRAMEWORK_CONFIG = ("-c", os.devnull)
+
+
 async def run_generated_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
@@ -234,7 +264,16 @@ async def run_generated_tests(
 
         env = {**os.environ, "PYTHONPATH": _source_dir_pythonpath(workspace, source_files)}
         run = await run_bounded(
-            [sys.executable, "-m", "pytest", ".", "--tb=short", "-q"],
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                *_FRAMEWORK_CONFIG,
+                f"--rootdir={workspace}",
+                ".",
+                "--tb=short",
+                "-q",
+            ],
             cwd=workspace,
             env=env,
             timeout=timeout_seconds,
@@ -1615,6 +1654,22 @@ def _effective_sources(
     return list(by_path.values())
 
 
+def _left_to_the_product_runner(
+    source_files: list[dict[str, str]], test_files: list[dict[str, str]]
+) -> RunTestsResult:
+    """A product whose toolchain is only the sandbox's (SIP-0112 H.26): the image doesn't try. Its
+    ``executed=False`` is what sends every result to the product's runner, so a suite the image
+    half-ran can't change that reading's shape. No test files stays the own-artifact verdict."""
+    return RunTestsResult(
+        executed=False,
+        error=(LEFT_TO_THE_PRODUCT_RUNNER if test_files else "no test files provided"),
+        runner=TEST_FRAMEWORK_PRODUCT_RUNNER,
+        test_file_count=len(test_files),
+        source_file_count=len(source_files),
+        suite_broken=not test_files,
+    )
+
+
 async def run_suite(
     test_framework: str,
     source_files: list[dict[str, str]],
@@ -1626,6 +1681,8 @@ async def run_suite(
     wraps with the deliverable's checks. SIP-0109 §8 runs one criterion's tests at a time on
     two trees, where the deliverable's build is judged elsewhere. Never raises."""
 
+    if test_framework == TEST_FRAMEWORK_PRODUCT_RUNNER:
+        return _left_to_the_product_runner(source_files, test_files)
     if test_framework == TEST_FRAMEWORK_VITEST:
         return await run_node_tests(source_files, test_files, timeout_seconds=timeout_seconds)
     if test_framework == TEST_FRAMEWORK_BOTH:
@@ -1653,6 +1710,8 @@ async def run_build_validation(
     """
 
     result = await run_suite(test_framework, source_files, test_files, timeout_seconds)
+    if test_framework == TEST_FRAMEWORK_PRODUCT_RUNNER:
+        return result  # no build or boot check either: the product's own checks are the sandbox's
     if test_framework == TEST_FRAMEWORK_VITEST:
         frontend_target: str | None = None
         run_frontend, run_backend = True, False

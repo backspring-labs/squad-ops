@@ -23,6 +23,7 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchRequest,
 )
+from squadops.campaigns.product_routes import ACCEPTED_PAGES
 from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
 
 if TYPE_CHECKING:
@@ -89,6 +90,8 @@ def increment_launch(
     abandoned: dict | None = None,
     qa_proposed: list[dict] | None = None,
     unapproved: list[dict] | None = None,
+    *,
+    accepted_pages: tuple[dict, ...] = (),
 ) -> LaunchRequest:
     """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
     against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
@@ -106,6 +109,12 @@ def increment_launch(
     ``unapproved`` is each proposal the campaign ruled on and never approved, by its last ruling
     (#2593), when there is any.
 
+    ``accepted_pages`` is the accepted-page inventory (§24dq): every page a repository-backed
+    campaign's accepted increments added, with the test ids acceptance held it by. Pinned at
+    launch as ``frozen`` is, so the proposal's rails and the increment's acceptance read the same
+    pages. Written on every repository-backed increment's block, an empty list for none (§24dr
+    item 4). A sample application's pages are its manifest's, so its block carries none.
+
     **A repository-backed increment's intent binds no tree** (§24cd point 1). Its accepted tree is
     the campaign branch's head, which a rebase can move between this decision and the drain
     (§24bv point 4), so the launcher binds the head it reads at drain (``bound_at_head``). A
@@ -116,7 +125,7 @@ def increment_launch(
     (``basis: campaign_branch``), the one marker every increment seam reads, and carries no
     manifest and no accepted cycle: what its proposal reads of the product is composed at its run,
     at the head its cycle pins (``execution.product_proposal``). Its objective carries its
-    requirements source.
+    requirements source, or its goal set (SIP-0115 §5.1).
 
     Raises ``ValueError`` for a sample application's campaign whose accepted tree is no cycle's,
     or one given no manifest: every seam downstream reads ``accepted_cycle_id`` as the cycle the
@@ -155,6 +164,8 @@ def increment_launch(
         }
     )
     requirements = campaign.objective.requirements
+    # SIP-0115 §5.1: or its goal set, which the proposal's run reads at the revision it binds.
+    goals = campaign.objective.goals
     return LaunchRequest(
         CycleKind.INCREMENT,
         {
@@ -172,9 +183,20 @@ def increment_launch(
                             "allowed_scope": list(campaign.objective.allowed_scope),
                             "measurement": campaign.objective.measurement,
                             **({"requirements": requirements} if requirements else {}),
+                            **(
+                                {"goals": {"goal_set": goals.goal_set, "revision": goals.revision}}
+                                if goals
+                                else {}
+                            ),
                         },
                         "prior_criteria": [f["criterion_id"] for f in frozen],
                         "frozen_criteria": [dict(f) for f in frozen],
+                        # §24dq: on every repository-backed increment's, empty for none (§24dr
+                        # item 4), so a block without it is one written before §24dq, which the
+                        # proposal and acceptance refuse. A sample application's carries none.
+                        **(
+                            {ACCEPTED_PAGES: [dict(p) for p in accepted_pages]} if on_branch else {}
+                        ),
                         "max_revisions": policy.max_proposal_revisions,
                         # Row 13 (#1692): why the increment this one replaces was abandoned. Its
                         # own key, read by the proposal alone — never ``prior_cycle``, which tells
@@ -213,6 +235,8 @@ CONTINUED_KEYS = (
     "objective",
     "prior_criteria",
     "frozen_criteria",
+    # §24dq: a repair's or retry's acceptance judges the pages its increment's launch pinned.
+    ACCEPTED_PAGES,
     "max_revisions",
 )
 

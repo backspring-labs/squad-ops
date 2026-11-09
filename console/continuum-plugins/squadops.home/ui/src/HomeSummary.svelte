@@ -2,6 +2,7 @@
 
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { openCreateCycle } from '../../../shared/selection.js';
 
   let projects = $state([]);
   let allCycles = $state([]);
@@ -19,12 +20,6 @@
       return window.squadops.apiFetch(url, opts);
     }
     return fetch(url, opts);
-  }
-
-  function executeCommand(commandId, params) {
-    if (window.squadops?.executeCommand) {
-      window.squadops.executeCommand(commandId, params);
-    }
   }
 
   async function fetchData() {
@@ -142,8 +137,8 @@
         class="card card-action"
         role="button"
         tabindex="0"
-        onclick={() => executeCommand('squadops.open_create_cycle')}
-        onkeydown={(e) => { if (e.key === 'Enter') executeCommand('squadops.open_create_cycle'); }}
+        onclick={() => openCreateCycle()}
+        onkeydown={(e) => { if (e.key === 'Enter') openCreateCycle(); }}
       >
         <div class="card-header">Quick Action</div>
         <div class="card-action-label">+ Create Cycle</div>

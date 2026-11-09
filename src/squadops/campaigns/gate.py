@@ -50,6 +50,15 @@ RETURNING_DECISIONS = frozenset(
 #: §24bi (the 2.2 plan's D2): a return whose defect none of §9.4's classes fits says so, and why.
 UNCLASSIFIED = "unclassified"
 
+#: SIP-0115 §5.5a (§24cy): a return the framework makes at the ruling, because the goal set was
+#: revised after the proposal was created and its item is no longer the next one, or a result it
+#: serves changed. It names nothing wrong with the proposal, so it carries no §9.4 class, and it
+#: counts toward neither ``max_rejected_proposals_in_row`` nor the proposal's revision budget.
+GOALS_REVISED = "goals_revised"
+
+#: The ruling row's key that marks such a return.
+RETURNED_AS = "returned_as"
+
 #: The role on the rows the executor writes for the campaign.
 EXECUTOR_ROLE = "executor"
 
@@ -104,11 +113,28 @@ def binding_from_change_request(document: str) -> ProposalBinding:
     )
 
 
-def submission(state: CampaignState, proposal: SubmittedProposal) -> CampaignTransition:
+def backlog_binding_from_change_request(document: str) -> dict[str, Any]:
+    """What a goal-set Campaign's submission row records of its proposal (SIP-0115 §5.5a, §24cy):
+    the backlog item it serves and the goal-set revision it was created under, which the derived
+    backlog reads back. Empty for a request that names neither, so every other row is as it was."""
+    data = yaml.safe_load(document)
+    if not isinstance(data, dict):
+        raise ValueError("the change request is not a mapping")
+    return {
+        key: data[key]
+        for key in ("backlog_item", "goals_revision")
+        if data.get(key) not in (None, "")
+    }
+
+
+def submission(
+    state: CampaignState, proposal: SubmittedProposal, backlog: Mapping[str, Any] | None = None
+) -> CampaignTransition:
     """The row that pins ``proposal`` at the gate. It moves an ``at_proposal`` campaign to
     ``awaiting_ruling``; a campaign holding (paused, escalated, launch-blocked) records the
     proposal in place, and its resume returns it to the gate. Keyed by the run, so the executor
-    re-entering the gate after a restart replays the row."""
+    re-entering the gate after a restart replays the row. ``backlog`` is a goal-set Campaign's
+    item and revision (``backlog_binding_from_change_request``), recorded with the proposal."""
     return CampaignTransition(
         operation=ControlOperation.SUBMIT,
         actor="squadops",
@@ -126,6 +152,7 @@ def submission(state: CampaignState, proposal: SubmittedProposal) -> CampaignTra
             "content_hash": proposal.binding.content_hash,
             "baseline_tree": proposal.binding.baseline_tree,
             "cycle_id": proposal.cycle_id,
+            **dict(backlog or {}),
         },
         submitted=proposal,
     )
@@ -181,11 +208,21 @@ def ruling_transition(
     classification: str | None = None,
     classification_rationale: str | None = None,
     instruction_ids: tuple[str, ...] = (),
+    goals_revised_from: GateDecisionValue | None = None,
 ) -> CampaignTransition:
     """The ``rule`` row. A decision the gate does not take still becomes a row, refused as
     ``illegal_ruling`` and recorded; it moves nothing. A return's classification rides the row
-    (§24bi); one missing or misplaced raises ``ValueError`` before any row is written."""
-    classified = return_classification(decision, classification, classification_rationale)
+    (§24bi); one missing or misplaced raises ``ValueError`` before any row is written.
+
+    ``goals_revised_from`` is the decision the supervisor asked for when the framework returns the
+    proposal as ``goals_revised`` instead (SIP-0115 §5.5a): the row is a return marked so, with
+    no class, and names the decision it replaced."""
+    if goals_revised_from is not None:
+        if decision is not GateDecisionValue.RETURNED_FOR_REVISION:
+            raise ValueError(f"a {GOALS_REVISED} ruling is a return for revision")
+        classified = {RETURNED_AS: GOALS_REVISED, "requested": goals_revised_from.value}
+    else:
+        classified = return_classification(decision, classification, classification_rationale)
     return CampaignTransition(
         operation=ControlOperation.RULE,
         actor=actor,
@@ -206,6 +243,19 @@ def ruling_transition(
             **({"task_instructions": list(instruction_ids)} if instruction_ids else {}),
         },
         ruling=IncrementRuling(decision, binding, run_id),
+    )
+
+
+def goals_revised_runs(log: Sequence[ControlLogEntry]) -> frozenset[str]:
+    """The proposal runs the framework returned as ``goals_revised`` (SIP-0115 §5.5a): the runs
+    of applied ruling rows so marked. Their returns spend none of a proposal's revision budget."""
+    return frozenset(
+        str(e.target)
+        for e in log
+        if e.operation is ControlOperation.RULE
+        and e.outcome is ControlOutcome.APPLIED
+        and e.binding.get(RETURNED_AS) == GOALS_REVISED
+        and e.target
     )
 
 

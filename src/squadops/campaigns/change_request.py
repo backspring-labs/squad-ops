@@ -37,8 +37,10 @@ from squadops.campaigns.criterion_placement import (
     CRITERION_STEM,
     RunnerPlacement,
     Unplaceable,
+    page_loader_for,
     place_criterion,
 )
+from squadops.campaigns.page_loader import page_loader_path
 from squadops.cycles.acceptance_check_spec import parse_method_path
 from squadops.cycles.manifest_gates import assess_winnability
 from squadops.cycles.verification_contract import VerificationContract
@@ -171,6 +173,10 @@ class PlacedCriterionFile:
 
     criterion_id: str
     path: str
+    #: #2799, on a page criterion under a vitest runner only: the framework's page loader beside
+    #: ``path``, which its test loads the view through (``campaigns.page_loader``). Placed with the
+    #: file and hashed with it; left out of the document and its hash when empty, as ``anchor``.
+    page_loader: str = ""
 
 
 @dataclass(frozen=True)
@@ -206,6 +212,13 @@ class ChangeRequest:
     #: §24bv point 5: each criterion's test file on a campaign branch, placed by the framework.
     #: Empty on a sample application, whose stack places it (``scaffold.criterion_test_path``).
     criterion_files: tuple[PlacedCriterionFile, ...] = ()
+    #: SIP-0115 §5.3 (SIP-0109 §24cy), on a goal-set Campaign only: the backlog item the increment
+    #: serves, authored. Left out of the document and its hash when empty, as ``moves_goals``.
+    backlog_item: str = ""
+    #: SIP-0115 §5.5a: the goal-set revision the proposal was created under. Derived (written by
+    #: the rails from the input the proposal read, never authored), and hashed, so a ruling binds
+    #: to it: the increment is judged against the item as that revision states it.
+    goals_revision: int | None = None
     content_hash: str = ""
 
 
@@ -247,6 +260,10 @@ class RefusalKind(StrEnum):
     #: already carries, a pinned route's in the approved manifest or another added page's. A page
     #: the build never made could show it: the app's fallback renders that other view there.
     ANCHOR_NOT_UNIQUE = "anchor_not_unique"
+    #: SIP-0115 §5.3 (SIP-0109 §24cy): a goal-set Campaign's proposal names no backlog item, or
+    #: any but the next eligible one (the first pending in the order; an abandoned one is skipped).
+    #: Also a ``backlog_item`` on a Campaign that names no goal set. One item per increment.
+    NOT_THE_NEXT_ITEM = "not_the_next_backlog_item"
 
 
 @dataclass(frozen=True)
@@ -286,6 +303,7 @@ _DERIVED_FIELDS = (
     "baseline_tree",
     "basis",
     "criterion_files",
+    "goals_revision",
 )
 
 
@@ -342,6 +360,7 @@ def parse_change_request(
             retires=_retirements(authored.get("retires")),
             replaces_verifiers=_retirements(authored.get("replaces_verifiers")),
             moves_goals=_goal_ids(authored.get("moves_goals")),
+            backlog_item=_backlog_item(authored.get("backlog_item")),
             basis=basis,
             footprint=() if basis.has_manifest else _paths(authored.get("footprint"), "footprint"),
         )
@@ -442,19 +461,25 @@ def role_view(document: str) -> str:
 
 def _authored_fields(payload: dict) -> dict:
     """``payload`` without what a request before them never carried, when it is empty: absent, as
-    in every request before §4.5 (``moves_goals``) and §24bv point 5 (``basis``,
-    ``criterion_files``, a criterion's ``paths``). So every stored request keeps its document and
-    its hash."""
+    in every request before §4.5 (``moves_goals``), §24bv point 5 (``basis``,
+    ``criterion_files``, a criterion's ``paths``) and §24cy (``backlog_item``,
+    ``goals_revision``). So every stored request keeps its document and its hash."""
     out = {
         k: v
         for k, v in payload.items()
-        if not (k in ("moves_goals", "criterion_files") and not v)
+        if not (k in ("moves_goals", "criterion_files", "backlog_item") and not v)
+        and not (k == "goals_revision" and v is None)
         and not (k == "basis" and v == IncrementBasis.MANIFEST)
     }
     if "criteria" in out:
         out["criteria"] = [
             {k: v for k, v in c.items() if k not in ("paths", "anchor") or v}
             for c in out["criteria"]
+        ]
+    if "criterion_files" in out:
+        # #2799: a placed file's page loader only where it has one.
+        out["criterion_files"] = [
+            {k: v for k, v in f.items() if k != "page_loader" or v} for f in out["criterion_files"]
         ]
     return out
 
@@ -487,7 +512,9 @@ def load_stored_change_request(document: str) -> ChangeRequest:
         raise ChangeRequestError(f"the stored change request's basis is unknown: {e}") from e
     try:
         placed = tuple(
-            PlacedCriterionFile(str(f["criterion_id"]), str(f["path"]))
+            PlacedCriterionFile(
+                str(f["criterion_id"]), str(f["path"]), str(f.get("page_loader") or "")
+            )
             for f in data.get("criterion_files") or ()
         )
         authored = {k: v for k, v in data.items() if k not in _derived_fields(basis)}
@@ -505,10 +532,12 @@ def load_stored_change_request(document: str) -> ChangeRequest:
     except (KeyError, TypeError) as e:
         raise ChangeRequestError(f"the stored change request has no {e}") from e
     stored_hash = str(data.get("content_hash") or "")
+    revision = data.get("goals_revision")
     restored = dataclasses.replace(
         request,
         footprint=() if basis.has_manifest else _paths(data.get("footprint"), "footprint"),
         criterion_files=placed,
+        goals_revision=int(revision) if revision is not None else None,
     )
     # §24cj: the placement is checked whole before the hash, so a stored placement that disagrees
     # with its own criteria is refused by name, whatever hash it carries.
@@ -522,6 +551,12 @@ def load_stored_change_request(document: str) -> ChangeRequest:
     return dataclasses.replace(
         restored, footprint=tuple(data.get("footprint") or ()), content_hash=stored_hash
     )
+
+
+def placed_page_loaders(request: ChangeRequest) -> tuple[str, ...]:
+    """#2799: the page loaders the request's placement put beside its page criteria's files, once
+    each, in order: the framework's files, written into every tree a criterion's test runs on."""
+    return tuple(dict.fromkeys(f.page_loader for f in request.criterion_files if f.page_loader))
 
 
 def placement_inconsistency(request: ChangeRequest) -> str | None:
@@ -549,6 +584,17 @@ def placement_inconsistency(request: ChangeRequest) -> str | None:
         stem = re.escape(CRITERION_STEM + criterion_module_name(f.criterion_id))
         if not re.search(stem + r"(?![A-Za-z0-9_])", f.path.rsplit("/", 1)[-1]):
             return f"criterion {f.criterion_id}'s file {f.path} is not named for it"
+    kinds = {c.id: c.surface_kind for c in request.criteria}
+    for f in placed:
+        # #2799: the rails place a loader only beside a page criterion's file, at the loader's
+        # one path for it, and every reader writes or freezes the file at that path.
+        if f.page_loader and kinds.get(f.criterion_id) is not SurfaceKind.CLIENT_ROUTE:
+            return f"criterion {f.criterion_id} is no page criterion, and places a page loader"
+        if f.page_loader and f.page_loader != page_loader_path(f.path):
+            return (
+                f"criterion {f.criterion_id}'s page loader {f.page_loader} is not the one beside "
+                f"its file {f.path}"
+            )
     return None
 
 
@@ -557,6 +603,18 @@ def _text(raw: Any, key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ChangeRequestError(f"{key} is required text")
     return value
+
+
+def _backlog_item(raw: Any) -> str:
+    """``backlog_item``: one item's id, as the backlog shows it, or ``""`` when not named."""
+    if raw is None:
+        return ""
+    if not isinstance(raw, str) or not raw.strip():
+        raise ChangeRequestError(
+            "backlog_item is the id of the one backlog item the increment serves, as the "
+            "backlog shows it"
+        )
+    return raw.strip()
 
 
 def _goal_ids(raw: Any) -> tuple[str, ...]:
@@ -756,6 +814,21 @@ class ProposalContext:
     #: §24bv point 5: a repository-backed Project's proposal reads its derived profile in place of
     #: a manifest. ``None`` on a sample application.
     product: ProductContext | None = None
+    #: SIP-0115 §5.3 (§24cy): a goal-set Campaign's backlog, as its proposal was shown it. ``None``
+    #: on every other Campaign.
+    backlog: BacklogRail | None = None
+
+
+@dataclass(frozen=True)
+class BacklogRail:
+    """What the one-item rail reads of a goal-set Campaign's backlog (SIP-0115 §5.3): the
+    revision the proposal read, the next eligible item, and each item's status there."""
+
+    revision: int
+    #: The first pending item of the revision's order; ``None`` when none is pending.
+    next_item: str | None
+    #: Each item's id and its status label, in the order shown.
+    statuses: tuple[tuple[str, str], ...] = ()
 
 
 #: §24bv point 5: the proposal task's input on a repository-backed Project, composed at its run
@@ -783,6 +856,11 @@ class ProductContext:
     #: H.1) with every test id its view carries, the first its root (#659). An added page names an
     #: anchor none of them carries. Empty for a product initialized from no manifest.
     route_anchors: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    #: §24dq: each page the campaign's accepted increments added, with the test ids its page
+    #: carried when acceptance held it, its anchor first: the accepted-page inventory its launch
+    #: pinned. Each is judged at acceptance by that anchor, as a judged route is by its manifest's,
+    #: and an added page names an anchor none of them carries. Empty before any page was accepted.
+    accepted_pages: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def serves(self, kind: str) -> tuple[str, ...]:
         return tuple(value for k, value in self.surfaces if k == kind)
@@ -853,6 +931,7 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
         + _undefined_key_refusals(request)
         + _goal_refusals(request, context)
         + _goal_copy_refusals(request, context)
+        + _backlog_refusals(request, context)
     )
     try:
         candidate = apply_manifest_delta(context.baseline_manifest, request.manifest_delta)
@@ -946,6 +1025,7 @@ def _validate_product_proposal(
         _criteria_refusals(request, context)
         + _goal_refusals(request, context)
         + _goal_copy_refusals(request, context)
+        + _backlog_refusals(request, context)
     )
     if request.manifest_delta:
         refusals.append(
@@ -991,11 +1071,17 @@ def _validate_product_proposal(
             )
             continue
         try:
-            placed.append(
-                PlacedCriterionFile(c.id, place_criterion(c.id, paths, product.placements))
-            )
+            path = place_criterion(c.id, paths, product.placements)
         except Unplaceable as e:
             refusals.append(ProposalRefusal(RefusalKind.UNPLACEABLE_CRITERION, str(e)))
+            continue
+        # #2799: a page criterion's test loads its view through the loader its runner places.
+        loader = (
+            page_loader_for(path, product.placements)
+            if c.surface_kind is SurfaceKind.CLIENT_ROUTE
+            else ""
+        )
+        placed.append(PlacedCriterionFile(c.id, path, loader))
     if not any(r.kind in _IDENTITY_REFUSALS for r in refusals):
         # A collision the ids already show is named once, by them.
         refusals.extend(_placed_collision_refusals(placed))
@@ -1005,6 +1091,8 @@ def _validate_product_proposal(
         request,
         footprint=(*footprint, *(f.path for f in placed if f.path not in footprint)),
         criterion_files=tuple(placed),
+        # SIP-0115 §5.5a: bound to the revision it was created under, recorded with it.
+        goals_revision=context.backlog.revision if context.backlog is not None else None,
     )
     return ProposalVerdict(dataclasses.replace(final, content_hash=content_hash(final)), ())
 
@@ -1031,8 +1119,12 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
     route names none: that route is judged by its approved manifest's anchor (§24co item 5), and a
     second anchor would be one nothing reads. The criteria on one added route name one anchor. An
     added route whose page needs a seed (``_unseedable``) is refused: nothing seeds it, so it could
-    only block. A criterion on a page the product can't serve is refused by its surface alone."""
-    judged = set(product.judged_routes)
+    only block. A criterion on a page the product can't serve is refused by its surface alone.
+
+    §24dq: a page an earlier increment added and acceptance held is judged as a pinned one is, by
+    the anchor it was accepted with, and its ids are held against as the manifest's are. No
+    manifest names it (§24bv point 5), so without the inventory a later page could reuse it."""
+    judged = set(product.judged_routes) | {route for route, _ids in product.accepted_pages}
     refusals: list[ProposalRefusal] = []
     named: dict[str, dict[str, list[str]]] = {}
     for c in request.criteria:
@@ -1082,7 +1174,8 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
                 )
             )
     single = {route: next(iter(anchors)) for route, anchors in named.items() if len(anchors) == 1}
-    for route, others in sorted(anchor_conflicts(single, dict(product.route_anchors)).items()):
+    taken = pages_carrying(dict(product.route_anchors), dict(product.accepted_pages))
+    for route, others in sorted(anchor_conflicts(single, taken).items()):
         anchor, ids = single[route], named[route][single[route]]
         refusals.append(
             ProposalRefusal(
@@ -1101,7 +1194,8 @@ def anchor_conflicts(
 ) -> dict[str, list[str]]:
     """Each added route whose anchor another page carries (§24cp), with those pages, sorted: a
     route in ``taken`` carrying it among its test ids (the approved manifest's views, each with
-    every id it renders), or another added route naming it. One reading for the rails, which
+    every id it renders, and the pages earlier increments added, each with every id its page
+    carried when it was accepted: §24dq), or another added route naming it. One reading for the rails, which
     refuse the request, and the renderer, which blocks such a route on a request stored before
     the rule. An anchor no other page carries is the only evidence that page renders its own
     view: a reused one reads held on a page the build never made, where the app's fallback renders
@@ -1118,6 +1212,17 @@ def anchor_conflicts(
         for route, anchor in added.items()
         if anchor and carriers[anchor] - {route}
     }
+
+
+def pages_carrying(*readings: Mapping[str, Iterable[str]]) -> dict[str, tuple[str, ...]]:
+    """Each page's test ids across ``readings``, merged per route, in order: the approved
+    manifest's views and the accepted-page inventory (§24dq), the pages an added page's anchor
+    is held unique against (``anchor_conflicts``). One reading for the rails and the renderer."""
+    merged: dict[str, tuple[str, ...]] = {}
+    for reading in readings:
+        for route, ids in reading.items():
+            merged[route] = tuple(dict.fromkeys((*merged.get(route, ()), *ids)))
+    return merged
 
 
 def _unseedable(route: str) -> bool:
@@ -1245,6 +1350,48 @@ def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list
             )
         )
     return refusals
+
+
+def _backlog_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:
+    """SIP-0115 §5.3 (§24cy): on a goal-set Campaign, the request names the next eligible backlog
+    item, the first pending in the order, and only it; one item per increment. A request naming an
+    item on a Campaign with no goal set names something nothing reads, and is refused too."""
+    rail = context.backlog
+    named = request.backlog_item
+    if rail is None:
+        if not named:
+            return []
+        return [
+            ProposalRefusal(
+                RefusalKind.NOT_THE_NEXT_ITEM,
+                f"backlog_item {named!r}: this Campaign works from no goal set, so there is no "
+                "backlog to serve. Leave backlog_item out",
+            )
+        ]
+    if rail.next_item is None:
+        return [
+            ProposalRefusal(
+                RefusalKind.NOT_THE_NEXT_ITEM,
+                f"no backlog item is pending in goal-set revision {rail.revision}, so there is "
+                "nothing for an increment to serve",
+            )
+        ]
+    if named == rail.next_item:
+        return []
+    statuses = dict(rail.statuses)
+    if not named:
+        why = "names no backlog item"
+    elif named not in statuses:
+        why = f"names backlog_item {named!r}, which the backlog doesn't hold"
+    else:
+        why = f"names backlog_item {named!r}, which is {statuses[named]}"
+    return [
+        ProposalRefusal(
+            RefusalKind.NOT_THE_NEXT_ITEM,
+            f"this proposal {why}. Each increment serves the next item, and only it: "
+            f"backlog_item: {rail.next_item}",
+        )
+    ]
 
 
 def _goal_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:

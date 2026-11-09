@@ -468,7 +468,9 @@ class TaskDispatcher:
         # Open the agent's reply subscription and register our future BEFORE
         # publishing, so a fast reply can't arrive before we're listening.
         await self._reply_router.ensure_subscribed(envelope.agent_id)
-        fut = self._reply_router.register(envelope.task_id)
+        fut = self._reply_router.register(
+            envelope.task_id, envelope.metadata[DISPATCH_ID_METADATA_KEY]
+        )
 
         message = {
             "action": "comms.task",
@@ -602,6 +604,7 @@ class TaskDispatcher:
         flow_run_id: str | None = None,
         task_run_id: str | None = None,
         handle_task_outcome: Callable[[TaskResult], Awaitable[str]],
+        screen_success: Callable[[TaskResult], Awaitable[TaskResult]],
     ) -> tuple[bool, TaskResult]:
         """Dispatch a task with retry loop for retryable failures.
 
@@ -614,6 +617,10 @@ class TaskDispatcher:
         "accept_patch" returns success without re-dispatch (#389 — the caller
         substitutes the behaviorally-verified corrected result),
         "break_correction" returns to advance past a corrected failure.
+
+        ``screen_success`` is the executor's last word on an attempt the agent reported
+        succeeded, before anything accepts it (SIP-0109 §24do): it returns the result, or the
+        failure the executor refuses it as, which is routed as any failed attempt is.
         """
         while True:
             result = await self.dispatch_task(
@@ -622,6 +629,8 @@ class TaskDispatcher:
                 flow_run_id=flow_run_id,
                 task_run_id=task_run_id,
             )
+            if result.status == TaskResultStatus.SUCCEEDED:
+                result = await screen_success(result)
 
             # SIP-0087: task_run_id carried in context so the bridge can set
             # terminal Prefect state without owning the ID.

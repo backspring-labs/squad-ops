@@ -24,11 +24,13 @@ from adapters.persistence.transient import TransientRetry
 from squadops.campaigns.branch_rebase import RebasedHead, rebase_transition
 from squadops.campaigns.campaign_branch import BranchBase, CampaignHead
 from squadops.campaigns.gate import ruling_transition, submission
+from squadops.campaigns.goal_delegation import goal_delegation
 from squadops.campaigns.launcher import CampaignLauncher
 from squadops.campaigns.models import (
     AcceptedTree,
     CampaignOutcome,
     CampaignState,
+    CampaignTransition,
     ControlOperation,
     ControlOperationRefused,
     ControlOutcome,
@@ -312,7 +314,7 @@ async def test_a_submitted_proposal_and_a_stale_rulings_refusal_are_stored(campa
                 GateDecisionValue.APPROVED,
                 stale,
                 run_id="run_p1",
-                actor="crew",
+                actor="operator",
                 actor_role="campaign-supervisor",
                 reason="r",
                 idempotency_key="k-rule",
@@ -346,6 +348,65 @@ async def test_a_refusal_row_survives_the_refusal(campaigns):
         ControlOutcome.REFUSED,
         RefusalReason.CONFLICTING_IDEMPOTENCY_KEY,
     )
+
+
+async def test_a_refused_resume_persists_moves_nothing_and_leaves_its_key_free(pool, campaigns):
+    """§24da on Postgres, against migration 2002: ``refuse`` writes the row the route's refusal
+    names, the state stays, and a later resume with the same key applies. Bugs caught: the CHECK
+    list missing ``resume_not_delegated``, so the refusal itself fails and nothing is recorded; a
+    refusal moving the state; a refused key read as used, so the answer the owner's resume made
+    legal is refused as a conflict (a plan gate's answer retries on one key)."""
+    await campaigns.transition(CID, move(S.ESCALATED, "k-escalate"))
+    binding = {
+        "delegated": False, "class": None, "move": "repair", "escalation": {"seq": 3},
+        "definition_hash": "h", "why": "undeclared",
+    }  # fmt: skip
+    refused = move(
+        S.ESCALATED, "k-operator", operation=ControlOperation.RESUME, actor="operator",
+        actor_role="campaign-supervisor", expected_state=S.ESCALATED, binding=binding,
+    )  # fmt: skip
+
+    entry = await campaigns.refuse(CID, refused, RefusalReason.RESUME_NOT_DELEGATED)
+
+    restarted = PostgresCampaignRegistry(pool=pool)
+    assert (await restarted.get_campaign(CID)).state is S.ESCALATED
+    *_, row = await restarted.control_log(CID)
+    assert (row.entry_id, row.outcome, row.refusal) == (
+        entry.entry_id, ControlOutcome.REFUSED, RefusalReason.RESUME_NOT_DELEGATED,
+    )  # fmt: skip
+    assert (row.operation, row.actor, row.binding) == (ControlOperation.RESUME, "operator", binding)
+
+    applied = await restarted.transition(
+        CID,
+        move(
+            S.CALIBRATING, "k-operator", operation=ControlOperation.RESUME, actor="owner",
+            actor_role="admin", expected_state=S.ESCALATED,
+        ),
+    )  # fmt: skip
+
+    assert applied.entry.outcome is ControlOutcome.APPLIED
+    assert (await restarted.get_campaign(CID)).state is S.CALIBRATING
+
+
+async def test_a_held_project_holds_its_live_campaigns_transitions_and_not_their_reads(
+    pool, campaigns
+):
+    """SIP-0115 §5.5a on Postgres: the row lock ``transitions_held`` takes is the one a transition
+    waits on. Bugs caught: a hold that a transition on another connection walks past, so a split's
+    guard goes stale before its write; a hold that blocks reads, so the guard deadlocks on the
+    view it reads inside it."""
+    async with campaigns.transitions_held(PROJECT):
+        moving = asyncio.create_task(
+            PostgresCampaignRegistry(pool=pool).transition(CID, _launching("k-held"))
+        )
+        await asyncio.sleep(0.3)
+        assert not moving.done()
+        assert (await campaigns.get_campaign(CID)).state is S.CALIBRATING
+        assert len(await campaigns.control_log(CID)) == 2
+
+    result = await asyncio.wait_for(moving, timeout=5)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
 
 
 async def test_a_failure_inside_the_transaction_leaves_no_partial_write(campaigns, monkeypatch):
@@ -614,12 +675,12 @@ async def test_two_supervisors_racing_for_the_box_leave_exactly_one_holding_it(p
     outcomes = await asyncio.gather(
         reg.change_box_lease(
             "cmp_lease0000001",
-            _lease_change(ControlOperation.LEASE_ACQUIRE, "crew-a", "a"),
+            _lease_change(ControlOperation.LEASE_ACQUIRE, "operator-a", "a"),
             runs_in_flight=(),
         ),
         other.change_box_lease(
             "cmp_lease0000002",
-            _lease_change(ControlOperation.LEASE_ACQUIRE, "crew-b", "b"),
+            _lease_change(ControlOperation.LEASE_ACQUIRE, "operator-b", "b"),
             runs_in_flight=(),
         ),
         return_exceptions=True,
@@ -628,7 +689,7 @@ async def test_two_supervisors_racing_for_the_box_leave_exactly_one_holding_it(p
     refused = [o for o in outcomes if isinstance(o, ControlOperationRefused)]
     assert len(refused) == 1 and str(refused[0].entry.refusal) == "box_held"
     holder = (await reg.box_lease()).held_by
-    winner = "cmp_lease0000001" if holder == "crew-a" else "cmp_lease0000002"
+    winner = "cmp_lease0000001" if holder == "operator-a" else "cmp_lease0000002"
     assert (await reg.box_lease()).campaign_id == winner
 
 
@@ -640,12 +701,12 @@ async def test_the_holder_gives_the_box_back_and_the_lease_reads_back_as_the_squ
     reg = await _two_at_the_gate(pool)
     await reg.change_box_lease(
         "cmp_lease0000001",
-        _lease_change(ControlOperation.LEASE_ACQUIRE, "crew", "a"),
+        _lease_change(ControlOperation.LEASE_ACQUIRE, "operator", "a"),
         runs_in_flight=(),
     )
     await reg.change_box_lease(
         "cmp_lease0000001",
-        _lease_change(ControlOperation.LEASE_RELEASE, "crew", "r"),
+        _lease_change(ControlOperation.LEASE_RELEASE, "operator", "r"),
         runs_in_flight=(),
     )
     lease = await PostgresCampaignRegistry(pool=pool).box_lease()
@@ -752,6 +813,55 @@ async def test_a_rebase_supersedes_its_repair_and_writes_its_proposal_in_one_tra
     assert (await campaigns.control_log(CID))[-1].outcome is ControlOutcome.REFUSED
 
 
+async def test_the_owners_goal_delegation_is_a_row_a_live_campaign_alone_takes(campaigns):
+    """SIP-0115 §10c, migration 2102: ``goal_delegation_granted`` is in the schema, reads back as
+    applied, and replays; a completed campaign refuses a new one and keeps the refusal, and still
+    replays the one it committed. Bugs caught: the value added in Python and not in the CHECK
+    list, so the owner's grant answers 500; the grant accepted after the close, as every other
+    record is; or a retry of a committed grant refused once the Campaign closed."""
+
+    def grant(key: str) -> CampaignTransition:
+        return CampaignTransition(
+            operation=ControlOperation.GOAL_DELEGATION_GRANTED, actor="owner", actor_role="admin",
+            reason="the owner approved it", idempotency_key=key, next_state=None,
+            target="campaign_it", binding={"goal_set": "campaign_it"},
+        )  # fmt: skip
+
+    first = await campaigns.transition(CID, grant("grant-1"))
+    assert first.entry.outcome is ControlOutcome.APPLIED
+    assert first.campaign.state is S.CALIBRATING
+    found = goal_delegation(await campaigns.control_log(CID))
+    assert found is not None
+    assert (found.entry_id, found.actor, found.reason, found.binding) == (
+        first.entry.entry_id,
+        "owner",
+        "the owner approved it",
+        {"goal_set": "campaign_it"},
+    )
+    assert (await campaigns.transition(CID, grant("grant-1"))).replayed is True
+
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+
+    with pytest.raises(ControlOperationRefused) as refused:
+        await campaigns.transition(CID, grant("grant-2"))
+    assert refused.value.entry.refusal is RefusalReason.CAMPAIGN_COMPLETED
+    log = await campaigns.control_log(CID)
+    assert (log[-1].operation, log[-1].outcome) == (
+        ControlOperation.GOAL_DELEGATION_GRANTED,
+        ControlOutcome.REFUSED,
+    )
+    replay = await campaigns.transition(CID, grant("grant-1"))
+    assert (replay.replayed, replay.entry.entry_id) == (True, first.entry.entry_id)
+
+
 async def test_a_review_push_is_recorded_on_a_completed_campaign(campaigns):
     """§24ci (b), migration 2001: ``review_pushed`` is in the schema, and as a record it is
     accepted on a completed campaign, since the push is made at the close. Bug caught: the value
@@ -777,6 +887,91 @@ async def test_a_review_push_is_recorded_on_a_completed_campaign(campaigns):
     )  # fmt: skip
 
     result = await campaigns.transition(CID, pushed)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
+    assert (await campaigns.control_log(CID))[-1].binding["commit"] == "a" * 40
+
+
+async def test_a_closing_row_derives_its_contribution_in_its_own_transaction(campaigns):
+    """§24dc: the registry reads the log and intents under the campaign's lock, and the derivation
+    is outside the request's hash. Bugs caught: the Postgres path reading nothing, or a column the
+    row mapper doesn't name, so an abort fails; an abort retried conflicting with its own row."""
+    launched = await campaigns.transition(CID, _launching("k-launch"))
+    await campaigns.mark_launch_intent_launched(
+        launched.intent.launch_id, "cyc_it0000000001", actor="launcher"
+    )
+    await campaigns.transition(
+        CID,
+        move(
+            S.AT_PROPOSAL, "k-promote", operation=ControlOperation.PROMOTE,
+            accepted=AcceptedTree("sha-cccc", "cyc_it0000000001", commit="c" * 40),
+            binding={"cycle_id": "cyc_it0000000001", "commit": "c" * 40},
+        ),
+    )  # fmt: skip
+    close = move(
+        S.COMPLETED, "k-close", operation=ControlOperation.ABORT,
+        outcome=CampaignOutcome.ABORTED, repository_backed=True,
+    )  # fmt: skip
+
+    closed = await campaigns.transition(CID, close)
+    replayed = await campaigns.transition(CID, close)
+
+    assert closed.entry.binding["contribution"] == {
+        "due": True,
+        "accepted": ["cyc_it0000000001"],
+    }
+    assert replayed.replayed is True
+
+
+async def test_a_failed_contribution_is_recorded_on_a_completed_campaign(campaigns):
+    """§24dc, migration 2004: ``contribution_failed`` is in the schema, and as a record it is
+    accepted on a completed campaign, since the contribution is opened after the close. Bug
+    caught: the value added in Python and not in the CHECK list, so a failed open is lost."""
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    failed = move(
+        S.COMPLETED,
+        "contribution-failed:k-1",
+        operation=ControlOperation.CONTRIBUTION_FAILED,
+        next_state=None,
+        binding={"error": "ReviewRequestFailed", "reason": None, "message": "the forge said 503"},
+    )
+
+    result = await campaigns.transition(CID, failed)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
+    assert (await campaigns.control_log(CID))[-1].binding["error"] == "ReviewRequestFailed"
+
+
+async def test_a_dismissal_is_recorded_on_a_completed_campaign(campaigns):
+    """§24dg, migration 2104: ``contribution_dismissed`` is in the schema, and a completed Campaign
+    takes it. Bug caught: the value added in Python and not in the CHECK list, so the owner's
+    dismissal fails on the deploy and on no unit test."""
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    dismissed = move(
+        S.COMPLETED,
+        "d-1",
+        operation=ControlOperation.CONTRIBUTION_DISMISSED,
+        next_state=None,
+        binding={"commit": "a" * 40, "review_url": None},
+    )
+
+    result = await campaigns.transition(CID, dismissed)
 
     assert result.entry.outcome is ControlOutcome.APPLIED
     assert (await campaigns.control_log(CID))[-1].binding["commit"] == "a" * 40

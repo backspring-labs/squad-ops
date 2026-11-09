@@ -3,7 +3,7 @@ the 2.5 cut's "another caller's load" rule (a roll is inconclusive for it only o
 
 What bugs would these catch?
 - a key written where a label belongs printed into a record (the reader's one rule: no key leaves);
-- a missing gauge read as zero, so a crew's load reads as no load;
+- a missing gauge read as zero, so an operator's load reads as no load;
 - a counter line mis-parsed, so one caller's requests are counted under another's label;
 - the reading taken outside the deploy, or its output read from the wrong line.
 """
@@ -28,8 +28,8 @@ _METRICS = """\
 # HELP tensorfold:requests_total Replies by key label and status.
 # TYPE tensorfold:requests_total counter
 tensorfold:requests_total{key="squadops",status="200"} 1352
-tensorfold:requests_total{key="orbit-crew",status="200"} 120
-tensorfold:requests_total{key="orbit-crew",status="503"} 3
+tensorfold:requests_total{key="orbit-operator",status="200"} 120
+tensorfold:requests_total{key="orbit-operator",status="503"} 3
 tensorfold:requests_total{status="401"} 2
 tensorfold:requests_running 1
 tensorfold:requests_waiting 2
@@ -40,7 +40,7 @@ def test_the_counter_is_read_by_label_and_status_and_the_gauges_exactly():
     assert callers.parse_metrics(_METRICS) == {
         "requests_total": {
             "squadops": {"200": 1352},
-            "orbit-crew": {"200": 120, "503": 3},
+            "orbit-operator": {"200": 120, "503": 3},
             "(none)": {"401": 2},
         },
         "running": 1,
@@ -54,7 +54,7 @@ def test_the_counter_is_read_by_label_and_status_and_the_gauges_exactly():
     ids=["a-key-shaped-value", "a-space", "too-long", "empty"],
 )
 def test_a_label_that_isnt_a_short_name_is_hashed_never_printed(label):
-    metrics = _METRICS.replace('key="orbit-crew"', f'key="{label}"')
+    metrics = _METRICS.replace('key="orbit-operator"', f'key="{label}"')
 
     parsed = callers.parse_metrics(metrics)
     printed = json.dumps(parsed)
@@ -122,19 +122,19 @@ def test_series_that_differ_in_another_label_are_summed_never_overwritten():
     """Bug caught: a key's series split by another label (a model) read as its last line alone,
     which undercounts another caller's load, the evidence the cut's rule reads."""
     metrics = (
-        'tensorfold:requests_total{key="orbit-crew",status="200",model="x"} 5\n'
-        'tensorfold:requests_total{key="orbit-crew",status="200",model="y"} 7 1700000000000\n'
+        'tensorfold:requests_total{key="orbit-operator",status="200",model="x"} 5\n'
+        'tensorfold:requests_total{key="orbit-operator",status="200",model="y"} 7 1700000000000\n'
         "tensorfold:requests_running 0\ntensorfold:requests_waiting 0\n"
     )
 
-    assert callers.parse_metrics(metrics)["requests_total"] == {"orbit-crew": {"200": 12}}
+    assert callers.parse_metrics(metrics)["requests_total"] == {"orbit-operator": {"200": 12}}
 
 
 @pytest.mark.parametrize(
     "line",
     [
-        'tensorfold:requests_total{key="orbit-crew",status="200"} +Inf',
-        'tensorfold:requests_total{key="orbit-crew",status="200"} NaN',
+        'tensorfold:requests_total{key="orbit-operator",status="200"} +Inf',
+        'tensorfold:requests_total{key="orbit-operator",status="200"} NaN',
         "tensorfold:requests_total 5",
     ],
     ids=["inf", "nan", "no-labels"],

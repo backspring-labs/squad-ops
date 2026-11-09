@@ -99,6 +99,9 @@ class Discrimination:
     reason: DiscriminationReason
     #: The titles that fail on the baseline as assertions and pass on the candidate.
     discriminating: tuple[str, ...] = ()
+    #: #2849: on ``no_baseline_failure``, whether the file's tests passed on the candidate too, so
+    #: the criterion describes behaviour the change keeps (a preservation check), not one it broke.
+    candidate_passed: bool = False
 
 
 def discrimination(
@@ -117,7 +120,12 @@ def discrimination(
         return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN)
     rows = [r for r in baseline.failures if r.get("file") == test_path]
     if not rows:
-        return Discrimination(criterion_id, False, DiscriminationReason.NO_BASELINE_FAILURE)
+        return Discrimination(
+            criterion_id,
+            False,
+            DiscriminationReason.NO_BASELINE_FAILURE,
+            candidate_passed=not candidate.failed_titles(test_path),
+        )
     behavioural = {
         str(r.get("title", "")) for r in rows if is_behavioural(r, baseline.suite_defects)
     }
@@ -195,7 +203,12 @@ def discrimination_on_runner(
     ):
         return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN)
     if not baseline.counts:
-        return Discrimination(criterion_id, False, DiscriminationReason.NO_BASELINE_FAILURE)
+        return Discrimination(
+            criterion_id,
+            False,
+            DiscriminationReason.NO_BASELINE_FAILURE,
+            candidate_passed=not candidate.counts,
+        )
     intended = _intended(baseline)
     if not intended:
         return Discrimination(criterion_id, False, DiscriminationReason.ONLY_SETUP_FAILURES)
@@ -393,6 +406,24 @@ class IncrementAcceptance:
     verdict: IncrementVerdict
     unmet: tuple[str, ...] = field(default_factory=tuple)
     blocked: tuple[str, ...] = field(default_factory=tuple)
+    #: #2849: new criteria the accepted tree already met and the candidate still meets, kept as
+    #: preservation checks beside criteria that discriminate, rather than rejecting the increment.
+    preserved: tuple[str, ...] = field(default_factory=tuple)
+
+
+def preserved_criteria(discriminations: tuple[Discrimination, ...]) -> tuple[str, ...]:
+    """#2849 (SIP-0109 §24ct): the new criteria an increment keeps as preservation checks. Each
+    passed on the accepted tree and on the candidate, and at least one other new criterion
+    discriminates, so the increment still shows the change it was proposed for. When none
+    discriminates, nothing is kept: the increment is rejected, and row 16 tells the next proposal
+    which criteria were already met."""
+    if not any(d.met for d in discriminations):
+        return ()
+    return tuple(
+        d.criterion_id
+        for d in discriminations
+        if d.reason is DiscriminationReason.NO_BASELINE_FAILURE and d.candidate_passed
+    )
 
 
 def increment_acceptance(
@@ -403,10 +434,11 @@ def increment_acceptance(
     """Accepted only when every new criterion discriminates, every frozen criterion held and every
     route rendered. Anything unread blocks: ``blocked_unverified`` never reads as accepted
     (SIP-0096), and it outranks a failure only when nothing failed."""
+    preserved = preserved_criteria(discriminations)
     unmet = [
         f"criterion {d.criterion_id}: {d.reason}"
         for d in discriminations
-        if not d.met and d.reason not in _UNREAD
+        if not d.met and d.reason not in _UNREAD and d.criterion_id not in preserved
     ]
     blocked = [
         f"criterion {d.criterion_id}: "
@@ -430,5 +462,7 @@ def increment_acceptance(
     if unmet:
         return IncrementAcceptance(IncrementVerdict.REJECTED, tuple(unmet), tuple(blocked))
     if blocked:
-        return IncrementAcceptance(IncrementVerdict.BLOCKED_UNVERIFIED, (), tuple(blocked))
-    return IncrementAcceptance(IncrementVerdict.ACCEPTED)
+        return IncrementAcceptance(
+            IncrementVerdict.BLOCKED_UNVERIFIED, (), tuple(blocked), preserved=preserved
+        )
+    return IncrementAcceptance(IncrementVerdict.ACCEPTED, preserved=preserved)

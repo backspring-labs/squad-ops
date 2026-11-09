@@ -32,7 +32,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.failure_attribution import (
     ATTRIBUTION_REGISTRY_VERSION,
     Attribution,
@@ -148,7 +148,7 @@ class ArtifactRecord:
     producing_task_type: str | None = None
     task_id: str | None = None
     emission_status: str | None = None
-    #: #1436: the 1-based attempt stamped on a banked failed emission; ``None`` before 1.7.5.
+    #: #1436: the 1-based attempt stamped on a banked emission; ``None`` before 1.7.5.
     attempt: int | None = None
 
 
@@ -365,7 +365,12 @@ def _coordination_dimension(evidence: CycleEvidence) -> tuple[Indicator, ...]:
         for a in evidence.artifacts
         if a.producing_task_type == TaskType.GOVERNANCE_CORRECTION_DECISION
     ]
-    banked = [a for a in evidence.artifacts if a.emission_status == EMISSION_STATUS_FAILED]
+    # #2949: a hand-off's bank is not a failed attempt. The product runner's pass was its verdict.
+    banked = [
+        a
+        for a in evidence.artifacts
+        if (status := banked_as(a.emission_status)) is not None and status.is_failure
+    ]
     if any(a.attempt is None for a in banked):
         failed_emissions = Indicator.unaskable("failed_emissions", "no_attempt_stamp")
     else:

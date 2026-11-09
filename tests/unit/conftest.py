@@ -55,7 +55,8 @@ class FakeReplyRouter:
     async def ensure_subscribed(self, agent_id: str) -> None:
         self.subscribed.append(agent_id)
 
-    def register(self, task_id: str):
+    def register(self, task_id: str, dispatch_id: str):
+        assert dispatch_id, "a waiter names the send it waits on (#2932)"
         self.registered.append(task_id)
         fut = asyncio.get_running_loop().create_future()
         self._futures[task_id] = fut

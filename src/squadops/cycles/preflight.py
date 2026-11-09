@@ -49,6 +49,13 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.task_plan import builder_assembles
 from squadops.llm.model_registry import get_model_spec
+from squadops.llm.script import (
+    LLM_SCRIPT_KEY,
+    SCRIPTED_MODEL,
+    LLMScriptError,
+    ScriptLibrary,
+    ScriptReference,
+)
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 
 if TYPE_CHECKING:
@@ -521,6 +528,88 @@ def fault_injection_decision(config: Mapping[str, Any]) -> PreflightDecision:
                 ),
             )
             for name in names
+        )
+    )
+
+
+def scripted_squad_decision(
+    profile: SquadProfile, config: Mapping[str, Any], library: ScriptLibrary
+) -> PreflightDecision:
+    """Block a scripted squad that would fail at its first call, or a script nobody reads (#2495).
+
+    A squad whose agents name the model ``scripted`` is answered from the script the cycle names
+    in ``llm_script`` (``<name>@<version>``). Each way that can go wrong is knowable here, at
+    create, rather than one task into the run:
+
+    - a scripted squad with no script, or a script name with no version (the message gives the
+      exact value the deploy holds, so the record always says which answers the cycle ran on);
+    - a script the deploy does not hold, a file that does not parse, or a pinned version that
+      differs from the deploy's copy;
+    - a squad that mixes scripted and model agents: its evidence would be neither, and a reader
+      could take its model half as a model run;
+    - a script named on a squad with no scripted agent: nothing reads it, and the record would
+      label a model run as scripted.
+
+    A valid declaration warns, so the create response says the cycle is scripted. ``library`` is
+    read for the named script only, and never written.
+    """
+    named = config.get(LLM_SCRIPT_KEY)
+    enabled = [a for a in profile.agents if a.enabled and a.model]
+    scripted = [a for a in enabled if a.model == SCRIPTED_MODEL]
+    if not scripted and named is None:
+        return PreflightDecision()
+
+    def _block(code: str, message: str) -> PreflightDecision:
+        return PreflightDecision(blocking=(Finding(code=code, severity="block", message=message),))
+
+    if not scripted:
+        return _block(
+            "llm_script_unread",
+            f"{LLM_SCRIPT_KEY} is set, but squad profile `{profile.profile_id}` has no agent on "
+            f"the `{SCRIPTED_MODEL}` model, so nothing would read the script and the record "
+            "would label a model run as scripted. Use the `machinery` squad profile, or drop "
+            f"{LLM_SCRIPT_KEY}.",
+        )
+    if len(scripted) != len(enabled):
+        models = sorted({a.model for a in enabled if a.model != SCRIPTED_MODEL})
+        return _block(
+            "scripted_squad_mixed",
+            f"squad profile `{profile.profile_id}` puts some agents on `{SCRIPTED_MODEL}` and "
+            f"others on {models}: a scripted squad is scripted throughout, so its evidence is "
+            "never read as a model's.",
+        )
+    if named is None:
+        return _block(
+            "llm_script_missing",
+            f"squad profile `{profile.profile_id}` is scripted, so the cycle must name its "
+            f"script: --set {LLM_SCRIPT_KEY}=<name>@<version>. This deploy holds "
+            f"{library.names() or 'no scripts'}.",
+        )
+    if isinstance(named, str) and "@" not in named:
+        try:
+            held = library.get(named).reference
+        except LLMScriptError as exc:
+            return _block("llm_script_unusable", str(exc))
+        return _block(
+            "llm_script_unversioned",
+            f"{LLM_SCRIPT_KEY} `{named}` names no version, so the record could not say which "
+            f"answers the cycle ran on. This deploy holds {held}: set {LLM_SCRIPT_KEY}={held}.",
+        )
+    try:
+        script = library.resolve(ScriptReference.parse(named))
+    except LLMScriptError as exc:
+        return _block("llm_script_unusable", str(exc))
+    return PreflightDecision(
+        warnings=(
+            Finding(
+                code="llm_script_declared",
+                severity="warning",
+                message=(
+                    f"this cycle is SCRIPTED: every call is answered from {script.reference} "
+                    f"({len(script.answers)} answers), no model. It checks the machinery and is "
+                    "never evidence about a model or a prompt."
+                ),
+            ),
         )
     )
 

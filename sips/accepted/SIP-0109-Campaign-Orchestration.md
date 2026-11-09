@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-30)
+## Delivery ledger (current as of 2026-11-08)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -141,13 +141,31 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, the supervisor's review-request push: the campaign branch pushed as `squadops/<campaign>` with the supervisor's own token, leased on the last push and refused over a branch someone else moved (§24ci (b), §24cn) | **shipped** | 2.5.0, PR #2772 |
 | a Campaign on a repository-backed Project, point 3's route rendering on a product: the profile's client routes rendered on the candidate, started in the sandbox from contract 7's start, read by the evaluator image's Chromium and judged by their views' root anchors (§24bv point 3, §24cl item 6, §24co; SIP-0102 §11k) | **shipped** | 2.5.0, PR #2777 |
 | a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold; an added page whose path needs a seed is refused, and a dev repair keeps the anchors (§24co item 11's remainder, §24cp items 1–5) | **shipped** | 2.5.0, PR #2780, closes #2779 |
-| a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **unplaced**, deliberately: for the supervisor to place | #2781 |
-| the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp, not built) | **unplaced**, deliberately: for the supervisor to place | #2783 |
+| a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **placed** (re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): a design change to §7.2's change request, which needs its own design and an outside review; until then the refusal stands) | 2.8.0, #2781 |
+| the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp; §24dq: the accepted-page inventory, recorded at promotion, read by the rails, the proposer and acceptance; §24dr: held against the candidate's own pages, refreshed at each promotion, and refused rather than read empty across a deploy) | **shipped** | 2.7.0, PR #2998, closes #2783 |
+| the accepted-page inventory across Campaigns on one product: a second Campaign shown the pages an earlier one's increments added (§24dq, not built) | **unplaced**: for the supervisor to place | #2997 |
+| retiring a page from the accepted-page inventory, and re-rendering the accepted pages at a rebase onto a moved upstream (§24dq, not built) | **unplaced, deliberately**: a removed accepted page is rejected, as a removed pinned route is, until a change request can say it retires one | §24dq |
 | a Campaign on a repository-backed Project, read live, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co): the calibration record and its baseline reading, the proposal from the product's tree, the instruction binding at each cycle's own commit, the launch, the refusal at a moved upstream and the rebase onto the reconciled commit, increments judged at delivery on the product's runners, and the anchored page | **shipped**, read on the 2.5 cut's final deploy (the cut's pre-registration §14b): IR-2, IR-3 (a)–(e), IR-4, IR-6's calibration half, IR-7 and IR-8 hold. Narrowed by the owner (2026-10-29: "Narrow the claim, go to cut"): no product increment was accepted, so the row below carries the rest | 2.5.0, PRs #2820 and #2825 with the release PR, closes #2619 |
-| a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading); waits on #2818 and #2799 | **placed** (the cut's sweep, under the owner's narrowing) | 2.6.0, #2827 |
+| a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading). The 2.7 plan (§4.5) reads it on one counted increment on `prj-z-continuum`, the product that meets all three readings' preconditions, with BT-11's records (battle-trainer PR #11) as the historical promotion and push; `z_continuum`'s page surface is not applicable, so it doesn't wait on #2799. §24dp (#2799) ships the page loader in 2.7, so a page criterion for a page the change adds on a vitest product (`prj-shelfnote`'s T3 to T5) can discriminate too, though no counted reading has read it. #2818 shipped in 2.5.1, and the 2.6 plan's spikes accepted product increments onto `prj-shelfnote`'s campaign branches and pushed two review requests (z_shelfnote PRs #2 and #3), uncounted: the counted reading remains | **placed** (the cut's sweep, under the owner's narrowing; re-read at the 2.5.1 sweep) | 2.7.0, #2827 |
+| a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
+| D1: a criterion test that passes on the head at qa's first emission is refused to `qa.test_repair`, as §24dh refuses a repaired one; when the allowance is spent, §24dh's backstop reads an ordinary counted failure, and no record tells the next proposal the behaviour is met | **shipped** (§24do; option (a), ruled by the owner on 2026-11-07; the 2.7 plan, adopted 2026-11-08) | 2.7.0, PR #2992, closes #2933 |
+| unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
+| a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
+| the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
+| the replay viewer showing a new version with no step by hand (§24dj) | **dropped** (§24dm): the viewer is the product's own tool | battle-trainer PR #3 |
+| the operator's box lease outside Campaigns (§9.3) | **placed** (re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): a new capability) | 2.8.0, #2287 |
+| a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
+| a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
+| a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
+| the owner's goal delegation (SIP-0115 slice 3): `goal_delegation_granted`, the first record a completed Campaign refuses (§24dd) | **shipped** | 2.6.0, PR #2908 |
+| a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
+| the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
+| a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
+| a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
+| a product proposal is shown that what the product already does stays inside the criterion that changes it (§24di); whether row 19 re-queues a goal-set item waits for the owner (SIP-0115 §5.3) | **shipped** | 2.6.0, PR #2936, refs #2935 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -5612,3 +5630,1396 @@ the new one, each with the index.
 
 **Who ruled.** The supervisor placed #2795's fix in 2.5 under the owner's 2.5 grants. The issue proposed rendering the
 appendix by role; the asset's wording and the selection seam are the implementer's, for the supervisor's review.
+
+### 24cs. A repository-backed increment's plan gate reads its approved change request as its design (2026-10-31, §24bj, §24bv point 5, §24cj; #2796; the implementer's fix, under the owner's go for the 2.6 spike's fixes)
+
+**What changed.** §24bj's tier read "no open question" from the cycle's interface manifest, and a cycle with no manifest
+failed it: "the tier can establish nothing about its design". A repository-backed product's increment never has one
+(§24bv point 5: its change request carries no manifest delta). So **every** product plan gate escalated, and an
+unattended product Campaign needed a person at each one. Now, on a repository-backed increment whose approved change
+request is on record, the tier reads that request as the design. The supervisor ruled it at the increment gate, and
+it carries no open question, so `no_open_question` holds. **The tier's other conditions are unchanged:** the plan's
+footprint must lie inside the objective's scope (with §24cj's placed criterion files the framework's), and the
+framing must have run once. A plan that strays from the request still escalates.
+
+**Not changed:** a cycle with neither a manifest nor a ruled change request still fails `no_open_question`. A
+sample application's plan gate reads its manifest as before.
+
+**The evidence.** The 2.6 plan's §0 spike, `cmp_76242b27df5b` on `prj-shelfnote`, 2026-10-31: all three plan gates
+escalated on `no_open_question` alone (`esc_799f0daa8743` and two more), each with `questions: []`. Tests:
+`test_plan_review_tier.py`'s product cases, and `test_plan_gate_product_tier.py`, entering at
+`WorkloadGate._plan_review_tier`, which fails without the change.
+
+**Who ruled it.** The owner's go on 2026-10-31 for the four fixes before an unattended spike ("yes"), #2796 among them.
+The issue's own question (whether a product's plan gate should instead stay the supervisor's by rule) is answered by
+this design. The owner can reverse it.
+
+### 24ct. An already-met criterion beside discriminating ones is kept as a preservation check, and row 16's abandonment counts toward no unaccepted limit (2026-10-31, §8.2, §10 rows 4 and 16, §24bq; #2849; the implementer's change, on the owner's "yes" to it)
+
+**What changed.**
+1. **§8.2's acceptance.** A new criterion whose test passes on the accepted tree (`no_baseline_failure`) no longer
+   rejects an increment when another new criterion discriminates **and** its own test passed on the candidate too.
+   It is kept as a **preservation check**: frozen like the others, so the behaviour it describes is guarded from
+   then on, and reported in the evaluation's `preserved`. When no new criterion discriminates, nothing is kept: the
+   increment is rejected, and row 16 tells the next proposal which criteria were already met (§24bq, unchanged).
+   An already-met criterion that **fails** on the candidate is still unmet. That is a regression, not a
+   preservation check.
+2. **Row 4's count.** Row 16's abandonment no longer counts toward `max_unaccepted_increments`, at its own decision
+   or from the log. The work built and verified, and the criteria were the fault. `max_cycles`, the token budget
+   and the elapsed limit still bound a squad that keeps proposing met criteria. Rows 13, 15 and 18 count as
+   before.
+
+**The evidence.** The 2.6 plan's §0 spike, unattended run `cmp_cf75c37569da` on `prj-shelfnote`, 2026-10-31,
+ended `failure` at row 4 with 4 of 6 items accepted. One count was item 1's first proposal (row 16). The other was
+item 5, whose T17–T20 discriminated while T21 read `no_baseline_failure`. Tests: `test_acceptance.py`'s three
+cases (kept beside a discriminating one, broken on the candidate, none discriminates), `test_continuation.py`'s
+row 16 now counting toward no limit, and `test_progress.py`'s counter skipping a row-16 abandonment.
+
+**Who ruled it.** The owner's "yes" (2026-10-31) to the supervisor's recommendation: drop or keep a
+non-discriminating criterion rather than reject an increment whose others discriminate, and don't count an
+already-met abandonment.
+
+**Not built here:** the earlier check, each criterion's test run against the head as soon as it exists (the 2.6
+plan's D9). It would save the cycle row 16 spends.
+
+### 24cu. A busy engine serving only declared models is a quiet box (2026-11-01, §9.3, §24an; SIP-0111 §5.5 and §9n; #2851; the owner's ruling)
+
+**What changed.** The quiet box no longer reads an engine's requests in flight as a reason. A box is quiet when every
+engine was read and every model it holds is one the active deploy record declares. Both a launch and a run start
+(§24an) read that verdict, so neither waits on the engine going idle any more. The count is still read, on the
+engine's authenticated source, so an engine that refuses the key is still unread and never quiet. A model the
+deploy doesn't declare still refuses, and so does the supervisor's lease. Exclusive inference for counted
+verification is not this check's job: Nostromo's exclusive window stops the crew's harnesses before the squad
+takes the Spark.
+
+**The evidence.** On 2026-11-01, `cmp_4edfa3d9746b7b204e8cea68` on `prj-shelfnote` went `launch_blocked`:
+`box_not_quiet`, "engine tensorfold is serving 1 request(s) already". The request was the crew's own. Mother
+launches the Campaign from a model turn on the same TensorFold engine, which serves its one model with
+`--parallel 2` (Nostromo's shared inference mode). In shared mode the crew is on the engine whenever it is
+working, so the rule refused the launches it was there to protect, and held every run start while any crew member
+was thinking. Test: `test_box_reading.py`'s `test_tensorfold_is_quiet_while_it_serves_its_declared_model`,
+entered at the TensorFold adapter (idle, serving the crew, refused the key).
+
+**Who ruled it.** The owner, 2026-11-01: "this box busy logic I think is overly restrictive. we can support
+parallel processing with TensorFold and it is blocking campaigns i am trying to kick off in buzz; can you revisit
+this logic and approach so it is not such a blocker?"
+
+### 24cv. The notes on an increment's approval reach its framing (2026-11-01, §7.3, §24cs; #2854; the owner's go on the 2.6 plan's §0a)
+
+**What changed.** An approved increment's framing is shown the notes of the ruling that approved it, after the
+approved change request, as the reviewer's guidance on how it is to be built. They are rendered by
+`request.increment_ruling_notes_section`. It applies to either approving decision (`APPROVING_DECISIONS`), read from
+the cycle's last ruling on its increment gate. A ruling with no notes shows nothing. A return's or a rejection's notes
+are never shown to a version approved after them. Before this, `approved_with_refinements` notes were kept as an
+artifact that "nothing renders to a model", and an `approved` ruling's notes went nowhere.
+
+**Why.** The crew's reviewer returned a sound proposal twice for detail that belongs to framing, and that used up
+`max_proposal_revisions` (`cmp_7c4c28bb4118`). The owner: "her changes requested seem like things that should go in a
+framing plan". Nostromo's gate rule now approves with notes (nostromo#30). Without this section, those notes would be
+dropped.
+
+**Not built.** A repair's or a retry's launch runs no proposal and reuses its increment's ruling, so its framing is
+shown no notes. If a repair is found to need them, a later section adds them.
+
+**The evidence.** `test_increment_framing.py`:
+- **Notes reach the prompt.** Entered at `generate_task_plan`, carried to the technical design's prompt: notes shown,
+  and none shown when the ruling had none.
+- **The right ruling's notes.** `approved_ruling_notes` across ruling histories: approved, approved with refinements,
+  a return then a bare approval, a rejection last, no ruling, and a cycle that is not an increment.
+
+### 24cw. A product's criterion file sits beside the runner's own tests, and no planned file takes its name elsewhere (2026-11-02, §24bv point 5, §24cj, §8.1; #2858; the owner's "yes")
+
+**What changed.**
+1. **Placement.** A repository-backed Project's criterion file is placed in the directory that holds most of its
+   runner's own test files, the first by name on a tie. It was placed under the runner's first root. A runner with
+   no test files yet still places under its first root. Change requests already stored keep the paths they placed.
+2. **The plan gate.** The plan gate refuses a planned file whose basename matches a new criterion's file, or an
+   earlier criterion's frozen verifier, at another path. The refusal names the pair. The plan authors are taught the
+   rule in `request.plan_increment_criteria_appendix` (v4) and `request.plan_increment_frozen_appendix` (v2). It is
+   enforced within the existing validators `validate_increment_criterion_files` and
+   `validate_increment_frozen_files`, so no new rule id was added.
+
+**The evidence.** `cmp_f8eddb8f175f9225b01701ac` on `prj-shelfnote` (spike 2, 2026-11-02):
+- **Where it was placed.** Pytest is rooted at `.` there, and the product's tests are under `tests/`. The criterion
+  files were placed at the root (`test_criterion_T1.py`, then `T2`).
+- **What the qa task wrote.** The qa task also wrote `tests/test_criterion_T1.py`, and later the T2 counterpart.
+- **What pytest did.** With no package `__init__.py`, pytest refused collection ("import file mismatch", exit 2).
+- **How the Campaign read it.** Source delivery read "backend_tests failed where the baseline did not". Both repairs
+  ended `plan_defect` (`tighten_acceptance`). The increments ended at rows 13 and 9, and the owner aborted.
+
+Tests:
+- `test_criterion_placement.py`: a runner rooted at `.` places beside its tests; a frontend file goes beside the
+  runner's `__tests__/`.
+- `test_increment_criteria.py`: the plan gate, entered as the framing re-roll keys on it, refuses a second file of a
+  criterion's name and allows another name; the frozen-verifier case.
+
+**Who ruled it.** The owner, 2026-11-02, said "yes" to building the guard and to fixing the placement. The Nostromo
+session confirmed that the root placement was not the crew's design: the ShelfNote registry's root
+`test_criterion_*.py` scope was added only because the proposer placed criterion files there. It will remove that
+pattern once this is deployed.
+
+### 24cx. A criterion file is never placed under a file name the product already holds elsewhere (2026-11-03, §24bv point 5, §24cw; #2860; the owner's go on 2.5.1)
+
+**What changed.** §24bv point 5 refused a placement only when the file it would place was already a product file
+at **the same path**. Placement now refuses one whose **file name** any tracked file of the product holds at
+**any path**, and the refusal names that file.
+- The runner's `taken` list holds every tracked file whose name the template could give an id, wherever it lies.
+- The placement moves on to the next runner that covers the paths, as it does for any other refusal.
+- When no runner can place it, the proposal is refused (`unplaceable_criterion`), and the reason tells the proposer
+  to give the criterion an id the product's tests don't already name.
+- Placement does not rename, because §24cj's rails require the file to be named for its criterion's id.
+
+**The evidence.** §24cw fixed where a file is placed and what the plan gate refuses. It still left a gap in the
+tree a Campaign inherits:
+- Campaign 4 on `prj-shelfnote` (`cmp_bdf625d66ef2`) accepted root `test_criterion_T1.py` … `T8.py`.
+- Once that branch merged upstream, a later Campaign could place `tests/test_criterion_T1.py` beside the root file.
+- Pytest then refuses collection with "import file mismatch", as in #2858.
+
+z_shelfnote's own copies were renamed by hand when campaigns 4 and 6 were contributed (PRs #2 and #3). This rule
+covers any product.
+
+Tests:
+- `test_criterion_placement.py`: a file of the name at the root, and deeper than the runner's tests, is refused, and
+  another id still places.
+- `test_product_change_request.py`: the rails, entered through `validate_proposal` with the placements
+  `runner_placements` reads, refuse it and name the file.
+
+**Who ruled it.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2860.
+
+### 24cy. A Campaign on a goal set: `objective.goals`, the one-item rail, `goals_revised` at the ruling, and `stop_when: backlog_done` (2026-11-03, §7.2, §9.1, §9.2, §9.5, §10 row 3, §15, §24bv point 5, §24cj; SIP-0115 §5.1–§5.6, §10b; #2885; the implementer's design under the supervisor's brief, for the owner)
+
+**Why.** SIP-0115 makes a Project's goal set a source a Campaign's objective can name beside `objective.requirements`
+(its intake check: "the rails and rows it touches change by a numbered SIP-0109 amendment in the PR that builds
+them"). Slice 2 builds the Campaign's side. This section is what changes here; SIP-0115 §10b records what slice 2
+settles of its own text.
+
+**What changed.**
+1. **The definition (§15, §24bv point 5).** `CampaignObjective` takes two fields, each stored only when set, so every
+   campaign stored before keeps its creation hash:
+   - `goals: {goal_set, revision}`. `goal_set` is the Campaign's Project's id: a Project has one goal set (SIP-0115
+     Q44), so the field could be omitted. It is kept and checked, so a definition copied to another Project is refused
+     rather than read against that Project's goals, and a later shape with more than one goal set is additive.
+     `revision` is a number, pinned for the Campaign's life, or `current`.
+   - `stop_when: backlog_done`, refused without `goals`.
+
+   §24bv point 5's creation rule is extended. A repository-backed Campaign names `requirements` or `goals`, never
+   both, and never neither. A sample application's names neither. A Project with no goal set written, a pinned
+   revision it doesn't hold, and another Project's `goal_set` are each refused at creation (422), naming why.
+   `target_accepted_increments` stays required and is read as before.
+2. **The proposal's input (§9.1, §24cj item 3).** A goal-set Campaign's proposal is given `goals` in place of
+   `requirements`. It is composed at the proposal's run, as `requirements` is: the revision the Campaign binds (its
+   pinned one, or the latest for `current`), the goal, expected results, constraints, out of scope, and the backlog
+   with each item's status in this Campaign and why any was abandoned. The status is derived from this Campaign's
+   control log (`campaigns/backlog.py`), and the next item is named. The prompt is
+   `request.proposal_goal_set` and `request.proposal_next_backlog_item`. A revision run after a return reads the goal
+   set again. A goal set that can't be read, or a backlog with nothing pending, fails the run, as any unreadable input
+   does (§24bn bounds it).
+3. **The change request (§7.2).** It takes `backlog_item` (authored) and `goals_revision` (derived from the input the
+   proposal read, refused if authored). Each is stored only when set, and both are hashed, so a ruling binds to the
+   item and to the revision it was created under. The submission row records both (`gate.submission`), and the
+   derived backlog reads them back.
+4. **The one-item rail (§9.1).** `not_the_next_backlog_item` refuses, before a cycle is spent:
+   - a goal-set Campaign's request that names no item, or any item but the next eligible one. That is the first
+     `pending` item in the order; an `abandoned` one is skipped;
+   - a request on a Campaign with no goal set that names an item.
+
+   The refusal names the item to propose. It runs in the proposal task with the other rails, so the proposer revises
+   within `proposal_max_attempts`.
+5. **`goals_revised` at the ruling (§9.2, §9.5).** When the supervisor approves or rejects a `current` Campaign's
+   proposal, the ruling route reads the goal set's latest revision. It returns the proposal as `goals_revised`, in
+   place of the ruling asked for, when two things hold: a revision later than the proposal's exists, and in it the
+   named item is not the next eligible one (read with this proposal left out), or an expected result it serves changed.
+   - The gate decision recorded is `returned_for_revision`, its notes the reason. The `rule` row is marked
+     `returned_as: goals_revised` with the decision `requested`, and carries no §24bi class: nothing was found wrong
+     with the proposal.
+   - It ends no cycle, so it never counts toward `max_rejected_proposals_in_row`. The executor's revision budget leaves
+     it out too (`gate.goals_revised_runs`), so it can't spend the revisions and end the cycle `revision_unavailable`,
+     which §9.5 counts as rejected.
+   - A supervisor's own return is left as asked. A pinned Campaign reads no later revision. An approved proposal keeps
+     its revision.
+   - **A retry replays the ruling as committed** (added on the outside second review of PR #2901, its P2). The
+     ruling's row commits before its gate decision is recorded, and a process that dies between the two is retried
+     with the same key. The route first reads the applied `rule` row that key wrote on the run, and replays what it
+     committed, never reading the goal set again: a `goals_revised` return is returned again with its recorded reason,
+     and a committed approval or rejection is recorded as asked, whatever revision the owner wrote in between. A retry
+     asking a decision other than the row's `decision` (or `requested`, for a return) is a conflict, refused and
+     recorded by the registry (§12a). Before this, the retry read the goal set anew, built a different row, and the
+     key conflicted: the Campaign stood `building` with a ruling row and no gate decision.
+6. **`stop_when: backlog_done` at row 3 (§10).** Row 3's predicate is "the objective's measurement is met with this
+   increment counted". `backlog_done` is a second reading of it, beside the target. The decision reads the goal set's
+   revision then (the latest for `current`, never the one the increment was proposed under), and the measurement is
+   met when every item of that revision is accepted in this Campaign. The cause is `objective_met`. No terminal cause
+   is added: what stops the Campaign is still its objective's measurement, and the decision row records which revision
+   it read (`goals_revision`).
+   - **Narrowed: not one transaction.** SIP-0115 §5.5a asks that the read be "in the same transaction as the
+     decision". The goal set has its own store (SIP-0115 §10a), so it is read immediately before the decision's row is
+     written, and the row names the revision it read. A revision written in that interval is read by the next
+     decision, unless this one stopped the Campaign. The row then says exactly which revision the stop was judged on.
+   - **Narrowed: row 3 still needs an accepted increment** (§10's "stop_success needs latest.verdict = accepted"). A
+     backlog emptied only by a revision's removals, with no acceptance, is not stopped there. The next proposal finds
+     nothing pending (item 7).
+7. **Nothing pending escalates (§10, §12b).** A goal-set Campaign whose backlog has no pending item (each accepted or
+   abandoned, and no `backlog_done` to stop it) writes no proposal launch. Its decision escalates with the reason as
+   `unbuilt`, as any launch that can't be built does. The owner revises the goal set or stops the Campaign.
+   - **Eligibility is read against the transition being prepared** (added on the outside second review of PR #2901,
+     its P2). The owner's word (`resume`, §10) and a rebase's supersession (§24cd point 2) build their proposal before
+     their row commits, and a continuation decision builds its launch before its row. So the backlog is read with that
+     row applied: the owner's `propose` returns the decided increment's item to `pending`, the owner's
+     `abandon_and_propose` reads it `abandoned` (so a lone abandoned item still has nothing pending, and the word is
+     refused), and a rebase reads the repair or retry it supersedes as `upstream_moved` leaves it, pending. The
+     rebase's proposal is told which launch its row supersedes (`ProposeAfterRebase` takes it). The proposal run reads
+     only committed rows: its intent is written in the row's transaction and drained after it. Before this, the
+     owner's `propose` on an escalated goal-set Campaign was refused as "no pending backlog item", and every upstream
+     move that superseded a repair escalated instead of proposing the item again.
+
+**Unchanged.** A sample application's Campaigns and every requirements Campaign: no field, row, rail or prompt of
+theirs changes. The decision table's other rows, the counters, and the guards are unchanged too.
+
+**The evidence.**
+- `tests/unit/api/test_campaign_repository_creation.py`: the creation refusals, entered at `POST /api/v1/campaigns`.
+- `tests/unit/cycles/test_product_proposal.py`: the goal set composed at `RunProvisioning.prepare`, at the revision
+  the Campaign binds, with this Campaign's statuses and the next item.
+- `tests/unit/capabilities/test_strategy_propose_product_increment.py`: what the proposer is shown, and the rail
+  judged through `handle()`.
+- `tests/unit/cycles/test_increment_gate_wiring.py`: the submission's item and revision, and a `goals_revised` return
+  that spends no revision.
+- `tests/unit/api/test_goals_revised_ruling.py`: the return at the ruling route, and a retried ruling replaying what
+  its row committed (an approval, then a reorder; a `goals_revised` return, then the order restored), while a retry
+  asking another decision conflicts.
+- `tests/unit/campaigns/test_progress.py`: `backlog_done` and the escalation, entered at `CycleCompletion.end`; the
+  rebase's replacement proposal built with the superseded repair's item pending.
+- `tests/unit/api/test_campaign_owner_word.py`: the owner's `propose` and `abandon_and_propose` on an escalated
+  goal-set Campaign, through the resume route.
+- `tests/unit/campaigns/test_branch_rebase.py`: `before_launch` hands the proposal the launch it supersedes.
+
+**Who ruled it.** The owner accepted SIP-0115 as 2.6's headline and placed slice 2, with "a SIP-0109 amendment in
+the same PR", on 2026-11-03 (the 2.6 plan's D1). The shapes above are the implementer's under the supervisor's brief
+for #2885, for the owner's review in the PR: the `goal_set` field kept and checked, `objective_met` rather than a new
+cause, the escalation in item 7, and the revision budget's exception in item 5.
+
+### 24cz. A criterion already met is found as soon as its test exists: run on the campaign branch's head at the qa task, ending the increment `criteria_not_checkable` at row 19 (2026-11-04, §8.2, §10 rows 4 and 16, §12a, §24bv point 3, §24ci (a), §24cj, §24cl, §24ct; the 2.6 plan's D9; #2890; the implementer's build under the supervisor's brief, for the owner)
+
+**Why.** At the ruling only a criterion's statement and observable exist; its executable test is written by the
+increment cycle's qa task (§24cj). Until now the first reading of that test against the accepted tree was
+acceptance's, at the run's delivery (`no_baseline_failure`, §8.2, §24cl), on a cycle already spent, and row 16 then
+abandoned the increment (§24bq, §24ct). The 2.6 plan's D9 ruled the check moved to the earliest point a test exists.
+
+**What changed.**
+1. **The check (§8.2, §24bv point 3).** On a repository-backed increment, repair or retry (`IncrementBasis
+   .evaluated_at_delivery`, the same property acceptance asks), once a qa task's emission is collected on the run,
+   each of the increment's criterion files the run has stored (`criterion_files`, read as delivery reads the squad's
+   change: the path's latest accepted content from a test author) is run alone on its runner's one-file command in
+   the sandbox (`product_suite.run_on_product_runner`, #2818's run), read by the runner's test-id reader, against
+   **the head**: the pinned commit's tree from the managed clone, seeded as a checkout and read as the re-judged
+   suite reads it (`product_suite.product_tree_at_pin`, SIP-0112 H.19), with the criterion files patched on it. So a
+   tracked lockfile is content there and a Node product's setup installs (X-2, #2900): seeded as plain revision
+   content the sandbox refuses it, and the check would skip on every such product. No development emission is on the
+   tree. **That includes a removal** (SIP-0112 H.23): the re-judged suite lays the run's removals over the pin
+   because it judges the run's tree, and this check judges the head, which still holds the file. Laid here, a test
+   that a file is gone would pass on "the head" and end an increment that discriminates. A file that runs and passes
+   whole there is **already met**. Code: `execution/criterion_head_check.py`, entered from the executor's
+   `_after_task_success` with the task's dispatched inputs, whose product runners say which of the pin's files are
+   tests.
+2. **The record.** The run's `criterion_head_check` artifact (`campaigns/criterion_head.py`): the increment, the head
+   commit, each criterion's reading and each file's run. A met criterion's reading is `no_baseline_failure`, the word
+   acceptance's `discriminations` row carries for the same finding, so either record reads to the next proposal's
+   brief the same way; the others are `fails_on_head` (a failure the reader named) and `not_run`.
+3. **The ending (§10, §12a).** Any criterion already met ends the run there, with its own terminal kind
+   (`TerminalKind.CRITERIA_NOT_CHECKABLE`, SIP-0108 §4.1). The completion boundary reads a failed run's declared
+   kind and records the cycle's ending as `criteria_not_checkable` (a new `CycleStopReason`, migration 2003), so a
+   restart re-hears it as that and never as a failed build. The campaign reads it as
+   `CycleEnding.CRITERIA_NOT_CHECKABLE`: no verdict, nothing promoted, nothing evaluated.
+4. **Row 19 (§10).** Asked before row 6, beside rows 15 and 18: `abandon_and_propose`. The next proposal is told
+   which criteria the head already meets, with their statements, through row 16's `already_met` brief (#2315), read
+   from the check's record where no evaluation exists. **Counted toward no unaccepted limit** (§24ct's rule, now
+   `UNCOUNTED_ABANDONMENT_ROWS = {16, 19}`), and it does not count toward `max_rejected_proposals_in_row`: its proposal
+   was approved and built. `max_cycles`, the budget and the elapsed limit bound it as they bound row 16. The
+   attribution reads the kind as `criteria_or_contract_failure`: the criteria were the fault, not the work.
+5. **Where it can't run, the cycle proceeds as today, and the skip is logged with its reason** (as
+   `judge_on_product_runner` logs "not re-judged"): no sandbox, no managed clone, no derived profile or configuration
+   at the pin, a criterion file the request placed nowhere, a file no runner holds one by one or no test-id reader
+   can read (§24ci (a): Tally's unittest is such a runner), or any read, sandbox run or store that failed. Nothing
+   here fails a run.
+
+**Narrowed: the check spends the development task too.** The plan's D9 row says the check "spends one framing and
+one QA task". As built it spends the implementation workload's development task as well: the workload's order is the
+definition of done, development, then the qa task (`task_plan.IMPLEMENTATION_TASK_STEPS`; the plan merger's rule 8
+orders development's tasks before qa's), and the criterion's test exists only once the qa task has written it. What
+the check saves is the delivery, the acceptance and the repair cycle (or cycles) that row 16 cost. A check before
+development would need the test authored before the build, which the ruling named as the larger alternative and did
+not propose.
+
+**The seam table** (CLAUDE.md's rule for a typed check: every seam that evaluates a criterion's test, the tree it
+sees, and the outcome on a tree that lacks the file):
+
+| seam | where | the tree | the file absent |
+|---|---|---|---|
+| the emission | the qa role's container (`qa.test`) | the accepted workspace as the task sees it, development's emission, its own emission | the task's expected artifact is absent: a failed emission, the correction loop's |
+| **this check** | runtime-api, the sandbox, at the qa task's collection | the product's non-test files at the pin, seeded as a checkout, the stored criterion files patched on it, nothing else of the run's (no emission, no removal) | not checked ("no criterion file in this task's stored emission", logged); the cycle proceeds |
+| the re-judged suite (#2818, #2877) | runtime-api, the sandbox, on a failed `qa.test` | the same pin seeded as a checkout, with the run's tree patched on it (development's emission and its removals, H.19, H.23) and the emitted tests beside it | not re-judged: `run_on_product_runner` returns none for a file no runner holds |
+| a repair's retest (#2881) | runtime-api, the sandbox | the failed task's own suite with the repaired source on the tree | unchanged by this amendment |
+| acceptance (§24cl) | runtime-api, the sandbox, at delivery | the head and the candidate, the criterion's bundle frozen from the candidate on each | `BundleIncomplete`: the criterion reads `not_run`, blocked, never met |
+
+Only this check and acceptance read the head without the candidate, and only acceptance reads the candidate beside
+it: this check can say a criterion is already met and nothing else, and acceptance's read stays the last line.
+
+**Unchanged.** A sample application's increment (no source repository): the check does not apply. Acceptance's own
+discrimination read (§24cl, §24ct's preservation rule). Requirements and goal-set Campaigns alike: on a goal-set
+Campaign the item reads `abandoned` with its row, as row 16's does (§24cy item 2's backlog view). The decision table's
+other rows, the counters and the guards.
+
+**The evidence.** The 2.6 plan's §0 spike, unattended run `cmp_cf75c37569da` on `prj-shelfnote`, 2026-10-31
+(`var/verification_sets/2-6-0-spike/readings.md`): both unaccepted increments would have been caught before a cycle
+was spent, item 1's already-met criteria (row 16 after a whole cycle) and item 5's T21 (`no_baseline_failure` after a
+cycle and its repair). Tests:
+- `tests/unit/cycles/test_criterion_head_check.py`: entered at `_execute_sequential` on the shared fixture's Tally,
+  its tree seeded as provisioning seeds it, its plan `generate_task_plan`'s from the stored change request, each task
+  dispatched and collected by the executor, a fake sandbox answering the one-file command. A criterion passing on the
+  head ends the run after the qa task with the declared kind, nothing delivered, the head seeded without the
+  developer's report and the record written; one failing on the head proceeds to delivery with `fails_on_head`
+  recorded; no sandbox, no clone, no test-id reader, a sandbox error, a clone that refuses the pin and an unreadable
+  change request each proceed, with the reason logged. A Node product's tracked `package-lock.json` is seeded
+  `git_checkout` and the check runs and ends the increment, on the fake sandbox that applies `_safe_relpath`, the
+  sandbox's own rule. A file development removed is still on the head, with the removal shown reaching the qa task's
+  view.
+- `tests/unit/campaigns/test_progress.py`: entered at `CycleCompletion.end` on a failed implementation run whose
+  loop summary declares the kind, with the record stored: the ending recorded `criteria_not_checkable`, row 19
+  `abandon_and_propose`, the next proposal's `already_met` naming the criterion with its statement; the ending read
+  from the stop reason; a row-19 abandonment left out of the unaccepted count read from the log.
+- `tests/unit/campaigns/test_continuation.py`: row 19 at the unaccepted limit's edge and after a rejection proposes
+  again, never row 4, and spends no repair.
+- `tests/unit/cycles/test_failure_attribution.py`: the kind's attribution. `test_cycle_ends.py` holds the migration
+  to the stop reasons.
+
+**Who ruled it.** The owner's D9 (2026-11-03, the 2.6 plan §7): "checked as soon as the criterion's test exists, in
+the increment's cycle, against the head, since no test exists at the ruling." The shapes above are the implementer's
+under the supervisor's brief for #2890, for the owner's review in the PR: the run ended by a declared terminal kind
+that the completion boundary records as the ending, row 19 rather than row 16 widened (the ending has no verdict to
+read), the record's shared word, and the narrowing on the development task.
+
+### 24da. The unattended resume: the escalation classes a Campaign delegates to the crew's supervisor principal, enforced at the resume route, audited, and revoked by the owner's pause (2026-11-04, §9.3, §10, §12, §13, §24az, §24bj, §24bk, §24cs; #2837; #2891; the 2.6 plan's D6 and D7, the owner's rulings of 2026-11-03)
+
+**Why.** Since §24az only `campaigns:control` (the owner's admin role) resumes an escalation, a limit's pause or the
+owner's pause, and the crew's broker principals deliberately hold no admin role. So every overnight escalation waited
+for the owner. D6 rules which escalations the crew's `campaign-supervisor` principal may resume on its own, and D7
+that the grant goes to the crew's existing broker principals: no new identity is built.
+
+**What changed.**
+1. **The declaration (§15).** `policy.unattended_resume: [<class>, …]`, optional. Empty or absent, nothing is
+   delegated: today's behaviour. It is fixed at creation and enters the creation hash only when set, so every
+   campaign stored before keeps its hash (`lifecycle.creation_request_hash`). Its values are the **resumable
+   classes** (`models.ResumableClass`), one table mapping each to the escalation it covers and the move it permits
+   (`escalation.PERMITTED_MOVES`):
+
+   | class | the escalation it covers, read from the row that escalated | the move it permits |
+   |---|---|---|
+   | `plan_gate` | an `escalation_opened` row of kind `plan_review` (§24bj, §24bk): a plan gate the tier escalated | a decision on that gate, at the gate route (#2837's path) |
+   | `in_cycle_failure` | a `decide` row whose action is `escalate` with the ending `assessed` (§10 rows 9, 11, 14: the cycle's own failure) | `repair` or `retry`, within `max_repair_cycles_per_increment` / `max_retry_cycles_per_increment`, counted from the increment's launch intents |
+   | `launch_blocked` | a `launch_blocked` row that escalated (§9.3: the box refused past `launch_blocked_attempts`) | the relaunch: a resume with no action, back to `launch_blocked` |
+
+   **The never-classes are not in the table, so a definition can't declare them** (creation refuses an unknown class,
+   422): an upstream conflict (a launch the rebase or the cycle-create path refused, §24ba, §24cm), a limit's pause, a
+   security finding, and the owner's pause. Every other escalating row reads as no class too: a proposal that couldn't
+   be built (`unbuilt`), an operator's input held (row 17, `held_input`), a binding hold (§24bw). Classification is
+   `escalation.resumable_class`, a pure function of the row's own vocabulary.
+2. **Enforcement (§12, §13).** When a caller holding `campaigns:supervise` and not `campaigns:control` asks to resume
+   what `owner_held` reserves to the owner, the route applies `escalation.delegation_verdict`. The resume is allowed
+   only when the campaign isn't paused (a pause is never delegated), the escalating row has a class the campaign
+   declared, the requested move is the one that class permits (a `propose` or `abandon_and_propose` is the owner's:
+   only the owner abandons), and a repair or retry is within its per-increment limit. Anything else is refused **403
+   `RESUME_NOT_DELEGATED`** with its reason. The owner's path is unchanged. A caller with neither scope is refused as
+   before (`OWNER_AUTHORITY_REQUIRED`).
+   - **`plan_gate` at the gate route.** #2837 lets `campaigns:supervise` answer a campaign cycle's plan gate. Where the
+     tier escalated that gate and the escalation is pending, the answer is now this class's delegated resume: recorded
+     before the gate decision, or refused and the gate left undecided. **This narrows #2837** for escalated gates only:
+     a campaign that doesn't declare `plan_gate` no longer has its escalated plan gates answered by the supervisor
+     seat. A plan gate no escalation holds is answered as before, with nothing recorded here.
+   - **The row is written only for an answer that happens** (the owner's review of this PR). The route validates the
+     whole request first, then reads the verdict, so a refused delegation is still recorded. It then asks
+     `gate_decisions.refuse_undecidable` what the registry would say (a terminal run, a gate outside the policy, a
+     conflicting decision), and writes the applied row only if the decision would be taken. The row stays ahead of the
+     decision, so a delegated act can't happen unaudited. **What remains:** the preflight is a read, so a conflicting
+     decision landing between it and the record leaves an applied row for an answer the registry then refused 409. The
+     escalation stays pending in that case, and the caller sees the refusal.
+3. **The audit (§13).** Every delegated resume is the `resume` row it always was, its binding carrying `delegated:
+   true`, `class`, `move`, `escalation` (the escalating row's `seq`, operation and target, and the queue's
+   `escalation_id` for a plan gate) and `definition_hash` (the creation row's request hash). The principal is the row's
+   actor, from the token. **Every refusal is a `resume` row with outcome `refused` and the new refusal reason
+   `resume_not_delegated`** (migration `2002`), with the same fields, `delegated: false` and `why`. It is written by
+   the registry's new `refuse` (the caller decides the refusal; the row commits under the campaign's lock, the state
+   unchanged and no idempotency key consumed), and projected to the security audit like any refused row. The plan
+   gate's answer row is keyed `unattended:<escalation_id>`, so a retried answer replays it.
+4. **The digest (§14)** has an **Unattended resumes** section, read from the control log: what the campaign declared,
+   the counts of delegated resumes and refusals, and one line per row with the principal, the class, the move, the
+   escalation, the definition hash and, for a refusal, why.
+5. **Revocation.** The owner's pause revokes the grant: while the campaign is paused, every crew resume is refused
+   and recorded, its reason naming the pause. The owner's resume returns the campaign where it was, and the grant
+   applies again. (A limit's pause was never delegable; a supervisor's own pause is still the supervisor's to lift,
+   §24az, and nothing here changes that.)
+6. **The CLI.** `squadops campaigns resume` is unchanged; a refused crew resume prints `resume not delegated
+   (recorded as <entry>): <why>` instead of the client's generic "authentication failed".
+
+**A behaviour change beside the grant.** Before this, a supervisor's resume of an owner-held campaign was refused 403
+`OWNER_AUTHORITY_REQUIRED` before anything was written. D6 requires every refusal to be a control-log row, so the
+supervisor seat's refusal is now `RESUME_NOT_DELEGATED` and recorded, whether or not the campaign declared anything.
+The tests that pinned the old shape (`test_campaign_routes.py`'s owner's pause, `test_campaign_owner_word.py`'s
+escalation and limit pause) were updated to the recorded refusal.
+
+**Not here** (D6's scope): the box lease (#2287), notices (the crew's watcher reads the control log), any new
+identity (D7), and resuming an escalation whose cycle-create launch was refused (an upstream conflict among them).
+
+**The evidence.**
+- `tests/unit/api/test_unattended_resume_route.py`, entered at `POST /api/v1/campaigns/{id}/resume` behind the
+  Keycloak authorization adapter over the memory registry and the real `CampaignProgress`: a declared
+  `in_cycle_failure` resumed by the crew writes a retry bound to the increment through `owner_action`; an undeclared
+  class, a `propose` or `abandon_and_propose`, an upstream conflict, a limit's pause and an unbuilt proposal are each
+  refused, recorded with the principal, class, escalation and definition hash, and change neither the state nor the
+  outbox; the owner's pause revokes and the owner's resume restores; a third retry past a limit of 2 is refused; the
+  relaunch; the owner's path and a reader's refusal.
+- `tests/unit/api/test_increment_gate_route.py`: the crew's answer to an escalated plan gate, declared, undeclared and
+  under the owner's pause, entered at the gate route; a gate no escalation holds is unchanged.
+- `tests/unit/api/test_increment_gate_route.py`: an answer that can't happen (an increment field, a classification, a
+  bad waiver, a cancelled run, a gate decided otherwise) leaves no `resume` row and no decision; a refused delegation
+  is recorded even on a gate that can't be decided; a retried answer replays its row and decides once.
+- `tests/unit/cycles/test_gate_decision_preflight.py`: the preflight raises exactly what the registry raises, type and
+  message, in seven states, so the two can't drift.
+- `tests/integration/cycles/test_postgres_campaign_registry_integration.py`, against migration `2002`: a refusal
+  persists through a restart, the state doesn't move, and a later applied resume takes the refused key. Run on a
+  throwaway Postgres 16, and in CI's integration job.
+- `tests/unit/campaigns/test_unattended_resume.py`: the classifier over each escalating row, the declaration's
+  refusals, the creation hash (unchanged without the field, pinned to main's), the spent count, the verdict, and the
+  digest section.
+- Mutations, each run and restored: reading a `launch_refused` row (an upstream conflict) as `in_cycle_failure`
+  fails the classifier test and the route's upstream-conflict refusal; dropping the verdict's pause check lets the
+  crew decide an escalated plan gate under the owner's pause (the gate test fails) and fails the revocation test;
+  dropping it and reading the escalation beneath the owner's pause fails the same three. From the review: the
+  preflight not called (2 fail), the delegation moved back ahead of validation (5), the preflight ahead of the verdict
+  (1), each preflight rule dropped (3, 1 and 2), the same decision refused (2), migration `2002` without the value (the
+  integration test fails), and a refused key read as used (the integration test fails).
+
+**Who ruled it.** The owner's rulings D6 and D7 of 2026-11-03 (the 2.6 plan, PR #2883): the classes, the never-classes,
+enforcement at the resume route against the definition hash and the caller's principal, the audit rows, the digest,
+and the revocation by the owner's pause; and that the grant goes to the crew's existing broker principals. The shapes
+above (the class names, the permitted moves, the refusal reason, the gate route's narrowing of #2837, and the recorded
+refusal replacing `OWNER_AUTHORITY_REQUIRED` for the supervisor seat) are the implementer's, for the owner's review in
+the PR.
+
+### 24db. A repository-backed start is also refused on a task that can't fit its model's window, or on a size nobody could measure (2026-11-04, §24bv point 1, §24cc; SIP-0112 H.21; #2889; the Spark lane's design under the supervisor's brief, for the owner)
+
+**What changed.** §24bv point 1 refuses a repository-backed Campaign's start, before anything is written, when its
+calibration record can't be written: the Project not ready, drift unreconciled, no baseline, no profile at the pin, or a
+blocking gap in the derived profile. The start now also runs a size preflight after the record is read
+(`squadops.execution.size_preflight`, SIP-0112 H.21): every task type the Campaign's increments dispatch, composed on
+the product's tree at the record's commit and counted as the composer counts it, on the model its squad binds the role
+to. Two refusals are added to the record's (`CalibrationRecordRefused`, 409 `CALIBRATION_REFUSED`, nothing written):
+- **`blocking_gap`, gap `prompt_over_window`**: a binding whose prompt and completion reserve exceed its model's window,
+  at the least its prompt can be on that tree. Named by task type, role, model, size, reserve and window. It is not one
+  of contract 8's gaps, because it reads the Campaign's squad and profiles as well as the product.
+- **`size_unmeasured`**, a new `RefusalCause`: a model with no window the registry knows, or no model; a squad or
+  proposal profile that can't be read; a tree that can't be read, or that is past 2.4's limits.
+
+A sample application's start is unchanged: it writes no record and is never measured.
+
+**Evidence.** #2805 and #2810, each found an hour into a Campaign on `z_continuum`. The preflight's wiring tests enter at
+`POST /api/v1/campaigns/{id}/start` (`tests/unit/api/test_campaign_calibration_record.py`); SIP-0112 H.21 records them,
+what the preflight leaves out and its mutants.
+
+**Who ruled.** Placed in 2.6.0 by the 2.6 plan's Track A, adopted on the owner's rulings of 2026-11-03. The refusal's
+shape is the implementer's, for the owner's ruling in review. The delivery is tracked on SIP-0112's ledger, where #2889
+is placed.
+
+### 24dc. A Campaign's close records what contribution is due, the supervisor opens it, and the work not yet integrated is a signal (2026-11-04, §10, §12a, §14, §24ci (b), §24cn, §24cx; SIP-0112 E.4.3, E.4.4, H.22; #2861, #2863; the owner's ruling on the open, the implementer's design for the rest)
+
+**Why.** Campaigns 4 and 6 on `prj-shelfnote` closed with accepted increments that lived only on their campaign
+branches. Campaign 5 started without campaign 4's work, and the crew's next draft assumed campaign 6's had landed.
+Both were contributed by hand afterwards (z_shelfnote PRs #2 and #3), with the root criterion files renamed by hand
+(#2860's interim). The Nostromo crew asked for the close to open the contribution (#2861) and for a signal of
+accepted work not yet integrated, to gate a draft on (#2863).
+
+**The owner's ruling (2026-11-04): §24ci (b) stands.** PR #2920 first built an automatic open: at the close, with a
+token the deploy stored for the Project in `projects.review_request_tokens`. That reversed §24ci (b)'s "no automatic
+push from the deploy", so it went to the owner, and the owner chose to drop it. A close never pushes and never opens a
+review request, whatever the deploy holds. Only the supervisor's request opens one, with the supervisor's own token.
+#2861's "opens one contribution" narrows to item 1 and item 2 below.
+
+**What changed.**
+1. **The closing row says what is due, and that is all a close does** (§10, §12a). The row that completes a
+   repository-backed Campaign, its terminal decision or the abort, carries `contribution`:
+   - `{due: true, accepted: [<cycle>, …]}`, the increments accepted onto its branch; or
+   - `{due: false, reason: "no accepted increment: the Campaign opens no contribution"}`.
+
+   A sample application's closing row carries no key. Nothing else happens at the close: no push, no forge call, no
+   commit in the clone, and no `contribution_failed` row. Startup attempts nothing.
+2. **The supervisor opens it.** `POST /api/v1/campaigns/{id}/contributions` (`campaigns:manage`, 201, the contribution's
+   document; `token` required), or `squadops campaigns contribute <id> --token-from-gh`. The route honours a closing row
+   that says `due: true`, and refuses the rest with 409 `CONTRIBUTION_REFUSED`: a Campaign not closed, one with nothing
+   due, and one closed before this rule. `projects.review_request_tokens` isn't read on this path. It is serialized with
+   the Campaign's review pushes (§24cn item 6's lock).
+3. **The contribution is E.4.3's, through its path** (SIP-0112 H.22). `contribute_campaign` beside `contribute`, with
+   its checks (`_review_target`: a token, a forge, a base that is a branch) and its forge call:
+   - **the commit** is the branch's head with the criterion files its increments froze (every PROMOTE row's
+     `frozen_criteria[].test_path`, retired ones too) moved by #2860's interim, made the rule: `criterion_` in the
+     file name becomes `campaign_<hash>_`, the first 16 hex characters of the SHA-256 of the whole Campaign id, and a
+     file at the root moves under `tests/`. The runner's prefix and suffix stay. No later Campaign's placement finds the
+     name taken (§24cx). With no criterion file on the head it is the head itself. The move is one commit on the head,
+     kept at `refs/squadops/<campaign>/contribution`; a retry on the same head reuses it, so a branch a crash left pushed
+     is up to date. A moved name the head already holds is refused, never overwritten;
+   - **pushed** as `squadops/<campaign>`, never forced (`push_capture`). A branch a review push left there at an
+     ancestor fast-forwards, and the forge returns the open request rather than a second (the port's contract), so
+     the Campaign has one. A branch holding other history is refused, recorded, and the owner's;
+   - **recorded `pending`** as one of the Project's contributions, with the Campaign's id where a run's cycle id stands
+     and `campaign` where its run id does; the document carries `campaign_id`. Its parent is the branch's base, so a
+     sync reads the Campaign's whole change, and tracks its merge as any contribution's (E.4.4);
+   - **`patch_export`** records it and pushes nothing. `direct_push` is refused, as E.4.3 refuses it.
+
+   Opening the review request is the only outward act. Merging stays the owner's.
+4. **The moved criteria are run before anything leaves** (the review's finding 1). A move changes where a file runs: a
+   pytest criterion reading a sibling through `Path(__file__).with_name(...)` passes at the root and raises
+   `FileNotFoundError` under `tests/`. So `contribute_campaign` requires `verify`, and it runs before the commit:
+   - each live criterion the move touched is frozen from the moved tree (`freeze_product_bundle`) and run alone on its
+     runner in the sandbox (`frozen_on_runner`, `RunnerSetup`), the path a rebase's frozen criteria take (§24cd point 5).
+     Only `held` passes. So a criterion under a runner with no test-id reader is refused, by §24ci (a)'s rule;
+   - the runner's placement holds after the move: a moved file no runner holds, or another runner than the one that held
+     it, is refused;
+   - no sandbox wired, or no derived profile at the branch's base, is refused. Nothing is assumed verified;
+   - a retired criterion moves and isn't run: it may fail by design.
+5. **A failed attempt is recorded.** Each one (a refusal by the path, the verification, the product, the forge) writes a
+   `contribution_failed` row: a record, accepted on a completed Campaign (migration `2004`), with the error's class,
+   reason and message, never the token. The contribution stays due for the supervisor's next request. A refusal before
+   the attempt (item 2's) writes nothing.
+6. **The record is derived under the Campaign's lock** (the review's findings 3 and 4). A closing transition asks with
+   `repository_backed`; each registry derives `contribution` in its commit, from the log and intents the row commits on.
+   - **A promotion racing the close is on the record.** The abort route once read the log before its transaction, so a
+     PROMOTE between left `due: false` over accepted work, stranded. The terminal decision had the same gap.
+   - **It is outside the request's identity.** `repository_backed` and the derived key are left out of
+     `transition_request_hash`, so an abort stored before this rule, with no key, replays when its client retries,
+     unchanged, and a Campaign so closed stays one this rule doesn't contribute.
+   - **A Project that can't be found never blocks an abort** (the review's finding 6). A draft on an unknown Project
+     aborts. A Campaign with a branch is read as repository-backed from its log, whatever the lookup said.
+7. **The signal** (#2863). `GET /api/v1/projects/{id}/unintegrated-increments` (`cycles:read`) returns
+   `list[UnintegratedIncrementResponse]`, each `{campaign_id, campaign_state, cycle_id, title, commit, standing,
+   review_url}`, Campaign by Campaign, oldest first, in promotion order. `squadops projects unintegrated <project>`.
+   - **The set:** each accepted increment on a Campaign's branch, its commit followed through each rebase since
+     (`replayed`), unless the Project's `integrated_upstream_commit` carries it: the commit, or the merge commit a sync
+     recorded (a squash merge makes a new one), is in that commit's history in the managed clone. One a rebase dropped
+     is carried (upstream held its change). A running Campaign's increments are listed too.
+   - **Both kinds of contribution count** (the review's finding 2): each accepted cycle reads its own run's records
+     (`POST /api/v1/projects/{id}/contributions`) beside its Campaign's, and the furthest along says where it stands.
+   - **`standing`:** `not_contributed`; `contribution_pending`; `merged_not_synced` (a sync recorded it integrated, and
+     the integrated commit doesn't carry it until the Project is re-validated there, E.4.4); `contribution_closed` (its
+     review request closed unmerged, with that `review_url`, and it keeps blocking).
+   - **`title`:** the backlog item the increment's proposal served (SIP-0115), through the ledger for a repair or
+     retry; `null` otherwise.
+   - **Refusals:** an unknown Project is 404 `PROJECT_NOT_FOUND`; a sample application is 409 `NO_SOURCE_REPOSITORY`,
+     never an empty list a gate reads as integrated. A history the clone can't read reads as not carried (logged).
+
+**What remains.**
+- **Merged is known only by a sync.** The route reads no forge. A request merged on the forge stands
+  `contribution_pending` until `POST /api/v1/projects/{id}/syncs` records it: a sync after a merge is #2862.
+- **`contribution_closed` has one recovery, and it is the owner's on the forge:** reopen the request and merge it with a
+  merge commit, then re-validate the Project, so the integrated commit carries the increments. `squadops campaigns
+  contribute` can't do it: it answers the closed record and opens nothing (a test holds this). Two things are missing:
+  a sync reads only pending records, so a reopened request squash-merged stays `contribution_closed`; and no act
+  re-opens a closed contribution or declares its work abandoned, so a request the owner means to refuse blocks the
+  gate for good. Neither is built here.
+- **A contribution with moved criteria holds the request open while they run:** the setup and each file, one at a time.
+  The CLI takes the long timeout.
+
+**Unchanged.** The review push (§24cn) and its route. Campaigns 4 and 6 were contributed by hand.
+
+**The evidence.**
+- **Wiring:** `tests/unit/campaigns/test_close_contribution.py`, over `test_campaign_branch`'s world (a real managed
+  clone, real deliveries, the fixture's own repository as the product, and pytest really run in the sandbox service
+  with the deploy's reader):
+  - the close, entered at `CampaignProgress.cycle_ended` and at `POST …/abort`, on a deploy holding a token for the
+    Project: the row says due, the forge is never called, nothing is pushed or committed, and no failure row is written;
+  - the supervisor's request: one review request, whose branch holds the moved file, on the head, recorded pending;
+  - a request with no token is 422, and the stored one doesn't stand in.
+- **The review's findings, each failing first:**
+  - 1: a criterion reading its sibling opens nothing, and its row names it; no runner, no sandbox, no profile; a retired
+    criterion;
+  - 2: a per-run contribution squash-merged and synced reads integrated;
+  - 3: a PROMOTE injected just before the abort's row and before the terminal decision's;
+  - 4: an abort stored with no key, retried, replays unchanged (it answered 409 `conflicting_idempotency_key` before);
+  - 5: `cmp_product_feature_a` and `_b` take two names, each a valid module, each matching the runner's pattern;
+  - 6: a draft on an unknown Project aborts;
+  - 7: the fixture's repository sets `user.useConfigOnly`, which reproduces CI's exit 128 on any box, and stays as the
+    guard.
+- **The signal:** `tests/unit/api/test_unintegrated_increments.py` enters at the route over the same world: pending,
+  then `merged_not_synced`, then empty; `not_contributed`; `contribution_closed` with its address; the 404 and 409. On
+  the control log's rows: a repair's acceptance titled by its proposal's item, a partial merge, a squash merge.
+- **Postgres:** the closing row's derivation and `contribution_failed` on a completed Campaign, on a throwaway
+  `postgres:16` (`test_postgres_campaign_registry_integration.py`, 25 passed); `test_campaign_schema.py` holds migration
+  `2004`'s list to the enum.
+- **Mutations:** 19 on this review's fixes and the ruling, each on a commit and restored by commit, all caught. Four
+  survived the first run (blocked read as passing, another runner taking the file, a branch not read as
+  repository-backed, the least advanced record chosen), and each has a test now.
+
+**Who ruled.** The owner ruled the open on 2026-11-04 (the ruling above), and the owner's review of PR #2920 ruled the
+policy: a closed request keeps blocking, as `contribution_closed`. The supervisor briefed #2861 and #2863 from the
+crew's requests. The rest (the closing row's key, the rename's form, the standing's reading, the 409 for a sample
+application) is the implementer's, for the owner's review in the PR.
+
+### 24dd. The owner's goal delegation: a record a completed Campaign refuses (2026-11-04, §13, §17; SIP-0115 Q41, §10c; #2886; the owner's ruling)
+
+**What changed.** The control log gains an operation, and the record-only kind gains an exception.
+- **`goal_delegation_granted`** is the owner's grant of a Campaign's goal-set curation to the crew. The crew's
+  promotion, drop and split within a Campaign read it (SIP-0115 §10c). Written at
+  `POST /api/v1/campaigns/{id}/goal-delegation` with `campaigns:control`, which only the admin role holds, so the
+  supervisor seat can't write it, although it can create a Campaign. Its row names who granted it and why, and its
+  binding is `{goal_set, source_ref?}`. It moves no state. Migration `2102` replaces the operation CHECK list whole.
+- **A record that only a live Campaign takes.** A record is otherwise accepted on a completed Campaign, because it says
+  something that already happened. A grant is for the Campaign's life, and a completed Campaign has none left. So
+  `ControlOperation.needs_a_live_campaign` sends it through the completed and stale-state checks a move takes, and it
+  is refused and recorded as `campaign_completed`. The idempotency check still comes first, so a committed grant
+  replays after the close.
+- **It isn't an intervention** (SIP-0113 §4.3). It isn't in `outcomes.ledger._ACTED`: like an approval, it is the
+  design at work, a standing delegation made once, and it changes nothing the squad is doing. *The implementer's
+  reading, for the owner's review.*
+
+**Evidence.** The owner's review of PR #2908 (SIP-0115 §10c). `tests/unit/campaigns/test_goal_delegation.py` (the row
+through the registry), `tests/unit/api/test_goal_delegation_routes.py` (the routes, with the real authorization
+adapter), `tests/integration/cycles/test_postgres_campaign_registry_integration.py` (migration 2102, the refusal and
+the replay after the close).
+
+**Who ruled.** The owner, 2026-11-04: the owner chose the one-step grant, on Q41's "within a Campaign the owner
+started". The row's shape and the exception to the record-only kind are the implementer's, under the supervisor's brief.
+
+### 24df. A goal-set Campaign's ledger rows carry what a gate is judged against (2026-11-04, §9.4; SIP-0115 §8.5, §10d; #2888; the implementer's design under the supervisor's brief, for the owner)
+
+**What changed.** §9.4's ledger is what a reviewer outside SquadOps reads at a gate, so SIP-0115 §8.5's gate evidence is
+carried on it. `GET /api/v1/campaigns/{id}/ledger` gains three fields on a goal-set Campaign's rows:
+- `backlog_item` and `goals_revision`, on every row, read from the submission row §24cy item 3 writes;
+- `goal_evidence`, on the version whose item reads `proposed` or `in_increment`, the two statuses an increment or a plan
+  gate can be open on: the goal, the item and the expected results it serves, read at the revision the version is bound
+  to (SIP-0115 §5.5a).
+
+Each is left out when unset, so a requirements Campaign's rows are unchanged and its ledger reads no goal set. The
+decided rows carry no `goal_evidence` because a reviewer's request is bounded. The evidence package is unchanged: it
+doesn't read this ledger.
+
+**Evidence.** `tests/unit/api/test_crew_surface_routes.py`: the increment gate and the plan gate at the route with the
+crew's roles, a decided row, a later revision, and a requirements row's exact fields.
+
+**Who ruled.** The supervisor's brief for #2888; the design is the implementer's, for the owner's review in the PR.
+
+### 24dg. The owner's dismissal of a closed, unmerged contribution (2026-11-05, §13, §24dc; #2926; the owner's choice of the recovery, the implementer's design under the supervisor's brief)
+
+**Why.** §24dc keeps a contribution closed unmerged on the unintegrated set, because the work isn't in, and nothing cleared
+it. `campaigns contribute` answers the closed record, and a sync reads only pending ones. So a request the owner means to
+refuse blocked the crew's integration gate for good.
+
+**What changed.**
+- **`POST /api/v1/campaigns/{id}/contribution-dismissal`** (`squadops campaigns dismiss-contribution <id> --reason …
+  [--source-ref …]`) takes `reason`, `idempotency_key` and an optional `source_ref`, and answers 201 with the control
+  result. It needs `campaigns:control`, which only the admin role holds, as §24dd's grant does. The supervisor seat opens
+  a contribution with `campaigns:manage`, and is refused this `403 FORBIDDEN`: writing off work is the owner's.
+- **`contribution_dismissed`** is a record-only control-log row, binding `{commit, review_url, source_ref?}`, with who and
+  why. A completed Campaign takes it, since a contribution exists only after the close. Migration `2104` replaces the
+  operation CHECK list whole.
+- **The record stays.** The contribution's row is untouched and still reads `closed`, in
+  `GET /api/v1/projects/{id}/contributions`. Who dismissed it and why are on the Campaign's control log, and the work stays
+  on the Campaign's branch. No contribution state is added.
+- **The unintegrated set skips an increment that would stand `contribution_closed` on a Campaign with an applied
+  dismissal.** A live record of the same increment still decides: a per-run contribution pending or integrated stands as
+  it did, and stays listed.
+- **Refused** (`409 CONTRIBUTION_NOT_DISMISSABLE`, nothing written): a Campaign with no contribution, one pending or
+  integrated, one closed with an integrated commit, and one already dismissed under another key. A blank reason is `422`,
+  an unknown Campaign `404`.
+- **A retry replays,** answered before the contribution's state is read, so it holds whatever has happened to the record
+  since. As for any record (§12a), the key stands for the row's target and binding: another `source_ref` conflicts, and
+  another reason replays the first, which stands.
+
+**Deliberately not built.**
+- **Re-open:** a fresh contribution from the same accepted state. The owner chose dismiss first. A dismissal can't be undone,
+  and a request reopened on the forge after one stays out of the set unless the integrated commit carries it. The ledger
+  lists re-open as unplaced.
+- **A sync reading closed records** (#2926's other suggestion). It still reads pending ones only.
+- **A per-run contribution's dismissal.** A contribution through `POST /api/v1/projects/{id}/contributions` has no Campaign
+  of its own to record it on. An increment whose only closed record is a per-run one, on a Campaign with no contribution of
+  its own, still blocks.
+
+**A reading, for the owner's review:** it isn't an intervention (SIP-0113 §4.3) and isn't in `outcomes.ledger._ACTED`. It comes
+after the close and changes nothing the squad did, as §24dd's grant isn't one. It doesn't re-materialize the stored
+evidence package, which reads no contribution.
+
+**Evidence.** `tests/unit/api/test_contribution_dismissal_routes.py`, entered at the route with the real authorization adapter
+over a real managed clone: the owner clears the row, the record stays; each role; each refusal; a replay after the record
+moved. `tests/unit/api/test_unintegrated_increments.py`: a live record beside a dismissal.
+`tests/integration/cycles/test_postgres_campaign_registry_integration.py`: migration 2104 on Postgres. Twelve mutants, each on a
+commit, each failed a test; one survived at first, the Project's first contribution read as the Campaign's, and gained its test.
+
+**Who ruled.** The owner, 2026-11-05: dismiss first. The row's shape and the narrowings are the implementer's, under the
+supervisor's brief.
+
+### 24dh. A repaired test that passes on the head says nothing about the product (2026-11-05, §8.2, §10 row 19, §24cz, SIP-0104 §13f; #2933; the implementer's build, on the owner's "start on #2933")
+
+**Why.** `cmp_0a5376d902b5`'s BT-2 was abandoned at row 19 as "already met" on a head that hard-coded the behaviour's
+absence. qa's test read its fixture from the wrong path and failed, so §24cz's check, which runs when the qa task
+succeeds, hadn't run. `qa.test_repair` then replaced that fixture with an inline one missing a field the product
+filters on. The product answered with no units, every assertion sat in a loop over nothing, and the retest passed. That
+was the check's first reading: passed on the head, row 19, development's correct change discarded, and the next proposal
+told the criterion was met. Run against the head's file, the product returned `{"units":[]}` for that fixture and
+`throttle: 0` for every unit once the field was present.
+
+§24cz's reasoning holds for a test as qa wrote it. It doesn't hold for a rewrite: the head is pinned, so between a suite's
+failure and its repair only the test changed, and a pass there is news about the test.
+
+**What changed.**
+1. **The refusal (`PatchAcceptance`).** After a repair's retest passes and before it is accepted, any criterion file the
+   repair rewrote runs on the head, §24cz's way, with the repair's text laid over the stored files. One that passes is
+   refused: `REPAIR_SUITE_PASSES_ON_HEAD_MARKER` in the rejection carry, the round spent and nothing applied, as SIP-0104
+   §13f's refusal, and `repair_not_applied_in_round` reads it so the signature rule doesn't count it. The next round is told
+   which files passed and on what head. A head that can't be read refuses nothing, as in §24cz.
+2. **The backstop (`_end_if_criteria_met_on_head`).** A refused repair re-dispatches the task. If a later emission passes on
+   the head too, the run fails with no terminal kind, so the campaign reads an ordinary failure, repairs it and counts it.
+   It isn't `criteria_not_checkable`.
+3. **No record from either.** Neither reading writes `criterion_head_check`, because `_already_met_stated` tells the next
+   proposal what that record says the head meets, and a refused suite is no evidence of that.
+
+**Unchanged.** A first emission that passes on the head stays row 19. A repair that leaves the criterion files alone runs
+nothing here: a dev repair of a qa failure keeps qa's test, and the task's own check judges it as before.
+
+**Accepted cost.** A criterion the head really meets, behind a test that was only broken, now takes the failure path and is
+counted, instead of the uncounted abandonment. The two can't be told apart from a pass, and the failure path is the one that
+can't lose work silently.
+
+**Not covered.** (a) A test that is empty on its **first** emission: nothing separates it from a test of a met criterion, so it
+still ends at row 19. (b) A rewrite accepted as kept progress (#1522) in one round, then passed by a dev repair in a later one:
+that later repair touches no criterion file, so only the task's own check reads it. (c) The repair prompt itself is
+unchanged; #2933's fixture and non-empty guidance is prompt work, and the refusal's text is what reaches the next round today.
+
+### 24di. What the product already does stays inside the criterion that changes it (2026-11-06, §8.2, §10 row 19, §24cl, §24cz; #2935; the implementer's build, on the owner's "yes" to fixing #2935)
+
+**Why.** `cmp_20ff28fb82ef`'s BT-2 asked for full throttle when the match allows it and 0 otherwise. The head stands
+still, so the second half already held. The proposal made it a criterion of its own: T1 read `fails_on_head`, T2
+`no_baseline_failure`, §24cz's rule ended the run, and row 19 abandoned the item with a sound increment in hand.
+
+**What changed.** `request.strategy_propose_product_increment` shows the case: a half that already holds goes inside the
+criterion that changes it, whose test then fails on the head as a whole. §24cz's rule stands. Relaxing it to "every
+criterion passes" was considered and dropped, because acceptance's discrimination read (§24cl) would still refuse T2 as
+`no_baseline_failure`, after a cycle and a repair.
+
+**Not changed, for the owner's ruling.** Row 19 says the campaign proposes anew, but on a goal-set Campaign the item reads
+`abandoned` and is skipped (SIP-0115 §5.3), so its `already_met` brief reaches the next item's proposal instead. That
+is §5.3's rule, so it stays until the owner rules on it.
+
+**Evidence.** Cycle `cyc_e8fb13d8e3bf`, run `run_36f8952e9066`, its `criterion_head_check` record. Test:
+`tests/unit/capabilities/test_strategy_propose_product_increment.py`, through the real render.
+
+### 24dj. A product's declared reading of an accepted increment (2026-11-06, §8, §24cd point 6, §24df; #2938; the Spark lane)
+
+**What changed.** A repository-backed increment was judged only by criteria the squad wrote. Run in battle-trainer's provider engine on
+2026-11-06, every accepted head lost all four matches against the house bots, and two scored exactly what the hold-still baseline
+scores, because a criterion such as "every order's throttle is 65536" can be met by a tank driving into a wall. So a product can now
+declare **readings**: `technical.commands.readings`, each an `id` and an `argv`, optional and additive.
+
+1. **Where it runs.** After the verdict is formed, in `evaluate_product_increment`, on the candidate, in the sandbox's disposable copy,
+   after the product's setup, for at most 300 seconds.
+2. **What it records.** The last non-empty line of its stdout, a JSON object, because the sandbox keeps only the output's tail. The
+   record is `{id, argv, exit_code, reading}`, with `error` saying why when there's no result.
+3. **It reports.** The owner ruled this report-only on 2026-11-06. A reading never changes a verdict, and nothing that goes wrong with
+   one can fail an increment. A nonzero exit with a result is still reported.
+4. **Who reads it.** The `increment_evaluation` document, the promotion's binding, the digest (`read <id>: …`), and each open gate's
+   evidence as `latest_readings`.
+
+**The boundary.** Readings are development evidence on inputs the squad can see, so they are not SIP-0113's held-out evidence: sealed
+cases stay out of this path, and rung 3's pre-registered threshold is unchanged. It doesn't rule Q49 or Q50 of the Battle Training Squad
+Harness draft, of whose I1 it is the first part.
+
+**The evidence.** `tests/unit/campaigns/test_product_readings.py` enters at `evaluate_product_increment` and runs in the real sandbox
+service, and `test_campaign_branch.py` enters at the completion boundary and reads the promotion's row.
+
+**Not built.** A reading runs on the candidate alone, not the head beside it, so a change is read by comparing rows. The match
+recording itself stays out of the record, which holds the summary. The replay viewer still records versions by hand after a Campaign,
+so #2938 stays open for that.
+
+**Who ruled.** The owner: placed before the counted Campaign, and report-only (2026-11-06). The Spark lane chose `technical.commands`,
+beside the checks, over a flag on a check, since a check's failure is a verdict.
+
+### 24dk. The squad is shown its own reading (2026-11-07, §24dj; #2944; the Spark lane)
+
+**What changed.** §24dj's reading went to the record, the digest and the gate, and to nobody who builds the product. The only way play
+evidence had shaped a next increment was a person reading it and writing a goal. So a goal-set Campaign's proposal now carries the
+reading on the Campaign's latest promotion that has one, as it was read, up to 2,000 characters a reading. This adds a reader to
+§24dj point 4.
+
+**What didn't change.** A reading still reports (§24dj point 3): the request says it doesn't decide acceptance. Sealed cases stay out of
+this path. A Campaign's first proposal has no reading to show, since its log has no promotion yet, and a Campaign that names a
+requirements source shows none.
+
+**The evidence.** `test_product_proposal.py` enters at `RunProvisioning.prepare` and reads what the proposal is given, and
+`test_strategy_propose_product_increment.py` enters at `handle()` and reads the prompt.
+
+**Not built.** The squad choosing its own next item under an outcome goal (#2944's other question): the owner's ruling of 2026-11-07 is
+that the backlog's goals are written for it, so §5.3 of SIP-0115 stands.
+
+**Who ruled.** The owner, 2026-11-07: "The goal of squad ops is to learn and improve" product quality without an outside hand on the
+scales, and "Agree go" to showing the squad its readings before the next Campaign.
+
+### 24dl. The supervisor outside is the operator (2026-11-07, SIP-0115 §10e)
+
+**What changed.** The product calls whatever drives a Campaign from outside the operator, and names no external tool. The
+guarantee "no launch beside a crew model" (§24 and its readers) reads "no launch beside an operator model": what it reads is
+unchanged. No route, scope or field changed. Earlier sections keep their words as the record of their rulings.
+
+**Who ruled it.** The owner, 2026-11-07, as SIP-0115 §10e records.
+
+### 24dm. The replay viewer is the product's own tool (2026-11-08, §24dj; #2938; the owner's ruling R4 in the 2.7 plan)
+
+**What changed.** §24dj left one part of #2938 open: the replay viewer recording a new version with no step by hand. That
+viewer isn't SquadOps code. It lives in battle-trainer's own repository (`tools/viewer/`, battle-trainer PR #3), and
+SquadOps has nothing to build for it. So the ledger row is dropped from this SIP's scope. §24dj's readings, report-only
+and run in the sandbox at each accepted increment, are unchanged.
+
+**The evidence.** §24dj's "Not built" paragraph, and battle-trainer PR #3, which carries the viewer's versioning.
+
+**Who ruled it.** The owner, 2026-11-08: R4 of `docs/plans/2-7-0-plan.md`, "close #2938's SquadOps remainder after the
+numbered scope amendment and a linked product-side record for the viewer work".
+
+### 24dn. A re-attached cycle whose execution raises outside a run ends `run_failed` (2026-11-08, §12a, §24am; #2931; the Spark lane, the 2.7 plan's Track B)
+
+**What changed.** §12a's startup re-attach resumes a cycle the process died inside. `execute_run` maps a failure
+inside a run to a terminal status, but nothing handled one in the loop around the runs: re-entry's position lookup, the
+forwarding rebuild, a gate's reading. After the 2026-11-05 power loss, an empty artifact metadata file made that loop
+raise during a re-attach. The launcher only logged it (`campaign_cycle_execution_raised`), so the run stayed `running`
+with no owner and the Campaign stayed `building` with no row.
+
+Now such an escape ends the cycle through the completion boundary, as any failed run does:
+1. **The cycle's latest run, when still live** (`running` or `queued`), is failed. Its failure reason names the escape.
+2. **A completed run is left completed.**
+3. **The cycle ends `run_failed`,** so its Campaign hears it and repairs, counts or escalates by its own rules.
+
+The exception is still raised, so the launcher still logs it.
+
+**Left as they were:**
+- a cancellation;
+- a failure while the process is stopping, which §24am leaves for the next re-attach (#1929);
+- a cycle whose ending is already recorded.
+
+**The evidence.** `tests/unit/cycles/test_execute_cycle.py::TestAnEscapeOutsideARunEndsTheCycle`, entered at
+`execute_cycle`, the call the launcher's re-attach makes. The vault half of #2931 is in the adapter: an unreadable record
+no longer fails a listing, and a read that needs it gets a typed error.
+
+**Who ruled it.** The owner adopted the 2.7 plan on 2026-11-08 (its Track B and §4.2), with the line's judgement
+calls delegated.
+
+### 24do. A pass on the head says the test proved nothing about the work: qa's first emission is refused to its author too (2026-11-08, §8.2, §10 row 19, §24cz, §24dh; #2933; the owner's ruling D1, option (a), of 2026-11-07, and the 2.7 plan adopted 2026-11-08)
+
+**Why.** §24dh refused a repaired test that passes on the head and left one form open ("Not covered (a)"): a test that's
+empty on qa's **first** emission still ended at row 19 as already met. `cmp_ff52e424aea1`'s BT-9 (`cyc_5e313d0c7a3d`) was
+that form. `test/criterion_BT9_T1.test.js` iterated `unit.blocked` as an array while `play()` returns a number, so the loop
+never ran, all 16 tests passed having checked nothing, and row 19 abandoned the item. Measured on that head, 340 of 480
+tanks over the 160 games had a blocked run of 100 ticks or more. Nothing separates such a test from a test of a criterion
+the head really meets, so the owner ruled on the pass itself.
+
+**The rule.** A pass on the head says the test proved nothing about the work, never that the behaviour exists.
+
+**What changed.**
+1. **The refusal, before acceptance.** On a repository-backed increment, an emission the qa task reported succeeded is
+   read on the head before anything accepts it (§24cz's check, moved ahead of the collection). The read happens at the
+   dispatcher's success (`TaskDispatcher.dispatch_with_retry`'s `screen_success`, which is the executor's
+   `_screen_on_head`), and at a pass on the product's runner (#2818), which is the same emission's. The tree is the head,
+   with the run's stored criterion files and the emission's files laid over them. The first emission that passes there
+   becomes a failure (`criterion_head_check.refused_on_head`). It keeps the emission's files and verification rows, adds
+   the head's reading under `criteria_pass_on_head`, and has a semantic failure's outcome. So:
+   - **the correction loop sends it to `qa.test_repair`, deterministically.** The locus classifier reads
+     `criteria_pass_on_head` as the suite's own defect (`classify_failure_locus`), and the repair's target is the file
+     that passed (`_locus_and_repair_target`). The correction policy patches it whatever the lead decided, **`abort`
+     included** (`correction_policy`'s fourth anchor, `criterion_passes_on_head`). The override is disclosed on the
+     ledger and the event, as every override is. The lead's `abort` is not the hard stop the first anchor protects: the
+     refusal is the executor's own reading, and an abort would end the run without the round the ruling grants.
+   - **One repair round is spent**, as §24dh's refusal spends one.
+   - **The round is told** which criterion files passed on which head, in the rejection carry (the repair brief's
+     "prior repair rejected" block), as §24dh's next round is.
+   - The reading is diagnostic, not a check. It stays out of `validation_result.checks`, because a failed row there would
+     stay failed in the run's ledger after a repair that passes.
+2. **The allowance is one refusal per task** (`_Correction.refused_on_head`), kept in run state. It isn't read from the
+   carry, which keeps only three entries. §24dh refusing a repair of the task spends it too.
+3. **When the allowance is spent, §24dh's backstop applies, on every path.** After the collection,
+   `_fail_if_criteria_pass_on_head` uses the screen's reading, so the head is run once per success. It reads the head
+   itself where no screen did: the allowance spent, or an emission accepted through a repair, which no screen sees.
+   A pass there fails the run with no terminal kind. The campaign reads an ordinary failure (row 8, repaired) and
+   counts it. It is never `criteria_not_checkable`.
+4. **No record holds a pass.** `criterion_head_check` is stored only for a reading in which nothing passed on the head
+   (`store_head_check` refuses any other). `_already_met_stated` reads that record for the next proposal's "already met",
+   and a pass on the head is no evidence of it. A reading in which every file failed is stored as §24cz stored it.
+
+**Row 19 and `criteria_not_checkable` after this.** No executor path ends a run `criteria_not_checkable` any more. The
+first pass is refused, and every later pass is an ordinary failure. What stays is every reader of the ending: the terminal
+kind, the `CycleStopReason` (migration 2003), `CycleEnding.CRITERIA_NOT_CHECKABLE`, row 19 and `already_met_on_head`.
+The stop reason is persisted, and a cycle that ended that way before this deploy is re-heard as that after a restart. So
+row 19 is now reached only by an ending recorded before this change. **This bears on R3** (#2935's remainder: one automatic
+re-proposal after a row-19 ending, SIP-0115 §5.3). That design has no new ending to act on. Nothing here rules on it: R3
+is for the owner to re-read before it's built.
+
+**Preserved.** Every new criterion must still discriminate: acceptance's discrimination read (§24cl) is unchanged and stays
+the last line. A head that can't be read refuses nothing, as in §24cz: no sandbox, no clone, no runner with a test-id
+reader, a sandbox error, a read that fails. A cycle that pins no source is untouched, and so is every task that isn't the
+qa suite's author. §24dh's refusal of a repair is unchanged.
+
+**Divergence from the 2.6.1 plan's wording.** The 2.6.1 plan's option (a) said the item "is abandoned only if the round ends
+the same way". The adopted 2.7 plan's contract replaced that: the round ending the same way is an ordinary counted
+failure, never row 19. This section builds the 2.7 contract.
+
+**Accepted cost**, §24dh's, now on the first emission. A criterion the head really meets now takes the failure path and is
+counted. That includes a guard criterion, one saying a behaviour stays as it is, which passes on the head by nature (#2935's
+T2). It doesn't get the uncounted abandonment. §24di's brief keeps such a half inside the criterion that changes it. A
+pass can't tell a met criterion from an empty test, and the failure path is the one that can't lose work silently.
+
+**The seam table** (CLAUDE.md, typed checks: every seam that evaluates the qa task's criteria, the tree each one sees, and
+the outcome on a tree that lacks the criterion's file):
+
+| seam | where | the tree | the file absent |
+|---|---|---|---|
+| the emission (`qa.test`) | the qa role's container | the accepted workspace, development's emission, its own emission | the task's expected artifact is absent: a failed emission, the correction loop's (unchanged) |
+| **the screen** (this section) | runtime-api, the sandbox, before the emission is accepted: the dispatcher's success, and a pass on the product's runner | the head (the pin's non-test files, seeded as a checkout), the run's stored criterion files, and the emission's files laid over them; nothing else of the run's | no criterion file among the emission's files: nothing read, the emission goes on, and the step after the collection reads nothing either |
+| the re-judged suite (#2818, #2877) | runtime-api, the sandbox, on a failed `qa.test` | the pin seeded as a checkout, the run's tree on it (development's emission and its removals), the emitted tests beside it | not re-judged (unchanged); a pass it gives is now screened |
+| the qa repair (`qa.test_repair`) | the qa role's container | the accepted workspace, the refused emission's files (`forwarded_failed_artifacts`), its own patch | its target is the file that passed on the head; an empty emission is refunded (#1053), unchanged |
+| the verifier (patch verification) | runtime-api | the accepted workspace, the refused emission's artifacts, the repair's patch laid over them | the failed task's typed criteria on that overlay, as for any qa repair (unchanged) |
+| the file-owned gate (#870) | runtime-api, inside patch verification | the same overlay, and the contract's criteria owned by the patched files | no file of the overlay owns a criterion: the gate adds nothing (unchanged) |
+| the retest (#2881) | runtime-api, the qa image or the product's runner | the failed task's own suite with the repaired files | unchanged |
+| §24dh's read of the repair | runtime-api, the sandbox, before the repair is accepted | the head, the stored criterion files, the repair's rewritten criterion files over them | the repair rewrote no criterion file: nothing read, and the step after the collection reads the stored ones |
+| **the step after the collection** (`_fail_if_criteria_pass_on_head`) | runtime-api, the sandbox, once the qa task's emission is stored | the head, the stored criterion files as delivery reads them (the path's latest accepted content from a test author) | no criterion file stored: not checked, logged; the cycle proceeds |
+| acceptance (§24cl) | runtime-api, the sandbox, at delivery | the head and the candidate, the criterion's bundle frozen from the candidate on each | `BundleIncomplete`: `not_run`, blocked, never met (unchanged) |
+
+**The evidence.** The rule and the ruling are #2933's two live cases: `cmp_0a5376d902b5` BT-2 (a repaired test, §24dh) and
+`cmp_ff52e424aea1` BT-9 (a first emission, this section). Tests, each naming the bug it catches:
+- `tests/unit/cycles/test_criterion_head_check.py`, entered at `_execute_sequential` on the shared fixture's Tally, each
+  task dispatched by the executor's own dispatcher. **The wiring test** is
+  `test_a_first_emission_passing_on_the_head_is_refused_to_its_author_then_fails_the_run`. A first emission that passes on
+  the head dispatches `data.analyze_failure`, `governance.correction_decision` and then `qa.test_repair`, never
+  `development.correction_repair`. The lead's `abort` is overridden on the ledger. The repair is given the head's reading
+  and the refusal's carry. Its rewrite still passes (§24dh), the re-dispatch does too, and the run fails with no terminal
+  kind and no record. Beside it:
+  - a repair that fails on the head is accepted and delivered;
+  - a re-dispatch that discriminates is delivered;
+  - a product-runner pass is screened;
+  - a criterion failing on the head proceeds, reading the head once;
+  - the four can't-read cases and the two failed reads refuse nothing;
+  - a cycle with no source is untouched;
+  - the record never holds a pass;
+  - every post-collection pass fails with no kind.
+- `tests/unit/cycles/test_task_dispatcher.py`: a screened success is routed and its re-dispatch screened, with the events in
+  order.
+- `tests/unit/cycles/test_correction_policy.py`: the fourth anchor; `tests/unit/cycles/test_failure_evidence.py`: the
+  refused result's locus and target.
+- `tests/unit/campaigns/test_progress.py`, entered at `CycleCompletion.end`: such a failed run is row 8, repaired, counted,
+  and nothing it launches carries `already_met`.
+
+The tests were mutation-checked: removing the screen, the dispatcher's call to it, the product-runner screen, the policy
+anchor, the locus, the repair target or the record's guard each turns a named test red.
+
+**Not covered.** The refusal can't stop a vacuous test from being written; it spends a round on one. The repair brief's
+fixture and non-empty guidance is prompt work (the 2.6.1 plan's item 5). The refusal's carry line is evidence text, written
+where §24dh's is.
+
+**Who ruled it.** The owner, 2026-11-07: D1, option (a), "yes to both", built first in 2.7 (the 2.6.1 plan §3). The 2.7 plan,
+adopted 2026-11-08, wrote out the contract: refused to `qa.test_repair` before acceptance, §24dh's backstop once the
+allowance is spent, never `criteria_not_checkable`, no record. The implementer chose:
+- the screen at the dispatcher's success and at the product runner's pass;
+- the outputs key in place of a check row;
+- the policy anchor overriding `abort`;
+- the allowance kept in run state;
+- the read after the collection reusing the screen's reading.
+
+### 24dp. A page criterion on a vitest product loads its view through a page loader the framework places (2026-11-08, §8.1, §8.2, §24ci (a), §24cj, §24cp, §24cz; SIP-0112 H.4, H.7; #2799; the 2.7 plan's Track A, adopted by the owner 2026-11-08, option 1; the Spark lane's design under it)
+
+**What was wrong.** A page criterion's test on a vitest product imported the view its change adds. On the accepted tree
+that module doesn't exist, and Vite's import analysis refuses the test file when it transforms it, so vitest reports a
+failed suite. §24ci (a) reads that as `only_setup_failures`, and rightly: the test never reached what it asserts. So the
+increment was refused however correct the build. `cmp_73535ccef891`'s increment `cyc_7cbdae00b2ed` on `prj-shelfnote`
+read it on T3, T4 and T5 (2026-10-29), though the page rendered and its anchor held (§24cp). #2749 solved the same shape
+for the Next.js sample stack with a frozen `loadPage`. A product has no skeleton, so nothing gave its tests a way to fail
+as an assertion on a tree without the page.
+
+**What changed.** §24ci (a) is unchanged. The fix gives a page criterion's test a way to reach its assertion:
+1. **Placement (§24cj point 5) places a page loader** beside the criterion's file
+   (`campaigns/criterion_placement.py`, `RunnerPlacement.page_loader`), on these conditions:
+   - the criterion is a page criterion (`client_route`);
+   - its runner is the one the derived profile names `vitest`;
+   - its file is `.jsx` or `.tsx`;
+   - the runner's pattern wouldn't collect the loader as a test.
+   The loader is `criterion_page_loader.js`, or `.ts` beside a `.tsx` test. Its `criterion_` stem is the placed files'.
+   The rails store it on the criterion's placed file (`PlacedCriterionFile.page_loader`), which is derived and hashed
+   with the placement. It is left out of the document when empty, so every request stored before this keeps its
+   document and its hash. A stored loader that isn't the one beside its file, or that sits on another kind of
+   criterion, is refused by `placement_inconsistency`. The loader is never in the footprint: the build doesn't write it.
+2. **The loader** (`campaigns/page_loader.py`): `loadView(path)` imports a view module through a run-time import Vite
+   leaves alone (`/* @vite-ignore */`, a variable path), resolved from the loader's directory, the test's own.
+   - **Where no module is at the path,** it returns a component that renders a not-found marker. The test then fails
+     at its anchor's assertion (a `TestingLibraryElementError` under vitest 2.1.9), and the vitest reader reads that as
+     the test's own failure.
+   - **A module that exists is imported as it is.** An error it raises as it loads stays its own: a `ReferenceError` is
+     still setup. So the loader turns only absence into an assertion failure, never a broken module.
+3. **Every tree a criterion's test runs on holds the loader.** Before delivery, nothing has written it into the
+   candidate, so it is laid in from the test scope (`increment_test_scope.page_loaders`):
+   - the qa suite's run tree (`qa_run_tree.suite_run_tree`), for the qa image, the product runner's re-judgement and
+     re-read, and a retest. The retest now forwards the scope (`RETEST_PRESENCE_KEYS`);
+   - §24cz's head check, from the change request.
+   At delivery, the loader is written into the candidate over whatever the squad wrote at its path
+   (`source_delivery.with_framework_files`). So the tree verified, captured and judged holds it as the framework
+   wrote it.
+4. **The evaluator counts the loader a placed test file.** It reads the loaders from its inputs
+   (`increment_evaluation_inputs`' `increment_page_loaders`, present only when one is placed) and hands them to
+   `evaluate_on_runner(placed_support=...)`. So:
+   - a bundle whose test imports it is frozen with it (§8.1);
+   - the accepted tree's overlay takes it from the bundle, since the accepted tree has none;
+   - a later increment's re-run of the frozen criterion, and a rebase's (§24cd point 5), load the view through the
+     bundle's copy, whatever the head holds.
+5. **The qa author is shown it**: `request.increment_page_loader_appendix`, from the scope's `page_loaders`, with the
+   loader in full and the idiom. It reaches `qa.test` and its repair, which inherits the scope (`REPAIR_PRESENCE_KEYS`).
+
+**Where each seam reads the loader** (CLAUDE.md, typed checks; no typed check is bound or changed, and §24ch's
+containment judges nothing on a product, which has no stack):
+
+| seam | where | the tree it runs the criterion's test on | without the loader |
+|---|---|---|---|
+| qa's emission | the qa image; then the product's runner in the sandbox (H.18, H.19) | the pin's non-test files, the scope's loaders and the suite | the file fails at its import: a failed suite, read as the qa role's (`suite_broken`) |
+| the qa repair, and its retest | the qa container; the retest on the product's runner | the scope's loaders beside the repaired suite (the retest forwards the scope) | as above, every round |
+| a dev repair of a qa failure (#2881) | the product's runner | the failed suite, the patched source and the scope's loaders | as above |
+| the verifier (patch acceptance) | runtime-api | the retest's reading, and §24dh's head reading, each on a tree with the loaders | as above, or no reading |
+| the head check (§24cz) | the sandbox, on the pin | the pin, the criterion files and the change request's loaders | fails at its import on every head, so a test that would pass there is never refused to its author (§24do) |
+| delivery | the sandbox | the head and the squad's change, with the framework's loaders over it | the bundle can't be frozen whole (`BundleIncomplete`): not run, blocked |
+| the evaluator, accepted side | the sandbox | the accepted tree's product files and the bundle: test, loader, support files | `only_setup_failures`, as before this change |
+| the evaluator, candidate side | the sandbox | the candidate's product files and the same bundle | the same |
+| a later increment's frozen criterion, and a rebase's | the sandbox | the later candidate's product files and the stored bundle, which carries the loader | can't happen: the bundle carries it |
+
+On a tree that lacks the loader, the test fails at its import, a setup failure. That is never a false
+discrimination and never a false hold: the worst a missing loader can do is read as this change found it.
+
+**Out of scope, and why:**
+- **jest and every other runner.** jest has no test-id reader, so its criteria are unread anyway (§24ci (a)).
+- **A page criterion's test that isn't JSX** (`.js`, `.ts`, or a Vue single-file component's test).
+- **Vitest's browser mode.** The loader reads the file system to tell an absent module from a present one.
+- **A product whose own lint or type check refuses the loader.** The `.ts` loader carries `// @ts-nocheck`. Nothing
+  answers a lint rule against it.
+- **A product file of the loader's name.** The `criterion_` stem is the placed files', so one is read as an earlier
+  increment's loader and written again.
+- **A request stored before this change.** Its page criteria are placed with no loader, and read as before.
+- **Next.js,** whose stack has #2749's `loadPage`.
+
+**The evidence.**
+- **The loader under the real runner.** vitest 2.1.9 ran the product's own `npm --prefix frontend test --silent --
+  <name>` in `node:20-slim`, with no TTY and stdout and stderr apart, over an invented React and Vite product with
+  the framework's loader as `page_loader_source` writes it. The six recordings are in
+  `tests/fixtures/findings/vitest-2.1.9-page-*.txt`:
+  - through the loader, with the view absent and present;
+  - importing the view, absent and present;
+  - the loader missing;
+  - a view that throws as it loads.
+- **`tests/unit/campaigns/test_product_page_loader.py`:**
+  - the rails' placement and its refusals;
+  - the readings by §24ci (a);
+  - the wiring at `evaluate_product_increment`, the evaluator delivery calls, on the real sandbox service whose backend
+    replays the recordings by the overlay's shape. P1, through the loader, discriminates. P2, importing the view, reads
+    `only_setup_failures`. P1's bundle carries the loader;
+  - a later increment's frozen P1: held with the loader gone from its head, broken with the view removed;
+  - delivery at `_execute_sequential`'s end of plan on the shared fixture's real clone: the captured commit holds the
+    framework's loader over the squad's copy;
+  - the qa author's prompt through `generate_task_plan` and the handler;
+  - the suite and its retest on the product's runner (`judge_on_product_runner`, `reexecute_repaired_suite`);
+  - the head check (`check_criteria_on_head`).
+- **Fourteen mutants, each caught,** among them: the evaluator ignoring the loader, delivery writing none or keeping
+  the squad's copy, the run tree, the retest and the head check without it, a loader placed for any runner or where its
+  runner collects it, and the appendix without the loader's source.
+
+**Who ruled it.** The 2.7 plan's Track A row for #2799 names option 1, the framework-placed loader. The owner adopted
+the plan on 2026-11-08, with the line's judgement calls delegated. The scope above and the loader's shape are the
+Spark lane's calls under it.
+
+### 24dq. The accepted-page inventory: the pages accepted increments added, recorded at promotion, read by the rails, the proposer and acceptance (2026-11-08, §7.2, §8.3, §9.1, §12a, §24ap, §24bv point 5, §24co items 11 and 13, §24cp item 6; #2783; the 2.7 plan's Track A, adopted by the owner 2026-11-08; the implementer's design under it, for the owner's outside review)
+
+**Why.** §24cp item 6 made an added page's anchor unique against two sets: the approved manifest's routes, with every
+test id their views carry, and the other pages the same request adds. A page an earlier increment added was in
+neither. A product's change request carries no manifest delta (§24bv point 5), so no manifest learns that page, and it
+isn't in the next request. So a later request could name that page's anchor for a page it adds. Where the candidate
+never built the new page, the single-page app's fallback rendered the earlier page there, and the new page read held.
+§24co item 13's shared-root rule couldn't catch it: it compares the anchors the renderer knew. A product with no
+approved manifest knew none of its pages' ids at all. §24cp's "Not built here" named this as #2783.
+
+**What changed.**
+1. **The record: the PROMOTE row on a campaign branch** (`_promote_onto_branch`, `campaigns/progress.py`).
+   - Its binding gains `accepted_pages`. Each entry is a page the change request added (`source: change_request`)
+     that acceptance held, with the anchor it held by and every test id its page's elements carried, the anchor first
+     (`product_routes.pages_held`). §24dr items 2 and 4 amend this: the key is written on every repository-backed
+     increment's row, empty for none, and a page of the inventory that held again is recorded too.
+   - It's read from the stored `increment_evaluation`'s `renderings` (§24co item 9). Before this item, nothing read
+     that record. Reading it keeps the binding a function of stored data (#1943), so a replayed promotion writes the
+     same row.
+   - Every id, not only the root: the fallback renders the whole earlier view, as §24cp item 6 reasoned for a pinned
+     view.
+   - A row is keyed by its accepted tree's identity (`promote:<cycle>:<identity>`), so the record is keyed by the tree
+     it made.
+2. **The inventory: the fold of every applied PROMOTE row's pages** (`progress.accepted_pages`, beside
+   `frozen_criteria`). A refused row adds nothing, and a row that added no page keeps the earlier ones.
+3. **It reaches the proposal's input, as the frozen criteria do (§24ap).** `_propose_on_branch` pins it on the launch
+   block as `campaign_proposal.accepted_pages` (`increment_launch`), only when it isn't empty. `CONTINUED_KEYS` carries
+   it into a repair's or retry's block, so a continuation's acceptance reads the same pages. A sample application's
+   launch carries none: its pages are its manifest's.
+4. **The rails** (`_anchor_refusals`, `campaigns/change_request.py`). The proposal handler reads the block's inventory
+   into `ProductContext.accepted_pages` (`planning/proposal.product_context`).
+   - **An accepted page is judged like a pinned one.** A criterion on it names no anchor, or is refused as
+     `anchor_on_judged_route`, since acceptance reads it by the anchor it was accepted with.
+   - **An added page's anchor is unique against its ids too.** `anchor_conflicts` now reads the manifest's views and
+     the inventory, merged per route by one function, `pages_carrying`, which the renderer calls too. A reuse is
+     refused as `anchor_not_unique`, naming the earlier page.
+   - **A product with no approved manifest** is covered by the same inventory. `route_anchors` is empty there, so the
+     inventory is all the rails hold against.
+   - An inventory record the handler can't read (no route or no anchor) fails the proposal
+     (`product_routes.page_inventory`). It's the only record of those anchors, so it's never skipped.
+5. **The proposer is told** (`request.proposal_judged_routes`, version 2). Each accepted page is listed with the pages
+   acceptance already reads: `` - `/totals`, added by an earlier increment: its page carries `totals-view`,
+   `totals-row` ``. The asset gains one sentence: each of those ids is taken. The section renders when the profile
+   pins a page or the inventory holds one, so a launch with neither is shown what it was before.
+6. **The renderer's expected set** (`DeclaredStartRoutes.render`, `scenarios/declared_routes.py`). The
+   `RouteRenderer` protocol takes `accepted_pages`, required, and `evaluate_product_increment` hands it the block's
+   inventory.
+   - **The earlier pages join the expected set at acceptance.** Each is judged by its recorded anchor, as a pinned route
+     is by its manifest's. So a candidate that drops one reads broken, and the increment is rejected. Its record
+     names `source: accepted_page`.
+   - **An added page reusing one of their ids** is blocked, `the change request names an anchor another page carries
+     (<page>)`, on a request stored before item 4. Where it reuses the earlier page's root, that page is blocked too, by
+     §24co item 13.
+   - A route that's in the inventory and pinned by the profile is judged once, by its pin. A route that's in the
+     inventory and named by the request is judged by its recorded anchor, whatever the request names.
+
+**The choice: a record written at acceptance, not the frozen criteria's anchors.** The issue named both sources. A
+frozen criterion's record would have to carry its `client_route` anchor, and the inventory would be read from those
+records. That was rejected for three reasons:
+- **A criterion can be retired** (`retired_criteria`), and the page it was on stays in the tree. An inventory read
+  from the frozen criteria would lose that page's anchor, and reopen this issue's failure.
+- **A criterion freezes only with a bundle** (`new_bundles`). What it records is what the request asserted, not what
+  acceptance held.
+- **The renderer's own reading is the evidence.** The ids recorded are the ones the page's elements carried when it
+  held, at that tree. A criterion names one anchor.
+
+The PROMOTE row is written at acceptance, keyed by the accepted tree's identity, and part of the transition's replay
+identity, so it's the record the plan's scope asks for.
+
+**The seam table** (CLAUDE.md, typed checks): where an added page's anchor is checked, and what each seam sees.
+
+| seam | process | what it reads | on a tree without the earlier page |
+|------|---------|---------------|------------------------------------|
+| promotion (`_promote_onto_branch`) | runtime-api | the stored evaluation's `renderings`: the routes judged from the change request that held | records nothing for that page: an unheld page is never recorded |
+| launch (`_propose_on_branch`, `increment_launch`) | runtime-api | the control log's applied PROMOTE rows | the inventory still names the page: it was accepted on an earlier tree |
+| continuation (`_bound_launch`, `CONTINUED_KEYS`) | runtime-api | the failed cycle's block | carries the pinned inventory unchanged |
+| the rails (`validate_proposal`, `_anchor_refusals`) | nat, the proposal task | the launch block's inventory, beside the input's approved manifest | no tree is read: the anchor is refused as taken |
+| the proposer's prompt (`product_sections`) | nat | the same block | lists the page and its ids |
+| acceptance (`evaluate_product_increment`, `DeclaredStartRoutes.render`) | runtime-api, the sandbox's runner reading pages | the block's inventory, pinned at launch, rendered on the candidate | the earlier page reads broken (its anchor missing), and the increment is rejected; an added page reusing its anchor is blocked |
+| unchanged: the plan gate, the authors' views (`increment_views`, the test scope's `views`), and the rebase's frozen bundles | runtime-api, the roles | the change request's own pages | not affected |
+
+**Rollout** (corrected by §24dr item 4; this first version was wrong, and is kept as written so the record shows it).
+- ~~**What stays byte-identical:** every PROMOTE binding of an increment that added no page, every sample
+  application's launch block, and every launch block of a campaign with no accepted page. Each key is written only
+  when set.~~ Every sample application's launch block stays byte-identical. Every repository-backed increment's
+  PROMOTE binding and launch block now carries `accepted_pages` (§24dr item 4).
+- ~~**A skewed deploy fails closed.**~~ It didn't: an old runtime-api writes no inventory and makes no new acceptance
+  check, and a new nat read the missing inventory as empty, which keeps the original false acceptance. §24dr item 4
+  is the contract: the new nat and the new runtime-api each refuse a block without an inventory, and a deploy proves
+  both images by their loaded checks.
+- **The replay hazard** is wider than written here: any repository-backed increment's promotion attempted on the old
+  runtime-api and re-heard on the new one (§24dr). Its binding then differs, and the replay is refused as a
+  conflicting key (#1943's class). The 2.7 plan deploys nothing while a Campaign runs (§4.2).
+- **The loaded checks** `2783-runtime` and `2783-nat` (`scripts/dev/loaded_checks.yaml`) each answer their `expect`
+  on the source.
+
+**Not built here:**
+- **The inventory is one Campaign's.** A second Campaign on the same product starts with none, so the pages an
+  earlier Campaign's contribution added are known to it nowhere, as before this item. Filed as #2997.
+- **A page is never retired from the inventory.** A change that removes an accepted page is rejected, as one that
+  removes a pinned route is. Retiring one would be a typed field of §7.2's request, with its own design.
+- **A rebase onto a moved upstream** (§24cm) runs the frozen bundles, and doesn't render the accepted pages.
+- **An id the earlier page hid in markup** (§24co item 13) isn't recorded. A fallback rendering of that page doesn't
+  count it either, so the two readings agree.
+
+**Evidence.**
+- **The wiring, entered at the live callers:**
+  - `test_campaign_branch.py::test_the_pages_an_accepted_increment_added_reach_its_promotion_and_the_next_launch`:
+    `CampaignProgress.cycle_ended` on Tally's real campaign branch. The PROMOTE row records `/totals` and the ids its
+    page carried, not the pinned `/`, and row 7's launch block carries it. An increment with no page writes no key
+    (`test_an_accepted_increment_moves_the_branch_to_its_capture`).
+  - `test_strategy_propose_product_increment.py`: `handle()` with the real assets, on a product with no approved
+    manifest. The proposer is shown `/totals` and its ids, `/summary` reusing `totals-row` is returned as
+    `[anchor_not_unique]`, and only the revision's own anchor is stored. An unreadable inventory fails the task before
+    the model is asked.
+  - `test_product_runner_acceptance_wiring.py`, at the executor's end of plan (`_execute_sequential`): **the issue's
+    acceptance case.** The launch pinned `/totals`, and the request, stored before the rule, adds `/summary` naming
+    `totals-view`. The candidate never builds `/summary`, and the fallback renders the totals view there. `/summary`
+    and `/totals` read blocked, and the increment isn't accepted. A candidate that drops `/totals` is rejected with
+    `route /totals: missing totals-view`.
+  - `test_progress.py::test_a_continuation_carries_the_increments_keys_and_its_own_lineage_and_nothing_else`: a
+    retry's block carries the inventory.
+- **The rails:** `test_product_change_request.py` refuses a reused root and another recorded id, beside a manifest and
+  on a product with none, and judges a criterion on an accepted page by its accepted anchor.
+- **The renderer:** `test_product_routes.py` judges an accepted page held, or broken when the candidate drops it,
+  beside a manifest and with none, and blocks a page never built that reuses its root or another id.
+- **The record and the fold:** `test_accepted_pages.py`.
+- **Twenty mutants, each caught** (listed in PR #2998's evidence): in the rails, the inventory not judged or not held
+  against, and the merge keeping one reading; in the record, a pinned page recorded, only the root, a malformed record
+  skipped, only the root read back; at promotion, the key never written or always written; in the fold, a refused row
+  counted, only the latest row read; at launch, the inventory not passed, the block never carrying it, a continuation
+  dropping it; in the proposal, the rails or the prompt never reading it; at acceptance, the inventory not handed over,
+  the pages not in the expected set, the reuse not checked against them, or an accepted page judged as added.
+
+**Who ruled it.** The 2.7 plan's Track A row for #2783 sets the scope, adopted by the owner on 2026-11-08. Reading the
+record from the PROMOTE row and not the frozen criteria, recording every id the page carried, judging an accepted page
+like a pinned one, and blocking the reuse at the renderer too are the implementer's choices. It changes what a
+proposal is shown, so it takes the outside review SIP-0112 H.12 provides before it merges.
+
+### 24dr. The accepted-page inventory after its outside review: the candidate's own pages, refreshed records, a pinned page's ids kept, and a deploy that refuses what it can't read (2026-11-08, §24dq; #2783; the owner's outside review of PR #2998 at f259eb71, and the implementer's choices under the 2.7 delegation)
+
+**Why.** The owner's outside review of §24dq (PR #2998, at f259eb71) found three holes inside one Campaign and one false
+rollout promise. The reviewer reproduced the first and third holes with §24dq's own renderer and judgement functions,
+with the infrastructure stubbed. Both returned `held` for a page that doesn't exist.
+1. **The uniqueness check read only recorded ids.** §24dq held an added page's anchor against the ids the inventory
+   recorded at acceptance, before the candidate was rendered. Take an accepted `/totals` recorded with `totals-view`. A
+   candidate puts `summary-view` inside `/totals`, and the request adds `/summary` naming `summary-view`. The candidate
+   never builds `/summary`, so the fallback renders `/totals` there, and both pages read held.
+2. **A record was never refreshed.** `pages_added_and_held` recorded only pages the request added
+   (`source: change_request`). So an accepted page kept the ids it had when it was added. A later increment could give
+   it another id, be accepted, and leave that id free for the next proposal.
+3. **A pinned route's inventory ids were dropped.** The renderer left the inventory's entry out of the uniqueness check
+   for a route the profile also pins. The rails merged both readings (`pages_carrying`); the renderer didn't. So with
+   manifest `/totals: [totals-view]` and inventory `/totals: [totals-view, totals-row]`, a stored request for a missing
+   `/summary` anchored by `totals-row` held through the fallback.
+4. **"Both skew directions fail closed" was wrong.** An old runtime-api writes no inventory and makes no new
+   acceptance check. A new nat read the missing inventory as empty. That pair keeps the original false acceptance.
+   §24dq also said nothing about a Campaign that accepted pages under the old code and is resumed under the new code.
+
+**What changed.**
+1. **The candidate's own pages** (`DeclaredStartRoutes.render`, `scenarios/declared_routes.py`). After the candidate
+   is read, an added page's anchor is also checked against every expected page as this start rendered it. A page whose
+   anchor another page carries now is blocked, `the change request names an anchor another page carries (<page>)`. The
+   recorded readings and the current reading go through one function, `_reused`, over `anchor_conflicts`.
+2. **The records are refreshed** (`product_routes.pages_held`, renamed from `pages_added_and_held`).
+   - A promotion records each page the request added that held, and each page of the inventory its launch pinned that
+     held again. For an inventory page, that includes a route the profile also pins.
+   - Each record has its anchor and every id its page carries now.
+   - An inventory page keeps its accepted root. The renderer's record names it as `accepted_root`, and the recorder
+     writes the page under it.
+   - The fold (`progress.accepted_pages`) already let a later row's record of a route replace an earlier one's. So the
+     next launch pins the ids the accepted tree's page carries now.
+   - This adds to item 1; it doesn't replace it. A record is what the page carried when it was accepted. Item 1 reads
+     what the candidate carries.
+3. **A pinned route's inventory ids stay taken** (`declared_routes.py`). The renderer's uniqueness check reads
+   `pages_carrying(manifest views, every inventory entry)`, as the rails do. The route is still judged by its pin's
+   root. Its record names `source: approved_manifest`.
+4. **The rollout contract, enforced** (corrects §24dq's **Rollout**).
+   - **Every repository-backed increment now carries the key.** Its PROMOTE row and its launch block write
+     `accepted_pages`, an empty list when there are no pages (`_promote_onto_branch`, `increment_launch`). Before,
+     the key was written only when the list wasn't empty. So a row or a block without the key was written before
+     §24dq, and is never read as an empty inventory.
+   - **The new nat refuses an old runtime-api's block.** The proposal handler reads a repository-backed block's
+     inventory as required (`product_context(..., required=True)`). A block without one fails the proposal task
+     (`AcceptedPagesUnreadable`, inside `ProposalContextMissing`) before the model is asked.
+   - **The new runtime-api refuses an old launch at acceptance.** `evaluate_product_increment` reads the inventory as
+     required too, so an increment launched before the deploy is refused (`ProductAcceptanceRefused`), never judged
+     against an empty inventory.
+   - **An old nat with a new runtime-api** ignores the inventory at the rails. Acceptance still applies all of
+     §24dq and items 1–3 after the build, so a reused anchor is blocked there. It's a later refusal, not a false
+     acceptance.
+   - **What a deploy has to prove.** Before relying on the fix, both images have to answer their loaded checks:
+     `2783-runtime` (runtime-api: the refreshed record, the refusal of an old row and an old block, the current-reading
+     check) and `2783-nat` (nat: the inventory read and the refusal of a block without one)
+     (`python scripts/dev/verify_loaded.py --only 2783-runtime`, then `--only 2783-nat`). A deploy where only one of
+     them answers is a mixed deploy. The refusals above make it fail closed, but it is not a supported state.
+5. **Resumable Campaigns that accepted pages under the old code.** An applied promotion of a repository-backed
+   increment with no `accepted_pages` key was written before §24dq. `progress.accepted_pages` raises
+   `AcceptedPagesUnreadable` for it. A calibration's promotion adds no page and isn't checked. `_propose_on_branch`
+   reads the inventory before the proposal launches, so the Campaign escalates with the refusal as its `unbuilt` reason
+   instead of launching. The reason names the Campaign, the cycle, the control-log row's seq and its entry id.
+   - **How an operator finishes such a Campaign:** abort it. Its closing row records the contribution due (§24dc),
+     and the supervisor contributes the accepted increments as for any close. A new Campaign on the product starts with
+     an empty inventory, which is #2997's limit.
+   - **Why it's a refusal and not a backfill.** A deterministic backfill appended to the log would need the old
+     acceptance's stored reading of every page it held. The `increment_evaluation`'s `renderings` (§24co item 9) holds
+     that reading only where the renderer ran. An acceptance from before §24co stored none, so a stored `renderings:
+     null` reads the same whether the renderer judged no route or never ran. Also, the PROMOTE row names the cycle but not the run whose
+     evaluation it read. On the live deploy at this amendment's date, the latest repository-backed increments'
+     evaluations (`cyc_17da06e75b68`, `cyc_2efc17faf3e5`, `cyc_1b8c34e17db2`) all carry `renderings: null`. A backfill
+     couldn't be shown exact, so the Campaign is refused instead.
+   - **What it affects.** That day, every one of the deploy's 118 Campaigns was `completed`. So no resumable Campaign
+     meets this refusal. The completed ones are never proposed again.
+6. **The persisted inventory is validated before the proposal launches** (the review's answer 5). The same read
+   (`progress.accepted_pages`) refuses a record that names no route or no anchor. It names the row, and the Campaign
+   escalates before the proposal's task runs. A model repair can't fix a control-log row. The handler's read
+   (`page_inventory`) stays as the backstop.
+
+**What's corrected in §24dq.**
+- §24dq's **Rollout** said every PROMOTE binding of an increment that added no page stays byte-identical, and that
+  both skew directions fail closed. Neither holds now. Every repository-backed increment's PROMOTE binding and launch
+  block gains `accepted_pages`, often `[]`, and the skew contract is item 4 above.
+- **The replay hazard is wider than §24dq said.** Any repository-backed increment's promotion attempted on the old
+  runtime-api and re-heard on the new one has a different binding, and is refused as a conflicting key (#1943's
+  class), not only one that added a page. The 2.7 plan deploys nothing while a Campaign runs (§4.2).
+- §24dq item 1's "written only when the increment added a page" and its "Each entry is a page the change request
+  added" are replaced by item 2 above.
+
+**Not built here:**
+- §24dq's **Not built here** stands: the inventory is one Campaign's (#2997), and no page is retired from it.
+- **The current-reading check covers the pages the candidate rendered.** A page the fallback renders that isn't in
+  the expected set (neither pinned, nor in the inventory, nor requested) isn't read, so it can't be compared. Items 2
+  and 4 keep every accepted page in that set.
+- **A pinned or accepted page that the candidate moved onto another page**, while the fallback renders that page at
+  its old path, isn't caught by item 1. Item 1 checks only an added page's anchor, as the review asked. It's a
+  manifest page's hole as much as an inventory page's, and nothing here makes it worse.
+
+**Evidence.** Each of the review's three regressions was run on f259eb71's code (unchanged by the merge of main) and
+failed, before any fix was written:
+- item 1: `test_product_runner_acceptance_wiring.py::test_a_page_never_built_whose_anchor_the_candidate_put_on_an_accepted_page_never_holds`,
+  at the executor's end of plan. On f259eb71 `/summary` read `held`;
+- item 2: `test_accepted_pages.py::test_an_id_a_later_increment_put_on_an_accepted_page_is_taken_for_the_next_proposal`,
+  over three increments: the recorder, the fold, then the rails. On f259eb71 the inventory kept `totals-view` alone,
+  and `/summary` naming `totals-share` was accepted;
+- item 3: `test_product_routes.py::test_a_pinned_page_the_inventory_also_names_keeps_its_accepted_ids_at_acceptance`,
+  the renderer's counterpart of the rails' overlap test. On f259eb71 `/shelves/recent` read `held`.
+
+Item 4 and item 5's refusals each have a test at their own seam:
+- the old row: `test_accepted_pages.py`;
+- the launch's escalation: `test_campaign_branch.py`, entered at `cycle_ended`;
+- the old block at acceptance: `test_product_runner_acceptance_wiring.py`;
+- the old block at the proposal: `test_strategy_propose_product_increment.py`, entered at `handle()`.
+
+Five mutants, each caught by the tests above: the required inventory not enforced, an old row read as empty, no
+current-reading check, a pinned route's inventory ids dropped, and no refresh.
+
+**Who ruled it.** The owner's outside review asked for items 1–4, answer 5's validation before launch, and keeping
+the PROMOTE row as the record. Under the owner's 2.7 delegation of 2026-11-08, the ruling was that a Campaign whose
+log has a PROMOTE row with no inventory must never read as an empty one, with a backfill preferred where the stored
+evidence is exact. The implementer chose:
+- the refusal over a backfill, for item 5's reason;
+- the key on every repository-backed row and block, as the marker;
+- refusing at both the proposal and acceptance;
+- `accepted_root` on the renderer's record.
+
+### 24ds. The supervisor's draft gate asks for the integration check first (2026-11-08, §24dc item 7; SIP-0112 H.30; #2862; the owner's ruling of 2026-11-08, option 1, and the owner's outside review of PR #3002)
+
+**What changed.** §24dc's first "What remains" item said a merge is known only by a sync, so a request merged on the
+forge stood `contribution_pending` until someone ran `POST /api/v1/projects/{id}/syncs`. SIP-0112 H.30 answers it at
+the draft. The gate stays the supervisor's, as §24dc placed it, and its first call changes:
+- **before it reads the product** to compose the next Campaign (#2855's `source-file`), the supervisor calls
+  `POST /api/v1/projects/{id}/integration-check` (`campaigns:manage`), with its own forge token or none. The check
+  syncs where a row is `contribution_pending` or `merged_not_synced`, re-validates within H.30's bounded delegation
+  where one is `merged_not_synced`, and answers the set that remains;
+- **`clear: true`** means the draft may proceed;
+- **otherwise the draft waits** and says why, from each remaining row's `waits_on` and `clears_when`. A
+  `merge_state_unread` reason (`no_token`, `no_forge`, `sync_refused`, `fetch_unauthorized`, `source_unavailable`,
+  `forge_unavailable`) means the merge wasn't read, never that it isn't merged.
+
+**The supervisor's contract on the read** (the owner's outside review, answer 1). The supervisor records the
+`integrated_commit` the check answered and composes the draft from reads at that commit. Every
+`GET /api/v1/projects/{id}/source-file` answer carries the `commit` it read. A read whose `commit` differs means the
+integrated commit moved in between, by another check or the owner's validation: the draft is discarded, and the
+check is asked again. The route takes no commit to read at, since it reads the integrated commit only (#2855).
+Holding the read to the check's commit is the supervisor's comparison, not a parameter.
+
+`GET …/unintegrated-increments` is unchanged and stays read-only. A Campaign's creation still doesn't read the set:
+the reasons are in H.30's "Where the gate is", and the outside review's answer 1 kept that (option (b), no blanket
+refusal at creation).
+
+**The evidence.** SIP-0112 H.30's.
+
+**Who ruled.** The owner, 2026-11-08: no timer, and the check at the point of use (option 1). The owner's outside
+review of PR #3002 kept the gate on the supervisor's side and set the read contract above. The call's shape is the
+implementer's.

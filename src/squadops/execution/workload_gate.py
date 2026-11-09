@@ -38,7 +38,9 @@ from squadops.campaigns.escalation import (
 from squadops.campaigns.gate import (
     INCREMENT_RULING_GATE,
     INCREMENT_SEED_PRODUCER,
+    backlog_binding_from_change_request,
     binding_from_change_request,
+    goals_revised_runs,
     submission,
 )
 from squadops.campaigns.increment_tree import (
@@ -611,8 +613,22 @@ class WorkloadGate:
             refused_framing_runs=refused,
             answered_on_record=carried,
             placed=await self._placed_criterion_files(run_cycle),
+            design_is_the_change_request=(
+                manifest is None and await self._ruled_change_request(run_cycle)
+            ),
         )
         return _TierReading(verdict, decisions)
+
+    async def _ruled_change_request(self, cycle: Cycle) -> bool:
+        """#2796: whether ``cycle`` is a repository-backed increment whose approved change request
+        is on record, the design its plan gate reads in place of a manifest (SIP-0109 §24cs)."""
+        basis = increment_basis(cycle.resolved_config())
+        if basis is None or basis.has_manifest:
+            return False
+        try:
+            return await approved_change_request(self._artifact_vault, cycle) is not None
+        except ValueError:
+            return False
 
     async def _placed_criterion_files(self, cycle: Cycle) -> tuple[str, ...]:
         """SIP-0109 §24cj: on a repository-backed increment, the criterion test files the
@@ -728,7 +744,8 @@ class WorkloadGate:
         campaign = await self._campaign_registry.get_campaign(cycle.campaign_id)
         try:
             await self._campaign_registry.transition(
-                cycle.campaign_id, submission(campaign.state, proposal)
+                cycle.campaign_id,
+                submission(campaign.state, proposal, backlog_binding_from_change_request(document)),
             )
         except ControlOperationRefused as refused:
             logger.error(
@@ -772,12 +789,20 @@ class WorkloadGate:
                 "the campaign's revision budget is declared by its launch, never defaulted"
             )
         runs = await self._cycle_registry.list_runs(cycle.cycle_id)
+        # SIP-0115 §5.5a: a return the framework made as ``goals_revised`` spends no revision.
+        not_counted = (
+            goals_revised_runs(await self._campaign_registry.control_log(cycle.campaign_id))
+            if self._campaign_registry is not None and cycle.campaign_id
+            else frozenset()
+        )
         superseded = sum(
             1
             for r in runs
-            if r.workload_type == WorkloadType.PROPOSAL and r.status == RunStatus.CANCELLED.value
+            if r.workload_type == WorkloadType.PROPOSAL
+            and r.status == RunStatus.CANCELLED.value
+            and r.run_id not in not_counted
         )
-        if superseded >= int(block["max_revisions"]):
+        if run.run_id not in not_counted and superseded >= int(block["max_revisions"]):
             return None
         document = await self._change_request_document(run)
         returned = binding_from_change_request(document)

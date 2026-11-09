@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from squadops.llm.models import ReasoningLevel
+from squadops.llm.script import SCRIPTED_MODEL
 
 
 class ReasoningControl:
@@ -148,6 +149,17 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         default_max_completion=8_192,
         reasoning_control=ReasoningControl.TOGGLE,
         family="qwen3.8",
+    ),
+    # The `machinery` squad's model (#2495): every call answered from a recorded script, no model
+    # loaded. The window is large so the prompt guard never strips a section a recorded answer
+    # was given, and the family is its own, so no Cross-Cycle Memory lesson approved for a real
+    # model's mistakes is ever supplied to it. NONE: a recorded answer has no reasoning to dial.
+    SCRIPTED_MODEL: ModelSpec(
+        name=SCRIPTED_MODEL,
+        context_window=1_048_576,
+        default_max_completion=32_768,
+        reasoning_control=ReasoningControl.NONE,
+        family="scripted",
     ),
     "llama3:70b": ModelSpec(
         name="llama3:70b",

@@ -60,8 +60,30 @@ _STRUCTURAL_SUITE_CHECKS: frozenset[str] = frozenset(
 )
 
 
+#: SIP-0109 §24do (#2933): the outputs key, and the evidence key, of a qa emission the executor
+#: refused because a criterion's test in it passes on the campaign branch's head, without this
+#: run's work: ``{"head_commit": str, "criteria": [{"criterion_id", "path", "tests_passed"}]}``.
+#: Diagnostic, not a verification check, so it never enters ``validation_result.checks``: a row
+#: there would be aggregated as a failed check that no repaired result supersedes (the lesson
+#: ``scaffold_evidence`` records below).
+CRITERIA_PASS_ON_HEAD_KEY = "criteria_pass_on_head"
+
+
 if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope, TaskResult
+
+
+def criteria_passing_on_head(failure_evidence: Any) -> list[dict[str, Any]]:
+    """The criteria whose tests passed on the head, from a refusal's evidence (§24do), in order.
+    Empty for any other failure."""
+    if not isinstance(failure_evidence, dict):
+        return []
+    refusal = failure_evidence.get(CRITERIA_PASS_ON_HEAD_KEY)
+    if not isinstance(refusal, dict):
+        return []
+    return [
+        row for row in refusal.get("criteria") or () if isinstance(row, dict) and row.get("path")
+    ]
 
 
 def prior_emission_history(
@@ -75,8 +97,8 @@ def prior_emission_history(
     real defect — and the analysis handed to the correction chain described none of it.
 
     Read from the banked artifacts (#971 banks failed emissions precisely so this is
-    possible), newest last, one entry per stored emission: its name, size, and whether
-    the emission was marked failed. The analyzer is then told "N rounds happened and here
+    possible), newest last, one entry per stored emission: its name, size, and how the bank
+    marked it (``failed``, or ``handed_off`` to the product's runner, #2949), else ``stored``. The analyzer is then told "N rounds happened and here
     is what they were", instead of inferring a mechanism from an absence.
     """
     history: list[dict[str, Any]] = []
@@ -163,6 +185,11 @@ def build_failure_evidence(
     emission_failure = result_outputs.get("emission_failure")
     if isinstance(emission_failure, dict):
         evidence["emission_failure"] = emission_failure
+    # SIP-0109 §24do: a qa emission refused for a criterion's test passing on the head. The
+    # locus classifier routes it to the suite's author from this fact alone.
+    passes_on_head = result_outputs.get(CRITERIA_PASS_ON_HEAD_KEY)
+    if isinstance(passes_on_head, dict):
+        evidence[CRITERIA_PASS_ON_HEAD_KEY] = passes_on_head
     # #431: generated-vs-stored accounting + the gap rule. The flag is the
     # machine fact that the diagnostic inputs themselves are suspect — a
     # partial extraction loss must never be diagnosed as a work-product
@@ -444,6 +471,8 @@ def own_artifact_signal(failure_evidence: Any) -> str | None:
         return "emission_failure"
     if evidence.get("extraction_loss") is True:
         return "extraction_loss"
+    if criteria_passing_on_head(evidence):
+        return CRITERIA_PASS_ON_HEAD_KEY
     checks = [
         row
         for row in (evidence.get("validation_result") or {}).get("checks") or []
@@ -479,6 +508,13 @@ def classify_failure_locus(failure_evidence: Any) -> str:
     # subject: repairing app source against evidence derived from a truncated
     # artifact is exactly the budget burn this flag exists to stop.
     if failure_evidence.get("extraction_loss") is True:
+        return FailureLocus.OWN_ARTIFACT
+
+    # SIP-0109 §24do (#2933): a criterion's test passes on the head, the product before this
+    # run's work, so the test can't tell the work from its absence. Safe from the test-gaming
+    # guard: the reading is the test's run on a tree without the app's change, never the app's
+    # verdict, so no app defect can produce it.
+    if criteria_passing_on_head(failure_evidence):
         return FailureLocus.OWN_ARTIFACT
 
     validation_result = failure_evidence.get("validation_result") or {}

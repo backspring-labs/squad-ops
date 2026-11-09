@@ -245,13 +245,15 @@ class TestFailedEmissionNeverComposesAWorkspace:
         assert "app/api/runs/route.ts" not in contents
         assert contents["app/page.tsx"] == "export default function Page() { return null }"
 
-    async def test_failed_emission_excluded_even_as_the_only_copy(self, executor):
+    @pytest.mark.parametrize("emission_status", ["failed", "handed_off"])
+    async def test_failed_emission_excluded_even_as_the_only_copy(self, executor, emission_status):
         """The dangerous shape: nothing re-emits the file, so exclusion leaves a hole.
 
         A hole is correct. Substituting known-bad bytes would hand the next task a
-        file that has already been proven not to work.
+        file that has already been proven not to work. A hand-off's bank (#2949) is the qa
+        image's copy, never the task's accepted one, and is left out by the same rule.
         """
-        bad = _ref("art_bad", "app/api/runs/route.ts", emission_status="failed")
+        bad = _ref("art_bad", "app/api/runs/route.ts", emission_status=emission_status)
         executor._artifact_vault.retrieve = AsyncMock(return_value=(bad, TRUNCATED.encode()))
 
         contents = await executor._resolve_artifact_contents("qa.test", [("art_bad", bad)])

@@ -5,6 +5,401 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **A scripted squad for machinery cycles** (#2495): the `machinery` squad profile's agents all name the model
+  `scripted`, and every call they make is answered from a recorded script
+  (`--set llm_script=<name>@<version>`, scripts in `src/squadops/llm/llm_scripts/`), with no model loaded. The
+  answers sit behind the existing LLM port, so dispatch, emission, correction and acceptance run their normal
+  paths, and every other profile keeps the engine on the same deploy. A missing answer fails the task naming its
+  key `(task_type, occurrence, call)`; it never falls back to a model. Cycle create refuses a scripted squad with
+  no script, an unpinned or stale version, or a mixed squad, and refuses a script named on a model squad. A
+  scripted cycle produces no Cross-Cycle Memory observation, and its calls are charted under the engine
+  `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
+  carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
+- **The draft's integration check** (#2862, SIP-0112 H.30): `POST /api/v1/projects/{id}/integration-check`
+  (`campaigns:manage`), or `squadops projects check-integration <project> [--token-from-gh]`. Before the next
+  Campaign is drafted on a repository-backed Project, it syncs where a contribution is pending, reading each
+  review request's merge on the forge, re-validates where one merged, and answers what is still not in, each row
+  with what it waits on. The forge is only read. One sync is recorded per upstream commit. With no token (the
+  request's, else the one the deploy holds for the Project) the merge is answered unread, `no_token`, never "not
+  merged". A patch export is read by ancestry with no forge token, and a fetch refused for its credentials is
+  `fetch_unauthorized`. Its re-validation is bounded: a READY Project, after its own sync, at that sync's commit. It
+  replaces the host-side merge sweep and its timer, which the owner ruled against on 2026-11-08 and which was never
+  installed.
+- **A validation is fenced on the baseline it read** (#2862, SIP-0112 H.30): one that another validation overtook
+  writes nothing, and `POST /api/v1/projects/{id}/validate` answers 409 `BASELINE_MOVED`, so a slow validation can
+  no longer move a newer adoption back.
+
+### Changed
+- **An outside operator's pull request is held to its branch's boundary by a policy the repository doesn't
+  hold** (#2975, PR #2991): `operator branch checks` runs on `pull_request_target` from the default branch,
+  never runs the pull request's code, and reads the policy from the `OPERATOR_BRANCH_POLICY` repository
+  variable, which only an administrator can change. It fails closed on a missing or malformed policy, an
+  undeclared role, an unresolved commit identity or a foreign author, and the check's own files are out of
+  bounds to every operator branch. It is now the required check, and the check it replaces is removed
+  with its script and its in-repository boundary file.
+
+### Fixed
+- **A product's change request can't reuse the anchor of a page an earlier increment added** (#2783, SIP-0109 §24dq):
+  the PROMOTE row on a campaign branch records each page the increment added and acceptance held, with every test id
+  its page carried. The next launch pins that inventory beside the frozen criteria. The rails judge an accepted page
+  as a pinned one and refuse an added page's anchor that one carries. The proposer is shown those pages and their ids.
+  Acceptance renders them in the expected set, so a candidate that drops one is rejected, and a page never built
+  that reuses one's anchor is blocked, never held. A product with no approved manifest is covered by the same
+  inventory. After its outside review (§24dr): an added page's anchor is also held unique against the candidate's
+  own rendered pages; each promotion records the inventory's pages again with the ids they carry now; a pinned
+  route's inventory ids stay taken at acceptance. A launch or promotion from before the inventory is refused rather
+  than read as empty: the proposal and acceptance refuse a block without one, and a Campaign whose log has such a
+  promotion escalates before its next proposal, naming the row. Both the runtime-api and nat images have to answer
+  their loaded checks (`2783-runtime`, `2783-nat`) before the fix is relied on.
+- **A suite handed to the product's own runner is banked as handed off, not failed** (#2949): on a product
+  only its own runner runs (SIP-0112 H.26), every `qa.test` banked its emission `emission_status=failed`
+  seconds before the runner passed the task. The router now takes the runner's reading before the bank, and an
+  emission whose hand-off the runner passed is banked `handed_off`. It stays out of every workspace, delivered
+  tree and deliverable, as a failed one does, and the scorecard's `failed_emissions` and the verification-set
+  records no longer count it. A runner that fails the suite, a pass refused on the head, and a suite the image
+  ran and failed still bank `failed`. Stored rows read as they did. The Prefect task run, the agent's activity
+  and `task.failed` still read the hand-off as failed (#3000).
+- **A product's repaired suite is read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance
+  found a repaired suite by the stack's collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/`
+  rule (#1534). A product made from that blueprint runs under it, so a repair placed where the product's vitest
+  collects it was never retested, and one placed by the scaffold's rule was. Now the dispatched task's runners (their
+  roots and file pattern) decide, and a sample application, or a product with no runner, keeps the stack's reading.
+- **A plan-less product cycle's test author is shown the product** (SIP-0112 H.29, #2827 item 2): the monolithic qa
+  prompt (`request.qa_test.test_validate`, version 6) shows the product's repository view, its map, conventions,
+  checks and runners, as a plan's task is shown it. The scaffold's harness paragraph is now a sample application's
+  block only, and a sample application's prompt renders byte for byte as before. Where the view shows a stack's
+  conventions for a product, the profile's test supplement is left out in their favour, as the developer's is.
+- **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
+  write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release
+  capture, the verification-set driver and triage, which read the vault as another user. Files are 0644 again, as
+  `write_text` left them.
+
+## [2.6.1] — 2026-11-07
+
+The 2.6 line's first patch (`docs/plans/2-6-1-plan.md`): what an operator meets first on 2.6.0, fixed small.
+
+### Fixed
+- **A rebuilt console plugin reaches a browser without emptying its cache** (PRs #2958, #2959, backspring-labs/continuum#4):
+  Continuum 1.0.3 versions each plugin bundle's URL by its content, caches the current one for good and revalidates the
+  rest, and answers 304 for an unchanged file. #2958's Caddy `no-cache` stopgap is removed.
+- **The selected model engine comes back after a reboot** (#2932 ask 1, PR #2962): TensorFold runs `--restart
+  unless-stopped`. The switch's removal, compose's stop and the watchdog's kill all keep a deselected engine down.
+- **A deploy runs the Caddyfile it pulled** (#2960, PR #2963): Caddy mounts the file singly, so a pull never reached it
+  and a reload re-read the old one. Every deploy compares the two and restarts Caddy when they differ.
+- **Home's Create Cycle opens the Cycles create form** (#2909, PR #2964): it called a window function the console never
+  defines. It now hands the request to the Cycles panel, as the Campaigns link to the goals panel does.
+- **The qa briefs show a criterion test that asserts on something it made sure is there** (#2933, PR #2965): a non-empty
+  check before a loop and the suite's own fixture, on both stacks; a qa repair keeps the suite's fixture.
+- **The console's Signal view no longer holds the runtime API for seconds** (#2921, PR #2968): its artifact panels read
+  every page of every Project's artifacts, and each page walked all of a Project's metadata on the event loop, so a
+  5 ms call on Home could take 9 s. The panels read each Project's newest page, and the vault's walk runs in a worker
+  thread, with metadata written whole and renamed into place.
+
+### Moved to 2.7
+- A suite handed to the product's runner reading as handed off rather than failed (#2949's remainder).
+- D1: a criterion that passes on the head on qa's first emission refused to qa rather than abandoned at row 19 (#2933).
+
+## [2.6.0] — 2026-11-07
+
+### Added
+- **The squad is shown its own reading** (SIP-0109 §24dk, #2944, PR #2945): a goal-set Campaign's proposal carries the product's
+  reading of the last increment it accepted. It still reports, and decides nothing.
+- **A product's declared reading of an accepted increment** (SIP-0109 §24dj, #2938, PR #2942): `technical.commands.readings`
+  run on the candidate in the sandbox, and what each one prints is kept on the evaluation and the promotion, and shown in the digest
+  and each open gate's evidence. Report-only: a reading never changes a verdict.
+- **A repository-backed product runs on its own stack** (SIP-0112 H.26, #2937, PR #2941): its development profile is selected
+  from the derived facts at `prepare_cycle`, with its origin and a fingerprint recorded, and a named profile that contradicts
+  its runners is refused. `node_vitest` is new, and `product_neutral` with a `stack_unmatched` gap replaces a silent
+  `python_cli`. The product's runner now reads every failing `tests_pass`, for Python products too, and `test_report.md` says
+  what ran, where and on which runner.
+- **A Project's goal set** (SIP-0115 slice 1, #2884, PR #2899): the goal, expected results with where each is
+  observed, constraints, out of scope, the ordered backlog and candidates, written as immutable numbered revisions
+  with author, reason and `source_ref`. `/api/v1/projects/{id}/goal-set` reads the active revision, `/revisions`
+  the history and one by number, and `POST /revisions` writes the next against an expected revision (409 when
+  another was written first). Read with `cycles:read`, written with `admin:write` only. `squadops goals
+  show|edit|history`; `show` prints YAML that `edit -f` takes back. Migration `2100_project_goal_sets.sql`, the first
+  of SIP-0115's range `2100–2199`.
+- **A Campaign works through its Project's goal set, one backlog item per increment** (SIP-0115 slice 2, #2885;
+  SIP-0109 §24cy, SIP-0115 §10b). A repository-backed Campaign names `objective.goals: {goal_set: <its project>,
+  revision: <n> | current}` or `objective.requirements`, never both and never neither; a pinned revision the goal
+  set doesn't hold, a Project with no goal set, another Project's goal set, or `stop_when` without goals is refused at
+  creation. The proposer is shown the goal, expected results, constraints, out of scope and the backlog with each
+  item's status in this Campaign and the next item; its change request names it (`backlog_item`), and the rails
+  return one naming none or any other (`not_the_next_backlog_item`) before a cycle is spent. Each item's status
+  (`pending`, `proposed`, `in_increment`, `accepted`, `abandoned`, `removed`, and `accepted (removed in rN)` /
+  `accepted (results changed in rN)`) is derived from the control log, never stored, and read at
+  `GET /api/v1/campaigns/{id}/backlog` and `squadops campaigns backlog <id>`. A proposal is bound to the revision it
+  was created under; at its ruling a later revision that moved its item or changed what it serves returns it as
+  `goals_revised`, which spends neither a rejection nor a revision. `stop_when: backlog_done` stops a Campaign at
+  §10 row 3 when every item of the revision read at the decision is accepted, and the decision's row records which.
+- **The console's goals panel** (SIP-0115 slice 4, #2887, PR #2916): a panel of the Projects plugin
+  (`squadops-projects-goals`, in the Projects view) that follows the Project selected in the list, or a Campaign
+  selected anywhere (`squadops:select-campaign`). It shows the goal, expected results with where each is observed,
+  constraints and out of scope; the backlog in the goal set's order with each item's derived status and increment
+  (proposal, version, cycle) in a chosen Campaign of the Project, read from `GET /api/v1/campaigns/{id}/backlog`,
+  and the revision that Campaign reads; the candidates waiting, read-only; and the revision history. A Project with
+  no goal set and a Campaign naming none (`CAMPAIGN_HAS_NO_GOAL_SET`) read as such, not as failures. A viewer
+  holding `admin:write` can edit the goal, expected results' statements, constraints, out of scope and the backlog
+  (reorder, retitle, change what an item serves, add, remove), and with a reason the edit is written as the next
+  revision through the command bus: the new confirm-level `squadops.revise_goal_set`, whose console-app handler
+  posts `POST /api/v1/projects/{id}/goal-set/revisions` against the revision the edit began from. A revision
+  written first by someone else (409 `STALE_GOAL_SET_REVISION`) is said plainly and the edit kept, never retried
+  over. The panel's reads and write are `goals.js`, tested under node (`npm test` in the plugin's `ui/`, run in CI).
+- **The console's Campaigns plugin, read-only** (#2834, the 2.6 plan's Track G and D13): a new plugin,
+  `squadops.campaigns`, in its own Campaigns view. The list has every Project's Campaigns with state, outcome, start
+  and current increment (`#3 · repair`, read from each control log six at a time; a closed Campaign's is read once
+  per page). A Campaign's view shows its objective, what it works from, accepted increments against the target, the
+  current increment and cycle; its open escalations and the proposals waiting for a ruling; the ledger (ruling,
+  verdict, deciding row and each carrying cycle, as `squadops campaigns ledger`); the digest (`campaigns digest`);
+  and the control log's latest rows (`campaigns log`). An unknown Campaign (`CAMPAIGN_NOT_FOUND`), and one with no
+  ledger, escalations or package yet (`PACKAGE_NOT_FOUND`), read as such rather than as failures, and one unreadable
+  part never blanks the rest. It polls every 30 s while open and visible. A Campaign that names a goal set links to
+  the goals panel with that Campaign chosen: `squadops:select-campaign` is kept until the panel mounts, and the
+  Projects view is opened through the shell's own nav entry (`shared/selection.js`), since the pinned shell gives a
+  plugin no way to open another view. The plugin registers no command and writes nothing: launch, rule, pause,
+  resume and abort stay with the operator's broker and the CLI. SIP-0069 §14 records this and names what stays off the
+  console. The reads are `campaigns.js`, tested under node in CI.
+- **The operator's surface** (SIP-0115 slice 5, #2888; §10d; SIP-0109 §24df). The operator's `campaign-supervisor` and
+  `campaign-triage` principals read the goal set and its derived backlog, with no scope changed. **A gate's evidence:**
+  `GET /api/v1/campaigns/{id}/ledger`, which the operator's reviewer reads, names each goal-set version's `backlog_item` and
+  `goals_revision`, and the version an open gate can be on carries `goal_evidence` (the goal, the item and the expected
+  results it serves, at the revision it is bound to). A requirements Campaign's rows are unchanged. **Assessments:**
+  `POST /api/v1/projects/{id}/goal-set/assessments` records the operator's or the owner's judgement of one expected result in
+  a Campaign (`reading`: `met`, `not_met` or `unclear`; `cause` with `not_met`: `app_work`, `framework_defect`,
+  `framework_gap` or `needs_owner`; `issue` with a framework cause; `evidence` by id; `log_seq`, the control-log row the
+  evidence was read at; `source_ref`, the operator's signed statement). It needs no Campaign grant, a completed Campaign takes one, and it is append-only and decides nothing.
+  `GET …/goal-set/assessments` is the history and `GET /api/v1/campaigns/{id}/assessments` how each result stands now
+  (`current`, `stale`, `conflicting` or `unassessed`). Migration `2103_goal_set_assessments.sql`. The Campaigns plugin's
+  placeholder is replaced by that view, and the goals panel shows it on each expected result, with the Campaign's own
+  text where a pinned revision defines the result differently.
+- **A source-backed change can remove a file** (#2612, SIP-0112 H.23). A step removes a file with a `delete:<path>` fence
+  with nothing inside, shown to the steps that may use it. `development.develop` and its repair may remove any text
+  file of the product; `qa.test` and its repair only a test one of the product's runners holds. A path outside the
+  product's tree, a binary or generated file, one the same emission writes, or one outside the step's grant is refused
+  by name, and the emission with it. A removal is stored in order among the writes, later tasks are shown the tree
+  without the file, and delivery patches it out of the candidate: `changed_paths` names it, the product's own checks
+  run without it, and the captured commit and its patch lack it. A repair's removal is taken in the end-of-plan round
+  (H.20) and refused inside the plan, where the verifier can't hold one. A fence reading `delete:` wrote an empty file
+  before. Runs with no pinned source refuse the form.
+- **A regression at a source-backed run's end of plan gets one repair round** (#2613, SIP-0112 H.20). When the
+  product's own checks read `regressed`, the run no longer fails there: the regression enters the plan's correction
+  chain (analyze, decide, repair) through the same budget check and run counter as an in-plan failure, about the
+  plan's last source author. The analysis and the repair read each blocking check as the product's runner read it in
+  the sandbox: its id, exit code and output tails, never a re-run in an agent's image (#2913). The repair is stored as
+  that task's own and the candidate is delivered again; its verification records `repair_of`, and every check that
+  regressed must execute and pass. A spent budget, a round that repairs nothing, or a second regression fails the run
+  as before, the verification naming the checks. One round only, whatever budget remains. Runs with no pinned source
+  are unchanged.
+- **A size preflight at a repository-backed Campaign's start** (#2889; SIP-0112 H.21, SIP-0109 §24db). Before its
+  calibration record is written, every task type the Campaign's increments dispatch (`dispatched_task_steps`, the
+  reading the #2810 guard now shares) is composed on the product's tree at the record's commit and counted by the
+  composer's own estimate with its completion reserve, against the window of the model its squad binds the role to.
+  A binding that can't fit, measured at the least its prompt can be on that tree, refuses the start (409
+  `CALIBRATION_REFUSED`, cause `blocking_gap`, gap `prompt_over_window`), naming each task type, role, model, size,
+  reserve and window, and nothing is written. A model with no known window, a squad or proposal profile that can't
+  be read, and a tree that can't be read or is past 2.4's limits refuse it as `size_unmeasured`. A product that fits
+  starts as before, and a sample application's Campaign is never measured.
+- **Unattended resume** (SIP-0109 §24da, #2891; the 2.6 plan's D6 and D7). A Campaign declares
+  `policy.unattended_resume`: the escalation classes the operator's `campaign-supervisor` principal may resume on its own,
+  `plan_gate` (a plan gate the tier escalated, answered at the gate), `in_cycle_failure` (a `repair` or `retry` after
+  the cycle's own failure, within the per-increment limits) and `launch_blocked` (the relaunch). It is fixed at
+  creation and part of the creation hash when set; an unknown class, including the never-classes (an upstream
+  conflict, a limit's pause, a security finding, the owner's pause), is refused at creation. Anything else the operator
+  asks is refused 403 `RESUME_NOT_DELEGATED` with its reason; every delegated resume and every refusal is a
+  control-log row naming the principal, the class, the escalation and the definition hash (refusal
+  `resume_not_delegated`, migration `2002`), and the digest lists them. The owner's pause revokes the grant until the
+  owner resumes. The supervisor seat's refused resume is now recorded rather than refused unwritten.
+- **A criterion already met is found as soon as its test exists** (#2890; SIP-0109 §24cz, the 2.6 plan's D9). On a
+  repository-backed increment, once the qa task's criterion files are stored on the run, each is run alone on the
+  product's own runner in the sandbox against the campaign branch's head, with no development emission on the tree.
+  One that passes there is already met: the run ends with `criteria_not_checkable` before anything is delivered or
+  judged (a new cycle ending, migration `2003`), and §10's new row 19 returns the increment to a new proposal told
+  which criteria the head meets, counted toward neither `max_unaccepted_increments` nor
+  `max_rejected_proposals_in_row`. The reading is the run's `criterion_head_check` record. Where the check can't run
+  (no sandbox or clone, no profile at the pin, a runner with no test-id reader, a sandbox error) the cycle proceeds
+  as before and the skip is logged with its reason; acceptance's own read stays the last line.
+
+- **A Campaign's close records what contribution is due, and the supervisor opens it** (#2861; SIP-0109 §24dc,
+  SIP-0112 H.22). The row that closes a repository-backed Campaign (its terminal decision, or the abort) records
+  `contribution`: `{due: true, accepted: [cycles]}`, or `{due: false, reason: "no accepted increment: …"}`, derived
+  under the Campaign's lock and outside the request's hash. A close pushes nothing and opens nothing, whatever the
+  deploy holds: the owner chose to drop the automatic open on 2026-11-04, keeping §24ci (b) as ruled. The supervisor
+  opens it: `POST /api/v1/campaigns/{id}/contributions` (`campaigns:manage`, `token` required) or `squadops campaigns
+  contribute <id> --token-from-gh`, through E.4.3's contribution path: the branch's head with the criterion files
+  its increments froze renamed out of the `criterion_` stem and moved off the root (`test_criterion_T1.py` →
+  `tests/test_campaign_<hash>_T1.py`, #2860's interim made the rule), each live one first run on the product's runner
+  in the sandbox where it moved, pushed as `squadops/<campaign>`, never forced, the review request opened, and
+  recorded `pending` as one of the Project's contributions under the Campaign's id (`campaign_id`, `run_id:
+  campaign`), so a sync tracks its merge as any contribution's. Merging stays the owner's. A failed attempt, a moved
+  criterion that doesn't hold among them, is a `contribution_failed` row on the closed Campaign (migration `2004`),
+  and the supervisor's next request tries again.
+- **A read-only signal for accepted Campaign work not yet in a Project's integrated commit** (#2863; SIP-0109 §24dc).
+  `GET /api/v1/projects/{id}/unintegrated-increments` (`cycles:read`) lists each accepted increment the Project's
+  `integrated_upstream_commit` doesn't carry: `campaign_id`, `campaign_state`, `cycle_id`, `title` (its backlog
+  item's, or null), `commit`, `standing` (`not_contributed`, `contribution_pending`, `merged_not_synced` or
+  `contribution_closed`) and `review_url`. A run's own contribution counts beside its Campaign's. An empty list means
+  every one is integrated; a sample application is refused (409 `NO_SOURCE_REPOSITORY`). A forge merge is read only
+  once a sync records it (#2862 isn't built), so until then it stands `contribution_pending`. A request closed
+  unmerged keeps blocking: the owner reopens it on the forge, merges it with a merge commit and re-validates, and
+  `campaigns contribute` can't do that for them. `squadops projects unintegrated <project>`.
+- **Candidates promoted or dropped, and a backlog item split, each a goal-set revision naming its action**
+  (SIP-0115 slice 3, #2886; SIP-0115 §10c). `POST /api/v1/projects/{id}/goal-set/candidates` adds a candidate;
+  `…/candidates/{id}/promote` moves it into the backlog keeping its id, at a position or the end, serving the results
+  named; `…/candidates/{id}/drop` drops it with the reason; `…/backlog/{id}/split` puts two or more new items in its
+  place, inheriting what it served unless they say otherwise. Each is written against an expected revision, answers
+  201, and the revision carries `change` (`candidate_added | candidate_promoted | candidate_dropped | item_split`,
+  with the subject, the position taken, the parts a split produced and the Campaign the operator acted within; migration
+  `2101_goal_set_revision_change.sql`). The owner (`admin:write`) may do each; the operator's supervisor seat
+  (`campaigns:supervise`) adds freely and promotes, drops or splits only within a Campaign the owner has granted it
+  (named in the request; live, on this Project, reading this goal set; `403 NOT_DELEGATED` otherwise), appending a
+  promoted candidate and never reordering (Q41). **The grant** is the owner's, on each Campaign the operator should curate,
+  whoever created it (the owner's ruling of 2026-11-04): `POST /api/v1/campaigns/{id}/goal-delegation`, `squadops
+  campaigns delegate <id> --reason …`, `campaigns:control`, so the supervisor can't grant itself. It is a
+  `goal_delegation_granted` control-log row for the Campaign's life, which a completed Campaign refuses (migration
+  `2102_campaign_goal_delegation.sql`; SIP-0109 §24dd). A split waits (`409 BACKLOG_ITEM_IN_PROGRESS`) while a live Campaign
+  reads the item `proposed` or `in_increment`; the derived backlog reads a split parent as `removed` with
+  `split_into`. `squadops goals candidates|promote|drop|split`.
+
+### Fixed
+- **SquadOps names no external supervisor** (the owner's ruling of 2026-11-07, SIP-0115 §10e): what drives a Campaign from outside is an
+  API client, and the product calls it the operator, in its code, console, messages and the safety guarantee's label. No route,
+  scope or field changed, and a guard holds it.
+- **A qa suite is shown the code it calls** (#2952): a focused `qa.test` and a qa repair see what the suite imports, and the
+  files the task names, from outside its package, counted in the prompt budget. On a product whose suite and helper live apart,
+  qa guessed the helper's field names and a real count read 0. `test_report.md` no longer reads a suite left to the product's
+  runner as a failure (#2949).
+- **A repair cycle keeps the ending its run declared** (SIP-0109 §24cz, #2946): a repair whose test already passed on the head
+  recorded `single_workload_ended`, so the Campaign escalated at row 9 instead of proposing anew at row 19.
+- **A proposal keeps what the product already does inside the criterion that changes it** (#2935, SIP-0109 §24di). BT-2's
+  item was half true on the head, so its proposal wrote the half that held as its own criterion, whose pass on the head
+  abandoned the whole increment at row 19. The product proposal's request now shows the case.
+- **A repaired test that passes on the head no longer abandons a backlog item** (#2933, SIP-0109 §24dh). A qa repair
+  rewrote BT-2's test with a fixture the product filtered out, so its assertions ran over nothing and it passed on the
+  head; row 19 then discarded development's correct change as "already met", and the next proposal was told so. The head
+  doesn't change between a suite's failure and its repair, so that pass is news about the test. A criterion file a repair
+  rewrote is now run on the head before the repair is accepted: passing there refuses the repair, spends the round and
+  tells the next one. A later emission that still passes fails the run instead of abandoning it, and neither reading
+  writes the record the next proposal is briefed from. A first emission that passes on the head stays row 19.
+- **A closed, unmerged Campaign contribution can be dismissed** (#2926, SIP-0109 §24dg; the owner's choice of
+  2026-11-05). It kept blocking the operator's integration gate with no way to clear it. The owner's
+  `POST /api/v1/campaigns/{id}/contribution-dismissal` (`squadops campaigns dismiss-contribution <id> --reason …`,
+  `campaigns:control`) records "this work won't land" as a `contribution_dismissed` control-log row, with who, why and
+  the commit and review request, and the row leaves `GET /api/v1/projects/{id}/unintegrated-increments`. Anything but a
+  closed, unmerged contribution is `409 CONTRIBUTION_NOT_DISMISSABLE`, a retry with its key replays, and nothing is
+  deleted. Re-opening is not built. Migration `2104_campaign_contribution_dismissed.sql`.
+- **A suite that fails on the product's runner is read there, not in the qa image** (#2913, SIP-0112 H.24). When the
+  runner ran a product's suite and it failed, the agent's result stood, so an image that died on a dependency it lacks
+  (Shelfnote's `slugify`, exit 4) stayed the evidence: the analysis called it an environment issue, the repair changed
+  nothing, and the real failure (`PATCH /books/{id}` answering 400) reached neither, which ended the Campaign. The
+  runner's reading now replaces the image's, which stays beside it; a run that didn't exit leaves the agent's result.
+- **The console's API proxies forward the query string** (#2915). `/api/v1/*` and the two chat proxies forwarded the
+  path alone, so through the console's own port `?project_id=` reached the runtime API missing (a 422) and `?limit=`/
+  `?offset=` read as the default page. Hidden on the Spark, where Caddy sends `/api/v1/*` to the runtime API directly.
+- **The backlog says which limit ended a Campaign on an item** (#2911). The ledger's projection of a decision left
+  out its `cause`, so an item a Campaign ended on read "the campaign ended at §10 row 4 (None)"; the ledger's
+  outcome now carries `cause` and the backlog names it. Seen on the Shelfnote Campaign `cmp_5947cfb57197`.
+- **The console's write buttons execute** (#2903, #2904). Every plugin posted `{command_id, params}` to the shell's
+  command route, whose body is `{command_id, args, dry_run, confirmed}` (Continuum v1.0.2), so each handler got `{}`
+  and the bus's 200 `status: failed` passed as success; and no plugin sent `confirmed`, so a confirm-level command
+  (`gate_reject`, `cancel_cycle`, `cancel_run`, `set_active_profile`) was answered `pending` and never ran. The body
+  is built once, in `console/continuum-plugins/shared/commands.js`: it posts `args`, reads the answer's `status`
+  (`success` only; a `failed`, `timeout` or `denied` answer and a handler's relayed API refusal are shown as the
+  failure they are), and on `requires_confirmation` asks the user — the reject and set-active dialogs — and re-posts
+  the same body with `confirmed: true`. The create modal also read the handler's `cycle_id` from the answer's top
+  level rather than its `result`. Guards: no plugin names the route or a `params` key
+  (`tests/unit/console/test_command_bus_bodies.py`), the helper's node tests
+  (`console/continuum-plugins/shared`, `npm test`, now a CI step), and the console app's route entered with the
+  plugins' bodies. SIP-0074 §5.1 and SIP-0069 are unchanged: the behaviour is theirs, restored.
+- **A private Node package that declares a module interface is a package surface,** so a criterion on a product
+  like battle-trainer can name its interface (#2875, PR #2879; SIP-0112 H.17).
+- **The qa plan proposer's worked example is in its product's runner's terms,** pytest or vitest/jest (#2876,
+  PR #2880).
+- **A product's suite the qa image couldn't run is read on the product's own runner,** whatever else failed
+  (#2877, PR #2878; SIP-0112 H.18).
+- **A dev repair's retest is judged on the product's runner:** the failed task's own suite, with the repaired source
+  on the tree, where before the repaired source was read as the suite and nothing was judged (#2881, PR #2898).
+- **A product's suite on its own runner gets the product's whole tree at the pin,** lockfile included, with the
+  run's changes laid over it. Before, an npm product's `npm ci` failed setup on every run (#2900, PR #2902; SIP-0112
+  H.19).
+
+### Documentation
+- **The 2.6 plan adopted** on the owner's rulings of 2026-11-03: battle-trainer is the proving Project (PR #2883).
+- **SIP-0115 Project Goals and Backlog accepted** as 2.6's headline, and the plan's new items filed and placed
+  (PR #2897).
+
+## [2.5.1] — 2026-11-03
+
+**A patch on 2.5, an odd line that is feature-free by rule, carrying one addition by the owner's decision.**
+On 2026-11-03 the owner chose to acknowledge the one feature merged to main during the 2.6 plan's spikes. The tag is
+cut from the tree those spikes ran on, not from a branch of fixes only. #2854 is recorded as a fix: a ruling's notes
+were recorded and then dropped.
+
+### Added
+
+- **A registered product's file at the Project's integrated commit,** `GET /api/v1/projects/{id}/source-file?path=`
+  (#2855, #2856). It is read-only, so the crew's Campaign drafting reads the goals a Campaign will actually work from.
+  Spike 2 needed it, and it is the one feature this patch carries.
+
+### Fixed
+
+The 2.6 plan's §0 and §0a spikes found the first ten on `prj-shelfnote`. The rest are the 2.5 cut's own open
+defects, on a Campaign's path or in the cut's tooling (D11).
+
+- **A product's `qa.test` failing only `tests_pass` in the qa image is judged on the product's own runner** (#2818,
+  #2835). A product's suite is re-judged when the qa image fails it beside environment-sensitive checks, and a
+  skipped row isn't a failure (#2838, #2840). The suite's workspace id is in the sandbox's alphabet, and a judgement
+  that can't run leaves the agent's result (#2845, #2846).
+- **A repair or retry binds its proposal's approved version,** not the launch block's first (#2824, #2836).
+- **The campaign supervisor answers a Campaign cycle's plan gate,** and only a Campaign cycle's (#2837, #2843).
+- **A repository-backed increment's plan gate reads its approved change request as its design** (#2796, #2844;
+  SIP-0109 §24cs).
+- **An already-met criterion beside discriminating ones is kept as a preservation check,** and row 16's abandonment
+  counts toward no unaccepted limit (#2849, #2850; SIP-0109 §24ct).
+- **A busy engine serving only declared models is a quiet box,** so the crew's own model call on the shared
+  TensorFold engine no longer blocks a Campaign launch or a run start (#2851, #2852; SIP-0109 §24cu, SIP-0111 §9n).
+- **The notes on an increment's approval reach its framing** as the reviewer's guidance. Before this, an
+  `approved_with_refinements` ruling's notes were recorded but never shown to a model (#2854, #2857; SIP-0109 §24cv).
+- **A product's criterion file sits beside its runner's own tests,** and the plan gate refuses a planned file that
+  shares a basename with a criterion file or a frozen verifier. A root `test_criterion_T1.py` and a qa test of the
+  same name under `tests/` had stopped pytest at collection (#2858, #2859; SIP-0109 §24cw).
+- **A criterion file is never placed under a file name the product already holds elsewhere** in its tree, which
+  would stop pytest at collection (#2860, #2865; SIP-0109 §24cx).
+- **tree-sitter is pinned below 0.26.** 0.26.0 corrupts the tree of a JS/TS file past about 257 lines, or kills
+  the parse worker, so a product's long module had no anchored-edit entities. 0.25.2 parses the same inputs
+  clean (#2814, #2866).
+- **A product's qa run is bounded** (#2817, #2867; SIP-0112 H.16):
+  - The qa image's suite runs under the framework's own, empty pytest configuration, never the product's. A
+    product's `python_files`, `addopts`, `required_plugins`, `filterwarnings = error` or `strict_config` no longer
+    stops or fails it.
+  - A product runner's file pattern names a test only under that runner's roots.
+- **A develop task's typed check on a criterion file the merge gives to qa is resolved as its evaluator reads it:**
+  a command against its `cwd`, a glob against the files. A `frontend_compiles` on it is re-pointed to a file the
+  task keeps, not dropped (#2804, #2868; SIP-0093 §15c).
+- **`qa.test`'s monolithic prompt chooses its validation plan by one rule, shared by the handler and the budget,**
+  and a plan that is also a source file is counted as often as it is shown (#2809, #2869; SIP-0110 §5ap).
+- **A correction repair's call, its anchored-edit retry included, is refused by name over its model's window,**
+  never sent and never truncated past its output instructions (#2813, #2870; SIP-0110 §5aq).
+- **The release records attach scans for held-out step values and goals** as well as credentials, refuses to run
+  with no suite named, and leaves a file out only through a withhold list with reasons (#2830, #2871).
+
+### Documentation
+
+- **The 2.6 plan drafted for outside review,** §0's CLI spike adopted, and §0a's second spike, crew-driven from Buzz
+  on outcome goals (#2832, #2853).
+- **Project Goals and Backlog filed for design review** (#2833), proposed as 2.6's headline.
+- **The v2.5.0 release package:** the cut's evidence, screenshots, the records on the Release, housekeeping (#2831).
+- **The TensorFold 1.x upgrade deferred to 3.x** by the owner, replacing the 2.5 plan's placement in 2.6 (#2829).
+
+### Security
+
+- **`pyasn1` 0.6.4 → 0.6.5** in the agent image's lock (`CVE-2026-119194` to `CVE-2026-119197`), and in
+  `ci-constraints.txt`.
+- **The evaluator image's `minimatch` 10.2.6 → 11.0.1** (`GHSA-g3hv-75wg-m249`), pinned by `overrides` under
+  eslint 10.12 and typescript-eslint 8.71. The evaluator's tag moves to **`-8`**. The delivered-lint runner's
+  output on a fixture tree is byte-identical under both versions, and Lighthouse, axe, the driver and the
+  Chromium pin are `-7`'s, so `-8`'s quality series start fresh as every tag's do.
+
 ## [2.5.0] — 2026-10-30
 
 **The 2.5 line: an odd minor, a stabilization release, feature-free by rule. It finishes what 2.4 shipped apart: a

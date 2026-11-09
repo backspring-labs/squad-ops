@@ -26,6 +26,7 @@ from squadops.campaigns.models import (
     ControlOperationRefused,
     ControlOutcome,
     LaunchIntent,
+    RefusalReason,
     TransitionResult,
 )
 from squadops.events.types import EventType
@@ -147,6 +148,16 @@ class ProjectingCampaignRegistry(CampaignRegistryPort):
         return await self._projected(
             self._inner.change_box_lease(campaign_id, transition, runs_in_flight=runs_in_flight)
         )
+
+    async def refuse(
+        self, campaign_id: str, transition: CampaignTransition, refusal: RefusalReason
+    ) -> ControlLogEntry:
+        entry = await self._inner.refuse(campaign_id, transition, refusal)
+        project(self._audit, None, entry=entry, result=None, actor_type=SYSTEM_ACTOR_TYPE)
+        return entry
+
+    def transitions_held(self, project_id: str):
+        return self._inner.transitions_held(project_id)
 
     async def box_lease(self):
         return await self._inner.box_lease()

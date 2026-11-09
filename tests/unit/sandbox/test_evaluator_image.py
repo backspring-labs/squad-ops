@@ -43,6 +43,10 @@ _CUT = {
     # environment's apart (page_reading.mjs). browser.mjs, the Chromium pin and the lock are -6's,
     # byte for byte. Every quality series on -6 or earlier stays its own.
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7": "8006d83c1f37dc28",
+    # GHSA-g3hv-75wg-m249: minimatch pinned to 11.0.1 by `overrides` (it was 10.2.6 under eslint 10.12
+    # and typescript-eslint 8.71). The delivered-lint runner's output on a fixture tree is byte-identical
+    # under both. Lighthouse, axe, the driver and the Chromium pin are -7's.
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-8": "86d1867e77a07b5d",
 }
 
 

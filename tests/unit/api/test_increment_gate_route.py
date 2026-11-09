@@ -8,6 +8,7 @@ back.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -30,8 +31,8 @@ from squadops.campaigns.models import (
     ProposalBinding,
     SubmittedProposal,
 )
-from squadops.cycles.models import Cycle, Gate, Run, TaskFlowPolicy
-from tests.unit.campaigns.builders import campaign, move
+from squadops.cycles.models import Cycle, Gate, GateDecision, Run, TaskFlowPolicy
+from tests.unit.campaigns.builders import campaign, move, policy
 
 pytestmark = pytest.mark.auth
 
@@ -105,6 +106,14 @@ async def world() -> _World:
     await w.campaigns.create_campaign(
         campaign(CID), actor="owner", actor_role="owner", reason="r", idempotency_key="create"
     )
+    await at_the_gate(w)
+    return w
+
+
+async def at_the_gate(w: _World, backlog: dict | None = None) -> None:
+    """The created campaign calibrated and its proposal submitted from ``run_prop``, its cycle and
+    run recorded. ``backlog``: the item and revision a goal-set Campaign's submission records
+    (SIP-0115 §5.5a)."""
     await w.campaigns.transition(CID, move(CampaignState.CALIBRATING, "cal"))
     await w.campaigns.transition(
         CID,
@@ -121,6 +130,7 @@ async def world() -> _World:
         submission(
             CampaignState.AT_PROPOSAL,
             SubmittedProposal(ProposalBinding(**BINDING), "cyc_inc", "run_prop"),
+            backlog,
         ),
     )
     await w.cycles.create_cycle(
@@ -149,7 +159,6 @@ async def world() -> _World:
             workload_type="proposal",
         )
     )
-    return w
 
 
 @pytest.mark.parametrize(
@@ -160,8 +169,10 @@ async def world() -> _World:
         # An operator writes cycles, and never rules an increment.
         (Role.OPERATOR, INCREMENT_RULING_GATE, 403),
         (Role.CAMPAIGN_TRIAGE, INCREMENT_RULING_GATE, 403),
-        # The supervisor rules the increment gate, and writes no other.
-        (Role.CAMPAIGN_SUPERVISOR, "progress_plan_review", 403),
+        # #2837: the supervisor answers a campaign cycle's plan gate, as the runbook says; it
+        # writes no other gate, and no plan gate outside a campaign (the test below).
+        (Role.CAMPAIGN_SUPERVISOR, "progress_plan_review", 200),
+        (Role.CAMPAIGN_TRIAGE, "progress_plan_review", 403),
     ],
 )
 async def test_the_increment_gate_is_the_supervisors_and_only_that_gate(world, role, gate, status):
@@ -270,3 +281,208 @@ async def test_a_returns_classification_rides_its_ruling_row(world, body, record
     ]
     assert resp.status_code == 200
     assert {k: v for k, v in row.binding.items() if k.startswith("classification")} == recorded
+
+
+async def test_the_supervisor_answers_no_plan_gate_outside_a_campaign(world):
+    """#2837's boundary. Bug caught: campaigns:supervise answering the plan gate of an operator's
+    own cycle, which stays a cycle write (the owner's ruling of 2026-10-02, narrowed to campaign
+    cycles only)."""
+    cycle = await world.cycles.get_cycle("cyc_inc")
+    await world.cycles.create_cycle(
+        dataclasses.replace(cycle, cycle_id="cyc_own", campaign_id=None, kind=None)
+    )
+    await world.cycles.create_run(
+        Run(
+            run_id="run_own",
+            cycle_id="cyc_own",
+            run_number=1,
+            status="completed",
+            initiated_by="operator",
+            resolved_config_hash="cfg",
+            workload_type="planning",
+        )
+    )
+    resp = world.client.post(
+        "/api/v1/projects/group_run/cycles/cyc_own/runs/run_own/gates/progress_plan_review",
+        json={"decision": "approved", "notes": "n"},
+    )
+    assert resp.status_code == 403
+    assert "cycles:write" in resp.text
+    assert (await world.cycles.get_run("run_own")).gate_decisions == ()
+
+
+# --- SIP-0109 §24da (#2891): the plan_gate class, at the gate's answer path ----------------------
+
+
+async def _escalated_gate(declared: tuple[str, ...], *, owner_paused: bool = False) -> _World:
+    """A campaign whose plan gate on ``run_prop`` the tier escalated, declaring ``declared``."""
+    from squadops.campaigns.models import CampaignTransition
+
+    w = _World()
+    await w.campaigns.create_campaign(
+        campaign(CID, policy=policy(unattended_resume=declared)),
+        actor="owner", actor_role="admin", reason="r", idempotency_key="create",
+    )  # fmt: skip
+    await at_the_gate(w)
+    identity = {
+        "campaign_id": CID, "cycle_id": "cyc_inc", "run_id": "run_prop",
+        "gate_name": "progress_plan_review", "proposal_id": "prop_cap", "proposal_version": 1,
+        "baseline": "sha-accepted", "plan_identity": "p",
+    }  # fmt: skip
+    await w.campaigns.transition(
+        CID,
+        CampaignTransition(
+            operation=ControlOperation.ESCALATION_OPENED,
+            actor="squadops",
+            actor_role="executor",
+            reason="the tier could not approve",
+            idempotency_key="escalation:esc_plangate001",
+            next_state=None,
+            target="run_prop",
+            binding={
+                "escalation_id": "esc_plangate001", "identity": identity,
+                "failed": [{"condition": "no_open_question", "reading": "a question"}],
+                "questions": ["which order?"], "decision_ids": ["order"],
+                "opened_at": NOW.isoformat(),
+            },
+        ),
+    )  # fmt: skip
+    if owner_paused:
+        await w.campaigns.transition(
+            CID, move(CampaignState.PAUSED, "owner-pause", operation=ControlOperation.PAUSE,
+                      actor="owner", actor_role="admin"),
+        )  # fmt: skip
+    return w
+
+
+@pytest.mark.parametrize(
+    ("declared", "owner_paused", "status", "outcome", "why"),
+    [
+        (("plan_gate",), False, 200, "applied", None),
+        (("in_cycle_failure",), False, 403, "refused", "does not declare plan_gate"),
+        (("plan_gate",), True, 403, "refused", "paused by the owner"),
+    ],
+    ids=["declared", "undeclared", "owner-paused"],
+)
+async def test_the_operator_answers_an_escalated_plan_gate_only_under_its_grant(
+    declared, owner_paused, status, outcome, why
+):
+    """Wiring at the gate route (§24da's ``plan_gate``): the operator's answer to a gate the tier
+    escalated is a delegated resume, recorded before the gate is decided; undeclared, or under the
+    owner's pause, it is refused 403 with the reason, recorded, and the gate stays undecided.
+    Bugs caught: #2837's supervisor answer bypassing the campaign's declaration, or a refused
+    answer that still decides the gate."""
+    w = await _escalated_gate(declared, owner_paused=owner_paused)
+
+    resp = w.client.post(
+        "/api/v1/projects/group_run/cycles/cyc_inc/runs/run_prop/gates/progress_plan_review",
+        json={"decision": "approved", "notes": "the requirements answer it: ascending"},
+    )
+
+    assert resp.status_code == status, resp.json()
+    *_, row = await w.campaigns.control_log(CID)
+    assert (row.operation, row.outcome, row.binding["class"], row.binding["move"]) == (
+        ControlOperation.RESUME, outcome, "plan_gate", "gate_answer",
+    )  # fmt: skip
+    assert row.binding["escalation"]["escalation_id"] == "esc_plangate001"
+    assert row.binding["definition_hash"] == (await w.campaigns.control_log(CID))[0].request_hash
+    decisions = await w.gate_decisions()
+    if why is None:
+        assert decisions == [("progress_plan_review", "approved")]
+    else:
+        assert resp.json()["detail"]["error"]["code"] == "RESUME_NOT_DELEGATED"
+        assert why in row.binding["why"]
+        assert decisions == []
+
+
+async def _cancelled(w: _World) -> None:
+    await w.cycles.cancel_run("run_prop")
+
+
+async def _decided_otherwise(w: _World) -> None:
+    await w.cycles.record_gate_decision(
+        "run_prop",
+        GateDecision(
+            gate_name="progress_plan_review", decision="rejected", decided_by="owner",
+            decided_at=NOW,
+        ),
+    )  # fmt: skip
+
+
+async def _nothing(w: _World) -> None:
+    return None
+
+
+@pytest.mark.parametrize(
+    ("before", "body", "status"),
+    [
+        (_nothing, {"idempotency_key": "not-this-gates"}, 422),
+        (_nothing, {"classification": "scope"}, 422),
+        (_nothing, {"waived_checks": ["tests_pass"]}, 422),
+        (_cancelled, {}, 409),
+        (_decided_otherwise, {}, 409),
+    ],
+    ids=["an-increment-field", "a-classification", "a-bad-waiver", "a-cancelled-run", "decided"],
+)
+async def test_an_answer_that_cant_happen_records_no_delegated_row(before, body, status):
+    """§24da's row says the operator answered the gate, so it is written only for an answer that
+    happens. Bug caught (the review of #2914): the row was committed before the route read the
+    request, so a plan-gate request carrying an increment field applied a delegated answer, was
+    refused 422, and left the digest reporting an answer that never happened. The registry's own
+    refusals are the same lie one step later."""
+    w = await _escalated_gate(("plan_gate",))
+    await before(w)
+    decisions = await w.gate_decisions()
+
+    resp = w.client.post(
+        "/api/v1/projects/group_run/cycles/cyc_inc/runs/run_prop/gates/progress_plan_review",
+        json={"decision": "approved", "notes": "ascending", **body},
+    )
+
+    assert resp.status_code == status, resp.json()
+    log = await w.campaigns.control_log(CID)
+    assert [e for e in log if e.operation is ControlOperation.RESUME] == []
+    assert await w.gate_decisions() == decisions
+
+
+async def test_a_refused_delegation_is_recorded_even_when_the_gate_cant_be_decided():
+    """The verdict comes before the preflight: every refusal is a row (D6), whatever else was
+    wrong with the answer. Bug caught: the preflight moved ahead of the verdict, so the operator's
+    undelegated answer to a cancelled run left no record it was asked."""
+    w = await _escalated_gate(("in_cycle_failure",))
+    await _cancelled(w)
+
+    resp = w.client.post(
+        "/api/v1/projects/group_run/cycles/cyc_inc/runs/run_prop/gates/progress_plan_review",
+        json={"decision": "approved", "notes": "ascending"},
+    )
+
+    assert resp.status_code == 403, resp.json()
+    *_, row = await w.campaigns.control_log(CID)
+    assert (row.operation, row.outcome) == (ControlOperation.RESUME, "refused")
+
+
+async def test_a_retried_answer_replays_its_row_and_decides_once():
+    """The registry's no-op on the same decision passes the preflight, and the row's key replays.
+    Bug caught: the preflight refusing a retry of an answer that already landed."""
+    w = await _escalated_gate(("plan_gate",))
+    url = "/api/v1/projects/group_run/cycles/cyc_inc/runs/run_prop/gates/progress_plan_review"
+    answer = {"decision": "approved", "notes": "ascending"}
+
+    first, second = w.client.post(url, json=answer), w.client.post(url, json=answer)
+
+    assert (first.status_code, second.status_code) == (200, 200), second.json()
+    log = await w.campaigns.control_log(CID)
+    assert len([e for e in log if e.operation is ControlOperation.RESUME]) == 1
+    assert await w.gate_decisions() == [("progress_plan_review", "approved")]
+
+
+async def test_a_plan_gate_no_escalation_holds_is_answered_as_before_and_records_nothing(world):
+    """#2837 unchanged: a campaign cycle's plan gate the tier did not escalate is the supervisor's,
+    with no grant needed and no resume row."""
+    rows = len(await world.campaigns.control_log(CID))
+
+    resp = world.rule("progress_plan_review", binding=None, idempotency_key=None)
+
+    assert resp.status_code == 200
+    assert len(await world.campaigns.control_log(CID)) == rows

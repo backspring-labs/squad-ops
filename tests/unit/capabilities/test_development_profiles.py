@@ -11,6 +11,7 @@ import pytest
 from squadops.stacks.development_profiles import (
     DEVELOPMENT_PROFILES,
     TEST_FRAMEWORK_BOTH,
+    TEST_FRAMEWORK_PRODUCT_RUNNER,
     TEST_FRAMEWORK_PYTEST,
     TEST_FRAMEWORK_VITEST,
     DevelopmentProfile,
@@ -165,7 +166,12 @@ class TestFrameworkConstants:
         assert TEST_FRAMEWORK_BOTH == "both"
 
     def test_all_capabilities_use_constants(self):
-        valid = {TEST_FRAMEWORK_PYTEST, TEST_FRAMEWORK_VITEST, TEST_FRAMEWORK_BOTH}
+        valid = {
+            TEST_FRAMEWORK_PYTEST,
+            TEST_FRAMEWORK_VITEST,
+            TEST_FRAMEWORK_BOTH,
+            TEST_FRAMEWORK_PRODUCT_RUNNER,
+        }
         for name, cap in DEVELOPMENT_PROFILES.items():
             assert cap.test_framework in valid, f"{name} uses invalid test_framework"
 

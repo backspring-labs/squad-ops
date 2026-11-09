@@ -20,17 +20,25 @@ from squadops.api.cycle_schemas import (
     InheritedBaselineResponse,
     InitializationRequest,
     InitializationResponse,
+    IntegrationCheckFailureResponse,
+    IntegrationCheckRequest,
+    IntegrationCheckResponse,
+    IntegrationCheckRowResponse,
     ProjectRegistrationRequest,
     ProjectRegistrationResponse,
     ProjectResponse,
     ProjectValidationRequest,
+    SourceFileResponse,
     SourceSyncRequest,
     SourceSyncResponse,
+    UnintegratedIncrementResponse,
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import project_to_response
 from squadops.api.runtime.deps import (
+    get_campaign_registry,
+    get_goal_set_registry,
     get_project_locator_policy,
     get_project_registry,
     get_review_request_tokens,
@@ -39,6 +47,7 @@ from squadops.api.runtime.deps import (
     get_source_repository,
 )
 from squadops.auth.models import Identity, Scope
+from squadops.campaigns.unintegrated import unintegrated_increments
 from squadops.cycles.models import DerivedProfileNotFoundError
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.configuration import configure_project
@@ -48,6 +57,7 @@ from squadops.projects.development_configuration import (
     DevelopmentConfiguration,
 )
 from squadops.projects.initialization import InitializationRefused, initialize_project
+from squadops.projects.integration_check import Failure, NoSourceRepository, check_integration
 from squadops.projects.models import SourceUnavailable
 from squadops.projects.registration import RegistrationRefused, prepare_registration
 from squadops.projects.sync import SyncRefused, sync_project
@@ -299,6 +309,129 @@ async def list_contributions(request: Request, project_id: str) -> list[Contribu
     return [ContributionResponse(contribution=c.to_document()) for c in contributions]
 
 
+@router.get(
+    "/{project_id}/unintegrated-increments",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
+async def list_unintegrated_increments(
+    request: Request, project_id: str
+) -> list[UnintegratedIncrementResponse]:
+    """The increments the Project's Campaigns accepted that its integrated commit doesn't carry
+    yet (SIP-0109 §24dc, #2863), each with where it stands: ``not_contributed``,
+    ``contribution_pending``, ``merged_not_synced`` or ``contribution_closed``. Empty when every
+    one is integrated, so a supervisor can gate a draft on it. Read-only: the managed clone reads
+    the history, and nothing reaches the forge, so a merge reads as pending until a sync records it:
+    ``POST /api/v1/projects/{id}/integration-check`` (SIP-0112 H.30) is the draft's write.
+
+    ``contribution_closed`` keeps blocking, with the closed request's ``review_url``. Its recovery
+    is the owner's: on the forge, reopen the request and merge it with a merge commit, then sync and
+    re-validate; or dismiss it, ``POST /api/v1/campaigns/{id}/contribution-dismissal`` (§24dg), which
+    clears the row. ``squadops campaigns contribute`` answers the closed record and opens nothing."""
+    registry = get_project_registry(request)
+    project = await registry.get_project(project_id)
+    if project.source is None:
+        raise http_error(
+            409,
+            "NO_SOURCE_REPOSITORY",
+            f"{project_id} is a sample application: it has no integrated commit, and its "
+            "Campaigns contribute nothing",
+        )
+    increments = await unintegrated_increments(
+        project,
+        campaigns=get_campaign_registry(request),
+        contributions=await registry.contributions(project_id),
+        repository=get_source_repository(request),
+        goal_sets=get_goal_set_registry(request),
+    )
+    return [
+        UnintegratedIncrementResponse(
+            campaign_id=i.campaign_id,
+            campaign_state=i.campaign_state,
+            cycle_id=i.cycle_id,
+            title=i.title,
+            commit=i.commit,
+            standing=i.standing.value,
+            review_url=i.review_url,
+        )
+        for i in increments
+    ]
+
+
+def _failure(failure: Failure | None) -> IntegrationCheckFailureResponse | None:
+    if failure is None:
+        return None
+    return IntegrationCheckFailureResponse(reason=str(failure.reason), message=failure.message)
+
+
+@router.post("/{project_id}/integration-check")
+async def check_project_integration(
+    request: Request,
+    project_id: str,
+    body: IntegrationCheckRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
+) -> IntegrationCheckResponse:
+    """The integration check the next Campaign's draft makes (SIP-0112 H.30, #2862), in one
+    request: where the Project's unintegrated set (``GET …/unintegrated-increments``) has a row
+    ``contribution_pending``, sync, reading each pending review request's merge on the forge; where
+    a row stands ``merged_not_synced``, re-validate, so the integrated commit carries it; then
+    answer the set that remains, each row with what it waits on. ``clear`` means the draft may
+    proceed.
+
+    The supervisor's and the owner's (``campaigns:manage``): the draft is theirs. The token is the
+    request's, else the one the deploy holds for the Project, for this request's reads only. With
+    neither, a pending row's merge isn't read, and ``merge_state_unread`` says so (``no_token``).
+    The forge is only read. One sync is recorded per upstream commit, so a check repeated there
+    replays it. A sync or re-validation that fails is answered with its reason, never retried
+    here."""
+    try:
+        check = await check_integration(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            campaigns=get_campaign_registry(request),
+            goal_sets=get_goal_set_registry(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+            actor=identity.user_id if identity is not None else "anonymous",
+        )
+    except NoSourceRepository as e:
+        raise http_error(409, "NO_SOURCE_REPOSITORY", str(e)) from e
+    return IntegrationCheckResponse(
+        project_id=project_id,
+        clear=check.clear,
+        integrated_commit_before=check.integrated_commit_before,
+        integrated_commit=check.integrated_commit,
+        sync=(
+            SourceSyncResponse(document=dict(check.sync), replayed=check.sync_replayed)
+            if check.sync is not None
+            else None
+        ),
+        merge_state_unread=_failure(check.merge_state_unread),
+        revalidated_at=check.revalidated_at,
+        validation_failed=_failure(check.validation_failed),
+        unreconciled=dict(check.unreconciled) if check.unreconciled is not None else None,
+        next_step=check.next_step,
+        remaining=[
+            IntegrationCheckRowResponse(
+                campaign_id=w.increment.campaign_id,
+                campaign_state=w.increment.campaign_state,
+                cycle_id=w.increment.cycle_id,
+                title=w.increment.title,
+                commit=w.increment.commit,
+                standing=w.increment.standing.value,
+                review_url=w.increment.review_url,
+                waits_on=w.waits_on.value,
+                clears_when=w.clears_when,
+            )
+            for w in check.remaining
+        ],
+    )
+
+
 @router.post("/{project_id}/initializations", status_code=201)
 async def initialize_greenfield_project(
     request: Request,
@@ -392,6 +525,37 @@ async def get_project(request: Request, project_id: str) -> ProjectResponse:
     registry = get_project_registry(request)
     project = await registry.get_project(project_id)
     return project_to_response(project)
+
+
+@router.get("/{project_id}/source-file", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def get_source_file(request: Request, project_id: str, path: str) -> SourceFileResponse:
+    """A file of a registered product, at the Project's integrated commit, with that commit
+    (#2855). It is what a Campaign drafted from the product's goals reads, so the draft can state
+    the commit it read and refuse when it can't read one. Read-only, from the managed clone; a
+    sample application has no repository, and a Project not yet synced has no commit."""
+    project = await get_project_registry(request).get_project(project_id)
+    if project.source is None:
+        raise http_error(404, "SOURCE_FILE_NOT_FOUND", f"{project_id} has no source repository")
+    commit = project.integrated_upstream_commit
+    if commit is None:
+        raise http_error(
+            409, "SOURCE_NOT_INTEGRATED", f"{project_id} has no integrated commit: sync it first"
+        )
+    try:
+        content = await get_source_repository(request).file_at(project_id, commit, path)
+    except SourceUnavailable as e:
+        if e.reason == "path_refused":
+            raise http_error(422, "VALIDATION_ERROR", str(e), {"field": "path"}) from e
+        if e.reason in ("read", "not_a_commit"):
+            raise http_error(
+                404, "SOURCE_FILE_NOT_FOUND", f"{path} is not in {project_id} at {commit[:12]}"
+            ) from e
+        raise http_error(502, "SOURCE_UNAVAILABLE", f"{e.reason}: {e}") from e
+    try:
+        text = content.decode()
+    except UnicodeDecodeError as e:
+        raise http_error(422, "VALIDATION_ERROR", f"{path} is not text", {"field": "path"}) from e
+    return SourceFileResponse(project_id=project_id, path=path, commit=commit, content=text)
 
 
 @router.get(

@@ -20,6 +20,7 @@
 -->
 <script>
   import { fetchAllPages } from '../../../shared/paging.js';
+  import { OPEN_CREATE_CYCLE, takeAnnounced } from '../../../shared/selection.js';
   import { onMount, onDestroy } from 'svelte';
   import CyclesList from './CyclesList.svelte';
   import CyclesRunTimeline from './CyclesRunTimeline.svelte';
@@ -102,12 +103,23 @@
     }
   }
 
+  // Home's "Create Cycle" (#2909): heard while this panel is mounted, or taken on mount when Home
+  // opened this perspective after announcing it (shared/selection.js). Taken here too, so the
+  // record isn't applied again on a later visit.
+  function onOpenCreateCycle() {
+    takeAnnounced(OPEN_CREATE_CYCLE);
+    modalOpen = true;
+  }
+
   onMount(() => {
+    window.addEventListener(OPEN_CREATE_CYCLE, onOpenCreateCycle);
+    if (takeAnnounced(OPEN_CREATE_CYCLE)) modalOpen = true;
     fetchStats();
     statsPollTimer = setInterval(fetchStats, 20000);
   });
 
   onDestroy(() => {
+    window.removeEventListener(OPEN_CREATE_CYCLE, onOpenCreateCycle);
     if (statsPollTimer) clearInterval(statsPollTimer);
   });
 

@@ -9,17 +9,21 @@ is ``squadops.campaigns.lifecycle``'s; this adapter only stores.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import asyncpg
 
 from squadops.campaigns import box, lifecycle
 from squadops.campaigns.box import BoxLease, LeaseHolder
+from squadops.campaigns.close_contribution import closing_binding
 from squadops.campaigns.models import (
     AcceptedTree,
     Campaign,
     CampaignDefinition,
     CampaignExistsError,
+    CampaignGoals,
     CampaignNotFoundError,
     CampaignObjective,
     CampaignOutcome,
@@ -204,6 +208,19 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
             await _insert_entry(conn, entry)
         return TransitionResult(entry=entry, campaign=campaign, intent=None, replayed=False)
 
+    @asynccontextmanager
+    async def transitions_held(self, project_id: str) -> AsyncIterator[None]:
+        """The row lock every transition takes first (``_locked_campaign``), held on each live
+        Campaign of the Project until the body ends, in one order so two holders can't deadlock."""
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.fetch(
+                "SELECT campaign_id FROM campaigns WHERE project_id = $1 AND state <> $2 "
+                "ORDER BY campaign_id FOR UPDATE",
+                project_id,
+                CampaignState.COMPLETED.value,
+            )
+            yield
+
     async def transition(
         self, campaign_id: str, transition: CampaignTransition
     ) -> TransitionResult:
@@ -214,6 +231,29 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
                 campaign = await _locked_campaign(conn, campaign_id)
                 outcome = await _commit(conn, campaign, transition, marks=None)
         return _result_or_raise(outcome)
+
+    async def refuse(
+        self, campaign_id: str, transition: CampaignTransition, refusal: RefusalReason
+    ) -> ControlLogEntry:
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                campaign = await _locked_campaign(conn, campaign_id)
+                seq = await conn.fetchval(
+                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM campaign_control_log "
+                    "WHERE campaign_id = $1",
+                    campaign_id,
+                )
+                entry = lifecycle.control_log_entry(
+                    campaign,
+                    transition,
+                    entry_id=lifecycle.new_entry_id(),
+                    seq=seq,
+                    committed_at=_now(),
+                    refusal=refusal,
+                    launch_id=None,
+                )
+                await _insert_entry(conn, entry)
+        return entry
 
     async def change_box_lease(
         self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]
@@ -282,6 +322,26 @@ async def _locked_campaign(conn: asyncpg.Connection, campaign_id: str) -> Campai
     if row is None:
         raise CampaignNotFoundError(f"Campaign not found: {campaign_id}")
     return _row_to_campaign(row)
+
+
+async def _closing_binding(
+    conn: asyncpg.Connection, campaign_id: str, transition: CampaignTransition
+) -> dict:
+    """What a closing row records of its contribution (§24dc), read in the row's transaction under
+    the campaign's lock, which every control operation takes: no promotion commits past it."""
+    if transition.repository_backed is None:
+        return {}
+    log = await conn.fetch(
+        f"SELECT {_ENTRY_COLUMNS} FROM campaign_control_log WHERE campaign_id = $1 ORDER BY seq",
+        campaign_id,
+    )
+    intents = await conn.fetch(
+        f"SELECT {_INTENT_COLUMNS} FROM campaign_launch_intents WHERE campaign_id = $1",
+        campaign_id,
+    )
+    return closing_binding(
+        transition, [_row_to_entry(r) for r in log], [_row_to_intent(r) for r in intents]
+    )
 
 
 async def _commit(
@@ -365,6 +425,7 @@ async def _commit(
         committed_at=now,
         refusal=None,
         launch_id=intent.launch_id if intent is not None else None,
+        derived=await _closing_binding(conn, campaign.campaign_id, transition),
     )
     updated = lifecycle.applied_campaign(campaign, transition, now)
 
@@ -552,6 +613,9 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             work_class=WorkClass.from_stored(objective.get("work_class")),
             # SIP-0109 §24bv point 5: absent on a campaign stored before the field existed.
             requirements=objective.get("requirements"),
+            # SIP-0115 §5.1, §5.6: absent on a campaign stored before the fields existed.
+            goals=CampaignGoals.from_stored(objective.get("goals")),
+            stop_when=objective.get("stop_when"),
         ),
         policy=CampaignPolicy.from_stored(row["policy"]),
         state=CampaignState(row["state"]),

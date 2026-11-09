@@ -38,6 +38,7 @@ from squadops.projects.derived_profile import (
     Toolchain,
 )
 from squadops.sandbox.findings import PYTEST, VITEST
+from squadops.stacks.development_profiles import select_development_profile
 from squadops.stacks.scaffold import InterfaceManifest
 
 if TYPE_CHECKING:
@@ -73,6 +74,17 @@ _VITEST_2_ONLY = re.compile(
     r"^(?:[\^~=]|v)?2(?:\.(?:\d+|[x*]))?(?:\.(?:\d+|[x*]))?(?:-[0-9A-Za-z.-]+)?$"
 )
 _CONFIG_FLAG = re.compile(r"(?:^|\s)(?:--config|-c)(?:=|\s+)(\S+)")
+#: What a vitest or vite config does that its own text can't show the effect of (#2775): the
+#: reporters it sets may come from where the text check never looks. Each one refuses the reader.
+_CONFIG_UNREADABLE = (
+    (re.compile(r"""\bfrom\s+['"]\.{1,2}/|\b(?:require|import)\s*\(\s*['"]\.{1,2}/"""),
+     "imports a relative module"),
+    (re.compile(r"\bmergeConfig\s*\("), "merges another config (mergeConfig)"),
+    (re.compile(r"\.\.\.\s*[A-Za-z_$]"), "spreads settings from a value"),
+    (re.compile(r"\bdefineConfig\s*\(\s*(?:async\b|function\b|\(|[A-Za-z_$][\w$]*\s*=>)"),
+     "computes its config in a function"),
+    (re.compile(r"\bprocess\.env\b|\bimport\.meta\.env\b"), "reads the environment"),
+)  # fmt: skip
 _JS_SETUP = ("setupTests.", "vitest.setup.", "jest.setup.", "test-setup.")
 #: A file named like a test by any runner this recognises, so one no runner owns is unclassed.
 _TEST_LOOKING = (*_PYTEST_FILES, *_JS_FILES)
@@ -257,7 +269,9 @@ def _vitest_unread(root: str, command: str, tree: _Tree) -> str | None:
     validated on vitest 2's default reporter on stdout, so a command naming a reporter, a config
     (the one ``--config`` names, or the conventional ones) naming reporters or that isn't in the
     tree, a workspace file, stderr merged into stdout, or a package that doesn't pin vitest 2 alone
-    is refused. Doubt refuses: the gap says why at capture."""
+    is refused. So is a config whose effect its own text can't show (#2775): one that imports a
+    relative module, merges another config, spreads settings from a value, computes its config in a
+    function, or reads the environment. Doubt refuses: the gap says why at capture."""
     if "--reporter" in command:
         return "its test command names a reporter"
     if "2>&1" in command or "|&" in command:
@@ -269,8 +283,8 @@ def _vitest_unread(root: str, command: str, tree: _Tree) -> str | None:
         text = tree.text(path)
         if text is None and named:
             return f"its --config {name} isn't in the tree, so its reporters can't be read"
-        if text is not None and "reporters" in text:
-            return f"{path} configures reporters"
+        if text is not None and (unread := _config_unread(path, text)) is not None:
+            return unread
     for path in tree.under(root):
         if PurePosixPath(path).name.startswith("vitest.workspace."):
             return f"{path} sets its projects, whose reporters aren't read"
@@ -279,6 +293,17 @@ def _vitest_unread(root: str, command: str, tree: _Tree) -> str | None:
         return "no package.json at its root or the repository's declares a vitest version"
     if not _VITEST_2_ONLY.match(spec.strip()):
         return f"its package's vitest {spec!r} allows more than vitest 2, the major the reader is validated on"
+    return None
+
+
+def _config_unread(path: str, text: str) -> str | None:
+    """Why a vitest or vite config's reporters can't be read from its text, or None: it names them,
+    or does something whose effect its text can't show (#2775)."""
+    if "reporters" in text:
+        return f"{path} configures reporters"
+    for pattern, does in _CONFIG_UNREADABLE:
+        if pattern.search(text):
+            return f"{path} {does}, so the reporters it sets can't be read from its text"
     return None
 
 
@@ -625,9 +650,22 @@ def _surfaces(
     ):
         surfaces.append(Surface("command", argv=(str(name),)))
     surfaces += [Surface("package", name=PurePosixPath(p).name) for p in packages]
-    if node.get("name") and not node.get("private"):
+    if node.get("name") and _node_package_has_an_interface(node):
         surfaces.append(Surface("package", name=str(node["name"])))
     return tuple(surfaces)
+
+
+#: The ``package.json`` fields that declare a module interface: what a caller imports.
+_NODE_INTERFACE_FIELDS = ("main", "exports", "module")
+
+
+def _node_package_has_an_interface(node: Mapping[str, Any]) -> bool:
+    """Whether a root ``package.json`` is a package a criterion may name (SIP-0112 H.17).
+
+    ``private`` means only that npm won't publish it. An application's own ``package.json`` is
+    private and declares no module (a Next.js app at the root): its surfaces are its pages and
+    endpoints. A library that isn't published is private too, and declares what it exports."""
+    return not node.get("private") or any(node.get(f) for f in _NODE_INTERFACE_FIELDS)
 
 
 def _python_packages(tree: _Tree) -> list[str]:
@@ -730,6 +768,7 @@ def _gaps(
                 "a start declaration in the Development Configuration",
             )
         )
+    gaps += _stack_unmatched(configuration, runners)
     gaps += _untested(tree, runners)
     gaps += _unscopable(runners, owner)
     gaps += _unread_gaps(runners, unread)
@@ -765,6 +804,32 @@ def _toolchain_gap(toolchain: Toolchain, runners: Sequence[Runner], ran: Sequenc
         f"{toolchain.name} isn't in the sandbox's image, so {checks} can't run",
         f"{toolchain.name} in the sandbox's image",
     )
+
+
+def _stack_unmatched(
+    configuration: DevelopmentConfiguration, runners: Sequence[Runner]
+) -> list[Gap]:
+    """H.26: a product no development profile fits runs on none, and says so."""
+    kinds = sorted({r.runner for r in runners})
+    if select_development_profile(kinds, configuration.stack).matched:
+        return []
+    verifiable = bool(kinds)
+    return [
+        Gap(
+            "stack_unmatched",
+            DISCLOSED if verifiable else BLOCKING,
+            None,
+            ("**",),
+            f"no development profile fits runners {', '.join(kinds)}, so the squad works from "
+            "the product's own files and runners, with no stack guidance"
+            if verifiable
+            else "no runner is declared, so no profile fits and nothing can verify the squad's "
+            "work",
+            "a development profile for this stack"
+            if verifiable
+            else "a check that runs the product's tests, declared in the Development Configuration",
+        )
+    ]
 
 
 def _untested(tree: _Tree, runners: Sequence[Runner]) -> list[Gap]:

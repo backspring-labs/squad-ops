@@ -1,0 +1,392 @@
+"""A repository-backed increment's criterion files, run on the campaign branch's head as soon as
+the qa task has written them, before the run delivers (SIP-0109 §24cz, #2890).
+
+The 2.6 spike's unattended run (2026-10-31) spent two increments on criteria the head already met:
+item 1's first proposal, abandoned at row 16 after a whole cycle, and item 5's T21, read
+``no_baseline_failure`` at acceptance after a cycle and its repair. Both would have been found the
+moment the test existed. So, once the increment cycle's qa task has emitted a criterion's file and
+the run has stored it, that file is run on the product's own runner in the sandbox
+(``product_suite.run_on_product_runner``, the run #2818 made) against **the head**: the pinned
+commit's tree from the managed clone (``product_tree_at_pin``, seeded as a checkout, H.19), with
+the criterion files patched on it, and the page loaders the change request placed (#2799), and no
+development emission, a removal included. Until §24do a file that passed there was read as already
+met and ended the run ``criteria_not_checkable`` (row 19); what a pass means now is the paragraph
+below.
+
+**Where it can't run, the cycle proceeds as today, and the skip is logged with its reason:** no
+sandbox or managed clone, no derived profile or configuration at the pin, a criterion file the
+request placed nowhere, one no runner holds one by one or no test-id reader can read, or any read
+or sandbox run that failed. Nothing here fails a run. Acceptance's own discrimination read (§24cl) stays, as
+the last line.
+
+**A pass on the head says the test proved nothing about the work, never that the behaviour exists
+(§24dh, §24do, #2933).** §24dh read that first for a test a repair rewrote: the head is pinned, so
+``repaired`` reads a repair's criterion files on the head before the repair is accepted, and
+``PatchAcceptance`` refuses one that passes there. §24do extends it to qa's own emission, read the
+same way before it's accepted (``repaired`` is then the emission's files): the first that passes is
+refused to the suite's author as a failure (``refused_on_head``), spending a repair round, and a
+later pass fails the run as an ordinary failure. So no run ends ``criteria_not_checkable`` here.
+
+**The record holds only a reading in which nothing passed on the head (``store_head_check``).**
+``CampaignProgress._already_met_stated`` tells the next proposal what the record says the head
+meets, and a test that passes on the head is no evidence that it does.
+
+**Unchanged:** a sample application's increment (no source repository) and every task that isn't
+the qa suite's author.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import logging
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from hashlib import sha256
+from typing import Any
+from uuid import uuid4
+
+from squadops.campaigns.criterion_head import (
+    CHECKED_ON,
+    CRITERION_HEAD_CHECK_ARTIFACT_TYPE,
+    CRITERION_HEAD_CHECK_FILENAME,
+    CriterionHeadReading,
+    HeadReading,
+    head_check_document,
+)
+from squadops.campaigns.increment_tree import (
+    approved_change_request,
+    increment_basis,
+    increment_criterion_files,
+    increment_page_loader_files,
+)
+from squadops.campaigns.runner_acceptance import RunnerSetup
+from squadops.cycles.failure_evidence import CRITERIA_PASS_ON_HEAD_KEY
+from squadops.cycles.models import ArtifactRef, Cycle
+from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+from squadops.execution.product_suite import (
+    SuiteRun,
+    product_tree_at_pin,
+    run_on_product_runner,
+    sandbox_workspace_id,
+)
+from squadops.execution.source_delivery import squad_changes
+from squadops.stacks.scaffold import scaffold_stack_for
+from squadops.tasks.models import TaskResult, TaskResultStatus
+from squadops.tasks.task_types import authors_qa_suite
+
+logger = logging.getLogger(__name__)
+
+#: The workspace the check seeds, apart from the re-judged suite's (``suite-``) and acceptance's.
+_WORKSPACE_KIND = "head"
+#: How every skip's log line opens (``%s`` is the task).
+_UNREAD = "criterion head check %s: skipped"
+
+
+#: SIP-0109 §24do (#2933): the executor's wording, in the rejection carry, for qa's emission
+#: refused because a criterion's test in it passes on the head. It isn't a repair's refusal, so it
+#: isn't one of the markers ``repair_not_applied_in_round`` reads: the round that follows it is
+#: applied as any other round is.
+EMISSION_PASSES_ON_HEAD_MARKER = "the emitted suite passes on the head, without this run's work"
+
+
+@dataclass(frozen=True)
+class CriterionHeadCheck:
+    """What one check read: the head it ran on, each criterion's reading and each file's run."""
+
+    head_commit: str
+    readings: tuple[CriterionHeadReading, ...]
+    runs: tuple[SuiteRun, ...]
+
+    @property
+    def already_met(self) -> tuple[str, ...]:
+        """The criteria whose files passed on the head. The name is §24cz's: since §24do a pass
+        there says the test can't tell the work from its absence, never that the head meets it."""
+        return tuple(r.criterion_id for r in self.readings if r.already_met)
+
+    def passing(self) -> list[dict[str, Any]]:
+        """Each criterion whose file passed on the head, with its path and its passed tests."""
+        counts = {run.path: run.tests_passed for run in self.runs}
+        return [
+            {"criterion_id": r.criterion_id, "path": r.path, "tests_passed": counts.get(r.path)}
+            for r in self.readings
+            if r.already_met
+        ]
+
+    def passing_files(self) -> str:
+        """The files that passed on the head, each with its count, as a refusal names them."""
+        return ", ".join(
+            f"{row['criterion_id']} ({row['path']}: {row['tests_passed']} passed)"
+            for row in self.passing()
+        )
+
+
+def refused_on_head(result: TaskResult, check: CriterionHeadCheck) -> TaskResult:
+    """SIP-0109 §24do: qa's succeeded emission as the failure it's refused as, before acceptance.
+
+    Its outputs are the emission's, so the repair overlays the files it emitted, with the head's
+    reading under ``CRITERIA_PASS_ON_HEAD_KEY`` (the locus classifier routes on it, to the suite's
+    author) and a semantic failure's outcome (the correction loop, never a retry). Its
+    verification rows are the emission's own: the refusal is no check, and a row for it would
+    stay failed in the run's ledger after a repair that passes."""
+    outputs = dict(result.outputs or {})
+    outputs[CRITERIA_PASS_ON_HEAD_KEY] = {
+        "head_commit": check.head_commit,
+        "criteria": check.passing(),
+    }
+    outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+    outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
+    return dataclasses.replace(
+        result,
+        status=TaskResultStatus.FAILED,
+        outputs=outputs,
+        error=(
+            f"{', '.join(check.already_met)}: the test passes on the campaign branch's head "
+            f"{check.head_commit[:12]}, without this run's work, so it can't tell the work from "
+            "its absence; refused to the suite's author (SIP-0109 §24do)"
+        ),
+    )
+
+
+def refusal_entry(task_type: str, attempt: int, check: CriterionHeadCheck) -> str:
+    """What the next round is told of the refusal, in the rejection carry, as §24dh's round is."""
+    return (
+        f"{task_type} attempt {attempt}: {EMISSION_PASSES_ON_HEAD_MARKER} ("
+        + check.passing_files()
+        + f") — {check.head_commit[:12]} is the product before this run's work, so these tests "
+        "can't tell the work from its absence. Keep the suite's own fixtures and setup, and make "
+        "a test fail on the head for the reason the criterion states"
+    )
+
+
+def applies(task_type: str, cycle: Any) -> bool:
+    """Whether the check applies at this task: the qa suite's author on a repository-backed
+    increment, repair or retry (``IncrementBasis.evaluated_at_delivery``, as acceptance asks it).
+    A basis the reader refuses is not the check's to judge: the plan refused it first."""
+    if not authors_qa_suite(task_type):
+        return False
+    try:
+        basis = increment_basis(cycle.resolved_config())
+    except ValueError:
+        return False
+    return basis is not None and basis.evaluated_at_delivery
+
+
+def reading_of(run: SuiteRun) -> HeadReading:
+    """One file's reading from its run: passed whole is already met; a failure the reader named
+    fails on the head; anything else ran nothing readable."""
+    if run.passed:
+        return HeadReading.ALREADY_MET
+    if run.unexecuted is None and run.tests_passed is not None and run.failing:
+        return HeadReading.FAILS_ON_HEAD
+    return HeadReading.NOT_RUN
+
+
+async def check_criteria_on_head(
+    *,
+    task_type: str,
+    task_id: str,
+    inputs: Mapping[str, Any],
+    cycle: Cycle,
+    run_id: str,
+    stored_artifacts: list[tuple[str, ArtifactRef]],
+    vault: Any,
+    sandbox: Any,
+    projects: Any,
+    repository: Any,
+    read_profile: Any,
+    repaired: Mapping[str, str] | None = None,
+) -> CriterionHeadCheck | None:
+    """Run the increment's criterion files the run has stored on the head and return the
+    readings; ``None`` where the check doesn't apply or can't run (logged with why). It writes
+    nothing: the record is ``store_head_check``'s.
+
+    ``repaired`` is files by path not yet accepted, a repair's (§24dh) or the emission's (§24do):
+    they're laid over the stored ones, and with none of them a criterion file, there's nothing to
+    read and the answer is ``None``.
+
+    ``inputs`` are the task's dispatched inputs, whose product runners say which of the pin's
+    files are tests (``product_tree_at_pin``). Nothing here raises: a check that can't run leaves
+    the cycle to proceed as today, whatever stopped it."""
+    if not applies(task_type, cycle):
+        return None
+    why = _why_cant_run(cycle.source_context, sandbox, projects)
+    if why is not None:
+        _skipped(task_id, why)
+        return None
+    try:
+        return await _read_on_head(
+            task_id, inputs, cycle, run_id, stored_artifacts, vault, sandbox, projects, repository,
+            read_profile, repaired,
+        )  # fmt: skip
+    except Exception:
+        logger.warning(
+            "criterion head check %s: skipped: its reads or the sandbox run failed",
+            task_id,
+            exc_info=True,
+        )
+        return None
+
+
+async def _read_on_head(
+    task_id: str,
+    inputs: Mapping[str, Any],
+    cycle: Cycle,
+    run_id: str,
+    stored_artifacts: list[tuple[str, ArtifactRef]],
+    vault: Any,
+    sandbox: Any,
+    projects: Any,
+    repository: Any,
+    read_profile: Any,
+    repaired: Mapping[str, str] | None,
+) -> CriterionHeadCheck | None:
+    context = cycle.source_context
+    assert context is not None  # _why_cant_run refused a cycle with none
+    change_request = await _change_request(vault, cycle)
+    placed = {
+        f.path: f.criterion_id
+        for f in increment_criterion_files(
+            change_request, scaffold_stack_for(cycle.resolved_config())
+        )
+    }
+    rewritten = {path: text for path, text in (repaired or {}).items() if path in placed}
+    if repaired is not None and not rewritten:
+        return None
+    profile = await read_profile(cycle)
+    if profile is None:
+        _skipped(task_id, "no derived profile at the Project's pin")
+        return None
+    configuration = await projects.get_development_configuration(
+        cycle.project_id, context.development_configuration_revision
+    )
+    if configuration is None:
+        _skipped(task_id, "no development configuration at the Project's pin")
+        return None
+    # The pin as the re-judged suite reads it (H.19): seeded as the checkout it is, so a tracked
+    # lockfile is content there and a Node product's setup can install. Nothing of the run's is
+    # laid on it but the criterion files: a removal an earlier task made (H.23) is development's
+    # work, and the head still holds that file. Applied here, a test of the removal would pass on
+    # "the head" and end an increment that discriminates.
+    pinned = await product_tree_at_pin(repository, cycle, inputs, task_id, unread=_UNREAD)
+    if pinned is None:
+        return None
+    tests = {
+        **await _criterion_tests(vault, stored_artifacts, placed, pinned.files),
+        **rewritten,
+    }
+    if not tests:
+        _skipped(task_id, "no criterion file in the run's stored emissions")
+        return None
+    runs = await run_on_product_runner(
+        sandbox=sandbox,
+        profile=profile,
+        setup=RunnerSetup.of(configuration.commands),
+        pinned=pinned,
+        # #2799: the framework's page loaders, which a page criterion's test imports. The head
+        # holds them only once an earlier increment's delivery wrote them, and without them a
+        # test that loads its view through one fails at its import on the head, so a test that
+        # checks nothing about a page the head already serves is never refused (§24do).
+        tree=increment_page_loader_files(change_request),
+        tests=tests,
+        workspace_id=sandbox_workspace_id(_WORKSPACE_KIND, run_id, task_id),
+    )
+    if runs is None:
+        _skipped(
+            task_id,
+            "no runner holds a criterion file one by one with a test-id reader (SIP-0109 §24ci (a))",
+        )
+        return None
+    readings = tuple(
+        CriterionHeadReading(placed[run.path], run.path, reading_of(run)) for run in runs
+    )
+    logger.info(
+        "criterion head check %s: head=%s readings=%s",
+        task_id,
+        context.pinned_commit[:12],
+        [r.as_dict() for r in readings],
+    )
+    return CriterionHeadCheck(context.pinned_commit, readings, tuple(runs))
+
+
+async def store_head_check(
+    cycle: Cycle, run_id: str, check: CriterionHeadCheck, vault: Any
+) -> str | None:
+    """Store the run's ``criterion_head_check`` record of an accepted emission's reading and return
+    its id; ``None``, storing nothing, for a reading in which a criterion passed on the head.
+
+    §24do: the record is what tells the next proposal the head meets a criterion
+    (``CampaignProgress._already_met_stated``), and a pass on the head never says that, so no
+    record holds one. A reading with nothing passed is kept as the evidence §24cz made it. A store
+    that fails is logged and fails nothing, as every step of the check is."""
+    if check.already_met:
+        return None
+    block = cycle.resolved_config().get("campaign_proposal") or {}
+    document = head_check_document(
+        increment_id=str(block.get("proposal_id") or ""),
+        head_commit=check.head_commit,
+        readings=check.readings,
+        runs=[run.as_dict() for run in check.runs],
+    )
+    try:
+        return await _store(cycle, run_id, document, vault)
+    except Exception:
+        logger.warning("criterion head check: its record couldn't be stored", exc_info=True)
+        return None
+
+
+def _why_cant_run(context: Any, sandbox: Any, projects: Any) -> str | None:
+    if context is None:
+        return "the cycle pins no source"
+    if sandbox is None:
+        return "no sandbox"
+    if projects is None:
+        return "no project registry"
+    return None
+
+
+def _skipped(task_id: str, why: str) -> None:
+    logger.info(_UNREAD + ": %s", task_id, why)
+
+
+async def _change_request(vault: Any, cycle: Cycle) -> str:
+    document = await approved_change_request(vault, cycle)
+    if document is None:
+        raise ValueError(f"cycle {cycle.cycle_id} is not an increment")
+    return document
+
+
+async def _criterion_tests(
+    vault: Any,
+    stored_artifacts: list[tuple[str, ArtifactRef]],
+    placed: dict[str, str],
+    head: Mapping[str, bytes],
+) -> dict[str, str]:
+    """Each criterion file the run has stored, as delivery would deliver it, by path. A criterion
+    file whose latest entry is a removal is no test to run."""
+    candidates = [(art_id, ref) for art_id, ref in stored_artifacts if ref.filename in placed]
+    contents: dict[str, bytes] = {}
+    for art_id, _ref in candidates:
+        _stored, contents[art_id] = await vault.retrieve(art_id)
+    changes, _left_out = squad_changes(candidates, contents, head)
+    return {path: content.decode("utf-8") for path, content in changes.items() if content}
+
+
+async def _store(cycle: Cycle, run_id: str, document: dict[str, Any], vault: Any) -> str:
+    content = json.dumps(document, indent=2, sort_keys=True).encode("utf-8")
+    ref = ArtifactRef(
+        artifact_id=f"art_{uuid4().hex[:12]}",
+        project_id=cycle.project_id,
+        cycle_id=cycle.cycle_id,
+        run_id=run_id,
+        artifact_type=CRITERION_HEAD_CHECK_ARTIFACT_TYPE,
+        filename=CRITERION_HEAD_CHECK_FILENAME,
+        content_hash=sha256(content).hexdigest(),
+        size_bytes=len(content),
+        media_type="application/json",
+        created_at=datetime.now(UTC),
+        metadata={"checked_on": CHECKED_ON},
+    )
+    await vault.store(ref, content)
+    return ref.artifact_id

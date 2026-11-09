@@ -44,6 +44,7 @@ from squadops.cycles.failure_attribution import AttributionClass, FailureEvent, 
 from squadops.cycles.models import Cycle, GateDecisionValue, Run
 from squadops.cycles.replay import parse_replay_declaration
 from squadops.cycles.run_loop_summary import RunLoopSummary
+from squadops.llm.script import LLM_SCRIPT_KEY
 
 
 class ObservationSource(StrEnum):
@@ -149,6 +150,11 @@ def ineligibility(cycle: Cycle) -> str | None:
     overrides = cycle.execution_overrides or {}
     if overrides.get(DECLARATION_KEY):
         return "fault_injected"
+    # #2495: a scripted cycle's plans and rounds are a recording's, not a model's, so nothing
+    # learned from them may reach a model. Read from the resolved config: a request profile may
+    # carry the script as well as a --set.
+    if cycle.resolved_config().get(LLM_SCRIPT_KEY):
+        return "scripted"
     try:
         if parse_replay_declaration(overrides) is not None:
             return "replay"

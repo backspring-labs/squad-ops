@@ -20,12 +20,14 @@ from squadops.campaigns.change_request import (
     SurfaceKind,
     derive_footprint_from,
     load_stored_change_request,
+    placed_page_loaders,
 )
+from squadops.campaigns.page_loader import PAGE_LOADER_IMPORT, page_loader_files
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
-from squadops.cycles.models import RunStatus, WorkloadType
+from squadops.cycles.models import APPROVING_DECISIONS, RunStatus, WorkloadType
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.stacks.scaffold import InterfaceManifest, criterion_test_path, scaffold_stack_for
 from squadops.stacks.scaffold_contract import create_request_body
@@ -202,6 +204,31 @@ async def approved_change_request(vault: Any, cycle: Any) -> str | None:
             f"{CHANGE_REQUEST_ARTIFACT_TYPE}, and an increment frames nothing else"
         )
     return document
+
+
+async def approved_ruling_notes(registry: Any, cycle: Any) -> str | None:
+    """The notes on the ruling that approved an increment cycle's proposal, for its framing
+    (#2854), or ``None``: a cycle that is not an increment, a ruling with no notes, or a cycle
+    that ran no proposal (a repair's or a retry's launch, which reuses its increment's ruling).
+
+    The reviewer approves a sound proposal and says how it is to be built in the notes, rather
+    than returning it for detail that is framing's to settle (2.6 plan §0a). Either approving
+    decision carries them; the ruling read is the cycle's last on its increment gate."""
+
+    # deferred (cycle): campaigns.gate loads this module's package
+    from squadops.campaigns.gate import INCREMENT_RULING_GATE
+
+    if not is_increment(cycle.resolved_config()):
+        return None
+    rulings = [
+        decision
+        for run in sorted(await registry.list_runs(cycle.cycle_id), key=lambda r: r.run_number)
+        for decision in run.gate_decisions
+        if decision.gate_name == INCREMENT_RULING_GATE
+    ]
+    if not rulings or rulings[-1].decision not in APPROVING_DECISIONS:
+        return None
+    return (rulings[-1].notes or "").strip() or None
 
 
 async def forwarded_change_request(vault: Any, cycle: Any) -> str | None:
@@ -405,6 +432,14 @@ def increment_evaluation_inputs(
             {"criterion_id": criterion_id, "path": path}
             for criterion_id, path in replaced_criterion_files(resolved_config, change_request)
         ],
+        # #2799: the page loaders the request placed beside its page criteria's files, the
+        # framework's test files, which a bundle whose test imports one is frozen with. Only
+        # when one is placed, as the test scope's ``page_loaders``, so every other input is as it was.
+        **(
+            {"increment_page_loaders": list(loaders)}
+            if (loaders := placed_page_loaders(load_stored_change_request(change_request)))
+            else {}
+        ),
     }
 
 
@@ -615,6 +650,9 @@ def increment_test_scope(resolved_config: Any, change_request: str | None) -> di
         # SIP-0109 §24cp: the pages the change adds, each with the anchor its view renders, which
         # acceptance reads the page for. Only when one is named, so every other scope is unchanged.
         **({"views": views} if views else {}),
+        # #2799: each page criterion's test whose view it loads through the framework's page
+        # loader, and the loader. Only when one is placed, as ``views``.
+        **({"page_loaders": loaders} if (loaders := page_loader_rows(request)) else {}),
         "criteria": [
             {"id": c.id, "statement": c.statement, "observable": c.observable}
             for c in request.criteria
@@ -675,6 +713,39 @@ def view_lines(views: Iterable[Mapping[str, Any]]) -> str:
         f"- page `{v['route']}`: anchor `{v['anchor']}` (criteria {', '.join(v['criteria'])})"
         for v in views
     )
+
+
+def page_loader_rows(request: Any) -> list[dict[str, str]]:
+    """#2799: each page criterion of ``request`` whose test loads its view through the framework's
+    page loader: its id, its test file and the loader beside it, in the request's order."""
+    return [
+        {"criterion_id": f.criterion_id, "path": f.path, "loader": f.page_loader}
+        for f in request.criterion_files
+        if f.page_loader
+    ]
+
+
+def page_loader_lines(rows: Iterable[Mapping[str, Any]]) -> str:
+    """``page_loader_rows`` as ``request.increment_page_loader_appendix``'s index: data only, one
+    line per criterion, the prose the asset's (#448)."""
+    return "\n".join(
+        f"- {r['criterion_id']}: `{r['path']}` imports `loadView` from `{PAGE_LOADER_IMPORT}` "
+        f"(`{r['loader']}`)"
+        for r in rows
+    )
+
+
+def scope_page_loader_files(scope: Any) -> dict[str, str]:
+    """#2799: the page loaders an increment's test scope names, each with its content, by path: the
+    framework's files every tree a criterion's test runs on needs before delivery writes them.
+    Empty for a scope that names none, or no scope."""
+    rows = scope.get("page_loaders") if isinstance(scope, Mapping) else None
+    return page_loader_files(str(r["loader"]) for r in rows or () if isinstance(r, Mapping))
+
+
+def increment_page_loader_files(change_request: str) -> dict[str, str]:
+    """#2799: the page loaders the stored change request placed, each with its content, by path."""
+    return page_loader_files(placed_page_loaders(load_stored_change_request(change_request)))
 
 
 async def starting_tree_refs(

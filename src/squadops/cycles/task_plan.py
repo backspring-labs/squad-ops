@@ -28,6 +28,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_FALLBACK_NO_BUILDER,
 )
 from squadops.capabilities.reasoning_policy import REASONING_OVERRIDE_KEY
+from squadops.cycles import pulse_verification
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ASSERTION_KINDS,
     CHECK_CLIENT_MOCK_SURFACE,
@@ -47,6 +48,7 @@ from squadops.cycles.fill_slot_integrity import declared_route_signatures
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     TypedCheck,
+    planner_build_task_types,
     resolve_contract_refs,
 )
 from squadops.cycles.manifest_authoring import (
@@ -89,7 +91,12 @@ from squadops.stacks.verification_scaffold_emission import (
     slot_subject_surfaces,
 )
 from squadops.tasks.models import TaskEnvelope
-from squadops.tasks.task_types import TaskType, authors_qa_suite, authors_source
+from squadops.tasks.task_types import (
+    TaskType,
+    authors_qa_suite,
+    authors_source,
+    fails_without_correction,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -824,21 +831,142 @@ def _increment_evaluation(
     change_request: str | None,
     interface_manifest: InterfaceManifest | None,
 ) -> _IncrementEvaluation:
-    if run.workload_type != WorkloadType.IMPLEMENTATION or not change_request:
+    steps = _increment_evaluation_steps(run.workload_type, resolved_config, change_request)
+    if not steps:
         return _IncrementEvaluation()
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_basis, increment_evaluation_inputs
+    from squadops.campaigns.increment_tree import increment_evaluation_inputs
+
+    return _IncrementEvaluation(
+        steps=steps,
+        # No step is read without a change request.
+        inputs=increment_evaluation_inputs(
+            resolved_config, change_request or "", interface_manifest
+        ),
+    )
+
+
+def _increment_evaluation_steps(
+    workload_type: str | None, resolved_config: Mapping[str, Any], change_request: str | None
+) -> tuple[tuple[str, str], ...]:
+    """The evaluation step an increment's run ends in (SIP-0109 §8), or none: the plan's reading
+    and :func:`dispatched_task_steps`'."""
+    if workload_type != WorkloadType.IMPLEMENTATION or not change_request:
+        return ()
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import increment_basis
 
     basis = increment_basis(resolved_config)
     if basis is not None and basis.evaluated_at_delivery:
         # SIP-0109 §24cd point 6: a repository-backed increment is judged at its delivery, on the
         # product's runner in the sandbox (``execution.product_acceptance``), never in a role's
         # container, which holds no product toolchain.
-        return _IncrementEvaluation()
-    return _IncrementEvaluation(
-        steps=((TaskType.QA_EVALUATE_INCREMENT, "qa"),),
-        inputs=increment_evaluation_inputs(resolved_config, change_request, interface_manifest),
-    )
+        return ()
+    return ((TaskType.QA_EVALUATE_INCREMENT, "qa"),)
+
+
+#: How a cycle dispatches a task type (:class:`DispatchedStep`).
+DISPATCHED_BY_WORKLOAD = "workload"
+DISPATCHED_BY_CORRECTION = "correction"
+DISPATCHED_BY_REPAIR = "repair"
+DISPATCHED_BY_PULSE = "pulse"
+
+
+@dataclass(frozen=True)
+class DispatchedStep:
+    """A task type a cycle can dispatch (#2810, #2889): the role it is dispatched to, and how:
+    ``workload``, a step of workload ``workload``'s plan; ``correction``, a step of every
+    correction round; ``repair``, a repair the tables route a failure of ``repairs`` to; ``pulse``,
+    the pulse-check repair chain."""
+
+    role: str
+    origin: str
+    workload: str | None = None
+    #: For a repair, the failed task types the tables route to it, in the order they were read.
+    repairs: tuple[str, ...] = ()
+    #: Whether its envelope names files: a build step's names its plan task's expected artifacts,
+    #: and a repair's the failed task's.
+    names_files: bool = False
+
+
+def dispatched_task_steps(
+    resolved_config: Mapping[str, Any], roster: SquadProfile, *, source_backed: bool
+) -> dict[str, DispatchedStep]:
+    """Every task type a cycle of ``resolved_config`` on ``roster`` can dispatch, read from the
+    profile and the tables the executor dispatches by, never written down (#2810): each workload's
+    steps, its plan's build task types, an increment's evaluation, the correction steps the
+    profile declares, every repair the repair tables route a failure to, and the pulse-check
+    repair chain where the profile declares pulse checks. The first way a type is reached names
+    it. The size preflight renders each (#2889); the #2810 guard composes each."""
+    found: dict[str, DispatchedStep] = {}
+
+    def add(task_type: str, step: DispatchedStep) -> None:
+        found.setdefault(str(task_type), step)
+
+    for entry in resolved_config.get("workload_sequence") or []:
+        workload = entry["type"]
+        for task_type, role in _workload_task_steps(
+            workload, resolved_config, roster, source_backed=source_backed
+        ):
+            names_files = task_type in _BUILD_TASK_TYPES
+            add(
+                task_type,
+                DispatchedStep(role, DISPATCHED_BY_WORKLOAD, workload, names_files=names_files),
+            )
+    failing = [t for t in found if not fails_without_correction(t)]
+    for task_type, role in correction_task_steps(resolved_config):
+        add(task_type, DispatchedStep(role, DISPATCHED_BY_CORRECTION))
+    routed: dict[str, tuple[str, list[str]]] = {}
+    for failed_type in failing:
+        for locus in (None, *_failure_loci()):
+            for task_type, role in repair_steps_for(failed_type, locus):
+                _role, sources = routed.setdefault(str(task_type), (role, []))
+                if failed_type not in sources:
+                    sources.append(failed_type)
+    for task_type, (role, sources) in routed.items():
+        add(
+            task_type,
+            DispatchedStep(role, DISPATCHED_BY_REPAIR, repairs=tuple(sources), names_files=True),
+        )
+    if resolved_config.get("pulse_checks"):
+        for task_type, role in pulse_verification.REPAIR_TASK_STEPS:
+            add(task_type, DispatchedStep(role, DISPATCHED_BY_PULSE))
+    return found
+
+
+def _workload_task_steps(
+    workload: str, resolved_config: Mapping[str, Any], roster: SquadProfile, *, source_backed: bool
+) -> list[tuple[str, str]]:
+    """Workload ``workload``'s steps, each with its role: its own, any build task type its plan's
+    author may be offered on this squad (SIP-0086), and an increment's evaluation (SIP-0109 §8)."""
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import is_increment
+
+    steps, _builder = _resolve_workload_steps(
+        workload, roster, set(served_roles(roster)), dict(resolved_config),
+        source_backed=source_backed,
+    )  # fmt: skip
+    typed = [(str(t), role) for t, role in steps]
+    if resolved_config.get("implementation_plan") and any(
+        t in _BUILD_TASK_TYPES for t, _role in typed
+    ):
+        roles = dict(BUILD_TASK_STEPS) | dict(BUILDER_ASSEMBLY_TASK_STEPS)
+        offered = planner_build_task_types(
+            offer_builder=builder_assembles(roster, resolved_config, source_backed=source_backed)
+        )
+        typed += [(str(t), roles[t]) for t in sorted(offered)]
+    in_increment = is_increment(resolved_config) and workload in _CHANGE_REQUEST_WORKLOADS
+    # The evaluation reads only whether the run has a change request, which an increment's has.
+    change = "an increment's change request" if in_increment else None
+    typed += [
+        (str(t), role) for t, role in _increment_evaluation_steps(workload, resolved_config, change)
+    ]
+    return typed
+
+
+def _failure_loci() -> list[str]:
+    """Every failure locus ``FailureLocus`` names, so a locus added there is routed here too."""
+    return [v for k, v in vars(FailureLocus).items() if k.isupper() and isinstance(v, str)]
 
 
 def _increment_inputs(
@@ -847,6 +975,7 @@ def _increment_inputs(
     change_request: str | None,
     evaluation: _IncrementEvaluation,
     test_scope: Mapping[str, Any] | None = None,
+    ruling_notes: str | None = None,
 ) -> dict[str, Any]:
     """What one envelope of an increment is handed (SIP-0109): every framing stage the approved
     change request, its framed objective (§7.3); each ``increment_evaluation`` task what its
@@ -857,7 +986,11 @@ def _increment_inputs(
 
         # SIP-0113 §10t ruling 4: without the goals it means to move, which only its proposer and
         # the supervisor see.
-        return {"increment_change_request": role_view(change_request)}
+        framed = {"increment_change_request": role_view(change_request)}
+        # #2854: the reviewer's notes on the ruling that approved it, how it is to be built.
+        if ruling_notes:
+            framed["increment_ruling_notes"] = ruling_notes
+        return framed
     if get_context_contract(task_type).increment_evaluation:
         return dict(evaluation.inputs)
     # #1884: the suite's author is handed what its tests may assert. WHO is the registry's
@@ -1532,6 +1665,7 @@ def _step_inputs(
     interface_manifest: InterfaceManifest | None,
     change_request: str | None,
     implementation_artifacts: list[Any],
+    ruling_notes: str | None = None,
 ) -> dict:
     """One envelope's inputs, with their keys in the order an agent receives them (#1994, the
     extraction map's §4e step 5c)."""
@@ -1585,7 +1719,9 @@ def _step_inputs(
             inputs, task_type, footprint, criterion_files, frozen_files, test_scope
         )
     _inject_rejection_context(inputs, framing_rejection_context, task_type)
-    inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
+    inputs.update(
+        _increment_inputs(run, task_type, change_request, evaluation, test_scope, ruling_notes)
+    )
     inputs.update(_criterion_file_inputs(task_type, change_request, criterion_files))
     inputs.update(_prior_cycle_inputs(resolved_config, task_type))
     return inputs
@@ -1599,6 +1735,7 @@ def generate_task_plan(
     contract: VerificationContract | None = None,
     interface_manifest: InterfaceManifest | None = None,
     change_request: str | None = None,
+    ruling_notes: str | None = None,
 ) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -1623,6 +1760,8 @@ def generate_task_plan(
         change_request: An increment's approved change request, for its framing run
             (SIP-0109 §7.3) — the framed objective every framing task is shown. Required
             there, and refused anywhere else.
+        ruling_notes: The notes on the ruling that approved an increment, shown to its
+            framing beside its change request (#2854)
 
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
@@ -1754,6 +1893,7 @@ def generate_task_plan(
             interface_manifest=interface_manifest,
             change_request=change_request,
             implementation_artifacts=implementation_artifacts,
+            ruling_notes=ruling_notes,
         )
 
         envelope = TaskEnvelope(

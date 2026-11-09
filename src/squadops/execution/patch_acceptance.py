@@ -27,6 +27,8 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers.source_repository import source_backed
+from squadops.capabilities.qa_run_tree import product_runners
 from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.check_registry import (
     CHECK_TESTS_PASS,
@@ -37,12 +39,14 @@ from squadops.cycles.check_registry import (
 )
 from squadops.cycles.correction_signature import (
     REPAIR_REFUSED_MARKER,
+    REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
     RetestReduction,
     criterion_identity,
     failure_signature,
     render_signature,
     retest_reduction_or_refusal,
 )
+from squadops.cycles.deletions import DELETIONS_KEY
 from squadops.cycles.failure_evidence import build_failure_evidence
 from squadops.cycles.implementation_plan import resolve_criteria_for_files
 from squadops.cycles.patch_verification import (
@@ -64,6 +68,7 @@ from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import row_is_blocking_failure
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.projects.derived_profile import runner_holds
 from squadops.stacks.development_profiles import (
     collected_test_patterns_for,
     matches_test_file_patterns,
@@ -255,27 +260,53 @@ def _retest_reduction_of(
     return reduction
 
 
-def _repaired_suite_files(
-    patched_artifacts: Sequence[Mapping[str, Any]], resolved_config: Mapping[str, Any]
-) -> list[str]:
-    """The patched files this stack's runner would collect as a suite (#1269).
+#: The runners a repaired suite is read by, each as ``(roots, file_pattern)``
+#: (``qa_run_tree.product_runners``).
+SuiteRunners = tuple[tuple[tuple[str, ...], str], ...]
 
-    Read through what the stack's runner collects
-    (``collected_test_patterns_for``/``matches_test_file_patterns``, #846, #1534) rather than through
-    the artifact's ``type``: a repair's files are typed by extension, so a repaired
+
+def suite_runners(inputs: Mapping[str, Any]) -> SuiteRunners:
+    """The product's own runners when the task is a repository-backed product's, else ``()``, which
+    reads a repaired suite by its stack (SIP-0112 H.29).
+
+    A product's tests are where its runners collect them, and a stack's collected-test vocabulary
+    can place them: ``nextjs_ts``'s is the scaffold's ``__tests__/`` rule (#1534), which a product
+    made from that blueprint needn't keep. A product with no runner to read keeps its stack's
+    reading, since the qa image's run is then the only one there is."""
+    return product_runners(inputs) if source_backed(inputs) else ()
+
+
+def _repaired_suite_files(
+    patched_artifacts: Sequence[Mapping[str, Any]],
+    resolved_config: Mapping[str, Any],
+    runners: SuiteRunners,
+) -> list[str]:
+    """The patched files a runner would collect as a suite (#1269).
+
+    A repository-backed product's are the files one of its own ``runners`` holds: under that
+    runner's roots, named by its pattern (``runner_holds``, SIP-0112 H.29). A sample application's,
+    or a product's with no runner, are read through what the stack's runner collects
+    (``collected_test_patterns_for``/``matches_test_file_patterns``, #846, #1534). Neither reads the
+    artifact's ``type``: a repair's files are typed by extension, so a repaired
     ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
     miss exactly the case this exists for.
     """
 
-    patterns = collected_test_patterns_for(resolved_config)
-    if not patterns:
-        return []
-    return [
+    names = [
         name
         for artifact in patched_artifacts
         if isinstance(artifact, Mapping) and (name := str(artifact.get("name") or ""))
-        if matches_test_file_patterns(name, patterns)
     ]
+    if runners:
+        return [
+            name
+            for name in names
+            if any(runner_holds(roots, pattern, name) for roots, pattern in runners)
+        ]
+    patterns = collected_test_patterns_for(resolved_config)
+    if not patterns:
+        return []
+    return [name for name in names if matches_test_file_patterns(name, patterns)]
 
 
 #: The values the accepted-patch path hands from one of its steps to the next (the 1.7.5
@@ -297,6 +328,9 @@ class _PatchSubject:
     patched_artifacts: list[dict[str, Any]]
     workspace_files: dict[str, Any]
     file_owned: list[Any]
+    #: What a repaired suite is read by: the product's runners, or ``()`` for the stack's
+    #: vocabulary (``suite_runners``).
+    runners: SuiteRunners
 
 
 @dataclasses.dataclass(frozen=True)
@@ -356,7 +390,9 @@ class PatchAcceptance:
         enforce_frozen_ownership: Callable[..., tuple[list[dict], list[Any]]],
         emit_integrity_evidence: Callable[[Any, Any], None],
         enforce_compliance_budget: Callable[..., None],
+        read_repaired_suite_on_head: Callable[..., Any],
     ) -> None:
+        self._read_repaired_suite_on_head = read_repaired_suite_on_head
         self._reexecute_repaired_suite = reexecute_repaired_suite
         self._enforce_frozen_ownership = enforce_frozen_ownership
         self._emit_integrity_evidence = emit_integrity_evidence
@@ -478,7 +514,20 @@ class PatchAcceptance:
                 retest.failed_retest,
                 patched_result_holder,
                 correction_attempts=correction_attempts,
+                deletions=(result.outputs or {}).get(DELETIONS_KEY) or (),
             )
+
+        if await self._suite_passes_on_head(
+            envelope,
+            repair_artifacts,
+            run_id=run_id,
+            cycle=cycle,
+            correction_attempts=correction_attempts,
+            stored_artifacts=stored_artifacts,
+            enriched_envelope=enriched_envelope,
+            repair_rejection_carry=repair_rejection_carry,
+        ):
+            return "continue"
 
         patched_artifacts, spine_rows = self._settle_patch_evidence(
             envelope, subject, verdict, retest
@@ -613,6 +662,8 @@ class PatchAcceptance:
             patched_artifacts=patched_artifacts,
             workspace_files=workspace_files,
             file_owned=file_owned,
+            # The dispatched task's view: only the enriched envelope carries ``source_repository``.
+            runners=suite_runners((enriched_envelope or envelope).inputs or {}),
         )
 
     async def _verify_patch(
@@ -704,7 +755,9 @@ class PatchAcceptance:
         # on the qa task). Same key as block 5: a repair carrying a suite the stack's runner
         # collects has something to run, so the retest decides.
         repaired_suites = (
-            _repaired_suite_files(subject.patched_artifacts, subject.resolved_config)
+            _repaired_suite_files(
+                subject.patched_artifacts, subject.resolved_config, subject.runners
+            )
             if authors_qa_suite(envelope.task_type)
             else []
         )
@@ -863,7 +916,7 @@ class PatchAcceptance:
         # None means "no retest ran" — distinct from a retest that produced no
         # artifacts, which supersede_evidence_artifacts treats the same way (drop).
         retest_evidence: list[dict[str, Any]] | None = None
-        repaired_suites = _repaired_suite_files(patched_artifacts, resolved_config)
+        repaired_suites = _repaired_suite_files(patched_artifacts, resolved_config, subject.runners)
         if isinstance(corrected_outputs.get("test_result"), dict) or repaired_suites:
             if cycle is None:
                 logger.warning(
@@ -891,6 +944,8 @@ class PatchAcceptance:
                 profile=profile,
                 flow_run_id=flow_run_id,
                 budget_guard=budget_guard,
+                # #2881: the failed task's own suite, which the product's runner judges.
+                failed_suite=(result.outputs or {}).get("artifacts") or (),
             )
             retest_outputs = (retest_result.outputs or {}) if retest_result else {}
             fresh_test_result = retest_outputs.get("test_result")
@@ -976,6 +1031,54 @@ class PatchAcceptance:
             rows=retest_rows,
             evidence=retest_evidence,
         )
+
+    async def _suite_passes_on_head(
+        self,
+        envelope: TaskEnvelope,
+        repair_artifacts: Sequence[Mapping[str, Any]],
+        *,
+        run_id: str,
+        cycle: Cycle | None,
+        correction_attempts: int,
+        stored_artifacts: list[tuple[str, ArtifactRef]] | None,
+        enriched_envelope: TaskEnvelope | None,
+        repair_rejection_carry: dict[str, list[str]] | None,
+    ) -> bool:
+        """SIP-0109 §24dh (#2933): whether a repair rewrote a criterion's test into one that passes
+        on the head, which refuses it.
+
+        The retest passing is the repair's own claim, on the tree holding this run's work. The head
+        is the same product without that work, and it hasn't moved since the suite failed, so a
+        pass there came from the test changing. BT-2's did: its fixture lost a field, the
+        controller answered with no units, and every assertion sat in a loop over nothing. The
+        round is spent and the next one is told, as #2664's is. A repair that left the criterion
+        files alone reads ``None`` here, and the task's head check judges the test qa wrote."""
+        if cycle is None:
+            return False
+        check = await self._read_repaired_suite_on_head(
+            envelope,
+            enriched_envelope if enriched_envelope is not None else envelope,
+            cycle,
+            run_id,
+            stored_artifacts if stored_artifacts is not None else [],
+            {
+                str(artifact.get("name")): str(artifact.get("content") or "")
+                for artifact in repair_artifacts
+            },
+        )
+        if check is None or not check.already_met:
+            return False
+        _record_repair_rejection(
+            repair_rejection_carry,
+            envelope.task_id,
+            f"correction attempt {correction_attempts}: {REPAIR_SUITE_PASSES_ON_HEAD_MARKER} ("
+            + check.passing_files()
+            + f") — {check.head_commit[:12]} is the product before this run's work, so these "
+            "tests can't tell the work from its absence, and nothing was applied. Keep the "
+            "suite's own fixtures and setup, and make a test fail on the head for the reason "
+            "the criterion states",
+        )
+        return True
 
     def _settle_patch_evidence(
         self,
@@ -1181,8 +1284,12 @@ class PatchAcceptance:
         patched_result_holder: dict[str, Any],
         *,
         correction_attempts: int,
+        deletions: Sequence[str] = (),
     ) -> str:
         """#1522: keep a repair whose retest made progress on its round and broke nothing (#2306).
+
+        ``deletions`` are the failed task's own removals (#2612): part of the candidate kept, and
+        stored with it, since the next round starts from the retest's result, which carries none.
 
         The kept set is the candidate that was verified, proven as an accepted patch is
         (SIP-0107 §20), less the failed attempt's evidence: the re-dispatch writes its own, and a
@@ -1220,6 +1327,7 @@ class PatchAcceptance:
         patched_result_holder[KEPT_OUTPUTS_KEY] = {
             "artifacts": artifacts,
             "validation_result": {"persisted_revision_id": persisted_revision_id},
+            DELETIONS_KEY: list(deletions),
         }
         # The retest ran as its own task id; the next round is about the failed task. Its
         # artifacts are the next round's base, and its copies of the kept files keep their

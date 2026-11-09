@@ -128,10 +128,11 @@ def _f1_bundle(repo) -> dict:
     }
 
 
-def _increment(world_, *, frozen: bool, request: str = STORED):
+def _increment(world_, *, frozen: bool, request: str = STORED, pages: list | None = ()):
     """The world's cycle as a repository-backed increment's implementation sees it: its block names
-    the campaign branch, its launch pinned F1 (when ``frozen``), and its approved change request
-    (R1, a summary line in the report module) is forwarded in its plan refs."""
+    the campaign branch, its launch pinned F1 (when ``frozen``) and the accepted-page inventory
+    (``pages``, §24dq), and its approved change request (R1, a summary line in the report module)
+    is forwarded in its plan refs."""
     repo, vault, executor, cycle, run = world_
     pins = []
     if frozen:
@@ -156,6 +157,10 @@ def _increment(world_, *, frozen: bool, request: str = STORED):
         request.encode(),
     )
     block = {**_cycle().execution_overrides["campaign_proposal"], "frozen_criteria": pins}
+    # §24dr item 4: every repository-backed launch pins one, empty for none; ``None`` is a block
+    # an old runtime-api launched.
+    if pages is not None:
+        block["accepted_pages"] = list(pages)
     increment = dataclasses.replace(
         cycle,
         kind="increment",
@@ -165,8 +170,12 @@ def _increment(world_, *, frozen: bool, request: str = STORED):
     return repo, vault, executor, increment, run
 
 
-async def _judged(world_, changes: dict, *, frozen: bool = True, request: str = STORED) -> dict:
-    repo, vault, executor, cycle, run = _increment(world_, frozen=frozen, request=request)
+async def _judged(
+    world_, changes: dict, *, frozen: bool = True, request: str = STORED, pages: list | None = ()
+) -> dict:
+    repo, vault, executor, cycle, run = _increment(
+        world_, frozen=frozen, request=request, pages=pages
+    )
     await _end_of_plan(executor, cycle, run, vault, changes)
     [(ref, raw)] = _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE)
     assert (ref.cycle_id, ref.run_id) == (cycle.cycle_id, run.run_id)
@@ -619,8 +628,8 @@ async def test_a_page_whose_anchor_its_markup_hides_rejects_the_increment(world)
     assert "route /: missing counter-list" in document["unmet"]
 
 
-def _adds_totals(anchor: str) -> str:
-    """The stored request with R1 asserted on ``/totals``, a page the profile doesn't pin, naming
+def _adds_page(anchor: str, route: str = "/totals") -> str:
+    """The stored request with R1 asserted on ``route``, a page the profile doesn't pin, naming
     its view's anchor (§24cp), re-hashed as the rails would have stored it."""
     from squadops.campaigns.change_request import (
         SurfaceKind,
@@ -632,7 +641,7 @@ def _adds_totals(anchor: str) -> str:
     request = load_stored_change_request(STORED)
     [r1, *rest] = request.criteria
     on_a_page = dataclasses.replace(
-        r1, surface_kind=SurfaceKind.CLIENT_ROUTE, surface="/totals", anchor=anchor
+        r1, surface_kind=SurfaceKind.CLIENT_ROUTE, surface=route, anchor=anchor
     )
     changed = dataclasses.replace(request, criteria=(on_a_page, *rest))
     return stored_change_request(dataclasses.replace(changed, content_hash=content_hash(changed)))
@@ -667,7 +676,7 @@ async def test_an_added_route_is_judged_at_delivery_by_the_anchor_its_request_na
     report = tracked_files(repo.path, repo.second_commit)[REPORT]
 
     document = await _judged(
-        world, {REPORT: report + _LINE, R1: _R1_TEST}, request=_adds_totals("totals-view")
+        world, {REPORT: report + _LINE, R1: _R1_TEST}, request=_adds_page("totals-view")
     )
 
     routes = {r["path"]: (r["held"], r["missing"]) for r in document["routes"]}
@@ -698,7 +707,7 @@ async def test_a_missing_added_route_reusing_a_pinned_views_anchor_is_never_held
     report = tracked_files(repo.path, repo.second_commit)[REPORT]
 
     document = await _judged(
-        world, {REPORT: report + _LINE, R1: _R1_TEST}, request=_adds_totals("counter-list")
+        world, {REPORT: report + _LINE, R1: _R1_TEST}, request=_adds_page("counter-list")
     )
 
     held = {r["path"]: r["held"] for r in document["routes"]}
@@ -712,3 +721,122 @@ async def test_a_missing_added_route_reusing_a_pinned_views_anchor_is_never_held
         " told from that one's" in document["blocked"]
     )
     assert document["verdict"] != "accepted"
+
+
+# --- SIP-0109 §24dq (#2783): the pages earlier increments added, judged at delivery -----------
+
+#: ``/totals``, which an earlier increment added and acceptance held, as the launch pinned it.
+_TOTALS_PAGE = {
+    "route": "/totals",
+    "anchor": "totals-view",
+    "testids": ["totals-view", "totals-row"],
+}
+_TOTALS_VIEW = (
+    '<html><body><section data-testid="totals-view"><p data-testid="totals-row"></p></section>'
+    "</body></html>"
+)
+_APP = "http://10.89.0.7:8080"
+
+
+async def test_a_page_never_built_reusing_an_earlier_increments_anchor_is_never_held(world):  # noqa: F811
+    """The issue's acceptance case, at the executor's end of plan: the launch pinned ``/totals``,
+    which an earlier increment added. The request (stored before the rails refused it) asserts R1
+    on ``/summary`` and names ``totals-view``. The candidate never builds ``/summary``, and the
+    app's fallback renders the totals view there. No manifest names ``/totals``. Bug caught: the
+    inventory never reaching delivery's renderer, so ``/summary`` reads held and the increment is
+    accepted with a page that doesn't exist."""
+    repo = world[0]
+    _routed(world, pages={**_TALLY_PAGES, f"{_APP}/totals": _TOTALS_VIEW, f"{_APP}/summary": _TOTALS_VIEW})  # fmt: skip
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(
+        world,
+        {REPORT: report + _LINE, R1: _R1_TEST},
+        request=_adds_page("totals-view", route="/summary"),
+        pages=[_TOTALS_PAGE],
+    )
+
+    held = {r["path"]: r["held"] for r in document["routes"]}
+    assert held == {
+        "*": "held",
+        "/": "held",
+        "/summary": "blocked_unverified",
+        "/totals": "blocked_unverified",
+    }
+    assert (
+        "route /summary: not rendered: the change request names an anchor another page carries"
+        " (/totals)" in document["blocked"]
+    )
+    assert document["verdict"] != "accepted"
+
+
+async def test_a_candidate_that_drops_an_earlier_increments_page_is_rejected(world):  # noqa: F811
+    """The accepted pages join the expected set: a candidate that no longer serves ``/totals``
+    reads it broken, as one that drops a pinned route does. Bug caught: a page an increment
+    added, accepted once, never judged again, so a later change deletes it unseen."""
+    repo = world[0]
+    _routed(world, pages={**_TALLY_PAGES, f"{_APP}/totals": _TALLY_PAGES[f"{_APP}/__squadops_unmatched__"]})  # fmt: skip
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE, R1: _R1_TEST}, pages=[_TOTALS_PAGE])
+
+    assert "route /totals: missing totals-view" in document["unmet"]
+    assert document["verdict"] == "rejected"
+    [totals] = [r for r in document["renderings"]["routes"] if r["route"] == "/totals"]
+    assert (totals["source"], totals["anchor"]) == ("accepted_page", "totals-view")
+
+
+#: ``/totals`` as the earlier increment's acceptance held it: its root alone.
+_TOTALS_ROOT_ONLY = {"route": "/totals", "anchor": "totals-view", "testids": ["totals-view"]}
+#: The candidate's ``/totals``: the accepted view, with a summary panel this candidate put in it.
+_TOTALS_WITH_SUMMARY = (
+    '<html><body><section data-testid="totals-view"><div data-testid="summary-view"></div>'
+    "</section></body></html>"
+)
+
+
+async def test_a_page_never_built_whose_anchor_the_candidate_put_on_an_accepted_page_never_holds(  # noqa: F811
+    world,
+):
+    """The outside review's item 1 (SIP-0109 §24dr), at the executor's end of plan. The launch
+    pinned ``/totals`` with ``totals-view`` alone. This candidate puts ``summary-view`` inside
+    ``/totals``, and the request asserts R1 on ``/summary``, naming ``summary-view``. The candidate
+    never builds ``/summary``, and the app's fallback renders ``/totals`` there. No recorded id is
+    reused, so only the candidate's own pages show it. Bug caught: the anchor held unique against
+    the recorded ids alone, so ``/summary`` reads held on a page that doesn't exist."""
+    repo = world[0]
+    _routed(world, pages={**_TALLY_PAGES, f"{_APP}/totals": _TOTALS_WITH_SUMMARY, f"{_APP}/summary": _TOTALS_WITH_SUMMARY})  # fmt: skip
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(
+        world,
+        {REPORT: report + _LINE, R1: _R1_TEST},
+        request=_adds_page("summary-view", route="/summary"),
+        pages=[_TOTALS_ROOT_ONLY],
+    )
+
+    held = {r["path"]: r["held"] for r in document["routes"]}
+    assert held == {"*": "held", "/": "held", "/summary": "blocked_unverified", "/totals": "held"}
+    assert (
+        "route /summary: not rendered: the change request names an anchor another page carries"
+        " (/totals)" in document["blocked"]
+    )
+    assert document["verdict"] != "accepted"
+
+
+async def test_an_increment_an_old_runtime_api_launched_with_no_inventory_is_never_judged(world):  # noqa: F811
+    """SIP-0109 §24dr item 4: the launch was written by a runtime-api from before §24dq, so its
+    block names no inventory, and the increment reaches this one's acceptance. Bug caught: the
+    missing inventory read as empty, so a page reusing an accepted page's anchor holds through
+    the fallback, as before #2783."""
+    _routed(world, pages=_TALLY_PAGES)
+    repo, vault, executor, cycle, run = _increment(world, frozen=False, pages=None)
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    with pytest.raises(
+        _ExecutionError,
+        match="increment acceptance: the accepted-page inventory can't be read: the launch pinned",
+    ):
+        await _end_of_plan(executor, cycle, run, vault, {REPORT: report + _LINE})
+
+    assert _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE) == []

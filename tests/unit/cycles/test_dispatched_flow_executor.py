@@ -1373,6 +1373,7 @@ class TestRunCompletionActivityWiring:
             proposal_evidence=NoOpProposalEvidence(),
             binding_fill=None,
             route_renderer=None,
+            goal_set_registry=None,
             focus_lease_port=focus_lease_port,
         )
 
@@ -1992,12 +1993,12 @@ class TestARunStartsOnlyWhenALaunchCould:
         def lease(op, key, **extra):
             return CampaignTransition(
                 operation=op,
-                actor="crew",
+                actor="operator",
                 actor_role="campaign-supervisor",
                 reason="gate",
                 idempotency_key=key,
                 next_state=None,
-                binding={"held_by": "crew", **extra},
+                binding={"held_by": "operator", **extra},
             )
 
         await reg.change_box_lease(
@@ -2064,11 +2065,11 @@ class TestARunStartsOnlyWhenALaunchCould:
         assert waits == [[]]  # it waited once, and nothing had started the run
         assert (statuses[0], statuses[-1]) == (RunStatus.RUNNING, RunStatus.COMPLETED)
 
-    async def test_a_crew_model_left_resident_when_the_lease_returns_keeps_the_run_queued(
+    async def test_a_operator_model_left_resident_when_the_lease_returns_keeps_the_run_queued(
         self, executor, mock_registry, mock_queue, cycle
     ):
         """#1928: the framing run after a ruling waited only on the lease, so a release with the
-        crew's model still loaded started it beside that model. It waits for the unload now."""
+        operator's model still loaded started it beside that model. It waits for the unload now."""
         from squadops.campaigns.box import LaunchRefusal
 
         reg, release = await self._held()
@@ -2117,10 +2118,10 @@ class TestARunStartsOnlyWhenALaunchCould:
     @pytest.mark.parametrize(
         ("released", "resident", "reason"),
         [
-            (False, [], "the supervisor (crew) holds the box until"),
+            (False, [], "the supervisor (operator) holds the box until"),
             (True, ["llama3.1:8b"], "engine ollama has llama3.1:8b loaded, which the deploy"),
         ],
-        ids=["the lease held", "the lease returned with a crew model resident"],
+        ids=["the lease held", "the lease returned with an operator model resident"],
     )
     async def test_a_box_refused_past_one_full_lease_fails_the_run_unstarted(
         self, executor, mock_registry, cycle, released, resident, reason

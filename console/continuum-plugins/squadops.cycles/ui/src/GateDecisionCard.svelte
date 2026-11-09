@@ -3,40 +3,26 @@
 
   Safety rules:
   - Approve: single click, no confirmation (danger_level: "safe")
-  - Reject: confirm() dialog before submission (danger_level: "confirm")
+  - Reject: confirm() dialog before it runs (danger_level: "confirm"). The bus answers the first
+    post `requires_confirmation` without running it; the dialog answers that, and on yes the same
+    body is re-posted with `confirmed: true` (#2904). The dialog alone confirms nothing.
   - In-flight: both buttons disabled with spinner text
   - After decision: buttons replaced with read-only decision badge
   - Failure: error message, buttons re-enabled, NO optimistic update
   - Already decided (conflict/race): non-error info toast, re-fetch
 -->
 <script>
+  import { CommandDeclined, executeCommand } from '../../../shared/commands.js';
+
   let { gate, projectId, cycleId, runId, runStatus, onDecisionRecorded = null } = $props();
 
   let inFlight = $state(false);
   let error = $state(null);
   let info = $state(null);
 
-  const config = window.__SQUADOPS_CONFIG__ || {};
-  const apiBase = config.apiBaseUrl || '';
-
   async function apiFetch(url, opts) {
     if (window.squadops?.apiFetch) return window.squadops.apiFetch(url, opts);
     return fetch(url, opts);
-  }
-
-  async function executeCommand(commandId, params) {
-    const resp = await apiFetch(`${apiBase}/api/commands/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command_id: commandId, params }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text();
-      const err = new Error(body || `Command failed: ${resp.status}`);
-      err.status = resp.status;
-      throw err;
-    }
-    return resp.json();
   }
 
   // Gate is decidable only when run is "waiting" AND gate has no decision
@@ -45,10 +31,6 @@
   );
 
   async function decide(decision) {
-    if (decision === 'rejected') {
-      const confirmed = confirm(`Reject gate "${gate.gate_name}"? This will stop the run.`);
-      if (!confirmed) return;
-    }
     inFlight = true;
     error = null;
     info = null;
@@ -56,15 +38,26 @@
       const commandId = decision === 'approved'
         ? 'squadops.gate_approve'
         : 'squadops.gate_reject';
-      await executeCommand(commandId, {
-        project_id: projectId,
-        cycle_id: cycleId,
-        run_id: runId,
-        gate_name: gate.gate_name,
-      });
+      // Asked when the bus answers that a reject needs confirming; approve is `safe` and takes
+      // the helper's own dialog should the bus ever ask.
+      const confirmReject = () =>
+        window.confirm(`Reject gate "${gate.gate_name}"? This will stop the run.`);
+      await executeCommand(
+        apiFetch,
+        commandId,
+        {
+          project_id: projectId,
+          cycle_id: cycleId,
+          run_id: runId,
+          gate_name: gate.gate_name,
+        },
+        decision === 'rejected' ? { confirm: confirmReject } : {},
+      );
       // NO optimistic update — parent re-fetches run detail
       onDecisionRecorded?.();
     } catch (err) {
+      // The user said no to the bus's question: nothing ran, nothing to show.
+      if (err instanceof CommandDeclined) return;
       // Already-decided (conflict/idempotent) -> info toast, not error
       if (err.message?.includes('already') || err.status === 409) {
         info = 'Gate already decided';

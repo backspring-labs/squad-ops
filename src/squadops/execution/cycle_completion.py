@@ -17,7 +17,12 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from squadops.cycles.cycle_end import CycleEnd, CycleStopReason, RecordedEnd
+from squadops.cycles.cycle_end import (
+    CycleEnd,
+    CycleStopReason,
+    RecordedEnd,
+    declared_stop_reason,
+)
 from squadops.execution.cycle_evidence import record_cycle_failures
 
 logger = logging.getLogger(__name__)
@@ -38,6 +43,9 @@ class CycleCompletion:
 
     async def end(self, cycle_id: str, last_run: Any, stopped_because: CycleStopReason) -> CycleEnd:
         summary = await self._cycle_registry.get_run_loop_summary(last_run.run_id)
+        # #2890: a failed run whose raise site declared the cycle's own ending (a criterion already
+        # met on the head) is recorded and heard as that ending, never as a failed build.
+        stopped_because = declared_stop_reason(stopped_because, getattr(summary, "terminal", None))
         await self._record_failures(cycle_id, last_run.run_id)
         await self._record_end(cycle_id, last_run.run_id, stopped_because)
         await self._hear_campaign(cycle_id, last_run, stopped_because)

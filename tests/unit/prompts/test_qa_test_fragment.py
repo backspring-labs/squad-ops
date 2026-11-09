@@ -161,3 +161,39 @@ class TestNoFurtherTestKeepsTheCriterionBound:
             "proposing no further qa task for it is a correct answer."
         ) in text
         assert text.count("no further qa task") == 1
+
+
+class TestACriterionTestAssertsSomething:
+    """#2933: a criterion test whose assertions sat in a loop over an empty collection passed on
+    the head having checked nothing, and row 19 abandoned a real backlog item as already met. Each
+    test reads the prompt as it is assembled or rendered for the live task, not the file alone, so
+    the guidance can't be cut from what the model is shown."""
+
+    def test_the_qa_task_shows_a_non_empty_check_before_the_loop_on_both_stacks(self):
+        from adapters.prompts.factory import create_prompt_repository
+        from squadops.prompts.assembler import PromptAssembler
+
+        prompt = PromptAssembler(create_prompt_repository(provider="filesystem")).assemble(
+            role="qa", hook="task_start", task_type="qa.test"
+        )
+        text = prompt.content
+        rule = text.index("A criterion's test asserts on something it has made sure is there")
+        js_guard = text.index("assert.ok(orders.length > 0", rule)
+        assert js_guard < text.index("for (const order of orders)", rule)
+        py_guard = text.index('assert orders, "the fixture yields orders"', rule)
+        assert py_guard < text.index('assert all(order["status"]', rule)
+        assert "Read the fixture the suite provides" in text[rule:js_guard]
+
+    async def test_a_qa_repair_keeps_the_suites_fixture_and_guards_its_loops(self):
+        from adapters.prompts.factory import create_prompt_asset_source
+        from squadops.prompts.renderer import RequestTemplateRenderer
+
+        rendered = await RequestTemplateRenderer(
+            create_prompt_asset_source(provider="filesystem")
+        ).render(
+            "request.qa_test_repair_failing_cases_appendix",
+            {"case_lines": "- `t.test.js:4` › T2 — it failed", "case_count": "1"},
+        )
+        assert "Keep the suite's own fixtures." in rendered.content
+        assert "fix the path" in rendered.content
+        assert "asserts first that the collection isn't empty" in rendered.content

@@ -2,7 +2,7 @@ name: qwen27b-nvfp4-parallel2
 status: candidate for ordinary shared inference; not the frozen counted-verification
   recipe
 why: Same pinned weights, image, sampling and context; two CUDA lanes for squad and
-  crew sharing. Requires post-cycle long-context/memory/overlap validation before
+  operator sharing. Requires post-cycle long-context/memory/overlap validation before
   use.
 served_id: qwen3.8-27b-tf-nvfp4
 image: squadops-tensorfold:0.6.6-cb2ebf05

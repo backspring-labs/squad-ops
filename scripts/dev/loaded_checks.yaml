@@ -755,15 +755,17 @@ checks:
       print(len(HOST_QUERIES), MEMORY_FLOOR_AFTER_LOAD_BYTES)
     expect: "10 17179869184"
   - id: "2229-quiet"
-    what: SIP-0111 §5.5 - the launch gate reads an engine serving requests as not quiet, and an idle one as quiet
+    what: SIP-0109 §24cu (#2851) - the launch gate reads an engine serving the declared model as quiet, busy or idle, and one holding an undeclared model or unread as not quiet
     container: squadops-runtime-api
     code: |
       from squadops.campaigns.box import EngineReading, Model, box_quietness
       served = (Model("qwen3.8-27b-tf-nvfp4"),)
       busy = box_quietness(served, [EngineReading("tensorfold", served, in_flight=1)])
       idle = box_quietness(served, [EngineReading("tensorfold", served, in_flight=0)])
-      print(busy.quiet, idle.quiet)
-    expect: "False True"
+      foreign = box_quietness(served, [EngineReading("tensorfold", (Model("other"),), in_flight=0)])
+      unread = box_quietness(served, [EngineReading("tensorfold", None, "401")])
+      print(busy.quiet, idle.quiet, foreign.quiet, unread.quiet)
+    expect: "True True False False"
   - id: "2281"
     what: SIP-0111 §9j - a TensorFold call that sets no seed sends a fresh one, and a call's own seed is sent as it is
     container: squadops-max
@@ -863,7 +865,7 @@ checks:
       from squadops.campaigns import continuation as c
       src = inspect.getsource(c.campaign_continuation_decision)
       # §24cb (#2704) tabled the parked row with the plan-gate stop's: either form counts the park.
-      tabled = "cycle.ending in _ABANDONED_UNBUILT" in src and c.CycleEnding.PARKED in getattr(c, "_ABANDONED_UNBUILT", {})
+      tabled = "_ABANDONED_BEFORE_VERDICT.get(cycle.ending)" in src and c.CycleEnding.PARKED in getattr(c, "_ABANDONED_BEFORE_VERDICT", {})
       print("cycle.ending is CycleEnding.PARKED" in src or tabled)
     expect: "True"
   - id: "2301"
@@ -872,7 +874,7 @@ checks:
     code: |
       import inspect
       from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
-      src = inspect.getsource(DispatchedFlowExecutor.execute_cycle)
+      src = inspect.getsource(DispatchedFlowExecutor._execute_workloads)
       print("except _CancellationError:" in src, "inter_workload_gate_run_cancelled" in src)
     expect: "True True"
   - id: "2303"
@@ -1701,7 +1703,8 @@ checks:
     code: |
       from squadops.campaigns.launch_requests import CONTINUED_KEYS
       print(len(CONTINUED_KEYS), "repair_of" in CONTINUED_KEYS, "abandoned_increment" in CONTINUED_KEYS)
-    expect: "10 False False"
+    # 11 since #2783: a continuation carries the accepted-page inventory its launch pinned.
+    expect: "11 False False"
   - id: "2578-increment"
     what: a campaign cycle names its increment, set by the launcher from the launch's own binding, and its flow runs carry increment and kind tags (#2578 parts 2 and 3, SIP-0109 §24cf)
     container: squadops-runtime-api
@@ -1737,13 +1740,13 @@ checks:
     what: a framing run stopped at its plan gate ends its cycle unbuilt, with no verdict; a calibration fails on row 2 and an increment is abandoned on row 18 (SIP-0109 §24cb)
     container: squadops-runtime-api
     code: |
-      from squadops.campaigns.continuation import _ABANDONED_UNBUILT, CycleEnding
+      from squadops.campaigns.continuation import _ABANDONED_BEFORE_VERDICT, CycleEnding
       from squadops.campaigns.progress import cycle_ending
       from squadops.cycles.cycle_end import CycleStopReason
       from squadops.cycles.models import Run
       run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="framing")
       ending = cycle_ending(CycleStopReason.PLAN_REJECTED, run, parked=False)
-      print(ending.value, _ABANDONED_UNBUILT[CycleEnding.STOPPED_AT_PLAN_GATE])
+      print(ending.value, _ABANDONED_BEFORE_VERDICT[CycleEnding.STOPPED_AT_PLAN_GATE])
     expect: "stopped_at_plan_gate 18"
   - id: "2659"
     what: a click may say if_enabled, and the suite's draft-time rule refuses it on anything but a click (the evaluator's -6)
@@ -1808,7 +1811,7 @@ checks:
       print(repair_not_applied_in_round([entry], 1), disposition_for(Vocabulary.FAILURE_CLASSIFICATION, "slot_subject_dropped").attribution.value)
     expect: "True producer_output_failure"
   - id: "2637"
-    what: the sandbox's scenario runner names the evaluator's -7 and refuses a scored page without the finer reading, rather than reading it as zero (SIP-0113 §10y)
+    what: the sandbox's scenario runner names the evaluator's tag (-8 since GHSA-g3hv-75wg-m249's minimatch pin) and refuses a scored page without -7's finer reading, rather than reading it as zero (SIP-0113 §10y)
     container: squadops-sandbox-service
     code: |
       from squadops.sandbox.environment import EVALUATOR_IMAGE
@@ -1821,7 +1824,7 @@ checks:
       except ValueError as e:
           refused = "refused" if "-7" in str(e) else f"refused otherwise: {e}"
       print(EVALUATOR_IMAGE.rsplit("-", 1)[-1], refused)
-    expect: "7 refused"
+    expect: "8 refused"
   - id: "2637-runtime"
     what: the runtime compares failing ids as introduced and resolved, and the proposal is shown only the measures it was shown before -7 (SIP-0113 §10y)
     container: squadops-runtime-api
@@ -1878,10 +1881,28 @@ checks:
     what: a product's cycle is pinned to its blueprint's development profile, and a product with no blueprint keeps the default (SIP-0112 H.13)
     container: squadops-runtime-api
     code: |
-      from squadops.api.routes.cycles.cycles import _pin_blueprint_conventions
+      from squadops.api.routes.cycles.cycles import _pin_development_profile
       from squadops.stacks.development_profiles import blueprint_development_profile
-      print(blueprint_development_profile("fullstack_fastapi_react"), blueprint_development_profile(None) or "-", callable(_pin_blueprint_conventions))
+      print(blueprint_development_profile("fullstack_fastapi_react"), blueprint_development_profile(None) or "-", callable(_pin_development_profile))
     expect: fullstack_fastapi_react - True
+  - id: "2937-stack-selection"
+    what: a product's development profile comes from its runners, and no profile fitting is neutral, never python_cli
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.development_profiles import select_development_profile as s
+      print(s(["vitest"], None).name, s(["pytest"], None).name, s(["pytest", "vitest"], None).name)
+    expect: node_vitest python_cli product_neutral
+  - id: "2937-qa-defers"
+    what: the qa image leaves a node_vitest product's suite to its own runner
+    container: squadops-eve
+    code: |
+      import asyncio
+      from squadops.capabilities.handlers.test_runner import run_build_validation as v
+      from squadops.stacks.development_profiles import get_development_profile as g
+      f = g("node_vitest").test_framework
+      r = asyncio.run(v(f, [], [{"path": "t.test.js", "content": ""}]))
+      print(f, r.executed, r.suite_broken)
+    expect: product_runner False False
   - id: "2619-blueprint-conventions-neo"
     what: the developer of a product made from a blueprint is shown its conventions for a product, and never the skeleton's supplement (SIP-0112 H.13)
     container: squadops-neo
@@ -2312,7 +2333,7 @@ checks:
           return rendered_input_tokens(SimpleNamespace(task_type=task_type, inputs=inputs))
       js, py = "export const a = 1;\n" * 20, "def a():\n    return 1\n" * 20
       print(REPAIR_CONTEXT_CONTRACT.scoped_rendering, count("orbit/a.py", py), count("console/src/A.jsx", js), count("app/api/a/route.ts", js), count("orbit/a.py", js, "strategy.propose_increment"))
-    expect: repair_prompt 161 397 397 10118
+    expect: repair_prompt 167 402 403 10118
   - id: "2810-repair-handler-neo"
     what: the dev repair shows its tree through the functions the composer counts it with (#2810)
     container: squadops-neo
@@ -2355,3 +2376,87 @@ checks:
       inputs = {"source_repository": {"commit": "c", "map": ""}, "resolved_config": {"development_profile": "fullstack_fastapi_react"}}
       print(s.source_backed(inputs), s.source_backed({}), s.product_conventions_template(inputs))
     expect: True False request.source_repository_conventions_fullstack_fastapi_react
+  - id: "2783-runtime"
+    what: an accepted increment's held pages are recorded with every id their page carried, an accepted page's again under its accepted root; a pre-§24dq promotion or launch is refused, never read as no pages; and an added page's anchor is held unique against the candidate's own rendered pages (SIP-0109 §24dq, §24dr, #2783)
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace
+      from squadops.campaigns.launch_requests import CONTINUED_KEYS
+      from squadops.campaigns.models import ControlOperation, ControlOutcome
+      from squadops.campaigns.product_routes import AcceptedPagesUnreadable, page_inventory, pages_held
+      from squadops.campaigns.progress import accepted_pages
+      from squadops.scenarios.declared_routes import _reused
+      def refused(call):
+          try:
+              call()
+          except AcceptedPagesUnreadable:
+              return "refused"
+          return "read"
+      r = {"renderings": {"routes": [{"route": "/t", "source": "accepted_page", "held": "held", "anchor": "t-view", "accepted_root": "t-view", "seen": ["t-new", "t-view"]}]}}
+      old = SimpleNamespace(operation=ControlOperation.PROMOTE, outcome=ControlOutcome.APPLIED, binding={"commit": "c", "cycle_id": "cyc_x"}, campaign_id="cmp_x", target="cyc_x", seq=9, entry_id="ctl_x")
+      print(pages_held(r), "accepted_pages" in CONTINUED_KEYS, refused(lambda: accepted_pages([old])), refused(lambda: page_inventory(None, required=True)), _reused({"/s": "s-view"}, {"/t": ["t-view", "s-view"], "/s": ["t-view", "s-view"]}))
+    expect: "[{'route': '/t', 'anchor': 't-view', 'testids': ['t-view', 't-new']}] True refused refused {'/s': ['/t']}"
+  - id: "2783-nat"
+    what: the rails read the launch block's accepted-page inventory, hold an added page's anchor unique against every id those pages carried, and refuse a repository-backed block that carries none (SIP-0109 §24dq, §24dr, #2783)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.change_request import anchor_conflicts, pages_carrying
+      from squadops.campaigns.product_routes import AcceptedPagesUnreadable
+      from squadops.capabilities.handlers.planning.proposal import product_context
+      c = product_context({"profile": {}}, [{"route": "/t", "anchor": "t-view", "testids": ["t-view", "t-row"]}], required=True)
+      try:
+          product_context({"profile": {}}, None, required=True)
+          old = "read"
+      except AcceptedPagesUnreadable:
+          old = "refused"
+      print(c.accepted_pages, anchor_conflicts({"/s": "t-row"}, pages_carrying(dict(c.route_anchors), dict(c.accepted_pages))), old)
+    expect: "(('/t', ('t-view', 't-row')),) {'/s': ['/t']} refused"
+  - id: "2799"
+    what: a vitest product's page criterion's runner places a page loader, delivery writes it over the squad's copy, and a retest forwards the scope that names it (SIP-0109 §24dp, #2799)
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace as N
+      from squadops.campaigns.criterion_placement import runner_placements
+      from squadops.capabilities.context_assembly import RETEST_PRESENCE_KEYS
+      from squadops.execution.source_delivery import with_framework_files
+      r = N(runner="vitest", checks=("web",), covers=("web/**",), roots=("web",), file_pattern="*.test.*", single_file_argv=("{name}",), holds=lambda p: p.endswith(".test.jsx"))
+      [p] = runner_placements((r,), (), ("web/a.test.jsx",))
+      print(p.page_loader, with_framework_files({"x": b"squad"}, {"x": b"framework"}, {})["x"].decode(), "increment_test_scope" in RETEST_PRESENCE_KEYS)
+    expect: web/criterion_page_loader.js framework True
+  - id: "2799-nat"
+    what: the proposal's rails store a vitest page criterion's page loader with its placed file (SIP-0109 §24dp, #2799)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.change_request import PlacedCriterionFile
+      from squadops.campaigns.criterion_placement import RunnerPlacement, page_loader_for
+      p = RunnerPlacement("vitest", ("web",), ("web/**",), "web/criterion_{criterion}.test.jsx", page_loader="web/criterion_page_loader.js")
+      print(page_loader_for("web/criterion_T3.test.jsx", (p,)), PlacedCriterionFile("T3", "web/criterion_T3.test.jsx", "x").page_loader)
+    expect: web/criterion_page_loader.js x
+  - id: "2799-eve"
+    what: the qa author of a vitest product's page criterion is shown the page loader and how to load its view through it (SIP-0109 §24dp, #2799)
+    container: squadops-eve
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.campaigns.page_loader import page_loader_source
+      asset = pathlib.Path(p.__file__).parent / "request_templates" / "request.increment_page_loader_appendix.md"
+      print(asset.is_file(), "loadView(path, name = 'default')" in page_loader_source("w/criterion_page_loader.js"))
+    expect: "True True"
+  - id: "2827-repaired-suite-runners"
+    what: patch acceptance reads a product's repaired suite by the product's own runners, and a sample application's by its stack (SIP-0112 H.29)
+    container: squadops-runtime-api
+    code: |
+      from squadops.execution.patch_acceptance import _repaired_suite_files, suite_runners
+      runners = suite_runners({"source_repository": {"runners": [{"roots": ["app"], "file_pattern": "*.test.ts"}]}})
+      files = [{"name": "app/runs.test.ts"}, {"name": "__tests__/runs.test.ts"}]
+      config = {"development_profile": "nextjs_ts"}
+      print(_repaired_suite_files(files, config, runners), _repaired_suite_files(files, config, suite_runners({})))
+    expect: "['app/runs.test.ts'] ['__tests__/runs.test.ts']"
+  - id: "2827-planless-qa-view"
+    what: a plan-less test author's prompt slots the product's view, and the scaffold's harness is a sample application's block (SIP-0112 H.29)
+    container: squadops-eve
+    code: |
+      import pathlib, squadops.prompts as p
+      t = pathlib.Path(p.__file__).parent / "request_templates"
+      text = (t / "request.qa_test.test_validate.md").read_text()
+      print("{{source_repository_section}}" in text, "Test boundary" in text, (t / "request.qa_test_scaffold_harness_block.md").is_file())
+    expect: True False True
