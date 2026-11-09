@@ -96,7 +96,7 @@ from squadops.cycles.task_plan import (
     declared_correction_steps,
 )
 from squadops.events.types import EventType
-from squadops.execution.correction_ids import correction_task_id
+from squadops.execution.correction_ids import RETEST_PREFIX, correction_task_id
 from squadops.execution.correction_repair import OWNERSHIP_DROPPED_KEY, CorrectionRepair
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.product_suite import RETEST_SUITE_KEY
@@ -1817,7 +1817,7 @@ class CorrectionRunner:
 
         retest_envelope = TaskEnvelope(
             task_id=correction_task_id(
-                "retest", run_id, correction_attempts, round_seq, envelope.task_type
+                RETEST_PREFIX, run_id, correction_attempts, round_seq, envelope.task_type
             ),
             agent_id=resolved.agent_id,
             cycle_id=cycle.cycle_id,

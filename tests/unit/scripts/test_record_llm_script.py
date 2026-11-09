@@ -208,6 +208,131 @@ async def test_a_run_with_no_model_written_file_is_refused(recorder, tmp_path, c
     assert "no artifact here was written by a task's model call" in capsys.readouterr().err
 
 
+QA = {"producing_task_type": "qa.test", "task_id": "task-run_1-m001-qa.test"}
+REPAIR = {"producing_task_type": "qa.test_repair", "task_id": "repair-run_1-00-s00-qa.test_repair"}
+FAILING = "def test_a():\n    x = 1\n    assert x == 2\n\n\ndef test_b():\n    assert True\n"
+REPAIRED = "def test_a():\n    x = 1\n    assert x == 1\n\n\ndef test_b():\n    assert True\n"
+
+
+@pytest.fixture
+async def correction_vault(tmp_path) -> Path:
+    """A qa task's suite failing, repaired by edit, and retested, as the 2.7 soak's recording
+    stored one (cyc_1e784bf38f3c): the handler's own records beside each answer, the retest's
+    re-emitted suite, and the repair's bytes stored again under the task it repaired."""
+    vault = FilesystemArtifactVault(tmp_path / "vault")
+    failed = {"attempt": 1, "emission_status": "failed", **QA}
+    await _store(vault, 1, "tests/test_c1.py", FAILING, 0, "test", **failed)
+    await _store(vault, 2, "test_report.md", "1 failed", 0, "test_report", **failed)
+    await _store(
+        vault, 3, "typed_check_evaluation_task_1.json", "{}", 0, "typed_check_evaluation", **failed
+    )  # noqa: E501
+    await _store(vault, 4, "tests/test_c1.py", REPAIRED, 30, "source", **REPAIR)
+    retest = {"producing_task_type": "qa.test", "task_id": "retest-run_1-00-s00-qa.test"}
+    await _store(vault, 5, "tests/test_c1.py", REPAIRED, 34, "test", **retest)
+    await _store(vault, 6, "test_report.md", "1 passed", 34, "test_report", **retest)
+    await _store(
+        vault, 7, "tests/test_c1.py", REPAIRED, 40, "source", **QA,
+        written_by_task_id=REPAIR["task_id"], written_by_task_type="qa.test_repair",
+    )  # fmt: skip
+    second = {"producing_task_type": "qa.test", "task_id": "task-run_1-m002-qa.test"}
+    await _store(vault, 8, "tests/test_c2.py", "def test_c():\n    pass\n", 60, "test", **second)
+    await _store(vault, 9, "test_report.md", "1 passed", 60, "test_report", **second)
+    return tmp_path / "vault"
+
+
+async def test_a_retest_takes_no_occurrence_and_a_handler_record_is_no_part_of_an_answer(
+    recorder, correction_vault, tmp_path
+):
+    """#2892, from the soak's recording. Bugs caught: a retest's re-emitted suite (no model call)
+    counted as a qa.test occurrence, so the next qa task is answered with the retest's files and
+    its own criterion is never written; and a handler's test report or typed-check record fenced
+    into the answer as though the model had written it."""
+    out = tmp_path / "scripts"
+    assert await _run(recorder, correction_vault, out) == 0
+    script = ScriptLibrary(out).get("shelf-dev")
+
+    assert sorted(script.answers) == [
+        AnswerKey("qa.test", 1, 1),
+        AnswerKey("qa.test", 2, 1),
+        AnswerKey("qa.test_repair", 1, 1),
+    ]
+    files = {
+        key.occurrence: {f["filename"]: f["content"] for f in extract_fenced_files(a.content)}
+        for key, a in script.answers.items()
+        if key.task_type == "qa.test"
+    }
+    assert files == {
+        1: {"tests/test_c1.py": FAILING},
+        2: {"tests/test_c2.py": "def test_c():\n    pass\n"},
+    }
+
+
+async def test_a_repair_is_answered_with_the_edit_its_handler_applies_to_the_revised_file(
+    recorder, correction_vault, tmp_path
+):
+    """SIP-0107 §9.4: a repair that re-emits an existing file whole is refused, and the vault
+    keeps only the revised file. Bugs caught: the revision recorded whole, so every replayed
+    repair is refused and the correction path diverges from the recording's at its first
+    repair; an edit whose anchor the handler cannot place once; and the repair's bytes, stored
+    again under the task it repaired, recorded as a second edit of the same file."""
+    from squadops.capabilities.anchored_edits import (
+        apply_anchored_edits,
+        parse_anchored_edits,
+        whole_file_refusals,
+    )
+
+    out = tmp_path / "scripts"
+    await _run(recorder, correction_vault, out)
+    answer = ScriptLibrary(out).get("shelf-dev").answers[AnswerKey("qa.test_repair", 1, 1)]
+
+    parse = parse_anchored_edits(answer.content)
+    applied = apply_anchored_edits(
+        parse, {"tests/test_c1.py": FAILING}, writable=["tests/test_c1.py"], producer="qa.test_repair",
+        task_id=REPAIR["task_id"],
+    )  # fmt: skip
+
+    assert [e.path for e in parse.edits] == ["tests/test_c1.py"]
+    assert applied.accepted
+    assert applied.outcome.candidate_files["tests/test_c1.py"] == REPAIRED
+    assert whole_file_refusals(extract_fenced_files(answer.content), ["tests/test_c1.py"]) == []
+
+
+async def test_a_revision_no_edit_can_state_is_kept_whole_and_named_for_a_hand_fill(
+    recorder, tmp_path, capsys
+):
+    """The edge: a revised line that reads as an edit marker, which no anchored edit can carry.
+    Bug caught: the edit written anyway, so the handler reads a malformed fence and refuses it,
+    or the answer silently dropped and the replay fails on a missing key with no note of why."""
+    vault = FilesystemArtifactVault(tmp_path / "vault")
+    await _store(vault, 1, "notes.txt", "a\n", 0, **QA)
+    await _store(vault, 2, "notes.txt", "a\n=======\n", 10, **REPAIR)
+    out = tmp_path / "scripts"
+
+    assert await _run(recorder, tmp_path / "vault", out) == 0
+    answer = ScriptLibrary(out).get("shelf-dev").answers[AnswerKey("qa.test_repair", 1, 1)]
+
+    assert {f["filename"]: f["content"] for f in extract_fenced_files(answer.content)} == {
+        "notes.txt": "a\n=======\n"
+    }
+    assert "no edit rebuilds notes.txt" in capsys.readouterr().out
+
+
+def test_the_edit_answered_steps_are_the_repair_handlers_that_refuse_a_whole_file(recorder):
+    """Bug caught: a new repair handler on the anchored-edit path the recorder does not know, so
+    its recorded answers are written whole and refused at replay."""
+    from squadops.capabilities.handlers.impl import repair_handlers
+
+    refusing = {
+        cls._task_type
+        for cls in vars(repair_handlers).values()
+        if isinstance(cls, type)
+        and issubclass(cls, repair_handlers._RepairPromptMixin)
+        and cls is not repair_handlers._RepairPromptMixin
+    }
+
+    assert refusing == recorder._ANCHORED_EDIT_STEPS
+
+
 async def _run(recorder, vault_dir: Path, out: Path, *extra: str) -> int:
     """``main`` runs its own event loop, as it does from a shell; a thread keeps it off the test's."""
     import asyncio

@@ -11,6 +11,16 @@ What it recovers, and what it can't:
   itself, so the answer is rebuilt from them: a task that yielded one document is answered with
   that document; any other is answered with every file in the strict ``<lang>:<path>`` fence,
   the format the fenced parser reads losslessly.
+- **Only what a model wrote** (#2892, from the soak's recording). A retest re-runs a repaired
+  suite with no model call, so its stored report is no answer: kept, it would take an
+  occurrence the replay never counts, and every later task of its type would be answered from
+  the one before. A handler's own record of an answer (``typed_check_evaluation``,
+  ``test_report``) is no part of it either, and a repair's bytes stored again, the same, under
+  the task it repaired are one file, not two.
+- **A repair's revision as edits.** A repair step that revises an existing file may only edit it
+  (``_RepairPromptMixin``; re-emitting it whole is refused, SIP-0107 §9.4). The vault keeps the
+  revised file, not the edits, so each is rebuilt as one anchored edit from the file's last
+  earlier stored version, and checked by applying it to that version before it is written.
 - **Not a task's extra calls.** A self-evaluation pass, a re-ask or an authoring loop's earlier
   tries left no file of their own, so a task that made more than one call is recorded as its
   last. Running the script names the first key it lacks, and that answer is written by hand.
@@ -36,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import difflib
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -49,6 +60,15 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 
+from squadops.capabilities.anchored_edits import (  # noqa: E402
+    DIVIDER_MARKER,
+    EDIT_FENCE_LANGUAGE,
+    REPLACE_MARKER,
+    SEARCH_MARKER,
+    apply_anchored_edits,
+    parse_anchored_edits,
+)
+from squadops.execution.correction_ids import is_retest_task_id  # noqa: E402
 from squadops.llm.script import (  # noqa: E402
     PACKAGED_SCRIPTS_DIR,
     LLMScriptError,
@@ -58,6 +78,20 @@ from squadops.llm.script import (  # noqa: E402
 from squadops.tasks.task_types import TaskType  # noqa: E402
 
 _TASK_TYPES = frozenset(t.value for t in TaskType)
+
+#: What a handler stores about an answer, never part of it: the typed checks it evaluated on the
+#: answer's files, and the report of the suite it ran.
+_HANDLER_RECORDS = frozenset({"typed_check_evaluation", "test_report"})
+
+#: The steps whose handler revises an existing file only by anchored edits and refuses it
+#: re-emitted whole (``_RepairPromptMixin``'s handlers, SIP-0107 §9.4).
+_ANCHORED_EDIT_STEPS = frozenset(
+    {
+        TaskType.DEVELOPMENT_CORRECTION_REPAIR,
+        TaskType.BUILDER_ASSEMBLE_REPAIR,
+        TaskType.QA_TEST_REPAIR,
+    }
+)
 
 _FENCE_LANGUAGE = {
     ".py": "python",
@@ -106,29 +140,114 @@ def _writer(ref: Any) -> tuple[str, str] | None:
     """The task type and id whose answer yielded this file, or ``None`` when no model wrote it.
 
     A repair's bytes are stored under the task they repaired, with the repairing step named as
-    ``written_by_*`` (#2206): the step that called the model is the writer.
+    ``written_by_*`` (#2206): the step that called the model is the writer. A retest calls no
+    model, and a handler's record of an answer is not the answer.
     """
     meta = ref.metadata or {}
-    if meta.get("scaffold_seeded"):
+    if meta.get("scaffold_seeded") or ref.artifact_type in _HANDLER_RECORDS:
         return None
     task_type = meta.get("written_by_task_type") or meta.get("producing_task_type")
     task_id = meta.get("written_by_task_id") or meta.get("task_id")
     if not task_type or not task_id or task_type not in _TASK_TYPES:
         return None
+    if is_retest_task_id(str(task_id)):
+        return None
     return str(task_type), str(task_id)
 
 
-def _answer_content(files: list[StoredFile]) -> str:
-    """The answer an attempt's files were parsed from, rebuilt."""
+def _whole_block(f: StoredFile) -> str:
+    body = f.content.decode("utf-8", errors="replace")
+    if not body.endswith("\n"):
+        body += "\n"
+    lang = _FENCE_LANGUAGE.get(Path(f.ref.filename).suffix.lower(), "text")
+    return f"```{lang}:{f.ref.filename}\n{body}```"
+
+
+_MARKERS = (SEARCH_MARKER, DIVIDER_MARKER, REPLACE_MARKER, "<<<<<<< ", ">>>>>>> ")
+
+
+def _edit_block(path: str, base: str, revised: str) -> str | None:
+    """``revised`` as one anchored edit of ``base``: the changed lines, widened by unchanged ones
+    until the anchor occurs once. ``None`` when no edit can say it: nothing changed, or a line
+    reads as an edit marker."""
+    old = base.splitlines(keepends=True)
+    new = revised.splitlines(keepends=True)
+    changed = [
+        op
+        for op in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+        if op[0] != "equal"
+    ]
+    if not changed:
+        return None
+    i1, j1, i2, j2 = changed[0][1], changed[0][3], changed[-1][2], changed[-1][4]
+    while True:
+        anchor = "".join(old[i1:i2])
+        if (anchor and base.count(anchor) == 1) or (i1 == 0 and i2 == len(old)):
+            break
+        if i1 > 0:
+            i1, j1 = i1 - 1, j1 - 1
+        if i2 < len(old):
+            i2, j2 = i2 + 1, j2 + 1
+    search, replace = old[i1:i2], new[j1:j2]
+    if not search or any(line.startswith(_MARKERS) for line in search + replace):
+        return None
+
+    def lines(chunk: list[str]) -> str:
+        return "".join(line if line.endswith("\n") else line + "\n" for line in chunk)
+
+    return (
+        f"```{EDIT_FENCE_LANGUAGE}:{path}\n{SEARCH_MARKER}\n{lines(search)}{DIVIDER_MARKER}\n"
+        f"{lines(replace)}{REPLACE_MARKER}\n```"
+    )
+
+
+def _applies(block: str, path: str, base: str, revised: str, attempt: _Attempt) -> bool:
+    """Whether ``block`` turns ``base`` into ``revised`` exactly, as the repair handler applies
+    it."""
+    application = apply_anchored_edits(
+        parse_anchored_edits(block),
+        {path: base},
+        writable=[path],
+        producer=attempt.task_type,
+        task_id=attempt.task_id,
+    )
+    return (
+        application.accepted
+        and application.outcome is not None
+        and application.outcome.candidate_files.get(path) == revised
+    )
+
+
+def _answer_content(attempt: _Attempt, bases: dict[str, list[StoredFile]], notes: list[str]) -> str:
+    """The answer an attempt's files were parsed from, rebuilt. A step that may only edit an
+    existing file answers with an edit of each file it revised (``_ANCHORED_EDIT_STEPS``)."""
+    files = attempt.files
     if len(files) == 1 and files[0].ref.artifact_type == "document":
         return files[0].content.decode("utf-8", errors="replace")
     blocks = []
     for f in sorted(files, key=lambda f: f.ref.filename):
-        body = f.content.decode("utf-8", errors="replace")
-        if not body.endswith("\n"):
-            body += "\n"
-        lang = _FENCE_LANGUAGE.get(Path(f.ref.filename).suffix.lower(), "text")
-        blocks.append(f"```{lang}:{f.ref.filename}\n{body}```")
+        path = f.ref.filename
+        earlier = [b for b in bases.get(path, []) if b.ref.created_at < attempt.first]
+        if attempt.task_type not in _ANCHORED_EDIT_STEPS or not earlier:
+            blocks.append(_whole_block(f))
+            continue
+        base = earlier[-1].content.decode("utf-8", errors="replace")
+        revised = f.content.decode("utf-8", errors="replace")
+        if base == revised:
+            notes.append(
+                f"{attempt.task_type} ({attempt.task_id}) left {path} as it was: no edit is "
+                "written for it"
+            )
+            continue
+        block = _edit_block(path, base, revised)
+        if block is None or not _applies(block, path, base, revised, attempt):
+            notes.append(
+                f"{attempt.task_type} ({attempt.task_id}): no edit rebuilds {path}, so it is "
+                "answered whole, which the repair handler refuses: write this answer by hand"
+            )
+            blocks.append(_whole_block(f))
+            continue
+        blocks.append(block)
     return "\n\n".join(blocks) + "\n"
 
 
@@ -173,21 +292,9 @@ class _ReplayedLatency:
         }
 
 
-def build_script(
-    stored: Iterable[StoredFile],
-    *,
-    name: str,
-    description: str,
-    recorded_from: dict[str, Any],
-    replay_latency: bool,
-    latency_scale: float = 1.0,
-    latency_cap: float | None = None,
-) -> tuple[bytes, list[str]]:
-    """The script file's bytes, and what the recording could not recover.
-
-    With ``replay_latency``, each answer's latency is its gap times ``latency_scale``, held at
-    ``latency_cap`` when one is given."""
-    replayed = _ReplayedLatency.of(replay_latency, latency_scale, latency_cap)
+def _attempts(stored: list[StoredFile]) -> tuple[list[_Attempt], int]:
+    """Each task attempt a model call answered, from the files it yielded, and how many stored
+    files no model call wrote."""
     written: list[tuple[str, str, int | None, StoredFile]] = []
     skipped = 0
     for f in stored:
@@ -207,15 +314,45 @@ def build_script(
     for task_type, task_id, stamped, f in written:
         attempt = stamped if stamped is not None else banked.get(task_id, 0) + 1
         entry = attempts.setdefault((task_id, attempt), _Attempt(task_type, task_id, attempt, []))
+        # A repair's bytes are stored again, the same, under the task it repaired: one file.
+        if any(g.ref.filename == f.ref.filename and g.content == f.content for g in entry.files):
+            skipped += 1
+            continue
         entry.files.append(f)
+    return list(attempts.values()), skipped
+
+
+def build_script(
+    stored: Iterable[StoredFile],
+    *,
+    name: str,
+    description: str,
+    recorded_from: dict[str, Any],
+    replay_latency: bool,
+    latency_scale: float = 1.0,
+    latency_cap: float | None = None,
+) -> tuple[bytes, list[str]]:
+    """The script file's bytes, and what the recording could not recover.
+
+    With ``replay_latency``, each answer's latency is its gap times ``latency_scale``, held at
+    ``latency_cap`` when one is given."""
+    replayed = _ReplayedLatency.of(replay_latency, latency_scale, latency_cap)
+    stored = sorted(stored, key=lambda f: f.ref.created_at)
+    # Every stored version of each path, in order: a repair's edit is rebuilt from the last one
+    # before it.
+    bases: dict[str, list[StoredFile]] = {}
+    for f in stored:
+        bases.setdefault(f.ref.filename, []).append(f)
+    attempts, skipped = _attempts(stored)
     if not attempts:
         raise ValueError("no artifact here was written by a task's model call")
 
-    ordered = sorted(attempts.values(), key=lambda a: (a.first, a.task_id, a.attempt))
+    ordered = sorted(attempts, key=lambda a: (a.first, a.task_id, a.attempt))
     occurrence_of: dict[str, int] = {}
     per_type: dict[str, int] = {}
     calls: dict[str, int] = {}
     answers: list[dict[str, Any]] = []
+    unrebuilt: list[str] = []
     previous_last = None
     for attempt in ordered:
         if attempt.task_id not in occurrence_of:
@@ -226,7 +363,7 @@ def build_script(
             "task_type": attempt.task_type,
             "occurrence": occurrence_of[attempt.task_id],
             "call": calls[attempt.task_id],
-            "content": _answer_content(attempt.files),
+            "content": _answer_content(attempt, bases, unrebuilt),
         }
         if replayed is not None and previous_last is not None:
             answer["latency_seconds"] = replayed.of_gap(attempt.first - previous_last)
@@ -250,6 +387,7 @@ def build_script(
         "a task's self-evaluation passes, re-asks and earlier authoring tries left no files, so "
         "each attempt is recorded as one call: run the script and add any key it names",
     ]
+    notes.extend(unrebuilt)
     if replayed is not None:
         notes.append(
             "latency is the gap between stored files, orchestration and gate waits included; the "
