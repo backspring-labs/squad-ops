@@ -18,7 +18,6 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.cycles.models import GateDecisionValue
-from squadops.llm.script import LLMScriptError, ScriptReference
 from squadops.stacks.scaffold import hosts_campaign_increments
 
 #: A commit id, as the managed clone names one (SIP-0112 E.4.2).
@@ -706,20 +705,23 @@ def _resumable_classes(declared: Any) -> tuple[ResumableClass, ...]:
 
 def _script_references(declared: Any) -> tuple[str, ...]:
     """``policy.llm_scripts`` read (§24dt): each entry a pinned ``<name>@<version>``, so the record
-    of every cycle says which answers it ran on. Whether the deploy holds each one is the
-    creation's check and the cycle-create preflight's, which read the deploy's library."""
+    of every cycle says which answers it ran on. Only the shape is read here: the model is a pure
+    decision's input and imports no library (``test_pure_decisions_do_no_io``). Whether the deploy
+    holds each script, at that version, is the creation's check and the cycle-create
+    preflight's, which read the deploy's library (``squadops.llm.script.ScriptReference``)."""
     if isinstance(declared, str) or not isinstance(declared, (list, tuple)):
         raise ValueError(
             "CampaignPolicy.llm_scripts is a list of pinned scripts, one '<name>@<version>' per "
             f"cycle the campaign launches, got {declared!r}"
         )
-    references = []
     for position, entry in enumerate(declared, start=1):
-        try:
-            references.append(str(ScriptReference.parse(entry)))
-        except LLMScriptError as exc:
-            raise ValueError(f"CampaignPolicy.llm_scripts entry {position}: {exc}") from None
-    return tuple(references)
+        name, at, version = entry.partition("@") if isinstance(entry, str) else ("", "", "")
+        if not (name and at and version) or "@" in version:
+            raise ValueError(
+                f"CampaignPolicy.llm_scripts entry {position}: llm_script must be "
+                f"'<name>@<version>', not {entry!r}"
+            )
+    return tuple(declared)
 
 
 @dataclass(frozen=True)
