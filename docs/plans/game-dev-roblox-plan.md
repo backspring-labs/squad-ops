@@ -1,11 +1,11 @@
 # game-dev-roblox plan — a squad that develops and tests a Roblox game
 
-**Status: DRAFT, revision 2 (2026-11-08), unplaced.** The MacBook lane's input to the 2.8 plan, for the owner's
-review. Nothing here is placed or accepted:
-- Placement is the 2.8 plan's.
-- Phase 0's spikes are a feasibility study. Their record ends at a decision gate (§3a), and phases 1–3 are adopted
-  only past it.
-- Approving the spikes doesn't accept either game SIP. Acceptance follows revision 3 of both and a renewed review (§8).
+**Status: ADOPTED, revision 3 (2026-11-08), unplaced.** The MacBook lane's input to the 2.8 plan.
+- **Phase 0 is done, and the gate is go** (§3a; the record is `game-dev-roblox-spikes.md` in `docs/plans/`).
+- **The owner accepted D1–D10 on 2026-11-08** ("accept D1-D10, write revision 3"), so phases 1–3 are adopted (§7).
+- **Placement is still the 2.8 plan's.** Nothing here places an issue or a release slot.
+- **Adopting the plan doesn't accept either game SIP.** Acceptance follows revision 3 of both SIPs (phase 1) and a
+  renewed review (§8).
 
 ## Revision log
 
@@ -32,6 +32,18 @@ review. Nothing here is placed or accepted:
   - **#2906 stays in 2.8:** the owner deferred it on 2026-11-05 (2.7 plan §5), and a new language runner is a
     feature.
   - **Prior rulings Q45 and Q46** are reconciled explicitly (§8).
+- **Revision 3** (2026-11-08): the spikes' findings, the gate (go) and the owner's acceptance of D1–D10.
+  - **The claim stands as written:** S1 proved play, input and read-back (§1).
+  - **The product is a local place file, not a test universe** (§2.10, D2). It's disconnected (PlaceId 0) with saving
+    off, and it is reset from a read-only baseline file.
+  - **The adapter owns sync (D10):** it writes scripts into Studio through its own fixed harness and reads them back.
+    The worker's Studio has no Script Sync link, because Script Sync's links are lost on every Studio restart (§2.6).
+  - **The Studio transaction takes S1's tool facts:** paged results, a deadline on every call, identity by PlaceId and
+    digest, cleared harness state, the named deny list, and both checks run in full (§2.6).
+  - **§2.2 narrows** after S5: a new kind of authored work adds central task types. **Planning becomes
+    property-driven:** the planner's fixed set of task types is the seam both this specialty and a designer need
+    (§2.4).
+  - **The playbooks take S6's findings** (§2.8). The game's title screen is part of every scenario's setup (§2.7).
 
 **What it builds on.**
 - The two proposed game SIPs: *Game Development Platform Capability* (PR #2405) and *Game Development Capability
@@ -39,8 +51,8 @@ review. Nothing here is placed or accepted:
 - The 2.6 Roblox spike (`docs/plans/roblox-spike-2-6.md`, #2895): pure-Luau logic tests run headless on the Spark
   under Lune, and anything that touches the engine needs Studio. Its gaps are #2906.
 - Prior art on the MacBook: a working client for Roblox Studio's built-in MCP server, in the target game's
-  repository (`art/studio-bridge/studio_mcp.py`). S1 re-verifies the installed tools and their schemas rather than
-  rely on that client's inventory.
+  repository (`art/studio-bridge/studio_mcp.py`). S1 re-verified the installed tools (38) and their schemas
+  directly, through Studio's stdio proxy.
 
 ## 1. The claim
 
@@ -65,10 +77,8 @@ re-run and passing.
 
 It proves the correction route. It's not model evidence.
 
-**Conditional on S1:**
-- If S1 proves play controls and input in a play session, the claim stands as written.
-- If S1 proves only assertions on the engine run inside a play session, with no input, the claim narrows to that
-  before the run is pre-registered.
+**S1 settled the condition revision 2 put on the claim:** mouse, keyboard and character navigation all work in an
+unattended play session, so the claim stands as written (the gate, §3a).
 
 **What the evidence won't show:** how the game feels, what it looks like, more than one player, and parts, models or
 UI built in Studio. Those don't sync to files (§2.10).
@@ -128,8 +138,14 @@ test product follows the `z_` rule: `z_tower-ascension`. A designer would take i
    extraction boundary is those four places, and the test names them.
 2. **No engine names in core.** Orchestration consults `TaskType` properties and tables (CLAUDE.md's task-type rules
    3 and 4), and engine specifics stay behind operation ids (§2.4).
-3. **The designer test, on paper** (S5): the specialty declaration and a squad profile can describe the Iris design
-   role with no core change. If they can't, the seam is wrong.
+3. **The designer test, on paper** (S5, partial pass): the specialty declaration and a squad profile describe the
+   Iris design role's identity, handlers, resources, permissions and agent binding with no core change. **Its own
+   kinds of authored work are the exception.** So the rule is:
+   - a specialty adds operations, handlers, fragments, playbooks and resources without a core change;
+   - a specialty that adds a new kind of authored work adds its task types to the central enum, in its own domain
+     (`design.`), under #559's rules.
+
+   `game-dev-roblox` is unaffected, because its new work is tool-backed and rides an operation id (§2.4).
 
 **Where the line falls:** a *language* is core, and an *engine* is a specialty. The Luau runner (#2906) is a language
 in the derived profile, like Python or JavaScript. Studio, play sessions and the place are `game-dev-roblox`.
@@ -137,7 +153,10 @@ in the derived profile, like Python or JavaScript. Studio, play sessions and the
 **When the plugin machinery gets built,** recorded in the SIPs as the trigger:
 - a second specialty duplicates the bootstrap wiring;
 - or a specialty must ship on its own cadence;
-- or someone outside the team writes one.
+- or someone outside the team writes one;
+- **or a second specialty needs task types of its own** (S5). Then the host-owned lookup (properties, plan
+  validation, routing, expected artifacts, correction mappings; §2.4) is the first piece of plugin machinery to
+  build.
 
 ### 2.3 Runtime guarantees kept without plugin packaging
 
@@ -171,6 +190,18 @@ in the derived profile, like Python or JavaScript. Studio, play sessions and the
 - **The operation id is resolved through the specialty table:** argument schema, provider, required worker
   capability, result reader. **Refusals:** an unknown id is refused at the plan gate, and a duplicate registration is
   refused at bootstrap.
+- **Planning becomes property-driven** (read in the code for revision 3).
+  - **Today:** the plan-authoring prompt offers, and the plan parser accepts, a fixed set of three task types
+    (`_KNOWN_BUILD_TASK_TYPES` in `cycles/implementation_plan.py`: develop, `qa.test` and `builder.assemble`). Any
+    other type is refused when the plan is parsed.
+  - **So `qa.run_remote_operation` can't reach a plan as things stand,** and neither could a designer's `design.`
+    types.
+  - **The change** (phase 2a): a `TaskType` property marks the types a planner may offer, and the set is derived from
+    it (CLAUDE.md's task-type rule 3). The resolved specialty adds which operation ids may be planned, and the plan
+    gate's preflight (§2.3) checks them. Both the prompt's list and the parser's check read that one source, so they
+    can't disagree (the #426 shape, where the offer and the guard drifted apart).
+  - **Its scope (agreed 2026-11-08):** the property goes on today's three types and on `qa.run_remote_operation`,
+    and on nothing else in this plan. Every further plannable type is its own proposal (§4).
 - **Proved with a fixture first** (phase 2a), with no Studio. The fixture exercises properties, plan validation,
   routing, the expected artifacts and the correction mapping.
 - **If the fixture shows a role needs its own extensible task types,** that becomes one host-owned lookup covering
@@ -230,33 +261,52 @@ so no port opens on the MacBook.
 reset. Nothing else uses that Studio until the transaction ends or is reconciled.
 
 **What each operation is bound to:**
-- the expected Studio instance (`studio_id`);
-- the test universe and place;
-- the base place version or snapshot;
+- **the expected Studio,** re-resolved at every claim and confirmed by identity rather than by id. A restarted
+  Studio gets a new id and briefly has no name (S1). So the adapter requires exactly one connected Studio, reading
+  `PlaceId` 0, whose baseline digest matches the pin;
+- the place file and the digest of its read-only baseline file (§2.10);
 - the source manifest (path, digest and expected script class per script);
 - the scenario's digest.
 
+**Sync is the adapter's own (D10).**
+- **The worker's Studio has no Script Sync link.** S1 found that links on a local place file are lost on every
+  Studio restart. A link left in place would also write Studio's script edits straight to disk (0.6 s in S1).
+- **The adapter writes the manifest into Studio** through a fixed sync program in its harness. For each script it
+  creates the instance of the expected class at its path and sets its source. It also removes scripts the manifest
+  drops, inside the three synced folders only. S1 showed `execute_luau` can do each of these.
+- **The path-to-class mapping is the repository's own:** `.server.luau` → `Script`, `.local.luau` → `LocalScript`,
+  anything else → `ModuleScript`. It matches what Script Sync and S2's Rojo rule assign.
+- **Script Sync stays the game owners' workflow** on their own Studio. The eligibility rules keep its layout (§2.10).
+
 **Before play, the tested state is confirmed inside Studio, not from the filesystem.**
-- The adapter reads back, through Studio, every synced script's contents, class and location, and checks moves and
-  deletions against the manifest.
-- A filesystem notification is not confirmation.
+- **The adapter reads back every script in the three folders:** contents, class and location, checked against the
+  manifest, including moves and deletions.
+- **The read-back is paged.** A tool result is capped at 100,000 characters and reports success when truncated, so
+  pages stay under 90,000 characters and a truncated page is refused. S1 read all 137 scripts (about 1.7 MB) in
+  1.6 s over 23 pages.
 - A mismatch reads `not_executed` with the difference.
 
-**The non-script baseline is pinned.** The place's parts, models, properties and assets are recorded as a baseline
-digest. A change to them during verification fails the run with the change named.
+**The non-script baseline is pinned and checked in full.**
+- **The digest covers every instance outside the three script folders,** with a stated property set per kind:
+  - parts: position and rotation, size, colour, material, transparency, anchoring and collision, mesh and texture;
+  - values, sounds, decals, lights and UI objects;
+  - every instance's attributes and tags.
+- S1 digested 22,840 instances in 7.0 s over 55 pages. The digest was stable across runs and caught a part moved
+  0.01 studs.
+- **It is read before play and after stop.** A difference fails the run with the change named.
+- The property set is not every property; a change outside it isn't detected, and the evidence says so.
 
-**Script Sync's cases, exercised in S1:**
-- create, rename and delete;
-- reconnecting after Studio restarts;
-- a conflicting edit. Script Sync can stop for manual conflict resolution, and that reads `not_executed` with the
-  reason.
-
-Script Sync preserves no attributes or tags on scripts, so that limit is an eligibility rule (§2.10).
+**Reset.**
+- **Play state resets on stop:** a part created during play was gone afterwards (S1).
+- **The edit place resets from the baseline file.** When the baseline digest doesn't match at a claim, the worker
+  reopens the place from a fresh copy of the read-only baseline file. Phase 2d proves that the worker can reopen
+  Studio on the file by itself. Until it does, a mismatch reads `not_executed` and needs the owner.
 
 **Returned Studio edits are a new revision.**
 - Studio is a staged execution environment, and the sandbox stays the authoritative live tree.
-- Script edits captured in Studio come back as files and go through the existing patch and footprint checks
-  (`apply_workspace_patch`), producing revision B.
+- With no Script Sync link, a script edit made in Studio stays in Studio. The adapter finds it at read-back and
+  returns it as a file, which goes through the existing patch and footprint checks (`apply_workspace_patch`) and
+  produces revision B.
 - A pass on revision A never accepts B. B is synced and tested again.
 - QA operations refuse unexplained source mutation: a script that changes during a QA transaction fails it.
 
@@ -264,16 +314,26 @@ Script Sync preserves no attributes or tags on scripts, so that limit is an elig
 
 | operation | what it does | Studio tools behind it |
 |---|---|---|
-| `game-dev-roblox.sync_source` | sync a source manifest and confirm it in Studio | Script Sync folder writes, then read-back |
+| `game-dev-roblox.sync_source` | write a source manifest into Studio and confirm it by read-back | the harness's sync program, then read-back |
 | `game-dev-roblox.play_scenario` | the whole transaction for one frozen scenario | play controls, input, the harness |
 | `game-dev-roblox.read_console` | collect the session's console | console output |
 | `game-dev-roblox.capture` | a viewport capture as supplementary evidence | capture |
 
-- Each operation validates its target, its arguments, its artifact references and its paths, and checks the
-  expected universe and place before it runs.
-- `execute_luau` is reachable only through the approved harness. It runs the frozen scenario and nothing an
-  assignment supplies as free code.
-- The allow-list is deny-by-default: no publishing, no saving to Roblox, no asset generation.
+- **Validation:** each operation validates its target, its arguments, its artifact references and its paths, and
+  confirms the expected Studio before it runs.
+- **`execute_luau` runs only the harness's fixed programs:** sync, read-back, baseline and the frozen scenario.
+  Nothing an assignment supplies runs as free code. It takes a required `datamodel_type`: `Edit`, or `Server` or
+  `Client` during play.
+- **The allow-list is deny-by-default.** It names the tools that write to Roblox's servers and refuses them:
+  `open_cloud_invoke`, `upload_image`, `insert_asset`, `create_skill`, `edit_skill` and every `generate_*` tool.
+  There is no publishing and no saving to Roblox.
+- **Every call has a deadline.** A blocking Roblox call can hang a tool call indefinitely (`PreloadAsync`, twice in
+  S1). So the harness makes no unbounded blocking call, and a call past its deadline reads `interrupted` or
+  `not_executed` by phase.
+- **The harness clears its state.** `_G` persists between calls, so the harness clears what it sets and never reads
+  state it didn't set in the same call.
+- **The client's input tools target the game by instance path.** S1 clicked the title screen's Play button, held a
+  key, navigated the character and opened the map this way.
 - Studio runs under the owner's Roblox login, and the worker holds only what the operations need.
 
 **Capture** is supplementary. A blank capture (seen before in the prior art) reads as not looked at, and no criterion
@@ -306,6 +366,14 @@ in this plan depends on capture.
   Only `failed` is an executed behavioural failure.
 - **The scenario is public QA verification.** It isn't a held-out suite, and no role gains held-out access through
   this plan.
+- **What S1 showed the harness must handle:**
+  - **the game opens on a title screen,** and the character waits behind it. Every scenario's setup passes it first
+    (S1 clicked its Play button by instance path), and a setup that can't reads `setup_failed`;
+  - **records travel through the console.** S1 read back a structured line printed by the server, with its nonce.
+    Each record carries the play-session id, so a reader never takes a line from an earlier session in the same
+    console;
+  - **server and client are addressed separately** (`datamodel_type` `Server` or `Client`), which is how an
+    assertion's context is known rather than inferred.
 
 ### 2.8 The squad
 
@@ -322,6 +390,16 @@ in this plan depends on capture.
   - lead: recommendations only.
 - **Playbooks** follow #2841's Q47 ruling: a frontier model drafts, the owner approves, and each is replay-tested on
   the intended runtime models, including on a missing prerequisite, where it must stop with a named reason.
+- **What S6 puts in them** (six samples from the Spark's 27b model; correct Luau and Roblox API use in all six):
+  - **the specialty ships the test loader** for instance-tree requires (S2's design, run under Lune) and a convention
+    for where tests live. Both of S6's test files ran nowhere as delivered: one was a Studio script outside the synced
+    folders, and the other wrote the loader in Lua 5.x;
+  - **each task's context includes the module that owns its concept.** S6's one logic error, the same in both samples
+    of one task, came from a missing helper module, not from reasoning;
+  - **the emission parser tolerates the two broken formats** S6 saw on a three-file change: no fences, and the path
+    line outside its fence;
+  - **change requests ask for effects on saved state at deploy.** Neither sample of the server task named that a new
+    kind reshuffles the period's seeded set, which saved progress then restores by index.
 
 ### 2.9 The headless half
 
@@ -337,20 +415,28 @@ They're core, built on this plan's feature branch for 2.8.
 
 - **The real game is live,** with players' saves and a merge hook that posts to its players. The owner's ruling of
   2026-10-21 (nothing pushed to real products until the framework is solid) applies.
-- **The squad works on `backspring-labs/z_tower-ascension`,** a private copy with **its own Roblox test universe and
-  place**. Nothing flows back to the real repository under this plan.
-- **What's removed from the copy before registration** (a separate universe doesn't isolate them):
+- **The squad works on `backspring-labs/z_tower-ascension`,** a private copy (created 2026-11-08). Nothing flows back
+  to the real repository under this plan.
+- **Its place is a local file, not a test universe (D2).**
+  - It was downloaded from the game with File → Download a Copy, once, by the owner, and is opened from disk.
+  - **It is disconnected:** `PlaceId`, `GameId` and `CreatorId` read 0, and the game's own startup turns saving off
+    without DataStore access. So a play session can't write save data, and nothing on the MacBook can publish it by
+    accident.
+  - **Its read-only baseline file is the reset point** (§2.6), recorded by digest.
+  - **Assets load:** the place uses the owner's Studio login. In S1 every sound decoded on the client and the meshes
+    rendered.
+- **Removed from the copy** (the sweep, recorded in the spike record):
   - `.github/workflows/discord-update-log.yml` and its webhook secret;
-  - any other workflow, credential or outbound integration the copy carries, found by a sweep recorded in the spike
-    record;
-  - DataStore and HTTP integrations, confirmed to reach only the test universe.
-- **The baseline:** the copy's test place is created from a recorded base, and its non-script baseline digest is
-  pinned (§2.6). Asset ids owned by the real universe may not load in the test universe. S1 checks that, and the
-  copy's eligibility records which load.
+  - two asset-upload scripts that publish to Roblox under the real account.
+
+  `HttpService`'s one use generates a GUID with no network call, so it stays.
+- **The copy follows the game, not only its repository.** S1 found the live game carrying 5 scripts newer than the
+  repository's `main`. The copy's repository took the game's versions, so the place and the source agree. Any later
+  refresh of the copy repeats that comparison and records it.
 - **Eligibility rules, checked at preflight:**
   - the Script Sync layout as it is (`src/Server`, `src/Shared`, `src/Client`, `.local.luau` for LocalScripts;
-    #2405 §R2.8);
-  - no attributes or tags on scripts;
+    #2405 §R2.8). The adapter syncs by the same mapping (§2.6), and the game owners keep Script Sync;
+  - no attributes or tags on scripts, which Script Sync wouldn't carry for the owners;
   - a footprint of scripts and runtime-created instances only.
 - **What it brings:**
   - no tests yet: the squad writes the first ones;
@@ -362,36 +448,39 @@ They're core, built on this plan's feature branch for 2.8.
 
 | phase | what | size | where | exit |
 |---|---|---|---|---|
-| **0. spikes** | S1, S2, S4–S6 below; nothing merges | S each | MacBook, except S6 | the spike record, `game-dev-roblox-spikes.md` beside this plan, ending at the gate (§3a) |
+| **0. spikes** | **done 2026-11-08:** S1, S2, S4–S6; nothing merged | S each | MacBook, except S6 | the spike record, `game-dev-roblox-spikes.md` beside this plan, ended at the gate: go (§3a) |
 | **1. revision 3 of both SIPs** | §2's design, the spike answers and the reconciliation of prior rulings (§8) | M (prose) | MacBook | the owner's renewed review |
-| **2a. the fixture path** | the specialty table and declaration, `qa.run_remote_operation` and operation ids, the digest pin and both preflights, the isolation test, the profile field, a fixture specialty | M | MacBook | the fixture proves properties, plan validation, routing, expected artifacts and the correction mapping |
+| **2a. the fixture path** | the specialty table and declaration, `qa.run_remote_operation` and operation ids, **the plannable property and the derived planner set (§2.4)**, the digest pin and both preflights, the isolation test, the profile field, a fixture specialty | M | MacBook | the fixture proves properties, plan validation, routing, expected artifacts and the correction mapping; a plan naming an operation the specialty doesn't serve is refused |
 | **2b. remote execution** | the port, the registry and its migration, `/api/v1/workers`, the claim/lease/fence protocol, the worker root, the fixture adapter | M–L | MacBook (code); Spark (migration deploy, 2.8 only) | the fixture operation runs end to end; a cancelled, expired or late attempt is refused or reconciled as §2.5 says |
 | **2c. the Luau runner** | #2906 | M | MacBook, on the feature branch | a `*.spec.luau` failure is read per test |
-| **2d. the Studio adapter** | §2.6's transaction, its bindings, read-back, baseline, Script Sync cases, returned edits as revisions, the four typed operations | L | MacBook | each operation proved on the worker. A mode not proved reads not executed (#2405 §R2.4) |
+| **2d. the Studio adapter** | §2.6's transaction: identity by PlaceId and digest, the adapter's own sync, paged read-back, the full baseline before and after play, reset from the baseline file (including reopening Studio on it), deadlines, the deny list, returned edits as revisions, the four typed operations | L | MacBook | each operation proved on the worker, including after a Studio restart with no person involved. A mode not proved reads not executed (#2405 §R2.4) |
 | **2e. the assertion harness and reader** | §2.7 | M | MacBook | every outcome in §2.7 produced on purpose and read correctly |
-| **2f. the squad** | the profiles, fragments and playbooks, with their replay tests | M | MacBook | the playbooks pass replay on the Spark's models |
-| **2g. the product** | §2.10's copy, sweep, test place, baseline, eligibility, registration and goal set | S | MacBook (the owner provisions) | a Campaign on it passes preflight |
+| **2f. the squad** | the profiles, fragments and playbooks (with S6's items, §2.8), the test loader, the tolerant emission parser, and the replay tests | M | MacBook | the playbooks pass replay on the Spark's models |
+| **2g. the product** | §2.10's copy and sweep (done in phase 0), the place file and its baseline (done), eligibility, registration and the goal set | S | MacBook | a Campaign on it passes preflight |
 | **3. the demonstration** | **full-path gate first:** representative tasks through the real prompt budget, scoped context, playbook loading and reader, with context selection measured. Then a machinery rehearsal on `game-dev-roblox-lite-14b`, the pre-registered repair diagnostic, and the counted two-increment run on the Spark, handed over as a run plan | M | MacBook, then Spark | §1 read live |
 
 **Phase 2 is gated by 2a.** The fixture path comes first, then Studio execution (2b, 2d, 2e), then squad-driven
 development (2f, 3). Discovery, installation, external packaging and plugin lifecycle machinery stay deferred
 throughout.
 
-### Phase 0: the spikes
+### Phase 0: the spikes (done)
 
-| spike | question | needs |
-|---|---|---|
-| **S1. the Studio transaction** | the installed MCP tools and their schemas, re-verified (`studio_id` targeting, play controls, keyboard and mouse input, character navigation, console, capture); sync and read-back of scripts' contents and classes; Script Sync's create, rename, delete, reconnect and conflict cases; whether a play session runs unattended; reset after an interrupted session; whether the real universe's assets load in a test universe. **The cost of §2.6's two checks, measured on the copy's full place:** the non-script baseline digest (parts, models, properties) and the in-Studio read-back of every synced script (about 1.7 MB of Luau), each timed per run. If either is too slow for a run, the fallback is read-back of the scripts the increment's manifest touches plus a coarse place digest. That fallback is a narrowing, put to the owner at the gate (§3a), never taken silently | Studio on the MacBook, the copy's test place open |
-| **S2. Rojo and Script Sync** | does a Rojo build of the Script Sync layout produce the right script classes (`.local.luau` in particular)? It informs the source manifest's expected classes | nothing |
-| **S4. the network path** | can a process on the MacBook reach the Spark's runtime API outward, and over which path? Reachability only, no credentials | nothing |
-| **S5. the designer test** | §2.2's guardrail 3, on paper | nothing |
-| **S6. a first Luau probe** | three representative Tower Ascension tasks prompted to the Spark's models: is the Luau passable, and which Roblox APIs do they get wrong? It informs the playbooks. **Labelled a first probe:** it can't measure context selection or establish a quality rate; phase 3's full-path gate does that | about 30 minutes of Spark box time, run by the Spark session outside 2.7's soak and evidence windows |
+All five ran on 2026-11-08. The record is `game-dev-roblox-spikes.md` in `docs/plans/`.
+
+| spike | the answer |
+|---|---|
+| **S1. the Studio transaction** | **play, input and read-back proven** on a local copy of the game; the full script read-back (1.6 s) and the full baseline digest (7.0 s) both fit a run, so the scoped fallback isn't needed; Script Sync's links are lost on a Studio restart (D10) |
+| **S2. Rojo and Script Sync** | one sync rule gives `.local.luau` the `LocalScript` class Studio assigns; the game's instance-tree requires need a loader to run under Lune |
+| **S4. the network path** | the MacBook reaches the Spark's runtime API outward over Tailscale, with no port opened on the MacBook |
+| **S5. the designer test** | a partial pass; new kinds of authored work need central task types (§2.2) |
+| **S6. a first Luau probe** | correct Luau and Roblox API use in six of six samples; the weak spots are things the specialty supplies (§2.8). A first probe, not a rate |
 
 (S3, revision 1's Open Cloud spike, left the plan: §4.)
 
 ### 3a. The spike gate
 
-The spike record ends with one of three outcomes, put to the owner before phases 1–3 are adopted:
+**The outcome: go (2026-11-08).** S1 proved play, input and read-back, and the owner accepted D1–D10 the same
+day. The criteria the record was read against:
 - **go:** S1 proves play, input and read-back. The claim stands (§1).
 - **narrow:** S1 proves engine assertions in a play session without input, or read-back with gaps, or the full
   baseline digest and read-back are too slow per run and the scoped fallback is proposed. The claim or the tested-state
@@ -408,7 +497,12 @@ The spike record ends with one of three outcomes, put to the owner before phases
   driver;
 - publishing to Roblox, and any write to the real Tower Ascension repository or game;
 - multiplayer play, judging feel or visuals, and changes to parts, models or UI built in Studio;
-- console views for the worker.
+- console views for the worker;
+- **more plannable task types than `qa.run_remote_operation`.** Phase 2a builds the property that makes a type
+  plannable (§2.4) and sets it on the four that need it. Each further type is its own proposal, with its handler,
+  expected artifacts, footprint rules, correction mapping and every verifier seam that judges it, because a planned
+  type changes planning for every product. A designer's `design.` types are the expected next case;
+- Script Sync in the worker's Studio (D10).
 
 ## 5. Lanes, 2.7, and the Spark session
 
@@ -423,7 +517,7 @@ handed over as a run plan.
 **Shared state is shared across worktrees too.** A separate worktree doesn't isolate:
 - the MacBook stack's Postgres and profile registry;
 - prompt mounts and model settings;
-- Studio's sync directories.
+- the copy's place file and its baseline file.
 
 So local rehearsals run only while the MacBook stack isn't producing evidence for anything else. Compose runs from
 the main checkout with `--no-deps`; running `up` from a worktree took Postgres down on 2026-10-18. Specialty
@@ -448,9 +542,8 @@ profiles and worker registrations exist only in that local stack until 2.8.
 - **A wire-contract change to build on:** the task envelope and the reply payload gain a dispatch identity (#2932).
   `qa.run_remote_operation` carries it.
 - **Shared contracts:** #2932 and #2931, as §2.5 uses them.
-- **S6's window:** open during 2.7's early build, while no Campaign runs. Closed from the pinned deploy onward (2.7
-  plan §4.1: the shakeout pairs, the z_continuum increment, the soak). The Spark session runs the probe from a run
-  plan, labelled as this plan says, and tells the owner, who can veto.
+- **S6 ran** in 2.7's early build window, before the pinned deploy, from a run plan, on TensorFold with the deployed
+  options. Its outputs came back by message, and the Spark's copies were deleted afterwards.
 - **The 2.7 plan's §5a** records Q45 and Q46 as ruled on 2026-10-31, the open question as whether revision 3
   replaces their foundation (§8), and this plan as a 2.8 input, unplaced.
 - **2.8:** recorded as the MacBook lane's input to the 2.8 plan's draft: the demonstration's gate and counted run,
@@ -460,27 +553,34 @@ profiles and worker registrations exist only in that local stack until 2.8.
 
 | risk | what it would do | the response |
 |---|---|---|
-| Script Sync is a Studio beta feature | a Studio update changes or removes it | the worker registers its Studio version; operations pin what they were proved on and read not executed on a mismatch |
+| Studio's MCP server changes with Studio's updates | a tool's name, schema or behaviour changes under the worker | the worker registers its Studio version and its tool schemas' digest; operations pin what they were proved on and read not executed on a mismatch |
+| a blocking call hangs a tool call | a transaction never returns | a deadline on every call, and no unbounded blocking call in the harness (§2.6) |
+| Studio restarts | a link or an id the worker relied on is gone | the adapter owns sync (D10) and confirms Studio by PlaceId and digest; phase 2d's exit includes a restart |
 | Studio is the owner's interactive app | the worker is unavailable while the owner uses it or the MacBook sleeps | outward connection, leases, `blocked_unverified`; runs scheduled for free time |
 | an interrupted play session survives | the next attempt tests a dirty state | reconcile-and-reset at every claim after an expiry or cancel (§2.5) |
 | the Spark's models write weak Luau | increments fail framing or the scenario | S6, then the playbooks, then the full-path gate; the claim is two increments, not a rate |
 | the code is mostly engine-coupled | few headless tests | increments chosen so their criteria are observable through harness assertions |
 | a long branch during 2.7 | rebase cost | the isolation boundary keeps the change to four named places, one table and one port |
-| the copy keeps a production integration | a merge on the copy reaches real players | the sweep in §2.10, recorded in the spike record, before registration |
+| the copy keeps a production integration | a merge on the copy reaches real players | the sweep in §2.10, recorded in the spike record, done |
+| the live game moves ahead of the copy | the squad builds on stale source | the copy is compared with the game at each refresh, and the difference recorded (§2.10) |
 
 ## 7. Decisions for the owner
 
-| # | decision | recommendation |
+**All ten accepted by the owner on 2026-11-08** ("accept D1-D10, write revision 3"), with the planner's scope agreed
+the same day ("agree, finish revision 3": §2.4, §4).
+
+| # | decision | accepted |
 |---|---|---|
-| D1 | the claim (§1) | **two small accepted increments on the private copy,** conditional on S1 proving the play and input mode; narrowed if only engine assertions are available. The repair diagnostic is separate from counted evidence |
-| D2 | the product | **`z_tower-ascension` with its own test universe and place,** a pinned place baseline, and hooks, credentials and integrations removed or isolated (§2.10) |
+| D1 | the claim (§1) | **two small accepted increments on the private copy,** as written: S1 proved the play and input mode. The repair diagnostic is separate from counted evidence |
+| D2 | the product | **`z_tower-ascension` with a local, disconnected place file** (PlaceId 0, saving off), reset from a read-only baseline file, and hooks, credentials and integrations removed (§2.10). No test universe |
 | D3 | the worker's identity | **a worker-only service account** with assignment-scoped permissions (§2.5). It doesn't authorize interactive MacBook sessions to operate the Spark |
 | D4 | Open Cloud | **out of this plan** (§4). A later, separate authorization if wanted, with an explicit test-place publishing exception and scoped credentials |
 | D5 | Studio authority | **typed, deny-by-default operations,** with target, argument, artifact, path and execution-context validation, and `execute_luau` only through the harness (§2.6) |
 | D6 | parallel development | **the MacBook worktree and local rehearsals approved.** Merges, migrations, profile activation, worker registration and deployment stay out of 2.7's runtime; no dark merge |
-| D7 | task types | **one engine-neutral task type with operation ids** (§2.4), proved with a fixture first. An extensible host-owned lookup only if the fixture shows it's needed, as a design change |
+| D7 | task types | **one engine-neutral task type with operation ids** (§2.4), proved with a fixture first, and **planning made property-driven** so the type can reach a plan. An extensible host-owned lookup only if the fixture shows it's needed, as a design change |
 | D8 | naming (§2.1) | **`game-dev-<engine>` for specialty identifiers,** generic names for shared execution infrastructure |
 | D9 | the SIPs | **keep the two-document split;** revise their normative sections and ledgers after the spikes, reconcile the prior rulings (§8), and accept after renewed review |
+| D10 | the worker's sync path | **the adapter owns sync:** it writes the manifest's scripts into Studio through its fixed harness and confirms them by read-back. No Script Sync link in the worker's Studio, since links on a local place are lost on every restart. Script Sync stays the game owners' workflow (§2.6) |
 
 ## 8. Reconciling the recorded commitments
 
@@ -492,7 +592,8 @@ Revision 3 of both SIPs states, for each:
 | **Q46**: Switchboard as the loader | ruled 2026-10-31 | **deferred, not reversed:** Switchboard stays the presumptive loader when §2.2's trigger fires. No loader is built in this plan |
 | #2405 §R2.3: plugin registration (manifest, `requires_spi`, provider pins) | revision 2 | **deferred to the trigger.** Provider and reader pins become the specialty digest (§2.3) |
 | #2405 §R2.2: the remote-execution contract | revision 2 | **kept and specified** (§2.5) |
-| #2405 §R2.6 and §R2.7 | revision 2 | **kept and strengthened** (§2.6) |
+| #2405 §R2.6 and §R2.7 | revision 2 | **kept and strengthened** (§2.6). Where they assume Script Sync carries the candidate into Studio, revision 3 says the adapter does (D10) |
+| #2405's test universe or test place, wherever it appears | revision 2 | **replaced** by the local place file (D2, §2.10) |
 | #2841 §4: F1's runtime guarantees (bindings, preflight, the Campaign snapshot) | revision 0 | **kept** (§2.3) |
 | #2841 §7: the demonstration | revision 0 | **revised:** the counted claim and the repair diagnostic split (§1) |
 | both delivery ledgers | 2026-10-31 | **re-cut** to phases 2a–2g and 3. Rows stay unplaced until the 2.8 plan places them with issues |

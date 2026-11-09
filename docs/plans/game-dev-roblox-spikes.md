@@ -1,6 +1,6 @@
 # game-dev-roblox spikes — phase 0 of `docs/plans/game-dev-roblox-plan.md`
 
-**Status: IN PROGRESS, started 2026-11-08** (the owner: "you are good to start"). The record ends at the plan's gate
+**Status: DONE, 2026-11-08** (started on the owner's "you are good to start"). The record ends at the plan's gate
 (§3a): go, narrow or stop. **It holds no game source.** The game's repository is private, so findings describe
 patterns and outcomes, and the raw model outputs of S6 stay out of this repository.
 
@@ -284,7 +284,7 @@ The two largest files (about 28 KB and 31 KB) were left out on purpose.
 - **The copy's Studio place** (the owner's step, done 2026-11-08) is a local file downloaded from the game, and never
   the live place (S1). The copy's repository gained one local commit taking the game's 5 newer scripts.
 
-## The gate (§3a): go
+## The gate (§3a): go, accepted by the owner with D1–D10 on 2026-11-08
 
 **S1 proves play, input and read-back, so the claim stands as written (§1).** Both of §2.6's checks run in full
 inside a run's budget (1.6 s and 7.0 s), so the scoped fallback isn't needed and nothing narrows.
