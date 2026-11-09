@@ -19,7 +19,8 @@ records say the run was scripted (`llm_script_declared`; the engine `scripted` o
 
 ## 2. The fixture
 
-- **The repository:** `backspring-labs/z_shelfnote`, private, owned by the owner's account.
+- **The repository:** `backspring-labs/z_shelfnote`, private, owned by the owner's account. The owner ruled on
+  2026-11-08 that its code may be public, so the recorded scripts are committed to this public repository.
 - **The base commit:** `177323bed8f6bea36eac4e8aefc8901bca13b8f4`, `main`'s head since 2026-11-03 (the merge of
   z_shelfnote PR #4). It holds the backlog's items 1 to 5 (search, reading status, tags, ratings and sorting),
   accepted by earlier Campaigns and merged by the owner.
@@ -100,7 +101,7 @@ these values:
 - **The limits:**
   - `max_cycles` is the recording's count of launched cycles plus 2;
   - `max_elapsed_s: 54000` (15 h);
-  - `ruling_bound_s: 7200`, so the owner's reconciliation at the push's gate (§6.2) writes no `ruling_overdue` row;
+  - `ruling_bound_s: 7200`, so the reconciliation at the push's gate (§6.2) writes no `ruling_overdue` row;
   - `unattended_resume: []`: every escalation waits for the owner.
 - **No `scenario_suite`.**
 
@@ -175,10 +176,11 @@ with why.
   The path is outside `allowed_scope`. Its drift category is `source`, which `relevant` excludes
   (`src/squadops/projects/drift.py:124-127`). So the push alone holds no launch (`unreconciled`,
   `src/squadops/projects/sync.py:121`; `require_reconciled_upstream`, `src/squadops/api/routes/cycles/cycles.py:618`).
-- **The reconciliation is the owner's.** These routes need `admin:write`, which the supervisor doesn't hold
+- **The reconciliation is made as the admin.** These routes need `admin:write`, which the supervisor doesn't hold
   (`src/squadops/api/routes/cycles/projects.py`: sync `:484`, validate `:116`, configure `:158`, baseline `:213`).
   The integration check syncs only where a contribution is pending (`src/squadops/projects/integration_check.py`,
-  step 1), and none is. While increment 2's gate is open, the owner runs `projects sync`, `projects validate`,
+  step 1), and none is. While increment 2's gate is open, the session driving the soak logs in as `squadops-admin`
+  for these four acts only (the owner's ruling, 2026-11-08) and runs `projects sync`, `projects validate`,
   `projects configure` (the same technical block, a new revision) and `projects baseline --capture`, in that order.
   The supervisor rules on increment 2 only after all four.
 - **Predicted: reconciles.** At increment 3's launch, `BranchRebase.before_launch` finds the branch's base behind the
@@ -202,7 +204,7 @@ with why.
   - increment 3 launching on the old base;
   - a second rebase row.
 
-  If the owner's four acts can't be made while the gate is open, the push is never read. The Campaign then runs on
+  If the four acts can't be made while the gate is open, the push is never read. The Campaign then runs on
   its old base to the end, and the reconcile is recorded *not exercised*.
 
 ### 6.3 Controlled restart of the runtime API and the agents (increment 4's proposal, in flight)
@@ -293,12 +295,14 @@ Each value is written here, in a commit, before the Campaign is created.
 
   **PLACEHOLDER**
 - **The dry run on the final deploy:** its Campaign id, and that it reproduced the recording's order. **PLACEHOLDER**
-- **The supervisor's login:** how it logs in and re-logs in with no prompt, and where that credential is held. This
-  document adds no credential, host script or schedule. The re-login §6.1 and §6.4 expect needs one, and providing it
-  is the owner's (plan R9: secret provisioning is outside the grant). **PLACEHOLDER**
-- **The supervisor's GitHub identity** for §6.2, with write access to `z_shelfnote`. Today the only account with
-  access is the owner's own. **PLACEHOLDER**
-- **When the owner can make §6.2's four acts,** which sets the hour the push lands. **PLACEHOLDER**
+- **The supervisor's login,** ruled by the owner on 2026-11-08. The session driving the soak logs the CLI in as
+  `squadops-supervisor` with no prompt, and logs in again the same way after §6.1's and §6.4's expiries. It reads
+  `SQUADOPS_SUPERVISOR_PASSWORD` from the deploy's `.env`, where it is already held, and never prints it. This
+  document adds no credential, host script or schedule.
+- **The supervisor's GitHub identity** for §6.2: the owner's account, `jasonLadd`, the only one with write access to
+  `z_shelfnote` (the owner's ruling, 2026-11-08).
+- **§6.2's four acts** are made as `squadops-admin`, logged in the same way from `SQUADOPS_ADMIN_PASSWORD`, for those
+  acts only, while increment 2's gate is open (the owner's ruling, 2026-11-08). They don't wait on the owner's hours.
 
 ## 10. What it doesn't cover
 
