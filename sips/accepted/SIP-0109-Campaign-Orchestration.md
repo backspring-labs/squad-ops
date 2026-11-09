@@ -150,6 +150,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a criterion already met, found as soon as its test exists: run on the campaign branch's head before development's work is accepted, ending the increment as `criteria_not_checkable` (the 2.6 plan's D9; §24cz) | **shipped** (§24cz: at the qa task's collection, row 19, uncounted) | 2.6.0, PR #2925, closes #2890 |
 | D1: a criterion test that passes on the head at qa's first emission is refused to `qa.test_repair`, as §24dh refuses a repaired one; when the allowance is spent, §24dh's backstop reads an ordinary counted failure, and no record tells the next proposal the behaviour is met | **shipped** (§24do; option (a), ruled by the owner on 2026-11-07; the 2.7 plan, adopted 2026-11-08) | 2.7.0, PR #2992, closes #2933 |
 | unattended resume: the escalation classes a Campaign declares the crew's supervisor principal may resume, enforced at the resume route against the definition hash and audited, revoked by the owner's pause (the 2.6 plan's D6 and D7; §24da) | **shipped** | 2.6.0, PR #2914, closes #2891 |
+| a scripted Campaign: each cycle it launches answered from its own recorded script, named in launch order by `policy.llm_scripts`, a launch past the last refused by name (§24dt; #2495's scripted squad, for #2892's soak) | **shipped** | 2.7.0, PR #PRNUM, refs #2892 |
 | a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
 | the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
 | the replay viewer showing a new version with no step by hand (§24dj) | **dropped** (§24dm): the viewer is the product's own tool | battle-trainer PR #3 |
@@ -7023,3 +7024,40 @@ refusal at creation).
 **Who ruled.** The owner, 2026-11-08: no timer, and the check at the point of use (option 1). The owner's outside
 review of PR #3002 kept the gate on the supervisor's side and set the read contract above. The call's shape is the
 implementer's.
+
+### 24dt. A scripted Campaign names one script per cycle it launches (2026-11-08, §9.5, §12b, §15; #2892, #2495; the 2.7 plan's §4.4, adopted by the owner 2026-11-08, and the implementer's design under the 2.7 delegation)
+
+**What changed.** §9.5's policy gains one optional field, `llm_scripts`: a list of pinned scripts, `<name>@<version>`,
+one per cycle the campaign launches, in launch order. #2495's scripted squad answers each call from the script its
+cycle names (`llm_script`), keyed `(task_type, occurrence, call)` and counted within the cycle. A campaign's cycles
+are built server-side from its policy (§12b), which named no script. So a scripted campaign could only take a script
+from its request profile's defaults, the same one for every cycle. Every increment would then have made the first
+increment's change again, and D1 (§24do) refuses a criterion that already passes on the head.
+
+- **Where it binds.** At drain, as §24cd point 1 binds the head (`launch_requests.scripted_launch`, called from
+  `CampaignLaunchService._build_cycle`). The cycle's place is the count of the campaign's launches the control log
+  already marked `launched`. A calibration, an increment, a repair and a retry each take the next script, so a
+  script set can drive a deliberate repair. A restart re-drains the same launch onto the same script, since nothing
+  is counted in a process.
+- **No fallback.** A launch past the last script is refused, `LLM_SCRIPT_MISSING`, naming the launch and how many
+  scripts the campaign names, and the campaign escalates with the intent pending, as any refused launch does
+  (#1971). It is never answered from another script or by a model.
+- **Checked at creation.** Each entry must parse as `<name>@<version>` (the policy), and the deploy must hold that
+  script at that version (`POST /api/v1/campaigns`, 422). Whether the campaign's squad reads scripts stays the
+  cycle-create preflight's check, at each launch (`scripted_squad_decision`): a script on a model squad, or a
+  scripted squad with none, is refused there.
+- **Hashed only when declared,** as `unattended_resume` is (§24da): a creation stored before it keeps its hash.
+
+**The evidence.** `tests/unit/api/test_campaign_scripted_launch.py`, entered at `CampaignLaunchService.drain()` over
+intents the real builders wrote: three launches (a calibration, an increment, a repair) take the three scripts in
+order, and the scripted provider, given each cycle's resolved config the way an envelope carries it, answers the
+same key from each cycle's own script. A launch past the last escalates with no cycle. A fresh launch service, as
+after a restart, takes the next script and not the first.
+
+**What it doesn't change.** A cycle's script is still one per cycle, and the provider still counts its keys in the
+agent's process (#2495), so an agent restarted mid-cycle counts that cycle's remaining tasks from the first again.
+The soak's pre-registration places its restart where no task type straddles it
+(`docs/plans/verification-sets/2-7-0-soak-preregistration.md`).
+
+**Who ruled.** The owner adopted the 2.7 plan's soak contract (§4.4) on 2026-11-08 and delegated the 2.7 judgement
+calls the same day. The field, its launch-order key and its refusal are the implementer's.
