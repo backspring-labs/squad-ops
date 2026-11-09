@@ -6,6 +6,18 @@
 - **Placement is still the 2.8 plan's.** Nothing here places an issue or a release slot.
 - **Adopting the plan doesn't accept either game SIP.** Acceptance follows revision 3 of both SIPs (phase 1) and a
   renewed review (§8).
+- **Phase 2 waits for Agent Skillsets (2026-11-09).** The owner asked whether the word *specialty* could change, and
+  checking it showed revision 3 had rebuilt Capability-Backed Agents §27 beside the existing stack and development
+  profile seams. The owner pulled §21 and §27 forward into a 2.x SIP, Agent Skillsets (PR #3006):
+  "agree, pull it forward and draft the assembly SIP. but make sure I can run an outside review before you start
+  building". Agents carry *skillsets*, specs a capability pack can later carry; a squad profile stays an assembly of
+  agents; and *playbook* is kept for what a squad follows. So:
+  - **no building starts** until the owner's outside review of Agent Skillsets has answered its questions and the
+    owner accepts it;
+  - **revision 4 of this plan and of both game SIPs follows.** It replaces the *specialty* with the `game_dev_roblox`
+    development profile assigning skillsets to the dev and QA roles, and renames this plan's *playbooks* to skills.
+    Phase 2a becomes Agent Skillsets' phases 1, 2 and 4;
+  - until then, §2's *specialty* and *playbooks* read as superseded wherever Agent Skillsets differs.
 
 ## Revision log
 
