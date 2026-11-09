@@ -62,9 +62,11 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
     what the squad's skillsets cover (§6).
   - **SIP-0109, Campaign policy.** A Campaign pins its agents' skillsets, beside the stack and squad profile it pins
     today (§10).
-  - **SIP-0110.** Its `rebind` event is the precedent for re-binding pinned skillsets, and its project instructions
-    outrank a skill where the two conflict (§7). Skills reach a prompt through PromptService, outside SIP-0110's
-    context-assembly port.
+  - **SIP-0110, Cross-Cycle Memory.** Its `rebind` event is the precedent for re-binding pinned skillsets, and its
+    project instructions outrank a skill where the two conflict (§7). Skills reach a prompt through PromptService,
+    outside its context-assembly port. It owns where a lesson applies. This SIP supplies the stack a
+    repository-backed cycle recalls under, and asks how lessons reach other projects of the same skillset (§10a,
+    Q63–Q65). A lesson pool shared across projects would be SIP-0110's amendment.
   - **SIP-0112's size preflight (H.21).** It counts the skills an agent carries (§7).
   - **#559's task-type rules.** Capabilities stay `TaskType` members, and planning reads a property, never a type's
     identity (§6).
@@ -76,15 +78,15 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 - **Placement.** The 2.7 plan expects `tasks/task_types.py`, `orchestration/handler_registry.py`,
   `bootstrap/handlers.py` and the profile snapshot hash unchanged (its §5, with the game-dev-roblox plan). This SIP
   changes the first and reads the others, so it builds in 2.8 at the earliest.
-- **New questions:** Q52–Q61, in §13 and the portfolio.
+- **New questions:** Q52–Q65, in §13 and the portfolio.
 
 ## Delivery ledger (current as of 2026-11-09)
 
 | part | status | where |
 |---|---|---|
-| Phase 1: each agent's skillsets resolved and recorded on every cycle, with the base skillsets derived from the handler configuration, the digest and the replay field; no change in behaviour (§14) | **unplaced**, deliberately: the 2.8 plan places it, after this SIP's review | — |
+| Phase 1: each agent's skillsets resolved and recorded on every cycle, with the base skillsets derived from the handler configuration, the digest and the replay field; a repository-backed cycle's recall stack (§10a); no other change in behaviour (§14) | **unplaced**, deliberately: the 2.8 plan places it, after this SIP's review | — |
 | Phase 2: the skillset spec and its loader, the development profile's assignments, the `plannable` property, the planner's vocabulary from the squad's skillsets, and the checks at creation and at the plan gate (§4–§6, §9) | **unplaced**, deliberately: the 2.8 plan places it | — |
-| Phase 3: skills: the format, the loader, the digests and the size preflight's count (§7) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 3: skills: the format, the loader, the digests, the size preflight's count, and lessons against skills, including promotion (§7, §10a) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 4: tools: declarations, locations and the reachability check (§8) | **unplaced**, deliberately: the 2.8 plan places it, with the Game Development Platform's worker registry for the `worker` location | — |
 | Phase 5: the Campaign's pin, its comparison at each launch, and the owner's re-bind (§10) | **unplaced**, deliberately: the 2.8 plan places it | — |
 
@@ -259,6 +261,12 @@ plan never select one. Inference may help a person choose a profile; it never ma
 first enabled agent serving that role (`cycles/agent_config.py:101`). Giving one agent a skillset its role's other
 agents lack is Capability-Backed Agents §8's roster binding, in 3.x (Q60).
 
+**One supplier per capability (Q62).** For each capability an agent carries, at most one skillset beyond its base may
+declare skills or tools for it. Two that both do are refused at creation, by name. Otherwise an agent may carry any
+number of skillsets, one per capability it adds to, across every role it serves; the size preflight bounds them in
+practice (§7). Combining two skillsets on one capability needs a rule for which wins, which belongs with
+Capability-Backed Agents' working sets (3.x).
+
 **When:** at cycle creation, after the development profile is pinned (`_pin_development_profile`,
 `api/routes/cycles/cycles.py:334`) and before framing. The record is written then, and no later step changes it.
 
@@ -317,6 +325,7 @@ agents lack is Capability-Backed Agents §8's roster binding, in 3.x (Q60).
 **At creation,** in `_run_create_preflight` (`api/routes/cycles/cycles.py:203`), each refusal with a named reason:
 - every skillset the development profile assigns exists at the pinned version, and lists the role it's assigned to;
 - every capability those skillsets serve is carried by at least one agent in the squad;
+- no capability an agent carries is added to by two of its skillsets (Q62);
 - every skill's content is present, and its digest is recorded;
 - every tool is reachable at its location.
 
@@ -342,6 +351,30 @@ the last line.
   with a named reason that lists the changed parts. It continues only by the owner's recorded re-bind, which starts a
   new attribution epoch (Q55). In-tree content can't be kept at its old version across a redeploy, so the Campaign
   detects the change and stops. SIP-0110's `rebind` is the precedent for the recorded act.
+
+## 10a. Lessons and skillsets
+
+Cross-Cycle Memory (SIP-0110) scopes each lesson by project, task type, role, stack and model family
+(`memory/lessons.py:53`), and recall matches all five. Skillsets touch it in three places.
+
+- **The stack a repository-backed cycle recalls under (Q63).** Recall reads a cycle's stack from its `build_profile`
+  (`cycle_stack`, `cycles/benchmark_registry.py`). A repository-backed cycle has none, so its recall stack is empty
+  and it matches only lessons stored for any stack: a Roblox cycle's lessons can't be told apart from another stack's
+  in the same project. Such a cycle recalls under its pinned development profile instead. A cycle with a
+  `build_profile` keeps it, so every existing match is unchanged.
+- **A lesson and a skill that disagree (Q64).** A lesson's source cycle records the skillsets in force when it was
+  learned (§10). When a skill's version has changed since, the skill in force wins, and recall names the lesson as
+  learned under an earlier version, for review. Lesson applicability gains no skillset field.
+- **Lessons across projects of the same stack or skillset (Q65).** The owner, 2026-11-09: lessons are valuable "even
+  across projects of the same stack or skillset". Today a lesson names one project (`memory/lessons.py:77`). Two
+  routes reach other projects:
+  - **promotion into a skill,** in 2.x: a lesson that holds is rewritten into its skillset's skills, owner-approved
+    and replay-tested under Q47's rule, and the skill revision cites the lessons and cycles it came from. Every
+    project whose agents carry the skillset then gets it, and nothing specific to one product crosses its owner's
+    boundary (SIP-0112 B.5.1);
+  - **a shared lesson pool keyed by skillset,** recalled in any project whose agents carry it: an amendment to
+    SIP-0110, whose applicability names one project, with a rule for who approves a lesson across products with
+    different owners. Proposed after the first Roblox Campaign shows which lessons generalise.
 
 ## 11. What stays in Capability-Backed Agents (3.x)
 
@@ -383,14 +416,18 @@ Each has one recommendation. The review's answers are recorded here and in the p
 | **Q59** | Who invokes a tool | **a capability's handler, never the model,** in 2.x. Model-side tool calling stays with Capability-Backed Agents in 3.x, where its permission model is designed |
 | **Q60** | Whether one agent may carry a skillset its role's other agents lack | **not in 2.x:** agents in a role carry the same skillsets, so routing stays by role. Per-agent bindings are Capability-Backed Agents §8, in 3.x, where routing by skillset is designed with them |
 | **Q61** | Where skillset directories live in the tree | **under the prompts seam, `src/squadops/prompts/skillsets/<id>/`,** because a skill's text is prompt content (#448). The spec beside it is data read by a loader, and the directory is what a pack carries |
+| **Q62** | How many skillsets an agent may carry | **any number, with one supplier per capability:** for each capability, at most one skillset beyond the base adds skills or tools. Two sets of advice, or two competing tools, for one task have no rule for which wins in 2.x. The size preflight bounds the rest |
+| **Q63** | The stack a repository-backed cycle's lessons are recalled under | **its pinned development profile.** A cycle with a `build_profile` keeps it, so existing matches are unchanged. Today such a cycle's stack is empty, and it recalls only lessons stored for any stack |
+| **Q64** | A lesson and a skill that disagree | **the skill in force wins,** and a lesson learned under an earlier version of the skill is named for review. Lesson applicability gains no skillset field |
+| **Q65** | Lessons across projects of the same stack or skillset | **in 2.x, by promotion into the skillset's skills** (owner-approved, replay-tested, citing the lessons it came from), so no product's detail crosses its owner's boundary. A shared lesson pool keyed by skillset is a SIP-0110 amendment, proposed after the first Roblox Campaign shows which lessons generalise |
 
 ## 14. Phases, and how each is proved
 
 | phase | what | proved by |
 |---|---|---|
-| **1** | resolve and record each agent's skillsets on every cycle, with base skillsets derived from the handler configuration; the digest; the replay field | every existing request profile and stack records only base skillsets, and the prompts and plans are byte-identical to today's; a wiring test enters at cycle creation and reads the record |
-| **2** | the skillset spec and its loader; the development profile's assignments; the `plannable` property; the offered set from the squad's skillsets; the checks at creation and at the plan gate | existing stacks are offered exactly today's types (entering at the plan-authoring service); a fixture profile assigning a fixture skillset with an extra capability gets it offered; a plan naming a capability no agent carries is refused at the gate with its reason; a skillset assigned to a role it doesn't list is refused at creation |
-| **3** | skills: the loader, the digests, the size preflight's count | a fixture skill reaches the prompts of the tasks whose capability declares it, for the agents that carry it, and no others; a content change changes the digest |
+| **1** | resolve and record each agent's skillsets on every cycle, with base skillsets derived from the handler configuration; the digest; the replay field; a repository-backed cycle's recall stack (Q63) | every existing request profile and stack records only base skillsets, and the prompts and plans are byte-identical to today's; a wiring test enters at cycle creation and reads the record; a repository-backed cycle recalls under its development profile, and every cycle with a `build_profile` recalls exactly as before |
+| **2** | the skillset spec and its loader; the development profile's assignments; the `plannable` property; the offered set from the squad's skillsets; the checks at creation and at the plan gate | existing stacks are offered exactly today's types (entering at the plan-authoring service); a fixture profile assigning a fixture skillset with an extra capability gets it offered; a plan naming a capability no agent carries is refused at the gate with its reason; a skillset assigned to a role it doesn't list is refused at creation; two skillsets adding to one capability are refused at creation |
+| **3** | skills: the loader, the digests, the size preflight's count; lessons against skills, and promotion (§10a) | a fixture skill reaches the prompts of the tasks whose capability declares it, for the agents that carry it, and no others; a content change changes the digest; a lesson learned under an earlier skill version is named at recall; a promoted skill revision cites its lessons |
 | **4** | tools: declarations, locations, the reachability check | a fixture tool at the `worker` location is refused at creation when no registered worker declares it, and accepted when one does |
 | **5** | the Campaign's pin, its comparison at each launch, and the re-bind | a Campaign whose skillsets change between launches stops with the changed parts named; after a recorded re-bind it continues, in a new attribution epoch |
 
@@ -404,7 +441,8 @@ within the import-direction rules: `squadops.stacks` holds the development profi
 - model-side tool calling (Q59);
 - per-agent skillsets beyond the role (Q60);
 - squad playbooks;
-- working sets, memory and the evidence ledger;
+- working sets and the evidence ledger; memory beyond §10a;
+- a lesson pool shared across projects (Q65: SIP-0110's amendment, if taken up);
 - console views of skillsets;
 - any change to what existing stacks' cycles run with;
 - consolidating the four existing routes for stack prompt text (Q54);
