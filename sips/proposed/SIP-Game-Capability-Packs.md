@@ -49,7 +49,7 @@ with its boundary (portfolio cluster 18, Q45–Q48):
 **Revision 3's intake (2026-11-08).** It follows the game-dev-roblox plan (PR #2972), adopted by the owner with
 D1–D10.
 - **The conflict this intake recorded (Q45) is replaced** (R3.1): nothing of Capability-Backed Agents' mechanism is
-  built. Whether that SIP takes an amendment or a note is Q51, open for the owner.
+  built. Whether that SIP takes an amendment or a note was Q51, ruled 2026-11-09: the note.
 - **Overlaps, no conflict:**
   - SIP-0110's Campaign snapshot and `rebind` event, the precedent for the specialty digest;
   - CLAUDE.md's task-type rules (#559), which the `design.` domain and the plannable property follow;
@@ -101,8 +101,8 @@ has, and the plugin machinery waits for a trigger (the companion's R3.1):
 
 **So Q45's exception is no longer needed for this work.** Nothing of Capability-Backed Agents' mechanism is built,
 so there is nothing to amend there. Whether that SIP still takes the amendment Q45 called for, or only a note
-naming this seam as the starting point of its §17 split, is **Q51, open for the owner** (R3.7). Its header carries
-a note in the meantime.
+naming this seam as the starting point of its §17 split, was **Q51**, ruled by the owner on 2026-11-09: the note
+(R3.7), which its header carries.
 
 ### R3.2 The composition, as the specialty and its profiles
 
@@ -238,11 +238,12 @@ The ledger is re-cut to match. **§8's two definitions of done stand.**
 | **Q47** (frontier-drafted, owner-approved, replay-tested skills) | **stands,** with S6's items (R3.4) |
 | **Q48** (an optional designer, a separate roster identity) | **stands,** refined by the paper test (R3.3) |
 
-**Q51, open for the owner:** Capability-Backed Agents, given that nothing of its mechanism is built here.
+**Q51, ruled by the owner on 2026-11-09 as recommended ("note is fine"):** Capability-Backed Agents, given that
+nothing of its mechanism is built here.
 - **The options:**
   - write the amendment Q45 called for;
   - or keep only a note in its header, naming this seam as the starting point of its §17 split.
-- **Recommended: the note.** An amendment records a change to that SIP's design, and none has been made. Its 3.x
+- **Ruled: the note.** An amendment records a change to that SIP's design, and none has been made. Its 3.x
   deferral and its premise correction (§5's deleted skill layer) are unaffected.
 
 ---

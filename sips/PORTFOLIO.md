@@ -84,7 +84,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (the A/B in 2.4.0, the 2.4 plan's D6) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
 | SIP-0115 Project Goals and Backlog (the owner's direction, drafted 2026-10-30; accepted 2026-11-03) | live | **2.6.0's headline,** by the 2.6 plan adopted 2026-11-03 (D1). Slices 1–5 are placed in 2.6.0 (#2884–#2888), and slice 6, the repository export, is not | ruled 2026-11-03 |
-| Game Development Capability Packs and Squad Composition (`SIP-Game-Capability-Packs`; the owner's outside review, filed 2026-10-31) | live; **revision 3 (2026-11-08)** puts the composition on the game-dev-roblox plan's in-tree seam (PR #2972) | unplaced: the plan is the MacBook lane's input to the 2.8 plan, which places its phases | Q45–Q48 ruled; Q45 replaced and Q46 deferred by revision 3; **Q51 open** |
+| Game Development Capability Packs and Squad Composition (`SIP-Game-Capability-Packs`; the owner's outside review, filed 2026-10-31) | live; **revision 3 (2026-11-08)** puts the composition on the game-dev-roblox plan's in-tree seam (PR #2972) | unplaced: the plan is the MacBook lane's input to the 2.8 plan, which places its phases | Q45–Q48 ruled; Q45 replaced and Q46 deferred by revision 3; Q51 ruled 2026-11-09 (the note) |
 | Campaign Self-Improvement and Test Bay (`SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements`) | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
 | Capability-Backed Agents | **deferred to 3.x**; premise to correct (#400/#401) | 3.x | ruled |
 | Agent Embodiment Runtime | **deferred to 3.x** | 3.x | ruled |
@@ -239,11 +239,14 @@ Ruled the same day by the owner's outside reviewer, under the owner's delegation
 the seam and builds nothing of Capability-Backed Agents), Q46 deferred, not reversed, Q47 stands with the first
 Luau probe's findings, and Q48 stands, refined by the paper test of a designer.
 
-### Open 2026-11-08: Game Capability Packs, revision 3
+### Ruled 2026-11-09: Game Capability Packs, revision 3 (opened 2026-11-08)
+
+Raised by revision 3's intake. **Ruled as recommended on 2026-11-09** by the owner: "note is fine". Capability-Backed
+Agents takes no amendment; the note in its header is the record.
 
 | # | decision | recommendation | recorded in |
 |---|---|---|---|
-| Q51 | Capability-Backed Agents, now that Q45's foundation is replaced by an in-tree seam that builds none of its mechanism: write the amendment Q45 called for, or keep only a note naming the seam as the starting point of its §17 split | **the note:** an amendment records a design change, and none was made; its 3.x deferral and premise correction are unaffected | the packs SIP's §R3.1 and §R3.7; Capability-Backed Agents' header |
+| Q51 | Capability-Backed Agents, now that Q45's foundation is replaced by an in-tree seam that builds none of its mechanism: write the amendment Q45 called for, or keep only a note naming the seam as the starting point of its §17 split | **the note** (ruled): an amendment records a design change, and none was made; its 3.x deferral and premise correction are unaffected | the packs SIP's §R3.1 and §R3.7; Capability-Backed Agents' header |
 
 ### Ruled 2026-11-03: Project Goals and Backlog
 
