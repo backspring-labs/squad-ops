@@ -9,10 +9,11 @@ created_at: '2026-11-09T00:00:00Z'
 
 ## The work declares the skillsets it requires, the squad's agents declare the skillsets they carry, and cycle preflight compares the two
 
-**Status:** Proposed (2026-11-09), **revision 2:** the owner's outside review applied, and its answers to Q52–Q65 ruled
-by the owner the same day ("make the revision and yes they can be rulings"). **Building waits for acceptance:** no
-implementation starts until the owner accepts this SIP and the 2.8 plan places it.
-**Revision:** 2
+**Status:** Proposed (2026-11-09), **revision 3.** Revision 2 applied the owner's outside review, whose answers to
+Q52–Q65 the owner ruled ("make the revision and yes they can be rulings"). Revision 3 applies the review's refinement
+on specialization, at the owner's direction the same day (§3, §4, §5.1, §6, Appendix A). **Building waits for
+acceptance:** no implementation starts until the owner accepts this SIP and the 2.8 plan places it.
+**Revision:** 3
 **Target:** unplaced. A 2.8 feature and the MacBook lane's input to the 2.8 plan. It creates no exception for 2.7.
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Split from:** Capability-Backed Agents (proposed, deferred to 3.x), as the first of the bounded SIPs its §17 plans.
@@ -56,6 +57,19 @@ and skills instead.
   - the refinements: supply names skillset ids and requirements may constrain versions (Q52); an overlap is refused
     rather than resolved (Q62); repair reuses `repairs_revising` (§7.1); content is kept rather than refused (Q55); the
     roster hash covers declared ids and omits an empty field (Q57).
+- **Revision 3** (2026-11-09): the review's refinement on specialization, at the owner's direction ("one more bit of
+  feedback coming in to incorporate"):
+  - **a skillset specializes engine-neutral capability contracts for a platform.** A contract says what the work is and
+    what it must produce; a skillset supplies its skills, prerequisites, tools and verification procedures for one
+    platform and variant (§3, §4, §6.1). A new platform adds skillsets and a provider, never a core task type (Q66);
+  - **verification modes are distinct and declared,** and supporting one never implies another (§6.2);
+  - **a requirement names a concrete skillset,** with its contract, platform and mode checked for consistency, and any
+    alternative declared explicitly (§5.1);
+  - **a paper compatibility matrix** across Roblox, Unity, Minecraft (Java Edition with GeyserMC) and The Sandbox
+    (Sandbox Studio) checks that each platform is declarations plus a provider behind an adapter (Appendix A);
+  - with four adjustments proposed to the owner in reply: the contract is defined beside the task type, the three
+    existing planned types are their own contracts, contracts live in `squadops.capabilities`, and shared skills are
+    included by reference. One addition is open: a `headless` mode (Q67).
 
 ---
 
@@ -78,6 +92,9 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
     The roster hash covers it (Q57).
   - **SIP-0072, development profiles** (implemented). A development profile gains a `requires` field (§5.1). The PR
     that adds it carries SIP-0072's amendment (CLAUDE.md step 5a).
+  - **The Game Development Platform SIP (PR #2405).** Its engine operations, providers and result readers stay behind
+    adapters. Its operation ids become a provider's implementations of engine-neutral capability contracts, each with
+    a verification mode (§6.1, §6.2). Its revision 4 applies this.
   - **SIP-0105, the stack contract.** Its governance applies to the new fields: what a missing field means is stated,
     and a field is added only by a SIP. Its ledger moved stack packs and plugin loading "to a successor SIP, not yet
     drafted". This SIP builds no packaging or loading.
@@ -104,14 +121,14 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 - **Placement.** The 2.7 plan expects `tasks/task_types.py`, `orchestration/handler_registry.py`,
   `bootstrap/handlers.py` and the profile snapshot hash unchanged (its §5, with the game-dev-roblox plan). This SIP
   changes the first and the last, so it builds in 2.8 at the earliest.
-- **Questions:** Q52–Q65, ruled 2026-11-09 (§13 and the portfolio).
+- **Questions:** Q52–Q66 ruled 2026-11-09; Q67 open (§13 and the portfolio).
 
 ## Delivery ledger (current as of 2026-11-09)
 
 | part | status | where |
 |---|---|---|
-| Phase 1: declarations and the record, inert: the skillset spec and its validation, the agents' `skillsets` field, the profiles' `requires` field, the explicit base set, the versioned record with canonical hashing (§14) | **unplaced**, deliberately: the 2.8 plan places it, after acceptance | — |
-| Phase 2: coverage: the preflight refusals, the plan-gate check on the routed agent, the `plannable` property and the offered set (§6, §9) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **unplaced**, deliberately: the 2.8 plan places it, after acceptance | — |
+| Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 3: skills: loading with repair lineage, the kept copy, dispatch-time budgeting, precedence and digests (§7, §10) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 4: tools: requests within existing authority, and the coverage, authorization and availability outcomes (§8, §9) | **unplaced**, deliberately: the 2.8 plan places it, with the Game Development Platform's worker registry | — |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **unplaced**, deliberately: the 2.8 plan places it | — |
@@ -134,17 +151,19 @@ skillset is a spec binding capabilities, the skills an agent loads for them, and
    supply; the platform recruits no one.
 3. **A skillset is a distributable spec.** One directory holds its declaration and its skills. In 2.x skillsets live
    in the tree; in 3.x a capability pack carries the same directory, and the same check applies.
-4. **Capabilities stay central, and the base set is explicit.** A skillset serves `TaskType` members and never defines
-   one. Registering a handler enables nothing; the planner may use the base set plus what the required skillsets
-   serve.
+4. **A skillset specializes; it never defines.** Engine-neutral capability contracts say what the work is and what it
+   must produce, over the existing task types. A skillset supplies a contract's skills, prerequisites, tools and
+   verification procedures for one platform. A new platform adds skillsets and a provider behind an adapter, never a
+   core task type. The base set is explicit, so registering a handler enables nothing.
 5. **The binding is recorded and held.** Each cycle records the requirements, the agents that satisfied them, what
    they supplied and the content they loaded, and keeps that content for repair, retry and resume. A Campaign holds
    it until a recorded transition.
 
 This is coverage: it says a squad declares what the work needs. Whether an agent is qualified, and whether the work
 it delivers is right, stay separate evidence. For every existing stack the work requires nothing beyond the base set,
-so its cycles run exactly as they do today. Roblox is the first stack with requirements: a Studio verification
-skillset for QA and a Luau skillset for development.
+so its cycles run exactly as they do today. Roblox is the first platform with requirements, and the first specialization
+of the game contracts: a Studio verification skillset for QA and a Luau skillset for development. Appendix A checks the
+same model on paper against Unity, Minecraft and The Sandbox.
 
 ## 2. The problem: six places decide what a cycle's agents have, and two record it
 
@@ -184,16 +203,18 @@ the seams, for every stack.
 | layer | the question it answers | what it is in SquadOps | the test that places a thing in it |
 |---|---|---|---|
 | **identity** | who is accountable | an agent in a squad profile: its role, model and the roles it serves | it has memory and accountability |
-| **capability** | what the planner may assign | a task type, with its handler, the roles that serve it, its expected artifacts and its correction mapping | the planner can assign it |
+| **capability** | what the planner may assign | a task type, with its handler, the roles that serve it, its expected artifacts and its correction mapping; where one task type hosts several kinds of work, a capability contract names each (§6.1) | the planner can assign it |
 | **skill** | how the model performs a procedure | content loaded into the agent's context for the work; nothing today (removed with #401) | the model loads it to do the work |
 | **tool** | what executes | an operation behind a port and its adapter | it's invoked with arguments and returns a result |
 
 **How they're put together:**
 - **A squad profile** is an assembly of agents (identity). Each agent may declare the skillsets it carries.
-- **A skillset** binds the other three for a role: the capabilities it serves, the skills loaded for each, and the
-  tools each may request. It's a spec, versioned and digested (§4).
-- **The stack** is the technology the product is built in. Its development profile declares the skillsets the work
-  requires, for each responsibility.
+- **A capability contract** defines a kind of work in engine-neutral terms: its task type, what it must produce, and
+  the verification modes it may run in (§6.1).
+- **A skillset** specializes contracts for a platform and a role: the skills loaded for each, its prerequisites, the
+  tools each may request, and its verification procedures. It's a spec, versioned and digested (§4).
+- **The stack** is the technology the product is built in: a platform and its variant. Its development profile declares
+  the platform and the skillsets the work requires, for each responsibility.
 - **Preflight** checks that the agent each responsibility routes to carries what's required (§9).
 - **A playbook** is what a squad follows: a procedure across agents. This SIP keeps the word for that and defines
   nothing under it.
@@ -207,31 +228,41 @@ api_version: squadops.skillset/v1
 skillset:
   id: roblox-studio-qa
   version: 1
-  description: Plays frozen scenarios in Roblox Studio on a worker and reads their assertions
+  description: Verifies Roblox gameplay headlessly under Lune and by playing frozen scenarios in Roblox Studio
   roles: [qa]
+  platform: {id: roblox, variants: [studio-place]}
+  prerequisites:
+    - provider: lune            # the Luau runner, in the QA container
+    - provider: roblox-studio   # Roblox Studio and its MCP server, on a registered worker
   capabilities:
-    - task_type: qa.run_remote_operation
+    - contract: game.unit_tests
+      modes: [headless]
+      skills: [luau-test-loader, shared/luau-conventions]
+    - contract: game.scenario_verification
+      modes: [play]
       skills: [studio-play-scenario]
       tools:
-        - id: game-dev-roblox.play_scenario
-          location: worker
-    - task_type: qa.test
-      skills: [luau-test-loader]
+        - {id: play_scenario, provider: roblox-studio, location: worker}
 ```
 
-(Illustrative: the Game Development Platform SIP's revision 4 settles Roblox's content.)
+(Illustrative: the game SIPs' revision 4 settles Roblox's content and the game contracts.)
 
 | field | what it holds | rule |
 |---|---|---|
 | `id`, `version` | the spec's identity | any change to the spec or its skills increments `version`; the digest covers both |
 | `description` | one line | shown in records and, later, in a pack's listing |
 | `roles` | the roles that may carry it | an agent whose roles it doesn't list can't declare it |
-| `capabilities[].task_type` | a capability it serves | a `TaskType` member; a skillset never defines one, manufactures a handler or widens the base set (§6) |
-| `capabilities[].skills` | the skills loaded for that capability's tasks and their repairs (§7.1) | each names a directory under `skills/` holding a `SKILL.md` |
-| `capabilities[].tools` | the tools that capability's handler may request: `id` and `location` | a request within existing authority, never a grant (§8) |
+| `platform` | the platform it applies to, and the variants | a requirement on another platform or variant can't be met by it |
+| `prerequisites` | the providers it needs: a runner, an editor on a worker | checked at creation as availability (§9) |
+| `capabilities[].contract` | a capability contract it specializes (§6.1) | an engine-neutral contract over an existing task type; a skillset never defines a task type, manufactures a handler or widens the base set |
+| `capabilities[].modes` | the verification modes it supports for that contract (§6.2) | a subset of the contract's modes; supporting one implies no other |
+| `capabilities[].skills` | the skills loaded for that contract's tasks and their repairs (§7.1) | each names a directory under `skills/` holding a `SKILL.md`, or `shared/<skill>`, a shared skill included by reference |
+| `capabilities[].tools` | the operations that contract's handler may request: `id`, `provider`, `location` | a request within existing authority, never a grant (§8) |
 
-An empty list means none, and nothing is inherited from another skillset. A further field is added only by a SIP:
-the governance SIP-0105 gives a stack's fields.
+An empty list means none, and nothing is inherited from another skillset. A shared skill lives once, under
+`src/squadops/prompts/skillsets/_shared/`; each skillset that includes it records its digest, and a pack carries a copy.
+Including the same shared skill in two skillsets merges nothing: Q62's refusal of overlapping suppliers still applies.
+A further field is added only by a SIP: the governance SIP-0105 gives a stack's fields.
 
 ### 4.2 One directory per skillset, shaped for a pack
 
@@ -252,25 +283,40 @@ preflighted and shown without running anything, which is Capability-Backed Agent
 
 A capability pack (Capability-Backed Agents §7, 3.x) carries skillset directories unchanged, with what packaging adds:
 discovery, installation, the pack's version and its compatibility range, and execution providers. The spec's
-`api_version` lets a later format be told apart. A pack expands where skillsets come from; the coverage check of §9
-applies to them as it does to the tree's.
+`api_version` lets a later format be told apart. A pack expands where contracts, skillsets, content and providers come
+from; the contracts they specialize and the coverage check of §9 are the same as the tree's.
 
 ## 5. Requirements and supply
 
 ### 5.1 The work declares what it requires, on its development profile (Q52)
 
-A development profile gains `requires`: for each responsibility (a role), the skillsets the work needs, each with an
-optional version constraint.
+A development profile gains `platform`, the platform and variant its work targets, and `requires`: for each
+responsibility (a role), the skillsets the work needs, each with an optional version constraint, and the contracts and
+modes the work needs from it.
 
 ```yaml
+platform: {id: roblox, variant: studio-place}
 requires:
-  qa:  [{skillset: roblox-studio-qa, version: ">=1"}]
-  dev: [{skillset: luau-dev}]
+  qa:
+    - skillset: roblox-studio-qa
+      version: ">=1"
+      needs:
+        - {contract: game.unit_tests, mode: headless}
+        - {contract: game.scenario_verification, mode: play}
+  dev:
+    - skillset: luau-dev
+      needs:
+        - {contract: game.gameplay_implementation}
 ```
 
-Empty means the work requires nothing beyond the base set. Every existing profile takes the empty value. A version
-constraint is an exact version or a minimum. Compatibility is decided by these declared values alone, never by a
-model's judgement. The profile's fingerprint covers `requires`.
+- **A requirement names a concrete skillset.** Preflight checks it for consistency: the skillset specializes each named
+  contract, supports each named mode for it, and applies to the profile's platform and variant.
+- **An alternative is declared, never inferred:** `any_of: [{skillset: …}, {skillset: …}]` accepts either, each checked
+  the same way. No skillset stands in for another because it looks similar.
+- **Compatibility is decided by these declared values alone,** never by a model's judgement. A version constraint is an
+  exact version or a minimum.
+- **Empty means the work requires nothing beyond the base set.** Every existing profile takes the empty value, and the
+  profile's fingerprint covers `platform` and `requires`.
 
 ### 5.2 Each agent declares what it carries, on its squad profile (Q60)
 
@@ -304,7 +350,47 @@ and the Campaign's policy when a Campaign launched the cycle. The objective, the
 never select a requirement or a supplier. It runs at cycle creation, after the development profile is pinned
 (`_pin_development_profile`, `api/routes/cycles/cycles.py:334`) and before framing or any model work.
 
-## 6. Capabilities: the base set and the planner's vocabulary (§27a)
+## 6. Capabilities: contracts, modes, the base set and the planner's vocabulary (§27a)
+
+### 6.1 Capability contracts
+
+A capability contract defines a kind of work in engine-neutral terms, once, for every platform:
+
+| field | what it holds |
+|---|---|
+| `id` | for example `game.scenario_verification` |
+| `task_type` | the existing engine-neutral task type it runs as, for example `qa.run_remote_operation` |
+| `evidence` | what it must produce, in SIP-0096's vocabulary: for example one executed-passed, executed-failed or not-executed result per assertion |
+| `modes` | the verification modes it may run in (§6.2) |
+
+- **They're declarations in `squadops.capabilities`,** beside the task contracts that package already holds (Q23).
+  Skill text stays under the prompts seam.
+- **The three existing planned types are their own contracts:** `development.develop`, `qa.test` and `builder.assemble`
+  need no separate declaration. A domain may declare a contract over one of them when its evidence differs, for
+  example `game.gameplay_implementation` over `development.develop` and `game.unit_tests` over `qa.test`.
+- **Several contracts may share a task type.** `qa.run_remote_operation` can host scenario verification, build
+  verification and capture; the contract and its mode say which. A plan names the contract and mode, never a
+  platform's operation id, so plans stay engine-neutral.
+- **A platform never adds a core task type.** It adds skillsets that specialize the contracts, and a provider behind
+  an adapter that implements their operations (the Game Development Platform SIP's).
+- **The game contracts are defined once,** in the game SIPs' revision 4, and only as the first consumer needs them.
+  Appendix A shows the others would fit.
+
+### 6.2 Verification modes
+
+A closed list, extended only by a SIP. A contract and a skillset each declare the modes they support, and supporting one
+mode never implies another.
+
+| mode | what it exercises |
+|---|---|
+| `build` | compiling or building the product |
+| `headless` | tests that run outside the engine's runtime (Q67) |
+| `editor` | the product inside its editor, without running it |
+| `play` | the product running: a play session, a dedicated server, a runtime test |
+| `multiplayer` | several clients or players at once |
+| `capture` | screenshots or recordings, as evidence |
+
+### 6.3 The base set and the planner's vocabulary
 
 - **Capabilities stay central.** Each is a `TaskType` member with its handler, the roles that serve it, its expected
   artifacts and its correction mapping (#559: constants at the core). Nothing a skillset declares reaches the handler
@@ -314,8 +400,8 @@ never select a requirement or a supplier. It runs at cycle creation, after the d
   tables dispatch. Registering a new handler, such as `qa.run_remote_operation`'s, adds nothing to it.
 - **Planning reads a property.** `TaskType` gains `plannable`. `_KNOWN_BUILD_TASK_TYPES` becomes derived from the base
   set.
-- **The offered set** is the base set's plannable types plus the plannable capabilities the cycle's required
-  skillsets serve, each supplied by the agent its responsibility routes to. A skillset an agent carries but the work
+- **The offered set** is the base set's plannable types plus the contracts, in the modes, that the cycle's requirements
+  name, each supplied by the agent its responsibility routes to. A skillset an agent carries but the work
   doesn't require widens nothing. Every existing stack is offered exactly today's types, and the guarantee is
   checked with the new handler installed.
 - **Plan validity stays decidable offline.** Given a cycle's record, whether a plan is well formed is a property of
@@ -393,12 +479,12 @@ outcome is its own refusal, with its own reason, through the existing preflight 
 | outcome | when | example reason |
 |---|---|---|
 | **coverage** | the agent a responsibility routes to lacks a required skillset, or carries an incompatible version | "Squad skillset requirements not met. Selected squad: `game-dev-roblox`. Missing: `roblox-studio-qa` for `qa` (agent `eve`). Select or configure a squad with an eligible agent carrying that skillset." |
-| **declaration** | a skillset is unknown, an agent declares one its roles don't allow, or two required skillsets add to one capability | names the skillset, the agent or the capability |
+| **declaration** | a skillset is unknown; an agent declares one its roles don't allow; two required skillsets add to one capability; or a requirement is inconsistent: its skillset doesn't specialize the named contract, support the named mode, or apply to the profile's platform and variant | names the skillset, the agent, the contract or the mode |
 | **authorization** | a required skillset requests a tool its operation's authority doesn't allow | names the tool and the rule |
 | **availability** | a required tool has no available provider: a worker offline, the sandbox disabled | names the tool and the location; the squad still carries the skillset |
 
-**At the plan gate,** where the plan first exists: every task's type is in the base set or served by a required
-skillset that the task's routed agent supplies. A plan that fails is refused at the gate with the reason, and the cost
+**At the plan gate,** where the plan first exists: every task is a base-set type, or a contract and mode the cycle's
+requirements name, supplied by the task's routed agent. A plan that fails is refused at the gate with the reason, and the cost
 is a re-plan. Dispatch's `handler_not_found` stays as the last line.
 
 Coverage says the squad declares what the work needs. Qualification (whether an agent does the work well) and the
@@ -473,14 +559,17 @@ will work within.
 | word | meaning here |
 |---|---|
 | **squad profile** | an assembly of agents: roles, models, the roles each serves, and the skillsets each carries |
-| **skillset** | a spec binding capabilities, the skills loaded for them and the tools they may request, for a role; one directory, versioned and digested; what a capability pack carries |
+| **skillset** | a spec specializing capability contracts for a platform and a role: the skills loaded for them, its prerequisites, the tools they may request and the modes it supports; one directory, versioned and digested; what a capability pack carries |
+| **capability contract** | an engine-neutral definition of a kind of work: its task type, its evidence and its modes. Capability-Backed Agents §7's *capability modules* are these |
+| **verification mode** | one of `build`, `headless`, `editor`, `play`, `multiplayer`, `capture` (§6.2) |
+| **platform**, **variant** | the engine or product a stack targets (`roblox`, `unity`, `minecraft-java`, `the-sandbox`) and its form (a local place file, an editor version, a server type, a tool) |
 | **requirement** | a skillset, with an optional version constraint, that a development profile declares a responsibility needs |
 | **coverage** | the routed agent for each responsibility carries what the work requires; checked at creation, distinct from qualification and verification |
 | **skill** | content an agent loads to do the work, in the `SKILL.md` format (Capability-Backed Agents §21). SIP-0040's governed execution unit was removed with #401 |
 | **capability** | a dispatchable unit: a task type, its handler, its roles, its artifacts and its correction mapping. The `squadops.capabilities` package holds exactly these: task contracts and handlers (Q23) |
 | **base set** | the capabilities enabled with no requirement: explicit and versioned (`base@1`) |
 | **tool** | an operation behind a port, invoked with arguments |
-| **stack** | the technology a product is built in; its development profile declares the work's requirements |
+| **stack** | the technology a product is built in: a platform and variant; its development profile declares the work's requirements |
 | **development profile** | a stack's settings bundle (SIP-0072; one meaning, Q36) |
 | **capability pack** | packaging, in 3.x: it carries skillset directories and adds loading and providers (Capability-Backed Agents §7) |
 | **stack pack** | packaging, in 3.x: a stack's declaration as a loadable plugin (SIP-0105's intent) |
@@ -490,7 +579,8 @@ will work within.
 ## 13. Rulings (2026-11-09)
 
 The owner's outside review answered each question, and the owner ruled its answers, with the refinements below, the
-same day: "make the revision and yes they can be rulings".
+same day: "make the revision and yes they can be rulings". Q66 is the review's later refinement, applied at the owner's
+direction; Q67 is open, for the acceptance review.
 
 | # | question | ruling |
 |---|---|---|
@@ -508,6 +598,8 @@ same day: "make the revision and yes they can be rulings".
 | **Q63** | The stack a repository-backed cycle recalls under | **The pinned development profile, as the fallback when no build profile exists,** with the identity used recorded and existing meanings preserved |
 | **Q64** | A skill and a lesson | **Approved skill guidance outranks optional lessons.** Supersession is declared; a version change alone isn't a conflict |
 | **Q65** | Lessons across projects | **Owner-reviewed, replay-tested promotion into skills in 2.x,** after a generalization and distribution review. A shared cross-project recall pool is a separate SIP-0110 amendment |
+| **Q66** | What a skillset specializes | **Engine-neutral capability contracts, for a platform and variant,** with the skills, prerequisites, tools and verification procedures that platform needs. A requirement names a concrete skillset, with its contract, platform and mode checked for consistency; alternatives are declared. A new platform adds skillsets and a provider, never a core task type. The review's refinement, applied in revision 3 at the owner's direction; it reopens none of Q52–Q65 |
+| **Q67** (open) | A `headless` verification mode, beside the review's build, editor, play, multiplayer and capture | **add it.** Lune for Roblox and JUnit for Minecraft run tests outside the engine's runtime, which none of the other five describes, and Roblox's first increments depend on it |
 
 **One refinement outside the questions:** a repair loads the skills of the step it revises through the existing
 `repairs_revising` lineage (§7.1), so no skillset declares its repair bindings separately.
@@ -516,8 +608,8 @@ same day: "make the revision and yes they can be rulings".
 
 | phase | what | proved by |
 |---|---|---|
-| **1. declarations and the record (inert)** | the skillset spec and its validation; the agents' `skillsets` field; the profiles' `requires` field; `base@1`; the versioned record with canonical hashing | every existing cycle's prompts and plans are byte-identical to today's; every existing roster hash is unchanged; a wiring test enters at cycle creation and reads a record holding `base@1` and no requirements |
-| **2. coverage** | the preflight outcomes; the plan-gate check on the routed agent; `plannable`; the offered set | with a fixture capability's handler registered for `qa`, an ordinary web cycle isn't offered it; a cycle requiring a skillset its routed agent lacks is refused with §9's reason, and an agent elsewhere carrying it doesn't help; an overlap and a role mismatch are refused |
+| **1. declarations and the record (inert)** | the skillset spec and its validation; the capability contracts and the mode list; the agents' `skillsets` field; the profiles' `platform` and `requires` fields; `base@1`; the versioned record with canonical hashing | every existing cycle's prompts and plans are byte-identical to today's; every existing roster hash is unchanged; a wiring test enters at cycle creation and reads a record holding `base@1` and no requirements |
+| **2. coverage** | the preflight outcomes; the plan-gate check on the routed agent; `plannable`; the offered set | with a fixture capability's handler registered for `qa`, an ordinary web cycle isn't offered it; a cycle requiring a skillset its routed agent lacks is refused with §9's reason, and an agent elsewhere carrying it doesn't help; an overlap, a role mismatch, and a requirement whose skillset doesn't specialize its contract, support its mode or apply to its platform are refused |
 | **3. skills** | loading with repair lineage; the kept copy; dispatch-time budgeting; precedence; digests | §7.1's failure and repair on a fixture, each step receiving exactly its listed skills; a redeploy that edits a fixture skill leaves a paused cycle on its kept copy |
 | **4. tools** | requests within existing authority; the coverage, authorization and availability outcomes | three fixtures, three distinct refusals; an offline worker reads as availability, never as a missing skillset |
 | **5. the Campaign** | the pin; recorded transitions | an unrelated catalog addition has no effect; a change to assigned equipment stops the next launch with the parts named; after a recorded transition, earlier evidence, verifier content and the lesson snapshot are unchanged |
@@ -543,7 +635,9 @@ development profiles as data and imports neither `squadops.capabilities` nor `sq
 - console views of skillsets, beyond SIP-0075's API carrying the new field;
 - any change to what existing stacks' cycles run with;
 - consolidating the four existing routes for stack prompt text (Q54);
-- the worker registry and the remote execution protocol (the Game Development Platform SIP's).
+- the worker registry and the remote execution protocol (the Game Development Platform SIP's);
+- any implementation for Unity, Minecraft or The Sandbox: Appendix A is paper only;
+- publishing to any platform, and any wallet, token, LAND or other on-chain operation on The Sandbox.
 
 ## 16. Two squads, worked through
 
@@ -559,7 +653,9 @@ squad. The development profile requires nothing, and no agent declares a skillse
 
 **The first stack with requirements: Roblox.** A Campaign on `z_tower-ascension`, a repository-backed Project. The
 operator names the `game_dev_roblox` development profile, which the product's Luau runner doesn't contradict (Q58). It
-requires `roblox-studio-qa` (version 1 or later) for `qa` and `luau-dev` for `dev`. The operator selects the
+declares the platform `roblox`, variant `studio-place`, and requires `roblox-studio-qa` (version 1 or later) for `qa`,
+for unit tests in `headless` mode and scenario verification in `play` mode, and `luau-dev` for `dev`, for gameplay
+implementation. The operator selects the
 `game-dev-roblox` squad, in which Eve declares `roblox-studio-qa` and Neo declares `luau-dev`.
 
 | record part | value |
@@ -568,10 +664,42 @@ requires `roblox-studio-qa` (version 1 or later) for `qa` and `luau-dev` for `de
 | requirements | `qa`: `roblox-studio-qa` `>=1`; `dev`: `luau-dev` |
 | assignment | `qa` → Eve, `roblox-studio-qa@1` and its digest; `dev` → Neo, `luau-dev@1` and its digest |
 | content | the digests of `studio-play-scenario`, `luau-test-loader` and `luau-dev`'s skills, and the kept copy |
-| offered to the planner | `development.develop`, `qa.test`, and `qa.run_remote_operation`, which `roblox-studio-qa` serves |
+| offered to the planner | `development.develop` (as gameplay implementation), `qa.test` (as unit tests), and `qa.run_remote_operation` as scenario verification in `play` mode, which `roblox-studio-qa` specializes |
 
 Had the operator selected `full`, where no agent declares a skillset, the Campaign would be refused at creation:
 "Squad skillset requirements not met. Selected squad: `full`. Missing: `roblox-studio-qa` for `qa` (agent `eve`),
 `luau-dev` for `dev` (agent `neo`)." Had Eve carried the skillset and Studio's worker been offline, the refusal would
 be an availability one, naming the worker. §7.1 shows what each step of a failure and its repair loads. A redeploy that
 revises a skill leaves the Campaign on its kept copy; moving to the revision is the owner's recorded transition.
+
+## Appendix A. A paper compatibility matrix
+
+Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each
+platform is declarations (a platform and variant, skillsets specializing the same game contracts, verification modes)
+plus a provider behind an adapter, with no branch on the engine's name in orchestration and no new task type. The
+Roblox row rests on the spikes; the others rest on public documentation and are unspiked.
+
+| platform / variant | illustrative skillsets | execution provider | modes supported | modes not supported or unknown | basis |
+|---|---|---|---|---|---|
+| **Roblox** / a local place file in Roblox Studio (`studio-place`) | `luau-dev`: gameplay implementation; `roblox-studio-qa`: unit tests, scenario verification | Lune in the QA container (headless); Roblox Studio and its MCP server on a registered worker (editor, play, capture) | `headless`: Lune, with an instance-tree loader (S2); `editor`: script read-back and sync (S1); `play`: play sessions, input and read-back (S1); `capture`: Studio screenshots (S1) | `build`: a Rojo build isn't proven; `multiplayer`: Studio's multi-client test isn't proven | spikes S1 and S2 (2026-11-08) |
+| **Unity** / an editor version (for example a 6.x release) | `unity-csharp-dev`; `unity-test-qa` | the Unity editor in batch mode on a licensed worker | `editor`: EditMode tests; `play`: PlayMode tests, in the editor or on a built player (`-runTests -batchmode -testPlatform`, results as XML) | `build`, `capture` and `multiplayer`: not checked for this draft | Unity Test Framework documentation; unspiked |
+| **Minecraft** / a Java Edition server (a Paper plugin, or a Fabric or NeoForge mod), with GeyserMC and Floodgate so Bedrock clients on Xbox, mobile and Windows can join | `minecraft-java-dev`; `minecraft-gametest-qa` | Gradle and a dedicated server, in a container or the sandbox; no editor | `build`: Gradle; `headless`: Fabric Loader JUnit; `play`: the server's GameTest runner, which starts a server, runs the game tests and exits with the result | `editor`: none exists; `capture`: Fabric's client game tests need a client; `multiplayer`, and Bedrock clients through Geyser above all: no automated client is known, and Java-only mods and some mechanics behave differently on Bedrock, so cross-play stays unverified | Fabric's automated-testing documentation and GeyserMC setup guides; unspiked |
+| **The Sandbox** / Sandbox Studio (2026; gameplay code in TypeScript, in a local project folder) | `sandbox-ts-dev`; `sandbox-studio-qa` | Sandbox Studio and its MCP server, which runs locally on a configured port while a project is open, on a worker | per its documentation: `build`: rebuild the project and read build errors; `editor`: read and edit the scene; `play`: enter and exit Play mode and read its state; `capture`: screenshots, where enabled | `headless`: no test runner is documented; whether state read in Play mode can carry assertions is unknown; `multiplayer`: not exposed through the MCP server | Sandbox Studio's MCP setup guide; unspiked. **No coverage is claimed until a spike settles the unknowns** |
+
+The Sandbox row means Sandbox Studio. The Sandbox's earlier no-code tool, Game Maker, builds games with visual scripting,
+so there's no text source for a squad to edit, and it isn't a target.
+
+**What the matrix shows:**
+- **Every row is declarations plus a provider.** A platform and variant, skillsets specializing the same contracts
+  (`game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`), and a provider behind the Game
+  Development Platform's adapter port. None needs a new task type or a branch on the engine's name.
+- **The modes carry real weight.** Minecraft has no editor, Unity's multiplayer is unchecked, and The Sandbox's play
+  mode may not yield assertions. A profile can require only a mode some skillset declares, so an unsupported mode is
+  refused at preflight rather than read as passing.
+- **Two providers share a shape.** Roblox Studio and Sandbox Studio are each an editor with a local MCP server, on a
+  worker. That's evidence the provider port generalizes, not that their operations match.
+- **Outside every row:** publishing, and on The Sandbox any wallet, token, LAND or other on-chain operation.
+
+**Sources (read 2026-11-09):** Sandbox Studio's "Set up and use Sandbox Studio MCP" (studio-docs.sandbox.game); Fabric's
+"Automated Testing" documentation (docs.fabricmc.net); GeyserMC setup guides from server hosts, to be checked against
+geysermc.org; the Unity Test Framework's "Running tests from the command line" (docs.unity3d.com).

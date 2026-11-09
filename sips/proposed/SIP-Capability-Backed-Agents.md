@@ -745,10 +745,13 @@ for the same reason.
     carries on its squad profile; cycle preflight checks the agent each responsibility routes to (its §5, §9).
     Selecting a stack equips no one. §27b named the stack by `build_profile` and `dev_capability`; the second has
     since been renamed `development_profile` (#922);
-  - a *skillset* is a spec binding capabilities, the skills loaded for them and the tools they may request, in one
-    directory a capability pack will carry unchanged (its §4). It is the part of §7's pack manifest 2.x needs: the
-    capability-skill contract and the tool requirements, with roles standing in for the binding contract. In 3.x
-    packs supply more definitions, content and providers, and the same coverage check applies;
+  - a *skillset* specializes engine-neutral *capability contracts* for a platform: the skills, prerequisites, tools
+    and verification procedures that platform needs, in one directory a capability pack will carry unchanged (its §4,
+    §6.1, revision 3). §7's *capability modules* are these contracts, and a skillset is the part of §7's pack
+    manifest 2.x needs: the capability-skill contract and the tool requirements, with roles standing in for the
+    binding contract. A new platform adds skillsets and a provider, never a core task type;
+  - in 2.x the definitions are in-tree and coverage checks the selected squad; in 3.x packs supply more contracts,
+    skillsets, content and providers through the same contracts, and the same check applies;
   - the base set of capabilities is explicit and versioned, so registering a handler enables nothing (its §6);
   - §9 named the adopted `SKILL.md` bundles "skill packs / playbooks". They are *skills* inside a skillset, and
     *playbook* is kept for what a squad follows (the owner, 2026-11-09).
