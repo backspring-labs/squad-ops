@@ -6,11 +6,105 @@ patterns and outcomes, and the raw model outputs of S6 stay out of this reposito
 
 | spike | status |
 |---|---|
-| S1. the Studio transaction | **ready to set up:** the private copy exists (below); its Studio place is the owner's step |
+| S1. the Studio transaction | **done:** play, input and read-back proven on a local copy of the game; both checks are cheap enough to run in full; reconnecting after a Studio restart needs a person (findings below) |
 | S2. Rojo and Script Sync | **done:** a Rojo build reads the Script Sync layout correctly with one sync rule kept in Project metadata; the game's modules need a loader to run under Lune |
 | S4. the network path | **done:** the MacBook reaches the Spark's runtime API outward over Tailscale |
 | S5. the designer test | **done:** partial pass, with one finding that narrows the plan's §2.2 (below) |
 | S6. a first Luau probe | **done:** six of six samples correct in their Luau and Roblox API use. One context-induced logic error (shared by both samples of one task), tests that run nowhere as delivered, and the output format broken on the largest task (findings below) |
+
+## S1. The Studio transaction
+
+Run 2026-11-08 on the MacBook, against Roblox Studio's built-in MCP server through its stdio proxy
+(`RobloxStudio.app/Contents/MacOS/StudioMCP`), driven by a throwaway JSON-RPC client. Everything touched the local
+copy and `z_tower-ascension` only.
+
+**The setup:**
+- **The place is a local file,** downloaded from the game with File → Download a Copy and opened from disk. A
+  read-only copy of it is the reset baseline.
+- **It is disconnected:** `game.PlaceId`, `GameId` and `CreatorId` read 0 inside Studio. The game's own startup
+  reports that saving is off without DataStore access, so a play session can't write save data.
+- **No test universe was needed.** The plan assumed one (§2.6, §2.10); a local file with PlaceId 0 serves.
+- **Before every run, the client refuses unless exactly one Studio is connected and it is the copy.**
+
+**Linking Script Sync (the owner's step):**
+- **Sync to… creates a folder named after the instance inside the folder chosen.** Each of the three folders is
+  linked to `src` itself, which yields `src/Server`, `src/Shared` and `src/Client`. Choosing `src/Server` yields
+  `src/Server/Server`. Two wrong attempts wrote Studio's scripts into nested folders; they were moved out with the
+  links stopped, and Studio kept all 137 scripts.
+- **The game was ahead of its repository:** 132 of 137 scripts matched the repository's `main` (`f2113a6`), and 5
+  carried newer work that wasn't in git. The copy's repository took the game's versions as one local commit, so disk
+  and the place agree. The real repository was not touched.
+
+**The tools:**
+- **38 tools.** Some write to Roblox's servers: `open_cloud_invoke`, `upload_image`, `insert_asset`, `create_skill`
+  and the `generate_*` family. §2.6's deny-by-default allow-list has to name them. S1 called none.
+- **`execute_luau` takes a required `datamodel_type`** (`Edit`, or `Server` / `Client` during play).
+- **A result is capped at 100,000 characters** and ends `... (truncated)` while reporting success. A reader must
+  page and refuse a truncated page.
+- **A blocking call has no timeout.** `ContentProvider:PreloadAsync` hung the tool twice. Studio stayed responsive,
+  and a fresh connection could stop play. **So the worker sets a deadline on every call, and the harness never makes
+  an unbounded blocking call.**
+- **`_G` persists between `execute_luau` calls,** so the harness clears its own state and never relies on it.
+- **The proxy needed about five seconds to see Studio,** and **a restarted Studio has a new id and briefly no name.**
+  The worker re-resolves and checks identity by PlaceId 0 and the content digest, not by id or name.
+
+**Script Sync** (times are from the disk write to Studio showing it):
+
+| case | result |
+|---|---|
+| edit, and its revert | 1.1 s and 0.7 s |
+| create a module; create in a new folder (a `Folder` appears) | 0.9 s; 0.7 s |
+| rename (a new instance, the old one removed) | 0.7 s |
+| delete a file; delete a folder | 0.7 s each |
+| classes | `.server.luau` → `Script`, `.local.luau` → `LocalScript`, else `ModuleScript`. This matches S2's Rojo rule |
+| **an edit made in Studio** (`Source` assignment or `ScriptEditorService`) | **reaches disk in 0.6 s** |
+| conflict: the link stopped on one folder, then the same script changed differently on each side, a script added only on disk and one only in Studio, and the link restored | **a dialog lists the changes from Studio's side** (modify 1, add the Studio-only script, delete the disk-only one). **Keep Disk Version** made Studio equal disk and the link live again in 0.9 s |
+| **a Studio restart** | **the links are gone** for a local file. Disk edits stop reaching Studio until a person links the three folders again |
+
+- **Because sync runs both ways,** any script change made in Studio lands in the repository. The worker reads `git
+  status` after every operation, and a change it didn't make is §2.6's unexplained mutation.
+- **The restart case** means a person re-links after every Studio restart. The worker can detect it (a disk edit
+  that read-back doesn't confirm reads `not_executed`), but it can't repair it. **An option for revision 3:** the
+  adapter syncs by itself. `execute_luau` can create a script of the right class and set its source, and the
+  read-back confirms it. That needs no Script Sync link, so it survives a restart.
+
+**Read-back and the baseline** (§2.6's two checks, measured on the whole place):
+
+| check | cost per run | result |
+|---|---|---|
+| **every synced script read back through Studio** (137 scripts, about 1.7 MB) | **1.6 s**, 23 pages | equal to the disk digest, 137 of 137 exact |
+| **the non-script baseline** (22,840 instances outside the three script folders, about 4.8 MB of records) | **7.0 s**, 55 pages | the same digest on repeated runs; a part moved 0.01 studs changed it, and restoring the part restored it |
+
+- **So neither check needs the scoped fallback.**
+- **The baseline covers a fixed property set per kind:**
+  - parts: position and rotation, size, colour, material, transparency, anchoring and collision, mesh and texture;
+  - values, sounds, decals, lights and UI objects;
+  - every instance's attributes and tags.
+
+  It isn't every property, and revision 3 states the set.
+
+**Play, input and reset:**
+- **A play session runs unattended,** including with Studio behind other windows: start 2.9 s, stop 1.3 s. In the
+  background, the game ran at full rate (120 ticks in 2 s) and drew at about 15 frames a second.
+- **Server and client are each scriptable** during play, and the console is readable.
+- **Input works:**
+
+  | input | effect, measured in the client |
+  |---|---|
+  | a mouse click on the title screen's Play button, by instance path | the title screen closed |
+  | holding W for 1.5 s | the character walked 24.5 studs |
+  | `character_navigation` to a point 21 studs away | it arrived within 0.7 studs |
+  | pressing the game's map key | the map opened |
+
+- **The game opens on a title screen,** so every scenario's setup passes it first. That goes in the play-scenario
+  playbook.
+- **The assertion channel:** a structured line printed by the server came back through the console with its nonce.
+- **Reset:** a part created during play was gone after stop, and the edit place was unchanged.
+- **Assets load:**
+  - all 137 sounds decoded on the client;
+  - the meshes render in captures;
+  - `PreloadAsync` reported most ids as failed in this context and is not a usable probe.
+- **Interruption:** after the hung call, Studio stayed in play, and a new connection stopped it cleanly.
 
 ## S2. Rojo and Script Sync
 
@@ -41,8 +135,8 @@ the game's tree and mapped `src/Server`, `src/Shared` and `src/Client` to the fo
   - Rojo can produce the source manifest's expected classes for this layout, with one rule kept in the Project's
     metadata and no change to the game (#2405 §R2.8);
   - a place build exists for any later path that needs one.
-- **Not verified here:** that the Rojo-built classes match what Studio's Script Sync assigns. S1 reads that back
-  inside Studio. The middleware is `clientScript`, and `localScript` is refused as unparseable JSON.
+- **The Rojo-built classes match what Studio's Script Sync assigns** (S1). The middleware is `clientScript`, and
+  `localScript` is refused as unparseable JSON.
 
 ## S5. The designer test, on paper
 
@@ -187,5 +281,32 @@ The two largest files (about 28 KB and 31 KB) were left out on purpose.
   | the PR template's player-update section | **kept:** harmless without the workflow |
 
 - A notice at the root says what the copy is and what was removed.
-- **Still the owner's step:** the copy's Studio place. That means a local place file saved from the game, never the
-  game's live place.
+- **The copy's Studio place** (the owner's step, done 2026-11-08) is a local file downloaded from the game, and never
+  the live place (S1). The copy's repository gained one local commit taking the game's 5 newer scripts.
+
+## The gate (§3a): go
+
+**S1 proves play, input and read-back, so the claim stands as written (§1).** Both of §2.6's checks run in full
+inside a run's budget (1.6 s and 7.0 s), so the scoped fallback isn't needed and nothing narrows.
+
+**What revision 3 takes from the spikes:**
+
+| from | change |
+|---|---|
+| S1 | **the product is a local place file, not a test universe** (§2.10, D2). PlaceId 0, saving off, reset from a read-only baseline file |
+| S1 | **the sync path is a decision for the owner (D10 below):** Script Sync needs a person after every Studio restart |
+| S1 | the allow-list names the tools that write to Roblox's servers; every call has a deadline; results are paged and a truncated page is refused; the harness clears `_G`; identity is checked by PlaceId and digest, not by Studio id |
+| S1 | the baseline's property set is stated; the play-scenario playbook passes the title screen first |
+| S2 | the Rojo rule for `.local.luau`; the Lune loader for instance-tree requires |
+| S5 | §2.2 narrows: new kinds of authored work need central task types |
+| S6 | the specialty ships the test loader and a convention for where tests live; each task's context includes the module that owns its concept; the emission parser tolerates the two broken formats; change requests ask for effects on saved state at deploy |
+
+**D10 (new), the sync path for the worker:**
+- **Script Sync,** as the plan has it now. Proven, but its links are lost on every Studio restart, so the worker
+  stops at `not_executed` until a person re-links three folders.
+- **Adapter-owned sync:** the adapter writes the manifest's scripts into Studio through `execute_luau` (the right
+  class and source per script), with no Script Sync link, then reads back as now. It survives a restart. Studio edits
+  no longer flow to disk on their own, so returned Studio edits (§2.6) are read back and returned by the adapter as
+  files.
+- **Recommendation: adapter-owned sync for the worker's Studio.** The plan's runs are unattended, and the read-back
+  that confirms the tested state is already the adapter's. Script Sync stays the game owners' own workflow.
