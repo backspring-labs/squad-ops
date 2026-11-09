@@ -1,18 +1,21 @@
 ---
 sip_uid: '17942318023754850'
 title: Agent Skillsets
-status: proposed
+status: accepted
 author: Jason Ladd
 created_at: '2026-11-09T00:00:00Z'
+sip_number: 116
+updated_at: '2026-11-09T17:12:21.413769Z'
 ---
-# SIP-XXXX: Agent Skillsets
+# SIP-0116: Agent Skillsets
 
 ## The work declares the skillsets it requires, the squad's agents declare the skillsets they carry, and cycle preflight compares the two
 
-**Status:** Proposed (2026-11-09), **revision 3.** Revision 2 applied the owner's outside review, whose answers to
-Q52–Q65 the owner ruled ("make the revision and yes they can be rulings"). Revision 3 applies the review's refinement
-on specialization, at the owner's direction the same day (§3, §4, §5.1, §6, Appendix A). **Building waits for
-acceptance:** no implementation starts until the owner accepts this SIP and the 2.8 plan places it.
+**Status:** **Accepted (2026-11-09):** the owner, "accept Agent Skillsets, Q67 add headless". Proposed the same day.
+Revision 2 applied the owner's outside review, whose answers to Q52–Q65 the owner ruled ("make the revision and yes
+they can be rulings"); revision 3 applied the review's refinement on specialization (Q66). **Building:** the phases may
+be built in a MacBook worktree during 2.7 (the game-dev-roblox plan's D6). Nothing merges until 2.8 opens and its plan
+places them.
 **Revision:** 3
 **Target:** unplaced. A 2.8 feature and the MacBook lane's input to the 2.8 plan. It creates no exception for 2.7.
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
@@ -69,7 +72,8 @@ and skills instead.
     (Sandbox Studio) checks that each platform is declarations plus a provider behind an adapter (Appendix A);
   - with four adjustments proposed to the owner in reply: the contract is defined beside the task type, the three
     existing planned types are their own contracts, contracts live in `squadops.capabilities`, and shared skills are
-    included by reference. One addition is open: a `headless` mode (Q67).
+    included by reference. One addition, a `headless` mode, was ruled at acceptance (Q67).
+- **Accepted** (2026-11-09), with Q67 ruled: add the `headless` mode.
 
 ---
 
@@ -121,7 +125,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 - **Placement.** The 2.7 plan expects `tasks/task_types.py`, `orchestration/handler_registry.py`,
   `bootstrap/handlers.py` and the profile snapshot hash unchanged (its §5, with the game-dev-roblox plan). This SIP
   changes the first and the last, so it builds in 2.8 at the earliest.
-- **Questions:** Q52–Q66 ruled 2026-11-09; Q67 open (§13 and the portfolio).
+- **Questions:** Q52–Q67, ruled 2026-11-09 (§13 and the portfolio).
 
 ## Delivery ledger (current as of 2026-11-09)
 
@@ -580,7 +584,7 @@ will work within.
 
 The owner's outside review answered each question, and the owner ruled its answers, with the refinements below, the
 same day: "make the revision and yes they can be rulings". Q66 is the review's later refinement, applied at the owner's
-direction; Q67 is open, for the acceptance review.
+direction. Q67 was ruled at acceptance: "Q67 add headless".
 
 | # | question | ruling |
 |---|---|---|
@@ -599,7 +603,7 @@ direction; Q67 is open, for the acceptance review.
 | **Q64** | A skill and a lesson | **Approved skill guidance outranks optional lessons.** Supersession is declared; a version change alone isn't a conflict |
 | **Q65** | Lessons across projects | **Owner-reviewed, replay-tested promotion into skills in 2.x,** after a generalization and distribution review. A shared cross-project recall pool is a separate SIP-0110 amendment |
 | **Q66** | What a skillset specializes | **Engine-neutral capability contracts, for a platform and variant,** with the skills, prerequisites, tools and verification procedures that platform needs. A requirement names a concrete skillset, with its contract, platform and mode checked for consistency; alternatives are declared. A new platform adds skillsets and a provider, never a core task type. The review's refinement, applied in revision 3 at the owner's direction; it reopens none of Q52–Q65 |
-| **Q67** (open) | A `headless` verification mode, beside the review's build, editor, play, multiplayer and capture | **add it.** Lune for Roblox and JUnit for Minecraft run tests outside the engine's runtime, which none of the other five describes, and Roblox's first increments depend on it |
+| **Q67** | A `headless` verification mode, beside the review's build, editor, play, multiplayer and capture | **Added** (ruled at acceptance). Lune for Roblox and JUnit for Minecraft run tests outside the engine's runtime, which none of the other five describes, and Roblox's first increments depend on it |
 
 **One refinement outside the questions:** a repair loads the skills of the step it revises through the existing
 `repairs_revising` lineage (§7.1), so no skillset declares its repair bindings separately.

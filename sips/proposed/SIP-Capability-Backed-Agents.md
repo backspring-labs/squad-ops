@@ -16,7 +16,7 @@ created_at: '2026-07-01'
 
 
 > **Split, 2026-11-09: §21's four layers and §27's assembly rules move to Agent Skillsets for 2.x**
-> (`sips/proposed/SIP-Agent-Skillsets.md`; the owner: "agree, pull it forward and draft the assembly SIP"). Agent
+> (SIP-0116, `sips/accepted/SIP-0116-Agent-Skillsets.md`, accepted 2026-11-09; the owner: "agree, pull it forward and draft the assembly SIP"). Agent
 > Skillsets is the first of the bounded SIPs §17 plans: the four layers and the rules, restated against SIP-0112's
 > Project and SIP-0072's development profile and put on the agent, with the skillset spec a capability pack will
 > carry. Everything else here stays deferred to 3.x. §28 records the split.
@@ -737,7 +737,7 @@ for the same reason.
 
 **What changed.**
 - **§21's four layers** (identity, capability, skill, tool), with the test that places a thing in one, and **§27's
-  rules** (27a–27f) are governed for 2.x by Agent Skillsets (`sips/proposed/SIP-Agent-Skillsets.md`). It restates
+  rules** (27a–27f) are governed for 2.x by SIP-0116 Agent Skillsets (`sips/accepted/SIP-0116-Agent-Skillsets.md`, accepted 2026-11-09). It restates
   them against SIP-0112's Project and Development Configuration and SIP-0072's development profile. Where the two
   differ, Agent Skillsets governs.
 - **The changes of substance, recorded there** (its revision 2, after the owner's outside review):
