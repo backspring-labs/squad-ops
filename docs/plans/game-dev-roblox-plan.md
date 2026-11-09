@@ -12,11 +12,15 @@
   "agree, pull it forward and draft the assembly SIP. but make sure I can run an outside review before you start
   building". Agents carry *skillsets*, specs a capability pack can later carry; a squad profile stays an assembly of
   agents; and *playbook* is kept for what a squad follows. So:
-  - **no building starts** until the owner's outside review of Agent Skillsets has answered its questions and the
-    owner accepts it;
-  - **revision 4 of this plan and of both game SIPs follows.** It replaces the *specialty* with the `game_dev_roblox`
-    development profile assigning skillsets to the dev and QA roles, and renames this plan's *playbooks* to skills.
-    Phase 2a becomes Agent Skillsets' phases 1, 2 and 4;
+  - **no building starts** until the owner accepts Agent Skillsets. Its outside review is done, and the owner ruled
+    the review's answers the same day (its revision 2);
+  - **revision 4 of this plan and of both game SIPs follows.** It replaces the *specialty* with **development profile
+    requires; selected agents supply:** the `game_dev_roblox` development profile requires skillsets, the selected
+    squad's agents supply them, and cycle preflight checks the agents the work routes to. It presents Roblox as the
+    first specialization of the generic game-development contracts, names the required skillsets, the supplying
+    agents and the Studio provider, and renames this plan's *playbooks* to skills. The adopted Roblox execution and
+    isolation decisions stay as they are. Phase 2a becomes Agent Skillsets' phases 1 and 2, and the Roblox work is switched
+    on only after its phases 2–6;
   - until then, §2's *specialty* and *playbooks* read as superseded wherever Agent Skillsets differs.
 
 ## Revision log
