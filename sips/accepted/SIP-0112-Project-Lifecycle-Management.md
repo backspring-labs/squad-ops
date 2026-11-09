@@ -136,7 +136,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a product's suite judged on its own runner on the product's tree at the pin, with the files a run's artifacts hold back (a lockfile) (H.19) | **shipped** | 2.6.0, PR #2902, closes #2900 |
 | a source-backed change that deletes a file | **shipped** (H.23): the `delete:<path>` form, judged against the task's view and grant, applied to the delivery candidate, named in `changed_paths` and absent from the capture | 2.6.0, PR #2923, closes #2612 |
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
-| a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.28; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #2995, closes #2862 |
+| a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #3002, closes #2862 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect) | 2.8.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
@@ -3420,3 +3420,139 @@ credential is the owner's ruling of the same day, above.
 
 **Who ruled.** The Spark lane built it, within H.13's rule ("the profile's prose for the skeleton is withheld wherever the
 product's repository view is shown"), under the supervisor's brief for #2827's item 2. The owner reviews it on the PR.
+
+## H.30 The draft checks integration where it is drafted, in place of H.28's timer (2026-11-08; E.4.3, E.4.4, FR-21; SIP-0109 §24dc, §24ds; #2862; the owner's ruling of 2026-11-08, option 1; the Spark lane)
+
+**What changed.** H.28 is superseded. Its host timer (`scripts/dev/ops/merge_sweep.py`,
+`infra/systemd/squadops-merge-sweep.*`) and its test are removed. They were never installed. In their place, the
+next Campaign's draft checks integration when it needs to:
+`POST /api/v1/projects/{id}/integration-check` (`campaigns:manage`, 200, `IntegrationCheckResponse`), or
+`squadops projects check-integration <project> [--token-from-gh]`. In one request it:
+1. **reads the Project's unintegrated set** (SIP-0109 §24dc item 7). With no row `contribution_pending` or
+   `merged_not_synced`, it records nothing and answers the set;
+2. **syncs** (E.4.4), for either kind of row: the managed clone fetches the base ref, and each pending review
+   request's state is read on the forge. A request merged into the base ref (a squash merge's new commit included)
+   is recorded integrated against the commit that took it. A patch export, and a merge with a merge commit, are
+   read by ancestry alone, with no forge and no forge token. The sync's idempotency key is the upstream commit's
+   (`integration-check:<project>:sync:<commit>`), so a second check at that commit records no second sync: it
+   replays the first. A manual `POST …/syncs` keeps its caller's key;
+3. **re-validates, within a bounded delegation** (below), when a row stands `merged_not_synced` and the sync
+   completed: the development baseline and the integrated commit move to the commit the sync read, and the row is
+   carried. New cycles then wait for configure and baseline capture there, as after any re-validation (the owner's
+   ruling of 2026-11-05). The answer's `next_step` says so;
+4. **reads the set again,** as recorded, and answers it: `clear` when it is empty, so the draft may proceed.
+   Otherwise each row says what it waits on: `campaign_open`, `contribution_not_opened`, `merge`,
+   `merge_state_unread`, `revalidation` or `closed_unmerged`, with `clears_when` in words. A sync that read drift
+   the Project hasn't reconciled is answered too (`unreconciled`, #2608).
+
+**It only reads the forge.** The fetch is the managed clone's, and the forge is asked only `review_request_state`, a
+`GET`. Nothing is pushed, commented, merged or labelled.
+
+**The token.** The request's `token`, else the one the deploy holds for the Project in
+`projects.review_request_tokens`, the order the sync and validate routes already read. It is used for that request's
+reads only, and never recorded. No new credential is stored and no host script reads a password.
+- **A pending review request needs a token and a forge.** Without them its merge isn't read, the sync isn't run
+  (it would answer `pending` without a reading), and the answer says so: `merge_state_unread: {reason: no_token}`
+  or `no_forge`, never "not merged".
+- **A fetch the remote refused for its credentials** is `fetch_unauthorized`, with or without a token passed, told
+  apart from the missing review-request token. The managed clone names it `unauthorized`
+  (`adapters/tools/git_source.py`, `fetch_unauthorized`).
+- The other reasons are `sync_refused`, `source_unavailable` and `forge_unavailable`.
+
+**A sync that was needed and didn't complete advances nothing.** No re-validation follows it, and the rows are
+answered as they are recorded after it, since a sync can record one contribution before a later one's read fails. A
+re-validation that doesn't adopt is answered in `validation_failed` with its reason. Neither is retried inside the
+request; the next check syncs and tries again.
+
+**The fence: a validation never moves a newer adoption back.** `record_validation` takes the development baseline its
+caller read before it fetched (`expected_baseline`, ProjectRegistryPort). Under the Project's row lock, a baseline
+that has moved since, and isn't the commit being adopted, means another validation adopted in between. Nothing is
+written, and `ProjectBaselineMovedError` names the commit held: 409 `BASELINE_MOVED` on `POST …/validate`, and
+`validation_failed: baseline_moved` in the check, which reads the Project again. One already at the commit is
+answered as it stands. The fence is in the registry's write, so a manual validation is fenced as the check's is. A
+key that recorded before replays, and the replay says the key was used, not where the Project is now: the check's
+validation key names the move, `integration-check:<project>:validate:<baseline read>:<commit adopted>`. So a later
+check that reads another baseline has a key of its own, and a spent key never holds a retry back.
+
+**The bounded delegation.** `campaigns:manage` doesn't otherwise imply validation authority: `POST …/syncs` and
+`POST …/validate` stay `admin:write`. The check may re-validate only:
+- a READY Project (`not_ready` otherwise);
+- after its own sync completed, for a row whose contribution that sync, or an earlier one, recorded integrated;
+- at exactly the commit that sync read (`validate_project(adopt_only=…)`). An upstream that moved between the sync's
+  fetch and the validation's is refused, `upstream_moved`, never adopted unread. The next check syncs it;
+- through the fence above.
+
+The Development Configuration and inherited baseline are still required at the new commit before a cycle. The
+exception is recorded in `squadops.auth.models` (the scope's comment) and the campaign runbook's approval boundary.
+
+**`contribution_closed`.** The check reads only pending contributions, so it does nothing for a closed one, and its
+row says the whole recovery. The owner reopens the request and merges it with a merge commit (a squash merge of a
+closed request can't be read), then syncs and re-validates the Project (`POST …/syncs`, then `POST …/validate`).
+Otherwise the owner dismisses it (SIP-0109 §24dg).
+
+**Where the gate is.** It stays the supervisor's, where SIP-0109 §24dc and #2863 placed it. #2863 built the signal and
+left refusing a draft while the set is non-empty to the supervisor's side. A draft is composed from the
+product read at the integrated commit (#2855's `source-file`) before any Campaign is created. So a check at
+`POST /api/v1/campaigns` would run after that read. It would either let through a draft composed from the commit
+before the merge, or refuse every creation while any row stands, which is a policy nobody has ruled. The check is the
+supervisor's first call, ahead of that read. SIP-0109 §24ds records the change on the supervisor's side, and its
+contract: the draft reads the product at the `integrated_commit` the check answered.
+
+**The evidence.** `tests/unit/api/test_integration_check.py` enters at the route, as the runtime mounts it, for the
+supervisor's seat. It runs over `test_close_contribution`'s world: a real managed clone, real deliveries, the
+contribution opened through `POST /api/v1/campaigns/{id}/contributions`, the owner's merges made in the fixture's
+repository, and the forge the real GitHub adapter over a recorded transport. The Project's writes keep the Postgres
+registry's replay and fence (`tests/fixtures/project_writes.py`), and one contract,
+`validation_record_contract`, holds both: the stand-in in the unit tests, and Postgres in
+`test_postgres_project_registry_integration.py`, which also races two validations from one baseline. The tests show:
+- a merged request is integrated, the baseline and the integrated commit move to the merge, the answer is clear, and
+  the read route lists nothing;
+- the forge sees one `GET` with the caller's token. Nothing is opened, and the product's refs are unchanged;
+- an open request keeps the draft waiting, names the row and its address, and moves nothing;
+- a second check at the same upstream commit replays the sync and records no second one;
+- no token gives `no_token`, with no sync and no forge request;
+- the request's token wins over the held one, and the held one is used when none is passed;
+- a forge refusal gives `forge_unavailable`, with no sync recorded and nothing validated;
+- a merge the sandbox can't carry (a symlink) gives `validation_failed: capability_gap`, and the next check tries again;
+- with nothing pending, nothing is recorded and the forge isn't read;
+- triage and viewer seats get 403, and a sample application gets 409 `NO_SOURCE_REPOSITORY`;
+- the review's race: a manual validation reads U1 and is held, the owner squash-merges (U2), and the check adopts U2.
+  The held validation then writes nothing (`ProjectBaselineMovedError`), and the next check is clear;
+- a closed request the owner reopens and merges clears by the steps its row names;
+- a patch export is read by ancestry with no token and no forge, merged or not, and a fetch refused for its
+  credentials is `fetch_unauthorized`, with no token or with one refused;
+- `tests/unit/projects/test_integration_check_partial_sync.py`:
+  - a sync that fails part-way re-validates nothing and answers what it recorded, for a row merged before the check
+    and for one the failing sync recorded;
+  - an upstream that moves after the sync is refused `upstream_moved` and adopted by the next check;
+  - an upstream rewound and restored is adopted again.
+
+Mutations, each on a commit and restored by commit:
+- **First round, eight, all caught:** the no-token guard removed; a key per call; no re-validation;
+  re-validation on a pending row; a forge refusal swallowed; no re-read after the sync; the token order swapped;
+  the route's scope lowered to `cycles:read`.
+- **After the review, nine, all caught:** the Postgres fence off; the stand-in's fence off; the stand-in's replay
+  read by payload; validation after a failed sync; no re-read after a failed sync; a validation key named for the
+  target alone; no adoption bound; a patch export requiring a token; a credential refusal read as an outage. Two
+  survived the first run: the target-only key and no adoption bound. Each has a test now (the rewound upstream, and
+  the upstream that moves after the sync).
+
+**Revised after the owner's outside review of PR #3002 (2026-11-08).** H.30 hasn't merged, so it is revised in place.
+The review, at `99625329`, asked for four changes and answered the packet's five questions. The sections above are
+the revised design:
+1. **The fence and the move-named key** (item 1). The review reproduced the failure: two checks, one at U1 and one at
+   U2, with the U1 validation finishing last. It wrote U1 over U2, and every later check replayed U2's spent key over
+   a Project left at U1. The new race regression fails on `99625329` the same way: the baseline is left at U1, and
+   the next check answers `revalidation` for good.
+2. **The test stand-in replays by key** (item 2). It had stored `None` and read `None` as "not recorded", so no
+   validation key ever replayed. One contract now holds the stand-in and Postgres.
+3. **No validation after a failed sync, and rows as recorded** (item 3).
+4. **The closed row's whole recovery** (item 4).
+5. **Answer 2, the bounded delegation, and answer 5, ancestry without a token,** as above. Answers 1, 3 and 4 keep
+   option (b), the held token for reads, and the 200 answer. Answer 1's source-file check is the supervisor's, in
+   SIP-0109 §24ds.
+
+**Who ruled.** The owner, 2026-11-08: "I don't like the design that relies on a timer"; option 1, no timer, the check
+at the point of use. The owner's outside review of PR #3002 ruled the four changes and the five answers above. The
+route's shape, its home on the supervisor's side, the fence's place in the registry and the answer's fields are the
+implementer's design under those rulings.

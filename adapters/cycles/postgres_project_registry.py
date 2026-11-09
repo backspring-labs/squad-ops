@@ -19,6 +19,7 @@ from squadops.cycles.models import (
     DevelopmentConfigurationNotFoundError,
     InheritedBaselineNotFoundError,
     Project,
+    ProjectBaselineMovedError,
     ProjectIdTakenError,
     ProjectNotFoundError,
     ProjectRegistryReadOnlyError,
@@ -222,10 +223,12 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         diagnostic: str | None,
         actor: str,
         idempotency_key: str,
+        expected_baseline: str | None,
     ) -> tuple[Project, bool]:
         """One transaction, under the Project's row lock: the status, the commits or the
         diagnostic, the next record version, and the event. A key that recorded this Project's
-        validation before replays it, whatever this attempt found."""
+        validation before replays it, whatever this attempt found. A baseline that moved after
+        ``expected_baseline`` was read is never written over (the port's fence, H.30)."""
         if (commit is None) == (diagnostic is None):
             raise ValueError("a validation records a commit or a diagnostic, never both")
         if not self._writable:
@@ -253,6 +256,15 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                         f"idempotency key {idempotency_key!r} recorded another operation"
                     )
                 return await self._read(conn, project_id), True
+            held = row["development_baseline_commit"]
+            if commit is not None and held == commit:
+                return await self._read(conn, project_id), False  # already adopted: nothing to do
+            if held != expected_baseline:
+                raise ProjectBaselineMovedError(
+                    f"Project {project_id}'s baseline moved to {held} after this validation read "
+                    f"{expected_baseline}: read it again, and validate again if it must",
+                    held=held,
+                )
             status = ProjectLifecycleStatus(row["lifecycle_status"])
             if status == ProjectLifecycleStatus.READY:
                 # E.4.4: a READY Project is re-validated to adopt its upstream's commit. A failed

@@ -410,6 +410,48 @@ def unintegrated(ctx: typer.Context, project_id: str = typer.Argument(...)):
     print_table(["Campaign", "Cycle", "Title", "Standing", "Review request"], rows)
 
 
+@app.command("check-integration")
+def check_integration(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Read review requests' state with your own GitHub access (`gh auth token`), once",
+    ),
+):
+    """The check a Campaign's draft makes (SIP-0112 H.30): sync where a contribution is pending,
+    re-validate where one merged, then list what still isn't in, and what each row waits on.
+    Nothing listed means the draft may proceed. The forge is only read."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    body = {"token": _gh_token()} if token_from_gh else {}
+    try:
+        client = _get_client(ctx)
+        data = client.post(f"/api/v1/projects/{project_id}/integration-check", json=body)
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+    if fmt == "json":
+        print_json(data)
+        return
+    for step in ("merge_state_unread", "validation_failed"):
+        if data[step]:
+            print_error(f"{step}: {data[step]['reason']}: {data[step]['message']}")
+    if data["revalidated_at"]:
+        print_success(f"{project_id} re-validated at {data['revalidated_at'][:12]}")
+    if data["next_step"]:
+        print_success(f"next: {data['next_step']}")
+    if data["clear"]:
+        print_success(f"{project_id}: every accepted increment is in its integrated commit")
+        return
+    rows = [
+        [i["campaign_id"], i["cycle_id"], i["waits_on"], i["clears_when"]]
+        for i in data["remaining"]
+    ]
+    print_table(["Campaign", "Cycle", "Waits on", "Clears when"], rows)
+
+
 @app.command("initialize")
 def initialize(
     ctx: typer.Context,

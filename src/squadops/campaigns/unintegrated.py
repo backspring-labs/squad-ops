@@ -8,8 +8,9 @@ it, and stands as one of:
 - ``not_contributed``: no contribution of it is recorded, by its Campaign or its own run. A running
   Campaign's increments stand here too;
 - ``contribution_pending``: one is recorded, pending. A merge on the forge is read only by a sync
-  (``POST /api/v1/projects/{id}/syncs``), so a merged request reads pending until one runs (#2862
-  would sync after a merge, and isn't built);
+  (``POST /api/v1/projects/{id}/syncs``), so a merged request reads pending until one runs. The
+  draft's integration check runs one where it is needed (``squadops.projects.integration_check``,
+  SIP-0112 H.30);
 - ``merged_not_synced``: a sync recorded one integrated, and the Project's integrated commit
   doesn't carry it yet: the Project is re-validated at the new commit (E.4.4) to move it;
 - ``contribution_closed``: its review request was closed unmerged, and ``review_url`` names it. The

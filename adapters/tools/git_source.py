@@ -74,6 +74,24 @@ def _quoted(path: str) -> str:
     return f'"{escaped}"'
 
 
+#: What git says when the remote refused a fetch for its credentials: none given with prompts off,
+#: or the ones given refused.
+_UNAUTHORIZED = (
+    "could not read username",
+    "authentication failed",
+    "invalid username or password",
+    "terminal prompts disabled",
+    "requested url returned error: 401",
+    "requested url returned error: 403",
+)
+
+
+def fetch_unauthorized(message: str) -> bool:
+    """Whether a failed fetch's message is the remote refusing its credentials."""
+    lowered = message.lower()
+    return any(marker in lowered for marker in _UNAUTHORIZED)
+
+
 def _authorization(token: str) -> dict[str, str]:
     """Over https the token travels as a config value in the environment, never in an argument a
     process listing shows, and only for the one push it's given for."""
@@ -576,7 +594,16 @@ class GitSourceRepository(SourceRepositoryPort):
     def _fetch(self, clone: Path, locator: str, config: Mapping[str, str] | None) -> None:
         """The clone made, or brought up to date with the product's branches and tags. A token's
         header is in ``config``, the environment of these git processes alone: the clone's own
-        configuration never holds it."""
+        configuration never holds it. A fetch the remote refused for its credentials is
+        ``unauthorized``, so a caller can say a token is missing or refused (H.30)."""
+        try:
+            self._fetch_once(clone, locator, config)
+        except SourceUnavailable as e:
+            if e.reason in ("fetch", "clone") and fetch_unauthorized(str(e)):
+                raise SourceUnavailable(str(e), reason="unauthorized") from e
+            raise
+
+    def _fetch_once(self, clone: Path, locator: str, config: Mapping[str, str] | None) -> None:
         if clone.is_dir():
             self._git(clone, "remote", "set-url", "origin", "--", locator, step="fetch")
             # Branches and tags only, named: a mirror's own refspec (+refs/*:refs/*) would prune

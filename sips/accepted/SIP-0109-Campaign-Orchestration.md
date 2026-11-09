@@ -6992,3 +6992,34 @@ evidence is exact. The implementer chose:
 - the key on every repository-backed row and block, as the marker;
 - refusing at both the proposal and acceptance;
 - `accepted_root` on the renderer's record.
+
+### 24ds. The supervisor's draft gate asks for the integration check first (2026-11-08, §24dc item 7; SIP-0112 H.30; #2862; the owner's ruling of 2026-11-08, option 1, and the owner's outside review of PR #3002)
+
+**What changed.** §24dc's first "What remains" item said a merge is known only by a sync, so a request merged on the
+forge stood `contribution_pending` until someone ran `POST /api/v1/projects/{id}/syncs`. SIP-0112 H.30 answers it at
+the draft. The gate stays the supervisor's, as §24dc placed it, and its first call changes:
+- **before it reads the product** to compose the next Campaign (#2855's `source-file`), the supervisor calls
+  `POST /api/v1/projects/{id}/integration-check` (`campaigns:manage`), with its own forge token or none. The check
+  syncs where a row is `contribution_pending` or `merged_not_synced`, re-validates within H.30's bounded delegation
+  where one is `merged_not_synced`, and answers the set that remains;
+- **`clear: true`** means the draft may proceed;
+- **otherwise the draft waits** and says why, from each remaining row's `waits_on` and `clears_when`. A
+  `merge_state_unread` reason (`no_token`, `no_forge`, `sync_refused`, `fetch_unauthorized`, `source_unavailable`,
+  `forge_unavailable`) means the merge wasn't read, never that it isn't merged.
+
+**The supervisor's contract on the read** (the owner's outside review, answer 1). The supervisor records the
+`integrated_commit` the check answered and composes the draft from reads at that commit. Every
+`GET /api/v1/projects/{id}/source-file` answer carries the `commit` it read. A read whose `commit` differs means the
+integrated commit moved in between, by another check or the owner's validation: the draft is discarded, and the
+check is asked again. The route takes no commit to read at, since it reads the integrated commit only (#2855).
+Holding the read to the check's commit is the supervisor's comparison, not a parameter.
+
+`GET …/unintegrated-increments` is unchanged and stays read-only. A Campaign's creation still doesn't read the set:
+the reasons are in H.30's "Where the gate is", and the outside review's answer 1 kept that (option (b), no blanket
+refusal at creation).
+
+**The evidence.** SIP-0112 H.30's.
+
+**Who ruled.** The owner, 2026-11-08: no timer, and the check at the point of use (option 1). The owner's outside
+review of PR #3002 kept the gate on the supervisor's side and set the read contract above. The call's shape is the
+implementer's.

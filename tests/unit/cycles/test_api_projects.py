@@ -345,7 +345,9 @@ class TestValidateProject:
         )  # fmt: skip
         mock_project_registry.get_project.return_value = project
 
-        async def record(project_id, *, commit, diagnostic, actor, idempotency_key):
+        async def record(
+            project_id, *, commit, diagnostic, actor, idempotency_key, expected_baseline
+        ):
             status = (
                 ProjectLifecycleStatus.READY
                 if commit
@@ -436,6 +438,33 @@ class TestValidateProject:
             502, "SOURCE_UNAVAILABLE",
         )  # fmt: skip
         mock_project_registry.record_validation.assert_not_awaited()
+
+    def test_a_validation_another_overtook_is_a_409_naming_the_commit_held(
+        self, client, wired, mock_project_registry
+    ):
+        """H.30's fence on the owner's own route. Bugs caught: a stale validation answered 500, or
+        200 as if it had adopted; the registry not told the baseline this validation read, so it
+        can't fence it."""
+        import dataclasses
+
+        from squadops.cycles.models import ProjectBaselineMovedError
+        from squadops.projects.models import ProjectLifecycleStatus
+
+        mock_project_registry.get_project.return_value = dataclasses.replace(
+            mock_project_registry.get_project.return_value,
+            lifecycle_status=ProjectLifecycleStatus.READY,
+            development_baseline_commit="b" * 40,
+        )
+        mock_project_registry.record_validation.side_effect = ProjectBaselineMovedError(
+            f"Project prj-tally's baseline moved to {'e' * 40}", held="e" * 40
+        )
+
+        resp = client.post("/api/v1/projects/prj-tally/validate", json={"idempotency_key": "v-4"})
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (409, "BASELINE_MOVED")
+        assert "e" * 40 in resp.json()["detail"]["error"]["message"]
+        kwargs = mock_project_registry.record_validation.await_args.kwargs
+        assert (kwargs["commit"], kwargs["expected_baseline"]) == ("c" * 40, "b" * 40)
 
 
 class TestDevelopmentConfigurationRoutes:

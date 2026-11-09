@@ -605,6 +605,60 @@ class SourceSyncResponse(BaseModel):
     replayed: bool = False
 
 
+class IntegrationCheckRequest(BaseModel):
+    """The integration check a Campaign's draft makes (SIP-0112 H.30, #2862)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The caller's own forge token, for this check's fetch and review-request reads only. Without
+    #: one, the token the deploy holds for the Project is used, if it holds one.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class IntegrationCheckFailureResponse(BaseModel):
+    """Why a step of the check didn't happen: a typed reason, and the message."""
+
+    reason: str
+    message: str
+
+
+class IntegrationCheckRowResponse(UnintegratedIncrementResponse):
+    """A row still listed after the check, with what it waits on and what clears it."""
+
+    waits_on: Literal[
+        "campaign_open",
+        "contribution_not_opened",
+        "merge",
+        "merge_state_unread",
+        "revalidation",
+        "closed_unmerged",
+    ]
+    clears_when: str
+
+
+class IntegrationCheckResponse(BaseModel):
+    """What the check did, and the set that remains: ``clear`` when it is empty, so a draft may
+    proceed."""
+
+    project_id: str
+    clear: bool
+    integrated_commit_before: str | None
+    integrated_commit: str | None
+    #: The sync the check recorded, or replayed at the same upstream commit; ``null`` when none ran.
+    sync: SourceSyncResponse | None
+    #: Why a pending row's merge state wasn't read; ``null`` when it was, or none was pending.
+    merge_state_unread: IntegrationCheckFailureResponse | None
+    #: The commit the development baseline moved to; ``null`` when it didn't move.
+    revalidated_at: str | None
+    validation_failed: IntegrationCheckFailureResponse | None
+    #: The latest sync, when it read drift past the baseline that new cycles are refused on.
+    unreconciled: dict[str, Any] | None
+    #: What the Project needs before a cycle starts, when the check moved its baseline or read
+    #: drift that isn't reconciled.
+    next_step: str | None
+    remaining: list[IntegrationCheckRowResponse]
+
+
 class ProjectRegistrationResponse(BaseModel):
     """A registration, applied or replayed: the Project, and the key a retry resends (D.6)."""
 
