@@ -8,7 +8,7 @@ created_at: '2026-10-31T00:00:00Z'
 
 # SIP: Game Development Capability Packs and Squad Composition
 
-**Status:** Proposed (2026-10-31), for design review. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs)
+**Status:** Proposed (2026-10-31), for design review. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs). **Revision 4 pending (2026-11-09):** Agent Skillsets (PR #3006), split from Capability-Backed Agents on the owner's direction, replaces §R3's in-tree seam: the composition becomes the squad profile plus the skillsets the `game_dev_roblox` development profile assigns to roles, and the specialty's *playbooks* become skills (*playbook* is kept for what a squad follows). §R3 reads as superseded wherever Agent Skillsets differs, and nothing here is built until the owner's outside review of Agent Skillsets and its acceptance
 **Authors:** Jason Ladd (the owner's outside review, 2026-10-31); drafted by the Spark lane's supervisor
 **Created:** 2026-10-31
 **Targets:** unplaced. Acceptance and release placement are the owner's.
@@ -49,7 +49,7 @@ with its boundary (portfolio cluster 18, Q45–Q48):
 **Revision 3's intake (2026-11-08).** It follows the game-dev-roblox plan (PR #2972), adopted by the owner with
 D1–D10.
 - **The conflict this intake recorded (Q45) is replaced** (R3.1): nothing of Capability-Backed Agents' mechanism is
-  built. Whether that SIP takes an amendment or a note was Q51, ruled 2026-11-09: the note.
+  built. Whether that SIP takes an amendment or a note was Q51: first ruled the note, then re-ruled on 2026-11-09 as an amendment, by the split into Agent Skillsets.
 - **Overlaps, no conflict:**
   - SIP-0110's Campaign snapshot and `rebind` event, the precedent for the specialty digest;
   - CLAUDE.md's task-type rules (#559), which the `design.` domain and the plannable property follow;
@@ -101,8 +101,9 @@ has, and the plugin machinery waits for a trigger (the companion's R3.1):
 
 **So Q45's exception is no longer needed for this work.** Nothing of Capability-Backed Agents' mechanism is built,
 so there is nothing to amend there. Whether that SIP still takes the amendment Q45 called for, or only a note
-naming this seam as the starting point of its §17 split, was **Q51**, ruled by the owner on 2026-11-09: the note
-(R3.7), which its header carries.
+naming this seam as the starting point of its §17 split, was **Q51** (R3.7). It was first ruled the note, then
+re-ruled on 2026-11-09: the owner pulled §21 and §27 forward into Agent Skillsets, which that SIP records as an
+amendment.
 
 ### R3.2 The composition, as the specialty and its profiles
 
@@ -238,13 +239,15 @@ The ledger is re-cut to match. **§8's two definitions of done stand.**
 | **Q47** (frontier-drafted, owner-approved, replay-tested skills) | **stands,** with S6's items (R3.4) |
 | **Q48** (an optional designer, a separate roster identity) | **stands,** refined by the paper test (R3.3) |
 
-**Q51, ruled by the owner on 2026-11-09 as recommended ("note is fine"):** Capability-Backed Agents, given that
+**Q51, ruled by the owner on 2026-11-09, then re-ruled the same day:** Capability-Backed Agents, given that
 nothing of its mechanism is built here.
 - **The options:**
   - write the amendment Q45 called for;
   - or keep only a note in its header, naming this seam as the starting point of its §17 split.
-- **Ruled: the note.** An amendment records a change to that SIP's design, and none has been made. Its 3.x
-  deferral and its premise correction (§5's deleted skill layer) are unaffected.
+- **First ruled: the note** ("note is fine"), on the reasoning that an amendment records a design change and none
+  had been made. **Re-ruled the same day: the amendment.** The owner pulled §21 and §27 forward into Agent Skillsets
+  ("agree, pull it forward and draft the assembly SIP"), which is a design change to that SIP, recorded as its §28.
+  Its 3.x deferral of everything else and its premise correction (§5's deleted skill layer) are unaffected.
 
 ---
 
