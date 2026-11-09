@@ -15,7 +15,13 @@ What it recovers, and what it can't:
   tries left no file of their own, so a task that made more than one call is recorded as its
   last. Running the script names the first key it lacks, and that answer is written by hand.
 - **Latency, approximately** (``--replay-latency``): the time from the previous attempt's last
-  stored file to this attempt's first. It includes the orchestration between them.
+  stored file to this attempt's first. It includes the orchestration between them, and any wait
+  at a gate between them, which can be longer than the deploy lets one task run. So
+  ``--latency-cap`` holds each answer under a ceiling (set it below the deploy's
+  ``SQUADOPS__DISPATCH__TASK_TIMEOUT``), and ``--latency-scale`` multiplies every gap, for a
+  run that must last longer than its recording did (#2892's soak). Both are written into the
+  script's ``recorded_from.latency``, with the total and the number capped, so the record says
+  how the replayed time was made.
 
 A recorded script is a starting point: run it once, and read the first failure.
 
@@ -23,7 +29,7 @@ Usage::
 
     python scripts/dev/record_llm_script.py --vault <vault dir> --project <project> \
         --cycle <cycle_id> [--run <run_id>] --name <script> --description "<what it drives>" \
-        [--replay-latency] [--out <dir>]
+        [--replay-latency [--latency-scale <k>] [--latency-cap <seconds>]] [--out <dir>]
 """
 
 from __future__ import annotations
@@ -126,6 +132,47 @@ def _answer_content(files: list[StoredFile]) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+@dataclass
+class _ReplayedLatency:
+    """How a recorded gap becomes the latency an answer replays: times ``scale``, held at ``cap``,
+    with the running total and the count held, for the script's own record of it."""
+
+    scale: float
+    cap: float | None
+    total: float = 0.0
+    capped: int = 0
+
+    @classmethod
+    def of(cls, replay: bool, scale: float, cap: float | None) -> _ReplayedLatency | None:
+        if scale <= 0 or (cap is not None and cap <= 0):
+            raise ValueError("--latency-scale and --latency-cap must be positive")
+        if not replay:
+            if scale != 1.0 or cap is not None:
+                raise ValueError(
+                    "--latency-scale and --latency-cap shape a replayed latency: add "
+                    "--replay-latency"
+                )
+            return None
+        return cls(scale, cap)
+
+    def of_gap(self, gap: Any) -> float:
+        latency = max(gap.total_seconds(), 0.0) * self.scale
+        if self.cap is not None and latency > self.cap:
+            latency = self.cap
+            self.capped += 1
+        latency = round(latency, 3)
+        self.total += latency
+        return latency
+
+    def record(self) -> dict[str, Any]:
+        return {
+            "scale": self.scale,
+            "cap_seconds": self.cap,
+            "capped": self.capped,
+            "total_seconds": round(self.total, 3),
+        }
+
+
 def build_script(
     stored: Iterable[StoredFile],
     *,
@@ -133,8 +180,14 @@ def build_script(
     description: str,
     recorded_from: dict[str, Any],
     replay_latency: bool,
+    latency_scale: float = 1.0,
+    latency_cap: float | None = None,
 ) -> tuple[bytes, list[str]]:
-    """The script file's bytes, and what the recording could not recover."""
+    """The script file's bytes, and what the recording could not recover.
+
+    With ``replay_latency``, each answer's latency is its gap times ``latency_scale``, held at
+    ``latency_cap`` when one is given."""
+    replayed = _ReplayedLatency.of(replay_latency, latency_scale, latency_cap)
     written: list[tuple[str, str, int | None, StoredFile]] = []
     skipped = 0
     for f in stored:
@@ -175,13 +228,13 @@ def build_script(
             "call": calls[attempt.task_id],
             "content": _answer_content(attempt.files),
         }
-        if replay_latency and previous_last is not None:
-            answer["latency_seconds"] = round(
-                max((attempt.first - previous_last).total_seconds(), 0.0), 3
-            )
+        if replayed is not None and previous_last is not None:
+            answer["latency_seconds"] = replayed.of_gap(attempt.first - previous_last)
         previous_last = attempt.last
         answers.append(answer)
 
+    if replayed is not None:
+        recorded_from = {**recorded_from, "latency": replayed.record()}
     doc = {
         "script": name,
         "description": description,
@@ -197,10 +250,11 @@ def build_script(
         "a task's self-evaluation passes, re-asks and earlier authoring tries left no files, so "
         "each attempt is recorded as one call: run the script and add any key it names",
     ]
-    if replay_latency:
+    if replayed is not None:
         notes.append(
-            "latency is the gap between stored files, orchestration included; the first answer "
-            "has none"
+            "latency is the gap between stored files, orchestration and gate waits included; the "
+            f"first answer has none. Replayed: {round(replayed.total)} s in all, scale "
+            f"{replayed.scale}, {replayed.capped} answer(s) held at the cap {replayed.cap}"
         )
     return raw, notes
 
@@ -240,6 +294,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--name", required=True, help="the script's name, and its file's")
     parser.add_argument("--description", required=True, help="what the script drives, and why")
     parser.add_argument("--replay-latency", action="store_true")
+    parser.add_argument(
+        "--latency-scale",
+        type=float,
+        default=1.0,
+        help="multiply every recorded gap (with --replay-latency); written into the script",
+    )
+    parser.add_argument(
+        "--latency-cap",
+        type=float,
+        default=None,
+        help="hold each answer's latency at most this many seconds, below the deploy's task "
+        "timeout (with --replay-latency); written into the script",
+    )
     parser.add_argument("--out", type=Path, default=PACKAGED_SCRIPTS_DIR)
     args = parser.parse_args(argv)
 
@@ -254,6 +321,8 @@ def main(argv: list[str] | None = None) -> int:
             description=args.description,
             recorded_from=recorded_from,
             replay_latency=args.replay_latency,
+            latency_scale=args.latency_scale,
+            latency_cap=args.latency_cap,
         )
     except (ValueError, LLMScriptError) as exc:
         print(f"record_llm_script: refused: {exc}", file=sys.stderr)

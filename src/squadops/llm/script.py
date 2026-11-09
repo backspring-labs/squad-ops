@@ -43,7 +43,9 @@ reaches only by chance.
 **The version** is the first 12 hex digits of the sha256 of the script file's bytes. A cycle names
 its script with its version, ``--set llm_script=<name>@<version>``, so the cycle's record says
 which answers it ran on, and an agent holding a different copy refuses rather than answering from
-it.
+it. A Campaign's cycles are built server-side, so a scripted Campaign names one script per cycle it
+launches, in launch order (``policy.llm_scripts``, SIP-0109 §24dt), and each increment answers from
+its own.
 
 Pure data and parsing. The library reads files from one directory and writes none.
 """

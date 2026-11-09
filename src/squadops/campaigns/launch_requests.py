@@ -25,6 +25,7 @@ from squadops.campaigns.models import (
 )
 from squadops.campaigns.product_routes import ACCEPTED_PAGES
 from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
+from squadops.llm.script import LLM_SCRIPT_KEY
 
 if TYPE_CHECKING:
     from squadops.campaigns.campaign_branch import CampaignHead
@@ -292,6 +293,39 @@ def bound_at_head(kind: CycleKind, cycle_request: dict, head: CampaignHead | Non
     return {
         **cycle_request,
         "body": {**body, "execution_overrides": {**overrides, "campaign_proposal": block}},
+    }
+
+
+def scripted_launch(campaign: Campaign, cycle_request: dict, launched_before: int) -> dict:
+    """§24dt (#2892): the cycle request a scripted campaign's launch is built from, naming the
+    script for its place in the campaign's launch order. ``launched_before`` is how many of the
+    campaign's launches already have their cycle: the first launch takes the policy's first
+    script, the second its second, and so on, whatever kind each is (a calibration, an increment,
+    a repair or a retry). A campaign that names no script returns the request as it was written.
+
+    Bound at drain, as the head is (``bound_at_head``), from the control log's own count, so a
+    restart re-drains the same launch onto the same script, and no process remembers it.
+
+    Raises ``ValueError`` for a launch past the policy's last script, naming which launch it is
+    and how many scripts the campaign names: it is refused, never answered from another script or
+    by a model."""
+    scripts = campaign.policy.llm_scripts
+    if not scripts:
+        return cycle_request
+    if launched_before >= len(scripts):
+        raise ValueError(
+            f"campaign {campaign.campaign_id}'s launch {launched_before + 1} has no script: its "
+            f"llm_scripts names {len(scripts)}, one per cycle it launches. Add the script for "
+            "this launch; a scripted cycle is never answered by a model instead"
+        )
+    body = cycle_request.get("body") or {}
+    overrides = body.get("execution_overrides") or {}
+    return {
+        **cycle_request,
+        "body": {
+            **body,
+            "execution_overrides": {**overrides, LLM_SCRIPT_KEY: scripts[launched_before]},
+        },
     }
 
 

@@ -32,6 +32,7 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchRequest,
 )
+from squadops.llm.script import script_version
 from tests.unit.campaigns.builders import cycle_for, move, quiet_box
 
 pytestmark = pytest.mark.auth
@@ -246,6 +247,38 @@ def test_unattended_resume_is_declared_at_creation_and_an_unknown_class_refused(
         assert read.json()["policy"]["unattended_resume"] == declared
     else:
         assert "not an escalation class" in resp.json()["detail"]["error"]["message"]
+        assert read.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("named", "status", "says"),
+    [
+        ("held", 201, None),
+        ("shelf-gone@0123456789ab", 422, "entry 1: no script 'shelf-gone'"),
+        ("shelf-c1@0123456789ab", 422, "entry 1: the cycle pinned shelf-c1@0123456789ab"),
+    ],
+)
+def test_llm_scripts_are_declared_at_creation_and_one_the_deploy_lacks_refused(
+    world, tmp_path, monkeypatch, named, status, says
+):
+    """SIP-0109 §24dt: a scripted campaign's scripts enter at creation and read back in order; one
+    this deploy doesn't hold, or holds at another version, is a 422 and creates nothing. Bug
+    caught: the DTO dropping the field, so a scripted campaign is stored with no scripts and its
+    first launch refused; or a script the deploy lacks found only at that launch."""
+    raw = b"script: shelf-c1\nanswers:\n  - {task_type: development.develop, occurrence: 1, call: 1, content: x}\n"
+    (tmp_path / "shelf-c1.yaml").write_bytes(raw)
+    monkeypatch.setattr("squadops.llm.script.PACKAGED_SCRIPTS_DIR", tmp_path)
+    held = f"shelf-c1@{script_version(raw)}"
+    declared = [held if named == "held" else named]
+
+    resp = _create(world, policy={**_POLICY, "llm_scripts": declared})
+
+    assert resp.status_code == status, resp.json()
+    read = world.client.get("/api/v1/campaigns/cmp_api000000001")
+    if status == 201:
+        assert read.json()["policy"]["llm_scripts"] == declared
+    else:
+        assert says in resp.json()["detail"]["error"]["message"]
         assert read.status_code == 404
 
 

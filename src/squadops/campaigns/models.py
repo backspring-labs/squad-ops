@@ -623,6 +623,12 @@ class CampaignPolicy:
     # is delegated: every escalation waits for the owner, as before; a policy stored before it
     # was declarable reads as that.
     unattended_resume: tuple[ResumableClass, ...] = ()
+    # §24dt (#2892): a scripted Campaign's scripts, one ``<name>@<version>`` per cycle it
+    # launches, in launch order: its first launch is answered from the first, its second from the
+    # second. Empty, no cycle is given a script by the campaign, as before; a policy stored before
+    # it was declarable reads as that. A launch past the last is refused by name, never answered
+    # from another script or by a model (``launch_requests.scripted_launch``).
+    llm_scripts: tuple[str, ...] = ()
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
@@ -670,6 +676,7 @@ class CampaignPolicy:
                 "needs a scaffold that declares where a criterion's test file lives (§8.1)"
             )
         object.__setattr__(self, "unattended_resume", _resumable_classes(self.unattended_resume))
+        object.__setattr__(self, "llm_scripts", _script_references(self.llm_scripts))
 
 
 def _resumable_classes(declared: Any) -> tuple[ResumableClass, ...]:
@@ -694,6 +701,27 @@ def _resumable_classes(declared: Any) -> tuple[ResumableClass, ...]:
             raise ValueError(f"CampaignPolicy.unattended_resume names {cls.value!r} twice")
         classes.append(cls)
     return tuple(classes)
+
+
+def _script_references(declared: Any) -> tuple[str, ...]:
+    """``policy.llm_scripts`` read (§24dt): each entry a pinned ``<name>@<version>``, so the record
+    of every cycle says which answers it ran on. Only the shape is read here: the model is a pure
+    decision's input and imports no library (``test_pure_decisions_do_no_io``). Whether the deploy
+    holds each script, at that version, is the creation's check and the cycle-create
+    preflight's, which read the deploy's library (``squadops.llm.script.ScriptReference``)."""
+    if isinstance(declared, str) or not isinstance(declared, (list, tuple)):
+        raise ValueError(
+            "CampaignPolicy.llm_scripts is a list of pinned scripts, one '<name>@<version>' per "
+            f"cycle the campaign launches, got {declared!r}"
+        )
+    for position, entry in enumerate(declared, start=1):
+        name, at, version = entry.partition("@") if isinstance(entry, str) else ("", "", "")
+        if not (name and at and version) or "@" in version:
+            raise ValueError(
+                f"CampaignPolicy.llm_scripts entry {position}: llm_script must be "
+                f"'<name>@<version>', not {entry!r}"
+            )
+    return tuple(declared)
 
 
 @dataclass(frozen=True)
