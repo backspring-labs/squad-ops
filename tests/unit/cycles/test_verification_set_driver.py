@@ -28,6 +28,15 @@ pytestmark = [pytest.mark.domain_cycles]
 _REPO = Path(__file__).resolve().parents[3]
 _SETS = _REPO / "docs" / "plans" / "verification-sets"
 
+
+def _set_files() -> list[Path]:
+    """The verification-set configs on disk. A ``*-campaign.yaml`` beside them is a Campaign
+    definition a pre-registration commits next to itself (the 2.7 soak's, #2892): ``campaigns
+    create --file`` reads it, never the driver, and its own guard is
+    ``tests/unit/campaigns/test_committed_campaign_definitions.py``."""
+    return sorted(p for p in _SETS.glob("*.yaml") if not p.name.endswith("-campaign.yaml"))
+
+
 #: Every committed counting set, by release line and arm, with the arm's roll count.
 #: One table drives all four guards below, so covering a new line is one edit instead of
 #: three — and `test_the_guard_covers_every_committed_set` goes red when a set config is
@@ -85,7 +94,7 @@ def _committed_counting_sets() -> set[str]:
     """
     return {
         path.name
-        for path in _SETS.glob("*.yaml")
+        for path in _set_files()
         if not any(kind in path.name for kind in ("-diagnostic-", "-ab-", "-regression-"))
     }
 
@@ -3030,7 +3039,7 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         )
         assert driver.cmd_shakeout(cfg, dry_run=False) == 2
 
-    @pytest.mark.parametrize("filename", sorted(p.name for p in _SETS.glob("*.yaml")))
+    @pytest.mark.parametrize("filename", [p.name for p in _set_files()])
     def test_every_committed_probe_names_a_deployed_service(self, driver, filename):
         """Broader than the change that prompted it: every set on disk, counting arms,
         A/B arms and diagnostics alike — the defect reached two files because nothing

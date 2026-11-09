@@ -1,0 +1,2295 @@
+script: shelfnote-soak-c07
+description: 'The 2.7 soak (#2892), launch 7 of 15: increment 6 (SN-11), failed, so
+  launch 8 repairs it. Recorded from cyc_5c03ac78e402 of Campaign cmp_f14bab82c35f
+  on deploy dep_16a1cb4f54c8. Its latency is the recorded gap times 3, held at 1,500
+  s.'
+replay_latency: true
+recorded_from:
+  project_id: prj-shelfnote
+  cycle_id: cyc_5c03ac78e402
+  latency:
+    scale: 3.0
+    cap_seconds: 1500.0
+    capped: 0
+    total_seconds: 4979.171
+answers:
+- task_type: strategy.propose_increment
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:change_request.yaml
+    proposal_id: prop_dd00b2dda705
+    version: 1
+    baseline_tree: 22187d46935c979c8f449c75cf61eb5e61f0ef3e9db86bebc9468fd404888d33
+    kind: feature
+    prd_delta: []
+    manifest_delta: []
+    criteria:
+    - id: R1
+      statement: GET /books with sort_by=recently_added returns books ordered by their
+        addition time, newest first
+      surface_kind: endpoint
+      surface: GET /books
+      observable: when the query parameter sort_by=recently_added is supplied on GET /books,
+        the data array in the JSON response lists the books in descending order of their
+        added_at value, so the most recently added book appears first and the earliest-added
+        book appears last
+      paths:
+      - backend/routes.py
+      - backend/store.py
+    must_not_break:
+    - T1
+    - T2
+    - T3
+    - C1
+    - C2
+    - X1
+    retires: []
+    replaces_verifiers: []
+    basis: campaign_branch
+    footprint:
+    - backend/models.py
+    - backend/store.py
+    - backend/routes.py
+    - tests/test_criterion_R1.py
+    criterion_files:
+    - criterion_id: R1
+      path: tests/test_criterion_R1.py
+    backlog_item: SN-11
+    goals_revision: 3
+    content_hash: b4377204be955253a458b68b0a2451b1529543b660aaf072bac356d902914574
+    ```
+- task_type: development.design_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    # Technical Design — `sort_by=recently_added` on GET /books
+
+    ## 1. Architecture Overview
+
+    This change adds a single query-parameter value (`recently_added`) to the existing `GET /books` endpoint. No new endpoints, no new models, no new frontend surface. The data flow is unchanged:
+
+    ```
+    Client → GET /books?sort_by=recently_added
+             → routes.py  (parse & validate query param)
+             → store.py   (order in-memory collection by added_at DESC)
+             → routes.py  (serialise to JSON response)
+    ```
+
+    The three backend files in the footprint each receive a minimal, additive edit. A new test file is created. Nothing else changes.
+
+    ### Component Responsibilities (unchanged roles)
+
+    | File | Role | What changes |
+    |---|---|---|
+    | `backend/models.py` | Pydantic models & enums | Add `"recently_added"` to the existing sort-value set (or define a `SortField` enum) if the model layer constrains valid sort values |
+    | `backend/store.py` | In-memory / lightweight data access | Accept an `order_by` / `sort_by` argument in the list-books method and apply `sorted(..., key=…, reverse=True)` on `added_at` |
+    | `backend/routes.py` | FastAPI route handlers | Accept `sort_by: Optional[str] = Query(None)` on `GET /books`, validate the value, forward to store |
+    | `tests/test_criterion_R1.py` | Criterion test | New file: seed books with distinct `added_at` values, call `GET /books?sort_by=recently_added`, assert descending order |
+
+    ## 2. Interface Definitions
+
+    ### 2.1 Query Parameter Contract
+
+    ```
+    GET /books?sort_by=recently_added
+    ```
+
+    - **Name:** `sort_by`
+    - **Type:** `string`
+    - **Values accepted (this cycle):** `recently_added`
+    - **Values already accepted:** whatever the existing implementation supports (e.g. `title`, `rating`) — unchanged
+    - **Omitted / `None`:** default ordering (unchanged behaviour)
+    - **Invalid value:** `422` from FastAPI's built-in `Query(…) + Literal/Enum` validation, or a `400` from an explicit check — whichever the existing pattern uses
+
+    > Because `manifest_delta` is empty, the public contract for `GET /books` is already frozen. This design implements *within* that contract, not against it.
+
+    ### 2.2 Store-layer Signature (internal)
+
+    ```python
+    # backend/store.py
+    def get_books(
+        self,
+        *,
+        sort_by: str | None = None,   # NEW parameter
+        # … existing params (search, tag, status filters, etc.)
+    ) -> list[Book]:
+    ```
+
+    When `sort_by == "recently_added"`, the method returns books ordered by `added_at` descending. All other values / `None` fall through to the existing ordering logic.
+
+    ### 2.3 Route Handler (internal)
+
+    The existing `GET /books` handler gains one parameter:
+
+    ```python
+    @router.get("/books")
+    async def list_books(
+        sort_by: str | None = Query(None),  # NEW
+        # … existing params
+    ):
+    ```
+
+    Validation of `sort_by` follows the existing pattern (enum, literal, or manual check). The handler forwards it to `store.get_books(sort_by=sort_by, …)`.
+
+    ### 2.4 Model layer
+
+    If `models.py` currently defines a `SortField` enum or a `Literal` for valid sort values, `"recently_added"` is added there. If sorting is validated at the route layer only, `models.py` may see no change (or a trivial comment). Either way the footprint allows it.
+
+    ### 2.5 Response Shape (unchanged)
+
+    ```json
+    {
+      "data": [ { …book… }, { …book… }, … ],
+      "count": 3
+    }
+    ```
+
+    The `data` array is the only thing whose *order* changes. Book fields, envelope shape, and `count` are identical to the current response.
+
+    ## 3. Implementation Sequencing
+
+    | Phase | File(s) | Task | Depends on |
+    |---|---|---|---|
+    | **A** | `backend/models.py` | Add `"recently_added"` to the sort-value set / enum (if one exists at the model layer). Confirm `Book.added_at` field is present and typed (`datetime` or ISO string). | — |
+    | **B** | `backend/store.py` | Add `sort_by` keyword arg to the list method. When `sort_by == "recently_added"`, sort the result list by `added_at` descending before returning. Keep all other sort paths and default ordering byte-identical. | A |
+    | **C** | `backend/routes.py` | Add `sort_by: Optional[str] = Query(None)` to the `GET /books` handler. Validate (reuse existing validation mechanism). Pass through to `store.get_books(…)`. Keep handler < 30 lines (CONTRIBUTING.md). | B |
+    | **D** | `tests/test_criterion_R1.py` | Write the criterion test (see §5). | C |
+
+    Phases A → B → C are strictly ordered because each layer depends on the one below it. Phase D can be written in parallel with C but must run after C to pass.
+
+    Total estimated implementation time: **~40 min** (well within the 3-hour budget).
+
+    ## 4. Proto Validation Plan
+
+    The risk surface is small, so one lightweight proto suffices.
+
+    ### Proto: Store ordering correctness
+
+    **Goal:** Confirm that the in-memory store's list method can be extended with an `added_at`-descending sort without disturbing existing sort paths or the default order.
+
+    **Steps (throwaway script, not committed):**
+
+    1. Import the store module.
+    2. Create 3 book records with distinct `added_at` values (e.g. `2025-01-01`, `2025-06-15`, `2025-03-10`).
+    3. Call the list method with the new `sort_by="recently_added"` kwarg.
+    4. Assert the returned list order is `[Jun, Mar, Jan]`.
+    5. Call the list method with `sort_by=None` (or the existing default) and assert order is unchanged from pre-change.
+    6. Call with a pre-existing sort value (e.g. `title`) and assert that path is untouched.
+
+    **Pass criterion:** All three assertions hold. The `added_at` field is populated on every book the store returns.
+
+    **Disposability:** This script is deleted after it runs. No code from it lands in the product.
+
+    ### What the proto does NOT validate
+
+    - The FastAPI query-parameter plumbing (standard `Query(None)` — no risk).
+    - The JSON serialisation of `added_at` (the field already exists and is already serialised in other responses; no new field is introduced).
+    - Frontend behaviour (no frontend changes in this footprint).
+
+    ## 5. Test Design — `tests/test_criterion_R1.py`
+
+    Following CONTRIBUTING.md rules:
+    - Exercises the running app through `TestClient` (or `httpx.AsyncClient` per the existing test files' pattern).
+    - Fails on response content, not on imports.
+    - Tests the new behaviour specifically; does not re-test existing must-not-break criteria.
+
+    ```python
+    # tests/test_criterion_R1.py
+    """Criterion R1: GET /books?sort_by=recently_added returns books by added_at DESC."""
+
+    import pytest
+    from fastapi.testclient import TestClient   # or httpx, matching existing test files
+
+    # Import the app the same way existing test files do (see conftest.py / test_books_api.py)
+    from backend.main import app
+
+
+    def test_recently_added_sort_orders_by_added_at_descending(client):
+        """Seed books with known added_at values; verify descending order in response."""
+        # 1. Create books with distinct added_at timestamps
+        #    (use the app's own POST /books endpoint or direct store seeding,
+        #     matching the pattern in existing criterion tests)
+        book_a = _create_book(client, title="A", added_at="2025-01-01T00:00:00Z")
+        book_b = _create_book(client, title="B", added_at="2025-06-15T00:00:00Z")
+        book_c = _create_book(client, title="C", added_at="2025-03-10T00:00:00Z")
+
+        # 2. Call the endpoint
+        resp = client.get("/books", params={"sort_by": "recently_added"})
+
+        # 3. Assert
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        ids = [b["id"] for b in data]
+        assert ids == [book_b, book_a, book_c]  # Jun, Mar, Jan → descending
+    ```
+
+    The helper `_create_book` and the `client` fixture follow the exact pattern used in `tests/test_books_api.py` and the other criterion test files (the `conftest.py` likely provides the fixture).
+
+    **Additional assertions to include (within the same test function or a second test in the file):**
+    - The most recent book appears **first** in the array.
+    - The earliest book appears **last**.
+    - The `count` field equals the total number of seeded books (not filtered).
+    - Books *without* an explicit `added_at` (if the model allows) still appear; their position is deterministic per the implementation.
+
+    **Must-not-break guard:** The test file does *not* re-assert T1–T3, C1–C2, X1. Those are covered by their own files and run in the same `pytest` invocation.
+
+    ## 6. Unknown Classification
+
+    | # | Unknown | Classification | Rationale |
+    |---|---|---|---|
+    | U1 | Does `Book` already carry an `added_at` field in `models.py`? | **resolved** | The criterion references `added_at` as an existing attribute. The manifest is already applied (`manifest_delta: []`), meaning the model contract is fixed and includes it. If the field were missing, the manifest delta would have added it. |
+    | U2 | Does the store already have a `sort_by` parameter or an equivalent ordering mechanism? | **resolved** | `test_sorting_t1.py` (3 669 bytes) exists in the repo, proving a sort feature is already implemented and tested. The new work adds a *value* to that mechanism, not the mechanism itself. |
+    | U3 | Which validation pattern does the existing `GET /books` use for query params (enum, literal, manual)? | **resolved** | Visible in `routes.py` (6 545 bytes) at the baseline commit. The implementer reads the file and follows the existing pattern. No design decision needed beyond "match what's there." |
+    | U4 | Is `added_at` a `datetime` object or an ISO-8601 string in the in-memory store? | **resolved** | Determined by reading `models.py` and `store.py` at implementation start. Either way `sorted(…, key=lambda b: b.added_at, reverse=True)` works (strings sort lexicographically in ISO-8601; datetimes compare natively). No design impact. |
+    | U5 | Does the existing `GET /books` response already include `added_at` in each book object? | **acceptable_risk** | If it does (likely, given it's a model field), no change needed. If it doesn't, the criterion only checks *order*, not the presence of `added_at` in the payload, so the test still passes. No action required. |
+    | U6 | Can the handler stay under 30 lines after adding the `sort_by` parameter? | **acceptable_risk** | Adding one `Query(None)` parameter and one keyword argument to the store call is ~2 lines. The existing handler is well under the limit (6 545 bytes covers *multiple* endpoints). Mitigation: if it tips over, extract a small helper — but this is extremely unlikely. |
+
+    **No `blocker` or `requires_human_decision` unknowns.**
+
+    ## 7. Risks & Mitigations
+
+    | Risk | Likelihood | Mitigation |
+    |---|---|---|
+    | Breaking an existing sort path (e.g. `sort_by=title`) | Low | The new sort is a new branch (`if sort_by == "recently_added"`); all other values fall through to existing logic unchanged. Must-not-break tests (T1–T3, C1–C2, X1) catch regression. |
+    | `added_at` is `None` for some books, causing `TypeError` on sort | Low | Guard with `key=lambda b: b.added_at or datetime.min` (or equivalent). The proto in §4 exercises this case. |
+    | Handler exceeds 30-line limit | Very low | Measure after edit; refactor only if necessary. |
+
+    ## 8. Files Emitted (full replacement)
+
+    | Path | Action |
+    |---|---|
+    | `backend/models.py` | **Replace** — add `"recently_added"` to sort-value set (if present) |
+    | `backend/store.py` | **Replace** — add `sort_by` kwarg + descending `added_at` sort branch |
+    | `backend/routes.py` | **Replace** — add `sort_by` query param to `GET /books`, forward to store |
+    | `tests/test_criterion_R1.py` | **Create** — criterion R1 test |
+
+    All other files remain at their baseline content. The footprint is exactly these four paths.
+
+    ## 9. Budget Check
+
+    | Activity | Estimate |
+    |---|---|
+    | Read existing code, confirm patterns | 15 min |
+    | Proto (§4) | 10 min |
+    | Implement phases A–C | 25 min |
+    | Write test D | 10 min |
+    | Run full test suite (`pytest -q`, `npm test`), fix any breakage | 15 min |
+    | **Total** | **~75 min** |
+
+    Well within the 3-hour (10 800 s) budget. No work is deferred.
+  latency_seconds: 499.952
+- task_type: qa.define_test_strategy
+  occurrence: 1
+  call: 1
+  content: |-
+    # QA Test Strategy — `sort_by=recently_added` on GET /books
+
+    **Change:** `prop_dd00b2dda705` v1 · Backlog SN-11 · Footprint: 3 backend files + 1 test file
+    **Stage:** A (planning) — defines *what* and *how*, not the test code itself
+
+    ---
+
+    ## 1. Acceptance Checklist
+
+    Derived from criterion **R1** and the `must_not_break` set. Each item is a concrete
+    pass/fail gate evaluated at implementation review.
+
+    ### R1 — New behaviour: `sort_by=recently_added`
+
+    - [ ] **R1-1** `GET /books?sort_by=recently_added` returns HTTP 200 with a JSON body whose `data` array is ordered by `added_at` **descending** (most recent first, earliest last).
+    - [ ] **R1-2** With ≥ 3 books having distinct `added_at` values, the response order matches the expected descending sequence exactly (no off-by-one, no ascending).
+    - [ ] **R1-3** With exactly 1 book, the response contains that single book (trivially sorted).
+    - [ ] **R1-4** With 0 books (empty shelf), the response is `{"data": [], …}` — no 500, no crash.
+    - [ ] **R1-5** When two or more books share the same `added_at` timestamp, their relative order is stable and deterministic (no random re-ordering across repeated calls).
+    - [ ] **R1-6** `sort_by=recently_added` composes correctly with other existing query parameters (e.g. `search=`, `tag=`, `reading_status=`, `page=` / `limit=`) — the filter is applied first, then the result is sorted by `added_at` desc.
+    - [ ] **R1-7** The parameter value is matched case-sensitively as `recently_added`. A different casing (`Recently_Added`, `RECENTLY_ADDED`) is treated as an unknown sort value and falls through to the existing unknown-value handling (400 or default order — whichever the product currently does for unrecognised sort values).
+    - [ ] **R1-8** The response schema (field names, nesting) is identical to the existing `GET /books` response; only the ordering of the `data` array changes. No new top-level keys are introduced.
+
+    ### Must-not-break — existing criteria remain green
+
+    - [ ] **T1** All tests in `tests/test_criterion_T1.py` pass unchanged.
+    - [ ] **T2** All tests in `tests/test_criterion_T2.py` pass unchanged.
+    - [ ] **T3** All tests in `tests/test_criterion_T3.py` pass unchanged.
+    - [ ] **C1** All tests in `tests/test_criterion_C1.py` pass unchanged.
+    - [ ] **C2** All tests in `tests/test_criterion_C2.py` pass unchanged.
+    - [ ] **X1** All tests in `tests/test_criterion_X1.py` pass unchanged.
+    - [ ] **NMB-1** `GET /books` with **no** `sort_by` parameter returns books in the product's existing default order (unchanged behaviour).
+    - [ ] **NMB-2** `GET /books?sort_by=title` (or whichever existing sort values are supported) continues to sort by those fields as before.
+    - [ ] **NMB-3** `pytest -q -p no:cacheprovider` exits 0 (all backend tests, including `test_sorting_t1.py`, `test_search_t*.py`, `test_tags_t*.py`, `test_ratings_t*.py`, `test_reading_status_t*.py`).
+    - [ ] **NMB-4** `npm --prefix frontend test --silent` exits 0 (frontend harness test unaffected).
+    - [ ] **NMB-5** `.venv/bin/python -c "from backend.main import app"` succeeds (app boots).
+
+    ---
+
+    ## 2. Test Strategy Note
+
+    ### Scope decision
+
+    | Layer | In scope? | Rationale |
+    |---|---|---|
+    | **Unit** (function-level) | Yes — targeted | `store.py` query/sort logic is the core of the change; a focused unit test on the sort call isolates ordering from HTTP plumbing. |
+    | **Integration** (TestClient → route → store) | **Primary** | The product's convention is FastAPI `TestClient` integration tests. R1 is an endpoint-observable criterion; the test must exercise the full path `route → store → response`. |
+    | **Contract / schema** | Light | No new endpoint, no new model field exposed. Verify the response JSON shape is unchanged via the existing test fixtures (no separate contract test needed). |
+    | **E2E / frontend** | **Out of scope** | The change is backend-only (footprint contains no frontend files). The frontend's `BooksListView.jsx` already calls `GET /books`; no UI change is requested. The frontend harness test must still pass, but no new frontend test is warranted. |
+
+    ### Test file placement and naming
+
+    - New test: **`tests/test_criterion_R1.py`** (named per the change request's `criterion_files`).
+    - Runner: `pytest` (matches `backend_tests` check; file is under `.` and named `test_*.py`).
+    - Framework: `fastapi.testclient.TestClient` per product convention. **No** `httpx.AsyncClient`, **no** running server.
+    - Imports must come only from packages declared in `backend/requirements.txt` and the product's own modules.
+
+    ### Test structure for `test_criterion_R1.py`
+
+    The implementation workload should produce tests that:
+
+    1. **Seed the store** with a known set of books whose `added_at` values are controlled and distinct.
+    2. **Call** `GET /books?sort_by=recently_added` via `TestClient`.
+    3. **Assert** the `added_at` sequence in the response is strictly descending (or non-increasing for ties).
+    4. Cover the checklist items R1-1 through R1-8 as individual test functions or grouped fixtures.
+    5. **Not** import from `backend.models` internals for assertions — assert on the JSON response, per CONTRIBUTING.md ("fails on what the response says, not on importing something the change adds").
+
+    ### Regression safety
+
+    - The existing `tests/test_sorting_t1.py` already exercises sort behaviour on `GET /books`. It **must** continue to pass. If it tests an existing `sort_by` value, the new `recently_added` branch must not alter the dispatch logic for other values.
+    - All other `tests/test_*.py` files are regression guards; the `backend_tests` check runs the entire suite.
+
+    ### What is explicitly NOT tested here
+
+    - Frontend rendering of the sorted list (no frontend change).
+    - Database-level index performance (no database in this product; the store is in-process).
+    - Concurrent-write consistency of `added_at` (single-threaded test client).
+
+    ---
+
+    ## 3. Defect Severity Rubric
+
+    | Severity | Label | Definition (in this change's context) | Examples |
+    |---|---|---|---|
+    | **S1** | **Blocker** | R1's stated observable is violated, **or** a `must_not_break` criterion fails. The change cannot be accepted. | Books returned ascending instead of descending. `sort_by=title` no longer sorts by title. `GET /books` returns 500. App fails to boot. |
+    | **S2** | **Major** | R1 is met in the happy path but a boundary or combination case (R1-4, R1-5, R1-6, R1-7) is wrong. No existing criterion is broken. | Empty shelf causes 500. Tied `added_at` values produce non-deterministic order. `sort_by=recently_added&tag=sci-fi` returns unfiltered-then-sorted (wrong filter semantics). |
+    | **S3** | **Minor** | Observable behaviour is correct but a secondary concern is off. Does not affect R1 pass/fail or any `must_not_break`. | Error message for invalid `sort_by` value is inconsistent with existing messages. Log line is missing. Variable naming in `store.py` is unclear. |
+    | **S4** | **Trivial** | Style, documentation, or cosmetic issue with zero functional impact. | PEP-8 spacing. Comment typo. |
+
+    **Gate rule:** Any S1 → reject. Any S2 → reject with required fix, re-test. S3/S4 → note for next increment, do not block.
+
+    ---
+
+    ## 4. Risk-Based Test Priorities
+
+    Ordered by likelihood × impact of a fault in each area.
+
+    | Priority | Area | Risk | Why it matters | Test focus |
+    |---|---|---|---|---|
+    | **P1** | `store.py` — sort query construction | **High** | This is where the `ORDER BY added_at DESC` (or equivalent list-sort) is implemented. A wrong comparator (ascending vs descending), a wrong field, or a missing `None` guard all produce silent wrong ordering. | Verify ordering with ≥ 3 distinct `added_at` values. Verify with identical timestamps (tie-break). Verify `added_at` is never `None` in the test seed. |
+    | **P1** | `routes.py` — parameter dispatch | **High** | The route must recognise `recently_added` as a valid sort key and route it to the correct store call **without** disturbing the dispatch for existing sort values or the default (no-sort) path. | Confirm existing `sort_by` values still work (NMB-2). Confirm no-`sort_by` still works (NMB-1). Confirm unknown value handling is unchanged. |
+    | **P2** | `routes.py` — interaction with existing filters | **Medium** | `GET /books` already supports search, tags, reading_status, pagination. The new sort must apply **after** filtering, not before, and must not break the filter logic. | R1-6: combine `sort_by=recently_added` with `search=`, `tag=`, `reading_status=` and verify both filter and sort are correct. |
+    | **P2** | `models.py` — any model change | **Medium** | The footprint includes `models.py`. If a field is added or modified (e.g., making `added_at` explicit when it was previously implicit), it could shift Pydantic serialisation or validation and break existing endpoints. | R1-8: response shape unchanged. NMB: existing POST/GET/PATCH book endpoints still validate and serialise correctly. |
+    | **P3** | `tests/test_criterion_R1.py` — test quality | **Medium** | A test that passes vacuously (e.g., asserts on a single book, or asserts the list is non-empty without checking order) gives false confidence. | Review: does the test actually assert descending order? Does it fail if you flip the sort direction? (CONTRIBUTING.md: "must not be met already by the framework's default behaviour.") |
+    | **P3** | Regression: full `pytest` suite | **Medium** | Any import-level or module-level side effect in the changed files (e.g., a new import in `store.py` that fails, a circular import) breaks the entire suite, not just R1. | Run the full `pytest` suite. Confirm exit code 0. |
+    | **P4** | Frontend regression | **Low** | No frontend files are in the footprint. The only risk is if a backend response shape change (see P2) breaks `api.js` parsing. | NMB-4: `npm --prefix frontend test --silent` passes. |
+
+    ---
+
+    ## 5. Implementation Review Gate (QA sign-off)
+
+    Before the change is accepted, QA verifies **all** of the following:
+
+    1. `tests/test_criterion_R1.py` exists, is discoverable by `pytest`, and every test in it passes.
+    2. Every item in the **Acceptance Checklist** (§1) is checked off.
+    3. `pytest -q -p no:cacheprovider` exits 0 — all pre-existing test files pass.
+    4. `npm --prefix frontend test --silent` exits 0.
+    5. `python -c "from backend.main import app"` succeeds.
+    6. No file outside the footprint (`backend/models.py`, `backend/store.py`, `backend/routes.py`, `tests/test_criterion_R1.py`) has been modified.
+    7. The route handler for `GET /books` remains under 30 lines (CONTRIBUTING.md).
+    8. No S1 or S2 defects are open.
+
+    ---
+
+    *End of test strategy.*
+  latency_seconds: 218.641
+- task_type: governance.prepare_plan_authoring_brief
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_authoring_brief.yaml
+    version: 1
+    brief_id: brief-prop_dd00b2dda705-001
+    objective_summary: |
+      Add a `sort_by=recently_added` value to the existing `GET /books` query
+      parameter so that, when supplied, the response's `data` array lists books
+      in descending order of their `added_at` value (most recently added first,
+      earliest added last). No new endpoint, no new model field, no frontend
+      change. The change is purely additive to the existing sort mechanism: all
+      other sort values, the default (unsorted) ordering, every other endpoint,
+      and the response envelope remain byte-for-byte unchanged. The must-not-break
+      set (T1, T2, T3, C1, C2, X1) must continue to pass.
+
+    accepted_stack:
+      backend: "Python 3 + FastAPI + Pydantic v2, in-memory store (no database)"
+      frontend: "React 18 + Vite (unchanged this cycle — no frontend files in footprint)"
+      testing_backend: "pytest, FastAPI TestClient (or httpx.AsyncClient per existing test-file convention), no running server"
+      testing_frontend: "vitest (unchanged — no new frontend tests)"
+      build: "Docker (nginx + start.sh, unchanged)"
+      config: "CORS origins read from configuration; API base read from VITE_API_BASE; no hardcoded hosts"
+
+    must_cover_requirements:
+      - "R1: When sort_by=recently_added is supplied on GET /books, the data array in the JSON response is ordered by added_at descending (most recently added book first, earliest-added book last)."
+      - "All six must-not-break criteria (T1, T2, T3, C1, C2, X1) continue to pass with zero changes to their test files."
+      - "The existing default ordering of GET /books (no sort_by parameter) is unchanged."
+      - "All existing sort_by values (e.g. title, rating — whatever the current implementation supports) continue to sort correctly and are not affected by the new branch."
+      - "The GET /books response envelope (top-level keys, per-book field names, count) is identical to the current response; only the ordering of the data array changes."
+      - "The GET /books route handler remains under thirty lines (CONTRIBUTING.md)."
+      - "The new test exercises the running app through the test client and fails on response content, not on importing a module the change adds (CONTRIBUTING.md)."
+      - "The new test must not be satisfied already by the framework's default behaviour (CONTRIBUTING.md)."
+      - "The change touches only the four footprint files: backend/models.py, backend/store.py, backend/routes.py, tests/test_criterion_R1.py. Every other file keeps its accepted implementation."
+      - "The app must boot: python -c 'from backend.main import app' succeeds."
+
+    scope_cuts:
+      - "Frontend changes: deferred — no frontend file is in the footprint. BooksListView.jsx already calls GET /books; no UI work is requested."
+      - "New endpoints: not in scope. Only the existing GET /books endpoint gains a new query-parameter value."
+      - "New model fields: not in scope. added_at already exists on the Book model; no new field is added."
+      - "Additional sort values beyond recently_added: not in scope this cycle. If more sort keys are wanted, that is a separate change request."
+      - "Pagination, filtering, or search behaviour changes: not in scope. The new sort composes with existing filters but does not alter them."
+      - "Performance, indexing, or database work: not applicable. The store is in-memory; there is no database."
+      - "Admin dashboards, user management, or any other feature: deferred to a follow-up cycle if ever requested."
+
+    risk_areas:
+      - "Sort direction: the comparator must be descending (reverse=True), not ascending. A wrong direction silently passes a single-book test but fails with multiple books."
+      - "Existing sort dispatch: the new sort value must not alter the branching logic for existing sort values or the default no-sort path. A shared mutable default (e.g. a list used as a keyword default) could cause cross-request contamination."
+      - "added_at field integrity: if any book's added_at is None or missing, the sort key must handle it without raising TypeError. The existing store may or may not guarantee the field is always populated."
+      - "Response shape regression: any change to models.py (even a re-ordered field or a new default) can shift Pydantic serialisation and break existing endpoint tests (T1–T3, C1–C2, X1)."
+      - "Full-suite regression: an import-level side effect in a changed file (circular import, missing import, name collision) breaks the entire pytest suite, not just R1."
+      - "Filter-then-sort ordering: when sort_by=recently_added is combined with search, tag, or reading_status filters, the filter must apply first and the sort second. Reversing this order changes the result set."
+
+    source_artifact_refs:
+      - "change_request.yaml (prop_dd00b2dda705 v1)"
+      - "technical_design.md (upstream dev role)"
+      - "test_strategy.md (upstream qa role)"
+      - "ruling_notes.md (reviewer approval notes — no additional behavioural requirements beyond the change request)"
+
+    major_components:
+      - "backend/models.py — Pydantic models and sort-value constants; add 'recently_added' if the model layer constrains valid sort values"
+      - "backend/store.py — in-memory data-access layer; add sort_by keyword argument and added_at-descending sort branch to the list-books method"
+      - "backend/routes.py — FastAPI route handlers; add sort_by query parameter to GET /books, validate, forward to store"
+      - "tests/test_criterion_R1.py — criterion test; seed books with distinct added_at values, call GET /books?sort_by=recently_added, assert descending order"
+
+    dependency_assumptions:
+      - "The Book model already carries an added_at field (confirmed by the criterion referencing it and manifest_delta being empty)."
+      - "The store's list-books method already supports at least one sort_by value (confirmed by tests/test_sorting_t1.py existing at 3669 bytes)."
+      - "The GET /books route handler already accepts query parameters and follows an established validation pattern (enum, Literal, or manual check) that the new value must match."
+      - "No external database, message broker, or third-party API is involved. The store is in-process."
+      - "conftest.py at the repository root provides the test fixture (client or equivalent) used by all existing backend test files."
+
+    time_budget_guidance:
+      backend_models: 10
+      backend_store: 30
+      backend_routes: 30
+      tests: 20
+      regression_verification: 10
+
+    task_granularity_guidance: >
+      This is a single-query-parameter increment on one endpoint. Decompose into
+      at most 3–4 tasks: one per backend file (models, store, routes) in
+      dependency order, and one for the test file. Each task should be completable
+      in under five minutes of generation. Do not split a single file's edit into
+      multiple tasks.
+
+    artifact_naming_conventions:
+      - "All Pydantic models and enums live in backend/models.py; no new model file."
+      - "All data-access logic lives in backend/store.py; no new store file."
+      - "All route handlers live in backend/routes.py; no new route file."
+      - "The criterion test file is exactly tests/test_criterion_R1.py (per the change request's criterion_files and footprint)."
+      - "Test functions are named test_* and use the existing conftest.py fixture for the test client."
+      - "Import only from packages declared in backend/requirements.txt and the product's own backend module."
+
+    open_questions:
+      - "The change request's footprint specifies the test at tests/test_criterion_R1.py (repository-root tests/ directory, matching the product's existing layout). The plan-shape rule qa-tests-live-in-the-stacks-namespace names backend/tests/ as the qa test namespace for the FastAPI+React stack. The merger must decide whether the test file is authored by a developer task (as part of the feature implementation, consistent with the product's existing convention where criterion tests live in tests/) or by a qa.test task (which would require relocating it to backend/tests/ and deviating from the footprint). The footprint is the change request's binding constraint; the test file path it names is tests/test_criterion_R1.py."
+      - "Does the existing GET /books handler validate sort_by via a Pydantic Literal, an Enum, or a manual if/elif chain? The implementer must read backend/routes.py at the baseline commit and match the existing pattern. If the existing pattern is a Literal or Enum, adding 'recently_added' to that set is the correct approach. If it is a manual check, the new value is added as another branch. Either way, the validation behaviour for unknown values must remain identical to the current behaviour."
+      - "Does the store's list-books method return a list that is safe to sort in-place, or must the sort create a new list? If the method returns the internal list directly (not a copy), sorting in-place mutates the stored data and can affect subsequent calls with different sort values. The implementer must verify and use sorted() (which returns a new list) rather than list.sort() (in-place) if the method returns the internal collection."
+    ```
+  latency_seconds: 301.22
+- task_type: development.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-6044b9c0
+    source_brief_id: brief-prop_dd00b2dda705-001
+    proposing_role: development
+    scope_statement: |
+      Three dev-domain tasks covering the additive sort_by=recently_added feature on
+      GET /books. Task 1 extends the model layer's sort-value set. Task 2 adds the
+      added_at-descending sort branch to the in-memory store's list-books method.
+      Task 3 wires the sort_by query parameter into the GET /books route handler and
+      forwards it to the store. The criterion test file (tests/test_criterion_R1.py)
+      is excluded from this proposal per plan-shape rules assigning new-criterion
+      test files to the QA role.
+    tasks:
+      - task_type: development.develop
+        role: dev
+        focus: "Sort value in models layer"
+        description: |
+          Edit backend/models.py to add "recently_added" to the existing sort-value
+          constraint. If the model layer defines a SortField enum, a Literal type,
+          or a module-level set/tuple of valid sort strings, add "recently_added" to
+          it. If sorting is validated exclusively at the route layer and models.py
+          carries no sort-value constraint, emit the file unchanged (or with a
+          clarifying comment). In all cases the Book model must retain its existing
+          fields (including added_at) with unchanged types and defaults so that
+          Pydantic serialisation of the response envelope is byte-identical to the
+          current implementation. Do not reorder fields, add new fields, or change
+          default values on Book.
+        expected_artifacts:
+          - "backend/models.py"
+        acceptance_criteria:
+          - check: command_exit_zero
+            argv: ["python", "-m", "py_compile", "backend/models.py"]
+            severity: error
+          - check: module_imports
+            file: "backend/models.py"
+            severity: error
+          - check: field_present
+            file: "backend/models.py"
+            class_name: "Book"
+            fields: ["added_at"]
+            severity: error
+          - "The sort-value set (enum, Literal, or module-level constant) includes 'recently_added' alongside all previously valid values; no existing sort value is removed or renamed."
+          - "The Book model's field set, types, and defaults are unchanged; Pydantic serialisation of a Book instance is byte-identical to the pre-change output."
+        depends_on_focus: []
+
+      - task_type: development.develop
+        role: dev
+        focus: "Store sort branch for recently_added"
+        description: |
+          Edit backend/store.py so the list-books method (e.g. get_books) accepts a
+          sort_by keyword argument (str | None). When sort_by equals
+          "recently_added", return the filtered books sorted by added_at descending
+          (reverse=True). Use sorted() (returns a new list) rather than
+          list.sort() to avoid mutating the internal in-memory collection. Guard
+          against added_at being None by using a safe key (e.g.
+          key=lambda b: b.added_at or datetime.min) so the sort never raises
+          TypeError. All other sort_by values and the None/default path must
+          fall through to the existing ordering logic unchanged. The filter-then-sort
+          ordering must be preserved: any search, tag, or reading_status filters
+          apply first, then the sort is applied to the filtered result.
+        expected_artifacts:
+          - "backend/store.py"
+        acceptance_criteria:
+          - check: command_exit_zero
+            argv: ["python", "-m", "py_compile", "backend/store.py"]
+            severity: error
+          - check: module_imports
+            file: "backend/store.py"
+            severity: error
+          - "When sort_by='recently_added', the returned list is ordered by added_at descending (most recent first, earliest last); this is verified with at least three books having distinct added_at values."
+          - "When sort_by is None or a pre-existing value (e.g. 'title', 'rating'), the ordering is byte-identical to the pre-change behaviour; no existing sort branch is altered."
+          - "The sort uses sorted() (new list) not list.sort() (in-place), so the internal store collection is not mutated by the sort call."
+          - "A book whose added_at is None does not cause a TypeError; it is placed deterministically (e.g. treated as datetime.min and sorted to the end in descending order)."
+          - "When sort_by='recently_added' is combined with an active filter (search, tag, or reading_status), the filter applies first and the sort is applied to the filtered subset."
+        depends_on_focus:
+          - "dev:Sort value in models layer"
+
+      - task_type: development.develop
+        role: dev
+        focus: "Route handler sort_by parameter"
+        description: |
+          Edit backend/routes.py to add sort_by as a query parameter to the
+          existing GET /books handler. Match the existing validation pattern
+          (Pydantic Literal, Enum, or manual if/elif) used by the current
+          sort_by parameter; add "recently_added" to the accepted set. Forward
+          the validated value to the store's list-books method as
+          sort_by=sort_by. The handler must remain under thirty lines
+          (CONTRIBUTING.md). The response envelope (top-level keys, per-book
+          field names, count) is unchanged; only the ordering of the data
+          array differs when sort_by=recently_added. Invalid sort_by values
+          must produce the same error response as before the change
+          (422 from Literal/Enum validation or 400 from manual check,
+          matching the existing pattern).
+        expected_artifacts:
+          - "backend/routes.py"
+        acceptance_criteria:
+          - check: command_exit_zero
+            argv: ["python", "-m", "py_compile", "backend/routes.py"]
+            severity: error
+          - check: module_imports
+            file: "backend/routes.py"
+            severity: error
+          - check: endpoint_defined
+            file: "backend/routes.py"
+            methods_paths: ["GET /books"]
+            severity: error
+          - "The GET /books handler is under thirty lines (CONTRIBUTING.md)."
+          - "The sort_by query parameter is forwarded to the store's list-books method; the handler itself contains no sorting logic."
+          - "An unknown/invalid sort_by value produces the same error status and body as before the change (the existing validation pattern is extended, not replaced)."
+          - "The response envelope for GET /books (top-level keys 'data' and 'count', per-book field names) is identical to the pre-change shape; only data array ordering changes."
+          - "The app boots: `python -c 'from backend.main import app'` succeeds with no import errors or name collisions in the edited file."
+        depends_on_focus:
+          - "dev:Store sort branch for recently_added"
+    brief_conflicts: []
+    assumptions:
+      - "The Book model already carries an added_at field (confirmed by dependency_assumptions and the existing test suite)."
+      - "The store's list-books method already supports at least one sort_by value (confirmed by tests/test_sorting_t1.py existing at 3669 bytes)."
+      - "The GET /books route handler already accepts query parameters and follows an established validation pattern that the new value must match."
+      - "tests/test_criterion_R1.py is authored by the QA role per plan-shape rules; it is excluded from dev expected_artifacts to avoid double-claim."
+    risks:
+      - "Sorting in-place on the internal store collection would mutate stored data; mitigated by the sorted() requirement in the store task's acceptance criteria."
+      - "A Pydantic field reordering or new default in models.py could shift serialisation and break frozen tests; mitigated by the field_present check and the byte-identical-serialisation prose criterion."
+      - "An import-level side effect (circular import, missing symbol) in any edited file breaks the entire pytest suite; mitigated by module_imports checks on each task."
+    gaps_not_covered:
+      - "tests/test_criterion_R1.py — owned by the QA role per plan-shape rules; not a dev artifact."
+      - "Frontend files — explicitly deferred by scope_cuts; no frontend change is in the footprint."
+      - "Builder/packaging files (Dockerfile, start.sh, requirements.txt) — owned by the builder role; unchanged this cycle."
+    confidence: high
+    ```
+  latency_seconds: 252.881
+- task_type: qa.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-dedeff06
+    source_brief_id: brief-prop_dd00b2dda705-001
+    proposing_role: qa
+    scope_statement: |
+      One QA task that authors tests/test_criterion_R1.py, the criterion test for
+      sort_by=recently_added on GET /books. The tests distinguish the following
+      faults from correct behaviour: (a) ascending instead of descending sort
+      direction, (b) sort key pointing at the wrong field, (c) unhandled None
+      added_at causing TypeError, (d) in-place sort mutating the internal store
+      collection, (e) filter-then-sort order reversal when combined with search or
+      tag filters, and (f) response envelope shape drift. Must-not-break
+      regression (T1–T3, C1–C2, X1, existing sort values, default ordering) is
+      covered by the frozen test files that the backend_tests check re-runs
+      automatically; this task does not re-author those.
+    tasks:
+      - task_type: qa.test
+        role: qa
+        focus: "Criterion R1: recently_added sort order"
+        description: |
+          Author tests/test_criterion_R1.py exercising GET /books?sort_by=recently_added
+          through the FastAPI TestClient (or httpx.AsyncClient, matching the existing
+          test-file convention in tests/). The client fixture comes from the root
+          conftest.py.
+
+          Faults distinguished (one or more test functions per fault):
+
+          1. Ascending-vs-descending: seed at least three books with distinct
+             added_at values; assert the data array is in strictly descending
+             added_at order (most recent first, earliest last). A comparator that
+             omits reverse=True fails this test.
+
+          2. Wrong sort field: seed books whose title or rating ordering differs
+             from their added_at ordering; assert the response follows added_at,
+             not title or rating. A sort key on the wrong field fails.
+
+          3. None added_at: seed a book with added_at set to None (or absent,
+             depending on model optionality); assert the call returns successfully
+             (no 500) and the book appears in a deterministic position. A sort key
+             that calls .added_at directly without a None guard raises TypeError.
+
+          4. Internal state mutation: call GET /books?sort_by=recently_added, then
+             call GET /books (no sort) or GET /books?sort_by=<existing_value>;
+             assert the second call's ordering is not corrupted by the first
+             call's sort. An in-place list.sort() on the store's internal
+             collection fails this.
+
+          5. Filter-then-sort: seed books matching a search term and books that do
+             not; call GET /books?sort_by=recently_added&search=<term>; assert only
+             matching books appear and they are in descending added_at order. A
+             sort-then-filter (or filter-then-no-sort) implementation fails.
+
+          6. Response envelope: assert the JSON response has top-level keys "data"
+             and "count" (matching the existing GET /books shape), that each book
+             object in data carries the same per-book field names as the current
+             response, and that count equals len(data). A models.py change that
+             reorders fields or adds a new top-level key fails.
+
+          The test file does NOT re-assert T1–T3, C1–C2, or X1; those are frozen
+          files re-run by the backend_tests check. It does NOT assert on the
+          internal Python type of added_at (datetime vs str) — only on the
+          observable JSON response ordering.
+
+          Per CONTRIBUTING.md: the test exercises the running app through the test
+          client and fails on response content, not on importing a module the
+          change adds. The test is not vacuous: with a correct descending sort it
+          passes, and with an ascending sort (or no sort) it fails.
+        expected_artifacts:
+          - "tests/test_criterion_R1.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: "tests/test_criterion_R1.py"
+            name_prefix: "test_"
+            min_count: 3
+            severity: error
+          - check: command_exit_zero
+            argv: ["python", "-m", "py_compile", "tests/test_criterion_R1.py"]
+            severity: error
+          - "The test seeds at least three books with distinct added_at values and asserts the data array is in descending added_at order (most recent first, earliest last); flipping the sort to ascending makes the test fail."
+          - "The test covers the empty-shelf case (0 books) and asserts a successful response with an empty data array, not a 500."
+          - "The test covers a book with added_at = None (or absent) and asserts the endpoint does not raise; the response is still well-formed."
+          - "The test combines sort_by=recently_added with at least one existing filter (search, tag, or reading_status) and asserts the filter reduces the set and the sort applies to the filtered result."
+          - "The test asserts the response envelope shape: top-level keys include 'data' and 'count'; each element of data carries the same per-book field names as the existing GET /books response."
+          - "The test uses the client fixture from conftest.py and asserts on the HTTP response JSON, not on imported module internals."
+          - "The test does not re-assert criteria T1, T2, T3, C1, C2, or X1; those are covered by their frozen test files."
+        depends_on_focus:
+          - "dev:Sort value in models layer"
+          - "dev:Store sort branch for recently_added"
+          - "dev:Route handler sort_by parameter"
+    brief_conflicts:
+      - field: "qa-tests-live-in-the-stacks-namespace"
+        issue: |
+          The plan-shape rule names backend/tests/ as the QA test namespace for the
+          FastAPI+React stack. However, this product's established convention places
+          all backend tests in tests/ at the repository root (tests/test_books_api.py,
+          tests/test_criterion_T1.py, tests/test_sorting_t1.py, etc.), with conftest.py
+          at the root serving that directory. The brief's footprint, the increment
+          instructions, and the change request all mandate tests/test_criterion_R1.py
+          at the root tests/ path. I follow the increment's binding path. If the
+          plan-shape validator rejects tests/ as outside the stack's declared QA
+          namespace, the merger must reconcile by treating the product's root tests/
+          directory as this product's declared QA namespace (it is the directory the
+          product's pytest runner collects, as shown by backend_tests running
+          python -m pytest -q from the root).
+        resolution: "Follow increment instruction: tests/test_criterion_R1.py"
+    assumptions:
+      - "The root conftest.py provides a client fixture (TestClient or httpx.AsyncClient) usable by tests in tests/."
+      - "The Book model's added_at field is populated for books created via the API or direct store seeding; at least the model allows it to be set."
+      - "The existing GET /books handler accepts query parameters and the response envelope has top-level keys 'data' and 'count'."
+      - "pytest collects tests/test_criterion_R1.py when run as python -m pytest -q from the repository root."
+    risks:
+      - "If conftest.py's fixture does not seed the store fresh per test (no isolation), tests in this file may interfere with each other or with frozen criterion tests. Mitigation: follow the same fixture/seed pattern as existing tests in tests/ (e.g., test_books_api.py, test_sorting_t1.py)."
+      - "If added_at is a datetime object internally but serialised as an ISO string in JSON, the test must compare the JSON string values in the response, not the internal objects. Mitigation: assert on the JSON array order, not on Python objects."
+    gaps_not_covered:
+      - "Frontend tests — explicitly out of scope per scope_cuts; no frontend file in the footprint."
+      - "Full-suite regression (pytest exit 0) — handled by the backend_tests check running all collected tests including frozen criterion files; not a separate QA task."
+      - "App boot (python -c 'from backend.main import app') — handled by the boots check; not a separate QA task."
+      - "Handler line count (< 30 lines) — a dev acceptance criterion on the routes task, not a test observable."
+    confidence: high
+    ```
+  latency_seconds: 426.44
+- task_type: strategy.propose_plan_guidance
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_guidance.yaml
+    version: 1
+    guidance_id: guid-a64bef25
+    source_brief_id: brief-prop_dd00b2dda705-001
+    proposing_role: strategy
+    priority_guidance:
+      - area: backend_store
+        priority: high
+        rationale: |
+          The sort-by-added_at-descending branch in store.py is the single most
+          complex piece of this change. A wrong comparator direction, a missing
+          None-guard on added_at, or an in-place mutation of the internal list
+          all live here. Proposers should weight this task's verification
+          coverage (multiple books, distinct added_at values, combined with
+          existing filters) above the other backend files.
+      - area: backend_routes
+        priority: high
+        rationale: |
+          The route handler must validate the new sort value using the existing
+          pattern (Literal, Enum, or manual check) without altering behaviour for
+          existing values or the default path. The thirty-line limit in
+          CONTRIBUTING.md constrains how much validation logic can be inlined.
+      - area: tests_R1
+        priority: high
+        rationale: |
+          The criterion test must seed at least three books with distinct
+          added_at values and assert strict descending order. A two-book test
+          can pass an ascending comparator by coincidence. The test also must
+          exercise the running app through the test client, not import the sort
+          function directly.
+      - area: backend_models
+        priority: medium
+        rationale: |
+          The models.py change is likely minimal — at most adding
+          'recently_added' to a Literal or Enum that constrains valid sort
+          values. If the current implementation does not constrain sort values
+          at the model layer, this file may require zero changes. Proposers
+          should confirm the baseline before allocating generation effort.
+    ordering_guidance:
+      - before: "dev:store_sort_branch"
+        after: "dev:models_sort_constant"
+        rationale: |
+          If models.py defines the set of valid sort values (Literal, Enum),
+          the store and routes must reference that symbol. The constant must
+          exist before the branch that uses it.
+      - before: "dev:routes_sort_param"
+        after: "dev:store_sort_branch"
+        rationale: |
+          The route handler forwards sort_by to the store's list-books method.
+          The store must accept the new value before the route can pass it
+          through without a TypeError or validation mismatch.
+      - before: "dev:test_R1"
+        after: "dev:routes_sort_param"
+        rationale: |
+          The criterion test calls GET /books?sort_by=recently_added through
+          the test client. The full request path (route to store to sort) must
+          be in place before the test can exercise it.
+    risk_guidance:
+      - target: "dev:test_R1"
+        risk: |
+          Plan-shape namespace conflict: the brief's footprint names the test
+          at tests/test_criterion_R1.py (repository-root tests/), but the
+          qa-tests-live-in-the-stacks-namespace rule requires qa.test artifacts
+          to sit under backend/tests/. All sixteen existing test files in this
+          product live in root-level tests/. The merger must assign this test
+          file to a dev task, not a qa.test task, to satisfy both the binding
+          footprint and the namespace validator. A qa.test task claiming
+          tests/test_criterion_R1.py will be rejected before dispatch.
+      - target: "dev:store_sort_branch"
+        risk: |
+          In-place mutation: if the store's list-books method returns the
+          internal list object directly rather than a copy, calling .sort()
+          mutates the stored collection and contaminates subsequent calls with
+          different sort values or no sort at all. The implementer must use
+          sorted() (returns a new list) and verify the existing method's return
+          semantics at the baseline commit.
+      - target: "dev:store_sort_branch"
+        risk: |
+          Sort direction: the comparator must produce descending order
+          (most-recent added_at first, earliest last). A single-book test or a
+          test where the first-seeded book happens to have the latest added_at
+          will pass an ascending sort by accident. The test must seed at least
+          three books and assert strict index-to-added_at monotonic decrease.
+      - target: "dev:routes_sort_param"
+        risk: |
+          Filter-then-sort ordering: when sort_by=recently_added is combined
+          with an existing filter (search, tag, reading_status), the filter
+          must apply first and the sort second. If the new sort branch is
+          inserted before the filter in the store method, the result set
+          changes and existing filter tests (test_search_*, test_tags_*,
+          test_reading_status_*) can regress.
+      - target: "dev:models_sort_constant"
+        risk: |
+          Pydantic serialisation regression: any structural change to
+          models.py — re-ordering fields, adding a default to an existing
+          field, changing a field type — can shift the JSON serialisation of
+          the Book model and break the must-not-break criteria (T1-T3, C1-C2,
+          X1). If the only change is adding a string to a Literal or Enum,
+          verify that existing model fields and their declaration order are
+          byte-identical.
+    time_budget_guidance:
+      - area: backend_models
+        budget_pct: 5
+      - area: backend_store
+        budget_pct: 35
+      - area: backend_routes
+        budget_pct: 30
+      - area: tests_R1
+        budget_pct: 20
+      - area: regression_verification
+        budget_pct: 10
+    scope_cut_guidance:
+      - "Any refactoring of the existing sort dispatch logic in store.py beyond adding the new branch. The existing sort values and their code paths remain byte-for-byte unchanged."
+      - "Any change to the Book model's field order, defaults, or types in models.py beyond the minimal sort-value constant addition (if needed)."
+    must_not_skip:
+      - "The six must-not-break criteria (T1, T2, T3, C1, C2, X1) continue to pass with zero changes to their test files."
+      - "The test seeds at least three books with distinct added_at values and asserts strict descending order, not merely that the list is sorted."
+      - "The test exercises the running app through the test client (TestClient or AsyncClient), not by importing the sort function directly."
+      - "The app boots: python -c 'from backend.main import app' succeeds after the change."
+    defer_if_time_constrained:
+      - "A combined filter-plus-sort test (e.g., sort_by=recently_added with a search or tag filter). The criterion test for R1 alone is sufficient for the change request; the filter-composition behaviour is already exercised by the existing filter tests for their own sort values and can be verified by the full-suite regression run."
+    confidence: high
+    ```
+  latency_seconds: 285.86
+- task_type: governance.merge_plan
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:implementation_plan.yaml
+    version: 1
+    project_id: prj-shelfnote
+    cycle_id: cyc_5c03ac78e402
+    prd_hash: 98404f554dd7583368b4c06e742c6c8551d7b32570349fa28c37b692a7bafff6
+    tasks:
+    - task_index: 0
+      task_type: development.develop
+      role: dev
+      focus: Sort value in models layer
+      description: 'Edit backend/models.py to add "recently_added" to the existing sort-value
+
+        constraint. If the model layer defines a SortField enum, a Literal type,
+
+        or a module-level set/tuple of valid sort strings, add "recently_added" to
+
+        it. If sorting is validated exclusively at the route layer and models.py
+
+        carries no sort-value constraint, emit the file unchanged (or with a
+
+        clarifying comment). In all cases the Book model must retain its existing
+
+        fields (including added_at) with unchanged types and defaults so that
+
+        Pydantic serialisation of the response envelope is byte-identical to the
+
+        current implementation. Do not reorder fields, add new fields, or change
+
+        default values on Book.'
+      expected_artifacts:
+      - backend/models.py
+      acceptance_criteria:
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/models.py
+      - check: module_imports
+        file: backend/models.py
+      - check: field_present
+        file: backend/models.py
+        class_name: Book
+        fields:
+        - added_at
+      - The sort-value set (enum, Literal, or module-level constant) includes 'recently_added'
+        alongside all previously valid values; no existing sort value is removed or renamed.
+      - The Book model's field set, types, and defaults are unchanged; Pydantic serialisation
+        of a Book instance is byte-identical to the pre-change output.
+      depends_on: []
+    - task_index: 1
+      task_type: development.develop
+      role: dev
+      focus: Store sort branch for recently_added
+      description: 'Edit backend/store.py so the list-books method (e.g. get_books) accepts
+        a
+
+        sort_by keyword argument (str | None). When sort_by equals
+
+        "recently_added", return the filtered books sorted by added_at descending
+
+        (reverse=True). Use sorted() (returns a new list) rather than
+
+        list.sort() to avoid mutating the internal in-memory collection. Guard
+
+        against added_at being None by using a safe key (e.g.
+
+        key=lambda b: b.added_at or datetime.min) so the sort never raises
+
+        TypeError. All other sort_by values and the None/default path must
+
+        fall through to the existing ordering logic unchanged. The filter-then-sort
+
+        ordering must be preserved: any search, tag, or reading_status filters
+
+        apply first, then the sort is applied to the filtered result.'
+      expected_artifacts:
+      - backend/store.py
+      acceptance_criteria:
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/store.py
+      - check: module_imports
+        file: backend/store.py
+      - When sort_by='recently_added', the returned list is ordered by added_at descending
+        (most recent first, earliest last); this is verified with at least three books
+        having distinct added_at values.
+      - When sort_by is None or a pre-existing value (e.g. 'title', 'rating'), the ordering
+        is byte-identical to the pre-change behaviour; no existing sort branch is altered.
+      - The sort uses sorted() (new list) not list.sort() (in-place), so the internal
+        store collection is not mutated by the sort call.
+      - A book whose added_at is None does not cause a TypeError; it is placed deterministically
+        (e.g. treated as datetime.min and sorted to the end in descending order).
+      - When sort_by='recently_added' is combined with an active filter (search, tag,
+        or reading_status), the filter applies first and the sort is applied to the filtered
+        subset.
+      depends_on:
+      - 0
+    - task_index: 2
+      task_type: development.develop
+      role: dev
+      focus: Route handler sort_by parameter
+      description: 'Edit backend/routes.py to add sort_by as a query parameter to the
+
+        existing GET /books handler. Match the existing validation pattern
+
+        (Pydantic Literal, Enum, or manual if/elif) used by the current
+
+        sort_by parameter; add "recently_added" to the accepted set. Forward
+
+        the validated value to the store''s list-books method as
+
+        sort_by=sort_by. The handler must remain under thirty lines
+
+        (CONTRIBUTING.md). The response envelope (top-level keys, per-book
+
+        field names, count) is unchanged; only the ordering of the data
+
+        array differs when sort_by=recently_added. Invalid sort_by values
+
+        must produce the same error response as before the change
+
+        (422 from Literal/Enum validation or 400 from manual check,
+
+        matching the existing pattern).'
+      expected_artifacts:
+      - backend/routes.py
+      acceptance_criteria:
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/routes.py
+      - check: module_imports
+        file: backend/routes.py
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths:
+        - GET /books
+      - The GET /books handler is under thirty lines (CONTRIBUTING.md).
+      - The sort_by query parameter is forwarded to the store's list-books method; the
+        handler itself contains no sorting logic.
+      - An unknown/invalid sort_by value produces the same error status and body as before
+        the change (the existing validation pattern is extended, not replaced).
+      - The response envelope for GET /books (top-level keys 'data' and 'count', per-book
+        field names) is identical to the pre-change shape; only data array ordering changes.
+      - 'The app boots: `python -c ''from backend.main import app''` succeeds with no
+        import errors or name collisions in the edited file.'
+      depends_on:
+      - 1
+    - task_index: 3
+      task_type: qa.test
+      role: qa
+      focus: 'Criterion R1: recently_added sort order'
+      description: "Author tests/test_criterion_R1.py exercising GET /books?sort_by=recently_added\n\
+        through the FastAPI TestClient (or httpx.AsyncClient, matching the existing\n\
+        test-file convention in tests/). The client fixture comes from the root\nconftest.py.\n\
+        \nFaults distinguished (one or more test functions per fault):\n\n1. Ascending-vs-descending:\
+        \ seed at least three books with distinct\n   added_at values; assert the data\
+        \ array is in strictly descending\n   added_at order (most recent first, earliest\
+        \ last). A comparator that\n   omits reverse=True fails this test.\n\n2. Wrong\
+        \ sort field: seed books whose title or rating ordering differs\n   from their\
+        \ added_at ordering; assert the response follows added_at,\n   not title or rating.\
+        \ A sort key on the wrong field fails.\n\n3. None added_at: seed a book with added_at\
+        \ set to None (or absent,\n   depending on model optionality); assert the call\
+        \ returns successfully\n   (no 500) and the book appears in a deterministic position.\
+        \ A sort key\n   that calls .added_at directly without a None guard raises TypeError.\n\
+        \n4. Internal state mutation: call GET /books?sort_by=recently_added, then\n \
+        \  call GET /books (no sort) or GET /books?sort_by=<existing_value>;\n   assert\
+        \ the second call's ordering is not corrupted by the first\n   call's sort. An\
+        \ in-place list.sort() on the store's internal\n   collection fails this.\n\n\
+        5. Filter-then-sort: seed books matching a search term and books that do\n   not;\
+        \ call GET /books?sort_by=recently_added&search=<term>; assert only\n   matching\
+        \ books appear and they are in descending added_at order. A\n   sort-then-filter\
+        \ (or filter-then-no-sort) implementation fails.\n\n6. Response envelope: assert\
+        \ the JSON response has top-level keys \"data\"\n   and \"count\" (matching the\
+        \ existing GET /books shape), that each book\n   object in data carries the same\
+        \ per-book field names as the current\n   response, and that count equals len(data).\
+        \ A models.py change that\n   reorders fields or adds a new top-level key fails.\n\
+        \nThe test file does NOT re-assert T1–T3, C1–C2, or X1; those are frozen\nfiles\
+        \ re-run by the backend_tests check. It does NOT assert on the\ninternal Python\
+        \ type of added_at (datetime vs str) — only on the\nobservable JSON response ordering.\n\
+        \nPer CONTRIBUTING.md: the test exercises the running app through the test\nclient\
+        \ and fails on response content, not on importing a module the\nchange adds. The\
+        \ test is not vacuous: with a correct descending sort it\npasses, and with an\
+        \ ascending sort (or no sort) it fails."
+      expected_artifacts:
+      - tests/test_criterion_R1.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_R1.py
+        name_prefix: test_
+        min_count: 3
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - tests/test_criterion_R1.py
+      - The test seeds at least three books with distinct added_at values and asserts
+        the data array is in descending added_at order (most recent first, earliest last);
+        flipping the sort to ascending makes the test fail.
+      - The test covers the empty-shelf case (0 books) and asserts a successful response
+        with an empty data array, not a 500.
+      - The test covers a book with added_at = None (or absent) and asserts the endpoint
+        does not raise; the response is still well-formed.
+      - The test combines sort_by=recently_added with at least one existing filter (search,
+        tag, or reading_status) and asserts the filter reduces the set and the sort applies
+        to the filtered result.
+      - 'The test asserts the response envelope shape: top-level keys include ''data''
+        and ''count''; each element of data carries the same per-book field names as the
+        existing GET /books response.'
+      - The test uses the client fixture from conftest.py and asserts on the HTTP response
+        JSON, not on imported module internals.
+      - The test does not re-assert criteria T1, T2, T3, C1, C2, or X1; those are covered
+        by their frozen test files.
+      depends_on:
+      - 0
+      - 1
+      - 2
+    summary:
+      total_dev_tasks: 3
+      total_qa_tasks: 1
+      total_tasks: 4
+      estimated_layers: []
+    ```
+
+    ```yaml:merge_decisions.yaml
+    version: 1
+    target_plan_id: plan-cyc_5c03ac78e402
+    brief_id: brief-prop_dd00b2dda705-001
+    proposal_ids:
+    - prop-6044b9c0
+    - prop-dedeff06
+    guidance_ids:
+    - guid-a64bef25
+    authoring_mode: multi_role
+    sole_author_reason: null
+    proposal_completeness: complete
+    missing_proposals: []
+    canonical_tasks:
+    - task_index: 0
+      source_proposal_task_keys:
+      - dev:sort value in models layer
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 1
+      source_proposal_task_keys:
+      - dev:store sort branch for recently_added
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 2
+      source_proposal_task_keys:
+      - dev:route handler sort_by parameter
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 3
+      source_proposal_task_keys:
+      - 'qa:criterion r1: recently_added sort order'
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    brief_conflicts_disposition: []
+    operator_notes: ''
+    ```
+  latency_seconds: 0.602
+- task_type: governance.review_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    ---
+    readiness: go
+    sufficiency_score: 5
+    blocker_unknowns: 0
+    ---
+
+    ## Consolidated Plan — Increment: `sort_by=recently_added` on GET /books
+
+    ### 1. Objective Frame
+
+    This cycle implements a single approved criterion against an accepted, shipped application (Shelfnote at commit `01b92774a23cbf2bc5d4db770e26e7d759b383d7`).
+
+    **Criterion R1:** When `GET /books` is called with query parameter `sort_by=recently_added`, the `data` array in the JSON response lists books in **descending** order of their `added_at` value (most recently added first).
+
+    No PRD delta, no manifest delta, no retired criteria. The accepted application's interface and behaviour are unchanged except for this one new sort option. The reviewer's notes impose no additional constraints beyond the pre-registration rule that triggered automatic approval.
+
+    ### 2. Technical Design (by footprint file)
+
+    The build starts from the accepted code at the baseline commit. Only the four footprint files change; every other file retains its accepted content verbatim.
+
+    #### 2.1 `backend/models.py`
+
+    - **Purpose:** Ensure the `Book` model carries an `added_at` field suitable for descending sort.
+    - **Design:**
+      - If the model already has an `added_at` field (e.g., a `datetime` or ISO-8641 `str` set at creation time), no structural change is needed; only confirm it is included in the serialization path.
+      - If the field does not yet exist, add `added_at: str` (or `datetime`) to the `Book` pydantic model and ensure the store sets it to the current timestamp when a book is first created. The field must be part of the response so R1's observable is testable.
+      - Do **not** add new endpoints, new models, or alter existing field types. Keep the change minimal.
+    - **Constraint:** This file is in the footprint, so a model change is anticipated and permitted.
+
+    #### 2.2 `backend/store.py`
+
+    - **Purpose:** Provide the data-access operation that returns books sorted by `added_at` descending.
+    - **Design:**
+      - Extend the existing `list_books` (or equivalent) method to accept an optional `sort_by` parameter.
+      - When `sort_by == "recently_added"`, sort the in-memory book collection by `added_at` in descending order before returning.
+      - When `sort_by` is absent or a different value, preserve the existing default ordering so that all current behaviour (and the `must_not_break` criteria) is unaffected.
+      - Keep the method signature backward-compatible: existing callers that do not pass `sort_by` must see identical results.
+    - **Constraint:** No new file, no new module-level state. Sorting is a pure transformation on the existing collection.
+
+    #### 2.3 `backend/routes.py`
+
+    - **Purpose:** Accept and forward the `sort_by` query parameter on `GET /books`.
+    - **Design:**
+      - Add an optional query parameter `sort_by: str | None = None` to the existing `GET /books` handler.
+      - Pass `sort_by` through to the store's list method.
+      - The handler must remain under 30 lines per CONTRIBUTING.md. If adding the parameter pushes it over, extract the list-and-resolve logic into a small helper or rely on the store call as-is (a single call + response is well within 30 lines).
+      - Do not add a new route. Do not change the response envelope (`{"data": [...], ...}`) shape.
+    - **Constraint:** The existing `GET /books` handler already exists; this is a parameter addition, not a new endpoint.
+
+    #### 2.4 `tests/test_criterion_R1.py`
+
+    - **Purpose:** Prove criterion R1.
+    - **Design:**
+      - Pytest file under `tests/`, named per product convention (`test_*.py`).
+      - Uses `fastapi.testclient.TestClient` (or `httpx.AsyncClient` per the product's existing test patterns) to exercise the running app.
+      - **Test cases:**
+        1. **Ordering (happy path):** Seed the store with ≥ 3 books having distinct `added_at` values (e.g., via `POST /books` or direct store seeding). Call `GET /books?sort_by=recently_added`. Assert the `data` array is in descending `added_at` order — first element is the newest, last is the oldest.
+        2. **Single element / empty edge:** Call with a single book (or zero books) to confirm no crash and correct (trivial) ordering.
+        3. **Default order preserved:** Call `GET /books` *without* `sort_by`. Assert the response order is unchanged from the accepted behaviour (guards against accidental re-sorting).
+      - Each test asserts on the **response body** (the `data` array contents and order), not on internal imports. Per CONTRIBUTING.md: "fails on what the response says, not on importing something the change adds."
+      - Must be runnable by `pytest -q -p no:cacheprovider` under the product's venv. Import only packages declared in `backend/requirements.txt`.
+    - **Constraint:** This is a new file; it does not replace any existing test.
+
+    ### 3. Test Strategy & Regression Guard
+
+    | Check | What it proves | How it runs |
+    |---|---|---|
+    | `tests/test_criterion_R1.py` (new) | R1: descending `added_at` order on `sort_by=recently_added` | `pytest` (backend_tests) |
+    | `tests/test_criterion_T1.py` … `X1.py` (existing) | Must-not-break: six accepted criteria still pass | `pytest` (backend_tests) |
+    | All other `tests/test_*.py` (existing) | General regression: no accepted behaviour is disturbed | `pytest` (backend_tests) |
+    | `frontend` tests (unchanged) | Frontend unaffected | `vitest` (frontend_tests) |
+    | `boots` check | App still imports and constructs | `.venv/bin/python -c "from backend.main import app"` |
+
+    No frontend file is in the footprint, so `frontend_tests` will run against unchanged code and pass by construction.
+
+    ### 4. Design Sufficiency Assessment
+
+    | Criterion | Rating | Notes |
+    |---|---|---|
+    | **Scope clarity** | 5/5 | One criterion, four files, no PRD/manifest delta, explicit observable. Boundaries are unambiguous. |
+    | **Technical feasibility** | 5/5 | Add a timestamp field (if missing), a sort branch in the store, a query param in the route, and one test file. All are small, well-understood changes in a working FastAPI + pydantic codebase. |
+    | **Risk coverage** | 4/5 | The only residual unknown is whether `added_at` already exists in the accepted model; the footprint's inclusion of `models.py` anticipates this. Mitigation: read the model at implementation start; if the field is present, `models.py` may require no edit. No architectural risk. |
+    | **Test strategy alignment** | 5/5 | R1 is directly tested. Six must-not-break criteria are guarded by existing tests that run in the same pytest invocation. Edge cases (single/empty) are covered. |
+    | **Resource fit** | 5/5 | Backend-only change, one new test file. Well within a 3-hour budget. No frontend work, no new dependencies, no infrastructure change. |
+
+    **Sufficiency score: 5 / 5**
+
+    ### 5. Risks & Mitigations
+
+    | Risk | Class | Likelihood | Mitigation |
+    |---|---|---|---|
+    | `added_at` not yet in model | Minor | Medium (footprint anticipates it) | Read `models.py` first; add field + set-on-create in `store.py` if absent. |
+    | Existing `sort_by` values (e.g., from `test_sorting_t1.py`) are clobbered | Minor | Low | The new sort branch is additive; default path is untouched. Existing sort tests run in the same pytest pass. |
+    | Handler exceeds 30-line limit | Minor | Low | Adding one query param and forwarding it is ~2 lines; handler stays well under 30. |
+    | Test seeds books in an order that accidentally matches default | Low | Low | Use ≥ 3 books with explicitly staggered `added_at` values; assert by ID order, not position. |
+
+    No blocker-classified unknowns.
+
+    ### 6. Execution Sequence (suggested task order)
+
+    1. **Read** `backend/models.py`, `backend/store.py`, `backend/routes.py` at baseline to confirm current `Book` fields, existing sort logic, and handler shape.
+    2. **Implement `backend/models.py`** (if `added_at` is absent): add the field, ensure it serialises in the response.
+    3. **Implement `backend/store.py`**: add `sort_by` handling in the list method; set `added_at` on creation if the model gained the field.
+    4. **Implement `backend/routes.py`**: add `sort_by` query param to `GET /books`; forward to store.
+    5. **Write `tests/test_criterion_R1.py`**: three test cases per §2.4.
+    6. **Run full checks:**
+       - `boots`: `.venv/bin/python -c "from backend.main import app"`
+       - `backend_tests`: `.venv/bin/python -m pytest -q -p no:cacheprovider`
+       - `frontend_tests`: `npm --prefix frontend test --silent`
+    7. **Verify** all must-not-break criteria (T1–T3, C1–C2, X1) and R1 pass.
+
+    Estimated effort: 45–75 minutes of active coding and testing, well within the 3-hour budget.
+
+    ### 7. Deferrals
+
+    None. The change is a single, self-contained increment. No out-of-budget work is identified or deferred.
+
+    ### 8. Readiness Recommendation
+
+    **GO.** The plan is fully specified, technically feasible, low-risk, and comfortably within the time budget. No blocker unknowns exist. The squad can proceed directly to implementation.
+  latency_seconds: 210.247
+- task_type: governance.define_done
+  occurrence: 1
+  call: 1
+  content: |
+    ```json:definition_of_done.json
+    {
+      "objective": "Produce a structured lead analysis document enumerating strategic deliverables, responsibilities, and next-step actions.",
+      "acceptance_criteria": [
+        "Analysis identifies at least three concrete deliverables with clear ownership",
+        "Each deliverable includes a measurable success metric or completion criterion",
+        "A prioritized sequence or dependency map is provided",
+        "Risks or blockers are explicitly called out with mitigation notes",
+        "Document is self-contained and actionable without external context"
+      ],
+      "non_goals": [
+        "Implementation or engineering of any deliverable",
+        "Budget or headcount allocation beyond high-level indication",
+        "Contract negotiation or vendor selection",
+        "Real-time status tracking or ongoing project management"
+      ],
+      "time_budget_seconds": 3600,
+      "stop_conditions": [
+        "All identified deliverables have at least one measurable acceptance criterion attached",
+        "Dependency and risk analysis is complete with no unaddressed critical-path items",
+        "Output is valid, well-structured, and ready for handoff to stakeholders"
+      ],
+      "required_artifacts": [
+        "lead_analysis.md",
+        "deliverables_register.json",
+        "risk_register.md"
+      ]
+    }
+    ```
+  latency_seconds: 53.214
+- task_type: development.develop
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:backend/models.py
+    """Pydantic models — scaffold-owned interface (entities + request shapes).
+
+    Field bodies (validators, computed defaults) are fill-only; the class
+    surface here is fixed by the interface manifest.
+    """
+
+    from __future__ import annotations
+
+    from datetime import datetime
+    from typing import Annotated
+
+    from pydantic import BaseModel, Field, StringConstraints, field_validator
+
+    # #593: required request fields reject blank/whitespace-only input at the
+    # model layer — the contract pins validation_error → 422 for it, and the
+    # blank-input probe enforces it against the running app. Whitespace is
+    # stripped before the length check, so '  ' is as blank as ''.
+    NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+    VALID_STATUSES: frozenset[str] = frozenset({"wanted", "being read", "read"})
+
+    VALID_SORT_VALUES: frozenset[str] = frozenset(
+        {"title", "author", "status", "rating", "recently_added"}
+    )
+
+
+    class Note(BaseModel):
+        id: str
+        author: str
+        text: str
+
+
+    class Book(BaseModel):
+        id: str
+        title: str
+        author: str
+        added_by: str
+        status: str = "wanted"
+        #: A readable, URL-safe name: the title and author, slugified.
+        slug: str = ""
+        notes: list[Note] = Field(default_factory=list)
+        tags: list[str] = Field(default_factory=list)
+        rating: int | None = None
+        added_at: datetime | None = None
+
+        @field_validator("status")
+        @classmethod
+        def _validate_status(cls, value: str) -> str:
+            if value not in VALID_STATUSES:
+                raise ValueError(
+                    f"status must be one of {sorted(VALID_STATUSES)!r}, got {value!r}"
+                )
+            return value
+
+
+    class BookCreate(BaseModel):
+        title: NonBlankStr
+        author: NonBlankStr
+        added_by: NonBlankStr
+
+
+    class NoteCreate(BaseModel):
+        author: NonBlankStr
+        text: NonBlankStr
+
+
+    class PatchBookBody(BaseModel):
+        title: str | None = None
+        author: str | None = None
+        status: str | None = None
+
+
+    class AddTagRequest(BaseModel):
+        tag: NonBlankStr
+
+
+    class RatingRequest(BaseModel):
+        rating: int = Field(ge=1, le=5)
+
+        @field_validator("rating", mode="before")
+        @classmethod
+        def _reject_non_integer(cls, v: object) -> object:
+            # bool is a subclass of int in Python; must reject it before
+            # any int-based check or type coercion would let it through.
+            if isinstance(v, bool):
+                raise ValueError("rating must be an integer 1-5, not a boolean")
+            if v is None:
+                raise ValueError("rating must be an integer 1-5, not null")
+            if isinstance(v, float):
+                raise ValueError("rating must be an integer 1-5, not a float")
+            if isinstance(v, str):
+                raise ValueError("rating must be an integer 1-5, not a string")
+            return v
+
+
+    class Pagination(BaseModel):
+        total: int
+        page: int
+        per_page: int
+        total_pages: int
+
+
+    class PaginatedBooksResponse(BaseModel):
+        items: list[Book]
+        pagination: Pagination
+    ```
+  latency_seconds: 175.201
+- task_type: development.develop
+  occurrence: 2
+  call: 1
+  content: |
+    ```python:backend/store.py
+    """In-memory state — scaffold-owned (frozen).
+
+    The manifest declares in-memory persistence, so this module owns it: one store
+    per root-persisted entity, keyed by the entity's id. Fill route bodies against
+    these names; do not define a second store elsewhere and do not edit this file.
+
+    Not stored on their own — shapes embedded in or projected from the rows
+    above, never rows themselves: Note. Build them from a
+    stored entity when a response needs them; do not keep a parallel store.
+    """
+
+    from __future__ import annotations
+
+    from datetime import datetime
+
+    from backend.models import VALID_STATUSES, Book
+
+    book_store: dict[str, Book] = {}
+
+
+    def reset() -> None:
+        """Clear every store — for test isolation between cases."""
+        book_store.clear()
+
+
+    def list_books(search: str | None = None, *, status: str | None = None) -> list[Book]:
+        """Return books matching *search* and/or *status*, in shelf order.
+
+        Both filters are conjunctive (AND).  An empty-string or *None* value
+        disables that filter, so the full ordered shelf is returned.
+        """
+        results: list[Book] = []
+        for book in book_store.values():
+            if status is not None and status != "" and book.status != status:
+                continue
+            if search is not None and search != "":
+                needle = search.lower()
+                if needle not in book.title.lower() and needle not in book.author.lower():
+                    continue
+            results.append(book)
+        return results
+
+
+    def get_books(tag: str | None = None, *, sort_by: str | None = None) -> list[Book]:
+        """Return all books, optionally filtered by *tag*.
+
+        When *tag* is *None* or an empty string the full unfiltered list is
+        returned, preserving existing GET /books behaviour.  When a non-empty
+        tag string is provided, only books whose ``tags`` array includes that
+        tag are returned.  An empty list is returned when no book carries the
+        tag.
+
+        When *sort_by* is ``"recently_added"`` the filtered result is returned
+        sorted by ``added_at`` descending (most recent first).  Books whose
+        ``added_at`` is ``None`` are treated as :data:`datetime.min` and thus
+        appear last.  All other *sort_by* values fall through to the default
+        store ordering unchanged.
+        """
+        if tag is None or tag == "":
+            results = list(book_store.values())
+        else:
+            results = [book for book in book_store.values() if tag in book.tags]
+
+        if sort_by == "recently_added":
+            return sorted(results, key=lambda b: b.added_at or datetime.min, reverse=True)
+
+        return results
+
+
+    def get_books_paginated(page: int, per_page: int) -> tuple[list[Book], int]:
+        """Return a single page of books and the total count.
+
+        *page* is 1-based.  The slice is computed as
+        ``[(page - 1) * per_page : page * per_page]`` over the full shelf.
+        A page beyond the list bounds yields an empty list (Python slicing
+        is safe past the end).
+        """
+        all_books: list[Book] = list(book_store.values())
+        start = (page - 1) * per_page
+        end = start + per_page
+        return all_books[start:end], len(all_books)
+
+
+    def add_tag(book_id: str, tag: str) -> Book | None:
+        """Add *tag* to the book identified by *book_id*.
+
+        The tag is appended to the book's ``tags`` array only if not already
+        present (idempotency guarantee).  Returns the updated book, or *None*
+        if no book with the given id exists in the store.
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+        if tag not in book.tags:
+            book.tags.append(tag)
+        return book
+
+
+    def update_book(
+        book_id: str,
+        *,
+        title: str | None = None,
+        author: str | None = None,
+        status: str | None = None,
+    ) -> Book | None:
+        """Update a book in place; return the book or *None* if not found.
+
+        When *status* is provided (non-empty) it is validated against
+        :data:`~backend.models.VALID_STATUSES` **before** any field is written.
+        On an invalid status no mutation occurs and the book is returned
+        unchanged (atomicity guarantee).
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+
+        # Validate status BEFORE any field is written.
+        if status is not None and status != "" and status not in VALID_STATUSES:
+            return book
+
+        if title is not None:
+            book.title = title
+        if author is not None:
+            book.author = author
+        if status is not None and status != "":
+            book.status = status
+
+        return book
+
+
+    def set_rating(book_id: str, rating: int) -> Book:
+        """Set the rating for the book identified by *book_id*.
+
+        Mutates the book in place with replacement semantics: a second call
+        overwrites the first rating value (no accumulation or history).
+
+        The caller is responsible for verifying that the book exists before
+        invoking this function; a *KeyError* is raised for an unknown id.
+        """
+        book = book_store[book_id]
+        book.rating = rating
+        return book
+
+
+    def get_status_counts() -> dict[str, int]:
+        """Return the count of books per canonical status.
+
+        Every status in :data:`~backend.models.VALID_STATUSES` appears as a key,
+        initialised to 0, so statuses with no books are still present.
+        """
+        counts: dict[str, int] = {s: 0 for s in VALID_STATUSES}
+        for book in book_store.values():
+            counts[book.status] += 1
+        return counts
+
+
+    def get_average_rating() -> float | None:
+        """Return the arithmetic mean of non-null ratings, or *None* if none exist."""
+        rated = [book.rating for book in book_store.values() if book.rating is not None]
+        if not rated:
+            return None
+        return sum(rated) / len(rated)
+
+
+    def get_related_books(book_id: str) -> list[Book] | None:
+        """Return books related to *book_id* by tag overlap.
+
+        Returns *None* if no book with the given id exists in the store.
+        Returns an empty list if the book has zero tags.
+        Otherwise returns a list of Book objects for every other book whose
+        tag set has non-empty intersection with the queried book's tag set.
+        The queried book is always excluded.  Order is store insertion order.
+        """
+        target = book_store.get(book_id)
+        if target is None:
+            return None
+        target_tags = set(target.tags)
+        if not target_tags:
+            return []
+        related: list[Book] = []
+        for book in book_store.values():
+            if book.id == book_id:
+                continue
+            if target_tags & set(book.tags):
+                related.append(book)
+        return related
+    ```
+  latency_seconds: 162.862
+- task_type: development.develop
+  occurrence: 3
+  call: 1
+  content: |
+    ```python:backend/routes.py
+    """API route stubs — scaffold-owned signatures, fill-only bodies.
+
+    Every endpoint the interface manifest declares is wired here with its
+    correct path, method, and response model. Bodies raise 501 until filled;
+    the app imports and boots regardless.
+
+    The router takes NO prefix. The frontend calls /api/... and the proxy strips
+    that prefix before the request reaches this app, so these paths are already
+    the full backend paths. Adding prefix= to APIRouter puts every route behind a
+    second /api and the app answers 404 to its own contract (pf-41).
+
+    On failure raise ApiError(code, message) from .errors — codes: validation_error, book_not_found.
+    """
+
+    import csv
+    import io
+    import math
+    from typing import Literal
+    from typing import Optional
+    from uuid import uuid4
+
+    from fastapi import APIRouter, HTTPException, Query
+    from fastapi import Response
+    from slugify import slugify
+
+    from backend.models import VALID_STATUSES, Book, BookCreate, Note, NoteCreate, PatchBookBody
+    from backend.models import AddTagRequest
+    from backend.models import RatingRequest
+    from backend.models import Pagination
+    from backend.models import PaginatedBooksResponse
+    from backend.errors import ApiError
+    from backend.store import book_store, list_books, update_book, add_tag, get_books as store_get_books, set_rating
+    from backend.store import get_status_counts, get_average_rating
+    from backend.store import get_related_books
+
+    SortField = Literal["title", "author", "rating", "recently_added"]
+
+    router = APIRouter()
+
+
+    @router.get("/books")
+    def get_books(
+        search: Optional[str] = Query(None),
+        status: str | None = Query(None),
+        tag: str | None = Query(None),
+        sort_by: Optional[SortField] = None,
+        page: Optional[int] = Query(None, ge=1),
+        per_page: Optional[int] = Query(None, ge=1, le=100),
+    ):
+        """list books — newest first."""
+        if status and status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}")
+        if tag:
+            results = store_get_books(tag=tag, sort_by=sort_by)
+        else:
+            results = store_get_books(sort_by=sort_by)
+        if search:
+            needle = search.lower()
+            results = [b for b in results if needle in b.title.lower() or needle in b.author.lower()]
+        if status:
+            results = [b for b in results if b.status == status]
+        if sort_by == "title":
+            results = sorted(results, key=lambda b: b.title.lower())
+        elif sort_by == "author":
+            results = sorted(results, key=lambda b: b.author.lower())
+        elif sort_by == "rating":
+            results = sorted(results, key=lambda b: b.rating or 0)
+        elif sort_by is None:
+            results = list(reversed(results))
+        if page is None and per_page is None:
+            return results
+        p = page if page is not None else 1
+        pp = per_page if per_page is not None else 10
+        total = len(results)
+        start = (p - 1) * pp
+        end = start + pp
+        items = results[start:end]
+        total_pages = math.ceil(total / pp) if total > 0 else 0
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=Pagination(total=total, page=p, per_page=pp, total_pages=total_pages),
+        )
+
+
+    @router.post("/books", response_model=Book, status_code=201)
+    def post_books(payload: BookCreate):
+        """add a book."""
+        book = Book(
+            id=str(uuid4()),
+            title=payload.title,
+            author=payload.author,
+            added_by=payload.added_by,
+            slug=slugify(f"{payload.title} {payload.author}"),
+            notes=[],
+        )
+        book_store[book.id] = book
+        return book
+
+
+    @router.get("/books/{book_id}", response_model=Book)
+    def get_books_book_id(book_id: str):
+        """a book and its notes."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return book
+
+
+    @router.patch("/books/{book_id}", response_model=Book)
+    def patch_books_book_id(book_id: str, body: PatchBookBody):
+        """update a book's fields."""
+        if body.status and body.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body.status!r}")
+        result = update_book(
+            book_id,
+            title=body.title,
+            author=body.author,
+            status=body.status or None,
+        )
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.post("/books/{book_id}/notes", response_model=Book, status_code=200)
+    def post_books_book_id_notes(book_id: str, payload: NoteCreate):
+        """leave a note."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        if len(payload.text) > 500:
+            raise ApiError("validation_error", "Note text must not exceed 500 characters.")
+        note = Note(
+            id=str(uuid4()),
+            author=payload.author,
+            text=payload.text,
+        )
+        book.notes.append(note)
+        return book
+
+
+    @router.post("/books/{book_id}/tags", response_model=Book)
+    def post_books_book_id_tags(book_id: str, payload: AddTagRequest):
+        """add a tag to a book."""
+        result = add_tag(book_id, payload.tag)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.put("/books/{book_id}/rating", response_model=Book)
+    def put_books_book_id_rating(book_id: str, body: RatingRequest):
+        """set a book's rating."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return set_rating(book_id, body.rating)
+
+
+    @router.get("/books/{book_id}/related")
+    def get_books_book_id_related(book_id: str):
+        """Return books related to the given book by tag overlap."""
+        result = get_related_books(book_id)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.get("/stats")
+    def get_stats():
+        """Aggregated shelf statistics."""
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+
+
+    @router.get("/export")
+    def export_shelf():
+        """Export all books as a CSV document."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["title", "status", "tags", "rating"])
+        for book in list_books():
+            tags_field = ";".join(book.tags) if book.tags else ""
+            rating_field = str(book.rating) if book.rating is not None else ""
+            writer.writerow([book.title, book.status, tags_field, rating_field])
+        return Response(content=buf.getvalue(), media_type="text/csv")
+    ```
+  latency_seconds: 422.874
+- task_type: qa.test
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:tests/test_criterion_R1.py
+    """Criterion R1: GET /books?sort_by=recently_added — descending added_at order,
+    filter composition, None safety, no internal mutation, response envelope."""
+
+
+    def _post_book(client, title="T", author="A", added_by="U"):
+        """POST a book via the API and return its JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def _extract_data(res):
+        """Extract the book list from the response JSON, handling both bare array and
+        an envelope with a 'data' key."""
+        body = res.json()
+        if isinstance(body, dict) and "data" in body:
+            return body["data"]
+        return body
+
+
+    def test_recently_added_descending_order(client):
+        """Three books created in sequence → data array in strictly descending added_at
+        order (most recent first). Titles are in a different order than creation order
+        to also catch a sort on the wrong field.
+
+        Faults caught:
+          1. Ascending sort (oldest first) — reverse=True omitted.
+          2. Sort key on title or rating instead of added_at.
+        """
+        # Creation order: Zebra (oldest), Apple (middle), Mango (newest)
+        b_z = _post_book(client, title="Zebra", author="AuthZ")
+        b_a = _post_book(client, title="Apple", author="AuthA")
+        b_m = _post_book(client, title="Mango", author="AuthM")
+
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+
+        data = _extract_data(res)
+        assert len(data) == 3, f"Expected 3 books, got {len(data)}"
+
+        # Descending added_at: Mango (newest), Apple, Zebra (oldest)
+        titles = [b["title"] for b in data]
+        assert titles == ["Mango", "Apple", "Zebra"], (
+            f"Expected descending added_at [Mango, Apple, Zebra], got {titles}"
+        )
+        # A title-ascending sort would give [Apple, Mango, Zebra] — must NOT be that
+        assert titles != ["Apple", "Mango", "Zebra"], "Sorted by title, not added_at"
+
+
+    def test_recently_added_empty_shelf(client):
+        """Zero books → 200 with empty data array, not a 500.
+
+        Fault caught: unguarded iteration or division on an empty collection.
+        """
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+
+        data = _extract_data(res)
+        assert data == [], f"Expected empty data array, got {data}"
+
+
+    def test_recently_added_none_added_at_no_crash(client):
+        """A book with added_at=None does not cause a 500; response is well-formed.
+
+        Fault caught: sort key calls added_at directly without a None guard →
+        TypeError → 500.
+        """
+        _post_book(client, title="Normal", author="A")
+        _post_book(client, title="Other", author="B")
+
+        # Mutate the store so one book has added_at=None
+        import backend.store as _store
+        col = None
+        for name in ("books", "_books", "book_store", "shelf"):
+            candidate = getattr(_store, name, None)
+            if isinstance(candidate, list):
+                col = candidate
+                break
+        if col is None:
+            for name in dir(_store):
+                candidate = getattr(_store, name)
+                if (
+                    isinstance(candidate, list)
+                    and candidate
+                    and isinstance(candidate[0], dict)
+                    and "added_at" in candidate[0]
+                ):
+                    col = candidate
+                    break
+        assert col is not None, "Could not locate the books collection in backend.store"
+        col[0]["added_at"] = None
+
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200, (
+            f"Expected 200, got {res.status_code} — possible unguarded None in sort key"
+        )
+        body = res.json()
+        assert isinstance(body, (list, dict)), f"Response is not JSON: {type(body).__name__}"
+
+
+    def test_recently_added_no_internal_mutation(client):
+        """After a sorted call, the default unsorted call returns the original order.
+
+        Fault caught: in-place list.sort() on the store's internal collection
+        corrupts subsequent reads that rely on the original ordering.
+        """
+        _post_book(client, title="First", author="A")
+        _post_book(client, title="Second", author="B")
+        _post_book(client, title="Third", author="C")
+
+        # Exercise the sort
+        client.get("/books", params={"sort_by": "recently_added"})
+
+        # Default order must still be newest-first (unchanged by the sort call)
+        res = client.get("/books")
+        assert res.status_code == 200
+        body = res.json()
+        titles = [b["title"] for b in body]
+        assert titles == ["Third", "Second", "First"], (
+            f"Default order corrupted after sort_by=recently_added call: {titles}"
+        )
+
+
+    def test_recently_added_with_search_filter(client):
+        """sort_by=recently_added combined with search returns only matching books
+        in descending added_at order.
+
+        Faults caught:
+          - Sort-then-filter: sorts the full list, then filters (order preserved
+            but non-matching books were included before the sort changed positions).
+          - Filter-then-no-sort: filters but forgets to sort the filtered subset.
+        """
+        b1 = _post_book(client, title="The Hobbit", author="Tolkien")
+        b2 = _post_book(client, title="Dune", author="Herbert")
+        b3 = _post_book(client, title="The Great Gatsby", author="Fitzgerald")
+
+        res = client.get("/books", params={"sort_by": "recently_added", "search": "the"})
+        assert res.status_code == 200
+
+        data = _extract_data(res)
+        # Only the two "The …" books match; Dune does not
+        assert len(data) == 2, f"Expected 2 matching books, got {len(data)}"
+        titles = [b["title"] for b in data]
+        assert "Dune" not in titles, f"Non-matching book leaked into results: {titles}"
+
+        # Descending added_at among matches: Gatsby (created last) before Hobbit
+        assert titles == ["The Great Gatsby", "The Hobbit"], (
+            f"Expected [The Great Gatsby, The Hobbit] in descending added_at, got {titles}"
+        )
+
+
+    def test_recently_added_response_envelope(client):
+        """Response has top-level 'data' and 'count'; count equals len(data);
+        each book carries the standard per-book field names.
+
+        Faults caught:
+          - models.py change adds or reorders top-level keys.
+          - Per-book serializer drops or renames a field.
+        """
+        _post_book(client, title="Dune", author="Herbert", added_by="Alice")
+
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200
+        body = res.json()
+
+        assert isinstance(body, dict), (
+            f"Expected dict response with envelope, got {type(body).__name__}"
+        )
+        assert "data" in body, f"Missing top-level 'data' key: {list(body.keys())}"
+        assert "count" in body, f"Missing top-level 'count' key: {list(body.keys())}"
+
+        data = body["data"]
+        count = body["count"]
+        assert count == len(data), f"count={count} but len(data)={len(data)}"
+        assert len(data) == 1, f"Expected 1 book, got {len(data)}"
+
+        # Each book carries the same fields the existing GET /books response has
+        expected_fields = {"id", "title", "author", "added_by", "notes", "slug", "rating", "status", "tags"}
+        book = data[0]
+        missing = expected_fields - set(book.keys())
+        assert not missing, f"Book object missing fields {missing}; has {list(book.keys())}"
+    ```
+  latency_seconds: 796.597
+- task_type: data.analyze_failure
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "classification": "alignment",
+      "analysis_summary": "The test test_recently_added_response_envelope explicitly asserts isinstance(body, dict) expecting an envelope with 'data' and 'count' keys per the acceptance criteria, but the GET /books endpoint returns a bare JSON list (the runner output shows isinstance([{'id': 'b9d4e56a-...'}], dict) \u2192 False). The other three tests (descending_order, none_added_at_no_crash, with_search_filter) fail for the same root cause: the implementation does not support sort_by=recently_added nor return the contracted envelope shape. The test artifact is correct in isolation per the PRD contract; the defect is in the implementation endpoint that has not been updated to match the specified response schema and sorting behavior.",
+      "contributing_factors": [
+        "GET /books endpoint returns a bare JSON array instead of the contracted {\"data\": [...], \"count\": N} envelope, causing all four failing tests to hit format assertions",
+        "The sort_by=recently_added parameter is likely unimplemented or ignored by the endpoint, so no descending added_at ordering is applied",
+        "The test helper _extract_data gracefully handles both bare-list and envelope responses for data extraction, but test_recently_added_response_envelope intentionally bypasses it to assert the envelope contract itself \u2014 confirming the test is spec-correct",
+        "Two tests (likely the empty-shelf and one other) passed, indicating the endpoint does respond 200 for basic queries but lacks the R1-specific features (envelope, sorting, None-safety under sort)",
+        "The acceptance:command_exit_zero and acceptance:undefined_names checks passed, ruling out syntax or import errors in the test file itself"
+      ],
+      "implicated_files": [
+        "tests/test_criterion_R1.py"
+      ],
+      "dispute_rulings": []
+    }
+  latency_seconds: 135.459
+- task_type: governance.correction_decision
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The failure is caused by the implementation's GET /books endpoint not matching the specified response envelope and sorting behavior, which is a clear, fixable defect rather than a fundamental architectural mismatch. Patching the endpoint to return the required {\"data\": [...], \"count\": N} structure and implement sort_by=recently_added will resolve all four failing tests without requiring a full rewind.",
+      "affected_task_types": [
+        "implementation",
+        "testing"
+      ],
+      "structural_plan_change_candidate": "tighten_acceptance",
+      "structural_plan_change_rationale": "The implementation task for GET /books should have included explicit acceptance criteria verifying the response envelope shape and sorting parameter support, which would have caught this alignment failure before execution."
+    }
+  latency_seconds: 10.424
+- task_type: development.correction_repair
+  occurrence: 1
+  call: 1
+  content: |
+    ```edit:backend/routes.py
+    <<<<<<< SEARCH
+            return results
+    =======
+            return {"data": results, "count": len(results)}
+    >>>>>>> REPLACE
+    ```
+  latency_seconds: 215.075
+- task_type: qa.test
+  occurrence: 1
+  call: 2
+  content: |
+    ```python:tests/test_criterion_R1.py
+    """Criterion R1: GET /books?sort_by=recently_added — descending added_at order,
+    None-guard, no internal-state mutation, filter composition, and response shape."""
+
+
+    def _post_book(client, title, author="A", added_by="U"):
+        """POST a book via TestClient and return its JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def test_recently_added_descending_order(client):
+        """Three books posted A→B→C come back C, B, A (newest first).
+
+        Fault caught: ascending sort (missing reverse=True) returns A, B, C.
+        """
+        _post_book(client, "Book A")
+        _post_book(client, "Book B")
+        _post_book(client, "Book C")
+
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200
+        data = res.json()
+        assert isinstance(data, list)
+        assert len(data) == 3, f"Expected 3 books, got {len(data)}"
+        titles = [bk["title"] for bk in data]
+        assert titles == ["Book C", "Book B", "Book A"], (
+            f"Expected descending added_at [C, B, A], got {titles}"
+        )
+
+
+    def test_recently_added_uses_added_at_not_title(client):
+        """Title order differs from added_at order; response must follow added_at.
+
+        Fault caught: sort key on title (or rating) instead of added_at.
+        """
+        # POST order → added_at: Mango(1st), Apple(2nd), Zebra(3rd)
+        _post_book(client, "Mango")
+        _post_book(client, "Apple")
+        _post_book(client, "Zebra")
+
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200
+        titles = [bk["title"] for bk in res.json()]
+        # Descending added_at: Zebra (newest), Apple, Mango (oldest)
+        assert titles == ["Zebra", "Apple", "Mango"], (
+            f"Expected added_at descending [Zebra, Apple, Mango], got {titles}"
+        )
+
+        # Cross-check: title sort gives a different (ascending) order
+        res_title = client.get("/books", params={"sort_by": "title"})
+        assert res_title.status_code == 200
+        title_order = [bk["title"] for bk in res_title.json()]
+        assert title_order == ["Apple", "Mango", "Zebra"]
+        assert titles != title_order, "recently_added must differ from title sort here"
+
+
+    def test_recently_added_empty_shelf(client):
+        """Zero books → 200 with an empty array, not a 500.
+
+        Fault caught: sort on empty collection raises, or handler errors.
+        """
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        data = res.json()
+        assert isinstance(data, list)
+        assert data == []
+
+
+    def test_recently_added_none_added_at_no_crash(client):
+        """A book whose added_at is None must not cause a 500.
+
+        Fault caught: sort key calls added_at directly without a None guard → TypeError.
+        The book should still appear in a deterministic position (e.g. last).
+        """
+        from backend.store import books
+
+        b1 = _post_book(client, "Normal One")
+        _post_book(client, "Normal Two")
+
+        # Mutate the store so b1's added_at becomes None
+        for bk in books:
+            if bk.get("id") == b1["id"]:
+                bk["added_at"] = None
+                break
+
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200, (
+            f"Expected 200, got {res.status_code} — None added_at crashed the sort"
+        )
+        data = res.json()
+        assert isinstance(data, list)
+        assert len(data) == 2, f"Expected 2 books, got {len(data)}"
+        ids = {bk["id"] for bk in data}
+        assert b1["id"] in ids, "Book with None added_at is missing from response"
+
+
+    def test_recently_added_does_not_mutate_default_order(client):
+        """After sort_by=recently_added, the default (no-sort) order is intact.
+
+        Fault caught: in-place list.sort() on the store's internal list corrupts
+        the default newest-first ordering.
+        """
+        _post_book(client, "First")
+        _post_book(client, "Second")
+        _post_book(client, "Third")
+
+        # Trigger the sorted endpoint
+        assert client.get("/books", params={"sort_by": "recently_added"}).status_code == 200
+
+        # Default order must still be newest-first
+        default_res = client.get("/books")
+        assert default_res.status_code == 200
+        titles = [bk["title"] for bk in default_res.json()]
+        assert titles == ["Third", "Second", "First"], (
+            f"Default order corrupted after sort_by: got {titles}"
+        )
+
+
+    def test_recently_added_with_search_filter(client):
+        """sort_by=recently_added + search: filter first, then sort the filtered set.
+
+        Fault caught: sort-then-filter (sorts full shelf then slices) or
+        filter-then-no-sort.
+        """
+        _post_book(client, "Dune")                        # oldest, no match
+        _post_book(client, "The Hobbit")                   # middle, matches
+        _post_book(client, "The Lord of the Rings")        # newest, matches
+
+        res = client.get("/books", params={"sort_by": "recently_added", "search": "the"})
+        assert res.status_code == 200
+        data = res.json()
+        assert isinstance(data, list)
+        titles = [bk["title"] for bk in data]
+
+        # Only the two "the"-matching books appear, in descending added_at order
+        assert len(data) == 2, f"Expected 2 matching books, got {len(data)}: {titles}"
+        assert "Dune" not in titles, f"'Dune' should be filtered out: {titles}"
+        assert titles == ["The Lord of the Rings", "The Hobbit"], (
+            f"Expected descending added_at among matches, got {titles}"
+        )
+
+
+    # The previous attempt asserted top-level "data" and "count" keys, which does not
+    # match the actual GET /books contract: without pagination params the response is
+    # a bare JSON array (confirmed by frozen T3 tests). Corrected to assert the real
+    # envelope: a list whose elements carry the standard per-book fields.
+    def test_recently_added_response_envelope(client):
+        """Response is a bare JSON array; each book carries the standard per-book fields.
+
+        Fault caught: a models.py change that wraps the array in an object or
+        renames / drops per-book fields.
+        """
+        b = _post_book(client, "Envelope Book", author="Test Author")
+
+        res = client.get("/books", params={"sort_by": "recently_added"})
+        assert res.status_code == 200
+        data = res.json()
+
+        # Bare array, not a dict
+        assert isinstance(data, list), (
+            f"Expected bare JSON array, got {type(data).__name__}"
+        )
+        assert len(data) == 1
+
+        book = data[0]
+        assert book["id"] == b["id"]
+        assert book["title"] == "Envelope Book"
+        assert book["author"] == "Test Author"
+        assert book["added_by"] == "U"
+        assert book["notes"] == []
+        assert "slug" in book
+        assert book["tags"] == []
+        assert book["rating"] is None
+        assert book["status"] in ("wanted", "being read", "read")
+    ```
+  latency_seconds: 681.484
+- task_type: data.analyze_failure
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "classification": "alignment",
+      "analysis_summary": "The test file tests/test_criterion_R1.py correctly asserts descending added_at order per the PRD ('most recent first, earliest last'), but the product's GET /books?sort_by=recently_added handler returns books in ascending order. The runner output confirms this: test_recently_added_with_search_filter expected ['The Lord of the Rings', 'The Hobbit'] but got ['The Hobbit', 'The Lord of the Rings']. All 4 failing tests (descending_order, none_added_at, uses_added_at_not_title, with_search_filter) share this root cause \u2014 the product sort is ascending where the contract requires descending. The test artifact is correct against the PRD; the defect is in the product route implementation.",
+      "contributing_factors": [
+        "Product sort for sort_by=recently_added returns ascending order instead of descending (missing reverse=True or equivalent in the route handler)",
+        "All 4 failing tests assert descending order which the PRD explicitly requires: 'descending added_at order (most recent first, earliest last); flipping the sort to ascending makes the test fail'",
+        "Prior repair attempt 0 also failed with the same tests_pass check, indicating the product bug was not addressed in the previous correction round",
+        "The 3 passing tests (likely empty-shelf, response-envelope-shape, and a non-sort test) confirm the endpoint works structurally; only the sort direction is wrong"
+      ],
+      "implicated_files": [
+        "tests/test_criterion_R1.py"
+      ],
+      "dispute_rulings": []
+    }
+  latency_seconds: 119.038
+- task_type: governance.correction_decision
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The root cause is a specific, localized defect in the product's GET /books?sort_by=recently_added handler (ascending instead of descending). A targeted patch to fix the sort direction is sufficient; the rest of the implementation and tests are correct.",
+      "affected_task_types": [
+        "data",
+        "implementation"
+      ],
+      "structural_plan_change_candidate": "tighten_acceptance",
+      "structural_plan_change_rationale": "The previous repair attempt failed with the same issue, suggesting the acceptance criteria or verification step for the recently_added sort task did not explicitly enforce the 'most recent first' ordering. Tightening acceptance to require a regex/field check on the first element being the newest item would catch this faster."
+    }
+  latency_seconds: 11.1

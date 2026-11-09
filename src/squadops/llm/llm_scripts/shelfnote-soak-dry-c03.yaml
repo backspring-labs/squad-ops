@@ -1,0 +1,1834 @@
+script: shelfnote-soak-dry-c03
+description: 'The 2.7 soak (#2892), launch 3 of 15: increment 3 (SN-8), accepted.
+  Recorded from cyc_1e784bf38f3c of Campaign cmp_f14bab82c35f on deploy dep_16a1cb4f54c8.
+  The dry run''s copy: no latency replayed.'
+replay_latency: false
+recorded_from:
+  project_id: prj-shelfnote
+  cycle_id: cyc_1e784bf38f3c
+answers:
+- task_type: strategy.propose_increment
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:change_request.yaml
+    proposal_id: prop_704137dc1a38
+    version: 1
+    baseline_tree: 84031e21feba470fc4312db003bf6b86ea0ef0aca66e657859545386cf31ffc1
+    kind: feature
+    prd_delta: []
+    manifest_delta: []
+    criteria:
+    - id: C1
+      statement: GET /books/{id}/related returns other books that share at least one tag
+        with the given book, excluding the book itself; returns an empty list when the
+        book has no tags
+      surface_kind: endpoint
+      surface: GET /books/{id}/related
+      observable: Create book A tagged 'fiction' and book B tagged 'fiction' and book
+        C tagged 'science'. GET /books/{A_id}/related returns 200 with a list containing
+        B's id but NOT A's id and NOT C's id. Create book D with no tags. GET /books/{D_id}/related
+        returns 200 with an empty list.
+      paths:
+      - backend/routes.py
+      - backend/store.py
+    - id: C2
+      statement: GET /books/{id}/related returns 404 when the book id does not exist
+      surface_kind: endpoint
+      surface: GET /books/{id}/related
+      observable: GET /books/99999/related returns HTTP status 404 with a JSON body containing
+        an 'error' key
+      paths:
+      - backend/routes.py
+      - backend/store.py
+    must_not_break:
+    - T1
+    - T2
+    - T3
+    retires: []
+    replaces_verifiers: []
+    basis: campaign_branch
+    footprint:
+    - backend/routes.py
+    - backend/store.py
+    - tests/test_criterion_C1.py
+    - tests/test_criterion_C2.py
+    criterion_files:
+    - criterion_id: C1
+      path: tests/test_criterion_C1.py
+    - criterion_id: C2
+      path: tests/test_criterion_C2.py
+    backlog_item: SN-8
+    goals_revision: 3
+    content_hash: 94fef5fd6581e6ede9e6f4ff4c5f89f693a73b95c0bfef659b016fb5e20656ac
+    ```
+- task_type: development.design_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    # Technical Design: GET /books/{id}/related
+
+    ## 1. Architecture Overview
+
+    This change adds a single read-only endpoint to the existing Shelfnote books API. The existing product already has a tag system (exercised by `tests/test_tags_t1.py` and `tests/test_tags_t2.py`). The new endpoint queries the tag relationship between books at the store layer and exposes it through a thin route handler.
+
+    **Component interaction (unchanged layers shown for context):**
+
+    ```
+    TestClient (tests/test_criterion_C1.py, C2.py)
+        │
+        ▼
+    backend/routes.py  ── new handler: get_related_books(book_id: int)
+        │
+        ▼
+    backend/store.py   ── new method: get_related_books(book_id: int) -> list[Book] | None
+        │
+        ▼
+    In-memory / persistence store (existing tag and book collections)
+    ```
+
+    No new models, no new files outside the footprint, no changes to the frontend, no changes to `main.py`, `errors.py`, or `models.py`.
+
+    ---
+
+    ## 2. Interface Definitions
+
+    ### 2.1 Store Method — `store.py`
+
+    ```python
+    def get_related_books(self, book_id: int) -> list[dict] | None:
+        """
+        Return books that share at least one tag with the given book,
+        excluding the book itself.
+
+        Returns:
+            - None            → book_id does not exist (caller maps to 404)
+            - []              → book exists but has no tags
+            - list[dict]      → list of book dicts (same shape as list endpoint items)
+        """
+    ```
+
+    **Contract details:**
+    - "Share at least one tag" is an OR-union: if book A has tags `{fiction, mystery}` and book B has tags `{mystery, sci-fi}`, they are related (share `mystery`).
+    - The book itself is always excluded, even if it would match its own tags.
+    - Order of results: unspecified by the criteria. Use insertion order / creation order (stable, deterministic for tests).
+    - No deduplication needed beyond the self-exclusion (a book appears at most once in the store).
+
+    ### 2.2 Route Handler — `routes.py`
+
+    ```python
+    @router.get("/books/{book_id}/related")
+    async def get_related_books(book_id: int):
+        related = store.get_related_books(book_id)
+        if related is None:
+            raise HTTPException(status_code=404, detail={"error": "Book not found"})
+        return related
+    ```
+
+    **Response shapes:**
+
+    | Condition | Status | Body |
+    |-----------|--------|------|
+    | Book exists, has tags, related books exist | 200 | `[{ "id": 2, "title": "...", "tags": [...], ... }, ...]` |
+    | Book exists, has tags, no other books share them | 200 | `[]` |
+    | Book exists, has no tags | 200 | `[]` |
+    | Book does not exist | 404 | `{ "error": "Book not found" }` |
+
+    The 404 body contains an `error` key as required by criterion C2. The exact error string follows the product's existing error convention (the handler in `routes.py` already raises `HTTPException` with a `detail` dict for other 404s; this stays consistent).
+
+    **Handler is 5 lines** — well under the 30-line limit in CONTRIBUTING.md.
+
+    ### 2.3 What the response list contains
+
+    Each item in the 200 response is the same book dict the existing `GET /books` list endpoint returns (id, title, tags, etc.). This is the conventional choice for a "related items" endpoint: the client receives enough to render without an additional round-trip. The criteria's observable ("a list containing B's id") is satisfied because each item carries its `id`.
+
+    ---
+
+    ## 3. Implementation Sequencing
+
+    | Phase | Action | Files | Depends on |
+    |-------|--------|-------|------------|
+    | 1 | Add `get_related_books` method to the store class | `backend/store.py` | — |
+    | 2 | Add `GET /books/{book_id}/related` route handler | `backend/routes.py` | Phase 1 |
+    | 3 | Write `tests/test_criterion_C1.py` (shared-tag + no-tag cases) | `tests/test_criterion_C1.py` | Phase 2 |
+    | 4 | Write `tests/test_criterion_C2.py` (404 case) | `tests/test_criterion_C2.py` | Phase 2 |
+    | 5 | Run full test suite; confirm T1–T3 still pass | (all) | Phase 4 |
+
+    Phase 1 and 2 are small and tightly coupled; they can be done in one sitting. Phases 3–4 are independent of each other and can be written in parallel. Total estimated implementation time: **~40 minutes** (well within the 3-hour budget).
+
+    ---
+
+    ## 4. Proto Validation Plan
+
+    This change is low-risk: it adds a read-only query over existing data structures. No new dependencies, no schema migration, no concurrency concern (in-memory store, read-only). A throwaway prototype is **not warranted** — the feasibility question ("can I iterate over tags and find other books?") is trivially yes and will be proven by the first test run in Phase 5.
+
+    If, during implementation, the store's tag representation turns out to be non-trivial (e.g., tags stored as a joined string rather than a list), a 10-minute spike to confirm the access pattern would be the only proto work. I classify this as a **resolved** unknown (see below) because the existing tag tests (`test_tags_t1.py`, `test_tags_t2.py`) already exercise tag add/list, confirming the representation.
+
+    **No proto phase is scheduled.** Implementation proceeds directly to Phase 1.
+
+    ---
+
+    ## 5. Test Design
+
+    ### `tests/test_criterion_C1.py`
+
+    ```python
+    """Criterion C1: GET /books/{id}/related returns books sharing ≥1 tag."""
+    import pytest
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    client = TestClient(app)
+
+    def _create_book(title, tags=None):
+        r = client.post("/books", json={"title": title, "tags": tags or []})
+        assert r.status_code in (200, 201)
+        return r.json()["id"]
+
+    def test_related_books_share_tag():
+        a = _create_book("A", ["fiction"])
+        b = _create_book("B", ["fiction"])
+        c = _create_book("C", ["science"])
+
+        r = client.get(f"/books/{a}/related")
+        assert r.status_code == 200
+        ids = [item["id"] for item in r.json()]
+        assert b in ids
+        assert a not in ids
+        assert c not in ids
+
+    def test_no_tags_returns_empty_list():
+        d = _create_book("D", [])
+        _create_book("E", ["fiction"])
+
+        r = client.get(f"/books/{d}/related")
+        assert r.status_code == 200
+        assert r.json() == []
+    ```
+
+    ### `tests/test_criterion_C2.py`
+
+    ```python
+    """Criterion C2: GET /books/{id}/related returns 404 for unknown book."""
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    client = TestClient(app)
+
+    def test_nonexistent_book_returns_404():
+        r = client.get("/books/99999/related")
+        assert r.status_code == 404
+        body = r.json()
+        assert "error" in body
+    ```
+
+    Both files follow the product's convention: pytest, `TestClient`, no running server, fail on response content, import only `backend.main` (declared in `requirements.txt`).
+
+    ---
+
+    ## 6. Unknown Classification
+
+    | # | Unknown | Classification | Rationale |
+    |---|---------|---------------|-----------|
+    | 1 | How are tags stored per book (list vs. string vs. junction)? | **resolved** | Existing tag tests (`test_tags_t1.py`, `test_tags_t2.py`) create books with tag lists and list them back. The store exposes tags as a list on each book dict. |
+    | 2 | Does the store use in-memory dicts or a DB? | **resolved** | `store.py` is 5 KB, no external DB in `requirements.txt`. In-memory dict/list. No concurrency concerns for a read-only query. |
+    | 3 | What is the exact book dict shape returned by `GET /books`? | **resolved** | Existing tests reference `id`, `title`, `tags` fields. The related endpoint returns the same shape — no new model needed. |
+    | 4 | How does the existing 404 error body look (exact key name)? | **resolved** | Criterion C2 specifies "a JSON body containing an 'error' key." The existing `errors.py` module (1.9 KB) handles error responses. The handler will use `HTTPException(detail={"error": ...})` or the product's existing pattern — either way the key is `error`. |
+    | 5 | Should related books be deduplicated if they share multiple tags? | **resolved** | "Share at least one tag" is a set-membership test. Each book appears once in the store; no duplicates are possible. |
+    | 6 | Ordering of the related list | **acceptable_risk** | Criteria do not specify order. Tests assert membership, not order. Implementation returns in store iteration order (deterministic for a given seed). If a future criterion requires sorting, it will be a separate change. |
+    | 7 | Performance with many tags / many books | **acceptable_risk** | In-memory store, small dataset. O(n) scan over books is fine. No index needed at this scale. If the product migrates to a DB, the store method's signature stays the same. |
+
+    **No `blocker`, `requires_human_decision`, or `proto_validated` items.**
+
+    ---
+
+    ## 7. Risk & Mitigation Summary
+
+    | Risk | Likelihood | Mitigation |
+    |------|-----------|------------|
+    | Breaking T1–T3 by modifying `store.py` | Low | Add method only; do not alter existing method signatures or behavior. Run full suite in Phase 5. |
+    | Route path collision with existing `/books/{id}` routes | Low | `/books/{id}/related` is a distinct path segment. FastAPI matches on full path. No wildcard conflict expected. |
+    | Test isolation (tests mutating shared store state) | Low | Existing `conftest.py` (1102 bytes) likely provides fixture-based state reset or a fresh app per test. New tests follow the same pattern. |
+
+    ---
+
+    ## 8. Explicit Deferral (Out of Budget / Out of Scope)
+
+    - **Frontend view for related books**: The footprint does not include any `frontend/` files. A UI for displaying related books is a future change request.
+    - **Pagination / sorting on the related list**: Not in the criteria. Defer.
+    - **Tag-based search vs. related**: The existing search endpoint (`/books?tag=...`) already handles tag filtering. No overlap to resolve.
+    - **Caching or indexing**: In-memory store, trivial dataset. Defer until performance becomes a concern.
+
+    ---
+
+    ## 9. Checklist for Execution
+
+    - [ ] `backend/store.py` — emit full file with new `get_related_books` method added
+    - [ ] `backend/routes.py` — emit full file with new `@router.get("/books/{book_id}/related")` handler added
+    - [ ] `tests/test_criterion_C1.py` — new file, two test functions
+    - [ ] `tests/test_criterion_C2.py` — new file, one test function
+    - [ ] Run `pytest -q -p no:cacheprovider` — all pass including T1, T2, T3
+    - [ ] Confirm handler is ≤ 30 lines
+    - [ ] Confirm no imports outside `backend.main` in test files
+    - [ ] Confirm no file outside footprint is modified
+- task_type: qa.define_test_strategy
+  occurrence: 1
+  call: 1
+  content: |-
+    # QA Test Strategy: `GET /books/{id}/related`
+
+    **Change:** `prop_704137dc1a38` · **Backlog item:** SN-8 · **Goals revision:** 3
+    **Footprint:** `backend/routes.py`, `backend/store.py`, `tests/test_criterion_C1.py`, `tests/test_criterion_C2.py`
+    **Time budget:** 3 h
+
+    ---
+
+    ## 1. Acceptance Checklist
+
+    Each item is a concrete pass/fail gate for implementation review. All must hold before the cycle is approved.
+
+    ### Criterion C1 — Related books by shared tag
+
+    - [ ] **AC-1.1** `GET /books/{A_id}/related` returns **HTTP 200** when book A exists and has at least one tag.
+    - [ ] **AC-1.2** The response body is a JSON **list**.
+    - [ ] **AC-1.3** The list **contains** the id of every other book that shares ≥ 1 tag with book A. In the canonical scenario (A:fiction, B:fiction, C:science), B's id is present.
+    - [ ] **AC-1.4** The list does **not** contain book A's own id (self-exclusion).
+    - [ ] **AC-1.5** The list does **not** contain book C's id (C shares no tag with A).
+    - [ ] **AC-1.6** When book D has **no tags**, `GET /books/{D_id}/related` returns **HTTP 200** with an **empty list** (`[]`).
+    - [ ] **AC-1.7** (Edge) If two books share **multiple** tags, the book appears in the list **once**, not once per shared tag.
+    - [ ] **AC-1.8** (Edge) If the book has tags but no *other* book shares any of them, the list is **empty**.
+
+    ### Criterion C2 — Unknown book id
+
+    - [ ] **AC-2.1** `GET /books/99999/related` (id that does not exist) returns **HTTP 404**.
+    - [ ] **AC-2.2** The 404 response body is JSON and contains a key named **`error`**.
+    - [ ] **AC-2.3** The 404 is produced by the endpoint's own logic (store lookup returns nothing → explicit 404), **not** by FastAPI's default path-not-found. Verify by confirming the response `Content-Type` is `application/json` and the body is a dict, not a bare string.
+
+    ### Must-not-break regression
+
+    - [ ] **AC-3.1** `tests/test_criterion_T1.py` passes unmodified.
+    - [ ] **AC-3.2** `tests/test_criterion_T2.py` passes unmodified.
+    - [ ] **AC-3.3** `tests/test_criterion_T3.py` passes unmodified.
+    - [ ] **AC-3.4** All other existing backend tests (`tests/test_*.py`) pass unmodified.
+
+    ### Build & style gates
+
+    - [ ] **AC-4.1** `boots` check passes: `.venv/bin/python -c "from backend.main import app"` succeeds.
+    - [ ] **AC-4.2** The new route handler in `backend/routes.py` is **≤ 30 lines** (per CONTRIBUTING.md).
+    - [ ] **AC-4.3** New test files import only packages declared in `backend/requirements.txt` (pytest, httpx/FastAPI TestClient, etc.). No undeclared imports.
+    - [ ] **AC-4.4** Tests exercise the running app's API through the test client (`TestClient` or `httpx.AsyncClient`); they assert on response status and body, not on internal function imports.
+
+    ---
+
+    ## 2. Test Strategy Note
+
+    ### Scope of verification
+
+    This is a **backend-only** change. Two files are touched (`routes.py`, `store.py`) and two test files are added. No frontend file is in the footprint.
+
+    | Layer | In scope? | Rationale |
+    |---|---|---|
+    | Unit (store logic) | **Yes** | Tag-intersection and self-exclusion logic lives in `store.py`. Verified indirectly through the endpoint; no separate unit harness needed given the product's convention of testing through `TestClient`. |
+    | Integration (route → store → response) | **Yes** | The two criterion tests are integration tests: they set up books via the API, call the new endpoint, and assert on the response. This is the primary verification layer. |
+    | Contract (response shape) | **Yes** | AC-1.2, AC-2.2 pin the response as a JSON list / JSON object with `error` key. Enforced inside the same integration tests. |
+    | E2E / frontend | **No** | No frontend files changed. `frontend_tests` runner is not affected. |
+    | Regression | **Yes** | `must_not_break` names T1–T3. The full `backend_tests` run covers all existing tests. |
+
+    ### Test file layout (already fixed by the change request)
+
+    ```
+    tests/test_criterion_C1.py   ← criterion C1 (200 + related-list behaviour)
+    tests/test_criterion_C2.py   ← criterion C2 (404 + error body)
+    ```
+
+    Both files live under `tests/`, are named `test_*.py`, and will be discovered by the `pytest` runner (`backend_tests` check). They follow the product's existing pattern (see `tests/test_tags_t1.py` for the fixture/setup idiom).
+
+    ### What the tests must and must not do
+
+    - **Must:** create their own fixture data (books + tags) through the API so the tests are self-contained and do not depend on execution order.
+    - **Must:** assert on **status code** and **response body** (ids present/absent, list empty, `error` key present).
+    - **Must not:** import `store.py` or `routes.py` internals. The test asserts the observable HTTP contract.
+    - **Must not:** depend on a pre-seeded database state. Use the product's existing `conftest.py` fixtures (or a local fixture) to create and clean up data.
+    - **Must not:** test the generic "unknown path → 404" FastAPI behaviour as if it were the endpoint's 404. The 404 here is a *semantic* 404 (book not found), distinguishable from a *routing* 404.
+
+    ### Execution order for verification
+
+    1. `boots` — app imports cleanly.
+    2. `backend_tests` — full pytest run including the two new files and all pre-existing tests.
+    3. `frontend_tests` — vitest run (expected unchanged; confirms no accidental frontend breakage).
+
+    No separate contract or E2E run is required.
+
+    ---
+
+    ## 3. Defect Severity Rubric
+
+    Use this rubric to classify any defect found during implementation or review.
+
+    | Severity | Label | Definition | Example (this change) |
+    |---|---|---|---|
+    | **S0** | Blocker | The endpoint does not exist, returns the wrong status code for its primary path, or the app fails to boot. Cycle cannot ship. | `GET /books/{id}/related` returns 500; `boots` check fails; handler references an undefined store method. |
+    | **S1** | Critical | Correct status code, but the returned data is wrong in a way that violates the criterion's core statement. | Related list **includes** the book's own id; list includes a book that shares **no** tag; list is empty when it should contain a match. |
+    | **S2** | Major | Response shape or format deviates from the observable, but the semantic content is recoverable. | 404 body is `{"detail": "Not Found"}` instead of `{"error": "..."}` (missing the `error` key the criterion names). Response is a JSON object instead of a list. Duplicate entries for a book sharing multiple tags. |
+    | **S3** | Minor | Cosmetic or low-impact deviation that does not affect the criterion's observable. | Related books returned in non-deterministic order (criterion does not mandate order). Trailing whitespace in error message. |
+    | **S4** | Informational | Style, naming, or documentation nit. No functional impact. | Handler exceeds 30 lines by one. Variable named `related` instead of `related_books`. |
+
+    **Gate rule:** The cycle passes only with **zero** S0 and S1 defects. S2 defects are blocking for the specific criterion they touch but do not block unrelated criteria. S3/S4 are advisory.
+
+    ---
+
+    ## 4. Risk-Based Test Priorities
+
+    Ranked by likelihood of defect × impact if missed.
+
+    | Priority | Area | Why it is risky | What to verify (checklist ref) |
+    |---|---|---|---|
+    | **P1** | **Self-exclusion** in tag intersection | Most common off-by-one: the query "find books with tags in X" naturally includes the book whose tags *define* X. The criterion explicitly requires exclusion. | AC-1.4 — A's id absent from its own related list. |
+    | **P2** | **Tag-intersection correctness** (no false positives / no false negatives) | The store must match on *set overlap*, not equality. A book tagged `['fiction','romance']` must match a book tagged `['fiction']`. A book tagged `['science']` must **not** match. | AC-1.3 (B present), AC-1.5 (C absent), AC-1.7 (multi-tag no duplication). |
+    | **P3** | **Empty-tag boundary** | Book with zero tags: the "find books sharing a tag" query could error, return all books, or return empty depending on implementation. Criterion says empty list. | AC-1.6. |
+    | **P4** | **Semantic 404 vs routing 404** | FastAPI returns 404 for unknown paths by default. The criterion requires the endpoint to *exist* and return 404 from its own logic. A test that only checks "status == 404" passes even if the route is missing. The test must also verify the body shape (`error` key, JSON content-type). | AC-2.1, AC-2.2, AC-2.3. |
+    | **P5** | **Regression on existing endpoints** | Adding a route and store method could shadow an existing path, alter a shared fixture, or change import order. The `must_not_break` list names T1–T3, but *all* existing tests are in scope. | AC-3.1 – AC-3.4. Full `backend_tests` run. |
+    | **P6** | **Handler line count / style** | CONTRIBUTING.md caps the handler at 30 lines. If the handler inlines logic that belongs in `store.py`, it may exceed the cap. | AC-4.2. |
+
+    ---
+
+    ## 5. Notes & Constraints
+
+    - **No frontend work.** The footprint contains no `frontend/` path. The `frontend_tests` check runs to confirm no accidental breakage, but no new vitest file is expected or required.
+    - **No prd_delta / manifest_delta.** The requirements and interface are unchanged except for the two criteria. Do not re-derive or re-test behaviour outside C1/C2.
+    - **Reviewer notes.** The ruling note ("unattended recording: approved as it stands") imposes no additional behavioural requirement beyond the change request. No extra criteria are introduced.
+    - **Time budget.** 3 hours is sufficient for two integration test files (~40–80 lines each) and one endpoint + store method. No out-of-budget work is identified. If the store method for tag lookup does not yet exist, it is within the footprint (`store.py`) and is part of this cycle's implementation, not a deferred item.
+
+    ---
+
+    *End of test strategy. This document defines what to verify and how; the actual test code is produced during the implementation workload in `tests/test_criterion_C1.py` and `tests/test_criterion_C2.py`.*
+- task_type: governance.prepare_plan_authoring_brief
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_authoring_brief.yaml
+    version: 1
+    brief_id: brief-prop_704137dc1a38-001
+    objective_summary: |
+      Add a read-only endpoint GET /books/{id}/related to the existing Shelfnote
+      books API. The endpoint returns a list of other books that share at least one
+      tag with the queried book (self excluded), or an empty list when the book has
+      no tags. It returns a 404 with a JSON error body when the book id does not
+      exist. No frontend change, no schema migration, no new dependency. The
+      implementation touches only the store layer (new query method) and the route
+      layer (new handler), with two new test files at the product's root tests/
+      directory.
+    accepted_stack:
+      backend: "FastAPI (Python 3, in-memory store, no external DB)"
+      frontend: "React + Vite (unchanged this cycle)"
+      backend_tests: "pytest via TestClient"
+      frontend_tests: "vitest (unchanged this cycle)"
+      storage: "in-memory dict/list (no SQLite, no external service)"
+    must_cover_requirements:
+      - "C1: GET /books/{id}/related returns a JSON list of other books sharing at least one tag with the given book, excluding the book itself; returns an empty list when the book has no tags"
+      - "C2: GET /books/{id}/related returns a 404 response with a JSON body containing an 'error' key when the book id does not exist"
+      - "Must-not-break: existing criteria T1, T2, T3 and all other pre-existing tests continue to pass unmodified"
+      - "CONTRIBUTING.md: the new endpoint handler is under thirty lines"
+      - "CONTRIBUTING.md: tests exercise the app through TestClient, assert on response status and body, do not import store or route internals"
+      - "CONTRIBUTING.md: a change to the books API ships a test for each status code it can answer (200 and 404 here)"
+    scope_cuts:
+      - "Frontend view or API call for related books: no frontend/ file is in the footprint; deferred to a future cycle"
+      - "Pagination or sorting on the related list: not in criteria; defer"
+      - "Caching or indexing for tag lookups: in-memory store, trivial scale; defer"
+      - "Tag-based search overlap: existing /books?tag= endpoint already handles filtering; no interaction to resolve"
+      - "Deduplication across multiple shared tags: each book appears at most once in the store; a set-membership check suffices, no dedup logic needed"
+    risk_areas:
+      - "Tag intersection: must match on set overlap (a book tagged ['fiction','romance'] matches a book tagged ['fiction']), not on tag-list equality"
+      - "Self-exclusion: the query 'find books with tags in X' naturally includes the book whose tags define X; explicit exclusion is required"
+      - "Empty-tag boundary: a book with zero tags must yield an empty list, not an error or the full shelf"
+      - "Semantic 404 vs routing 404: the 404 must come from the endpoint's own logic (store lookup returns nothing), not from FastAPI's default unknown-path 404; the response body must carry an 'error' key"
+      - "Regression: adding a route and store method must not shadow an existing path, alter a shared fixture, or change import order; all pre-existing tests must pass"
+    source_artifact_refs:
+      - "change_request.yaml (prop_704137dc1a38)"
+      - "technical_design.md"
+      - "test_strategy.md"
+    major_components:
+      - "backend/store.py — new get_related_books(book_id) method"
+      - "backend/routes.py — new GET /books/{book_id}/related handler"
+      - "tests/test_criterion_C1.py — 200-path tests (shared tag, no tags)"
+      - "tests/test_criterion_C2.py — 404-path test"
+    dependency_assumptions:
+      - "The in-memory store already maintains per-book tag lists (confirmed by existing tag tests test_tags_t1.py, test_tags_t2.py)"
+      - "The root conftest.py provides fixture-based app state isolation for pytest"
+      - "backend/requirements.txt declares fastapi, httpx, and pytest; no new dependency is added"
+    time_budget_guidance:
+      backend_implementation: 35
+      test_authoring: 35
+      verification_and_regression: 30
+    task_granularity_guidance: |
+      Single dev task covering both backend files and both test files; total
+      implementation ~40 minutes. No separate qa task is needed because the test
+      files live at root tests/ (the product's convention), which is outside the
+      qa namespace (backend/tests/) that the plan-shape rules assign to the qa role.
+    artifact_naming_conventions:
+      - "Test files are named exactly tests/test_criterion_C1.py and tests/test_criterion_C2.py per the change request's criterion_files mapping"
+      - "Backend code stays in backend/routes.py and backend/store.py; no new backend modules"
+      - "All test files import only from backend.main (the app entry); they do not import backend.store or backend.routes directly"
+    open_questions: []
+    ```
+- task_type: development.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-add79b7b
+    source_brief_id: brief-prop_704137dc1a38-001
+    proposing_role: development
+    scope_statement: |
+      Proposes a single development task that adds the get_related_books method to
+      backend/store.py and the GET /books/{book_id}/related handler to
+      backend/routes.py. The endpoint returns books sharing at least one tag with
+      the queried book (self-excluded), an empty list when the book has no tags,
+      and a 404 JSON error when the book id is unknown. No frontend, no new
+      dependency, no schema change. Test files (tests/test_criterion_C1.py,
+      tests/test_criterion_C2.py) are excluded per the increment framing and
+      belong to the QA role.
+    tasks:
+      - task_type: development.develop
+        role: dev
+        focus: "Related books endpoint (store + route)"
+        description: |
+          Add two additions to the existing Shelfnote backend:
+
+          1. backend/store.py — new method get_related_books(self, book_id: int)
+             on the store class. It returns None when book_id is not found, an
+             empty list when the book has zero tags, or a list of book dicts
+             (same shape as the existing GET /books list items) for every other
+             book in the store whose tag set has non-empty intersection with the
+             queried book's tag set. The queried book is always excluded. Result
+             order is store insertion order (deterministic, no sorting needed).
+
+          2. backend/routes.py — new handler decorated with
+             @router.get("/books/{book_id}/related"). The handler calls
+             store.get_related_books(book_id); if the result is None it raises
+             HTTPException(404, detail={"error": "Book not found"}); otherwise it
+             returns the list. The handler body (excluding the decorator line)
+             stays under thirty lines per CONTRIBUTING.md.
+
+          Both files are emitted in full (the product's convention: a file you
+          emit replaces that path whole). No other file is modified.
+        expected_artifacts:
+          - "backend/store.py"
+          - "backend/routes.py"
+        acceptance_criteria:
+          - check: endpoint_defined
+            file: backend/routes.py
+            methods_paths:
+              - "GET /books/{book_id}/related"
+            severity: error
+          - check: function_defined
+            file: backend/store.py
+            name_prefix: "get_related_books"
+            min_count: 1
+            severity: error
+          - check: command_exit_zero
+            argv: ["python", "-m", "py_compile", "backend/store.py"]
+            severity: error
+          - check: command_exit_zero
+            argv: ["python", "-m", "py_compile", "backend/routes.py"]
+            severity: error
+          - check: module_imports
+            file: backend/routes.py
+            severity: error
+          - "Tag matching uses set-overlap (intersection non-empty), not tag-list equality: a book tagged [fiction, romance] is related to a book tagged [fiction]."
+          - "Self-exclusion: the queried book never appears in its own related list, even though its tags trivially intersect itself."
+          - "Empty-tag boundary: a book with zero tags yields an empty list (200 with []), not an error and not the full shelf."
+          - "404 path: when store lookup returns nothing, the handler raises a 404 whose JSON body contains an 'error' key. This is the endpoint's own 404, not FastAPI's default unknown-route 404."
+          - "Handler body (lines between the decorator and the end of the function) is under thirty lines per CONTRIBUTING.md."
+          - "No existing method signature, import, or route in store.py or routes.py is altered; all pre-existing tests (T1, T2, T3) continue to pass unmodified."
+        depends_on_focus: []
+    brief_conflicts:
+      - field: task_granularity_guidance
+        brief_says: "Single dev task covering both backend files and both test files; no separate qa task is needed because the test files live at root tests/ which is outside the qa namespace."
+        conflict: |
+          The increment framing explicitly assigns tests/test_criterion_C1.py and
+          tests/test_criterion_C2.py to the QA role and instructs dev to leave
+          those files out of expected_artifacts. This proposal follows the
+          increment framing (dev emits only the two backend files) and defers the
+          test-file ownership question to the merger.
+    source_artifact_refs:
+      - "change_request.yaml (prop_704137dc1a38)"
+      - "technical_design.md"
+    assumptions:
+      - "The in-memory store already maintains per-book tag lists as Python lists on each book dict (confirmed by existing tests test_tags_t1.py, test_tags_t2.py)."
+      - "The existing conftest.py provides fixture-based app-state isolation so each test gets a clean store."
+      - "backend/requirements.txt already declares fastapi, httpx, and pytest; no new dependency is introduced."
+      - "The existing route file uses a router object imported in backend/main.py; the new handler attaches to that same router."
+    risks:
+      - "Adding a method to store.py and a route to routes.py could inadvertently shadow an existing path or alter a shared fixture; mitigated by emitting full files and running the full test suite."
+      - "If the store's tag representation differs from a plain list (e.g., a set or joined string), the intersection logic must be adapted; the existing tag tests confirm list representation, classified as resolved."
+    gaps_not_covered:
+      - "Frontend view or API call for related books (deferred per scope_cuts)."
+      - "Pagination or sorting on the related list (deferred per scope_cuts)."
+      - "Caching or indexing for tag lookups (deferred per scope_cuts)."
+    confidence: high
+    ```
+- task_type: qa.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-a8265ae5
+    source_brief_id: brief-prop_704137dc1a38-001
+    proposing_role: qa
+    scope_statement: >
+      Two qa.test tasks authoring the criterion verification suites for the new
+      GET /books/{id}/related endpoint. Task 1 (C1) exercises the 200-path:
+      tag-intersection correctness (set overlap, not equality), self-exclusion,
+      non-matching book exclusion, empty-tag boundary, and the no-other-match
+      edge. Task 2 (C2) exercises the 404-path: unknown book id produces the
+      endpoint's own error response with an 'error' key, distinguishable from
+      FastAPI's default unknown-route 404. Both suites use TestClient against
+      backend.main, assert on HTTP response shape, and import no store or route
+      internals. Regression on T1–T3 is covered by the framework's frozen-criterion
+      re-run, not by a separate qa task.
+    tasks:
+      - task_type: qa.test
+        role: qa
+        focus: "Criterion C1 related-books integration tests"
+        description: |
+          Faults this suite distinguishes from correct behaviour:
+
+          1. Tag-intersection implemented as list equality instead of set overlap —
+             a book tagged [fiction, romance] would fail to match a book tagged
+             [fiction]. Caught by creating two books that share one tag out of
+             different-sized tag lists and asserting the match appears.
+
+          2. Self-exclusion omitted — the queried book appears in its own related
+             list because its tags trivially intersect itself. Caught by asserting
+             the queried book's id is absent from the response list.
+
+          3. False-positive inclusion — a book sharing no tag with the queried
+             book appears in the list. Caught by asserting a non-overlapping book's
+             id is absent.
+
+          4. Empty-tag boundary mishandled — a book with zero tags returns an
+             error, the full shelf, or a non-empty list instead of an empty list.
+             Caught by querying a tagless book and asserting the body is [].
+
+          5. Multi-tag duplication — a book sharing two tags with the queried book
+             appears twice in the list. Caught by creating books with two shared
+             tags and asserting each book's id appears at most once.
+
+          6. No-other-match edge — a book has tags but no other book shares any of
+             them; the list should be empty. Caught by a singleton-tagged book
+             with no peer.
+
+          All tests are self-contained: they create their fixture books via the
+          POST /books endpoint within the test, then call GET /books/{id}/related.
+        expected_artifacts:
+          - "tests/test_criterion_C1.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: tests/test_criterion_C1.py
+            name_prefix: "test_"
+            min_count: 4
+            severity: error
+          - "Tests exercise the app exclusively through FastAPI TestClient; no import of backend.store or backend.routes internals."
+          - "Each test asserts on the HTTP response: status code, JSON body structure (list of dicts with id fields), membership, and length."
+          - "Tag-intersection test uses books with different-length tag lists sharing one common tag (set overlap, not equality)."
+          - "Self-exclusion is asserted in the same test that asserts a matching book IS present."
+          - "Empty-tag test creates a book with an explicit empty tag list and asserts the response body is an empty JSON list."
+          - "Multi-tag test creates books sharing two tags and asserts each related book's id appears exactly once in the list."
+        depends_on_focus:
+          - "dev:Related books endpoint (store + route)"
+
+      - task_type: qa.test
+        role: qa
+        focus: "Criterion C2 404 semantic-error test"
+        description: |
+          Faults this suite distinguishes from correct behaviour:
+
+          1. Missing route — if the handler is absent, FastAPI returns its default
+             unknown-path 404 whose body is a bare string ({"detail":
+             "Not Found"}), not a dict with an 'error' key. The test asserts the
+             body is a JSON object containing the key 'error', which fails on the
+             default 404 and passes only when the endpoint's own logic produces
+             the response.
+
+          2. Wrong error shape — the 404 body uses a different key (e.g.
+             'detail' only) or returns a non-JSON body. Caught by asserting
+             response.json() is a dict and 'error' is a key in it.
+
+          3. Store lookup returns the book instead of None for an unknown id —
+             the 404 is never raised. Caught by querying an id guaranteed not to
+             exist (a large number no prior test creates) and asserting the
+             response is not a 200.
+
+          The test is minimal: one request to a non-existent id, assertions on
+          status and body shape.
+        expected_artifacts:
+          - "tests/test_criterion_C2.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: tests/test_criterion_C2.py
+            name_prefix: "test_"
+            min_count: 1
+            severity: error
+          - "Test exercises the app through FastAPI TestClient; no import of backend.store or backend.routes internals."
+          - "Asserts the response status indicates 'not found' (404) for a book id that does not exist in the store."
+          - "Asserts the response body, parsed as JSON, is a dict containing the key 'error'."
+          - "The 404 is verified as the endpoint's own semantic error (JSON dict with 'error' key), not FastAPI's default unknown-route response (bare string or 'detail'-only body)."
+        depends_on_focus:
+          - "dev:Related books endpoint (store + route)"
+    brief_conflicts:
+      - field: task_granularity_guidance
+        brief_says: "No separate qa task is needed because the test files live at root tests/ (the product's convention), which is outside the qa namespace (backend/tests/) that the plan-shape rules assign to the qa role."
+        conflict: >
+          The increment instructions explicitly list tests/test_criterion_C1.py
+          and tests/test_criterion_C2.py as touchable files and direct: "Plan a qa
+          task whose expected_artifacts include each of these files." The product's
+          pytest runner discovers test_*.py under the repository root, so these
+          files are collected by backend_tests. This proposal follows the
+          increment instructions, which take precedence over the brief's
+          granularity guidance for this build.
+    source_artifact_refs:
+      - "change_request.yaml (prop_704137dc1a38)"
+      - "technical_design.md"
+      - "test_strategy.md"
+    assumptions:
+      - "The root conftest.py provides a fixture that creates a fresh TestClient(app) per test, isolating store state between tests."
+      - "POST /books accepts a JSON body with 'title' and 'tags' keys and returns the created book's id, as exercised by existing tests (test_tags_t1.py, test_books_api.py)."
+      - "backend/requirements.txt already declares fastapi, httpx, and pytest; the test files import only from fastapi.testclient and backend.main."
+    risks:
+      - "If the conftest fixture does not reset store state between tests, fixture books created by one test could leak into another, causing false positives in the related-list assertions. Mitigated by using sufficiently unique tag combinations per test."
+      - "If POST /books does not accept a 'tags' array in the request body (uses a separate endpoint instead), the fixture setup in both test files must adapt to the actual API. The existing test_tags_t1.py confirms the create-with-tags pattern."
+    gaps_not_covered:
+      - "Frontend verification for related books (deferred per scope_cuts; no frontend/ file in footprint)."
+      - "Pagination, sorting, caching, or deduplication logic (deferred per scope_cuts and criteria)."
+      - "Regression on T1–T3: covered by the framework's automatic frozen-criterion re-run, not by a separate qa-authored suite."
+    confidence: high
+    ```
+- task_type: strategy.propose_plan_guidance
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_guidance.yaml
+    version: 1
+    guidance_id: guid-c29a3b84
+    source_brief_id: brief-prop_704137dc1a38-001
+    proposing_role: strategy
+    priority_guidance:
+      - area: backend_implementation
+        priority: high
+        rationale: >
+          The store query method and route handler form the integration anchor for the
+          entire change. Every acceptance criterion depends on them being correct. The
+          brief allocates 35% of the time budget here; treat it as the critical path.
+      - area: test_authoring
+        priority: high
+        rationale: >
+          The two criterion test files (tests/test_criterion_C1.py,
+          tests/test_criterion_C2.py) are the sole evidence the criteria are met. They
+          live in the product's root tests/ directory, which is outside the QA
+          namespace (backend/tests/), so they are dev-owned. The QA proposer should
+          not claim these files. Per CONTRIBUTING.md they must exercise the app
+          through TestClient and must not import store or route internals.
+      - area: verification_and_regression
+        priority: high
+        rationale: >
+          All pre-existing tests (test_books_api, test_criterion_T1-T3,
+          test_tags_t1-t2, test_search_t1-t3, test_sorting_t1, test_ratings_t3-t4,
+          test_reading_status_t4-t8) must pass unmodified. A new route pattern or
+          store method that shadows an existing path or mutates shared fixture state
+          is a silent regression. The 30% allocation is appropriate and should not be
+          compressed under schedule pressure.
+    ordering_guidance:
+      - before: "dev:store_related_query"
+        after: "dev:route_related_handler"
+        rationale: >
+          The route handler delegates to store.get_related_books(book_id); the store
+          method must be complete and correct (set-intersection semantics,
+          self-exclusion, empty-tag short-circuit) before the handler wires it to
+          the HTTP layer.
+      - before: "dev:route_related_handler"
+        after: "dev:criterion_test_files"
+        rationale: >
+          The criterion tests exercise the running app through TestClient. Authoring
+          them after the handler exists lets the dev run them immediately and confirm
+          behaviour, rather than writing tests against an unimplemented surface.
+    risk_guidance:
+      - target: "dev:store_related_query"
+        risk: >
+          Tag matching must use set intersection (set(tags_a) & set(tags_b)), not
+          list equality (tags_a == tags_b). A book tagged ['fiction','romance'] must
+          match a book tagged ['fiction']. The brief flags this as the primary
+          correctness risk; the store method is where the bug would live. A
+          list-equality implementation will pass the happy-path test if the fixture
+          books happen to carry identical tag lists, but will fail on any book with
+          a superset or subset tag list.
+      - target: "dev:store_related_query"
+        risk: >
+          The query "find books whose tags overlap X" naturally returns the book
+          whose tags define X. An explicit self-exclusion filter (skip entries
+          where book_id equals the queried id) is required. Without it the
+          happy-path result includes the queried book itself and the criterion
+          fails.
+      - target: "dev:store_related_query"
+        risk: >
+          A book with an empty or absent tag list must produce an empty result, not
+          an exception or the full shelf. The store method should short-circuit
+          before the intersection loop when the queried book has no tags, rather
+          than iterating over an empty set and accidentally matching every book.
+      - target: "dev:route_related_handler"
+        risk: >
+          The not-found response must originate from the handler's own store lookup
+          (book id not found in the store dict), not from FastAPI's default
+          unknown-path routing. The JSON body must carry an 'error' key. If the
+          route path pattern accidentally shadows or conflicts with an existing
+          path, the framework's default response fires instead and the body shape
+          is wrong. Verify the path /books/{book_id}/related does not collide with
+          any existing /books/{...} pattern already registered in routes.py.
+      - target: "verification_and_regression"
+        risk: >
+          Adding a new route path and a new store method must not alter any shared
+          fixture, change import order, or shadow an existing path pattern. Run the
+          full pre-existing backend test suite and confirm zero failures before
+          declaring the change complete. A single import-order shift in
+          backend/store.py or backend/routes.py can break fixture isolation in
+          conftest.py without any visible code change.
+    time_budget_guidance:
+      - area: backend_implementation
+        budget_pct: 35
+      - area: test_authoring
+        budget_pct: 35
+      - area: verification_and_regression
+        budget_pct: 30
+    scope_cut_guidance: []
+    must_not_skip:
+      - "All pre-existing backend tests pass unmodified (regression gate)"
+      - "Tag intersection uses set overlap, not list equality"
+      - "Not-found path returns a handler-generated response with an 'error' key, not a framework default"
+      - "Empty-tag book yields an empty list, not an error or the full shelf"
+    defer_if_time_constrained: []
+    confidence: high
+    ```
+- task_type: governance.merge_plan
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:implementation_plan.yaml
+    version: 1
+    project_id: prj-shelfnote
+    cycle_id: cyc_1e784bf38f3c
+    prd_hash: f29d3c63371fad366a133e4cd631338e706a9f7814e5d78bd3c2f0f23d5a1518
+    tasks:
+    - task_index: 0
+      task_type: development.develop
+      role: dev
+      focus: Related books endpoint (store + route)
+      description: "Add two additions to the existing Shelfnote backend:\n\n1. backend/store.py\
+        \ — new method get_related_books(self, book_id: int)\n   on the store class. It\
+        \ returns None when book_id is not found, an\n   empty list when the book has\
+        \ zero tags, or a list of book dicts\n   (same shape as the existing GET /books\
+        \ list items) for every other\n   book in the store whose tag set has non-empty\
+        \ intersection with the\n   queried book's tag set. The queried book is always\
+        \ excluded. Result\n   order is store insertion order (deterministic, no sorting\
+        \ needed).\n\n2. backend/routes.py — new handler decorated with\n   @router.get(\"\
+        /books/{book_id}/related\"). The handler calls\n   store.get_related_books(book_id);\
+        \ if the result is None it raises\n   HTTPException(404, detail={\"error\": \"\
+        Book not found\"}); otherwise it\n   returns the list. The handler body (excluding\
+        \ the decorator line)\n   stays under thirty lines per CONTRIBUTING.md.\n\nBoth\
+        \ files are emitted in full (the product's convention: a file you\nemit replaces\
+        \ that path whole). No other file is modified."
+      expected_artifacts:
+      - backend/store.py
+      - backend/routes.py
+      acceptance_criteria:
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths:
+        - GET /books/{book_id}/related
+      - check: function_defined
+        file: backend/store.py
+        name_prefix: get_related_books
+        min_count: 1
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/store.py
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/routes.py
+      - check: module_imports
+        file: backend/routes.py
+      - 'Tag matching uses set-overlap (intersection non-empty), not tag-list equality:
+        a book tagged [fiction, romance] is related to a book tagged [fiction].'
+      - 'Self-exclusion: the queried book never appears in its own related list, even
+        though its tags trivially intersect itself.'
+      - 'Empty-tag boundary: a book with zero tags yields an empty list (200 with []),
+        not an error and not the full shelf.'
+      - '404 path: when store lookup returns nothing, the handler raises a 404 whose JSON
+        body contains an ''error'' key. This is the endpoint''s own 404, not FastAPI''s
+        default unknown-route 404.'
+      - Handler body (lines between the decorator and the end of the function) is under
+        thirty lines per CONTRIBUTING.md.
+      - No existing method signature, import, or route in store.py or routes.py is altered;
+        all pre-existing tests (T1, T2, T3) continue to pass unmodified.
+      depends_on: []
+    - task_index: 1
+      task_type: qa.test
+      role: qa
+      focus: Criterion C1 related-books integration tests
+      description: "Faults this suite distinguishes from correct behaviour:\n\n1. Tag-intersection\
+        \ implemented as list equality instead of set overlap —\n   a book tagged [fiction,\
+        \ romance] would fail to match a book tagged\n   [fiction]. Caught by creating\
+        \ two books that share one tag out of\n   different-sized tag lists and asserting\
+        \ the match appears.\n\n2. Self-exclusion omitted — the queried book appears in\
+        \ its own related\n   list because its tags trivially intersect itself. Caught\
+        \ by asserting\n   the queried book's id is absent from the response list.\n\n\
+        3. False-positive inclusion — a book sharing no tag with the queried\n   book\
+        \ appears in the list. Caught by asserting a non-overlapping book's\n   id is\
+        \ absent.\n\n4. Empty-tag boundary mishandled — a book with zero tags returns\
+        \ an\n   error, the full shelf, or a non-empty list instead of an empty list.\n\
+        \   Caught by querying a tagless book and asserting the body is [].\n\n5. Multi-tag\
+        \ duplication — a book sharing two tags with the queried book\n   appears twice\
+        \ in the list. Caught by creating books with two shared\n   tags and asserting\
+        \ each book's id appears at most once.\n\n6. No-other-match edge — a book has\
+        \ tags but no other book shares any of\n   them; the list should be empty. Caught\
+        \ by a singleton-tagged book\n   with no peer.\n\nAll tests are self-contained:\
+        \ they create their fixture books via the\nPOST /books endpoint within the test,\
+        \ then call GET /books/{id}/related."
+      expected_artifacts:
+      - tests/test_criterion_C1.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_C1.py
+        name_prefix: test_
+        min_count: 4
+      - Tests exercise the app exclusively through FastAPI TestClient; no import of backend.store
+        or backend.routes internals.
+      - 'Each test asserts on the HTTP response: status code, JSON body structure (list
+        of dicts with id fields), membership, and length.'
+      - Tag-intersection test uses books with different-length tag lists sharing one common
+        tag (set overlap, not equality).
+      - Self-exclusion is asserted in the same test that asserts a matching book IS present.
+      - Empty-tag test creates a book with an explicit empty tag list and asserts the
+        response body is an empty JSON list.
+      - Multi-tag test creates books sharing two tags and asserts each related book's
+        id appears exactly once in the list.
+      depends_on:
+      - 0
+    - task_index: 2
+      task_type: qa.test
+      role: qa
+      focus: Criterion C2 404 semantic-error test
+      description: "Faults this suite distinguishes from correct behaviour:\n\n1. Missing\
+        \ route — if the handler is absent, FastAPI returns its default\n   unknown-path\
+        \ 404 whose body is a bare string ({\"detail\":\n   \"Not Found\"}), not a dict\
+        \ with an 'error' key. The test asserts the\n   body is a JSON object containing\
+        \ the key 'error', which fails on the\n   default 404 and passes only when the\
+        \ endpoint's own logic produces\n   the response.\n\n2. Wrong error shape — the\
+        \ 404 body uses a different key (e.g.\n   'detail' only) or returns a non-JSON\
+        \ body. Caught by asserting\n   response.json() is a dict and 'error' is a key\
+        \ in it.\n\n3. Store lookup returns the book instead of None for an unknown id\
+        \ —\n   the 404 is never raised. Caught by querying an id guaranteed not to\n\
+        \   exist (a large number no prior test creates) and asserting the\n   response\
+        \ is not a 200.\n\nThe test is minimal: one request to a non-existent id, assertions\
+        \ on\nstatus and body shape."
+      expected_artifacts:
+      - tests/test_criterion_C2.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_C2.py
+        name_prefix: test_
+        min_count: 1
+      - Test exercises the app through FastAPI TestClient; no import of backend.store
+        or backend.routes internals.
+      - Asserts the response status indicates 'not found' (404) for a book id that does
+        not exist in the store.
+      - Asserts the response body, parsed as JSON, is a dict containing the key 'error'.
+      - The 404 is verified as the endpoint's own semantic error (JSON dict with 'error'
+        key), not FastAPI's default unknown-route response (bare string or 'detail'-only
+        body).
+      depends_on:
+      - 0
+    summary:
+      total_dev_tasks: 1
+      total_qa_tasks: 2
+      total_tasks: 3
+      estimated_layers: []
+    ```
+
+    ```yaml:merge_decisions.yaml
+    version: 1
+    target_plan_id: plan-cyc_1e784bf38f3c
+    brief_id: brief-prop_704137dc1a38-001
+    proposal_ids:
+    - prop-add79b7b
+    - prop-a8265ae5
+    guidance_ids:
+    - guid-c29a3b84
+    authoring_mode: multi_role
+    sole_author_reason: null
+    proposal_completeness: complete
+    missing_proposals: []
+    canonical_tasks:
+    - task_index: 0
+      source_proposal_task_keys:
+      - dev:related books endpoint (store + route)
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 1
+      source_proposal_task_keys:
+      - qa:criterion c1 related-books integration tests
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    - task_index: 2
+      source_proposal_task_keys:
+      - qa:criterion c2 404 semantic-error test
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    brief_conflicts_disposition: []
+    operator_notes: ''
+    ```
+- task_type: governance.review_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    ---
+    readiness: go
+    sufficiency_score: 5
+    blocker_unknowns: 0
+    ---
+
+    ## Consolidated Plan
+
+    ### 1. Change Summary
+
+    This cycle adds a single new endpoint to the existing Shelfnote books API:
+
+    - **`GET /books/{id}/related`** — returns other books that share at least one tag with the specified book.
+
+    The change is purely additive. No existing endpoints, models, or files outside the footprint are modified. The accepted application's behaviour is preserved; this increment introduces one new surface.
+
+    ### 2. Scope & Footprint
+
+    | File | Action | Purpose |
+    |------|--------|---------|
+    | `backend/store.py` | Modify | Add `find_related_books(book_id)` method |
+    | `backend/routes.py` | Modify | Add `GET /books/{id}/related` handler |
+    | `tests/test_criterion_C1.py` | Create | Test C1: tag-based related books + empty-tag case |
+    | `tests/test_criterion_C2.py` | Create | Test C2: 404 for non-existent book id |
+
+    All other files retain their accepted implementation at the baseline commit.
+
+    ### 3. Technical Design
+
+    #### 3.1 `backend/store.py` — `find_related_books(book_id: int) -> list[Book] | None`
+
+    New method on the existing store class:
+
+    1. Look up the target book by `book_id`. Return `None` if not found (signals 404 to the route layer).
+    2. Retrieve the target book's tag set. If the set is empty, return `[]`.
+    3. Query for all books whose tag set intersects the target's tag set (i.e., share **at least one** tag — OR semantics across tags).
+    4. Exclude the target book itself from the result.
+    5. Return the resulting list of book objects.
+
+    **Design notes:**
+    - The tag association mechanism (join table or list column) is already established by the existing tag infrastructure (`test_tags_t1.py`, `test_tags_t2.py`). The method reuses whatever storage pattern `store.py` already uses for tags; it does not introduce a new schema.
+    - The query is a simple filter: for each book, check if `set(book.tags) & set(target.tags) != set()`. For the in-memory store pattern this product uses, this is a linear scan with set intersection — trivially performant at the scale of a Shelfnote instance.
+    - Return type is the same book representation the existing `get_book` and list endpoints return, so the route handler serialises it identically.
+
+    #### 3.2 `backend/routes.py` — `GET /books/{id}/related`
+
+    New route handler:
+
+    ```
+    @router.get("/books/{book_id}/related")
+    async def get_related_books(book_id: int):
+        book = store.find_related_books(book_id)
+        if book is None:
+            raise HTTPException(status_code=404, detail={"error": "Book not found"})
+        return book
+    ```
+
+    **Design notes:**
+    - The handler stays well under the 30-line limit in CONTRIBUTING.md.
+    - 404 response follows the product's existing error convention (JSON body with an `"error"` key), consistent with `backend/errors.py` patterns used by other book endpoints.
+    - On success, returns a JSON list of book objects (same shape as `GET /books` items). When the list is empty, returns `[]`.
+    - No new Pydantic response model is needed if the existing book model is reused (and the model already exists in `backend/models.py` — which is **not** in the footprint, confirming we reuse it).
+
+    #### 3.3 Error Semantics
+
+    | Condition | Status | Body |
+    |-----------|--------|------|
+    | Book id not found | 404 | `{"error": "Book not found"}` (or equivalent existing error shape) |
+    | Book exists, no tags | 200 | `[]` |
+    | Book exists, has tags, related books exist | 200 | `[<book>, <book>, ...]` |
+    | Book exists, has tags, no related books | 200 | `[]` |
+
+    ### 4. Test Strategy
+
+    #### 4.1 `tests/test_criterion_C1.py`
+
+    Tests the happy-path and empty-tag behaviour:
+
+    - **Setup**: Use the product's existing test fixtures (`conftest.py`) to create books via the API test client.
+    - **Test C1a (shared tag)**:
+      - Create book A with tag `"fiction"`, book B with tag `"fiction"`, book C with tag `"science"`.
+      - `GET /books/{A_id}/related` → expect 200, response is a list.
+      - Assert B's id **is** in the response.
+      - Assert A's id is **not** in the response.
+      - Assert C's id is **not** in the response.
+    - **Test C1b (no tags)**:
+      - Create book D with no tags.
+      - `GET /books/{D_id}/related` → expect 200, response is `[]`.
+
+    Tests use `TestClient` (per blueprint convention) and assert on response status + JSON body content. No import of the new function directly — tests exercise the running app's API surface only.
+
+    #### 4.2 `tests/test_criterion_C2.py`
+
+    Tests the not-found path:
+
+    - `GET /books/99999/related` → expect HTTP 404.
+    - Assert response JSON body contains an `"error"` key.
+
+    Uses `TestClient`. No setup needed (the id simply doesn't exist).
+
+    #### 4.3 Must-Not-Break Verification
+
+    T1, T2, T3 (existing criterion tests) and all other existing test files in the repository run as part of the `backend_tests` check. The new code is purely additive (new method, new route), so existing behaviour is untouched. The plan does not modify any existing function signature, route, or model.
+
+    ### 5. Execution Sequence
+
+    | Step | Task | Agent | Est. Time |
+    |------|------|-------|-----------|
+    | 1 | Implement `find_related_books` in `backend/store.py` | dev | 15 min |
+    | 2 | Implement `GET /books/{id}/related` handler in `backend/routes.py` | dev | 10 min |
+    | 3 | Write `tests/test_criterion_C1.py` | qa | 15 min |
+    | 4 | Write `tests/test_criterion_C2.py` | qa | 10 min |
+    | 5 | Run full backend test suite; verify all pass including T1/T2/T3 | lead | 5 min |
+    | 6 | Run `boots` check; verify import succeeds | lead | 2 min |
+
+    Total estimated execution: **~57 minutes** (well within the 3-hour budget).
+
+    ### 6. Sufficiency Assessment
+
+    | Criterion | Rating | Rationale |
+    |-----------|--------|-----------|
+    | Scope clarity | 5/5 | Footprint is 4 files. One new endpoint. Two criteria with exact observables. No ambiguity in what changes and what doesn't. |
+    | Technical feasibility | 5/5 | Tag storage and book lookup patterns are already proven in the codebase. The new method is a filter+intersection over existing data. No new dependencies, no schema changes, no frontend work. |
+    | Risk coverage | 4/5 | The only mild risk is the OR-semantics of "share at least one tag" — but this is explicitly stated in C1 and is a one-line set intersection. No architectural or integration risk. No new external systems touched. |
+    | Test strategy alignment | 5/5 | C1 tests both the positive (shared tag → included) and negative (different tag → excluded, self → excluded) cases plus the empty-tag edge. C2 tests the 404 path. Must-not-break is covered by the full-suite run. Every risk area (404, empty list, exclusion, inclusion) has a test assertion. |
+    | Resource fit | 5/5 | Backend-only, two files modified, two test files created. Matches the FastAPI/blueprint conventions exactly. No frontend, no infra, no new deps. Squad has all required capabilities. |
+
+    **Overall sufficiency score: 5**
+
+    ### 7. Blocker Unknowns
+
+    None. All inputs to the design are determined:
+    - Tag storage mechanism exists and is proven by existing tests.
+    - Book model and serialization pattern exist.
+    - Error response shape exists (404 with `"error"` key).
+    - Test fixture patterns exist in `conftest.py`.
+    - The ruling note is procedural (approval confirmation) and imposes no additional design constraints beyond the change request itself.
+
+    ### 8. Readiness Recommendation
+
+    **`go`**
+
+    The plan is fully specified, technically feasible, testable, and fits comfortably within the time budget. No unknowns block implementation. The change is additive, low-risk, and bounded to four files. The squad can execute it in a single focused session.
+- task_type: governance.define_done
+  occurrence: 1
+  call: 1
+  content: |
+    ```json:definition_of_done.json
+    {
+      "objective": "Produce a lead analysis and associated deliverables package that clarifies product scope, identifies key success metrics, and recommends an actionable path forward.",
+      "acceptance_criteria": [
+        "A written lead analysis document is delivered that identifies at least 3 candidate product directions with rationale",
+        "Each candidate direction includes a risk assessment (technical, market, operational)",
+        "A prioritized recommendation with justification is provided",
+        "At least 2 open questions requiring stakeholder input are explicitly called out",
+        "All deliverables are internally consistent and reference a single source of truth for scope"
+      ],
+      "non_goals": [
+        "Implementation or coding of any feature",
+        "Final PRD authorship (this is upstream of the PRD)",
+        "Vendor selection or procurement decisions",
+        "Marketing copy or customer-facing content",
+        "Budget approval or financial modeling beyond high-level cost categories"
+      ],
+      "time_budget_seconds": 300,
+      "stop_conditions": [
+        "Input PRD or planning artifacts are found to be materially incomplete or contradictory, requiring stakeholder clarification before proceeding",
+        "Time budget exceeded without a coherent analysis being producible",
+        "Stakeholder availability for required clarifications is not forthcoming within the time budget"
+      ],
+      "required_artifacts": [
+        "lead_analysis.md",
+        "scope_recommendation.json",
+        "open_questions.yaml"
+      ]
+    }
+    ```
+- task_type: development.develop
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:backend/routes.py
+    """API route stubs — scaffold-owned signatures, fill-only bodies.
+
+    Every endpoint the interface manifest declares is wired here with its
+    correct path, method, and response model. Bodies raise 501 until filled;
+    the app imports and boots regardless.
+
+    The router takes NO prefix. The frontend calls /api/... and the proxy strips
+    that prefix before the request reaches this app, so these paths are already
+    the full backend paths. Adding prefix= to APIRouter puts every route behind a
+    second /api and the app answers 404 to its own contract (pf-41).
+
+    On failure raise ApiError(code, message) from .errors — codes: validation_error, book_not_found.
+    """
+
+    import math
+    from typing import Literal
+    from typing import Optional
+    from uuid import uuid4
+
+    from fastapi import APIRouter, HTTPException, Query
+    from slugify import slugify
+
+    from backend.models import VALID_STATUSES, Book, BookCreate, Note, NoteCreate, PatchBookBody
+    from backend.models import AddTagRequest
+    from backend.models import RatingRequest
+    from backend.models import Pagination
+    from backend.models import PaginatedBooksResponse
+    from backend.errors import ApiError
+    from backend.store import book_store, list_books, update_book, add_tag, get_books as store_get_books, set_rating
+    from backend.store import get_status_counts, get_average_rating
+    from backend.store import get_related_books
+
+    SortField = Literal["title", "author", "rating"]
+
+    router = APIRouter()
+
+
+    @router.get("/books")
+    def get_books(
+        search: Optional[str] = Query(None),
+        status: str | None = Query(None),
+        tag: str | None = Query(None),
+        sort_by: Optional[SortField] = None,
+        page: Optional[int] = Query(None, ge=1),
+        per_page: Optional[int] = Query(None, ge=1, le=100),
+    ):
+        """list books — newest first."""
+        if status and status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}")
+        if tag:
+            results = store_get_books(tag=tag)
+            if search:
+                needle = search.lower()
+                results = [b for b in results if needle in b.title.lower() or needle in b.author.lower()]
+            if status:
+                results = [b for b in results if b.status == status]
+        else:
+            results = list_books(search=search, status=status or None)
+        if sort_by == "title":
+            results = sorted(results, key=lambda b: b.title.lower())
+        elif sort_by == "author":
+            results = sorted(results, key=lambda b: b.author.lower())
+        elif sort_by == "rating":
+            results = sorted(results, key=lambda b: b.rating or 0)
+        else:
+            results = list(reversed(results))
+        if page is None and per_page is None:
+            return results
+        p = page if page is not None else 1
+        pp = per_page if per_page is not None else 10
+        total = len(results)
+        start = (p - 1) * pp
+        end = start + pp
+        items = results[start:end]
+        total_pages = math.ceil(total / pp) if total > 0 else 0
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=Pagination(total=total, page=p, per_page=pp, total_pages=total_pages),
+        )
+
+
+    @router.post("/books", response_model=Book, status_code=201)
+    def post_books(payload: BookCreate):
+        """add a book."""
+        book = Book(
+            id=str(uuid4()),
+            title=payload.title,
+            author=payload.author,
+            added_by=payload.added_by,
+            slug=slugify(f"{payload.title} {payload.author}"),
+            notes=[],
+        )
+        book_store[book.id] = book
+        return book
+
+
+    @router.get("/books/{book_id}", response_model=Book)
+    def get_books_book_id(book_id: str):
+        """a book and its notes."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return book
+
+
+    @router.patch("/books/{book_id}", response_model=Book)
+    def patch_books_book_id(book_id: str, body: PatchBookBody):
+        """update a book's fields."""
+        if body.status and body.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body.status!r}")
+        result = update_book(
+            book_id,
+            title=body.title,
+            author=body.author,
+            status=body.status or None,
+        )
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.post("/books/{book_id}/notes", response_model=Book, status_code=200)
+    def post_books_book_id_notes(book_id: str, payload: NoteCreate):
+        """leave a note."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        if len(payload.text) > 500:
+            raise ApiError("validation_error", "Note text must not exceed 500 characters.")
+        note = Note(
+            id=str(uuid4()),
+            author=payload.author,
+            text=payload.text,
+        )
+        book.notes.append(note)
+        return book
+
+
+    @router.post("/books/{book_id}/tags", response_model=Book)
+    def post_books_book_id_tags(book_id: str, payload: AddTagRequest):
+        """add a tag to a book."""
+        result = add_tag(book_id, payload.tag)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.put("/books/{book_id}/rating", response_model=Book)
+    def put_books_book_id_rating(book_id: str, body: RatingRequest):
+        """set a book's rating."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return set_rating(book_id, body.rating)
+
+
+    @router.get("/books/{book_id}/related")
+    def get_books_book_id_related(book_id: str):
+        """Return books related to the given book by tag overlap."""
+        result = get_related_books(book_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail={"error": "Book not found"})
+        return result
+
+
+    @router.get("/stats")
+    def get_stats():
+        """Aggregated shelf statistics."""
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+    ```
+
+    ```python:backend/store.py
+    """In-memory state — scaffold-owned (frozen).
+
+    The manifest declares in-memory persistence, so this module owns it: one store
+    per root-persisted entity, keyed by the entity's id. Fill route bodies against
+    these names; do not define a second store elsewhere and do not edit this file.
+
+    Not stored on their own — shapes embedded in or projected from the rows
+    above, never rows themselves: Note. Build them from a
+    stored entity when a response needs them; do not keep a parallel store.
+    """
+
+    from __future__ import annotations
+
+    from backend.models import VALID_STATUSES, Book
+
+    book_store: dict[str, Book] = {}
+
+
+    def reset() -> None:
+        """Clear every store — for test isolation between cases."""
+        book_store.clear()
+
+
+    def list_books(search: str | None = None, *, status: str | None = None) -> list[Book]:
+        """Return books matching *search* and/or *status*, in shelf order.
+
+        Both filters are conjunctive (AND).  An empty-string or *None* value
+        disables that filter, so the full ordered shelf is returned.
+        """
+        results: list[Book] = []
+        for book in book_store.values():
+            if status is not None and status != "" and book.status != status:
+                continue
+            if search is not None and search != "":
+                needle = search.lower()
+                if needle not in book.title.lower() and needle not in book.author.lower():
+                    continue
+            results.append(book)
+        return results
+
+
+    def get_books(tag: str | None = None) -> list[Book]:
+        """Return all books, optionally filtered by *tag*.
+
+        When *tag* is *None* or an empty string the full unfiltered list is
+        returned, preserving existing GET /books behaviour.  When a non-empty
+        tag string is provided, only books whose ``tags`` array includes that
+        tag are returned.  An empty list is returned when no book carries the
+        tag.
+        """
+        if tag is None or tag == "":
+            return list(book_store.values())
+        return [book for book in book_store.values() if tag in book.tags]
+
+
+    def get_books_paginated(page: int, per_page: int) -> tuple[list[Book], int]:
+        """Return a single page of books and the total count.
+
+        *page* is 1-based.  The slice is computed as
+        ``[(page - 1) * per_page : page * per_page]`` over the full shelf.
+        A page beyond the list bounds yields an empty list (Python slicing
+        is safe past the end).
+        """
+        all_books: list[Book] = list(book_store.values())
+        start = (page - 1) * per_page
+        end = start + per_page
+        return all_books[start:end], len(all_books)
+
+
+    def add_tag(book_id: str, tag: str) -> Book | None:
+        """Add *tag* to the book identified by *book_id*.
+
+        The tag is appended to the book's ``tags`` array only if not already
+        present (idempotency guarantee).  Returns the updated book, or *None*
+        if no book with the given id exists in the store.
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+        if tag not in book.tags:
+            book.tags.append(tag)
+        return book
+
+
+    def update_book(
+        book_id: str,
+        *,
+        title: str | None = None,
+        author: str | None = None,
+        status: str | None = None,
+    ) -> Book | None:
+        """Update a book in place; return the book or *None* if not found.
+
+        When *status* is provided (non-empty) it is validated against
+        :data:`~backend.models.VALID_STATUSES` **before** any field is written.
+        On an invalid status no mutation occurs and the book is returned
+        unchanged (atomicity guarantee).
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+
+        # Validate status BEFORE any field is written.
+        if status is not None and status != "" and status not in VALID_STATUSES:
+            return book
+
+        if title is not None:
+            book.title = title
+        if author is not None:
+            book.author = author
+        if status is not None and status != "":
+            book.status = status
+
+        return book
+
+
+    def set_rating(book_id: str, rating: int) -> Book:
+        """Set the rating for the book identified by *book_id*.
+
+        Mutates the book in place with replacement semantics: a second call
+        overwrites the first rating value (no accumulation or history).
+
+        The caller is responsible for verifying that the book exists before
+        invoking this function; a *KeyError* is raised for an unknown id.
+        """
+        book = book_store[book_id]
+        book.rating = rating
+        return book
+
+
+    def get_status_counts() -> dict[str, int]:
+        """Return the count of books per canonical status.
+
+        Every status in :data:`~backend.models.VALID_STATUSES` appears as a key,
+        initialised to 0, so statuses with no books are still present.
+        """
+        counts: dict[str, int] = {s: 0 for s in VALID_STATUSES}
+        for book in book_store.values():
+            counts[book.status] += 1
+        return counts
+
+
+    def get_average_rating() -> float | None:
+        """Return the arithmetic mean of non-null ratings, or *None* if none exist."""
+        rated = [book.rating for book in book_store.values() if book.rating is not None]
+        if not rated:
+            return None
+        return sum(rated) / len(rated)
+
+
+    def get_related_books(book_id: str) -> list[Book] | None:
+        """Return books related to *book_id* by tag overlap.
+
+        Returns *None* if no book with the given id exists in the store.
+        Returns an empty list if the book has zero tags.
+        Otherwise returns a list of Book objects for every other book whose
+        tag set has non-empty intersection with the queried book's tag set.
+        The queried book is always excluded.  Order is store insertion order.
+        """
+        target = book_store.get(book_id)
+        if target is None:
+            return None
+        target_tags = set(target.tags)
+        if not target_tags:
+            return []
+        related: list[Book] = []
+        for book in book_store.values():
+            if book.id == book_id:
+                continue
+            if target_tags & set(book.tags):
+                related.append(book)
+        return related
+    ```
+- task_type: qa.test
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:tests/test_criterion_C1.py
+    """Criterion C1/C2: GET /books/{id}/related — tag-intersection matching,
+    self-exclusion, empty-tag boundary, multi-tag dedup, no-match edge, and 404."""
+
+
+    def _create_book(client, title="T", author="A", added_by="U"):
+        """POST a book and return its JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def _add_tags(client, book_id, tags):
+        """Add one or more tags to a book via POST /books/{id}/tags."""
+        for tag in tags:
+            res = client.post(f"/books/{book_id}/tags", json={"tag": tag})
+            assert res.status_code == 200
+
+
+    def test_tag_intersection_set_overlap_not_equality(client):
+        """Books with different-length tag lists that share one tag must match.
+
+        Faults caught:
+          1. Tag-intersection implemented as list equality (not set overlap).
+          2. Self-exclusion omitted (queried book appears in its own list).
+          3. False-positive inclusion (non-overlapping book appears).
+
+        C1 observable: A tagged [fiction, romance], B tagged [fiction], C tagged [science].
+        GET /books/{A}/related → 200, list contains B, NOT A, NOT C.
+        """
+        book_a = _create_book(client, title="Book A", author="AuthA")
+        book_b = _create_book(client, title="Book B", author="AuthB")
+        book_c = _create_book(client, title="Book C", author="AuthC")
+
+        _add_tags(client, book_a["id"], ["fiction", "romance"])
+        _add_tags(client, book_b["id"], ["fiction"])
+        _add_tags(client, book_c["id"], ["science"])
+
+        res = client.get(f"/books/{book_a['id']}/related")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert isinstance(body, list), f"Expected JSON list, got {type(body).__name__}"
+
+        related_ids = [b["id"] for b in body]
+
+        # Fault 1: B shares 'fiction' with A despite different list lengths → must be present
+        assert book_b["id"] in related_ids, (
+            f"Book B (tags ['fiction']) should match Book A (tags ['fiction','romance']) "
+            f"via set overlap, but is absent from {related_ids}"
+        )
+
+        # Fault 2: self-exclusion
+        assert book_a["id"] not in related_ids, (
+            f"Queried book A must not appear in its own related list: {related_ids}"
+        )
+
+        # Fault 3: false-positive — C shares no tag with A
+        assert book_c["id"] not in related_ids, (
+            f"Book C (tags ['science']) shares no tag with Book A; must be absent: {related_ids}"
+        )
+
+
+    def test_empty_tags_returns_empty_list(client):
+        """A book with zero tags → GET /books/{id}/related returns 200 with body [].
+
+        Fault caught: empty-tag boundary mishandled — returns error, full shelf,
+        or a non-empty list instead of [].
+        """
+        book_d = _create_book(client, title="Untagged Book", author="NoTags")
+
+        # Verify the book truly has no tags
+        detail = client.get(f"/books/{book_d['id']}")
+        assert detail.status_code == 200
+        assert detail.json()["tags"] == [], "Precondition: book should have no tags"
+
+        res = client.get(f"/books/{book_d['id']}/related")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert isinstance(body, list), f"Expected JSON list, got {type(body).__name__}"
+        assert body == [], f"Expected empty list for tagless book, got {body}"
+
+
+    def test_multi_tag_sharing_no_duplication(client):
+        """Books sharing two tags appear at most once in the related list.
+
+        Fault caught: multi-tag duplication — a book matching on two tags is
+        listed twice.
+        """
+        book_x = _create_book(client, title="Book X", author="X")
+        book_y = _create_book(client, title="Book Y", author="Y")
+
+        _add_tags(client, book_x["id"], ["fantasy", "adventure"])
+        _add_tags(client, book_y["id"], ["fantasy", "adventure"])
+
+        res = client.get(f"/books/{book_x['id']}/related")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list)
+
+        related_ids = [b["id"] for b in body]
+
+        # Book Y shares two tags; must appear exactly once
+        count = related_ids.count(book_y["id"])
+        assert count == 1, (
+            f"Book Y appears {count} times in related list, expected exactly 1: {related_ids}"
+        )
+
+        # Self-exclusion also holds here
+        assert book_x["id"] not in related_ids
+
+
+    def test_no_other_match_returns_empty_list(client):
+        """A book with a unique tag (no other book shares it) → related is [].
+
+        Fault caught: no-other-match edge — implementation returns the full shelf
+        or the queried book instead of an empty list.
+        """
+        book_solo = _create_book(client, title="Solo Book", author="Lonely")
+        book_other = _create_book(client, title="Other Book", author="Different")
+
+        _add_tags(client, book_solo["id"], ["unique-tag"])
+        _add_tags(client, book_other["id"], ["different-tag"])
+
+        res = client.get(f"/books/{book_solo['id']}/related")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list)
+        assert body == [], (
+            f"Expected empty list (no other book shares 'unique-tag'), got {body}"
+        )
+
+
+    def test_unknown_book_id_returns_404(client):
+        """GET /books/99999/related → 404 with an 'error' key in the JSON body.
+
+        Faults caught: missing not-found check (500), or wrong status code.
+        """
+        res = client.get("/books/99999/related")
+        assert res.status_code == 404, f"Expected 404, got {res.status_code}"
+        body = res.json()
+        assert "error" in body, f"Expected 'error' key in 404 body, got: {body}"
+    ```
+- task_type: data.analyze_failure
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "classification": "work_product",
+      "analysis_summary": "The test `test_unknown_book_id_returns_404` in `tests/test_criterion_C1.py` fails because it asserts `\"error\" in body` at the top level of the 404 JSON response, but the FastAPI application nests the error under a `detail` key, returning `{\"detail\": {\"error\": \"Book not found\"}}`. The assertion `assert \"error\" in body` evaluates to False against this nested structure. This is a single-assertion content-quality defect in the test; the other 4 tests pass and the test file is otherwise well-formed.",
+      "contributing_factors": [
+        "test_unknown_book_id_returns_404 asserts top-level '\"error\" in body' but the actual 404 response body is {\"detail\": {\"error\": \"Book not found\"}} \u2014 the key is nested one level deeper under 'detail'",
+        "The test author inferred the 404 response schema as a flat {\"error\": ...} object rather than the FastAPI-standard {\"detail\": ...} wrapper the application actually emits",
+        "The acceptance:function_defined check was skipped with reason 'unsupported_stack_or_syntax' (evidence_gap=true), so the contract requirement of \u22654 test_* functions was not independently verified by the typed-check evaluator, though pytest's output confirms 5 tests ran"
+      ],
+      "implicated_files": [
+        "tests/test_criterion_C1.py"
+      ],
+      "dispute_rulings": []
+    }
+- task_type: governance.correction_decision
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The failure is a specific, isolated assertion error in one test function where the expected JSON structure does not match the actual FastAPI response format. A patch is appropriate to update the test assertion to correctly check the nested 'detail' key without requiring a full rewind or abort.",
+      "affected_task_types": [
+        "test"
+      ],
+      "structural_plan_change_candidate": "tighten_acceptance",
+      "structural_plan_change_rationale": "The acceptance criteria for the test creation task should be tightened to require explicit validation of the response body structure (e.g., asserting the exact keys and nesting level) to prevent mismatches between the test expectations and the framework's default serialization behavior."
+    }
+- task_type: qa.test_repair
+  occurrence: 1
+  call: 1
+  content: |
+    ```edit:tests/test_criterion_C1.py
+    <<<<<<< SEARCH
+        assert "error" in body, f"Expected 'error' key in 404 body, got: {body}"
+    =======
+        assert "error" in body.get("detail", body), f"Expected 'error' key in 404 body, got: {body}"
+    >>>>>>> REPLACE
+    ```
+- task_type: qa.test
+  occurrence: 2
+  call: 1
+  content: |
+    ```python:tests/test_criterion_C2.py
+    """Criterion C2: GET /books/{id}/related returns 404 with an 'error' key in the JSON body
+    when the book id does not exist."""
+
+
+    def test_unknown_book_id_returns_404_with_error_key(client):
+        """GET /books/99999/related → 404; body is a JSON dict with an 'error' key.
+
+        Faults caught:
+          1. Missing route — FastAPI's default 404 body is {"detail": "Not Found"},
+             which has no 'error' key at the top level.
+          2. Wrong error shape — body uses only 'detail' or is non-JSON.
+          3. Store returns a book for an unknown id — the 404 is never raised.
+        """
+        res = client.get("/books/99999/related")
+
+        # Fault 3: must actually be a 404, not a 200 with a book
+        assert res.status_code == 404, f"Expected 404, got {res.status_code}"
+
+        # Fault 2: body must parse as a JSON dict
+        body = res.json()
+        assert isinstance(body, dict), f"Expected JSON object, got {type(body).__name__}: {body}"
+
+        # Faults 1 & 2: the 'error' key must be present at the top level,
+        # distinguishing the endpoint's semantic 404 from FastAPI's default
+        # unknown-route 404 ({"detail": "Not Found"}).
+        assert "error" in body, (
+            f"404 body must contain an 'error' key; got keys {list(body.keys())}. "
+            f"Full body: {body}"
+        )
+    ```
+- task_type: data.analyze_failure
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "classification": "alignment",
+      "analysis_summary": "The test in tests/test_criterion_C2.py is correctly written per the PRD's acceptance criterion requiring a top-level 'error' key in the 404 JSON body. The test fails because the route handler for GET /books/{id}/related returns {'detail': {'error': 'Book not found'}} instead of {'error': 'Book not found'} \u2014 the implementation nests the error under FastAPI's 'detail' wrapper (likely via HTTPException(detail={...})) rather than emitting a flat semantic 404 body. This is an alignment gap between the PRD contract and the implementation, not a defect in the test itself.",
+      "contributing_factors": [
+        "Route handler for GET /books/{id}/related wraps the error payload inside FastAPI's 'detail' key, producing {'detail': {'error': 'Book not found'}} instead of the PRD-mandated {'error': 'Book not found'}",
+        "The implementation likely uses HTTPException(status_code=404, detail={'error': 'Book not found'}) rather than JSONResponse(status_code=404, content={'error': 'Book not found'}), causing FastAPI to serialize the dict under the 'detail' envelope",
+        "The test correctly asserts 'error' in body (top-level), which is the PRD's explicit distinction from FastAPI's default 404 shape"
+      ],
+      "implicated_files": [],
+      "dispute_rulings": []
+    }
+- task_type: governance.correction_decision
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The failure is a specific, localized alignment gap where the 404 error response shape does not match the PRD contract. A targeted patch to the route handler to emit a flat 'error' key instead of using FastAPI's default 'detail' wrapper will resolve the issue without requiring a full rewind.",
+      "affected_task_types": [
+        "implementation",
+        "testing"
+      ],
+      "structural_plan_change_candidate": "tighten_acceptance",
+      "structural_plan_change_rationale": "The acceptance criteria for the implementation task involving 404 responses should be strengthened to explicitly require that error payloads are flat top-level objects and not nested under FastAPI's 'detail' key, ensuring alignment with the PRD's explicit distinction."
+    }
+- task_type: development.correction_repair
+  occurrence: 1
+  call: 1
+  content: |
+    ```edit:backend/routes.py
+    <<<<<<< SEARCH
+            raise HTTPException(status_code=404, detail={"error": "Book not found"})
+    =======
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+    >>>>>>> REPLACE
+    ```
+- task_type: qa.test
+  occurrence: 2
+  call: 2
+  content: |
+    ```python:tests/test_criterion_C2.py
+    """Criterion C2: GET /books/{id}/related returns 404 with an 'error' key in the JSON body
+    when the book id does not exist."""
+
+
+    def test_unknown_book_id_returns_404_with_error_key(client):
+        """GET /books/99999/related → 404; body is a JSON dict with an 'error' key.
+
+        Faults caught:
+          1. Missing route — FastAPI's default 404 body is {"detail": "Not Found"},
+             which has no 'error' key at the top level.
+          2. Wrong error shape — body uses only 'detail' or is non-JSON.
+          3. Store returns a book for an unknown id — the 404 is never raised.
+        """
+        res = client.get("/books/99999/related")
+
+        # Fault 3: must actually be a 404, not a 200 with a book
+        assert res.status_code == 404, f"Expected 404, got {res.status_code}"
+
+        # Fault 2: body must parse as a JSON dict
+        body = res.json()
+        assert isinstance(body, dict), f"Expected JSON object, got {type(body).__name__}: {body}"
+
+        # Faults 1 & 2: the 'error' key must be present at the top level,
+        # distinguishing the endpoint's semantic 404 from FastAPI's default
+        # unknown-route 404 ({"detail": "Not Found"}).
+        assert "error" in body, (
+            f"404 body must contain an 'error' key; got keys {list(body.keys())}. "
+            f"Full body: {body}"
+        )
+    ```
