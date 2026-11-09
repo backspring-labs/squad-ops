@@ -16,6 +16,12 @@ created_at: '2026-07-01'
 > 2026-10-31 (Q45, by the owner's outside reviewer under the owner's delegation): F1 only may land before 3.x,
 > through an explicit recorded amendment here; duties, memory authority, console management and the rest stay
 > deferred, and the exception places nothing in a release.** The amendment is written with F1's placement.
+>
+> **Revision 3 of that SIP (2026-11-08) replaces F1 with an in-tree seam,** after the game-dev-roblox plan's spikes
+> and the owner's acceptance of its D1–D10 (PR #2972). It builds nothing of this SIP: no Switchboard discovery, no
+> pack manifest, no SPI. So the amendment above isn't written. Whether this SIP takes one anyway, or keeps only this
+> note naming that seam as the starting point of its §17 split, is **Q51, open for the owner** (recommended: this
+> note). This SIP's 3.x deferral and its premise correction are unaffected.
 
 > **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Deferred to 3.x**, with the duty cluster: "move them to 3.x including capability-backed agents". Its main consumer is the reselling pack, which is duty work, and nothing in 2.x needs it.
 > - **Before 3.0's plan, correct its premise:** §5 extends a skills layer that was deleted (#400, #401).

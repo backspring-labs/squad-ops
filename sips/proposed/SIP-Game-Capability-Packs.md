@@ -8,11 +8,11 @@ created_at: '2026-10-31T00:00:00Z'
 
 # SIP: Game Development Capability Packs and Squad Composition
 
-**Status:** Proposed (2026-10-31), for design review
+**Status:** Proposed (2026-10-31), for design review. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs)
 **Authors:** Jason Ladd (the owner's outside review, 2026-10-31); drafted by the Spark lane's supervisor
 **Created:** 2026-10-31
 **Targets:** unplaced. Acceptance and release placement are the owner's.
-**Companion:** Game Development Platform Capability (`SIP-Game-Development-Platform.md`, PR #2405), revision 2:
+**Companion:** Game Development Platform Capability (`SIP-Game-Development-Platform.md`, PR #2405), revision 3:
 how an engine is integrated. This SIP is how a squad uses it.
 **Builds on:** Capability-Backed Agents (proposed, deferred to 3.x: its §21 taxonomy, §25c and §27);
 SIP-0112 (Project Lifecycle Management); SIP-0114 (request-profile taxonomy); SIP-0109 (Campaign
@@ -46,19 +46,204 @@ with its boundary (portfolio cluster 18, Q45–Q48):
 - **SIP-0105's blueprints.** **Boundary:** a greenfield game's scaffold is the engine plugin's blueprint (the
   game SIP's R2.8). A pack ships no scaffold.
 
-## Delivery ledger (current as of 2026-10-31)
+**Revision 3's intake (2026-11-08).** It follows the game-dev-roblox plan (PR #2972), adopted by the owner with
+D1–D10.
+- **The conflict this intake recorded (Q45) is replaced** (R3.1): nothing of Capability-Backed Agents' mechanism is
+  built. Whether that SIP takes an amendment or a note is Q51, open for the owner.
+- **Overlaps, no conflict:**
+  - SIP-0110's Campaign snapshot and `rebind` event, the precedent for the specialty digest;
+  - CLAUDE.md's task-type rules (#559), which the `design.` domain and the plannable property follow;
+  - the planner's fixed set of task types (`cycles/implementation_plan.py`), made property-driven (R3.2).
+
+## Delivery ledger (current as of 2026-11-08)
+
+The rows follow the adopted plan's phases (R3.6). The 2.8 plan places them, so none is placed yet.
 
 | part | status | where |
 |---|---|---|
-| F1: the foundation (§4): discovery, versioned contracts, explicit bindings, scoped context loading, mediated tools, native runner and result providers, preflight at creation and at the plan gate, the Campaign snapshot | **unplaced**, deliberately: Q45 ruled that it may precede 3.x; placement is the owner's | — |
-| F2: the reusable game-development pack (§5's capabilities, engine-neutral) | **unplaced**, deliberately | — |
-| F3: the Roblox pack (Roblox-specific capabilities and skills, on the game SIP's R-1 plugin) | **unplaced**, deliberately | — |
-| F4: the Roblox Game Dev Squad composition, and squad profiles that reference it (§3, §6) | **unplaced**, deliberately | — |
-| F5: the first end-to-end acceptance demonstration on a small Roblox game (§7) | **unplaced**, deliberately: needs F1–F4 and the game SIP's M0 and R-1 | — |
-| F6: the Unity pack, on the game SIP's U-1, as the check that packs generalize across engines | **unplaced**, deliberately: after F5 | — |
+| F1 as revision 2 cut it (§4: Switchboard discovery, manifests, the SPI) | **dropped** by Revision 3 (R3.1): replaced by phase 2a's in-tree seam | — |
+| F2 and F3 as separate packs | **dropped** by Revision 3 (R3.2): one specialty, `game-dev-roblox`, until a second engine needs shared content | — |
+| Phase 2a: the seam: the specialty table and declaration, `qa.run_remote_operation` and operation ids, the plannable property, the digest pin and both preflights, the isolation test, the profile field, a fixture specialty (R3.1, R3.2) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2f: the squad: the profiles, fragments and playbooks with their replay tests, the test loader, the tolerant emission parser (R3.2, R3.4; replaces F2–F4) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2g: the product: `z_tower-ascension`'s eligibility, registration and goal set; its copy, sweep and place file already exist | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run (R3.5; replaces F5) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| F6: Unity, as the check that the specialty boundary generalizes across engines | **unplaced**, deliberately: after phase 3 | — |
 
-**What closes this SIP:** F1–F5 shipped, with §8's "the squad can build and improve a playable game" read
-live. F6 shipped or dropped by a numbered amendment.
+**What closes this SIP:** phases 2a, 2f, 2g and 3 shipped, with §8's "the squad can build and improve a playable
+game" read live (R3.5). F6 shipped or dropped by a numbered amendment.
+
+---
+
+## R3. Revision 3 (2026-11-08): the composition on an in-tree seam
+
+**What prompted it.** The owner asked for game development proved without building a plugin architecture first,
+and without closing the door on other specialists such as a designer. The game-dev-roblox plan
+(`docs/plans/game-dev-roblox-plan.md`, PR #2972) is that design. Its spikes ran on 2026-11-08, its gate came out
+go, and **the owner accepted its decisions D1–D10 the same day** ("accept D1-D10, write revision 3"). **Where §1–§9
+differ, this section governs.** They're kept as the record of what was proposed. The companion's §R3 is the engine
+half.
+
+### R3.1 F1 becomes the in-tree seam
+
+**F1's foundation (§4) isn't built in this revision.** Each of its pieces maps onto a seam the framework already
+has, and the plugin machinery waits for a trigger (the companion's R3.1):
+
+| F1 piece (§4) | in revision 3 |
+|---|---|
+| discovery (Switchboard) | the bootstrap's specialty table. **Switchboard is deferred, not reversed (Q46):** it stays the presumptive loader when the trigger fires |
+| versioned contracts, `requires_spi` | the specialty's declaration and its digest. The SPI waits for the trigger |
+| explicit bindings | the handler registry (by task type and role) and the squad profile's `serves_roles` |
+| scoped context loading | playbooks and fragments loaded by the specialty's handlers for their own tasks, and nowhere else |
+| mediated tools | typed operations through the worker, deny-by-default; `execute_luau` only through the harness (D5) |
+| native runner and result providers | the Luau runner (#2906, core: a language) and the specialty's result reader |
+| preflight at creation and at the plan gate | kept, against the resolved specialty |
+| the Campaign snapshot | the specialty's digest in the profile snapshot hash; every cycle compares, and a difference stops the Campaign with a named reason |
+
+**So Q45's exception is no longer needed for this work.** Nothing of Capability-Backed Agents' mechanism is built,
+so there is nothing to amend there. Whether that SIP still takes the amendment Q45 called for, or only a note
+naming this seam as the starting point of its §17 split, is **Q51, open for the owner** (R3.7). Its header carries
+a note in the meantime.
+
+### R3.2 The composition, as the specialty and its profiles
+
+§1's five parts, each in one place, on the seam:
+
+| part | where it lives now |
+|---|---|
+| roster and models | the squad profiles `game-dev-roblox` (the Spark) and `game-dev-roblox-lite-14b` (the MacBook's machinery check), each with a new `specialties: [game-dev-roblox]` field |
+| reusable game-development capabilities | **not split out yet.** Content shared across engines gets its own name (`game-dev-common`) only when a second engine needs it |
+| engine-specific capabilities | the `game-dev-roblox` specialty: fragments, playbooks and resources in its package |
+| engine and tool providers, with permissions | the specialty's operations and its adapter (the companion's R3.6) |
+| the game itself | the Project: `z_tower-ascension`, a private copy, with a local place file (D2) |
+
+- **The one direction of ownership (§3) stands:** the profile names the specialty, and the specialty supplies
+  operations, handlers and permissions. A specialty never imports a profile.
+- **§3's YAML composition is replaced** by the profile field and the specialty's declaration. Its version pins
+  become the specialty digest.
+- **Bindings are by task type,** not by capability name:
+  - strategy's change request rides the existing framing steps;
+  - code is written and repaired by `development.develop` and `development.repair` with the specialty's context.
+    That is the "augment" case, declared in the specialty's handler table;
+  - QA's Studio work is `qa.run_remote_operation` with an operation id.
+- **The authority ceiling (§3a) stands as written.** A role's permission is the intersection of what it requests,
+  what the specialty grants and the existing authority. The lead recommends, and the existing controls rule.
+- **Planning becomes property-driven** (the companion's R3.5): a `TaskType` property marks the types a planner may
+  offer, set on today's three and `qa.run_remote_operation` only.
+
+### R3.3 A designer, after the paper test
+
+The plan's spike S5 tested whether the seam could describe the Iris design role (Capability-Backed Agents §13)
+with no core change. **A partial pass:**
+- the seam carries a designer's identity, handlers, resources and permissions, and §25c's binding to an existing
+  agent;
+- **its own kinds of authored work don't fit.** Applying a design system, reviewing UX and authoring design
+  acceptance are new kinds of work, not tool-backed operations, so they need task types of their own: members of
+  the central enum in a `design.` domain, under #559's rules.
+
+**So:**
+- a specialty adds operations, handlers, fragments, playbooks and resources without a core change;
+- a specialty that adds a new kind of authored work adds its task types centrally, and makes them plannable through
+  the property;
+- **a second specialty needing its own task types is a trigger for the plugin machinery,** starting with a
+  host-owned task-type lookup.
+
+**Q48 stands:** the first demonstration uses strategy alone, and a designer is an optional, separate roster
+identity.
+
+### R3.4 The roles (§5), as the first milestone has them
+
+- **strategy:** a change request with a player-facing criterion and its play scenario, frozen before development;
+- **dev:** Luau inside the footprint;
+- **QA:**
+  - logic tests run headless under Lune, through the specialty's test loader;
+  - `qa.run_remote_operation` for play scenarios;
+  - a statement of what wasn't executed;
+- **builder: the source manifest** (path, digest and script class per script). **No place build in the first
+  milestone,** because the adapter writes the scripts into the copy's place itself (D10);
+- **data:** measurements from executed runs;
+- **lead:** recommendations only.
+
+**The playbooks follow Q47,** and take what the plan's first Luau probe (S6) found. Six samples from the Spark's
+27b model were correct in their Luau and Roblox API use in all six. The gaps were things a specialty supplies:
+- **the test loader** for the game's instance-tree requires, and a convention for where tests live. Neither of
+  S6's test files ran anywhere as delivered;
+- **each task's context includes the module that owns its concept.** S6's one logic error came from a missing
+  helper module;
+- **the emission parser tolerates** a missing fence and a path line outside its fence;
+- **change requests ask for effects on saved state at deploy.**
+
+### R3.5 The demonstration (§7), revised
+
+**Counted (D1):** a squad on the Spark takes **two small increments** of the copy from design to accepted source,
+each proved in a real play session. For each:
+1. the criterion and its scenario are frozen before development;
+2. **the criterion fails on the accepted baseline,** so it discriminates;
+3. dev writes the change;
+4. QA's operation syncs the candidate, plays the frozen scenario and reads its assertion records;
+5. **the criterion passes on the candidate,** and the Campaign's gate accepts the source.
+
+A correct first candidate is acceptable. The second increment re-runs the first's frozen checks.
+
+**The repair path is a separate diagnostic,** labelled apart from the counted evidence:
+- a pre-registered, seeded behavioural defect;
+- the unchanged verifier fails as an executed behavioural failure;
+- the repair is routed;
+- **the same verifier, by digest, passes.**
+
+It proves the correction route and is not model evidence. **§7's step 5, which required a defect inside the counted
+run, is replaced.**
+
+**Before the counted run:**
+1. a full-path gate: representative tasks through the real prompt budget, scoped context, playbook loading and
+   reader, with context selection measured;
+2. then a machinery rehearsal on `game-dev-roblox-lite-14b`.
+
+The counted run is handed to the Spark as a run plan.
+
+**S1 settled the condition on the claim:** input works in an unattended play session, so the claim stands as
+written.
+
+**What the evidence won't show:** how the game feels, what it looks like, more than one player, and parts, models or
+UI built in Studio.
+
+**Independent QA evidence and the held-out separation (§7) stand.** The scenario is public QA verification, and no
+role gains held-out access.
+
+### R3.6 Delivery
+
+The dependency order replaces §7's:
+1. phase 2a, the seam with a fixture specialty;
+2. the companion's phases 2b–2e;
+3. phase 2f, the squad;
+4. phase 2g, the product;
+5. phase 3, the demonstration;
+6. later, Unity.
+
+The ledger is re-cut to match. **§8's two definitions of done stand.**
+
+### R3.7 Decisions and the prior rulings
+
+**The plan's decisions, accepted 2026-11-08, as they touch this SIP:**
+- **D1:** the claim, and the repair diagnostic apart (R3.5);
+- **D6:** parallel development during 2.7: the MacBook worktree and rehearsals only; no merge, migration, profile
+  activation, worker registration or deployment in 2.7's runtime;
+- **D7:** the task type and property-driven planning (R3.2);
+- **D8:** `game-dev-<engine>` naming;
+- **D9:** this revision, and acceptance after renewed review.
+
+| ruling | revision 3 |
+|---|---|
+| **Q45** (F1 may precede 3.x through an amendment in Capability-Backed Agents) | **replaced:** F1 becomes the in-tree seam (R3.1), which builds nothing of that SIP |
+| **Q46** (Switchboard as the loader) | **deferred, not reversed:** the presumptive loader when the trigger fires |
+| **Q47** (frontier-drafted, owner-approved, replay-tested skills) | **stands,** with S6's items (R3.4) |
+| **Q48** (an optional designer, a separate roster identity) | **stands,** refined by the paper test (R3.3) |
+
+**Q51, open for the owner:** Capability-Backed Agents, given that nothing of its mechanism is built here.
+- **The options:**
+  - write the amendment Q45 called for;
+  - or keep only a note in its header, naming this seam as the starting point of its §17 split.
+- **Recommended: the note.** An amendment records a change to that SIP's design, and none has been made. Its 3.x
+  deferral and its premise correction (§5's deleted skill layer) are unaffected.
 
 ---
 
