@@ -1,0 +1,12 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ❯ src/__tests__/criterion_P4.test.jsx (1 test | 1 failed) 8ms
+   × P4: a view that exists and throws as it loads > renders 8ms
+     → undefinedThing is not defined
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  16:54:07
+   Duration  384ms (transform 31ms, setup 62ms, collect 25ms, tests 8ms, environment 157ms, prepare 26ms)
+

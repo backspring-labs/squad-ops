@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 2.5.0 (single-sourced from `pyproject.toml`; installed metadata is the
+**Framework Version**: 2.6.1 (single-sourced from `pyproject.toml`; installed metadata is the
 install-time copy and is used only when no source tree is present — #1089)
 **Python Requirement**: 3.12 everywhere — containers, CI and dev (#237). Production ran 3.11 until 2026-08-31 while CI tested on 3.12; the lock files were compiled on 3.11 and CI's constraints on 3.12, which is half of what #1041 was.
 
@@ -97,8 +97,8 @@ squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  #
 ## Architecture
 
 ### Hexagonal Structure (Ports & Adapters)
-**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (26) and
-`adapters/` (17), and the layering the guards enforce. `test_architecture_overview.py` fails when a
+**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (25) and
+`adapters/` (16), and the layering the guards enforce. `test_architecture_overview.py` fails when a
 package and its entry disagree (#1989), so read it rather than a list here.
 - **`src/squadops/`**: the domain (ports, models, decisions, handlers, prompts). **Only the composition
   roots import `adapters.*`** (`squadops.api.runtime`, `squadops.agents.entrypoint`,
@@ -247,7 +247,7 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 4 | ROADMAP timeline entry |
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named. `scripts/maintainer/sip_sweep.py <version>` reads the ledgers (after `refresh_open_issues.py`) and prints the promotable SIPs, the parts to re-place and the stale rows; the release PR's `SIP sweep:` line must name each (#1980) |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
-| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/`; **then attach the line's records** — `scripts/maintainer/attach_release_records.py X.Y.Z` to build and credential-scan the tarball, then `--upload --expect-sha256 <the preview's>` to attach exactly the approved bytes to the Release and record its sha256 in the package (the tarball is byte-stable, and a rebuild that differs is refused, #1732) |
+| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/`; **then attach the line's records** — `SQUADOPS_HELDOUT_SUITES=<the line's suites> scripts/maintainer/attach_release_records.py X.Y.Z` to build the tarball and scan it for credentials and held-out step values and goals (a file is left out only by `--withhold <yaml>` with a reason, #2830), then `--upload --expect-sha256 <the preview's>` to attach exactly the approved bytes to the Release and record its sha256 in the package (the tarball is byte-stable, and a rebuild that differs is refused, #1732) |
 | 8 | **Housekeeping** — `scripts/dev/worktree_hygiene.py` to preview, then `--apply --archive-root <a directory outside every checkout> --record-release vX.Y.Z` (the record, `site/content/releases/vX.Y.Z/housekeeping.yaml`, is committed): each merged worktree's `var/` records are preserved into the main checkout's `var/` and archived, then the worktree and its branch are removed; merged branches no worktree holds are deleted; anything unmerged, dirty or holding a real `data/` is named and left. From 2.4.0, first `squadops scenarios purge-evidence --before <the tag's time>` (the line's page evidence, held out: SIP-0113 §10p ruling 8), and its count goes on the record with `--evidence-purged N` |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
@@ -397,6 +397,17 @@ fix was refused (#1259). The table goes in the PR's Evidence section.
 
 **Structure**:
 - Permanent utilities: `scripts/dev/`
+- **Shared scripts run on every bootstrap profile as it ships, with nothing extra installed** (#2402):
+  `dev-mac` (macOS, bash 3.2, BSD userland), `dev-pc` and `local-spark`.
+  - **bash 3.2 is the floor:** no `mapfile`/`readarray`, associative arrays, case-changing expansions,
+    namerefs, `wait -n`, `globstar` or `coproc`.
+  - **Only flags BSD and GNU share:** no `grep -P`, bare `sed -i` (use `sed_in_place` in
+    `scripts/bootstrap/lib/common.sh`), `readlink -f`, `date -d`, `stat -c`, `sort -V` or `find -printf`.
+    When the portable form gets awkward, write it in Python; the venv is on every profile.
+  - **A newer tool is a declared requirement:** the bootstrap profile installs it and `squadops doctor`
+    checks it.
+  - **A script written for one box says so** in its header (`# Platform: local-spark`) and checks the
+    platform. `tests/unit/architecture/test_shell_portability.py` holds the rest to the rule.
 - Maintainer-only: `scripts/maintainer/`
 - Temp migrations: `scripts/dev/migrations/temp_*.py`
 - New SIP drafts go in `sips/proposed/` (unnumbered)

@@ -46,6 +46,7 @@ from squadops.api.routes.cycles import (
     artifacts_router,
     cycle_request_profiles_router,
     cycles_router,
+    goal_sets_router,
     models_router,
     profiles_router,
     projects_router,
@@ -71,6 +72,7 @@ from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
 from squadops.campaigns.branch_rebase import BranchRebase, ProductRunnerFrozen
 from squadops.campaigns.campaign_branch import CampaignBranch
+from squadops.campaigns.close_contribution import CampaignContribution
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
 from squadops.config import config_fingerprint, load_config, redact_config
@@ -155,6 +157,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(auth_router)  # SIP-0062 Phase 3a
     # SIP-0064: cycle execution routes
     app.include_router(projects_router)
+    app.include_router(goal_sets_router)  # SIP-0115 §8.1 (#2884): a Project's goal set
     app.include_router(cycles_router)
     app.include_router(runs_router)
     app.include_router(campaigns_router)  # SIP-0109 §13
@@ -439,6 +442,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         create_cycle_registry,
         create_deploy_registry,
         create_flow_executor,
+        create_goal_set_registry,
         create_project_registry,
         create_squad_profile_port,
     )
@@ -449,6 +453,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         project_provider, **({"pool": pool} if project_provider != "config" else {})
     )
     await _cut_over_project_registry(project_provider, project_registry, pool)
+    # SIP-0115 §4 (#2884): the goal sets, beside the Project records their rows reference.
+    state.goal_set_registry = create_goal_set_registry(project_provider, pool=pool)
     state.project_locator_policy = LocatorPolicy.of(
         config.projects.locator_allowed_hosts, config.projects.locator_local_roots
     )
@@ -662,6 +668,15 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         projects=project_registry,
         repository=state.source_repository,
     )
+    # SIP-0109 §24dc (#2861): the supervisor's request opens a closed Campaign's contribution,
+    # with the supervisor's own token. Nothing the deploy runs calls this (§24ci (b)).
+    state.campaign_contribution = CampaignContribution(
+        campaigns=projected_campaigns,
+        projects=project_registry,
+        repository=state.source_repository,
+        forge=state.review_requests,
+        sandbox=sandbox_client,
+    )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,
         cycles=cycle_registry,
@@ -688,6 +703,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         campaign_branch=CampaignBranch(
             projects=project_registry, repository=state.source_repository
         ),
+        # SIP-0115 §5.5a: a goal-set Campaign's ``backlog_done`` and its next item read it.
+        goal_sets=state.goal_set_registry,
     )
 
     flow_executor = create_flow_executor(
@@ -739,6 +756,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
         # started from its declaration, by the same runner the cycle-end hook evaluates with.
         route_renderer=DeclaredStartRoutes(scenario_runner),
+        # SIP-0115 §5.2: a goal-set Campaign's proposal is shown its goal set and backlog.
+        goal_set_registry=state.goal_set_registry,
     )
 
     state.project_registry = project_registry
@@ -758,14 +777,18 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # a directly constructed adapter. Construction is outside the try on purpose — an
     # unknown provider name is a misconfiguration and must stop startup, while the
     # registration below stays non-fatal.
-    from adapters.llm.factory import create_llm_provider
+    from adapters.llm.factory import create_llm_provider, with_scripted_model
 
-    llm_adapter = create_llm_provider(
-        provider=config.llm.provider,
-        base_url=config.llm.url,
-        default_model=config.llm.model or "qwen2.5:7b",
-        timeout_seconds=float(config.llm.timeout),
-        api_key=config.llm.api_key,
+    # #2495: the deploy serves the model `scripted` beside the engine, as its agents do, so the
+    # create-time model check admits a `machinery` squad.
+    llm_adapter = with_scripted_model(
+        create_llm_provider(
+            provider=config.llm.provider,
+            base_url=config.llm.url,
+            default_model=config.llm.model or "qwen2.5:7b",
+            timeout_seconds=float(config.llm.timeout),
+            api_key=config.llm.api_key,
+        )
     )
     try:
         state.llm_port = llm_adapter

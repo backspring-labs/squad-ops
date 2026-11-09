@@ -115,6 +115,30 @@ class ArtifactFilter:
             spec["by_type_fallback"] = list(self.by_type_fallback)
         return spec
 
+    @classmethod
+    def from_spec(cls, spec: Mapping[str, Any]) -> ArtifactFilter:
+        return cls(
+            by_producing_task=tuple(spec.get("by_producing_task") or ()),
+            by_type=tuple(spec.get("by_type") or ()),
+            by_type_fallback=tuple(spec.get("by_type_fallback") or ()),
+        )
+
+    def selects(self, producing_task: str, artifact_type: str) -> bool:
+        """Whether a stored artifact is selected: produced by one of ``by_producing_task``, or of
+        one of ``by_type`` whoever produced it, or, with no producing task recorded, of one of
+        ``by_type_fallback``. The one rule, for the executor's resolution and the size preflight's
+        (#2889)."""
+        if producing_task and producing_task in self.by_producing_task:
+            return True
+        if not producing_task and artifact_type in self.by_type_fallback:
+            return True
+        return artifact_type in self.by_type
+
+
+#: D3: how many bytes of stored content an ``artifact_contents`` resolution reads before it stops.
+#: The executor's resolution and the size preflight's (#2889) both stop here.
+ARTIFACT_CONTENTS_LIMIT_BYTES = 512 * 1024
+
 
 @dataclass(frozen=True)
 class ContextAssemblyContract:
@@ -253,6 +277,11 @@ _SHARED_CONTEXT_TEMPLATES = (
     "request.source_repository_existing_files_block",
     "request.source_repository_instructions_block",
     "request.source_repository_runners_block",
+    # #2612: how a step that may remove a file does, in its grant's terms, one at a time.
+    (
+        "request.source_repository_deletion_product",
+        "request.source_repository_deletion_tests",
+    ),
     # SIP-0112 H.13: the blueprint's conventions for a product, one stack's at a time.
     (
         "request.source_repository_conventions_fullstack_fastapi_react",
@@ -279,6 +308,7 @@ _DEVELOP_APPENDIX_TEMPLATES = (
 _PLANNING_TEMPLATES = (
     "request.planning_task_base",
     "request.increment_framing_section",
+    "request.increment_ruling_notes_section",
     "request.plan_reroll_rejected_plan_appendix",
     "request.plan_reroll_rejection_appendix",
     "request.target_stack_section",
@@ -398,10 +428,14 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.qa_test_retained_cases_appendix",
             "request.qa_test_retake_appendix",
             "request.qa_test_fill_mode_appendix",
+            # SIP-0112 H.29: a sample application's monolithic prompt only.
+            "request.qa_test_scaffold_harness_block",
             "request.cycle_repair_anchored_edit_appendix",
             "request.cycle_repair_current_files",
             "request.increment_test_scope_appendix",
             "request.increment_views_appendix",
+            # #2799: a page criterion's test on a vitest product, from its test scope.
+            "request.increment_page_loader_appendix",
             *_SHARED_CONTEXT_TEMPLATES,
             *_CYCLE_TASK_RETRY_TEMPLATES,
         ),
@@ -564,6 +598,11 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.proposal_judged_routes",
             "request.proposal_previous_verification",
             "request.proposal_requirements_source",
+            # SIP-0115 §5.2: a goal-set Campaign's goal set and its next item, in place of it.
+            "request.proposal_goal_set",
+            "request.proposal_next_backlog_item",
+            # SIP-0109 §24dk: the product's reading of the last accepted increment.
+            "request.proposal_latest_readings",
             "request.proposal_product_tree",
             "request.proposal_approved_manifest",
             "request.source_repository_instructions_block",
@@ -669,12 +708,15 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         "request.qa_test_frozen_surface_appendix",
         "request.qa_test_repair_failing_cases_appendix",
         "request.qa_test_repair_fill_appendix",
+        "request.qa_test_repair_imported_files",
         # D12 (#2253): a qa repair's first call is sent it; the other repair types are not, so for
         # them this is a few tokens over.
         "request.keep_reasoning_short",
         "request.disputed_checks_appendix",
         # SIP-0109 §24cp: a dev repair of a view a repository-backed change adds.
         "request.increment_views_appendix",
+        # #2799: a qa repair of a page criterion's test on a vitest product, from its test scope.
+        "request.increment_page_loader_appendix",
         *_DEVELOP_APPENDIX_TEMPLATES,
     ),
     # #2810: it carries the whole accepted tree for its own evaluation (#1229) and the failed
@@ -729,6 +771,10 @@ RETEST_PRESENCE_KEYS: tuple[str, ...] = (
     # failed task's run did (``qa_run_tree``), and this is what marks the run a product's. The
     # retest renders no prompt and memory never composes it, so no prompt or budget reads it.
     "source_repository",
+    # #2799: a vitest product's page criterion's test loads its view through the page loader the
+    # scope names, which the retest's run tree lays beside the suite as the failed task's did
+    # (``qa_run_tree``). No prompt reads it here either.
+    "increment_test_scope",
 )
 
 
@@ -768,6 +814,9 @@ REPAIR_PRESENCE_KEYS: tuple[str, ...] = (
     # SIP-0109 §24cp: a dev repair of a view a repository-backed change adds is shown the anchor
     # acceptance reads the page for, as the view's first author was (``increment_views``).
     "increment_views",
+    # #2612 (SIP-0112 H.23): a source-backed run's view of the product, which a repair's removal
+    # is judged against. No repair prompt renders it.
+    "source_repository",
 )
 
 #: #1264: the failed task's own emitted files, forwarded to its repair from the failed

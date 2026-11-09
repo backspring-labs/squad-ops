@@ -195,6 +195,23 @@ def test_a_criterion_whose_paths_leave_the_footprint_or_no_runner_tests_is_refus
     assert "no runner's tests cover tools/build.py" in untested_verdict.refusals[0].detail
 
 
+def test_a_criterion_file_name_the_product_already_holds_elsewhere_is_refused_at_the_rails():
+    """#2860, entered where the proposal's rails run (``validate_proposal``), with the placements
+    the runtime reads from the head (``runner_placements``). Bug caught: the rails accept
+    ``checks/check_criterion_R1.py`` while the product holds a module of that name at another
+    path, and the runner's collection stops on the two (#2858)."""
+    tree = (*product_files(), "legacy/check_criterion_R1.py")
+    product = dataclasses.replace(
+        _PRODUCT, placements=runner_placements(_PROFILE.runners, _PROFILE.gaps, tree)
+    )
+
+    verdict = validate_proposal(_request(), _context(product=product))
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.UNPLACEABLE_CRITERION
+    assert "legacy/check_criterion_R1.py" in refusal.detail
+
+
 def test_a_sample_applications_request_still_refuses_a_footprint_and_criterion_paths():
     """The manifest rails are unchanged. Bug caught: the product's authored fields admitted on a
     sample application, whose footprint the stack's scaffold map derives."""
@@ -589,3 +606,74 @@ def test_an_added_page_with_an_anchor_no_page_carries_is_accepted():
     )
 
     assert verdict.accepted, verdict.refusals
+
+
+# --- §24dq (#2783): the pages earlier increments added, from the inventory the launch pinned ---
+
+#: ``/totals``, which an earlier increment added and acceptance held, with the ids its page carried
+#: then, its anchor first, as ``product_context`` reads the launch block's inventory.
+_TOTALS = (("/totals", ("totals-view", "totals-row")),)
+
+
+@pytest.mark.parametrize(
+    "product",
+    [
+        dataclasses.replace(_ANCHORED_PAGES, accepted_pages=_TOTALS),
+        dataclasses.replace(_WITH_PAGES, judged_routes=(), accepted_pages=_TOTALS),
+    ],
+    ids=["beside-an-approved-manifest", "a-product-with-no-manifest"],
+)
+@pytest.mark.parametrize("anchor", ["totals-view", "totals-row"], ids=["its-root", "another-id"])
+def test_an_added_pages_anchor_an_earlier_increments_page_carries_is_refused(product, anchor):
+    """The issue's case at the rails: ``/summary`` is never built, and the app's fallback renders
+    the totals view there. No manifest names ``/totals``, and it isn't in this request, so before
+    the inventory nothing knew its ids. Bugs caught: the inventory unread, so ``/summary`` holds
+    on the totals view; only its root read; or a product with no manifest read as having no
+    other page at all."""
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/summary", anchor)]), _context(product=product)
+    )
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.ANCHOR_NOT_UNIQUE
+    assert f"name anchor {anchor!r} for /summary" in refusal.detail
+    assert "and /totals already carries it" in refusal.detail
+
+
+@pytest.mark.parametrize(
+    ("anchor", "refused"),
+    [(None, []), ("totals-view", [RefusalKind.ANCHOR_ON_JUDGED_ROUTE])],
+    ids=["naming-none", "naming-one"],
+)
+def test_a_criterion_on_an_earlier_increments_page_is_judged_by_its_accepted_anchor(
+    anchor, refused
+):
+    """A change to a page an earlier increment added. Acceptance reads that page by the anchor it
+    was accepted with, as a pinned page by its manifest's. Bugs caught: the page read as added
+    again, so a criterion changing it is refused for naming no anchor; or a second anchor
+    accepted on it, one acceptance never reads."""
+    product = dataclasses.replace(_WITH_PAGES, judged_routes=(), accepted_pages=_TOTALS)
+
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/totals", anchor)]), _context(product=product)
+    )
+
+    assert [r.kind for r in verdict.refusals] == refused
+
+
+@pytest.mark.parametrize("anchor", ["totals-link", "totals-row"], ids=["the-manifests", "accepted"])
+def test_a_page_the_manifest_and_the_inventory_both_name_keeps_both_their_ids(anchor):
+    """A route a later profile pins that an earlier increment added (its pin moved after the
+    acceptance). Bug caught: one reading replacing the other, so an id only the manifest's view
+    declares (or only the accepted page showed) is free to reuse."""
+    product = dataclasses.replace(
+        _ANCHORED_PAGES,
+        route_anchors=(("/totals", ("totals-view", "totals-link")),),
+        accepted_pages=_TOTALS,
+    )
+
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/summary", anchor)]), _context(product=product)
+    )
+
+    assert [r.kind for r in verdict.refusals] == [RefusalKind.ANCHOR_NOT_UNIQUE]

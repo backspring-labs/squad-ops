@@ -530,6 +530,23 @@ REPAIR_DROPPED_MARKER = "write authorization dropped every file the repair emitt
 REPAIR_SUBJECT_DROPPED_MARKER = "the repair dropped a failing slot assertion's subject"
 
 
+#: The executor's wording for an in-plan repair refused because it removes a file (#2612,
+#: SIP-0112 H.23): the patch verifier and the retest materialize the candidate as the workspace
+#: overlaid with the repair's files, so a removal is never in the tree they judge, and accepting it
+#: would store a tree no verdict was about (SIP-0107 §20). Spent, not refunded, nothing applied.
+REPAIR_REMOVAL_REFUSED_MARKER = "the repair removes a file, which no in-plan verdict can judge"
+
+
+#: The executor's wording for a qa repair refused because the criterion file it rewrote passes on
+#: the head (SIP-0109 §24dh, #2933). The head didn't change between the suite's failure and the
+#: repair, only the test did, so that pass says nothing about the product. Spent, not refunded,
+#: and nothing applied, as #2664's refusal. One constant, two readers: the refusal and the
+#: executor's reading of the carry at the task's next success.
+REPAIR_SUITE_PASSES_ON_HEAD_MARKER = (
+    "the repaired suite passes on the head, without this run's work"
+)
+
+
 def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:
     """Whether round ``round_no``'s repair was never applied to the tree (#1129, #1658).
 
@@ -546,7 +563,9 @@ def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: i
     - **every file dropped by write authorization** (#2521) — the round is spent, and the tree
       the next round fails on is the one this round left unrepaired;
     - **refused for dropping a failing slot assertion's subject** (#2664) — the same: spent,
-      and nothing of the repair reached the tree.
+      and nothing of the repair reached the tree;
+    - **refused for removing a file inside the plan** (#2612) — the same;
+    - **refused for a rewritten suite that passes on the head** (#2933) — the same.
 
     The carry entries are the executor's own ``"correction attempt N: <marker> …"`` lines; a
     retest that ran and FAILED is a different entry and stays informative.
@@ -558,6 +577,8 @@ def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: i
             REPAIR_EMPTY_MARKER,
             REPAIR_DROPPED_MARKER,
             REPAIR_SUBJECT_DROPPED_MARKER,
+            REPAIR_REMOVAL_REFUSED_MARKER,
+            REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
         )
     )
     return any(str(entry).startswith(prefixes) for entry in repair_rejections or [])

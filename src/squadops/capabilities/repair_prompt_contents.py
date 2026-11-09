@@ -10,7 +10,8 @@ repair's edits resolve against (:func:`repair_base_files`):
 - **the edit form** (SIP-0107 §9.1): the same files, each with the entities its resolver can
   address (:func:`edit_form`);
 - **a qa repair's failing-case frames** (1.8.2 item 6): the lines around each failing case's line,
-  cut from the base (:func:`failing_case_frames`).
+  cut from the base (:func:`failing_case_frames`);
+- **the code a qa repair's suite imports**, for reading (:func:`imported_files`).
 
 The repair handlers render each through these functions, on the agents. The composer
 (``squadops.capabilities.prompt_budget``, SIP-0110 Appendix A §3.6) calls
@@ -46,6 +47,7 @@ from squadops.capabilities.anchored_edits import (
     verbatim_block,
 )
 from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY, scaffold_shell_paths
+from squadops.capabilities.qa_prompt_contents import code_under_test
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.structural_jsx import ECMASCRIPT_SUFFIXES, SELECTORS_PER_STATEMENT_MAX
 from squadops.cycles.structural_resolution import (
@@ -74,11 +76,13 @@ def repair_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
     carry. Reads no file, starts no process, and parses only Python, with ``ast`` in process.
 
     Two parts can be upper bounds: a JavaScript or TypeScript file's line in the edit form, and the
-    frames, which are a qa repair's alone, so a dev or builder repair's count is over by them."""
+    frames and imported files, which are a qa repair's alone, so a dev or builder repair's count is
+    over by them."""
     return {
         "current_files": current_files(inputs),
         "editable_files": " " * edit_form_bound(inputs),
         "case_frames": failing_case_frames(inputs),
+        "imported_files": imported_files(inputs),
     }
 
 
@@ -114,6 +118,17 @@ def current_files(inputs: Mapping[str, Any]) -> str:
     revise, verbatim, from the base its edits resolve against, or ``""`` when it may revise none."""
     base = repair_base_files(inputs)
     return "\n\n".join(verbatim_block(path, base[path]) for path in anchorable_files(inputs))
+
+
+def imported_files(inputs: Mapping[str, Any]) -> str:
+    """The imported-files section's body: what the files the repair may revise import from the
+    base, each verbatim, or ``""`` when they import none of it. A qa repair is shown the suite it
+    may edit, and without this, nothing of what that suite calls: ``cyc_8e691eb2bccf``'s repairs
+    guessed a field name in a helper they had never seen."""
+    base = repair_base_files(inputs)
+    suite = {path: base[path] for path in anchorable_files(inputs)}
+    shown = code_under_test(suite, base)
+    return "\n\n".join(verbatim_block(path, content) for path, content in shown.items())
 
 
 def edit_form(inputs: Mapping[str, Any]) -> tuple[list[str], dict[str, int]]:

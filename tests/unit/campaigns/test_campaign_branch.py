@@ -118,16 +118,18 @@ class _World:
             outcome_section=None,
             intervention_section=None,
             campaign_branch=CampaignBranch(projects=self.projects, repository=repository),
+            goal_sets=None,
         )
 
     async def _assess(self, cycle_id):
         return _assessment(cycle_id, self.verdicts.get(cycle_id, RunVerdict.ACCEPTED))
 
-    async def started(self) -> None:
+    async def started(self, proposal_profile: str = "no-such-profile") -> None:
         """The baseline captured, and the campaign started by its record: promoted and decided
         (§24cc). Row 5's proposal escalates: its profile is one the deploy doesn't hold, so the
         owner's word launches each increment here (``delivered``), as these tests are about the
-        promotion, not the proposal (§24bv point 5 is ``test_campaign_calibration_record``'s)."""
+        promotion, not the proposal (§24bv point 5 is ``test_campaign_calibration_record``'s).
+        A test about what the next proposal is launched with names a profile that loads."""
         await capture_inherited_baseline(
             PROJECT,
             registry=self.projects,
@@ -142,7 +144,7 @@ class _World:
             policy=policy(
                 calibration_profile="validated-fullstack",
                 squad_profile="full-38",
-                proposal_profile="no-such-profile",
+                proposal_profile=proposal_profile,
             ),
         )
         await self.campaigns.create_campaign(
@@ -163,25 +165,34 @@ class _World:
         await self.progress.calibration_recorded(CID)
 
     async def delivered(
-        self, cycle_id: str, change: bytes, evaluation: str = "accepted"
+        self,
+        cycle_id: str,
+        change: bytes,
+        evaluation: str = "accepted",
+        readings=None,
+        renderings=None,
     ) -> tuple[Cycle, Run, str]:
         """An increment launched on the campaign (the owner's word, standing in for the proposal
         point 5 adds), pinned as today's cycle-create path pins it, at the Project's baseline. Its
         run's change to the report module is delivered for real: verified by the product's
         checks and captured in the clone. Its own evaluation is ``evaluation``. Returns the cycle,
         its run and the captured commit."""
-        result = await self.campaigns.transition(
-            CID,
-            move(
-                CampaignState.BUILDING,
-                f"launch-{cycle_id}",
-                operation=ControlOperation.RESUME,
-                launch=LaunchRequest(CycleKind.INCREMENT, {}),
-            ),
-        )
-        await self.campaigns.mark_launch_intent_launched(
-            result.intent.launch_id, cycle_id, actor="launcher"
-        )
+        # A proposal profile that loads launched row 5's increment already: it is this cycle.
+        pending = await self.campaigns.pending_launch_intents()
+        if pending:
+            launch_id = pending[0].launch_id
+        else:
+            result = await self.campaigns.transition(
+                CID,
+                move(
+                    CampaignState.BUILDING,
+                    f"launch-{cycle_id}",
+                    operation=ControlOperation.RESUME,
+                    launch=LaunchRequest(CycleKind.INCREMENT, {}),
+                ),
+            )
+            launch_id = result.intent.launch_id
+        await self.campaigns.mark_launch_intent_launched(launch_id, cycle_id, actor="launcher")
         context = parse_source_context(recorded("project_source_context", "valid"))
         cycle = Cycle(
             cycle_id=cycle_id,
@@ -225,7 +236,13 @@ class _World:
             run,
             "increment_evaluation.json",
             INCREMENT_EVALUATION_ARTIFACT_TYPE,
-            json.dumps({"verdict": evaluation}).encode(),
+            json.dumps(
+                {
+                    "verdict": evaluation,
+                    **({"readings": readings} if readings else {}),
+                    **({"renderings": renderings} if renderings else {}),
+                }
+            ).encode(),
         )
         return cycle, run, delivery.captured_commit
 
@@ -307,6 +324,8 @@ async def test_an_accepted_increment_moves_the_branch_to_its_capture(tmp_path):
     )
     assert promote.binding["verification_ref"] == verification.artifact_id
     assert "tree_ref" not in promote.binding
+    # §24dr item 4: written on every one, empty for none, so a row without it predates §24dq.
+    assert promote.binding["accepted_pages"] == []
     assert await world.branch() == captured
     assert head(stored, log) == CampaignHead(captured, identity, verification.artifact_id)
     # Row 7 proposes. Its profile is none the deploy holds here (``started``), so it escalates.
@@ -320,6 +339,95 @@ async def test_an_accepted_increment_moves_the_branch_to_its_capture(tmp_path):
         f"- increment `{cycle.cycle_id}`: tree `{identity[:12]}`, commit `{captured[:12]}` on "
         "the campaign branch"
     ) in digest.decode()
+
+
+async def test_an_accepted_increments_reading_reaches_its_promotion_row(tmp_path):
+    """#2938, entered at the completion boundary: the digest, the gate and the viewer all read the
+    control log, so a reading left on the run alone is one nobody sees."""
+    readings = [{"id": "play", "argv": ["node", "play.mjs"], "reading": {"wins": 0}}]
+    world = _World(tmp_path)
+    await world.started()
+    cycle, run, _ = await world.delivered("cyc_inc000000001", _added("total"), readings=readings)
+
+    await world.progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    [promote] = await world.promotions(cycle.cycle_id)
+    assert promote.binding["readings"] == readings
+
+
+#: What acceptance read of the increment's pages (``product_routes.route_record``): the profile's
+#: home page, and ``/totals``, which the change request added and its candidate rendered.
+_RENDERINGS = {
+    "start": {"tree_identity": "t", "configuration_revision": 1, "started": True, "detail": ""},
+    "routes": [
+        {"route": "/", "source": "approved_manifest", "held": "held", "anchor": "counter-list",
+         "read_at": "/", "seen": ["counter-list"], "detail": None},
+        {"route": "/totals", "source": "change_request", "held": "held", "anchor": "totals-view",
+         "read_at": "/totals", "seen": ["totals-row", "totals-view", "nav-home"], "detail": None},
+    ],
+}  # fmt: skip
+
+
+async def test_the_pages_an_accepted_increment_added_reach_its_promotion_and_the_next_launch(
+    tmp_path,
+):
+    """SIP-0109 §24dq, entered at the completion boundary (``cycle_ended``), whose row 7 proposes
+    the next increment. A product's request carries no manifest delta, so this row is the only
+    record of ``/totals`` and the ids its page carried. Bugs caught: the added page never recorded,
+    so the next request may reuse ``totals-view`` and a page it never builds holds where the
+    fallback renders the totals view; a pinned page recorded as added; only the root recorded,
+    though the fallback renders every id; or the record never reaching the next launch, whose
+    rails and acceptance read only its block."""
+    world = _World(tmp_path)
+    await world.started(proposal_profile="campaign-increment")
+    cycle, run, _ = await world.delivered(
+        "cyc_inc000000001", _added("total"), renderings=_RENDERINGS
+    )
+
+    await world.progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    page = {"route": "/totals", "anchor": "totals-view", "testids": ["totals-view", "nav-home", "totals-row"]}  # fmt: skip
+    [promote] = await world.promotions(cycle.cycle_id)
+    assert promote.binding["accepted_pages"] == [page]
+    [intent] = await world.campaigns.pending_launch_intents()
+    block = intent.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (block["basis"], block["accepted_pages"]) == ("campaign_branch", [page])
+
+
+async def test_a_campaign_whose_promotion_predates_the_inventory_escalates_and_proposes_nothing(
+    tmp_path,
+):
+    """SIP-0109 §24dr item 5, entered at the completion boundary (``cycle_ended``), whose row 7
+    proposes. The promotion is written as the code before §24dq wrote it, with no inventory: a
+    Campaign that accepted an increment, paused or escalated, and resumed across the deploy. Bug
+    caught: the row read as having added no page, so the next proposal is launched with an empty
+    inventory and may reuse the anchor of a page that increment added (#2783)."""
+    world = _World(tmp_path)
+    await world.started(proposal_profile="campaign-increment")
+    cycle, run, _ = await world.delivered("cyc_inc000000001", _added("total"))
+    transition = world.campaigns.transition
+
+    async def before_the_inventory(campaign_id, change, **kw):
+        if change.operation is ControlOperation.PROMOTE:
+            binding = {k: v for k, v in change.binding.items() if k != "accepted_pages"}
+            change = dataclasses.replace(change, binding=binding)
+        return await transition(campaign_id, change, **kw)
+
+    world.campaigns.transition = before_the_inventory
+
+    await world.progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    [promote] = await world.promotions(cycle.cycle_id)
+    [decide] = await world.decisions(cycle.cycle_id)
+    assert decide.binding["unbuilt"] == (
+        f"the accepted-page inventory can't be read: campaign {CID}'s promotion of "
+        f"{cycle.cycle_id} (control-log row {promote.seq}, {promote.entry_id}) was written before "
+        "SIP-0109 §24dq, and records none of the pages it accepted. Its next proposal is refused "
+        "(§24dr item 4): abort the Campaign and contribute its accepted increments (§24dc), or "
+        "let it finish without proposing"
+    )
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
+    assert await world.campaigns.pending_launch_intents() == []
 
 
 async def test_a_capture_built_on_another_commit_than_the_head_is_refused(tmp_path):

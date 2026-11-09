@@ -17,10 +17,22 @@ three steps:
    from Git to the same tree identity. It is mapped ``captured``, and the commit's patch is
    kept as the run's ``patch_export`` contribution.
 
+**A regressed candidate gets one repair round** (#2613, SIP-0112 H.20). The executor routes it
+into the correction chain the plan's own failures take (analyze, decide, repair), spending the
+run's correction budget, with ``regression_failure`` as the failed result: the blocking checks as
+the product's runner read them. The repaired candidate is delivered again, and its verification
+names the one it repairs (``RepairOf``): each check that blocked there must now execute and pass.
+A second regression, a round that repairs nothing, or a spent budget fails the run with the
+verification's summary.
+
 The squad's change is the files its source and test authors produced, at their latest accepted
-content, that differ from the checkout's. A file it rewrites keeps the checkout's CRLF line
-endings when the original used them throughout. A run's own documents (plans, reports) are
-never part of the product.
+content, that differ from the checkout's, and the checkout's files they removed (#2612, SIP-0112
+H.23). A removal is applied to the candidate as the patch's ``None`` for its path, and named in
+the verification's ``changed_paths`` like a write. A file it rewrites keeps the checkout's CRLF
+line endings when the original used them throughout. A run's own documents (plans, reports) are
+never part of the product. On a repository-backed increment, the files its change request placed
+for the framework (the page loaders its page criteria's tests import, #2799) are laid over the
+squad's change, as the framework writes them, whatever the squad emitted at their paths.
 """
 
 from __future__ import annotations
@@ -29,7 +41,7 @@ import json
 import logging
 import posixpath
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -38,25 +50,32 @@ from typing import Any
 from uuid import uuid4
 
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.cycles.deletions import is_deletion
 from squadops.cycles.delivered_tree import WORKSPACE_ARTIFACT_TYPES
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
+from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.cycles.vault_reads import retrieve_or_absent
-from squadops.projects.baseline import InheritedBaseline
+from squadops.cycles.verification_integrity import ResultStatus
+from squadops.execution.product_suite import PRODUCT_RUNNER
+from squadops.projects.baseline import FAIL, InheritedBaseline
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.contribution import capture_ref
 from squadops.projects.models import CheckoutTree
 from squadops.projects.verification import (
     ACCEPTED,
+    REGRESSED,
     SOURCE_VERIFICATION_FILENAME,
     SOURCE_VERIFICATION_TYPE,
     RegressionBaselineInvalid,
+    RepairOf,
     SourceVerification,
     attributed,
     previous_verification_baseline,
+    why_blocking,
 )
 from squadops.projects.workspaces import (
     CAPTURED,
@@ -66,6 +85,7 @@ from squadops.projects.workspaces import (
     seed_project_tree,
 )
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision, content_bytes
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import authors_qa_suite, authors_source
 
 logger = logging.getLogger(__name__)
@@ -85,28 +105,31 @@ class SourceDelivery:
     captured_commit: str | None = None
     #: The pinned commit's tree the candidate was built on, and the squad's changes to it: the
     #: two trees a repository-backed increment's acceptance is judged on (SIP-0109 §24cd point 6).
+    #: A removed file's change is ``None`` (#2612).
     head: CheckoutTree | None = None
-    changes: Mapping[str, bytes] = field(default_factory=dict)
+    changes: Mapping[str, bytes | None] = field(default_factory=dict)
 
 
 def squad_changes(
     stored_artifacts: list[tuple[str, ArtifactRef]],
     contents: Mapping[str, bytes],
     checkout: Mapping[str, bytes],
-) -> tuple[dict[str, bytes], tuple[str, ...]]:
-    """The product files the squad changed or added: each path's latest accepted content from a
-    source or test author, where it differs from the checkout's. ``contents`` maps artifact ID
+) -> tuple[dict[str, bytes | None], tuple[str, ...]]:
+    """The product files the squad changed, added or removed: each path's latest accepted content
+    from a source or test author, where it differs from the checkout's, and ``None`` for a
+    checkout file whose latest accepted entry is a removal (#2612). ``contents`` maps artifact ID
     to its bytes. Also the paths an author emitted that aren't the product's files, which the
-    candidate leaves out and the verification record names."""
+    candidate leaves out and the verification record names. A removal of a path the checkout
+    doesn't hold removes only what the squad wrote there, and is named with them."""
     directories = {str(parent) for path in checkout for parent in PurePosixPath(path).parents}
     directories.discard(".")
     latest: dict[str, str] = {}
     left_out: set[str] = set()
     for art_id, ref in stored_artifacts:
         producer = ref.metadata.get("producing_task_type", "")
-        # As the executor's own resolution reads the workspace: a failed emission is never
+        # As the executor's own resolution reads the workspace: a banked emission is never
         # input, and a repair candidate is unaccepted until it is re-stored as the task's own.
-        if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
+        if banked_as(ref.metadata.get("emission_status")) is not None:
             continue
         if producer in REPAIR_TASK_TYPES or producer == SOURCE_CHECKOUT:
             continue
@@ -116,16 +139,72 @@ def squad_changes(
         # squad's evidence, never the product's files (FR-19).
         if ref.artifact_type in EVIDENCE_ARTIFACT_TYPES:
             continue
+        if is_deletion(ref):
+            if ref.filename in checkout:
+                latest[ref.filename] = art_id
+            else:
+                latest.pop(ref.filename, None)
+                left_out.add(ref.filename)
+            continue
         if _is_product_file(ref, checkout, directories):
             latest[ref.filename] = art_id
         else:
             left_out.add(ref.filename)
-    changes = {}
+    removed = {art_id for art_id, ref in stored_artifacts if is_deletion(ref)}
+    changes: dict[str, bytes | None] = {}
     for path, art_id in sorted(latest.items()):
+        if art_id in removed:
+            changes[path] = None
+            continue
         content = _line_endings_of(checkout.get(path), contents[art_id])
         if checkout.get(path) != content:
             changes[path] = content
     return changes, tuple(sorted(left_out - set(latest)))
+
+
+def with_framework_files(
+    changes: Mapping[str, bytes | None],
+    placed: Mapping[str, bytes],
+    checkout: Mapping[str, bytes],
+) -> dict[str, bytes | None]:
+    """The squad's ``changes`` with the framework's ``placed`` files over them (#2799): each one
+    written where the checkout doesn't hold it as it is, and the squad's own change at its path
+    dropped where it does. So the candidate holds every placed file as the framework wrote it,
+    whatever the squad emitted there."""
+    merged = dict(changes)
+    for path, content in placed.items():
+        if checkout.get(path) == content:
+            merged.pop(path, None)
+        else:
+            merged[path] = content
+    return merged
+
+
+async def placed_framework_files(cycle: Cycle, vault: Any) -> dict[str, bytes]:
+    """#2799: the framework's files a repository-backed increment's change request placed: the
+    page loaders its page criteria's tests import. Laid over the squad's change at delivery
+    (``with_framework_files``), so the candidate verified, captured and judged holds them as the
+    framework wrote them, and the bundles frozen from it carry them. Empty for every other run,
+    and for a change request that placed none."""
+    # deferred (cycle): campaigns.increment_tree loads the cycles package, which loads this one
+    from squadops.campaigns.increment_tree import (
+        approved_change_request,
+        increment_basis,
+        increment_page_loader_files,
+    )
+
+    basis = increment_basis(cycle.resolved_config())
+    if basis is None or not basis.evaluated_at_delivery:
+        return {}
+    try:
+        document = await approved_change_request(vault, cycle)
+        files = increment_page_loader_files(document) if document is not None else {}
+    except ValueError as e:
+        # The acceptance after delivery would refuse it too: nothing is judged unread.
+        raise SourceDeliveryRefused(
+            f"the increment's approved change request can't be read for the files it placed: {e}"
+        ) from e
+    return {p: c.encode("utf-8") for p, c in files.items()}
 
 
 def _is_product_file(
@@ -146,6 +225,84 @@ def _line_endings_of(original: bytes | None, emitted: bytes) -> bytes:
     return emitted.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
 
 
+def regression_subject(plan: Sequence[TaskEnvelope]) -> TaskEnvelope | None:
+    """The task a regression's repair round is about (#2613): the plan's last source author,
+    whose envelope carries the write grant and workspace a repair of the product's code works
+    under; in a plan that authors only tests, its last suite author. ``None`` for a plan that
+    authors neither, which delivers nothing."""
+    for authors in (authors_source, authors_qa_suite):
+        found = [e for e in plan if authors(e.task_type)]
+        if found:
+            return found[-1]
+    return None
+
+
+def regression_failure(task_id: str, verification: SourceVerification) -> TaskResult:
+    """A regressed verification as the failed result the correction chain reads (#2613, H.20).
+
+    Each blocking check is a failed row as the product's own runner read it, in the sandbox after
+    the Development Configuration's setup: its id, exit code and output tails, and why it blocks.
+    Nothing here is read again in an agent's image, which lacks the product's dependencies
+    (#2913). An inherited failure isn't the run's to repair, and is named only in the summary.
+
+    Raises:
+        ValueError: ``verification`` didn't regress, so there is nothing to repair.
+    """
+    if verification.verdict != REGRESSED:
+        raise ValueError(f"verification reads {verification.verdict!r}: there's no regression")
+    rows = []
+    for check in verification.checks:
+        if check.id not in verification.blocking:
+            continue
+        evidence = check.evidence or {}
+        row: dict[str, Any] = {
+            "check": check.id,
+            "passed": False,
+            "executed": True,
+            "status": ResultStatus.FAILED,
+            "judged_on": PRODUCT_RUNNER,
+            "attribution": check.attribution,
+            "reason": why_blocking(check),
+            "exit_code": evidence.get("exit_code"),
+            "stdout_tail": evidence.get("stdout_tail") or "",
+            "stderr_tail": evidence.get("stderr_tail") or "",
+        }
+        if check.read:
+            row["read"] = dict(check.read)
+        rows.append(row)
+    environment = ", ".join(f"{k} {v}" for k, v in sorted(verification.environment.items()))
+    inherited = [
+        c.id for c in verification.checks if c.result == FAIL and c.id not in verification.blocking
+    ]
+    summary = (
+        f"the product's own checks, on its runner ({environment}), after the plan: "
+        f"{verification.summary()}"
+        + (
+            f"; failing before the run too, not its to repair: {', '.join(inherited)}"
+            if inherited
+            else ""
+        )
+        + f". The run changed: {', '.join(verification.changed_paths)}"
+    )
+    return TaskResult(
+        task_id=task_id,
+        status=TaskResultStatus.FAILED,
+        outputs={
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "summary": summary,
+            "validation_result": {
+                "passed": False,
+                "summary": summary,
+                "missing_components": [],
+                "checks": rows,
+            },
+            "artifacts": [],
+        },
+        error=summary,
+        outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+    )
+
+
 async def deliver_source_change(
     cycle: Cycle,
     run_id: str,
@@ -155,8 +312,11 @@ async def deliver_source_change(
     registry: Any,
     repository: Any,
     sandbox: Any,
+    repair_of: RepairOf | None = None,
 ) -> SourceDelivery:
-    """Verify the run's change against the inherited baseline, and capture it when accepted."""
+    """Verify the run's change against the inherited baseline, and capture it when accepted.
+    ``repair_of`` is a repaired candidate's regressed verification, whose blocking checks it must
+    run and pass (#2613)."""
     context = cycle.source_context
     if context is None:
         raise ValueError(f"cycle {cycle.cycle_id} pins no source: it is not source-backed")
@@ -188,13 +348,27 @@ async def deliver_source_change(
     if not changes:
         named = f"; it left out what isn't the product's: {', '.join(left_out)}" if left_out else ""
         raise SourceDeliveryRefused(f"the run changed no file of the product{named}")
-    binary = sorted(p for p in changes if _is_binary(checkout.files.get(p)))
+    changes = with_framework_files(
+        changes, await placed_framework_files(cycle, vault), checkout.files
+    )
+    if not changes:
+        raise SourceDeliveryRefused(
+            "the run changed no file of the product: its one change was a file the framework "
+            "places, which the head already holds"
+        )
+    binary = sorted(
+        p for p, c in changes.items() if c is not None and _is_binary(checkout.files.get(p))
+    )
     if binary:
         raise SourceDeliveryRefused(
             f"the run wrote text over binary files, which 2.4 doesn't edit: {', '.join(binary)}"
         )
 
-    candidate_files = {**checkout.files, **changes}
+    # #2612: a removed file is absent from the candidate, as the sandbox's patch leaves it.
+    candidate_files = {
+        **{p: c for p, c in checkout.files.items() if changes.get(p, c) is not None},
+        **{p: c for p, c in changes.items() if c is not None},
+    }
     tree_identity = FileTree.of(candidate_files).identity
     workspace_id = delivery_workspace(run_id, tree_identity)
     # A resumed run delivers again: an earlier attempt's workspace, its head already that
@@ -223,7 +397,8 @@ async def deliver_source_change(
             cycle_id=workspace_id,
             origin=RevisionOrigin.AGENT_PATCH,
             files=candidate_files,
-            executable=checkout.executable,
+            # a removed file's mode drops out with it, as the sandbox's patch drops it
+            executable=frozenset(checkout.executable) & candidate_files.keys(),
         )
         if candidate.revision_id != expected.revision_id:
             raise SourceDeliveryRefused(
@@ -245,6 +420,7 @@ async def deliver_source_change(
             environment=environment,
             checks=attributed(results, baseline),
             regression_baseline_ref=context.previous_verification_ref,
+            repair_of=repair_of,
         )
         ids = [
             await _store(

@@ -388,11 +388,12 @@ def test_parks_in_a_row_stop_at_the_limit_through_the_counters_the_decision_read
         (_ACC, dict(repair_cycles=1), (16, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
         # The build failed its own checks too, and a repair can fix those: row 12 as before.
         (_REJ, {}, (12, PendingAction.REPAIR, _GO, None)),
-        # Counted as unaccepted at its own decision, as row 13's is (#2294): one before and this
-        # one reach the builders' limit of two.
-        (_ACC, dict(unaccepted_increments=1), (4, CampaignOutcome.FAILURE, None, None)),
+        # #2849 (§24ct): counted toward no unaccepted limit. The 2.6 spike's unattended run ended
+        # at row 4 on one of these and one other; the work built and verified, the criteria were
+        # the fault, and the next proposal is told which.
+        (_ACC, dict(unaccepted_increments=1), (16, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
     ],
-    ids=["repairs-remain", "repairs-spent", "its-own-checks-failed", "counts-as-unaccepted"],
+    ids=["repairs-remain", "repairs-spent", "its-own-checks-failed", "counts-toward-no-limit"],
 )
 def test_a_rejection_only_for_already_met_criteria_is_abandoned_for_a_new_proposal(
     cycle_verdict, count_overrides, expected
@@ -412,6 +413,37 @@ def test_a_rejection_only_for_already_met_criteria_is_abandoned_for_a_new_propos
             rejected_only_as_already_met=True,
         ),
         assessment(cycle_verdict),
+    )
+
+    assert shape(decision) == expected
+
+
+@pytest.mark.parametrize(
+    ("count_overrides", "expected"),
+    [
+        ({}, (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        # No repair: nothing built can make a test that passes on the head fail there.
+        (dict(repair_cycles=1), (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        # Counted toward no unaccepted limit (§24ct): one more of these at the limit's edge
+        # proposes again rather than ending the campaign at row 4.
+        (dict(unaccepted_increments=1), (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        # Nor toward the rejected-in-a-row pause: its proposal was approved and built.
+        (dict(rejected_proposals_in_row=1), (19, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+    ],
+    ids=["fresh", "repairs-spent", "at-the-unaccepted-limit", "after-a-rejection"],
+)
+def test_a_cycle_ended_for_criteria_already_met_on_the_head_is_abandoned_uncounted(
+    count_overrides, expected
+):
+    """#2890 (§24cz, row 19). Bugs caught: the ending read as a failed build (row 8's repair, or
+    row 14's escalation, on a run that delivered nothing); or its abandonment counted toward
+    ``max_unaccepted_increments``, so the 2.6 spike's two already-met increments still end the
+    campaign at row 4, only sooner."""
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        counters(**count_overrides),
+        EndedCycle(CYCLE, CycleKind.INCREMENT, CycleEnding.CRITERIA_NOT_CHECKABLE),
+        assessment(None),
     )
 
     assert shape(decision) == expected

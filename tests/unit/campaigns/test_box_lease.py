@@ -57,12 +57,12 @@ async def test_the_supervisor_holds_the_box_from_its_gate_until_it_gives_it_back
     campaign's state, or a release leaving the supervisor holding the box."""
     reg = await _registry("cmp_a")
     acquired = await reg.change_box_lease(
-        "cmp_a", _lease(OP.LEASE_ACQUIRE, "crew", "k1"), runs_in_flight=()
+        "cmp_a", _lease(OP.LEASE_ACQUIRE, "operator", "k1"), runs_in_flight=()
     )
     lease = await reg.box_lease()
     assert (lease.holder, lease.held_by, lease.campaign_id) == (
         LeaseHolder.SUPERVISOR,
-        "crew",
+        "operator",
         "cmp_a",
     )
     assert 590 <= (lease.expires_at - datetime.now(UTC)).total_seconds() <= 600
@@ -71,7 +71,9 @@ async def test_the_supervisor_holds_the_box_from_its_gate_until_it_gives_it_back
         S.AWAITING_RULING,
     )
 
-    await reg.change_box_lease("cmp_a", _lease(OP.LEASE_RELEASE, "crew", "k2"), runs_in_flight=())
+    await reg.change_box_lease(
+        "cmp_a", _lease(OP.LEASE_RELEASE, "operator", "k2"), runs_in_flight=()
+    )
     released = await reg.box_lease()
     assert (released.holder, released.supervisor_holds(datetime.now(UTC))) == (
         LeaseHolder.SQUAD,
@@ -97,16 +99,16 @@ async def test_a_refused_change_is_recorded_and_leaves_the_lease_as_it_was(case,
     )
     if case in ("another supervisor holds it", "released by someone who does not hold it"):
         await reg.change_box_lease(
-            "cmp_a", _lease(OP.LEASE_ACQUIRE, "crew-a", "hold"), runs_in_flight=()
+            "cmp_a", _lease(OP.LEASE_ACQUIRE, "operator-a", "hold"), runs_in_flight=()
         )
     before = await reg.box_lease()
     attempt = {
-        "outside the gate": ("cmp_a", _lease(OP.LEASE_ACQUIRE, "crew", "x"), ()),
-        "a run in flight": ("cmp_a", _lease(OP.LEASE_ACQUIRE, "crew", "x"), ("run_1",)),
-        "another supervisor holds it": ("cmp_b", _lease(OP.LEASE_ACQUIRE, "crew-b", "x"), ()),
+        "outside the gate": ("cmp_a", _lease(OP.LEASE_ACQUIRE, "operator", "x"), ()),
+        "a run in flight": ("cmp_a", _lease(OP.LEASE_ACQUIRE, "operator", "x"), ("run_1",)),
+        "another supervisor holds it": ("cmp_b", _lease(OP.LEASE_ACQUIRE, "operator-b", "x"), ()),
         "released by someone who does not hold it": (
             "cmp_a",
-            _lease(OP.LEASE_RELEASE, "crew-b", "x"),
+            _lease(OP.LEASE_RELEASE, "operator-b", "x"),
             (),
         ),
     }[case]
@@ -124,17 +126,19 @@ async def test_an_expired_lease_holds_nothing_and_the_same_holder_renews():
     holder being refused as if another supervisor held it."""
     reg = await _registry("cmp_a", "cmp_b")
     await reg.change_box_lease(
-        "cmp_a", _lease(OP.LEASE_ACQUIRE, "crew-a", "k1", expires_in_s=0), runs_in_flight=()
+        "cmp_a", _lease(OP.LEASE_ACQUIRE, "operator-a", "k1", expires_in_s=0), runs_in_flight=()
     )
-    await reg.change_box_lease("cmp_b", _lease(OP.LEASE_ACQUIRE, "crew-b", "k2"), runs_in_flight=())
+    await reg.change_box_lease(
+        "cmp_b", _lease(OP.LEASE_ACQUIRE, "operator-b", "k2"), runs_in_flight=()
+    )
     first = await reg.box_lease()
     await reg.change_box_lease(
-        "cmp_b", _lease(OP.LEASE_ACQUIRE, "crew-b", "k3", expires_in_s=900), runs_in_flight=()
+        "cmp_b", _lease(OP.LEASE_ACQUIRE, "operator-b", "k3", expires_in_s=900), runs_in_flight=()
     )
     renewed = await reg.box_lease()
     assert (first.held_by, renewed.held_by, renewed.acquired_at) == (
-        "crew-b",
-        "crew-b",
+        "operator-b",
+        "operator-b",
         first.acquired_at,
     )
     assert renewed.expires_at > first.expires_at
@@ -145,7 +149,7 @@ async def test_a_lease_operation_never_commits_without_its_lease():
     lease never made."""
     reg = await _registry("cmp_a")
     with pytest.raises(ValueError, match="change_box_lease"):
-        await reg.transition("cmp_a", _lease(OP.LEASE_ACQUIRE, "crew", "k"))
+        await reg.transition("cmp_a", _lease(OP.LEASE_ACQUIRE, "operator", "k"))
     with pytest.raises(ValueError, match="does not change the box lease"):
         await reg.change_box_lease("cmp_a", move(S.BUILDING, "k2"), runs_in_flight=())
     assert await reg.box_lease() is None

@@ -29,6 +29,7 @@ from squadops.cli.commands.bootstrap import bootstrap
 from squadops.cli.commands.campaigns import app as campaigns_app
 from squadops.cli.commands.cycles import app as cycles_app
 from squadops.cli.commands.doctor import doctor
+from squadops.cli.commands.goals import app as goals_app
 from squadops.cli.commands.instructions import app as instructions_app
 from squadops.cli.commands.lessons import app as lessons_app
 from squadops.cli.commands.meta import app as meta_app
@@ -97,6 +98,7 @@ app.command("bootstrap")(bootstrap)
 
 # Register command groups
 app.add_typer(projects_app, name="projects")
+app.add_typer(goals_app, name="goals")  # SIP-0115 §8.2: a Project's goal set
 app.add_typer(cycles_app, name="cycles")
 app.add_typer(runs_app, name="runs")
 app.add_typer(campaigns_app, name="campaigns")  # SIP-0109 §13

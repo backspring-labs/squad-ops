@@ -191,3 +191,47 @@ class TestARewindNeverDiscardsAnAcceptedRepair:
         resolution = self._resolve(classification="work_product")
         assert resolution.path == "patch"
         assert resolution.override_reason == "work_product_rewind_with_unspent_repair"
+
+
+#: SIP-0109 §24do: the evidence of a qa emission refused because a criterion's test passes on the
+#: campaign branch's head (``build_failure_evidence`` carries it from the refused result).
+_PASSES_ON_HEAD = {
+    "validation_result": {"checks": []},
+    "criteria_pass_on_head": {
+        "head_commit": "c0ffee" * 6,
+        "criteria": [
+            {"criterion_id": "T2", "path": "test/criterion_T2.test.js", "tests_passed": 3}
+        ],
+    },
+}
+
+
+class TestARefusalOnTheHeadIsPatched:
+    """#2933 D1: the suite's author is owed one round on the head's refusal, whatever the lead
+    decides. Bug caught: a lead's abort, move-on or rewind ending the run before that round, so a
+    vacuous test's increment fails, or advances, on a model's choice."""
+
+    @pytest.mark.parametrize("proposed", ["abort", "continue", "rewind"])
+    def test_any_other_path_becomes_patch_and_says_why(self, proposed):
+        res = resolve_correction_path(proposed, _PASSES_ON_HEAD, {}, classification="environment")
+        assert (res.path, res.overridden_from, res.override_reason) == (
+            "patch",
+            proposed,
+            "criterion_passes_on_head",
+        )
+
+    def test_a_patch_is_not_reported_as_overridden(self):
+        res = resolve_correction_path("patch", _PASSES_ON_HEAD, DEFAULTS)
+        assert (res.path, res.overridden_from) == ("patch", None)
+
+    @pytest.mark.parametrize(
+        "evidence",
+        [
+            {"criteria_pass_on_head": {"head_commit": "c", "criteria": []}},
+            {"criteria_pass_on_head": "T2"},
+            {"criteria_pass_on_head": {"criteria": [{"criterion_id": "T2"}]}},
+        ],
+        ids=["no-criteria", "not-a-mapping", "no-path"],
+    )
+    def test_a_refusal_that_names_no_file_leaves_abort_alone(self, evidence):
+        assert resolve_correction_path("abort", evidence, DEFAULTS).path == "abort"

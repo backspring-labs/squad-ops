@@ -66,14 +66,14 @@ def test_tallys_recorded_profile_places_a_criterion_under_its_unittest_runner():
         (("api/routes.py",), "tests/test_criterion_C1.py"),
         (("api/**",), "tests/test_criterion_C1.py"),
         # The extension is the one most of the runner's own tests take.
-        (("web/src/App.jsx",), "web/criterion_C1.test.jsx"),
+        (("web/src/App.jsx",), "web/src/__tests__/criterion_C1.test.jsx"),
     ],
     ids=["a backend file", "a backend glob", "a frontend file"],
 )
 def test_a_criterion_is_placed_under_the_runner_that_tests_its_paths(paths, placed):
     """Bugs caught: a frontend criterion placed under the backend's runner (its tests never run);
     a vitest file given an extension the product's tests don't use; a glob path read as covering
-    nothing."""
+    nothing; a file placed at the runner's root rather than beside its tests (#2858)."""
     placements = runner_placements((_PYTEST, _VITEST), (), _TREE)
 
     assert place_criterion("C1", paths, placements) == placed
@@ -143,3 +143,46 @@ def test_a_placement_reads_back_as_it_was_handed_to_the_proposal():
 
     assert tuple(RunnerPlacement.from_dict(p.as_dict()) for p in placements) == placements
     assert placements[0].taken == ("tests/test_criterion_X.py",)
+
+
+@pytest.mark.parametrize(
+    ("tree", "placed"),
+    [
+        (
+            ("app/main.py", "tests/test_main.py", "tests/test_books.py"),
+            "tests/test_criterion_T1.py",
+        ),
+        (("app/main.py", "test_main.py"), "test_criterion_T1.py"),
+        (("app/main.py",), "test_criterion_T1.py"),
+    ],
+    ids=["tests beside each other", "tests at the root", "no tests yet"],
+)
+def test_a_runner_rooted_at_the_repository_places_beside_its_own_tests(tree, placed):
+    """#2858 (``cmp_f8eddb8f175f``): pytest rooted at ``.`` with the product's tests under
+    ``tests/``. Bug caught: the criterion file placed at the root, where the qa task's
+    ``tests/test_criterion_T1.py`` shares its basename and pytest refuses collection (``import file
+    mismatch``), so every build of the increment reads as a regression."""
+    root_pytest = _runner("pytest", ("app/**",), (".",), "test_*.py", checks=("backend",))
+    placements = runner_placements((root_pytest,), (), tree)
+
+    assert place_criterion("T1", ("app/main.py",), placements) == placed
+
+
+@pytest.mark.parametrize(
+    "existing",
+    ["test_criterion_T1.py", "legacy/checks/test_criterion_T1.py"],
+    ids=["at the root", "deeper than the runner's tests"],
+)
+def test_a_criterion_whose_file_name_the_product_already_has_elsewhere_is_refused(existing):
+    """#2860. Campaign 4's accepted branch held the criterion files at the root
+    (``test_criterion_T1.py``), and a later Campaign's placement under ``tests/`` checked only
+    the same path. Bug caught: ``tests/test_criterion_T1.py`` placed beside a root module of the
+    same name, so pytest refuses collection (``import file mismatch``, #2858) on every build of
+    the increment. Another id still places."""
+    root_pytest = _runner("pytest", ("app/**",), (".",), "test_*.py", checks=("backend",))
+    tree = ("app/main.py", "tests/test_main.py", "tests/test_books.py", existing)
+    placements = runner_placements((root_pytest,), (), tree)
+
+    with pytest.raises(Unplaceable, match=f"share its file name with the product's {existing}"):
+        place_criterion("T1", ("app/main.py",), placements)
+    assert place_criterion("T2", ("app/main.py",), placements) == "tests/test_criterion_T2.py"

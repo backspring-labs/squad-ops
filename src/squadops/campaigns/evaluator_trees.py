@@ -24,7 +24,7 @@ import ast
 import hashlib
 import posixpath
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Set
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -183,7 +183,7 @@ def freeze_bundle(
         if content is None:
             raise BundleIncomplete(f"{criterion_id}: {path} is not in the tree")
         files[path] = content
-        found, unresolved = _imported_paths(path, content.decode("utf-8"), tree)
+        found, unresolved = imported_paths(path, content.decode("utf-8"), set(tree.paths()))
         if unresolved:
             raise BundleIncomplete(
                 f"{criterion_id}: {path} imports {', '.join(unresolved)}, which is not in the tree"
@@ -201,22 +201,21 @@ def freeze_bundle(
 _JS_IMPORT = re.compile(
     r"""(?:import\s[^'"`]*?from\s|import\s|require\()\s*['"`](\.{1,2}/[^'"`]+)['"`]"""
 )
-_JS_EXTENSIONS = ("", ".js", ".jsx", ".ts", ".tsx", "/index.js", "/index.jsx", "/index.ts")
+_JS_EXTENSIONS = ("", ".js", ".mjs", ".jsx", ".ts", ".tsx", "/index.js", "/index.jsx", "/index.ts")
 
 
-def _imported_paths(path: str, source: str, tree: FileTree) -> tuple[list[str], list[str]]:
-    """The tree paths a test file imports, and the relative references that resolve to none.
+def imported_paths(path: str, source: str, present: Set[str]) -> tuple[list[str], list[str]]:
+    """The paths of ``present`` a file imports, and the relative references that resolve to none.
 
     A relative reference names a file of the tree, so one that resolves to nothing is a bundle
     that cannot run. An absolute one may name an installed package, and is not judged here.
     """
-    present = set(tree.paths())
     found: list[str] = []
     unresolved: list[str] = []
     if path.endswith(".py"):
         try:
             module = ast.parse(source)
-        except SyntaxError:
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
             return found, unresolved
         for node in ast.walk(module):
             names: list[str] = []

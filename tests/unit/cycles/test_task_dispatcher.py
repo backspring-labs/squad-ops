@@ -20,6 +20,7 @@ import pytest
 
 from squadops.comms.queue_message import QueueMessage
 from squadops.config.schema import CommsDeliveryConfig
+from squadops.events.types import EventType
 from squadops.execution.execution_errors import _CancellationError
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.ports.comms.task_attempts import TaskAttemptsPort
@@ -28,6 +29,11 @@ from squadops.tasks.models import TaskEnvelope, TaskResult
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 pytestmark = [pytest.mark.domain_orchestration]
+
+
+async def _unscreened(result: TaskResult) -> TaskResult:
+    """The executor's ``screen_success`` where it accepts every succeeded attempt."""
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -654,6 +660,7 @@ class TestAcceptPatchToken:
                 self._cycle(),
                 "run_001",
                 handle_task_outcome=handle_outcome,
+                screen_success=_unscreened,
             )
 
         assert task_succeeded is True
@@ -661,6 +668,48 @@ class TestAcceptPatchToken:
         # substitutes the corrected one from its holder (#389).
         assert result.status == "FAILED"
         assert mock_queue.publish.await_count == 1
+
+    async def test_a_success_the_screen_refuses_is_routed_and_its_redispatch_screened(
+        self, mock_queue, reply_router
+    ) -> None:
+        """SIP-0109 §24do. Bug caught: a succeeded attempt returned as the task's success before
+        the executor's screen refuses it, so a criterion that passes on the head is accepted; or a
+        refusal emitted as ``task.succeeded``; or a re-dispatch after the refusal left unscreened."""
+        events = MagicMock()
+        dispatcher = TaskDispatcher(
+            queue=mock_queue, reply_router=reply_router, task_timeout=5.0, event_bus=events
+        )
+        envelope = self._envelope()
+        reply_router.responder = lambda env: TaskResult(task_id=env["task_id"], status="SUCCEEDED")
+        screened: list[str] = []
+        routed: list[TaskResult] = []
+
+        async def screen(result):
+            screened.append(result.status)
+            if len(screened) == 1:
+                return dataclasses.replace(result, status="FAILED", error="passes on the head")
+            return result
+
+        async def handle_outcome(result):
+            routed.append(result)
+            return "continue"
+
+        with patch("squadops.execution.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+            task_succeeded, result = await dispatcher.dispatch_with_retry(
+                envelope,
+                envelope,
+                self._cycle(),
+                "run_001",
+                handle_task_outcome=handle_outcome,
+                screen_success=screen,
+            )
+
+        assert (task_succeeded, result.status) == (True, "SUCCEEDED")
+        assert screened == ["SUCCEEDED", "SUCCEEDED"]
+        assert [(r.status, r.error) for r in routed] == [("FAILED", "passes on the head")]
+        assert mock_queue.publish.await_count == 2
+        emitted = [c.args[0] for c in events.emit.call_args_list]
+        assert emitted == [EventType.TASK_FAILED, EventType.TASK_SUCCEEDED]
 
 
 # ---------------------------------------------------------------------------
@@ -890,6 +939,7 @@ class TestCancellationProbe:
                 cycle,
                 "run_001",
                 handle_task_outcome=handle_outcome,
+                screen_success=_unscreened,
             )
 
         # One dispatch happened (the in-flight task); the retry never published.
@@ -1098,15 +1148,18 @@ class TestARestartedRuntimesRedispatchIsAnsweredNotRerun:
         restarted = TaskDispatcher(queue=mock_queue, reply_router=reply_router, task_timeout=5.0)
         agent = self._agent()
 
-        runs, replies = [], []
+        runs, replies, sends = [], [], []
         for dispatcher in (before, restarted, restarted):  # the original, the copy, a retry
             message = await self._sent(dispatcher, mock_queue, envelope)
             await agent._handle_task_envelope(message, message["metadata"])
             runs.append(agent.system.orchestrator.submit_task.await_count)
-            replies.append(agent._queue.publish.call_args.args[1])
+            replies.append(json.loads(agent._queue.publish.call_args.args[1]))
+            sends.append(message["payload"]["metadata"]["dispatch_id"])
 
         assert runs == [1, 1, 2]  # the copy is answered, the retry runs
-        assert replies[1] == replies[0]  # with the reply the original sent
+        # with the reply the original sent, named as the answer to the copy's own send (#2932)
+        assert replies[1]["payload"] == replies[0]["payload"]
+        assert [r["metadata"]["dispatch_id"] for r in replies] == sends
 
 
 class _SendRecord(TaskAttemptsPort):

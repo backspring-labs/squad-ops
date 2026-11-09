@@ -111,6 +111,27 @@ def test_a_page_that_could_not_be_read_is_unread_never_passed(overrides, seeds, 
         assert rendered[route] is value
 
 
+@pytest.mark.parametrize(
+    ("dom", "rendered"),
+    [
+        ('<div data-testid="run-list-view"></div>', {"run-list-view"}),
+        ("<script>const t = '<div data-testid=\"run-list-view\">'</script>", set()),
+        ('<template><div data-testid="run-list-view"></div></template>', set()),
+        ('<noscript><div data-testid="run-list-view"></div></noscript>', set()),
+        ('<p>data-testid="run-list-view"</p>', set()),
+    ],
+    ids=["an-element", "a-scripts-source", "a-template", "a-noscript", "a-text-node"],
+)
+def test_the_qa_reading_counts_only_the_ids_a_pages_elements_carry(dom, rendered):
+    """#2776, entered at ``render_routes``, the qa role's reading of a sample application. Bug
+    caught: a pattern over the dumped page's text, which held a route whose view never rendered
+    when the page's script source, a text node, a ``<template>`` or a ``<noscript>`` named its
+    anchor."""
+    steps, _ = _steps(dump_dom=lambda url: dom)
+
+    assert _render(steps, routes={"/": ROUTES["/"]}, seeds={}) == {"/": frozenset(rendered)}
+
+
 def test_no_declared_routes_reads_nothing():
     steps, seen = _steps()
     assert _render(steps, routes={}) == {}

@@ -227,7 +227,7 @@ async def test_a_start_hands_its_pin_the_reference_resolvers(world):
 
 
 async def test_the_supervisor_starts_a_campaign_and_its_row_names_the_supervisor(world):
-    """#1940: the crew dispatches. Bug caught: the supervisor's start refused, or recorded under
+    """#1940: the operator dispatches. Bug caught: the supervisor's start refused, or recorded under
     another actor than the token's. Entered at the start route, through the real launch service."""
     world.seat = (Role.CAMPAIGN_SUPERVISOR, "ripley")
 

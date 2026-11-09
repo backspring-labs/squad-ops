@@ -18,7 +18,7 @@ import functools
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
@@ -34,10 +34,12 @@ from squadops.campaigns.runner_acceptance import CandidateNotDelivered
 from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
+    ARTIFACT_CONTENTS_LIMIT_BYTES,
     INCREMENT_CANDIDATE_FILTER,
     LANDING_PRIOR_OUTPUTS,
     PRIOR_SLOT_FAILURES_KEY,
     RETAKE_CURRENT_FILES_KEY,
+    ArtifactFilter,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
@@ -61,11 +63,14 @@ from squadops.cycles.contract_derivation import (
 from squadops.cycles.correction_signature import (
     REPAIR_DROPPED_MARKER,
     REPAIR_EMPTY_MARKER,
+    REPAIR_REMOVAL_REFUSED_MARKER,
     REPAIR_SUBJECT_DROPPED_MARKER,
+    REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
 )
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
-from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
+from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
+from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EmissionStatus, banked_as
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.flow_runs import end_open_flow_runs
@@ -132,6 +137,12 @@ from squadops.events.types import EventType
 from squadops.execution.binding_holds import BindingFill, BindingHolds
 from squadops.execution.correction_repair import CorrectionRepair
 from squadops.execution.correction_runner import CorrectionRunner
+from squadops.execution.criterion_head_check import (
+    check_criteria_on_head,
+    refusal_entry,
+    refused_on_head,
+    store_head_check,
+)
 from squadops.execution.cycle_completion import CycleCompletion
 from squadops.execution.execution_errors import (
     _CancellationError,
@@ -152,13 +163,19 @@ from squadops.execution.product_acceptance import (
     evaluate_product_increment,
     evaluated_at_delivery,
 )
-from squadops.execution.product_suite import judge_on_product_runner
+from squadops.execution.product_suite import judge_on_product_runner, left_to_the_product_runner
 from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
 from squadops.execution.source_checkout import seed_checkout_artifacts, task_source_repository
-from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_source_change
+from squadops.execution.source_delivery import (
+    SourceDelivery,
+    SourceDeliveryRefused,
+    deliver_source_change,
+    regression_failure,
+    regression_subject,
+)
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
@@ -168,6 +185,8 @@ from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.projects.models import SourceUnavailable
 from squadops.projects.source_context import ProjectSourceContext
+from squadops.projects.verification import REGRESSED as VERIFICATION_REGRESSED
+from squadops.projects.verification import RepairOf
 from squadops.projects.workspaces import SandboxUnavailable
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 from squadops.stacks.scaffold import (
@@ -213,6 +232,7 @@ if TYPE_CHECKING:
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.ports.outcomes import ProposalEvidencePort
+    from squadops.ports.projects.goal_sets import GoalSetRegistryPort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
@@ -465,6 +485,12 @@ class _Correction:
     #: #994: task ids whose repair was accepted and stored this run — a rewind after one
     #: discards known-good state, so the correction policy is told.
     accepted_repair_task_ids: set[str] = dataclasses.field(default_factory=set)
+    #: SIP-0109 §24do (#2933): qa task ids whose emission has had its one refusal for a criterion
+    #: passing on the head. Kept here, not read from the carry, which keeps its last three entries.
+    refused_on_head: set[str] = dataclasses.field(default_factory=set)
+    #: §24do: the head's reading of the emission about to be accepted, by task id, taken before
+    #: its acceptance and recorded after its collection (``_fail_if_criteria_pass_on_head``).
+    head_readings: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -543,6 +569,17 @@ class RunState:
     authored: tuple[Any, Any] = (None, None)
 
 
+@dataclasses.dataclass
+class _RunnerReading:
+    """The product runner's reading of one failed attempt (#2818), taken while it is admitted."""
+
+    #: The runner's pass, accepted as the task's verdict.
+    accepted: TaskResult | None = None
+    #: Otherwise the runner's reading in place of the image's (#2877), or the head's refusal of
+    #: its pass (§24do); ``None`` when the runner read nothing, and the agent's result stands.
+    judged: TaskResult | None = None
+
+
 @dataclasses.dataclass(frozen=True)
 class _TaskOutcomeRouter:
     """One task's routing of its failed attempts, built once per task by ``_execute_task``.
@@ -617,6 +654,9 @@ class _TaskOutcomeRouter:
         # bank stores (#971) — both must see the same authorized set, or a path
         # the producer may not write is admitted here and the repair that fixes
         # it is refused at storage for touching it.
+        # #2949: the product runner reads the admitted result before it is banked, so the bank's
+        # marker says what the attempt was: handed off when the runner's pass is accepted.
+        reading = _RunnerReading()
         result = await executor._admit_failed_emission(
             result,
             _envelope,
@@ -625,20 +665,22 @@ class _TaskOutcomeRouter:
             state.produced.all_artifact_refs,
             bound_record=state.ownership.bound_record,
             compliance_counter=state.ownership.compliance_counter,
+            read_hand_off=lambda admitted: self.read_on_product_runner(admitted, reading),
         )
         _holder["result"] = result
         if ledger is not None:
             record_absent_emission(ledger, result, _envelope)
-        # #2818: a product's suite failing only ``tests_pass`` in the qa image is run again on
-        # the product's own runner, after its configured setup; a pass there judges the task.
-        judged = await executor._judged_on_product_runner(
-            result, _envelope, _enriched, cycle, run_id
-        )
-        if judged is not None:
+        if reading.accepted is not None:
             _record_task_evidence(result)
-            _holder["patched_result"] = judged
+            _holder["patched_result"] = reading.accepted
             state.correction.accepted_repair_task_ids.add(_envelope.task_id)
             return "accept_patch"
+        judged = reading.judged
+        if judged is not None:
+            # #2877: the qa image couldn't run the suite; the correction loop reads the product
+            # runner's reading of it, not the image's "not run".
+            result = judged
+            _holder["result"] = result
         action = await _next_action(result, _envelope, _enriched, _holder)
         while action == KEEP_PROGRESS:
             # #1522: the repair made progress and broke nothing (``retest_reduction``). It
@@ -691,6 +733,42 @@ class _TaskOutcomeRouter:
             # carries no validation_result/test_result → nothing is recorded.
             _record_task_evidence(result)
         return action
+
+    async def read_on_product_runner(
+        self, result: TaskResult, reading: _RunnerReading
+    ) -> EmissionStatus:
+        """#2818: a product's suite failing only ``tests_pass`` in the qa image is run again on the
+        product's own runner, after its configured setup; a pass there judges the task. #2877: a
+        suite the image couldn't run is read there whatever else failed. SIP-0109 §24do: the
+        runner's pass is the emission's, read on the head before it is accepted, as an emission
+        the agent reported succeeded is.
+
+        The reading goes into ``reading``. The return is what the bank marks the emission
+        (#2949): handed off when the qa image left the suite to the product's runner and the
+        runner's pass is accepted, so the hand-off never reads as a failure the runner then
+        passed. Failed otherwise, as before: the runner failed the suite or couldn't run it, the
+        pass was refused on the head, or the image ran the suite and failed it (#2818's missing
+        dependency), which is a failed attempt the runner overruled, not a hand-off."""
+        # Read off the image's own row before the runner's reading is laid over it.
+        handed_off = left_to_the_product_runner(result)
+        judged = await self.executor._judged_on_product_runner(
+            result, self.envelope, self.enriched, self.cycle, self.run_id
+        )
+        if judged is not None and judged.status == TaskResultStatus.SUCCEEDED:
+            screened = await self.screen(judged)
+            if screened.status == TaskResultStatus.SUCCEEDED:
+                reading.accepted = judged
+                return EmissionStatus.HANDED_OFF if handed_off else EmissionStatus.FAILED
+            judged = screened
+        reading.judged = judged
+        return EmissionStatus.FAILED
+
+    async def screen(self, result: TaskResult) -> TaskResult:
+        """The dispatcher's ``screen_success``, and the router's for a pass on the product's
+        runner: ``result`` before it is accepted, or the failure it is refused as (§24do)."""
+        return await self.executor._screen_on_head(
+            result, self.envelope, self.enriched, self.cycle, self.run_id, self.state
+        )
 
     def record_evidence(self, task_result) -> None:
         # The body is shared with the fan-out path (#1148) — see ``record_task_evidence``.
@@ -788,6 +866,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         source_repository: SourceRepositoryPort | None = None,
         sandbox: ExecutionSandboxPort | None = None,
         route_renderer: RouteRenderer | None = None,
+        # SIP-0115 §5.2: the goal sets a goal-set Campaign's proposal reads. Required at the
+        # factory, the roots' seam. ``None``: such a proposal's run fails, naming it.
+        goal_set_registry: GoalSetRegistryPort | None = None,
         run_completion: RunCompletion | None = None,
         correction_runner: CorrectionRunner | None = None,
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
@@ -801,6 +882,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
         # campaign cycle run by an executor without one fails at that gate, loudly.
         self._campaign_registry = campaign_registry
+        self._goal_set_registry = goal_set_registry
         # SIP-0109 §10: what a campaign does when one of its cycles ends (CycleCompletion).
         self._campaign_progress = campaign_progress
         # SIP-0109 §9.3 (#1802, #1928): whether a launch is allowed now, which a run start
@@ -928,6 +1010,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             enforce_compliance_budget=lambda *args, **kw: self._enforce_compliance_budget(
                 *args, **kw
             ),
+            read_repaired_suite_on_head=lambda *args: self._read_repaired_suite_on_head(*args),
         )
         # SIP-0097 §6.2: pulse-boundary collaborator (boundary verification +
         # bounded repair loop). LLM observability is event-emission-only per
@@ -1173,6 +1256,69 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # ------------------------------------------------------------------
 
     async def execute_cycle(
+        self,
+        cycle_id: str,
+        first_run_id: str,
+        profile_id: str | None = None,
+        *,
+        reentry: bool = False,
+    ) -> None:
+        """Execute a full cycle (``_execute_workloads``), and end it when its execution raises
+        outside a run.
+
+        #2931: ``execute_run`` maps every failure inside a run to a terminal status, but the loop
+        around the runs (re-entry's position lookup, the forwarding rebuild, a gate's reading)
+        had no handler. An exception there escaped to the campaign launcher, which only logged it,
+        so a re-attached run stayed ``running`` with no owner and its campaign waited with no row.
+        Now the cycle's latest run, when still live, is failed with the escape named, and the cycle
+        ends ``run_failed`` through the completion boundary, so its campaign hears it and acts as
+        on any failed run. The exception is raised on, so it is still logged where it was. A
+        cancellation, and a failure while the process is stopping (#1929, left for the re-attach),
+        are left as they were."""
+        try:
+            await self._execute_workloads(cycle_id, first_run_id, profile_id, reentry=reentry)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if not self._stopping:
+                await self._end_escaped_cycle(cycle_id, exc)
+            raise
+
+    async def _end_escaped_cycle(self, cycle_id: str, exc: Exception) -> None:
+        """Fail the cycle's live run and end the cycle ``run_failed`` (#2931). Never raises: a
+        failure here is logged beside the escape it was ending."""
+        registry = self._cycle_registry
+        if registry is None:
+            return
+        try:
+            if await registry.get_cycle_end(cycle_id) is not None:
+                return  # it ended before the escape: nothing is left to end
+            runs = [
+                r
+                for r in await registry.list_runs(cycle_id)
+                if r.status != RunStatus.CANCELLED.value
+            ]
+            if not runs:
+                return
+            latest = max(runs, key=lambda r: r.run_number)
+            if latest.status in (RunStatus.RUNNING.value, RunStatus.QUEUED.value):
+                await self._safe_transition(
+                    latest.run_id,
+                    RunStatus.FAILED,
+                    failure_reason=(
+                        f"the cycle's execution raised outside a run: {type(exc).__name__}: {exc}"
+                    ),
+                )
+            ended = await registry.get_run(latest.run_id)
+            await self._cycle_completion.end(cycle_id, ended, CycleStopReason.RUN_FAILED)
+            logger.error(
+                "cycle_execution_escaped_and_ended",
+                extra={"cycle_id": cycle_id, "run_id": latest.run_id, "error": type(exc).__name__},
+            )
+        except Exception:
+            logger.exception("cycle_execution_escape_not_ended", extra={"cycle_id": cycle_id})
+
+    async def _execute_workloads(
         self,
         cycle_id: str,
         first_run_id: str,
@@ -1816,17 +1962,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if not filter_spec:
             return {}
 
-        # #971: a FAILED emission is never workspace input, for any caller. Unlike the
+        # #971: a banked emission is never workspace input, for any caller. Unlike the
         # repair-candidate exclusion below this one is unconditional and takes no flag —
         # a candidate is merely unaccepted (the correction loop legitimately reads its
         # own accumulation), whereas an emission that failed its checks is known-bad.
         # Storing it is a triage instrument (#971); letting it compose a workspace would
         # feed known-bad bytes to the next task and, on the acceptance workspace, into
-        # the assembled deliverable.
+        # the assembled deliverable. A handed-off one (#2949) is the qa image's copy of a
+        # suite whose accepted copy is stored as the task's own.
         stored_artifacts = [
             (art_id, ref)
             for art_id, ref in stored_artifacts
-            if ref.metadata.get("emission_status") != EMISSION_STATUS_FAILED
+            if banked_as(ref.metadata.get("emission_status")) is None
         ]
 
         if not include_repair_candidates:
@@ -1836,26 +1983,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if ref.metadata.get("producing_task_type", "") not in REPAIR_TASK_TYPES
             ]
 
-        producing_tasks = set(filter_spec.get("by_producing_task", []))
-        type_filter = set(filter_spec.get("by_type", []))
-        type_fallback = set(filter_spec.get("by_type_fallback", []))
-
-        selected_ids: list[str] = []
-        for art_id, ref in stored_artifacts:
-            producing_task = ref.metadata.get("producing_task_type", "")
-            if producing_task and producing_task in producing_tasks:
-                selected_ids.append(art_id)
-            elif producing_task and producing_task in type_filter:
-                # by_type filter applies to all artifacts with matching type
-                pass  # handled below
-            elif not producing_task and ref.artifact_type in type_fallback:
-                # Fallback for artifacts without provenance (e.g., injected plan refs)
-                selected_ids.append(art_id)
-
-            # by_type: match artifact_type regardless of producing_task
-            if type_filter and ref.artifact_type in type_filter:
-                if art_id not in selected_ids:
-                    selected_ids.append(art_id)
+        # The selection rule is the filter's own (``ArtifactFilter.selects``), which the size
+        # preflight reads too (#2889). Fallback types reach artifacts with no provenance
+        # (e.g., injected plan refs).
+        selection = ArtifactFilter.from_spec(filter_spec)
+        selected_ids = [
+            art_id
+            for art_id, ref in stored_artifacts
+            if selection.selects(ref.metadata.get("producing_task_type", ""), ref.artifact_type)
+        ]
 
         # Resolve content (D3: 512KB limit). Per filename, later-in-order wins
         # (RC3: the latest correction attempt supersedes earlier ones) with ONE
@@ -1868,7 +2004,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         contents: dict[str, str] = {}
         seeded_holder: set[str] = set()
         total_bytes = 0
-        limit = 512 * 1024
+        limit = ARTIFACT_CONTENTS_LIMIT_BYTES
 
         for art_id in selected_ids:
             try:
@@ -1899,6 +2035,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     exc_info=True,
                 )
 
+        # #2612: a path whose latest accepted entry is a removal holds no file in the workspace,
+        # whichever filter selected an earlier copy of it (the checkout's seed, a prior write).
+        for path in deleted_paths(stored_artifacts):
+            contents.pop(path, None)
         return contents
 
     async def _resolve_assembly_notes(
@@ -1914,7 +2054,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         Three rules, all of them the reason this does not simply read
         ``artifact_contents``:
 
-        * A **failed** emission is never notes (#971) — the same unconditional rule the
+        * A **banked** emission is never notes (#971) — the same unconditional rule the
           workspace composer applies. A builder attempt that failed its checks may still
           have written a notes file; rendering it would hand the test author a fact from
           an emission the framework rejected.
@@ -1932,7 +2072,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for art_id, ref in stored_artifacts:
             if PurePosixPath(str(ref.filename)).name != ASSEMBLY_NOTES_DOCUMENT:
                 continue
-            if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
+            if banked_as(ref.metadata.get("emission_status")) is not None:
                 continue
             if ref.metadata.get("producing_task_type", "") in REPAIR_TASK_TYPES:
                 continue
@@ -2118,7 +2258,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if cycle.source_context is not None and any(
             authors_source(e.task_type) or authors_qa_suite(e.task_type) for e in plan
         ):
-            await self._deliver_source_change(cycle, run_id, state.produced)
+            await self._deliver_source_change(
+                cycle,
+                run_id,
+                state,
+                plan=plan,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                interface_manifest=interface_manifest,
+                budget_guard=_budget_guard,
+                ledger=ledger,
+            )
 
     async def _execute_task(
         self,
@@ -2198,6 +2348,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 flow_run_id=flow_run_id,
                 task_run_id=task_run_id,
                 handle_task_outcome=router.route,
+                screen_success=router.screen,
             )
         except Exception:
             # Correction aborted (raised inside dispatch_with_retry). Record the
@@ -2216,6 +2367,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         await self._after_task_success(
             state,
             envelope,
+            enriched,
             result,
             task_idx=task_idx,
             plan=plan,
@@ -2280,6 +2432,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         self,
         state: RunState,
         envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
         result: TaskResult,
         *,
         task_idx: int,
@@ -2318,6 +2471,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         state.authored = await self._bind_authored_manifest(
             cycle, run_id, state.produced.stored_artifacts, state.authored
         )
+
+        # #2890 (SIP-0109 §24cz), §24do: a repository-backed increment's criterion files, now
+        # stored, as read on the campaign branch's head before the run goes on to deliver. The
+        # reading is recorded; a file that passes there fails the run (an emission's first pass
+        # was refused before it was accepted, so this is the pass after it, or one nothing read).
+        await self._fail_if_criteria_pass_on_head(envelope, enriched, cycle, run_id, state)
 
         # ----------------------------------------------------------
         # SIP-0070: Pulse boundary evaluation (after task, before gate)
@@ -2555,30 +2714,39 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             registry=self._project_registry,
         )
 
-    async def _deliver_source_change(self, cycle: Cycle, run_id: str, produced: Any) -> None:
+    async def _deliver_source_change(
+        self,
+        cycle: Cycle,
+        run_id: str,
+        state: RunState,
+        *,
+        plan: list[TaskEnvelope],
+        profile: SquadProfile | None,
+        flow_run_id: str | None,
+        interface_manifest: Any,
+        budget_guard: Callable[[], None],
+        ledger: RunLedger,
+    ) -> None:
         """Verify the run's change against the inherited baseline and capture it when accepted
-        (``source_delivery``). Its evidence is the run's whether or not it is accepted; a
-        candidate that regressed or that nothing verified fails the run with it."""
-        try:
-            delivery = await deliver_source_change(
+        (``source_delivery``). Its evidence is the run's whether or not it is accepted. A
+        candidate that regressed gets one repair round from the run's correction budget, and is
+        delivered again (#2613); one that regressed after it, or that nothing verified, fails the
+        run with it."""
+        produced = state.produced
+        delivery = await self._verify_source_change(cycle, run_id, produced)
+        if delivery.verification.verdict == VERIFICATION_REGRESSED:
+            delivery = await self._repair_source_regression(
+                delivery,
                 cycle,
                 run_id,
-                produced.stored_artifacts,
-                vault=self._artifact_vault,
-                registry=self._project_registry,
-                repository=self._source_repository,
-                sandbox=self._sandbox,
+                state,
+                plan=plan,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                interface_manifest=interface_manifest,
+                budget_guard=budget_guard,
+                ledger=ledger,
             )
-        except (
-            SourceDeliveryRefused,
-            SourceUnavailable,
-            SandboxUnavailable,
-            InheritedBaselineNotFoundError,
-        ) as e:
-            raise _ExecutionError(f"source delivery: {e}") from e
-        produced.all_artifact_refs.extend(delivery.artifact_ids)
-        if self._cycle_registry is not None:
-            await self._cycle_registry.append_artifact_refs(run_id, delivery.artifact_ids)
         if delivery.captured_commit is None:
             raise _ExecutionError(
                 f"source delivery: the product's own checks: {delivery.verification.summary()}"
@@ -2606,6 +2774,149 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             produced.all_artifact_refs.append(evaluation)
             if self._cycle_registry is not None:
                 await self._cycle_registry.append_artifact_refs(run_id, (evaluation,))
+
+    async def _verify_source_change(
+        self, cycle: Cycle, run_id: str, produced: Any, *, repair_of: RepairOf | None = None
+    ) -> SourceDelivery:
+        """One delivery of the run's candidate, its evidence appended to the run's."""
+        try:
+            delivery = await deliver_source_change(
+                cycle,
+                run_id,
+                produced.stored_artifacts,
+                vault=self._artifact_vault,
+                registry=self._project_registry,
+                repository=self._source_repository,
+                sandbox=self._sandbox,
+                repair_of=repair_of,
+            )
+        except (
+            SourceDeliveryRefused,
+            SourceUnavailable,
+            SandboxUnavailable,
+            InheritedBaselineNotFoundError,
+        ) as e:
+            raise _ExecutionError(f"source delivery: {e}") from e
+        produced.all_artifact_refs.extend(delivery.artifact_ids)
+        if self._cycle_registry is not None:
+            await self._cycle_registry.append_artifact_refs(run_id, delivery.artifact_ids)
+        return delivery
+
+    async def _repair_source_regression(
+        self,
+        delivery: SourceDelivery,
+        cycle: Cycle,
+        run_id: str,
+        state: RunState,
+        *,
+        plan: list[TaskEnvelope],
+        profile: SquadProfile | None,
+        flow_run_id: str | None,
+        interface_manifest: Any,
+        budget_guard: Callable[[], None],
+        ledger: RunLedger,
+    ) -> SourceDelivery:
+        """#2613 (SIP-0112 H.20): one repair round for a regressed candidate, then its delivery.
+
+        The round is the plan's own correction chain, entered where an in-plan failure enters it
+        (``_dispatch_correction_protocol``): the same budget check, the same counter, the same
+        analyze, decide and repair. Its failed result is the regression as the product's runner
+        read it (``regression_failure``), on the plan's last source author. A ``patch`` whose
+        repair wrote files is stored as that task's own, and the candidate built from it is
+        delivered again: verified, and captured when accepted. That verification is the round's
+        verdict, so the in-plan verifier (``_try_accept_patch``) doesn't run here.
+
+        Raises:
+            _ExecutionError: The budget is spent; the round decided anything but a patch, or its
+                repair wrote nothing. Each names the regressed verification's checks. A
+                repaired candidate that regresses again, or that can't run a check it owes
+                (``RepairOf``), is returned uncaptured, and fails the run there.
+        """
+        verification = delivery.verification
+        regressed = f"source delivery: the product's own checks: {verification.summary()}"
+        subject = regression_subject(plan)
+        max_corrections = cycle.resolved_config().get("max_correction_attempts", 2)
+        counter = state.correction.counter
+        if subject is None or counter["n"] >= max_corrections:
+            raise _ExecutionError(
+                f"{regressed}; no repair round: the run's correction budget "
+                f"({max_corrections}) is spent"
+            )
+        produced = state.produced
+        authored_contract, authored_manifest = state.authored
+        enriched = await self._enrich_envelope(
+            subject,
+            produced.prior_outputs,
+            produced.all_artifact_refs,
+            produced.stored_artifacts,
+            interface_manifest=interface_manifest or authored_manifest,
+            run_derived_contract=authored_contract,
+        )
+        # Not recorded on the ledger as a task's rows: the verification records are the evidence,
+        # and a passing re-verification writes no row that would supersede them.
+        failure = regression_failure(subject.task_id, verification)
+        round_ = await self._dispatch_correction_protocol(
+            failure,
+            subject,
+            cycle,
+            run_id,
+            correction_counter=counter,
+            correction_signature_state=state.correction.signature_state,
+            scaffold_enforcement_carry=state.ownership.enforcement_carry,
+            prior_outputs=produced.prior_outputs,
+            all_artifact_refs=produced.all_artifact_refs,
+            stored_artifacts=produced.stored_artifacts,
+            completed_task_ids=state.checkpoint.completed_task_ids,
+            plan_delta_refs=state.checkpoint.plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            enriched_envelope=enriched,
+            interface_manifest=interface_manifest,
+            budget_guard=budget_guard,
+            repair_rejection_carry=state.correction.rejection_carry,
+            repair_dispute_carry=state.correction.dispute_carry,
+            accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
+            ledger=ledger,
+        )
+        protocol = round_.protocol
+        if protocol.correction_path != "patch":
+            raise _ExecutionError(
+                f"{regressed}; the repair round decided {protocol.correction_path!r}"
+            )
+        if protocol.repair_dropped:
+            raise _ExecutionError(
+                f"{regressed}; the repair round's writes were refused: "
+                + "; ".join(f"{d['path']}: {d['reason']}" for d in protocol.repair_dropped)
+            )
+        if protocol.emission_empty or not (protocol.repair_artifacts or protocol.repair_deletions):
+            raise _ExecutionError(f"{regressed}; the repair round wrote no file of the product")
+        # #2612: a removal the repair makes is stored with its files, and the next delivery
+        # judges the candidate without the file: its verification names it in changed_paths.
+        await self._store_accepted_artifacts(
+            protocol.repair_artifacts,
+            None,
+            subject,
+            cycle,
+            run_id,
+            produced.all_artifact_refs,
+            produced.stored_artifacts,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+            deletions=protocol.repair_deletions,
+        )
+        logger.info(
+            "source regression repaired in correction round %d of %d (task %s): delivering the "
+            "repaired candidate again (#2613)",
+            round_.attempt + 1,
+            max_corrections,
+            subject.task_id,
+        )
+        return await self._verify_source_change(
+            cycle,
+            run_id,
+            produced,
+            repair_of=RepairOf(delivery.artifact_ids[0], tuple(verification.blocking)),
+        )
 
     async def _seed_verification_scaffold_artifacts(
         self,
@@ -3861,6 +4172,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "repair may write, or the plan's grant is wrong",
             )
             return "continue"
+        if protocol.repair_deletions and correction_path == "patch":
+            # #2612 (SIP-0112 H.23): the verifier and the retest judge the workspace overlaid with
+            # the repair's files, which can't hold a removal, so accepting one would store a tree
+            # no verdict was about (SIP-0107 §20). Spent, as a dropped patch is, and named.
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: {REPAIR_REMOVAL_REFUSED_MARKER} ("
+                + ", ".join(protocol.repair_deletions)
+                + ") — nothing was applied, verified or retested; inside the plan a repair "
+                "changes files, and a removal belongs in the task's own emission",
+            )
+            return "continue"
         if protocol.repair_subject_dropped and correction_path == "patch":
             # #2664 (SIP-0104 §13f): the qa repair kept no assertion on its failing assertion's
             # subject, and the declarations show that field there. The round is spent, as a
@@ -4073,6 +4397,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             stored_artifacts,
             bound_record=bound_record,
             compliance_counter=compliance_counter,
+            deletions=(result.outputs or {}).get(DELETIONS_KEY) or (),
         )
 
         # Chain outputs by role
@@ -4115,6 +4440,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         *,
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
+        deletions: Iterable[str] = (),
     ) -> None:
         """Store a task's artifacts as the run's accepted state (producing_task_type metadata).
 
@@ -4122,6 +4448,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         kept mid-loop (#1522), which stores without completing the task or
         checkpointing. ``outputs`` is what the §5.5 guard reads: a set carrying
         ``persisted_revision_id`` is a verified candidate, and enforcement may not change it.
+
+        ``deletions`` (#2612) are the product paths the task removed, each judged by its handler
+        against its view and grant. Each is recorded after the files, as a removal of that path
+        under the task (``cycles.deletions``).
         """
         # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
         # has its content restored to the bound scaffold bytes (D2 authority) — the producer
@@ -4157,7 +4487,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"set it evaluated (evaluated={mismatch[0]}, stored={mismatch[1]}) — SIP-0107 §20"
             )
         new_refs: list[str] = []
-        for art in artifacts:
+        for art in [*artifacts, *(deletion_record(path) for path in dict.fromkeys(deletions))]:
             ref = await self._store_artifact(
                 art,
                 cycle,
@@ -4195,9 +4525,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         it passes. The kept set is recorded for #994's rewind guard, as an accepted patch is,
         since a rewind re-authors from the checkpoint and cannot preserve it.
         """
+        kept_outputs = holder.pop(KEPT_OUTPUTS_KEY)
         await self._store_accepted_artifacts(
             holder.pop(KEPT_ARTIFACTS_KEY),
-            holder.pop(KEPT_OUTPUTS_KEY),
+            kept_outputs,
             envelope,
             cycle,
             run_id,
@@ -4205,6 +4536,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             state.produced.stored_artifacts,
             bound_record=state.ownership.bound_record,
             compliance_counter=state.ownership.compliance_counter,
+            # #2612: the failed task's removals are part of the candidate kept; its retest's
+            # result, which the next round starts from, carries none.
+            deletions=(kept_outputs or {}).get(DELETIONS_KEY) or (),
         )
         state.correction.accepted_repair_task_ids.add(envelope.task_id)
         authored_contract, authored_manifest = state.authored
@@ -4609,7 +4943,151 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run_id=run_id,
             sandbox=self._sandbox,
             projects=self._project_registry,
+            repository=self._source_repository,
             read_profile=self._derived_profile_for,
+        )
+
+    async def _screen_on_head(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        state: RunState,
+    ) -> TaskResult:
+        """SIP-0109 §24do (#2933): an emission the qa task reported succeeded, its criterion files
+        read on the campaign branch's head before it is accepted (§24cz's check, moved ahead of the
+        acceptance). A pass there says the test can't tell this run's work from its absence, never
+        that the head meets the criterion, so the first is refused to the suite's author: the
+        emission becomes the failure the correction loop routes to ``qa.test_repair`` (the locus
+        reads the head's reading), spending a repair round, and the next round is told which files
+        passed on which head, as §24dh's is.
+
+        The allowance is one refusal per task. Once it's spent, here or by §24dh refusing a repair
+        of the task, the emission goes on unread, and ``_fail_if_criteria_pass_on_head`` reads it
+        once it's stored. A check that doesn't apply or can't run refuses nothing (§24cz), and
+        nothing here writes the record."""
+        task_id = envelope.task_id
+        if self._head_refusal_spent(task_id, state):
+            return result
+        emitted = {
+            str(a.get("name")): str(a.get("content") or "")
+            for a in (result.outputs or {}).get("artifacts") or ()
+            if isinstance(a, dict) and a.get("name")
+        }
+        check = await self._read_criteria_on_head(
+            envelope, enriched, cycle, run_id, state.produced.stored_artifacts, repaired=emitted
+        )
+        if check is None or not check.already_met:
+            # The reading, or that none could be taken, for the step after the collection.
+            state.correction.head_readings[task_id] = check
+            return result
+        state.correction.refused_on_head.add(task_id)
+        attempt = int(envelope.inputs.get("prior_attempts") or 0) + 1
+        _record_repair_rejection(
+            state.correction.rejection_carry,
+            task_id,
+            refusal_entry(envelope.task_type, attempt, check),
+        )
+        logger.warning(
+            "criterion head check %s: refused to the suite's author: %s pass on the head %s "
+            "(SIP-0109 §24do)",
+            task_id,
+            check.passing_files(),
+            check.head_commit[:12],
+        )
+        return refused_on_head(result, check)
+
+    @staticmethod
+    def _head_refusal_spent(task_id: str, state: RunState) -> bool:
+        """Whether the task has had its one refusal for passing on the head: its emission's
+        (§24do), or a repair of it (§24dh, read from the carry)."""
+        return task_id in state.correction.refused_on_head or any(
+            REPAIR_SUITE_PASSES_ON_HEAD_MARKER in str(e)
+            for e in state.correction.rejection_carry.get(task_id) or ()
+        )
+
+    async def _fail_if_criteria_pass_on_head(
+        self,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        state: RunState,
+    ) -> None:
+        """#2890 (SIP-0109 §24cz), §24do: the qa task's criterion files on the campaign branch's
+        head, once its emission is stored. The screen's reading of that emission is used where it
+        took one, so the head runs once. Otherwise it is read now: the allowance was spent, or the
+        emission was accepted through a repair, which no screen sees.
+
+        A reading in which nothing passed is recorded (``criterion_head_check``). A pass fails the
+        run with no terminal kind: the campaign reads an ordinary failure, repairs it and counts
+        it, and no record tells the next proposal the head meets the criterion (§24dh's backstop,
+        now every path's). A check that doesn't apply or can't run leaves the run to proceed."""
+        task_id = envelope.task_id
+        if task_id in state.correction.head_readings:
+            check = state.correction.head_readings.pop(task_id)
+        else:
+            check = await self._read_criteria_on_head(
+                envelope, enriched, cycle, run_id, state.produced.stored_artifacts
+            )
+        if check is None:
+            return
+        if not check.already_met:
+            await store_head_check(cycle, run_id, check, self._artifact_vault)
+            return
+        passing = ", ".join(check.already_met)
+        head = check.head_commit[:12]
+        if self._head_refusal_spent(task_id, state):
+            raise _ExecutionError(
+                f"{passing}: after the suite was refused for passing on the head, it still passes "
+                f"on {head}, so it can't tell this run's work from its absence, and nothing shows "
+                "the head meets it (SIP-0109 §24dh, §24do)"
+            )
+        raise _ExecutionError(
+            f"{passing}: the suite, accepted through a repair the head check didn't read, passes "
+            f"on the campaign branch's head {head} without this run's work, so it can't tell the "
+            "work from its absence, and nothing shows the head meets it (SIP-0109 §24do)"
+        )
+
+    async def _read_repaired_suite_on_head(
+        self,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        repaired: Mapping[str, str],
+    ) -> Any:
+        """#2933 (SIP-0109 §24dh): a repair's criterion files on the head, before it's accepted."""
+        return await self._read_criteria_on_head(
+            envelope, enriched, cycle, run_id, stored_artifacts, repaired=repaired
+        )
+
+    async def _read_criteria_on_head(
+        self,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        *,
+        repaired: Mapping[str, str] | None = None,
+    ) -> Any:
+        return await check_criteria_on_head(
+            task_type=envelope.task_type,
+            task_id=envelope.task_id,
+            inputs=enriched.inputs,
+            cycle=cycle,
+            run_id=run_id,
+            stored_artifacts=stored_artifacts,
+            vault=self._artifact_vault,
+            sandbox=self._sandbox,
+            projects=self._project_registry,
+            repository=self._source_repository,
+            read_profile=self._derived_profile_for,
+            repaired=repaired,
         )
 
     async def _derived_profile_for(self, cycle: Any) -> Any:
@@ -4833,7 +5311,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         tell them apart, and a timestamp cluster is a heuristic in an evidence
         instrument).
 
-        ``emission_status`` (#971) marks an emission that did NOT pass. It is
+        ``emission_status`` (#971) marks a banked emission (``EmissionStatus``): one that did
+        NOT pass, or one the qa image handed to the product's runner (#2949). It is
         provenance, not a type: ``producing_task_type`` stays truthful, because a
         failed ``qa.test`` emission really was produced by ``qa.test`` and every
         post-hoc reader — triage, the analyzer audit, the replay harness — wants to
@@ -4863,7 +5342,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             metadata["written_by_task_type"] = writer.task_type
             metadata["written_by_role"] = writer.role
         if emission_status:
-            metadata["emission_status"] = emission_status
+            # A plain string on the record: the vocabulary is the core's (``EmissionStatus``).
+            metadata["emission_status"] = str(emission_status)
         if attempt is not None:
             metadata["attempt"] = attempt
         ref = ArtifactRef(
@@ -4891,8 +5371,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         *,
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
+        read_hand_off: Callable[[Any], Awaitable[EmissionStatus]] | None = None,
     ) -> Any:
         """Authorize a failed attempt's emission, bank what survives, return it (#1323).
+
+        ``read_hand_off`` (#2949) reads the authorized result before it is banked and returns
+        what the bank marks it. It is the router's reading on the product's runner, so a suite
+        the qa image handed to that runner, which passed it, is banked handed off, never failed.
+        An emission that wrote where it may not is banked failed whatever the runner read.
 
         The failed result is used twice downstream: ``_try_accept_patch`` overlays the
         repair on ITS artifacts to build the tree the verifier sees, and
@@ -4931,7 +5417,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 result = dataclasses.replace(
                     result, outputs={**(result.outputs or {}), "artifacts": enforced}
                 )
-        await self._store_failed_emission(result, envelope, cycle, run_id, all_artifact_refs)
+        status = EmissionStatus.FAILED
+        try:
+            if read_hand_off is not None:
+                read = await read_hand_off(result)
+                status = EmissionStatus.FAILED if dropped else read
+        finally:
+            # The bank runs whatever the reading did: evidence never waits on it.
+            await self._store_failed_emission(
+                result, envelope, cycle, run_id, all_artifact_refs, emission_status=status
+            )
         if dropped and compliance_counter is not None:
             # After the bank, so the budget's terminal failure never costs the evidence.
             self._enforce_compliance_budget(dropped, cycle, envelope, compliance_counter)
@@ -4944,6 +5439,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         cycle: Cycle,
         run_id: str,
         all_artifact_refs: list[str],
+        *,
+        emission_status: EmissionStatus = EmissionStatus.FAILED,
     ) -> None:
         """Bank a failed attempt's emission so the failure can be READ afterwards (#971).
 
@@ -4954,8 +5451,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         13 of the 17 rejected implementation runs in the 08-14→08-23 census are
         unreadable for exactly this reason.
 
-        **Triage only.** The emission is recorded and never used: marked
-        ``emission_status="failed"``, kept out of the run's ``stored_artifacts``
+        **Triage only.** The emission is recorded and never used: marked with its
+        ``emission_status`` (``failed``, or ``handed_off`` for a suite the product's runner
+        passed, #2949), kept out of the run's ``stored_artifacts``
         list, and filtered unconditionally by ``_resolve_artifact_contents``. Two
         independent guarantees, because the failure mode is feeding known-bad bytes
         to the next task or into the assembled deliverable. ``audit_delivered_app``
@@ -4988,7 +5486,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     run_id,
                     envelope,
                     producing_task_type=envelope.task_type,
-                    emission_status=EMISSION_STATUS_FAILED,
+                    emission_status=emission_status,
                     attempt=attempt,
                 )
                 new_refs.append(ref.artifact_id)

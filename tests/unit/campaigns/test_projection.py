@@ -117,6 +117,7 @@ async def test_every_row_a_non_route_writer_commits_is_projected_once(world):
         outcome_section=None,
         intervention_section=None,
         campaign_branch=None,
+        goal_sets=None,
         clock=lambda: NOW + timedelta(hours=1),
     ).cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
 

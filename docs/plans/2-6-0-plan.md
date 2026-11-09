@@ -1,8 +1,48 @@
 # 2.6.0 plan — a multi-hour Campaign on the owner's own product
 
-**Status: §0 ADOPTED for the weekend spike (2026-10-30); everything else a DRAFT.** The owner: "merge both once
-appropriate", after two outside review passes, each applied in full. D1–D15 stay open, and §0's readings revise the
-plan after the spike. §8 lists what the outside reviewer was asked to challenge.
+**Status: ADOPTED 2026-11-03.** §0 was adopted for the weekend spike on 2026-10-30. The rest is adopted on the
+owner's rulings of 2026-11-03.
+- **The proving Project:** "Let's go with battle-trainer". That replaces the financial application in D2.
+- **Everything else:** "and then your recommendations on the other decisions", which are §7's recommendations as
+  written. D4 and D11 shipped in 2.5.1 (§7).
+
+**Narrowed 2026-11-07, on the owner's rulings:** the four-hour, overnight, crew-driven claim (§4, rung 3) leaves 2.6, and
+that work passes to the crew on the released line. The cut rests on the machinery: goals, Campaigns and cycles, learning returned to the goal set, and the record, read in
+`docs/plans/verification-sets/2-6-0-three-increment-preregistration.md` as amended. The squad's play isn't what it tests. Track E's scripted squad and soak (#2495, #2892)
+and the open items (#2287, #2862, #2799, #2827's item 2, #2783, #2781, #2938's remainder, #2826, #2736, #2737) move to
+2.7, the stabilization line. The owner also ruled that battle-trainer's only rules are the game maker's: its held-out
+suite now checks legal orders, and the sealed play measure carries the improvement threshold when rung 3 is run.
+Three more, the same day: #2839 moves to 2.7 (it reached no track's table, though the ROADMAP placed it in Track A). E.4.7's
+direct attachment doesn't ship (SIP-0112 H.27). §3's step 4, the short Campaign on `z_continuum` and `z_shelfnote`, is dropped:
+battle-trainer's Campaigns have run the product path many times since, so it would read nothing new about the path, though
+those two stacks go unread on this line.
+
+The spikes (§0, §0a) and 2.5.1's validation Campaign revised this plan before adoption. §8 lists what the outside
+reviewer was asked to challenge.
+
+**Revised 2026-11-06: every repository-backed product runs on its own stack, before the counted Campaign** (#2937, on the
+outside review the owner relayed the same day). battle-trainer ran under `python_cli`, so its agents were given Python
+guidance and `test_report.md` said its passing suite never ran. Track A carries the item and §3 step 5 waits for it.
+
+**Revised 2026-11-06: the simulator reads every accepted increment, before the counted Campaign** (#2938, the owner:
+"place it before the counted campaign"). Run in the provider's engine, every accepted head so far lost all four matches,
+and two scored exactly what the hold-still baseline scores, though each passed the squad's own criteria. So rung 2 could be
+met by tanks that don't play. §2.6 carries the item and §3 step 5 waits for it.
+
+**Revised 2026-11-03 at adoption: battle-trainer is the proving Project** (D2, §2.6). It is
+`backspring-labs/battle-trainer`, a private Node library, tested with vitest: a tank controller for
+battle.training, whose campaigns the Nostromo crew steers. Its design is the owner's draft SIP *Battle Training Squad
+Harness* (PR #2872, under design review).
+- **Why it fits.** Whether it plays better is a fact outside the squad's own tests, which is what D8's held-out
+  threshold asks for. It needs no provisioning and holds no data (D10 is moot). It gives the game direction a product
+  that runs headless on Linux today.
+- **What it costs.** It is the first product off the framework's two sample stacks, and its first Campaigns on the
+  MacBook found the gaps Track A now carries: #2875, #2876, #2877, #2881 and #2900.
+- **Where it runs.** The counted Campaign runs on the Spark. The MacBook stays the crew's small-model trial box.
+- **The held-out suite in 2.6** is sealed fixture cases run by the product's own runner. Simulator-scored play waits
+  for #2872's acceptance (its Q49 and Q50).
+- **What moves off 2.6's critical path:** the financial application (Nebulus, PR #2848) and the game SIPs (#2405,
+  #2841).
 
 **Revised 2026-10-30, the same day:** the owner asked to incorporate the 2.5.1 fix line's assumptions. §1a names the
 ten defects 2.6 assumes 2.5.1 fixes, with a fallback rule if one slips; they leave §2's tracks, and D11 rules the split.
@@ -134,6 +174,99 @@ set, the console, or the held-out yardstick.
 **What it changes in the rest of the plan:** §1a's 2.5.1 list is replaced by step 1's (D11), and #2818 leaves Track A.
 Everything else in §2 waits for the spike's reading, which may reorder it.
 
+### 0a. The second spike: a crew-driven Campaign, steered from Buzz, on outcome goals
+
+**Added 2026-11-01 at the owner's request,** with about 10% of the owner's weekly usage left. Spike 1's readings
+(`var/verification_sets/2-6-0-spike/readings.md`) went past its stop rule: the overnight run `cmp_828bfc06aa63` accepted
+10 of 10 items unattended. Every one of those runs was launched and steered from a terminal. Spike 2 asks the next
+question, and changes what the squad is given.
+
+**What the crew's first attempts showed (2026-11-01).** Four crew-launched Shelfnote Campaigns were aborted. The
+last, `cmp_7c4c28bb4118`, was launched from a plain-language request and approved by the owner's one-word reply
+(Nostromo PRs #27 and #28):
+- **Ripley over-ruled the increment gate.** She returned the proposal twice:
+  - first for exact rules on `GET /books?q=`;
+  - then for "a seam table covering every evaluator", which is the engineering discipline in her prompt for her
+    own repository work, not a bar for a squad's proposal.
+  Two revisions used up `max_proposal_revisions`, and v3 escalated.
+- **The owner had no way to answer from Buzz.** In the owner's words: Ripley "was holding the campaign and not a
+  clear way for me to approve moving forward", and "her changes requested seem like things that should go in a
+  framing plan".
+- **The goals weren't read.** Each crew draft said Shelfnote's `goals.md` was unreadable and recovered the list from an
+  older Campaign. Ripley's first request was item 1 of that file, word for word.
+- **A busy box parked the Campaign.** On `cmp_4edfa3d9746b`, SquadOps refused the launch because the crew's own
+  call was on the shared engine. That is fixed by #2852 (SIP-0109 §24cu). Nostromo then parked the Campaign on the
+  transient `launch_blocked` and had no way back.
+
+**The goals are outcomes, not a specification.** The owner, reading Shelfnote's `goals.md`: "those aren't really
+goals in my opinion, these are very specific technical changes".
+- **Where the file stands.** Its Goal and E1–E5 are goals. Its backlog fixes endpoints, status codes, orders and a
+  CSV header. Those were written there so unattended criteria would discriminate. That is part of why the overnight
+  run went 10 of 10, and it means that run showed the squad implementing a specification, not turning a goal into
+  a design.
+- **The change.**
+  - The goals and the backlog are written as reader outcomes, one line per item, with no endpoint or status code.
+  - The squad's framing plan turns each item into behaviour, endpoints and tests.
+  - The increment gate asks only whether the plan serves the item, stays in scope and can be tested.
+  - This is the split Track D's SIP already describes (PR #2833): goals and backlog are the owner's; the technical
+    design is framing's output.
+- **What it costs.** Without exact behaviour handed to it, the squad has to design criteria that still fail before
+  the change. Expect lower acceptance at first. That is the reading this spike exists to take.
+
+**Before the launch.**
+1. **Nostromo** (the Nostromo session's work, on the owner's prompt):
+   - **Ripley's rubric.** She returns a proposal only when it is out of the item's scope, can't be tested, or
+     contradicts the goal or an accepted increment. How-to-build detail is an approval with notes for framing. Her
+     design discipline stays with her own repository work.
+   - **Escalations answered in Buzz.** Mother asks a plain question with the choices, and the owner's reply rules.
+   - **Goals read live.** Drafting reads the product's current goals. If it can't, it says so and stops; it never
+     substitutes an older list.
+   - **`launch_blocked` is not a park.** SquadOps retries it.
+2. **SquadOps:** the increment ruling's notes reach that increment's framing run as reviewer guidance.
+   - What is known: a gate's `approved_with_refinements` notes are kept as an artifact, and "nothing renders them to
+     a model" (`execution/workload_gate.py`).
+   - What is unverified: whether an increment ruling's notes reach the framing run at all. That is checked first.
+   - Without this, Ripley's notes would be dropped, so it lands before the run.
+3. **Shelfnote:** its `goals.md` is rewritten in outcome form. The goal, E1–E5 and the out-of-scope list stay. The
+   ten backlog items become one reader outcome each, in the same order.
+
+**The run.**
+- First, a small Campaign (3 increments), asked for in Buzz: "@Mother start a small campaign on ShelfNote, search
+  first."
+- If it closes clean, the 8-increment run, unattended, overnight.
+
+**What it reads.**
+- **Launched, ruled and closed with no terminal step.** Any escalation is answered by one Buzz reply.
+- **At least 2 of the 3 increments accepted.**
+- **Ripley's notes visible in the framing plan** of the increment they were about.
+- **Each criterion's discrimination reading.** The squad's own criteria have to fail before the change without a
+  specification to copy from.
+
+**What it doesn't read:** the held-out yardstick, a real-size product, or Nebulus. **Stop rule:** as spike 1's. A
+round that finds a new defect files it and stops, with what it learned recorded here.
+
+**How each objective advances this plan.** The owner, 2026-11-01: "make sure you are tracking these spike objective
+against the existing 2.5.1 and 2.6 plans so we are advancing to the same common plan goals". The spike adds no goal
+of its own. Each objective is a piece of a track or a rung below, and its result is read back there.
+
+| spike objective | advances | what the reading feeds |
+|---|---|---|
+| launched, ruled and closed from Buzz, no terminal step | §4 rung 3 ("the owner works through the crew in Buzz… not a terminal"); §2.3 Track C and D14, the crew dependency | §2.3's **unverified** question, whether the crew's harness (which parks on any missing evidence, worker error or blocking review) can run unattended for hours, is read on this run instead of on the first proving run |
+| an escalation answered by one Buzz reply | §1's third person-at-every-turn item ("resuming an escalation is admin-only"); D6's declared touchpoints | each escalation's class and who answered it, which §4 says every run records |
+| Ripley rules on scope, can it be tested, and the goal; design detail goes to framing as notes | §1's first item (every plan gate escalated on a product); §2.2 Track B, a Campaign that carries itself past a failure | the escalations by class, and whether `max_proposal_revisions` is still the row that stops a run |
+| Ripley's notes reach the increment's framing run (SquadOps) | §2.2 Track B | is filed as an issue once its current behaviour is checked, sized there, and lands before the run |
+| goals and backlog as reader outcomes; design in framing | §2.4 Track D, the headline: the SIP's MECE split (intent in the goal set, design in framing). Until slice 1 lands, Shelfnote's `goals.md` stands in for the goal set, as §2.4 already allows | the first evidence for D8's claim that a Project's goals can be written as outcomes and still produce accepted increments |
+| the squad's own criteria discriminate without a specification | §1's second item (the same non-discriminating criterion proposed three times); D9's early criterion check; #2613 | whether D9 is needed before rung 2, from the discrimination reading of each criterion |
+| a small Campaign, then the 8-increment overnight | the shape of §4 rungs 2 and 3, on Shelfnote, not the proving Project | a rehearsal, not a rung: rung 2 needs the proving Project (§2.6 Track F), and rung 3 also needs the held-out threshold and the console (§2.7 Track G) |
+
+**What it does not advance:** §2.5 Track E (the scripted squad), §2.6 Track F (Nebulus and its held-out suite),
+§2.7 Track G (the console) and §2.4's slices themselves. Those stay sequenced as §3 has them.
+
+**Against 2.5.1** (D11, §1a): spike 1's fixes and #2852 are the 2.5.1 patch so far, recorded under `[Unreleased]` in
+`CHANGELOG.md`. Spike 2's SquadOps item is a 2.6 change, not a patch (§1a: "2.5.1 is not a feature release"). The
+rest of 2.5.1 (#2817, #2814, #2804, #2809, #2813, #2798, #2765, #2830, #2402, #2839) is not advanced by the spike,
+and still decides the 2.5.1 cut.
+
 ---
 
 ## 1. Why 2.5's product Campaigns lasted under an hour
@@ -212,14 +345,22 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 
 ### 2.1 Track A: an increment accepted on a real product (the floor)
 
-2.5's unfinished half (#2827). Nothing else in 2.6 is measurable until this holds.
+2.5's unfinished half (#2827). Nothing else in 2.6 is measurable until this holds. battle-trainer, a Node product
+tested with vitest, is the first product off the sample stacks. Its first Campaigns on the MacBook (2026-11-03) found
+the rows marked **battle-trainer** below.
 
 | item | what | size |
 |---|---|---|
-| **#2818** | a product's in-cycle suite run and its retest run **on the product's own runner in the sandbox**, with its configured setup, as acceptance and the baseline already do (shape 1 in the issue; D4). This is also what makes a non-Python product possible without stack code in shared code: the product declares its commands, the sandbox runs them | M–L |
+| ~~**#2818**~~ | **shipped in 2.5.1** (#2835, #2840, #2846): a product's failed in-cycle suite is judged on its own runner in the sandbox (D4) | — |
+| **#2875** (battle-trainer) | a `"private": true` Node package that declares an entry point gets a package surface, so a criterion can name its interface. The MacBook lane's PR #2879 (SIP-0112 H.17) | S |
+| **#2876** (battle-trainer) | the qa plan prompt's worked example follows the product's runner (pytest, or vitest/jest). PR #2880 | S |
+| **#2877** (battle-trainer) | when the qa image could not run the product's suite, the result is re-read on the product's own runner, even beside other failures. PR #2878 (SIP-0112 H.18), merging after its MacBook proof | S–M |
+| **#2881** | a dev repair's retest is judged on the product's runner. Today its patched source is read as the suite, so `runs=no runner holds a test` (2.5.1's validation Campaign). The suite is the failed task's own tests, with the patched source overlaid on the tree. The Spark lane's | S–M |
+| **#2900** (battle-trainer) | a product's suite on its own runner gets the product's tree at the pin from the clone, with the run's tree laid over it. Today the base is the run's artifacts, which hold back the lockfile, so an npm product's `npm ci` fails setup on every run (`cmp_c59db96e4a87`). The MacBook lane's PR #2902 (SIP-0112 H.19) | S |
 | **#2799** | a vitest page criterion for a page the change adds can fail as an assertion on a tree without it (a loader the bundle carries, as #2749 did for the Next.js sample stack) | M |
 | **#2827 item 2** | H.13's two unbuilt items: a product's repaired suite read by the product's runners, not the scaffold's `__tests__/` rule; a plan-less product cycle's test author shown the product | M |
-| **a size preflight** (new) | before a Campaign starts on a product, every task type the profile dispatches is rendered against the product's real tree at the pinned commit, and a binding that can't fit is a blocking gap, named before the first cycle. #2805 and #2810 were found one at a time, live, an hour in. The proving product will be larger than `z_continuum` | S–M |
+| **#2937** (battle-trainer) | every repository-backed product's stack is selected from its derived facts at `prepare_cycle`, with its provenance recorded; a plain Node and vitest profile; a neutral profile with a named gap for what no profile matches, in place of a silent `python_cli`; and QA evidence that says which tests ran, where and on which runner. SIP-0112 H.26 | M–L |
+| **a size preflight** (#2889) | before a Campaign starts on a product, every task type the profile dispatches is rendered against the product's real tree at the pinned commit, and a binding that can't fit is a blocking gap, named before the first cycle. #2805 and #2810 were found one at a time, live, an hour in. The proving product will be larger than `z_continuum` | S–M |
 
 **Evidence before merge:** each fix replays the stored envelope that found it (`cyc_ac0cb5a7b6b2` for #2818,
 `cyc_7cbdae00b2ed` for #2799), and a wiring test enters at the caller the live cycle uses.
@@ -228,7 +369,7 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 
 | item | what | size |
 |---|---|---|
-| **a criterion checked against the head as soon as its test exists** (new; D9) | at the ruling only a criterion's statement and observable exist; its executable test is written later in the increment's cycle (SIP-0109's workload order, the second outside review). So the check runs at the earliest point a test exists: when the cycle's QA task has written a criterion's test, it runs on the campaign branch's head in the sandbox, before development's work is accepted. One that already passes ends the increment as `criteria_not_checkable`, returned to a new proposal with its reason. That replaces the owner's manual rule from 2.5 and spends one framing and one QA task instead of a whole cycle and its repair. A check at the ruling itself would need a verifier-authoring step before the gate: not proposed | M |
+| **a criterion checked against the head as soon as its test exists** (#2890; D9) | at the ruling only a criterion's statement and observable exist; its executable test is written later in the increment's cycle (SIP-0109's workload order, the second outside review). So the check runs at the earliest point a test exists: when the cycle's QA task has written a criterion's test, it runs on the campaign branch's head in the sandbox, before development's work is accepted. One that already passes ends the increment as `criteria_not_checkable`, returned to a new proposal with its reason. That replaces the owner's manual rule from 2.5 and spends one framing and one QA task instead of a whole cycle and its repair. A check at the ruling itself would need a verifier-authoring step before the gate: not proposed | M |
 | **#2613** | a regression the product's own checks find at the end of the plan gets one repair round inside the cycle's correction budget, instead of failing the run. Its own text says to build it when a live run needs it; a multi-hour run on a real product will | M |
 | **#2612** | a change can delete a file. A real product's refactors remove what they replace | M |
 | **#2783** | the anchors of pages earlier increments added reach the next proposal, so a later increment can't reuse one. It only shows after two UI increments, which is the multi-hour case | S–M |
@@ -239,8 +380,9 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 | item | what | size |
 |---|---|---|
 | **#2796** | the plan-review tier decides a product's plan gate from the approved change request and the plan's own open-question fields, instead of escalating every one. The rule is written into SIP-0109 §24bj, not left as a fallthrough | M |
-| **an escalation policy for unattended runs** (new; D6) | a Campaign declares which escalation classes the crew's `campaign-supervisor` principal may resume on its own, within the Campaign's limits. Today only `campaigns:control` (admin) resumes, and the crew's broker deliberately holds no admin role, so every overnight escalation waits for the owner. Everything outside D6's classes still does | M |
+| **an escalation policy for unattended runs** (#2891; D6) | a Campaign declares which escalation classes the crew's `campaign-supervisor` principal may resume on its own, within the Campaign's limits. Today only `campaigns:control` (admin) resumes, and the crew's broker deliberately holds no admin role, so every overnight escalation waits for the owner. Everything outside D6's classes still does | M |
 | **the overnight identity: confirm, don't build** (D7) | the crew's broker already holds scoped service principals (`campaign-operations`, `campaign-review`, `campaign-evidence`, private-key JWT clients in the `squadops-local` realm, none with `admin`; Nostromo's campaign execution harness document, in `backspring-labs/nostromo`). That answers most of #2760: no CLI session, no 8-hour limit. What remains is D6's resume grant to that principal. **Security, so the owner's** | S |
+| **#2861, #2862, #2863** | a Campaign's accepted work reaches its product without a terminal step. A Campaign that closes with accepted increments opens its contribution (#2861). A merged contribution syncs the Project, so its integrated commit includes the work (#2862). A read-only signal names accepted work not yet integrated (#2863). Today each is a hand step (`push-review`, then rename, merge, sync, validate, configure and baseline), and the crew's draft gate blocks until it is done. That happened twice on `prj-shelfnote` in 2.5.1's line | M |
 | **#2287** | the box lease outside Campaigns, so nothing else takes the GPU during an overnight window, built as SIP-0109 §9.3 is written. The crew's `crewctl mode counted` is its own local-role guard, not this lease | M |
 
 **Notices are the crew's.** Its watcher already posts each Campaign's transitions and closing record to Buzz, and
@@ -265,11 +407,11 @@ SquadOps holds the records the crew and the owner read and write. No SquadOps ag
 
 | item | what | size |
 |---|---|---|
-| **slice 1: the goal set** | the versioned record beside the Project Record (goal, expected results, constraints, out of scope, backlog, candidates), its API under `/api/v1/projects/{id}/goal-set` and `squadops goals …` | M |
-| **slice 2: a Campaign on a goal set** | `objective.goals`; the proposer shown the backlog with each item's derived status; one pending item per proposal, a rail returning one that names none; `stop_when: backlog_done`. A SIP-0109 amendment in the same PR | M–L |
-| **slice 3: candidates** | the squad, the crew or the system adds what it finds; the owner, or the crew if delegated (Q41), promotes or drops it | S–M |
-| **slice 4: the console's goals panel** | a Continuum plugin (SIP-0069): goal, expected results, backlog with status and increments, candidates waiting, history. Editing writes a revision | M |
-| **slice 5: the crew's surface** | the goal set and derived backlog readable by the supervisor and triage principals; each gate's evidence names its backlog item and carries the expected results, so the crew's reviewer judges an increment against the goal; candidates and **assessments** written by the crew (the SIP's §5.7: `met`/`not_met`/`unclear`, and a shortfall's cause: `app_work`, `framework_defect`, `framework_gap` or `needs_owner`, with the squad-ops issue it filed) | M |
+| **slice 1: the goal set** (#2884) | the versioned record beside the Project Record (goal, expected results, constraints, out of scope, backlog, candidates), its API under `/api/v1/projects/{id}/goal-set` and `squadops goals …` | M |
+| **slice 2: a Campaign on a goal set** (#2885) | `objective.goals`; the proposer shown the backlog with each item's derived status; one pending item per proposal, a rail returning one that names none; `stop_when: backlog_done`. A SIP-0109 amendment in the same PR | M–L |
+| **slice 3: candidates** (#2886) | the squad, the crew or the system adds what it finds; the owner, or the crew if delegated (Q41), promotes or drops it | S–M |
+| **slice 4: the console's goals panel** (#2887) | a Continuum plugin (SIP-0069): goal, expected results, backlog with status and increments, candidates waiting, history. Editing writes a revision | M |
+| **slice 5: the crew's surface** (#2888) | the goal set and derived backlog readable by the supervisor and triage principals; each gate's evidence names its backlog item and carries the expected results, so the crew's reviewer judges an increment against the goal; candidates and **assessments** written by the crew (the SIP's §5.7: `met`/`not_met`/`unclear`, and a shortfall's cause: `app_work`, `framework_defect`, `framework_gap` or `needs_owner`, with the squad-ops issue it filed) | M |
 
 **The crew's side, in Nostromo's repository, not this plan's to build.** For rung 3 the crew's harness has to use
 slice 5:
@@ -291,15 +433,17 @@ this repository. Until slice 1 lands, phase 1 drafts them as text to load.
 | item | what | size |
 |---|---|---|
 | **#2495** | the scripted squad: every task answered from a recorded script behind the LLM port, so handlers, gates and the correction loop run as they do with a model. The owner asked for it on 2026-10-19 ("we don't need to test model quality just execution machinery") | L |
-| **a scripted soak** | a scripted Campaign of eight or more increments on the proving product's real repository, with a deploy restart, a token expiry, an upstream push and a pause in the middle. It reads whether the control loop lasts hours, apart from whether the model's work is accepted | M |
+| **a scripted soak** (#2892) | a scripted Campaign of eight or more increments on the proving product's real repository, with a deploy restart, a token expiry, an upstream push and a pause in the middle. It reads whether the control loop lasts hours, apart from whether the model's work is accepted | M |
 
 ### 2.6 Track F: the proving Project
 
 | item | what | size |
 |---|---|---|
-| **the financial application** (D2) | the counted proving Project. If it doesn't exist yet, it is created greenfield from the `fullstack_fastapi_react` blueprint (SIP-0105), the stack the framework knows best and the path `z_shelfnote` proved (IR-7). Its requirements file carries the backlog (§2.4) and is the owner's. **Synthetic data only** (D10): no real accounts, statements or credentials in the repository, a prompt, the suite or a record | S to set up |
-| **its held-out suite** | drafted, reviewed and approved as 2.5's demonstration suites were (2.5 plan D11), so the yardstick reads whether the product improved, not only whether the squad's tests passed | M |
-| **a Roblox spike** (D3, no box time) | can a Rojo project's Luau tests run headless on Linux inside the sandbox from declared commands? **Unverified:** which runner (a standalone Luau runtime, or a test framework that needs Roblox's own APIs) and what it can't exercise. If yes, a Roblox game is an ordinary repository-backed Project once Track A lands, and its game-specific skills come from PR #2405. If it needs Roblox Studio, it is #2405's remote worker, not 2.6 | S |
+| **battle-trainer** (#2893; D2, the owner, 2026-11-03) | the counted proving Project: `backspring-labs/battle-trainer`, a Node library tested with vitest (`src/controller.js` answers `hello`, `draft` and `tick`). The MacBook lane registers its charter, Development Configuration and Campaign definition. It is registered on the Spark as a repository-backed Project, and its first goal set is the charter, loaded as a goal set once slice 1 lands (§2.4). The provider's SDK is fetched by pinned digest, never committed. No credentials until publication, which the owner authorizes separately. **Registered on the Spark after #2879 is deployed there,** or at `1f9e195`, where the package isn't private. At the MacBook's baseline `4d1d0b0`, the Spark's derivation would find no surface, and every proposal would be refused `unknown_surface` (as `cmp_c20d825c8131` was) | S to set up |
+| **its held-out suite** (#2894) | **sealed fixture cases:** an observation and the properties the controller's orders must have (one order per living unit, a throttle and steer in range, holding still when every objective is owned). They are run by the product's own vitest, outside the squad, in SquadOps' custody, never in the repository. Drafted, reviewed and approved as 2.5's demonstration suites were (2.5 plan D11). **Built from real observations:** the repository's `test/fixtures/` were written by hand from a summary of the provider's contract, with no raw bytes and no hashes. A suite built on guesses can pass while the controller does nothing, so each case starts from a captured observation, recorded with its digest. **Blocked until the owner acts:** on 2026-11-03, `api.battle.training` and `battle.training` resolved but refused TLS from both the Spark and the MacBook (curl exit 35). The home gateway's security filter blocks the domain, which was registered on 2026-10-26, and the owner allows it in the gateway's app. **Not in 2.6:** a simulator-scored cohort (#2872's A01.2). Its Q49 (Eve running the sealed cohort, against SIP-0113 §4.1) and Q50 (SIP-0113 has no simulation step) are ruled with that SIP | M |
+| **the sealed play measure** (the owner, 2026-11-07) | two sealed sets of ten games, scored on tanks reaching objectives and on wins, carry rung 3's improvement threshold. The owner ruled that only the game maker's rules stand, so the held-out suite above now checks legal orders alone. Pre-registered in `docs/plans/verification-sets/2-6-0-sealed-play-preregistration.md` | S |
+| **the simulator's reading on each accepted increment** (#2938; the owner, 2026-11-06) | the product's declared simulator runs where the increment is judged, at delivery, and its reading is kept on the run and shown in the gate's evidence: per opponent, the score, the result, units moved and shots fired. Seeds the squad can see: it is development evidence, and neither replaces the held-out suite nor waits on #2872's Q49 and Q50. Report-only (the owner, 2026-11-06): a bad reading is shown and does not refuse an increment | M |
+| **a Roblox spike** (#2895; D3, no box time) | can a Rojo project's Luau tests run headless on Linux inside the sandbox from declared commands? **Unverified:** which runner (a standalone Luau runtime, or a test framework that needs Roblox's own APIs) and what it can't exercise. If yes, a Roblox game is an ordinary repository-backed Project once Track A lands, and its game-specific skills come from PR #2405. If it needs Roblox Studio, it is #2405's remote worker, not 2.6 | S |
 
 ### 2.7 Track G: the console, so the owner drives a Campaign off the terminal (#2834)
 
@@ -315,7 +459,7 @@ shell modification". **No Continuum change is planned,** pending the fit check b
 
 | item | what | size |
 |---|---|---|
-| **a Continuum fit check** (first, no box time) | can the pinned shell do what the views below need: a list that refreshes while a Campaign runs, an ordered list edited in place, a view per Project and per Campaign, and a write that goes through the command bus with its danger level? **Unverified.** If it can't, the gap is named, and the choice (a plugin-local workaround, or a Continuum release) comes back to the owner before any view is built | S |
+| **a Continuum fit check** (#2896; first, no box time) | can the pinned shell do what the views below need: a list that refreshes while a Campaign runs, an ordered list edited in place, a view per Project and per Campaign, and a write that goes through the command bus with its danger level? **Unverified.** If it can't, the gap is named, and the choice (a plugin-local workaround, or a Continuum release) comes back to the owner before any view is built | S |
 | **a Campaigns plugin** (new, `squadops.campaigns`), **read-only in 2.6** | **what's happening:** state, the current increment, the ledger, the digest, open escalations and proposals waiting, and the crew's latest assessment of each expected result. **The controls stay with the crew** (it launches, rules and pauses through its broker) and the CLI. Console controls are #2834's parity debt, for a later line | M |
 | **the goals panel** | the SIP's slice 4 (§2.4), as a panel of the Projects plugin, linked to each Campaign that reads it | M (counted in §2.4) |
 | **Project setup views** (deferrable) | validate, configure, capture a baseline, sync, and see the gaps. These run once per Project, or when upstream moves, so the CLI is tolerable for 2.6 and they defer first | M–L |
@@ -338,6 +482,9 @@ proving run reads, or lands before phase 3. (#2830, #2765 and #2402 are 2.5.1's,
   Campaign meets (an outside push mid-run) is already IR-3's and shipped.
 - **Held-out suite revision 7** (#2723) and any other re-cut of the sample applications' yardstick.
 - **#2421's secrets half:** a live financial data source waits until a synthetic-data Campaign has held (D10).
+- **The financial application** (Nebulus, PR #2848, N1–N4): replaced as the proving Project by battle-trainer
+  (D2, 2026-11-03). Its provisioning (#2847) waits for its own placement.
+- **Simulator-scored play** for battle-trainer: #2872's sealed simulation cohort, after that SIP's acceptance.
 - **Game-specific capability** (#2405): its placement is its own decision, after the spike.
 - **#1965, #1039:** unplaced, as before.
 
@@ -352,8 +499,8 @@ what it finds may reorder everything after it.
 
 The Spark is one GPU and one deploy.
 
-0. **2.5.1** (§0, step 1): its seven fixes, each replayed against the envelope or record that found it, the regression suite,
-   and the patch cut. About 1 box-hour for the replays and the deploy, as a guide. 2.6's builds start beside it.
+0. **2.5.1: shipped 2026-11-03** (`v2.5.1` at `60a4498e`). Before the tag it was validated on its final deploy
+   (`var/verification_sets/2-5-1-validation/`).
 1. **No box time.** The owner rules §7. The proving Project's requirements and backlog are written, its Development
    Configuration recorded, its suite drafted. The Roblox spike runs on the CPU, and Track G's Continuum fit check runs
    beside it.
@@ -367,7 +514,8 @@ The Spark is one GPU and one deploy.
    reading) before the proving product's time is spent. It is also **the live reading of 2.5.1's product-path fixes**
    (#2824, #2817, #2814), which the patch read only by replay. Its exit rule: one Campaign with an accepted increment and no
    new seam finding.
-5. **The proving Campaign** on the owner's product, first attended, then unattended overnight under D6's policy.
+5. **The proving Campaign** on battle-trainer, on the Spark, first attended, then unattended overnight under D6's
+   policy. It starts only once every repository-backed product runs on its own stack (#2937) and each accepted increment carries the simulator's reading (#2938).
 6. **The cut.**
 
 **What invalidates earlier evidence:** 2.5's rule carries. A merge that changes a path an earlier run executed voids
@@ -401,7 +549,9 @@ The predictions are mechanisms, not rates: at this N a rate reads nothing.
 
 ## 5. Lanes and roles
 
-**One lane, the Spark's,** as from 2026-10-28. The owner's second review on a shared contract goes through the owner's
+**The Spark's lane builds the line,** as from 2026-10-28. **The MacBook's battle-trainer session** fixes what the
+product's own Campaigns find there (#2875–#2877), on the same terms, and runs the crew's small-model trials. The
+counted runs are the Spark's. The owner's second review on a shared contract goes through the owner's
 outside reviewer (a self-contained packet on the PR). **2.5's terms carry** (D12): the supervisor builds, merges on
 green with main's run read, and runs the deploys and uncounted runs. The owner keeps compose, security (D7 among it),
 lesson approvals, the Release and the tag.
@@ -419,10 +569,17 @@ the first attended proving run. Track D is build time, not box time: the proving
 
 ## 7. Decisions for the owner
 
+**Ruled 2026-11-03.** The owner: "Let's go with battle-trainer and then your recommendations on the other decisions".
+- **D2 is battle-trainer,** not the financial application this table recommended.
+- **Every other row is ruled as recommended,** Q42–Q44 among them (D15 rules Q41).
+- **D10 is moot:** battle-trainer holds no data.
+- **Shipped in 2.5.1:** D4 (#2835, #2840, #2846) and D11.
+- **D12 renews 2.5's terms** for this line.
+
 | # | decision | recommendation |
 |---|---|---|
 | D1 | **the headline and its SIP** | **Project Goals and Backlog (PR #2833), accepted and its slices 1–5 built.** Slice 5, the crew's minimum surface (reads, the backlog item in gate evidence, assessments), is **required**: the console's assessments, rung 3 and the SIP's close depend on it. Only slice 6, the repository export, is not in 2.6. Tracks A to C are its floor, built as the completion of SIP-0109 and SIP-0112 with numbered amendments for the escalation policy (§2.3) and the criterion check (§2.2). Its design review is in its own PR, and its Q41–Q44 are yours. **The alternative:** no new SIP, the backlog as a SIP-0109 amendment over a requirements file, which keeps the goals in a file edited from a terminal, which your direction rules out |
-| D2 | **the proving Project** | **the financial application,** greenfield from the `fullstack_fastapi_react` blueprint if it doesn't exist. It sits on the stacks the framework reads best, so a stop there is the Campaign's, not the stack's. **The alternatives:** a Roblox game first (blocked on D3), or another existing repository of yours |
+| D2 | **the proving Project** | **ruled 2026-11-03: battle-trainer** (§2.6). The recommendation was **the financial application,** greenfield from the `fullstack_fastapi_react` blueprint if it doesn't exist. It sits on the stacks the framework reads best, so a stop there is the Campaign's, not the stack's. **The alternatives:** a Roblox game first (blocked on D3), or another existing repository of yours |
 | D3 | **Roblox in 2.6** | **the spike only,** in phase 1. If its tests run headless on Linux, a Roblox Project is a second, uncounted Campaign late in the line. #2405's placement is decided after the spike |
 | D4 | **#2818's shape** | **shape 1, the sandbox's product runner,** as §24bv point 3 judges a product: on its own runner. It costs a sandbox round trip per suite run, and it's the only shape that covers a non-Python product |
 | D5 | **who authors the backlog** | **you order it; the squad proposes from it** and records what it finds as candidates, which you, or the crew if Q41 delegates it, promote or drop. The strategy role ordering its own features waits for a later line, once a Campaign has lasted hours on yours |

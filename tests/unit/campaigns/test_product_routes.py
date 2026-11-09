@@ -105,9 +105,13 @@ PAGES = {
 CHANGES = {"shelfkeeper/web.py": b"PAGES = 5\n"}
 
 
-async def render_product_routes(*, runner, requested_routes=None, **kw) -> ProductRoutes:
+async def render_product_routes(
+    *, runner, requested_routes=None, accepted_pages=None, **kw
+) -> ProductRoutes:
     """The renderer the runtime root builds over the sandbox's runner, rendering once."""
-    return await DeclaredStartRoutes(runner).render(requested_routes=requested_routes or {}, **kw)
+    return await DeclaredStartRoutes(runner).render(
+        requested_routes=requested_routes or {}, accepted_pages=accepted_pages or {}, **kw
+    )
 
 
 def _configuration(start=START) -> DevelopmentConfiguration:
@@ -151,6 +155,7 @@ async def _render(tmp_path, *, pages=PAGES, configuration=None, runner="sandbox"
         candidate=candidate,
         verified_candidate_revision=kw.pop("verified", revision),
         requested_routes=kw.pop("requested", {}),
+        accepted_pages=kw.pop("accepted", {}),
     )
 
 
@@ -669,3 +674,132 @@ async def test_an_added_route_whose_anchor_another_page_carries_never_holds(
             f"the change request names an anchor another page carries ({other})",
         )
     assert held["/"] == home
+
+
+# --- §24dq (#2783): the pages earlier increments added join the expected set at acceptance ---
+
+#: ``/shelves/archive``, which an earlier increment added and acceptance held, with the ids its
+#: page carried then, its anchor first: the inventory the increment's launch pinned.
+_ACCEPTED = {"/shelves/archive": ("archive-view", "archive-row")}
+_RECENT = f"http://{APP_IP}:5173/shelves/recent"
+#: The two places an inventory is read beside: a blueprint's pinned routes, and a product with no
+#: approved manifest, where nothing else names a page.
+_BESIDE = pytest.mark.parametrize(
+    "beside",
+    [{}, {"profile": _profile(), "initialization": None}],
+    ids=["beside-the-manifests-routes", "a-product-with-no-manifest"],
+)
+
+
+@_BESIDE
+@pytest.mark.parametrize(
+    ("page", "held", "missing"),
+    [
+        (_dom("archive-view", "archive-row"), Held.HELD, ()),
+        (_dom("not-found-view"), Held.BROKEN, ("archive-view",)),
+    ],
+    ids=["the-candidate-keeps-it", "the-candidate-drops-it"],
+)
+async def test_a_page_an_earlier_increment_added_is_judged_by_its_accepted_anchor(
+    tmp_path, beside, page, held, missing
+):
+    """An accepted page is pinned by the anchor it was accepted with, as a manifest's route is by
+    its manifest's. Bugs caught: the inventory never reaching the expected set, so a candidate that
+    drops an accepted page is accepted; or a product with no manifest judging none of its pages."""
+    routes = await _render(
+        tmp_path, pages={**PAGES, _ARCHIVE: page}, accepted=_ACCEPTED, **dict(beside)
+    )
+
+    [archive] = [r for r in routes.results if r.path == "/shelves/archive"]
+    assert (archive.held, archive.missing) == (held, missing)
+    [record] = [r for r in routes.record["routes"] if r["route"] == "/shelves/archive"]
+    assert (record["source"], record["anchor"]) == ("accepted_page", "archive-view")
+    # §24dr item 2: the root its promotion records it under again.
+    assert record["accepted_root"] == "archive-view"
+
+
+async def test_an_accepted_page_is_judged_by_its_accepted_anchor_whatever_the_request_names(
+    tmp_path,
+):
+    """A request stored before the rails refused it names another anchor for the accepted page it
+    changes. Bug caught: the page judged as one the request adds, by the anchor it names, so a
+    change can rewrite the page to show only that id and the accepted anchor holds nothing."""
+    routes = await _render(
+        tmp_path,
+        pages={**PAGES, _ARCHIVE: _dom("archive-view", "archive-row")},
+        accepted=_ACCEPTED,
+        requested={"/shelves/archive": "archive-v2"},
+    )
+
+    assert _held(routes)["/shelves/archive"] == ("held", "")
+    [record] = [r for r in routes.record["routes"] if r["route"] == "/shelves/archive"]
+    assert (record["source"], record["anchor"]) == ("accepted_page", "archive-view")
+
+
+@_BESIDE
+@pytest.mark.parametrize(
+    ("reused", "archive"),
+    [
+        ("archive-view", ("blocked_unverified", SHARED_ANCHOR.format(other="/shelves/recent"))),
+        ("archive-row", ("held", "")),
+    ],
+    ids=["the-accepted-pages-root", "another-id-it-carried"],
+)
+async def test_a_page_never_built_reusing_an_earlier_increments_anchor_never_holds(
+    tmp_path, beside, reused, archive
+):
+    """The issue's acceptance case at the renderer, for a request stored before the rails refused
+    it: ``/shelves/recent`` names an anchor ``/shelves/archive`` carried when it was accepted. The
+    candidate never builds ``/shelves/recent``, and the app's fallback renders the archive view
+    there. Where the reused anchor is the archive view's root, that page can't be told from the new
+    one either (§24co item 13). Bug caught: ``/shelves/recent`` read held, an increment accepted
+    with a page that doesn't exist."""
+    archive_view = _dom("archive-view", "archive-row")
+    pages = {**PAGES, _ARCHIVE: archive_view, _RECENT: archive_view}
+
+    routes = await _render(
+        tmp_path,
+        pages=pages,
+        accepted=_ACCEPTED,
+        requested={"/shelves/recent": reused},
+        **dict(beside),
+    )
+
+    held = _held(routes)
+    assert held["/shelves/recent"] == (
+        "blocked_unverified",
+        "the change request names an anchor another page carries (/shelves/archive)",
+    )
+    assert held["/shelves/archive"] == archive
+
+
+async def test_a_pinned_page_the_inventory_also_names_keeps_its_accepted_ids_at_acceptance(
+    tmp_path,
+):
+    """The renderer's counterpart of the rails' ``test_a_page_the_manifest_and_the_inventory_both_
+    name_keeps_both_their_ids`` (the outside review's item 3, SIP-0109 §24dr). The profile pins
+    ``/add`` by its manifest's ``add-shelf-view``; the inventory names ``/add`` too, with
+    ``add-shelf-note``, which its page showed when it was accepted and this reading of it doesn't.
+    A request stored before the rails refused it adds ``/shelves/recent`` naming
+    ``add-shelf-note``; the candidate never builds it, and the fallback renders the add view there
+    with its note. Bug caught: the pinned route's inventory ids dropped from the uniqueness check,
+    so ``/shelves/recent`` reads held on a page that doesn't exist."""
+    pages = {**PAGES, _RECENT: _dom("add-shelf-view", "add-shelf-note")}
+
+    routes = await _render(
+        tmp_path,
+        pages=pages,
+        accepted={"/add": ("add-shelf-view", "add-shelf-note")},
+        requested={"/shelves/recent": "add-shelf-note"},
+    )
+
+    held = _held(routes)
+    assert held["/shelves/recent"] == (
+        "blocked_unverified",
+        "the change request names an anchor another page carries (/add)",
+    )
+    assert held["/add"] == ("held", "")
+    [record] = [r for r in routes.record["routes"] if r["route"] == "/add"]
+    assert (record["source"], record["anchor"]) == ("approved_manifest", "add-shelf-view")
+    assert record["accepted_root"] == "add-shelf-view"
+    assert "accepted_root" not in next(r for r in routes.record["routes"] if r["route"] == "/")

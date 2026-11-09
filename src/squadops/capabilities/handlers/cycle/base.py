@@ -17,6 +17,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.capabilities.prompt_budget import completion_reserve
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.cycles.acceptance_check_spec import (
@@ -78,7 +79,12 @@ from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.fault_injection import held_through_pass, planted_rows
 from squadops.capabilities.handlers.fault_injection import hold as hold_fault
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
-from squadops.capabilities.handlers.fenced_parser import cut_final_block, extract_fenced_files
+from squadops.capabilities.handlers.fenced_parser import (
+    cut_final_block,
+    extract_fenced_deletions,
+    extract_fenced_files,
+)
+from squadops.cycles.deletions import DELETIONS_KEY, DELETIONS_REFUSED_KEY
 from squadops.cycles.emission_integrity import (
     SIGNATURE_CAP_EXHAUSTED,
     classify_empty_emission,
@@ -252,6 +258,11 @@ class _CycleTaskHandler(CapabilityHandler):
     _role: str = ""
     _artifact_name: str = ""
     _request_template_id: str = "request.cycle_task_base"
+    #: #2813: whether this generic path refuses a prompt over the model's window by name
+    #: (``_guard_prompt_size``), as ``development.develop`` and ``qa.test`` do on their own
+    #: paths. The correction repairs set it: a repair's anchored-edit retry adds refusal lines
+    #: its binding budget never counted, so the composer's estimate alone doesn't bound the call.
+    _guards_prompt_window: bool = False
 
     @property
     def name(self) -> str:
@@ -1075,6 +1086,14 @@ class _CycleTaskHandler(CapabilityHandler):
             source, artifacts = followup.absorb(
                 followup_content, artifacts, evidence_extra, self_eval_count
             )
+            # #2612: a pass revises the files it was shown, and its removals are refused by name:
+            # the task's first emission is where a removal is read and judged.
+            refused = extract_fenced_deletions(source)
+            if refused.found:
+                evidence_extra.setdefault(DELETIONS_REFUSED_KEY, []).extend(
+                    {"path": path, "reason": "self_eval_pass", "pass": self_eval_count + 1}
+                    for path in (*refused.paths, *(m[0] for m in refused.malformed))
+                )
             if offered:
                 new_artifacts, edit_record = self._pass_edits(
                     context, source, artifacts, offered, followup
@@ -1258,12 +1277,26 @@ class _CycleTaskHandler(CapabilityHandler):
         assembled = context.ports.prompt_service.get_system_prompt(context.role_id)
         system_prompt = assembled.content
 
+        chat_kwargs = self._build_chat_kwargs(inputs)
+        if self._guards_prompt_window:
+            model_name = chat_kwargs.get("model") or context.ports.llm.default_model
+            spec = get_model_spec(model_name)
+            try:
+                user_prompt = _guard_prompt_size(
+                    system_prompt,
+                    user_prompt,
+                    int(chat_kwargs.get("max_tokens") or 0),
+                    spec.context_window if spec is not None else None,
+                    model_name,
+                    truncatable=False,
+                )
+            except ValueError as exc:
+                return self._fail_result(start_time, inputs, str(exc))
+
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
-
-        chat_kwargs = self._build_chat_kwargs(inputs)
 
         # #929: the call and everything that must follow it. The generic path's
         # prompt-layer identity is passed rather than derived — its system layer is
@@ -1344,7 +1377,12 @@ class _CycleTaskHandler(CapabilityHandler):
 
         Moved from ``handle`` (#1994).
         """
-        if (not content.strip() or not artifacts) and "emission_failure" not in outputs:
+        # #2612: a response whose one act is a removal emitted no file, and is not contentless.
+        if (
+            (not content.strip() or not artifacts)
+            and "emission_failure" not in outputs
+            and not outputs.get(DELETIONS_KEY)
+        ):
             # #998: an EMPTY emission on the generic path — which every repair handler
             # rides — carried no marker at all, so the correction loop could refund the
             # round (#1053) but never say what kind of nothing it was. Three of the
@@ -1852,7 +1890,9 @@ class _CycleTaskHandler(CapabilityHandler):
                     role=self._role,
                     task_type=str(self._task_type),
                     model=str(resolved_model or context.ports.llm.default_model),
-                    engine=context.ports.llm.engine,
+                    engine=context.ports.llm.engine_for(
+                        resolved_model or context.ports.llm.default_model
+                    ),
                     duration_ms=duration_ms,
                 )
             except Exception:

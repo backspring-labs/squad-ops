@@ -1,11 +1,12 @@
 <svelte:options customElement="squadops-artifacts-list" />
 
 <script>
-  import { fetchAllPages } from '../../../shared/paging.js';
+  import { PAGE_LIMIT, fetchNewestPage } from '../../../shared/paging.js';
   import { onMount } from 'svelte';
 
   let artifacts = $state([]);
   let loading = $state(true);
+  let truncated = $state(false);
   let filterType = $state('');
   let filterProject = $state('');
   let projects = $state([]);
@@ -28,12 +29,14 @@
       const all = [];
       for (const proj of projList.slice(0, 10)) {
         try {
-          const listed = await fetchAllPages(
+          // #2921: each Project's newest page, not every page; the API lists newest first.
+          const listed = await fetchNewestPage(
             apiFetch,
             `${apiBase}/api/v1/projects/${proj.project_id}/artifacts`
           );
           if (listed.ok) {
             all.push(...listed.items.map(a => ({ ...a, project_id: proj.project_id })));
+            if (listed.more) truncated = true;
           }
         } catch { /* skip */ }
       }
@@ -72,6 +75,9 @@
 <squadops-artifacts-viewer></squadops-artifacts-viewer>
 <div class="artifacts-list">
   <h3 class="title">Artifacts</h3>
+  {#if truncated}
+    <div class="scope">Each Project's newest {PAGE_LIMIT}</div>
+  {/if}
 
   <div class="filters">
     <select bind:value={filterType}>
@@ -139,4 +145,5 @@
   .muted { color: var(--continuum-text-muted, #94a3b8); font-size: var(--continuum-font-size-xs, 0.75rem); }
   .badge { background: var(--continuum-bg-tertiary, #334155); padding: 2px 6px; border-radius: var(--continuum-radius-sm, 4px); font-size: var(--continuum-font-size-xs, 0.75rem); }
   .loading, .empty { color: var(--continuum-text-muted, #94a3b8); padding: var(--continuum-space-md, 16px); }
+  .scope { color: var(--continuum-text-muted, #94a3b8); font-size: var(--continuum-font-size-sm, 0.875rem); margin: 0 0 var(--continuum-space-sm, 8px) 0; }
 </style>

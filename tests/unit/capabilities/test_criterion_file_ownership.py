@@ -571,18 +571,105 @@ async def test_an_increments_merge_requires_its_criterion_files(extra, succeeds)
         ("function_defined", {"file": R1, "name_prefix": "test_"}, {R1}),
         ("frontend_compiles", {"file": "web/a.jsx", "project_dir": "web"}, {"web/a.jsx", "web"}),
         ("command_exit_zero", {"argv": ["python", "-m", "py_compile", R1]}, {R1}),
+        (
+            "command_exit_zero",
+            {"argv": ["python", "-m", "py_compile", "check_criterion_R1.py"], "cwd": "checks"},
+            {R1},
+        ),
         ("command_exit_zero", {"argv": ["pytest", R1]}, set()),
         ("command_exit_zero", {"argv": "python -m py_compile x.py"}, set()),
         ("count_at_least", {"glob": "checks/*.py", "min_count": 2}, {"checks/*.py"}),
         ("no_such_check", {"file": R1}, set()),
     ],
-    ids=["a file", "two path params", "a safelisted command", "a refused command",
+    ids=["a file", "two path params", "a safelisted command", "a command run in a cwd",
+         "a refused command",
          "an argv that isn't a list", "a glob", "an unknown check"],
 )  # fmt: skip
 def test_a_checks_subject_paths_are_its_path_params_and_its_commands_file(check, params, paths):
     """Bugs caught: a command check's file missed, so a develop task keeps a check on a criterion
     file it no longer writes; or a refused command read as naming a file."""
     assert check_subject_paths(check, params) == frozenset(paths)
+
+
+_WEB_R2 = "web/src/__tests__/criterion_R2.test.jsx"
+
+
+def _dev_shapes_yaml() -> str:
+    """A develop task writing the product's backend and frontend files and two criterion files,
+    with #2804's three check shapes on them."""
+    return f"""\
+version: 1
+proposal_id: prop-dev-tally
+source_brief_id: brief-tally-001
+proposing_role: development
+scope_statement: |
+  The total line, its view, and the criteria's tests.
+tasks:
+  - task_type: development.develop
+    role: dev
+    focus: "Report total line"
+    description: |
+      Append the total line to render() and show it; write the R1 and R2 criterion tests.
+    expected_artifacts:
+      - "tally/report.py"
+      - "web/src/Total.jsx"
+      - "{R1}"
+      - "{_WEB_R2}"
+    acceptance_criteria:
+      - check: command_exit_zero
+        argv: [python, -m, py_compile, check_criterion_R1.py]
+        cwd: checks
+        severity: error
+      - check: count_at_least
+        glob: "checks/check_criterion_*.py"
+        min_count: 1
+        severity: error
+      - check: frontend_compiles
+        file: {_WEB_R2}
+        project_dir: web
+        severity: error
+      - check: count_at_least
+        glob: "tally/*.py"
+        min_count: 1
+        severity: error
+    depends_on_focus: []
+"""
+
+
+def test_each_check_shape_on_a_criterion_file_is_resolved_as_its_evaluator_reads_it():
+    """#2804, through the plan merge (``merge_proposals``, which the merge handler calls). Bugs
+    caught:
+    - a ``command_exit_zero`` whose file is relative to its ``cwd`` kept, so the develop task
+      fails ``file_not_found`` on a tree without the criterion file;
+    - a ``count_at_least`` glob over the criterion directory kept, with the same effect;
+    - a ``frontend_compiles`` on the criterion test dropped, which runs the whole project's build
+      and was the task's only bundler check: it is kept, anchored on the task's own view.
+    A glob that reads none of the given files is kept as it was."""
+    plan, decisions = _merge(
+        _dev_shapes_yaml(), _qa_yaml(first_files=(R1, _WEB_R2)), criterion_files=(R1, _WEB_R2)
+    )
+
+    develop = plan.tasks[0]
+    assert list(develop.expected_artifacts) == ["tally/report.py", "web/src/Total.jsx"]
+    assert [(c.check, dict(c.params)) for c in develop.acceptance_criteria] == [
+        ("frontend_compiles", {"file": "web/src/Total.jsx", "project_dir": "web"}),
+        ("count_at_least", {"glob": "tally/*.py", "min_count": 1}),
+    ]
+    assert decisions.canonical_tasks[0].reason.endswith(
+        "expected_artifacts, with the 2 typed check(s) it held on them; 1 whole-project check(s) "
+        "anchored on them now anchor on a file it keeps."
+    )
+
+
+def test_a_whole_project_check_with_no_file_to_anchor_on_is_dropped():
+    """Edge: the develop task keeps only a backend file, which ``frontend_compiles`` doesn't
+    apply to. Bug caught: the check re-pointed to a file its evaluator refuses, or kept on the
+    criterion file the task no longer writes."""
+    dev = _dev_shapes_yaml().replace('      - "web/src/Total.jsx"\n', "")
+
+    plan, _ = _merge(dev, _qa_yaml(first_files=(R1, _WEB_R2)), criterion_files=(R1, _WEB_R2))
+
+    assert [c.check for c in plan.tasks[0].acceptance_criteria] == ["count_at_least"]
 
 
 # --- the prompts, by role ------------------------------------------------------------------------

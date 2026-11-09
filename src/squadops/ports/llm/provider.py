@@ -65,6 +65,12 @@ class LLMPort(ABC):
         """
         ...
 
+    def engine_for(self, model: str | None) -> str:
+        """The engine that answers a call naming ``model``: :attr:`engine`, unless this port serves
+        a model from somewhere else. The per-call metrics read it, so a call answered from a
+        recorded script (#2495) is never charted as the deploy engine's."""
+        return self.engine
+
     @abstractmethod
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate text from a prompt.

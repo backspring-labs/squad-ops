@@ -21,7 +21,7 @@ evidence the drift invalidated (``unreconciled``, #2608).
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from squadops.projects.contribution import CLOSED, INTEGRATED, PENDING, Contribution
@@ -46,10 +46,12 @@ async def sync_project(
     forge: Any,
     tokens: Mapping[str, str],
     actor: str,
-    idempotency_key: str,
+    idempotency_key: str | Callable[[str], str],
 ) -> tuple[dict[str, Any], bool]:
     """Fetch upstream, name its drift from the approved baseline and where each pending
-    contribution stands, and record both."""
+    contribution stands, and record both. ``idempotency_key`` is the caller's, or a function of
+    the upstream commit the fetch read, for a caller that records one sync per upstream commit
+    (the integration check, SIP-0112 H.30): a second sync at that commit replays the first."""
     project = await registry.get_project(project_id)
     if project.source is None:
         raise SyncRefused(f"Project {project_id} is a sample application: it has no upstream")
@@ -101,7 +103,7 @@ async def sync_project(
     return await registry.record_sync(
         document,
         actor=actor,
-        idempotency_key=idempotency_key,
+        idempotency_key=idempotency_key(upstream) if callable(idempotency_key) else idempotency_key,
         request_hash=submission_digest({"project_id": project_id, "upstream": upstream}),
     )
 

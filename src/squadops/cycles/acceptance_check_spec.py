@@ -25,8 +25,10 @@ PlanTask, etc.).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import posixpath
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 
 # Allowed severity values. Anything else → ValueError at parse time.
 ALLOWED_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
@@ -165,6 +167,11 @@ class CheckSpec:
     param_types: dict[str, type | tuple[type, ...]] = field(default_factory=dict)
     requires_stack_context: bool = False
     path_params: frozenset[str] = frozenset()
+    #: #2804: the ``path_params`` that only anchor a failure's blame, where the evaluator reads
+    #: more than the named file (``frontend_compiles`` runs the whole project's build). A check
+    #: on such a file guards the rest of the task's files too, so when the plan merge gives the
+    #: file to another task the check is re-pointed to a file the task keeps, not dropped.
+    anchor_params: frozenset[str] = frozenset()
     example: dict[str, object] = field(default_factory=dict)
     notes: str = ""
     #: The executables the evaluator shells out to, by the names ``CHECK_ENV_TOOLS`` uses.
@@ -349,19 +356,23 @@ def argv_matches_safelist(argv: list[str]) -> bool:
 
 
 def check_subject_paths(check_name: str, params: Mapping[str, object]) -> frozenset[str]:
-    """The workspace paths an authored check reads, as written: the values of its spec's
-    ``path_params``, and a safelisted command's file. Every safelisted form is a fixed prefix
-    and one path (``_exact_then_one_path``), so that path is the argv's last element; an argv
+    """The workspace paths an authored check reads, as its evaluator resolves them: the values
+    of its spec's ``path_params``, and a safelisted command's file. Every safelisted form is a
+    fixed prefix and one path (``_exact_then_one_path``), so that path is the argv's last
+    element, resolved against the check's ``cwd`` as the command runs there (#2804). An argv
     the safelist refuses names nothing here, since it never runs. An unknown check names
-    nothing (the parser refuses it elsewhere).
+    nothing (the parser refuses it elsewhere). A glob param's value is returned as written:
+    ``paths_read`` matches it.
 
     #2795: the plan merge drops a task's checks on a file it gives to another task, which it
-    finds by this.
+    finds by ``paths_read``.
     """
     spec = CHECK_SPECS.get(check_name)
     if spec is None:
         return frozenset()
-    paths = {value for key in spec.path_params if isinstance(value := params.get(key), str)}
+    paths = {
+        _normalized(value) for key in spec.path_params if isinstance(value := params.get(key), str)
+    }
     argv = params.get("argv")
     if (
         isinstance(argv, list)
@@ -369,8 +380,68 @@ def check_subject_paths(check_name: str, params: Mapping[str, object]) -> frozen
         and all(isinstance(a, str) for a in argv)
         and argv_matches_safelist(argv)
     ):
-        paths.add(argv[-1])
+        cwd = params.get("cwd")
+        base = cwd if isinstance(cwd, str) and not posixpath.isabs(argv[-1]) else ""
+        paths.add(_normalized(posixpath.join(base, argv[-1])))
     return frozenset(paths)
+
+
+def paths_read(
+    check_name: str, params: Mapping[str, object], paths: Iterable[str]
+) -> frozenset[str]:
+    """Which of ``paths`` an authored check reads: one of its subjects
+    (``check_subject_paths``), or matched by a subject that is a glob, as ``count_at_least``
+    expands one over the workspace (#2804). The glob match over-approximates ``Path.glob``
+    (``*`` may cross a ``/`` here), which errs toward a check the merge treats as reading the
+    file."""
+    subjects = check_subject_paths(check_name, params)
+    globs = [s for s in subjects if any(c in s for c in "*?[")]
+    return frozenset(
+        p
+        for p in paths
+        if _normalized(p) in subjects or any(_glob_reads(g, _normalized(p)) for g in globs)
+    )
+
+
+def repointed_anchor(
+    check_name: str,
+    params: Mapping[str, object],
+    read: Iterable[str],
+    kept: Iterable[str],
+) -> dict[str, object] | None:
+    """A check that reads ``read`` only through its anchor params (``CheckSpec.anchor_params``),
+    with its anchor moved to the first of ``kept`` its evaluator applies to; ``None`` when it
+    reads ``read`` otherwise, or no kept file can carry the anchor (#2804). The plan merge keeps
+    the returned check and drops a ``None`` one."""
+    spec = CHECK_SPECS.get(check_name)
+    if spec is None or not spec.anchor_params:
+        return None
+    anchors = {
+        key: _normalized(value)
+        for key in spec.anchor_params
+        if isinstance(value := params.get(key), str)
+    }
+    if not set(map(_normalized, read)) <= set(anchors.values()):
+        return None
+    extensions = spec.applicable_extensions
+    carrier = next(
+        (k for k in kept if not extensions or posixpath.splitext(k)[1].lower() in extensions),
+        None,
+    )
+    if carrier is None:
+        return None
+    return {**params, **{key: carrier for key in anchors}}
+
+
+def _normalized(path: str) -> str:
+    return posixpath.normpath(path.replace("\\", "/")).removeprefix("./")
+
+
+def _glob_reads(glob: str, path: str) -> bool:
+    """Whether ``glob`` (workspace-relative) matches ``path``: ``fnmatch``, plus ``**/`` matching
+    no directory, as ``Path.glob`` reads it."""
+    glob = _normalized(glob)
+    return fnmatch(path, glob) or fnmatch(path, glob.replace("**/", ""))
 
 
 # #423: skip reasons that mean "enforcement is deliberately off by config" —
@@ -953,6 +1024,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         param_types={"file": str, "timeout_s": int, "project_dir": str},
         requires_stack_context=False,
         path_params=frozenset({"file", "project_dir"}),
+        anchor_params=frozenset({"file"}),
         example={"file": "frontend/src/views/RunsListView.jsx"},
         # #648: fay-4 and fay-8 both shipped a view with a rollup bind-time
         # error (an undefined identifier) — invisible to every static check

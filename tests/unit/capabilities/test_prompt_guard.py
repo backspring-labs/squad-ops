@@ -154,6 +154,25 @@ class TestGuardPromptSizeTruncation:
         assert "[Truncated to fit context window]" in result
         assert "x" * 100 not in result  # large block removed
 
+    def test_a_caller_that_forbids_truncation_is_refused_with_its_prompt_whole(self):
+        """#2813: a correction repair's template puts its closing instruction after the
+        prior-analysis section, so the cut that fits develop's prompt would send the repair
+        without its output form. Bug caught: a repair truncated and sent instead of refused."""
+        system, user = self._make_prompts(prior_analysis_size=40000)
+
+        with pytest.raises(ValueError) as refused:
+            _guard_prompt_size(
+                system_prompt=system,
+                user_prompt=user,
+                max_completion_tokens=4000,
+                context_window=5000,
+                truncatable=False,
+            )
+
+        diagnostics = json.loads(str(refused.value))
+        assert diagnostics["error_code"] == "PROMPT_EXCEEDS_CONTEXT_WINDOW"
+        assert diagnostics["truncation_attempted"] is False
+
     def test_impossible_fit_after_truncation(self):
         """Even after truncation, prompt still too large → ValueError."""
         system = "x" * 40000  # system prompt alone overflows

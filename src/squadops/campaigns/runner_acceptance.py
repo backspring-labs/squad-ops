@@ -18,7 +18,8 @@ runtime-side, at its delivery (§24cd point 6). The decisions are the same modul
   the one delivery verified.
 - **The product's test files** are what the derived profile classes as tests (contract 8's
   ``files.test`` and ``files.test_support``, matched on the whole path), and the criterion files
-  the framework placed (§24cj). Every other tracked file is the product's (``ProductTestSurface``).
+  the framework placed (§24cj), with the page loaders placed beside page criteria's (#2799). Every
+  other tracked file is the product's (``ProductTestSurface``).
 - **A criterion's bundle** is its placed test file, the test files it imports, the package markers
   its directories need, and its runner's support files (§24bv point 3: "frozen with the
   test-support files the profile names"). Its invocation is its runner's one-file argv, the file
@@ -37,6 +38,8 @@ runtime-side, at its delivery (§24cd point 6). The decisions are the same modul
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import posixpath
 import sys
@@ -194,11 +197,13 @@ class SandboxTree:
 
     files: Mapping[str, bytes]
     executable: frozenset[str] = frozenset()
-    changes: Mapping[str, bytes] = field(default_factory=dict)
+    #: A file the squad removed is ``None`` here (#2612), as the sandbox's patch takes it.
+    changes: Mapping[str, bytes | None] = field(default_factory=dict)
 
     @property
     def content(self) -> dict[str, bytes]:
-        return {**self.files, **self.changes}
+        merged = {**self.files, **self.changes}
+        return {path: c for path, c in merged.items() if c is not None}
 
     @property
     def file_tree(self) -> FileTree:
@@ -273,6 +278,25 @@ def _patch_to(current: Mapping[str, bytes], target: Mapping[str, bytes]) -> dict
     patch: dict[str, bytes | None] = {p: c for p, c in target.items() if current.get(p) != c}
     patch.update({p: None for p in current if p not in target})
     return patch
+
+
+#: How long a declared reading may run: it measures, so it never holds an increment for long.
+READING_TIMEOUT_SECONDS = 300
+
+
+def _last_json_line(output: str) -> tuple[dict[str, Any] | None, str | None]:
+    """A reading's result: the last non-empty line of its output, a JSON object. The sandbox keeps
+    only the output's tail, so a reading says what it found last, and keeps it short."""
+    lines = [line for line in output.splitlines() if line.strip()]
+    if not lines:
+        return None, "the reading printed nothing"
+    try:
+        value = json.loads(lines[-1])
+    except ValueError:
+        return None, f"its last line isn't JSON: {lines[-1][:120]}"
+    if not isinstance(value, dict):
+        return None, "its last line isn't a JSON object"
+    return value, None
 
 
 @dataclass(frozen=True)
@@ -388,6 +412,57 @@ class RunnerAcceptance:
             if exited
             else (getattr(result, "unavailable_reason", None) or result.outcome or "not run"),
         )
+
+    async def read(
+        self, reading_id: str, argv: tuple[str, ...], tree: SandboxTree
+    ) -> dict[str, Any]:
+        """#2938: a declared reading of ``tree``, the candidate. It reports and never decides, so
+        nothing about it can fail an increment: whatever goes wrong becomes the record's ``error``,
+        and the run carries on to its verdict."""
+        # deferred (pair): as ``run``
+        from squadops.sandbox.models import CommandOutcome, RevisionOrigin
+
+        record: dict[str, Any] = {"id": reading_id, "argv": list(argv), "reading": None}
+        digest = hashlib.sha256(reading_id.encode()).hexdigest()[:12]
+        workspace_id = f"{self.workspace_prefix}read-{digest}"
+        try:
+            await self.sandbox.release_workspace(workspace_id)
+            try:
+                revision = await self.sandbox.seed_workspace(
+                    workspace_id,
+                    dict(tree.files),
+                    origin=RevisionOrigin.GIT_CHECKOUT,
+                    executable=tree.executable,
+                )
+                if tree.changes:
+                    patched = await self._patched(
+                        revision, dict(tree.changes), RevisionOrigin.AGENT_PATCH
+                    )
+                    if patched is None:
+                        return {**record, "error": "the candidate couldn't be assembled"}
+                    revision = patched
+                result = await self.sandbox.run_declared_command(
+                    revision=revision,
+                    command=argv,
+                    working_dir=self.setup.working_directory,
+                    setup=self.setup.setup,
+                    timeout_seconds=READING_TIMEOUT_SECONDS,
+                )
+            finally:
+                await self.sandbox.release_workspace(workspace_id)
+        except Exception as e:  # a measurement never fails what it measures
+            logger.warning("product_reading_failed", extra={"reading": reading_id}, exc_info=True)
+            return {**record, "error": f"{type(e).__name__}: {e}"[:300]}
+        if not (result.ran and result.outcome == CommandOutcome.EXITED):
+            why = getattr(result, "unavailable_reason", None) or result.outcome or "not run"
+            return {**record, "error": str(why)[:300]}
+        reading, error = _last_json_line(result.stdout_tail)
+        return {
+            **record,
+            "exit_code": result.exit_code,
+            "reading": reading,
+            **({"error": error} if error else {}),
+        }
 
     async def _patched(
         self, base: WorkspaceRevision, files: dict, origin: str
@@ -535,6 +610,7 @@ async def evaluate_on_runner(
     retired: Iterable[str],
     routes: Sequence[RouteResult],
     replaced: Iterable[NewCriterion] = (),
+    placed_support: Iterable[str] = (),
 ) -> tuple[IncrementEvaluation, tuple[OverlayRun, ...]]:
     """The increment's acceptance on the product's runner (§8, §24cd point 6): discrimination,
     accumulated acceptance and the profile's routes, as ``acceptance_run.evaluate_increment``
@@ -542,12 +618,17 @@ async def evaluate_on_runner(
     rendered on the candidate (``execution.product_routes``, §24co): empty where it names none.
 
     ``replaced`` is each frozen criterion whose verifier the change request replaces, at its own
-    test file (§8.1): frozen anew from the candidate and run as a frozen criterion is."""
+    test file (§8.1): frozen anew from the candidate and run as a frozen criterion is.
+
+    ``placed_support`` is the framework's files the change request placed beside its criteria's
+    tests, the page loaders (#2799): test files, as the placed criterion files are, so a bundle
+    whose test imports one is frozen with it, and the baseline's overlay takes it from the bundle,
+    since the accepted tree has none."""
     new, replaced = tuple(new), tuple(replaced)
     retired = frozenset(retired)
     frozen = tuple(c for c in frozen if c.criterion_id not in retired)
     placed = {c.test_path for c in new} | {c.test_path for c in frozen}
-    placed |= {c.test_path for c in replaced}
+    placed |= {c.test_path for c in replaced} | set(placed_support)
     surface = ProductTestSurface.of(runs.profile, placed)
     discriminations: list[Discrimination] = []
     bundles: dict[str, VerifierBundle] = {}

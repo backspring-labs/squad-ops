@@ -215,8 +215,15 @@ async def test_a_rejection_record_older_than_its_proofs_is_read_as_such(stores, 
     registry, vault = stores
     for run_id in ("run_f2", "run_i1"):
         registry._runs.pop(run_id)
-    (record_file,) = (tmp_path / "vault").rglob("rejection_record.json")
-    record_file.write_text(json.dumps({"gate": "g", "classes": {"validate_criteria_scope": 1}}))
+    # Written through the vault, as an older gate wrote it: an edit on disk would no longer match
+    # the size and hash its metadata records, which the vault refuses (#2931).
+    (record,) = [
+        r
+        for r in await vault.list_artifacts(cycle_id="cyc_1")
+        if r.filename == "rejection_record.json"
+    ]
+    older = {"gate": "g", "classes": {"validate_criteria_scope": 1}}
+    await vault.store(record, json.dumps(older).encode())
 
     reading = (await assess_cycle(registry, vault, "cyc_1", assessor=ASSESSOR)).attribution
 

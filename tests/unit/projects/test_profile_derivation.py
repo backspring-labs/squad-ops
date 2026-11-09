@@ -293,12 +293,37 @@ def _vitest_profile(script, deps, argv=_NPM, extra=None):
          "its --config testing/missing.ts isn't in the tree, so its reporters can't be read"),
         ("vitest run", _V2, _NPM, {"frontend/vitest.workspace.ts": b"export default []"},
          "frontend/vitest.workspace.ts sets its projects, whose reporters aren't read"),
+        # #2775: a config whose effect its own text can't show.
+        ("vitest run", _V2, _NPM,
+         {"frontend/vite.config.ts": b"import base from './vite.base'\nexport default base"},
+         "frontend/vite.config.ts imports a relative module, so the reporters it sets can't be read from its text"),
+        ("vitest run", _V2, _NPM,
+         {"frontend/vitest.config.ts": b"const shared = require('../shared.cjs')\nmodule.exports = shared"},
+         "frontend/vitest.config.ts imports a relative module, so the reporters it sets can't be read from its text"),
+        ("vitest run", _V2, _NPM,
+         {"frontend/vitest.config.ts": b"import { mergeConfig } from 'vitest/config'\nimport v from 'shared-config'\nexport default mergeConfig(v, {})"},
+         "frontend/vitest.config.ts merges another config (mergeConfig), so the reporters it sets can't be read from its text"),
+        ("vitest run", _V2, _NPM,
+         {"frontend/vitest.config.ts": b"import shared from 'shared-config'\nexport default { test: { ...shared } }"},
+         "frontend/vitest.config.ts spreads settings from a value, so the reporters it sets can't be read from its text"),
+        ("vitest run", _V2, _NPM,
+         {"frontend/vite.config.ts": b"import { defineConfig } from 'vite'\nexport default defineConfig(({ mode }) => ({}))"},
+         "frontend/vite.config.ts computes its config in a function, so the reporters it sets can't be read from its text"),
+        ("vitest run", _V2, _NPM,
+         {"frontend/vitest.config.ts": b"export default { test: { environment: process.env.TEST_ENV } }"},
+         "frontend/vitest.config.ts reads the environment, so the reporters it sets can't be read from its text"),
+        # A config whose whole effect is in its text keeps the reader.
+        ("vitest run", _V2, _NPM,
+         {"frontend/vite.config.ts": b"import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\nexport default defineConfig({ plugins: [react()], test: { environment: 'jsdom' } })"},
+         None),
     ],
     ids=["^2", "~2 in dependencies", "exact 2", "2.x", "another major", "open-ended",
          "an alternative major", "a range across majors", "an alias", "no version",
          "a reporter in the script", "a reporter forwarded by npm", "a reporter forwarded by yarn",
          "stderr merged", "a reporters config", "a --config naming reporters",
-         "a --config not in the tree", "a workspace"],
+         "a --config not in the tree", "a workspace", "a relative import", "a relative require",
+         "mergeConfig", "a spread from a value", "defineConfig given a function",
+         "the environment read", "a literal config"],
 )  # fmt: skip
 def test_vitest_is_given_its_reader_only_where_the_products_output_is_what_it_reads(
     script, deps, argv, extra, why
@@ -363,3 +388,98 @@ def test_each_vitest_runner_is_read_on_its_own_output_and_its_gap_is_confined_to
             "names a reporter" + _TAIL,
         ),
     ]
+
+
+# --- #2875: a private package that declares an interface is a package surface ---------------
+
+_BATTLE_CHECKS = (Check("contract_tests", ("npx", "vitest", "run")),)
+
+
+@pytest.mark.parametrize(
+    ("package_json", "surfaces"),
+    [
+        # battle-trainer's first commit: private, and no interface declared. An application's own
+        # package.json looks the same (a Next.js app at the root), so it offers no package.
+        (b'{"name": "battle-trainer", "private": true}', []),
+        # The same library declaring what it exports is a package, published or not.
+        (b'{"name": "battle-trainer", "private": true, "main": "src/controller.js"}',
+         [{"kind": "package", "name": "battle-trainer"}]),
+        (b'{"name": "battle-trainer", "private": true, "exports": {".": "./src/controller.js"}}',
+         [{"kind": "package", "name": "battle-trainer"}]),
+        (b'{"name": "battle-trainer", "private": true, "module": "src/controller.js"}',
+         [{"kind": "package", "name": "battle-trainer"}]),
+        # Not private: a package, as before.
+        (b'{"name": "battle-trainer"}', [{"kind": "package", "name": "battle-trainer"}]),
+        # No name: nothing a criterion could name.
+        (b'{"private": true, "main": "src/controller.js"}', []),
+    ],
+    ids=["private-app", "private-main", "private-exports", "private-module", "public", "no-name"],
+)  # fmt: skip
+def test_a_private_package_that_declares_an_interface_is_a_package_surface(package_json, surfaces):
+    files = {
+        "package.json": package_json,
+        "package-lock.json": b"{}",
+        "src/controller.js": b"",
+        "test/contract.test.js": b"",
+    }
+    profile = derive_profile(files, _configuration(_BATTLE_CHECKS), _baseline(_BATTLE_CHECKS))
+
+    assert [s.to_document() for s in profile.public_surfaces] == surfaces
+
+
+def test_the_proposal_rails_read_a_private_librarys_package_from_its_profile():
+    """Wiring, #2875: the derived profile's document is what a repository-backed proposal's rails
+    read (``planning.proposal.product_context``), and an ``unknown_surface`` refusal is decided on
+    ``ProductContext.serves``. Bug caught: cmp_c20d825c8131's two proposals refused because a
+    private library offered no package to name."""
+    from squadops.capabilities.handlers.planning.proposal import product_context
+
+    files = {
+        "package.json": b'{"name": "battle-trainer", "private": true, "main": "src/controller.js"}',
+        "src/controller.js": b"",
+        "test/contract.test.js": b"",
+    }
+    profile = derive_profile(files, _configuration(_BATTLE_CHECKS), _baseline(_BATTLE_CHECKS))
+
+    context = product_context({"profile": profile.to_document()})
+    assert context.serves("package") == ("battle-trainer",)
+
+
+# --- H.26: a product no development profile fits -----------------------------------------------
+
+_JEST_PRODUCT = {
+    "package.json": b'{"name": "x", "private": true, "scripts": {"test": "jest"}, "devDependencies": {"jest": "29"}}',
+    "src/index.js": b"",
+    "test/index.test.js": b"",
+}
+_LINT_ONLY = {"package.json": b'{"name": "x", "private": true}', "src/index.js": b""}
+
+
+def _stack_gaps(profile):
+    return [(g.kind, g.stops) for g in profile.gaps if g.id == "stack_unmatched"]
+
+
+def test_a_stack_no_profile_fits_is_disclosed_while_a_runner_can_verify_the_work():
+    checks = (Check("tests", ("npx", "jest")),)
+    profile = derive_profile(_JEST_PRODUCT, _configuration(checks), _baseline(checks))
+
+    assert [r.runner for r in profile.runners] == ["jest"]
+    assert _stack_gaps(profile) == [("disclosed", "stack_guidance")]
+    assert profile.blocking == ()
+
+
+def test_a_product_nothing_can_verify_blocks_a_campaign_and_leaves_a_cycle_alone():
+    checks = (Check("lint", ("npx", "eslint", "src")),)
+    profile = derive_profile(_LINT_ONLY, _configuration(checks), _baseline(checks))
+
+    assert profile.runners == ()
+    assert _stack_gaps(profile) == [("blocking", "campaigns")]
+    assert profile.blocking_work() == ()
+
+
+def test_a_product_a_profile_fits_has_no_stack_gap():
+    profile = derive_profile(
+        _CONTINUUM, _configuration(_CONTINUUM_CHECKS), _baseline(_CONTINUUM_CHECKS, tests=FAIL)
+    )
+
+    assert _stack_gaps(profile) == []

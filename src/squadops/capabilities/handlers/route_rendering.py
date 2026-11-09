@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import re
 import subprocess
 import tempfile
 import time
@@ -50,7 +49,6 @@ DUMP_DOM_FLAGS = (
     "--virtual-time-budget=8000",
     "--dump-dom",
 )
-_TESTID = re.compile(r'data-testid="([^"]+)"')
 
 
 @dataclass(frozen=True)
@@ -179,7 +177,10 @@ def render_routes(
             for route in routes:
                 path = _reachable_path(route, seeds.get(route), api, steps)
                 dom = steps.dump_dom(ui + path) if path is not None else None
-                rendered[route] = frozenset(_TESTID.findall(dom)) if dom else None
+                # #2776: the ids the page's rendered elements carry, read as a product's page is
+                # (``view_anchors``), never a pattern over the dump's text, which counted an id in a
+                # script's source, a text node, a ``<template>`` or a ``<noscript>`` as rendered.
+                rendered[route] = view_anchors(dom) if dom else None
             return rendered
         finally:
             steps.stop(frontend)
@@ -330,9 +331,9 @@ class _Anchors(HTMLParser):
 
 def view_anchors(dom: str) -> frozenset[str]:
     """The test ids a dumped page's rendered elements carry (§8.3), read from their attributes.
-    A product's page is read this way (SIP-0109 §24co items 5, 12 and 13). These don't count:
-    - a ``data-testid="…"`` in a script's text or a text node, which is no element (the qa role's
-      pattern, ``_TESTID``, counts it; #2776);
+    A product's page is read this way (SIP-0109 §24co items 5, 12 and 13), and so is the qa role's
+    reading of a sample application's (#2776). These don't count:
+    - a ``data-testid="…"`` in a script's text or a text node, which is no element;
     - an element inside a ``<template>``, whose content is never connected to the document;
     - an element inside a ``<noscript>``, which a scripted page never renders;
     - an element its own markup or an ancestor's hides (``hidden_in_markup``).

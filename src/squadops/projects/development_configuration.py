@@ -46,8 +46,8 @@ _ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 #: The repository's own instruction sources (§B.5.1): the files a contributor is told to read,
-#: found by name at the validated commit. Discovery lists them; SIP-0110 confirms each as a
-#: project instruction, so the list itself reaches no task.
+#: found by name at the validated commit. Each reaches a task's prompt whole, through the checkout
+#: manifest's ``instruction_paths`` and the source repository section.
 INSTRUCTION_FILES = (
     "CONTRIBUTING.md",
     "AGENTS.md",
@@ -79,6 +79,16 @@ class Check:
     #: baseline can still show a regression (``squadops.sandbox.findings.READERS``). ``None``: the
     #: check is read whole, by its result alone.
     findings: str | None = None
+
+
+@dataclass(frozen=True)
+class Reading:
+    """A product's declared measurement (#2938, SIP-0109 §24dj): run on an increment's candidate,
+    its last stdout line a JSON object, and kept as evidence. It reports. Unlike a check, it never
+    refuses anything: its result is nobody's verdict."""
+
+    id: str
+    argv: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -115,6 +125,7 @@ class Commands:
     #: Run before each check, in that check's disposable copy, with the install network (X-3a).
     install: tuple[tuple[str, ...], ...] = ()
     build: tuple[tuple[str, ...], ...] = ()
+    readings: tuple[Reading, ...] = ()
 
     @property
     def check_setup(self) -> tuple[tuple[str, ...], ...]:
@@ -184,6 +195,28 @@ def parse_technical(technical: Mapping[str, Any]) -> tuple[str, str, str | None,
     return project_type, target, stack, _commands(commands, "technical.commands")
 
 
+def _readings(doc: Any, at: str, check_ids: list[str]) -> tuple[Reading, ...]:
+    if not isinstance(doc, list):
+        raise ConfigurationInvalid(at, "a list of readings")
+    readings = []
+    for i, entry in enumerate(doc):
+        where = f"{at}[{i}]"
+        if (
+            not isinstance(entry, Mapping)
+            or not isinstance(entry.get("id"), str)
+            or not entry["id"]
+        ):
+            raise ConfigurationInvalid(where, "a reading with an id")
+        argv = entry.get("argv")
+        if not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
+            raise ConfigurationInvalid(f"{where}.argv", "a command as a list of strings")
+        readings.append(Reading(entry["id"], tuple(argv)))
+    ids = [r.id for r in readings]
+    if len(set(ids)) != len(ids) or set(ids) & set(check_ids):
+        raise ConfigurationInvalid(at, f"each reading's id is unique among checks: {ids}")
+    return tuple(readings)
+
+
 def _commands(doc: Mapping[str, Any], at: str) -> Commands:
     checks_doc = doc.get("checks", [])
     if not isinstance(checks_doc, list):
@@ -194,6 +227,7 @@ def _commands(doc: Mapping[str, Any], at: str) -> Commands:
         raise ConfigurationInvalid(f"{at}.checks", f"each check's id is unique: {ids}")
     start = doc.get("start")
     return Commands(
+        readings=_readings(doc.get("readings", []), f"{at}.readings", ids),
         working_directory=_working_directory(
             doc.get("working_directory", "."), f"{at}.working_directory"
         ),
@@ -415,6 +449,11 @@ def _commands_document(commands: Commands) -> dict[str, Any]:
             }
             for c in commands.checks
         ],
+        **(
+            {"readings": [{"id": r.id, "argv": list(r.argv)} for r in commands.readings]}
+            if commands.readings
+            else {}
+        ),
     }
     if commands.start is not None:
         doc["start"] = start_document(commands.start)

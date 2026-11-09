@@ -41,7 +41,9 @@ def _run(run_id: str, n: int, workload: str, status: str = "completed", decided:
         initiated_by="system",
         resolved_config_hash="h",
         finished_at=OPENED if status == "completed" else None,
-        gate_decisions=((GateDecision(decided, "approved", "crew", OPENED),) if decided else ()),
+        gate_decisions=(
+            (GateDecision(decided, "approved", "operator", OPENED),) if decided else ()
+        ),
         workload_type=workload,
     )
 
@@ -124,6 +126,7 @@ async def _world():
         outcome_section=None,
         intervention_section=None,
         campaign_branch=None,
+        goal_sets=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now

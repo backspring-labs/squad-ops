@@ -2,6 +2,7 @@
 
 <script>
   import { onMount } from 'svelte';
+  import { CommandDeclined, executeCommand } from '../../../shared/commands.js';
   import SquadProfileDetail from './SquadProfileDetail.svelte';
 
   let profiles = $state([]);
@@ -36,21 +37,26 @@
 
   onMount(fetchProfiles);
 
+  // `set_active_profile` is a confirm-level command (plugin.toml): the bus answers the first post
+  // `requires_confirmation` without running it, the dialog answers that, and on yes the same body
+  // is re-posted with `confirmed: true` (#2904). Any answer but `success` is shown (#2903).
   async function setActive(profileId) {
     setActiveError = null;
     try {
-      await apiFetch('/api/commands/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command_id: 'squadops.set_active_profile',
-          params: { profile_id: profileId },
-        }),
+      await executeCommand(apiFetch, 'squadops.set_active_profile', { profile_id: profileId }, {
+        confirm: (answer) =>
+          window.confirm(
+            `Set "${profileId}" as the active squad profile?\n\n` +
+              `${answer.command_id} is a ${answer.danger_level}-level command.`,
+          ),
       });
-      await fetchProfiles();
     } catch (err) {
+      // The user said no to the bus's question: nothing changed, nothing to show.
+      if (err instanceof CommandDeclined) return;
       setActiveError = `Failed to set active profile: ${err.message}`;
     }
+    // Server-confirmed state, after a success and after a refusal alike.
+    await fetchProfiles();
   }
 
   function toggleExpand(profileId) {

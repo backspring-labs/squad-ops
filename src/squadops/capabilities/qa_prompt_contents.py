@@ -11,9 +11,17 @@ The two prompt paths show different files, chosen as the handler chooses its pat
 
 - **the focused prompt** (a plan's subtask, ``subtask_focus``) shows the top-level packages the
   task's expected artifacts live in, or every file when none is expected or none matches
-  (:func:`package_scoped`);
-- **the monolithic prompt** shows the validation plan and the stack's source and support files,
-  never its tests (:func:`source_files`).
+  (:func:`package_scoped`), and, outside those packages, the code the suite calls
+  (:func:`code_under_test`);
+- **the monolithic prompt** shows the validation plan (:func:`validation_plan`, the handler's
+  choice too) and the stack's source and support files (:func:`source_files`), which can include
+  a ``conftest.py`` or an ``index.html``, never a file the stack names a test. A source file
+  whose name carries the plan's is shown twice, as the plan and as a source, and counted twice.
+
+**A known limit** (#2809): when the executor's 512 KB resolution limit stops before the plan, the
+handler loads it from the vault (D3), and no estimate of ``artifact_contents`` sees it. ``qa.test``'s
+own prompt guard (``prompt_guard._guard_prompt_size``) still refuses a prompt over the window by
+name.
 
 What the suite runs against is ``qa_run_tree``'s (#2815): these source and support files on a
 sample application, and the product's tree on a repository-backed product.
@@ -27,6 +35,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from squadops.campaigns.evaluator_trees import imported_paths
+from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY
+from squadops.cycles.structural_jsx import ECMASCRIPT_SUFFIXES
 from squadops.stacks.development_profiles import (
     DevelopmentProfile,
     effective_development_profile,
@@ -35,21 +46,51 @@ from squadops.stacks.development_profiles import (
 )
 
 #: The document the monolithic prompt shows as its validation plan: the first file whose name
-#: carries this (``_CycleTaskHandler._resolve_artifact_content``).
+#: carries this (:func:`validation_plan`).
 VALIDATION_PLAN = "validation_plan"
+#: The name the plan is counted under when a source file shown has its name: the prompt shows the
+#: file twice, in the plan's own section and among the sources (#2809).
+_PLAN_SECTION = "## Validation Plan"
+#: The most of a file :func:`code_under_test` shows. A larger one, a vendored engine say, is named
+#: with its size: a suite that imports it needn't cost the prompt the whole of it.
+CODE_UNDER_TEST_MAX_CHARS = 16_000
+#: The files whose imports :func:`code_under_test` reads.
+_READS_IMPORTS = (".py", *ECMASCRIPT_SUFFIXES)
 
 
 def qa_test_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
     """The files a ``qa.test`` prompt shows of ``inputs["artifact_contents"]``, by name, on the
     path the inputs select: the focused prompt's packages (which the handler renders through this
-    function), or the monolithic prompt's validation plan and source files. The monolithic count
-    takes every file whose name names the validation plan, an upper bound of the one it shows."""
+    function), or the monolithic prompt's validation plan and source files, each chosen as the
+    handler chooses it. A plan that is also a source file shown is counted twice, as it is shown
+    twice: once under its section's name (#2809)."""
     contents = inputs.get("artifact_contents") or {}
     if inputs.get("subtask_focus") is not None:
-        return package_scoped(contents, inputs.get("expected_artifacts") or [])
+        scoped = package_scoped(contents, inputs.get("expected_artifacts") or [])
+        suite = {**scoped, **(inputs.get(RETAKE_CURRENT_FILES_KEY) or {})}
+        return {**scoped, **code_under_test(suite, contents, _task_text(inputs))}
     profile = get_development_profile(effective_development_profile(inputs.get("resolved_config")))
-    plan = {name: content for name, content in contents.items() if VALIDATION_PLAN in name}
-    return {**plan, **source_files(contents, profile)}
+    sources = source_files(contents, profile)
+    plan = _validation_plan_file(contents)
+    if plan is None:
+        return sources
+    name, content = plan
+    return {(_PLAN_SECTION if name in sources else name): content, **sources}
+
+
+def validation_plan(artifact_contents: Mapping[str, str]) -> str | None:
+    """The monolithic prompt's validation plan: the first file, in the contents' order, whose name
+    carries ``VALIDATION_PLAN``; ``None`` when none does (the handler then tries the vault). The
+    one rule, for the handler and the budget (#2809)."""
+    plan = _validation_plan_file(artifact_contents)
+    return plan[1] if plan is not None else None
+
+
+def _validation_plan_file(artifact_contents: Mapping[str, str]) -> tuple[str, str] | None:
+    return next(
+        ((name, content) for name, content in artifact_contents.items() if VALIDATION_PLAN in name),
+        None,
+    )
 
 
 def package_scoped(
@@ -71,6 +112,37 @@ def package_scoped(
         if str(name).strip().lstrip("./").partition("/")[0] in packages
     }
     return scoped or artifact_contents
+
+
+def code_under_test(
+    files: Mapping[str, str], tree: Mapping[str, str], task_text: str = ""
+) -> dict[str, str]:
+    """The files of ``tree`` that ``files`` import or ``task_text`` names, beyond ``files`` itself:
+    what a suite calls, when it lives in another package.
+
+    Scoping a suite's prompt to its own package left it the tests beside it and none of what they
+    call: battle-trainer's suite lives in ``test/``, the helper it calls in ``tools/``, and qa wrote
+    ``unit.shots`` for a count the helper returns as ``shots``. It read 0, and three repairs guessed
+    at the name (``cyc_8e691eb2bccf``). One hop: the helper's own imports are the helper's concern.
+    """
+    present = set(tree)
+    wanted = {path for path in present if path in task_text}
+    for path, source in files.items():
+        if path.endswith(_READS_IMPORTS):
+            wanted.update(imported_paths(path, source, present)[0])
+    return {path: _shown_or_named(tree[path]) for path in sorted(wanted - set(files))}
+
+
+def _shown_or_named(content: str) -> str:
+    if len(content) <= CODE_UNDER_TEST_MAX_CHARS:
+        return content
+    return f"(not shown: {len(content)} characters, too large for this prompt)"
+
+
+def _task_text(inputs: Mapping[str, Any]) -> str:
+    """The task's own words, where a plan names the module its suite is to test."""
+    criteria = [c for c in inputs.get("acceptance_criteria") or () if isinstance(c, str)]
+    return "\n".join([str(inputs.get("subtask_description") or ""), *criteria])
 
 
 def source_files(

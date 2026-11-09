@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from squadops.campaigns import box, lifecycle
 from squadops.campaigns.box import BoxLease
+from squadops.campaigns.close_contribution import closing_binding
 from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
@@ -26,6 +30,7 @@ from squadops.campaigns.models import (
     LaunchIntent,
     LaunchIntentNotFoundError,
     LaunchIntentState,
+    RefusalReason,
     TransitionResult,
 )
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
@@ -42,6 +47,8 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         self._intents: dict[str, LaunchIntent] = {}
         self._lease: BoxLease | None = None
         self._lock = asyncio.Lock()
+        #: ``transitions_held``'s, per Project. Apart from ``_lock``, which the body's reads take.
+        self._held: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     # --- reads ---
 
@@ -138,8 +145,13 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
     ) -> TransitionResult:
         if transition.operation.changes_the_lease:
             raise ValueError(f"{transition.operation} is committed by change_box_lease")
-        async with self._lock:
+        async with self._held[self._campaign(campaign_id).project_id], self._lock:
             return self._commit(campaign_id, transition, marks=None)
+
+    @asynccontextmanager
+    async def transitions_held(self, project_id: str) -> AsyncIterator[None]:
+        async with self._held[project_id]:
+            yield
 
     async def change_box_lease(
         self, campaign_id: str, transition: CampaignTransition, *, runs_in_flight: tuple[str, ...]
@@ -150,6 +162,23 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
             return self._commit(
                 campaign_id, transition, marks=None, runs_in_flight=tuple(runs_in_flight)
             )
+
+    async def refuse(
+        self, campaign_id: str, transition: CampaignTransition, refusal: RefusalReason
+    ) -> ControlLogEntry:
+        async with self._lock:
+            campaign = self._campaign(campaign_id)
+            entry = lifecycle.control_log_entry(
+                campaign,
+                transition,
+                entry_id=lifecycle.new_entry_id(),
+                seq=len(self._log[campaign_id]) + 1,
+                committed_at=_now(),
+                refusal=refusal,
+                launch_id=None,
+            )
+            self._log[campaign_id].append(entry)
+            return copy.deepcopy(entry)
 
     async def mark_launch_intent_launched(
         self, launch_id: str, cycle_id: str, *, actor: str
@@ -243,6 +272,11 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
             committed_at=now,
             refusal=None,
             launch_id=intent.launch_id if intent is not None else None,
+            derived=closing_binding(
+                transition,
+                self._log[campaign_id],
+                [i for i in self._intents.values() if i.campaign_id == campaign_id],
+            ),
         )
         updated = lifecycle.applied_campaign(campaign, transition, now)
 

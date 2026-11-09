@@ -109,7 +109,7 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09, and again for revision 2 (CLA
 - **Conflicts:** one, **resolved by the owner on 2026-10-09** (Q1). 2.3 is feature-free by rule, and G0–G2 are placed
   there, dark, under SIP-0106 §4.3's waiver.
 
-## Delivery ledger (current as of 2026-10-30)
+## Delivery ledger (current as of 2026-11-08)
 
 Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work runs.
 
@@ -123,7 +123,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
 | G4: cutover | **shipped** | 2.3.0, #2285, closing #2229 and #2284 (the switch records the deploy, §9k): adopted by the owner on G3's evidence on 2026-10-13 (§9j). The Spark serves on TensorFold from 2026-10-13 20:01 ET (dep_1724f586cc3a), and its cutover pair passed (§9k) |
 | the memory watchdog as a host service that restores Ollama after a kill (§9l) | **shipped** | 2.3.0, #2289, closing #2288 |
-| the upgrade to TensorFold 1.x, measured two ways: the engine, 1.x against 0.6.6 on the 27B; and the model, the 27B against Flash-Next on 1.x. S, G0 and G1 per checkpoint, then G2 to G4 for what is selected (§9m, which replaces §9a item 5's second candidate) | **deferred to 3.x (ruled 2026-10-30)**: the owner, "tensorfold 1.x is not important to me rn and can be pushed furter out to 3.x consideration". The 2.5 plan's D5 had deferred it to 2.6 as that line's recommended first track; this replaces that placement. 3.0's plan re-reads it | #2230. Earlier: the owner on 2026-10-18, "I will want to tackle this move to 1.1.0 - but not just yet", and on its sequencing, "I think this model change will come after 2.4 and the outcome evaluation work". The second candidate it replaces was unplaced by the owner on 2026-10-15 ("no second tensorfold candidate at this time") and kept so by the 2.4 plan's D9 (ruled 2026-10-17). 2.3 ran only an exploratory measure of Flash-Next, and not measuring it is not a negative |
+| the upgrade to TensorFold 1.x, measured two ways: the engine, 1.x against 0.6.6 on the 27B; and the model, the 27B against Flash-Next on 1.x. S, G0 and G1 per checkpoint, then G2 to G4 for what is selected (§9m, which replaces §9a item 5's second candidate) | **deferred to 3.x (ruled 2026-10-30)**: the owner, "tensorfold 1.x is not important to me rn and can be pushed furter out to 3.x consideration". The 2.5 plan's D5 had deferred it to 2.6 as that line's recommended first track; this replaces that placement. 3.0's plan re-reads it | #2230, closed at the 2.7 plan's adoption (R4, the owner, 2026-11-08): a row deferred to a later major line needs no open issue until that line's first plan. Earlier: the owner on 2026-10-18, "I will want to tackle this move to 1.1.0 - but not just yet", and on its sequencing, "I think this model change will come after 2.4 and the outcome evaluation work". The second candidate it replaces was unplaced by the owner on 2026-10-15 ("no second tensorfold candidate at this time") and kept so by the 2.4 plan's D9 (ruled 2026-10-17). 2.3 ran only an exploratory measure of Flash-Next, and not measuring it is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
 recorded.
@@ -1153,3 +1153,12 @@ eventually upgrading to TensorFold 1.x, and on evaluating its performance agains
 On the PR that records this section (#2423), the owner set its sequencing: "I think this model change will come after 2.4 and the outcome evaluation work".
 The supervisor rewrote #2230 (its comment `issuecomment-6250014247` records the redirection) and drafted this section.
 Asked whether to add NVIDIA's QAD checkpoint as a second Flash-Next checkpoint, the owner answered "sure add".
+
+### 9n. A busy engine is safe to launch on when it serves only the declared model (2026-11-01, §5.5; SIP-0109 §24cu; #2851; the owner's ruling)
+
+**What changed.** §5.5 said "Only `idle` is safe to launch". `busy` is now safe too: authenticated, the expected
+model, requests running. The crew shares the engine in Nostromo's shared inference mode, and TensorFold serves its
+requests beside the squad's (`--parallel 2`). `unauthorized`, `unreachable` and `unknown` are still never safe.
+The rule and its evidence are in SIP-0109 §24cu, where the quiet box is decided.
+
+**Who ruled it.** The owner, 2026-11-01, on a launch that the crew's own model call blocked (SIP-0109 §24cu).

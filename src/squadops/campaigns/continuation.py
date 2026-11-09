@@ -9,7 +9,7 @@ that by its import closure.
 
 Three ordered steps, the first match winning in each:
 1. **terminal outcomes** (rows 1–4) end the campaign;
-2. **the pending action** (rows 5–14);
+2. **the pending action** (rows 5–14, and the rows the amendments added: 15–19);
 3. **the guard**, for a guardable action only: a pausing limit holds it (``paused``), otherwise
    ``proceed``. ``escalate`` has no guard, so escalation wins over a simultaneous pausing limit.
 
@@ -56,6 +56,12 @@ class CycleEnding(StrEnum):
     #: run), or the gate failed. Nothing was built, so there is no verdict: a calibration ends on
     #: row 2, and an increment, repair or retry is abandoned on row 18.
     STOPPED_AT_PLAN_GATE = "stopped_at_plan_gate"
+    #: §24cz (#2890): a criterion's test, run on the campaign branch's head as soon as the qa task
+    #: wrote it, already passes there. The run ended before it delivered, so there is no verdict:
+    #: nothing built can make that criterion discriminate. Row 19 abandons the increment for a
+    #: new proposal told which criteria the head meets, counted toward no unaccepted limit, as
+    #: row 16's abandonment is (§24ct).
+    CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
 
 
 @dataclass(frozen=True)
@@ -204,15 +210,23 @@ def latest_primary(latest: CycleAssessment) -> AttributionClass | None:
     return reading.attribution.primary
 
 
-#: The endings at which an increment, repair or retry built nothing and is abandoned, counting as
-#: unaccepted, by their row. Each spends no repair, since there is no candidate to repair. A
-#: calibration with either was not accepted, so row 2 ends the campaign before these are asked.
+#: The endings at which an increment, repair or retry reached no verdict and is abandoned, by
+#: their row. Each spends no repair, since there is no candidate to repair. A calibration with any
+#: was not accepted, so row 2 ends the campaign before these are asked.
 #: - §24bj, row 15: parked, its plan gate's escalation expired with nobody deciding it.
 #: - §24cb, row 18 (#2704): stopped at its plan gate, its plan refused or the gate failed.
-_ABANDONED_UNBUILT: dict[CycleEnding, int] = {
+#: - §24cz, row 19 (#2890): ended at its qa task, a criterion's test already passing on the head.
+_ABANDONED_BEFORE_VERDICT: dict[CycleEnding, int] = {
     CycleEnding.PARKED: 15,
     CycleEnding.STOPPED_AT_PLAN_GATE: 18,
+    CycleEnding.CRITERIA_NOT_CHECKABLE: 19,
 }
+
+#: The rows whose ``abandon_and_propose`` counts toward no unaccepted limit, at its own decision
+#: or from the log: the criteria were the fault, not the work (#2849, §24ct). Row 16: rejected at
+#: acceptance only for criteria the accepted application already meets. Row 19 (#2890, §24cz):
+#: ended before delivery because a criterion's test already passes on the head.
+UNCOUNTED_ABANDONMENT_ROWS: frozenset[int] = frozenset({16, 19})
 
 
 def campaign_continuation_decision(
@@ -240,12 +254,15 @@ def campaign_continuation_decision(
         and cycle.rejected_only_as_already_met
         and latest_verdict(latest) is RunVerdict.ACCEPTED
     )
-    # Rows 13, 15, 16 and 18: this decision abandons the increment, and the abandonment counts as
+    # Rows 13, 15 and 18: this decision abandons the increment, and the abandonment counts as
     # unaccepted at this decision, so the one that reaches the limit stops rather than proposing
     # once more (#2294). A parked calibration, or one stopped at its plan gate, never reaches row
-    # 4: row 2 ends the campaign.
-    abandons = (rejected and not environment and (already_met or not repairs_remain)) or (
-        cycle.ending in _ABANDONED_UNBUILT
+    # 4: row 2 ends the campaign. Rows 16 and 19's abandonments (criteria the head already meets,
+    # told to the next proposal) count toward no limit but the cycles and the budget
+    # (``UNCOUNTED_ABANDONMENT_ROWS``; #2849, §24ct; #2890, §24cz): the criteria were the fault.
+    row_before_verdict = _ABANDONED_BEFORE_VERDICT.get(cycle.ending)
+    abandons = (rejected and not environment and not already_met and not repairs_remain) or (
+        row_before_verdict is not None and row_before_verdict not in UNCOUNTED_ABANDONMENT_ROWS
     )
 
     def stop(row: int, outcome: CampaignOutcome, cause: TerminalCause) -> ContinuationDecision:
@@ -328,9 +345,13 @@ def _pending(
 ) -> tuple[int, PendingAction]:
     if cycle.kind is CycleKind.CALIBRATION:
         return 5, PendingAction.PROPOSE
-    # Rows 15 and 18, asked before row 6, which would propose without counting the increment.
-    if cycle.ending in _ABANDONED_UNBUILT:
-        return _ABANDONED_UNBUILT[cycle.ending], PendingAction.ABANDON_AND_PROPOSE
+    # Rows 15, 18 and 19, asked before row 6, which would propose without abandoning the
+    # increment. Row 19 (#2890, §24cz): a criterion's test passed on the campaign branch's head
+    # before the increment's work was delivered. Nothing built can make it discriminate, so the
+    # increment is abandoned for a new proposal told which criteria the head already meets, as
+    # row 16's is, and counted toward no unaccepted limit (§24ct).
+    if cycle.ending in _ABANDONED_BEFORE_VERDICT:
+        return _ABANDONED_BEFORE_VERDICT[cycle.ending], PendingAction.ABANDON_AND_PROPOSE
     # §24bw, asked before row 6: a hold that expired said nothing about the squad's work. The
     # store's reads as the environment's (rows 10 and 11); an operator's input escalates (row 17),
     # so the owner re-binds or withdraws it and resumes. Neither is an abandonment.

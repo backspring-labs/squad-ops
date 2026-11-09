@@ -32,7 +32,11 @@ from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lesso
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
-from squadops.capabilities.handlers.source_repository import source_repository_section
+from squadops.capabilities.handlers.source_repository import (
+    product_conventions_template,
+    source_backed,
+    source_repository_section,
+)
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -89,6 +93,11 @@ from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
     _detect_stubs,
 )
+from squadops.capabilities.handlers.emitted_deletions import (
+    DeletionReading,
+    read_deletions,
+    without_removed,
+)
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
 from squadops.capabilities.handlers.stub_detection import (
@@ -102,7 +111,12 @@ from squadops.capabilities.handlers.test_runner import (
     failed_tests_pass_row,
     run_build_validation,
 )
-from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents, source_files
+from squadops.capabilities.qa_prompt_contents import (
+    VALIDATION_PLAN,
+    qa_test_prompt_contents,
+    source_files,
+    validation_plan,
+)
 from squadops.capabilities.qa_run_tree import suite_run_tree
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.verification_scaffold_fill import (
@@ -584,6 +598,39 @@ class _QAEmission:
     artifacts: list[dict[str, Any]]
     evidence_extra: dict[str, Any]
     retake_form: dict[str, Any] | None
+    #: #2612: the removals the emission makes, each judged against the view and the qa grant.
+    removals: DeletionReading = DeletionReading()
+
+
+def _test_report_lines(test_result: RunTestsResult) -> list[str]:
+    """``test_report.md``. A suite left to the product's runner has no result of its own to report: an
+    exit code of -1 and an error read as a failure it hasn't had (#2949)."""
+    report_lines = [
+        "# Test Execution Report\n",
+        f"**Result:** {test_result.summary}\n",
+        *(
+            ()
+            if test_result.left_to_the_product_runner
+            else (f"**Exit code:** {test_result.exit_code}\n",)
+        ),
+        f"**Test files:** {test_result.test_file_count}\n",
+        f"**Source files:** {test_result.source_file_count}\n",
+    ]
+    if test_result.uncollected_test_files:
+        # SIP-0104 roll 1: a suite the runner never collected verifies nothing while
+        # the collected ones read green. Named in the report a human actually reads.
+        report_lines.append(
+            f"\n**{UNCOLLECTED_REPORT_LABEL}** "
+            + ", ".join(f"`{p}`" for p in test_result.uncollected_test_files)
+            + "\n"
+        )
+    if test_result.stdout:
+        report_lines.append(f"\n## stdout\n\n```\n{test_result.stdout}\n```\n")
+    if test_result.stderr:
+        report_lines.append(f"\n## stderr\n\n```\n{test_result.stderr}\n```\n")
+    if test_result.error and not test_result.left_to_the_product_runner:
+        report_lines.append(f"\n## Error\n\n{test_result.error}\n")
+    return report_lines
 
 
 class QATestHandler(_CycleTaskHandler):
@@ -962,27 +1009,7 @@ class QATestHandler(_CycleTaskHandler):
             test_result.error,
         )
 
-        report_lines = [
-            "# Test Execution Report\n",
-            f"**Result:** {test_result.summary}\n",
-            f"**Exit code:** {test_result.exit_code}\n",
-            f"**Test files:** {test_result.test_file_count}\n",
-            f"**Source files:** {test_result.source_file_count}\n",
-        ]
-        if test_result.uncollected_test_files:
-            # SIP-0104 roll 1: a suite the runner never collected verifies nothing while
-            # the collected ones read green. Named in the report a human actually reads.
-            report_lines.append(
-                f"\n**{UNCOLLECTED_REPORT_LABEL}** "
-                + ", ".join(f"`{p}`" for p in test_result.uncollected_test_files)
-                + "\n"
-            )
-        if test_result.stdout:
-            report_lines.append(f"\n## stdout\n\n```\n{test_result.stdout}\n```\n")
-        if test_result.stderr:
-            report_lines.append(f"\n## stderr\n\n```\n{test_result.stderr}\n```\n")
-        if test_result.error:
-            report_lines.append(f"\n## Error\n\n{test_result.error}\n")
+        report_lines = _test_report_lines(test_result)
 
         report_artifact = {
             "name": "test_report.md",
@@ -1165,7 +1192,7 @@ class QATestHandler(_CycleTaskHandler):
         body = strip_edit_blocks(content) if parse.found else content
         whole = [
             art
-            for f in extract_fenced_files(shape.split(body))
+            for f in extract_fenced_files(shape.split(body), deletions_taken=True)
             if (art := shape.artifact_for(f)) is not None
         ]
         edited: list[dict] = []
@@ -1213,7 +1240,9 @@ class QATestHandler(_CycleTaskHandler):
         produced = {str(a["name"]) for a in edited} | {
             f["filename"]
             for f in extract_fenced_files(
-                shape.split(body), expected_artifacts=inputs.get("expected_artifacts")
+                shape.split(body),
+                expected_artifacts=inputs.get("expected_artifacts"),
+                deletions_taken=True,
             )
         }
         carried = (
@@ -1850,6 +1879,7 @@ class QATestHandler(_CycleTaskHandler):
         if isinstance(emission, HandlerResult):
             return emission
         evidence_extra = emission.evidence_extra
+        inputs = without_removed(inputs, emission.removals.accepted)
 
         # SIP-0086: Output validation + self-evaluation
         output_validation_enabled = resolved_config.get("output_validation", False)
@@ -1937,7 +1967,7 @@ class QATestHandler(_CycleTaskHandler):
                 user_prompt = f"{user_prompt}\n{prior_section}"
             # SIP-0112 E.4.3: a source-backed run's test author is shown the product it changes.
             repository_section = await source_repository_section(
-                getattr(context.ports, "request_renderer", None), inputs
+                getattr(context.ports, "request_renderer", None), inputs, task_type=self._task_type
             )
             if repository_section:
                 user_prompt = f"{user_prompt}\n{repository_section}"
@@ -1966,8 +1996,11 @@ class QATestHandler(_CycleTaskHandler):
         else:
             # Legacy monolithic prompt path (unchanged)
 
-            # Resolve plan artifacts with vault fallback (D3)
-            val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+            # The plan the budget counted (#2809), else the vault's when the executor's 512 KB
+            # limit stopped before it (D3).
+            val_plan = validation_plan(inputs.get("artifact_contents") or {})
+            if val_plan is None:
+                val_plan = await self._resolve_with_vault_fallback(inputs, VALIDATION_PLAN)
             # What the prompt shows, apart from the tree the suite runs on (#2815).
             sources = self._get_source_artifacts(inputs)
 
@@ -2125,8 +2158,19 @@ class QATestHandler(_CycleTaskHandler):
                 start_time, inputs, "the re-take's edits were refused", outputs=retake_refused
             )
         extracted = extract_fenced_files(
-            shape.split(content), expected_artifacts=inputs.get("expected_artifacts")
+            shape.split(content),
+            expected_artifacts=inputs.get("expected_artifacts"),
+            deletions_taken=True,
         )
+        # #2612: a qa step removes only a test the product's runners hold; one refused fails the
+        # emission, named.
+        removals = read_deletions(
+            shape.split(content), inputs, self._task_type, (f["filename"] for f in extracted)
+        )
+        if removals.refused:
+            return self._fail_result(
+                start_time, inputs, removals.error(), outputs=removals.outputs()
+            )
         # #924: the three outcomes below are indistinguishable afterwards, and P3 renders
         # a REJECTED fill as the same failing state as a MISSING one — so "the author
         # emitted nothing", "the author emitted fills that were refused", and "the author
@@ -2143,7 +2187,7 @@ class QATestHandler(_CycleTaskHandler):
             inputs.get("expected_artifacts"),
             shape.scaffold_bound,
         )
-        if not extracted and not shape.has_fills() and not retake_edited:
+        if not extracted and not shape.has_fills() and not retake_edited and not removals.found:
             return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
 
         artifacts = [
@@ -2168,6 +2212,7 @@ class QATestHandler(_CycleTaskHandler):
             artifacts=artifacts,
             evidence_extra=evidence_extra,
             retake_form=retake_form,
+            removals=removals,
         )
 
     async def _validate_suite(
@@ -2373,6 +2418,8 @@ class QATestHandler(_CycleTaskHandler):
 
         if test_result.tests_passed:
             test_suffix = ", all tests passed"
+        elif test_result.left_to_the_product_runner:
+            test_suffix = f", {test_result.summary}"
         elif test_result.executed:
             test_suffix = f", tests failed (exit code {test_result.exit_code})"
         else:
@@ -2393,6 +2440,7 @@ class QATestHandler(_CycleTaskHandler):
                 "summary": test_result.summary,
             },
             "prompt_provenance": self._prompt_provenance(assembled, rendered),
+            **emission.removals.outputs(),
         }
 
         # Phase 6: outcome classification, and the validation evidence on BOTH branches
@@ -2464,13 +2512,24 @@ class QATestHandler(_CycleTaskHandler):
         capability_name: str,
         inputs: dict[str, Any] | None = None,
     ) -> tuple[Any, str]:
-        """Build the QA prompt via renderer or fallback. Returns (rendered, user_prompt)."""
+        """Build the QA prompt via renderer or fallback. Returns (rendered, user_prompt).
+
+        SIP-0112 H.29: a plan-less task of a repository-backed product is shown the product as a
+        plan's task is (``source_repository_section``: its map, its conventions, how it is checked
+        and where its runners find a test), and none of the prose a sample application's skeleton
+        is described by: the scaffold's harness, and the profile's test supplement where the view
+        shows the stack's conventions for a product in its place."""
         rendered = None
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
+            task_inputs = inputs or {}
             variables: dict[str, str] = {
                 "prd": prd,
-                "test_supplement": capability.test_prompt_supplement,
+                "test_supplement": (
+                    ""
+                    if product_conventions_template(task_inputs)
+                    else capability.test_prompt_supplement
+                ),
             }
             if val_plan:
                 variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
@@ -2480,6 +2539,14 @@ class QATestHandler(_CycleTaskHandler):
                     lang = self._fence_lang(path)
                     source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
                 variables["source_files"] = "\n".join(source_parts)
+            if not source_backed(task_inputs):
+                harness = await renderer.render("request.qa_test_scaffold_harness_block", {})
+                variables["scaffold_harness_section"] = harness.content
+            repository = await source_repository_section(
+                renderer, task_inputs, task_type=self._task_type
+            )
+            if repository:
+                variables["source_repository_section"] = repository
             variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
             # SIP-0110 Appendix A §3.6 (#2674): this task's instructions and its project's, before
             # the lessons, as the focused path shows them. None handed renders the prompt unchanged.

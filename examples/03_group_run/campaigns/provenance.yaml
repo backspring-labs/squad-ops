@@ -1511,4 +1511,308 @@ campaigns:
   definitions: []
   package_identity: bb2602751c67e84e43bf2b7e6300c6c9dc3e0eaa227bf6dfee508a45d4e73f3a
   package_artifact: art_2cdf4b690b6b
+- campaign_id: cmp_76242b27df5b
+  created: '2026-10-31T13:37:05.465826+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.6 plan \xA70 spike: an attended Campaign on z_shelfnote after #2818/#2824 (dep_60f65e23e842),\
+    \ three backend items from docs/goals.md, two rounds at most"
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/a0789109-69cd-4666-9ca2-3370d50f3ee5/scratchpad/z_shelfnote-spike-campaign.yaml
+    sha256: c6fc9fb5a2cd7a25177823589a083cdfcb93256c88ba08b628be0c1b4d783098
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 5b3c3bcec1b07221f545217e923e30edb6bee4508a787608a99ab34702c10a46
+  package_artifact: art_1d2ec0969144
+- campaign_id: cmp_0ad437a76c88
+  created: '2026-10-31T15:35:15.033801+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "2.6 plan \xA70 spike, round 2: read #2818's product-runner judgment live on dep_2483456446e0\
+    \ (#2840), one increment from 8da03e5 (backend imports python-slugify)"
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/a0789109-69cd-4666-9ca2-3370d50f3ee5/scratchpad/z_shelfnote-spike-round2.yaml
+    sha256: 7b2e4ef39f110426ece7383c8e4ae988100b886612c2ff4c232e85c813017f5e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 3f4ebaef955fa87c497c20ecb34c4f16131268bbce7131a83b645381ee5aa4fb
+  package_artifact: art_f0c3746aa25c
+- campaign_id: cmp_cf75c37569da
+  created: '2026-10-31T17:56:10.726181+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '2.6 spike: the unattended run, six backend items on dep_d69195a6bafb; plan gates the
+    tier''s, increments ruled by one written rule'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/a0789109-69cd-4666-9ca2-3370d50f3ee5/scratchpad/z_shelfnote-unattended.yaml
+    sha256: 9743395269c97f7dcd7623fb736c5bb0c85049ec0fde96608cc69094df0f4a1e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 69cd177eb6609573deb8447cb672c7f1ba671b397252a781b5524af46d765782
+  package_artifact: art_c83b3817fd4f
+- campaign_id: cmp_ee3988ac1108
+  created: '2026-10-31T21:27:14.176259+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.6 spike: the unattended rerun, six backend items on dep_65c86cbfa3bb after #2850'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/a0789109-69cd-4666-9ca2-3370d50f3ee5/scratchpad/z_shelfnote-unattended-rerun.yaml
+    sha256: 754a775fdaeabc80a65879686481fb51152d7995e1074b414740da3f7817a280
+  recorded_reconciles: false
+  definitions: []
+  package_identity: f711ee275cfde58868428edddef69599ff3a791e1ca22ba78d98cd00384efe94
+  package_artifact: art_d2f27f6d63c6
+- campaign_id: cmp_828bfc06aa63
+  created: '2026-11-01T00:54:10.067364+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.6 spike: the overnight run, ten backend items, unattended, for four hours or more'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/a0789109-69cd-4666-9ca2-3370d50f3ee5/scratchpad/z_shelfnote-overnight.yaml
+    sha256: 1cbf6adfe937ff5ced78e37428d7a3853b2c1164bf878744ed2110c83e4a1936
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 05d9561a6039300d2b46ed583cecff0e03b188952d88b033fcf495c1b98eb770
+  package_artifact: art_9e7c3fd6eeaf
+- campaign_id: cmp_cc330c4e392a007d2e514fa5
+  created: '2026-11-01T15:45:32.069312+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'Owner jladd approved crew-shelfnote-20261101 (event 5cfe892b9f120090aa7487584557f4661891b150d55cc32b30c6f94e5c8f07c9):
+    run Shelfnote''s docs/goals.md backlog in order, ten accepted increments, unattended, bounded review
+    queue crew-shelfnote-20261101.'
+  recorded_definition:
+    path: buzz-approved:crew-shelfnote-20261101
+    sha256: a7eee5a2dced1425d2074f8a3b162a76b204372bfd01ea6b536e4d7261e36217
+  recorded_reconciles: false
+  definitions: []
+  package_identity: db28bcc3c0837290ee50849dc8d7c6f37379788944ebebf8bc6d9e013800ab5c
+  package_artifact: art_09f0f45369a9
+- campaign_id: cmp_4edfa3d9746b7b204e8cea68
+  created: '2026-11-01T18:43:35.823027+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: The owner approved this campaign's card by signed reply.
+  recorded_definition:
+    path: buzz-approved:crew-shelfnote-20261101-1
+    sha256: d5f62c42fc956a3e8ce2402882a45cf90644e95ffa11e364199fa941bf2c1de5
+  recorded_reconciles: false
+  definitions: []
+  package_identity: bf255e4b1cea17cc9c95c06787962d8a3e760ae64109571cdfd954a07865dbcf
+  package_artifact: art_c976aa9fa84e
+- campaign_id: cmp_7c4c28bb4118b20758336ce7
+  created: '2026-11-01T21:20:29.795724+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: The owner approved this campaign's card by signed reply.
+  recorded_definition:
+    path: buzz-approved:crew-shelfnote-20261101-2
+    sha256: 6f4a89361fa66941c7cc4b56afcd61ea7d6a38bb6cbed52870ebec0c7abadf87
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 1a3aa8f5380bfa349ef630c45c26d42ab634fdbb83961cb3043ce9790d949162
+  package_artifact: art_5db848767cfb
+- campaign_id: cmp_bdf625d66ef24ce79087ead1
+  created: '2026-11-02T02:18:52.811753+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: The owner approved this campaign's card by signed reply.
+  recorded_definition:
+    path: buzz-approved:crew-shelfnote-20261101-3
+    sha256: e3f44eb8c0562fa2edb4a8f6b312667cce0e853e51ea41ef418c24d6189dedeb
+  recorded_reconciles: false
+  definitions: []
+  package_identity: aaee279b6fa08cfb99852a4cb200876240a2f1fa0456b33bd3980877316038bd
+  package_artifact: art_11e4fba7c147
+- campaign_id: cmp_f8eddb8f175f9225b01701ac
+  created: '2026-11-02T14:30:32.795439+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: The owner approved this campaign's card by signed reply.
+  recorded_definition:
+    path: buzz-approved:crew-shelfnote-20261102-1
+    sha256: 35cc96a09fcd300527ccfb01971cae355fe94cbbd64f00c3039d8857d999e581
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 3f16cc43300cbb8e7105a307fb8de39c534e2307a745c910b236811413bf1a91
+  package_artifact: art_3e6ada4dd6e4
+- campaign_id: cmp_b498332d326e028682987379
+  created: '2026-11-02T18:21:06.791945+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: The owner approved this campaign's card by signed reply.
+  recorded_definition:
+    path: buzz-approved:crew-shelfnote-20261102-2
+    sha256: 3624c7a868dfe2b767f4852fec6b0774167b388b8993ac56f286083ebe51b035
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 94975ae0854e2078dcb24631d7e5f2912ee6c7148dcddfe7c7dea4fd0ae60496
+  package_artifact: art_68f2f4341eaa
+- campaign_id: cmp_5d8e8b9de6db
+  created: '2026-11-03T20:13:36.213274+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '2.5.1 validation before the tag: three backend items on the final deploy (var/verification_sets/2-5-1-validation/preregistration.md)'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/5e3b1587-ec49-4a76-af7b-e0cff0a4ddd5/scratchpad/z_shelfnote-2-5-1-validation.yaml
+    sha256: c7a4fa7476903f2e073db257c16eb89306809b15e006430934136f6383b6e185
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 58b058c609fce251fea6cabdd94b05d05ddea0dd990054bd78889fc988bdf052
+  package_artifact: art_062e19ea77ca
+- campaign_id: cmp_5947cfb57197
+  created: '2026-11-04T13:03:52.763073+00:00'
+  state: completed
+  outcome: failure
+  create_reason: 'slice 2''s live read on dep_d7678a09d4f4 (main d4233bb4): a goal-set Campaign, objective.goals
+    current, stop_when backlog_done; uncounted'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/5e3b1587-ec49-4a76-af7b-e0cff0a4ddd5/scratchpad/shelfnote-goals-campaign.yaml
+    sha256: f5329ea611a948e7a4f4882d3bc135c1eec8c0877d4e894b0b9af5bc21a41bd7
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 0e243a0060518373af7111bb4c8509aa28ed0f2b4ef832983b2fe1109019013e
+  package_artifact: art_da57095d633f
+- campaign_id: cmp_0a5376d902b5
+  created: '2026-11-05T12:56:12.037858+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: battle-trainer's goal-set test Campaign on the Spark with full-38-tf, the owner's go-ahead
+    of 2026-11-05 (not counted)
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/5e3b1587-ec49-4a76-af7b-e0cff0a4ddd5/scratchpad/battle-trainer-goals-campaign-2.yaml
+    sha256: 6a581576bd891030cb8db537415538b192606c79c0a90aa85da8cd23ade55dbb
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 9473900b5ff6e11e38ceaff6ee7c17265707402b5689d703debec2310ca7812e
+  package_artifact: art_0b9376991beb
+- campaign_id: cmp_20ff28fb82ef
+  created: '2026-11-06T04:16:13.529017+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "The owner's instruction of 2026-11-05: rerun from BT-2, on goal set revision 2, from\
+    \ 01a87c14 with BT-1 and its fix merged. Reads SIP-0109 \xA724dh live for the first time."
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/cd3a7911-acaa-44a1-b44e-9bb50a34bb41/scratchpad/battle-trainer-goals-campaign-3.yaml
+    sha256: c415b16e7b251251b417290137d87c5317373ee53bd06cd312cdd1a608ef72c7
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 6a9f0c530fa5b59b3824d55ceee2ff0590bc3a15acbe43d25f460ae33685215f
+  package_artifact: art_813e51054936
+- campaign_id: cmp_c797cef53f73
+  created: '2026-11-06T14:03:57.073468+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'The owner''s yes of 2026-11-06: rerun BT-2 through BT-4 from 919d582d, with the prompt
+    fix for #2935 deployed and vitest refusing invented observations.'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/cd3a7911-acaa-44a1-b44e-9bb50a34bb41/scratchpad/battle-trainer-goals-campaign-4.yaml
+    sha256: 7ba00e7d37c6b0951bdc734f898a0c5374ba650ab9841f4c934ac00228a05b8e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 5f045bc27fa0fdddcdae4a44cb6e654d68208249693f185a994958774896ecb7
+  package_artifact: art_aa006f633de1
+- campaign_id: cmp_a0a7daf13416
+  created: '2026-11-06T18:12:41.156239+00:00'
+  state: completed
+  outcome: success
+  create_reason: "The owner's word of 2026-11-06: run the battle-trainer campaign. First live run with\
+    \ the product's own stack (SIP-0112 H.26), the play reading (SIP-0109 \xA724dj) and AGENTS.md as an\
+    \ instruction source, at d988d1ec"
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-5.yaml
+    sha256: 7ba00e7d37c6b0951bdc734f898a0c5374ba650ab9841f4c934ac00228a05b8e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 786e3e39d14cd35dc3bc067b0955a99bd750499a6c699f2db0d32c271a45e793
+  package_artifact: art_9412a2539df4
+- campaign_id: cmp_e42f7b418a4c
+  created: '2026-11-07T00:36:59.199383+00:00'
+  state: completed
+  outcome: success
+  create_reason: 'The owner''s agreement of 2026-11-06 to add firing: goal set revision 3, BT-5 and BT-6,
+    at cd4be9b3 after battle-trainer PR #6'
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-6.yaml
+    sha256: b2574449cb8c0e22fb58c5224be768656f16c4bfec6ddac269745cf5e647f4a7
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 601774319679f9f7dfe85a6a1d57498fba3b1fd156eb7a0a5e91207af159d836
+  package_artifact: art_166b02995a99
+- campaign_id: cmp_ff52e424aea1
+  created: '2026-11-07T09:46:54.698099+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'The owner, 2026-11-07: the squad improves the controller''s success. Goal set revision
+    4, outcomes with no method.'
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-7.yaml
+    sha256: e4786d1c48dad43c7541639ec76f30600570d2f325bcaee6188393e63af6fafb
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 8533399f95933ed22c94104a2a6626aad0a4ab5e511d203fa5d0f369097d09b5
+  package_artifact: art_2603d662499a
+- campaign_id: cmp_0257679688dc
+  created: '2026-11-07T13:43:44.869103+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'The owner''s word, 2026-11-07: work goal revision 5, on getting tanks unstuck and moving.'
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-8.yaml
+    sha256: e4786d1c48dad43c7541639ec76f30600570d2f325bcaee6188393e63af6fafb
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 59aa0fa4859f6a348880488cec472b0c4053c52d22ba50200618a4e6603568cb
+  package_artifact: art_2d1fc3317d96
+- campaign_id: cmp_adf531f65b84
+  created: '2026-11-07T13:47:22.293873+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'The owner''s word, 2026-11-07: work goal revision 6, ten games.'
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-9.yaml
+    sha256: e4786d1c48dad43c7541639ec76f30600570d2f325bcaee6188393e63af6fafb
+  recorded_reconciles: false
+  definitions: []
+  package_identity: ab05bfd53fac972f93e351d4a6fd9b63ecff3c59626ae9361d5732bd64e102af
+  package_artifact: art_bb90c3976074
+- campaign_id: cmp_a8cc46904e9d
+  created: '2026-11-07T14:05:30.849512+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'The owner''s word, 2026-11-07: work goal revision 7 on a suite holding only the game
+    maker''s rules.'
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-10.yaml
+    sha256: e4786d1c48dad43c7541639ec76f30600570d2f325bcaee6188393e63af6fafb
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 8230876ac99e23e54b6ba756c3577d7998714a834d5ac37cb2672e8a3a051804
+  package_artifact: art_e751a577f311
+- campaign_id: cmp_6963834274e0
+  created: '2026-11-07T14:44:43.119353+00:00'
+  state: completed
+  outcome: failure
+  create_reason: 'The owner''s word, 2026-11-07: the 2.6 cut''s three-increment run, pre-registered at
+    docs/plans/verification-sets/2-6-0-three-increment-preregistration.md.'
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-11.yaml
+    sha256: 21d896c9de410d0ee54963c587983db072520e2732ff66ce8752e4d7a7d4ef01
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 422ac46dab34942717e748782b12531ef7af4b111cd53e631861203d6cf7a2ad
+  package_artifact: art_960e89c18a6a
+- campaign_id: cmp_790e5aa6c641
+  created: '2026-11-07T17:42:14.734951+00:00'
+  state: completed
+  outcome: success
+  create_reason: 'Diagnostic, not the pre-registered run: one increment on deploy dep_efb3a3ae83d6 to
+    read #2953 in a live cycle'
+  recorded_definition:
+    path: /home/jladd/squadops-deploy-logs/battle-trainer-ruler/battle-trainer-goals-campaign-12-diagnostic.yaml
+    sha256: 1c756471e247fa4bb456c69bfb48882a638f762e8fe6e542db069627b93c4750
+  recorded_reconciles: false
+  definitions: []
+  package_identity: ca80d1104a6cf8908c1c72a76043a9b11c8801590f65afc05c23edab7d369474
+  package_artifact: art_65ea7d6d7b65
 examples_only: []

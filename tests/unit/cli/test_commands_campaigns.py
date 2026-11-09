@@ -30,6 +30,52 @@ def _client(**returns):
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
+def test_delegate_posts_the_owners_grant_with_where_it_came_from(get_client):
+    """SIP-0115 Q41. Bugs caught: the command posting to another route, or the conversation's link
+    not reaching the row."""
+    client = _client(post=_RESULT)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app,
+        ["campaigns", "delegate", "cmp_a", "--reason", "the owner approved it"]
+        + ["--source-ref", "https://chat.example.invalid/t/7", "--idempotency-key", "k-1"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.post.call_args.args[0] == "/api/v1/campaigns/cmp_a/goal-delegation"
+    assert client.post.call_args.kwargs["json"] == {
+        "reason": "the owner approved it",
+        "idempotency_key": "k-1",
+        "source_ref": "https://chat.example.invalid/t/7",
+    }
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_dismiss_contribution_posts_the_owners_reason_and_needs_one(get_client):
+    """SIP-0109 §24dg. Bugs caught: the command posting to another route, a key minted per retry
+    when one was given, or a dismissal sent with no reason."""
+    client = _client(post=_RESULT)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app,
+        ["campaigns", "dismiss-contribution", "cmp_a", "--reason", "the owner refused it"]
+        + ["--idempotency-key", "k-1"],
+    )
+    missing = runner.invoke(app, ["campaigns", "dismiss-contribution", "cmp_a"])
+
+    assert result.exit_code == 0, result.output
+    assert client.post.call_args.args[0] == "/api/v1/campaigns/cmp_a/contribution-dismissal"
+    assert client.post.call_args.kwargs["json"] == {
+        "reason": "the owner refused it",
+        "idempotency_key": "k-1",
+    }
+    assert missing.exit_code != 0
+    assert client.post.call_count == 1
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
 def test_a_control_command_sends_its_reason_key_and_expected_state(get_client):
     """Bug caught: the key or the expected state dropped on the way, so a retry acts twice or
     a stale operation applies."""
@@ -164,6 +210,31 @@ def test_a_refusal_exits_with_the_conflict_code(get_client):
     assert "stale_state" in result.output
 
 
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_a_operator_resume_not_delegated_prints_its_reason_not_an_auth_failure(get_client):
+    """SIP-0109 §24da: the refused resume is a 403, which the client reads as "authentication
+    failed". Bug caught: the operator told its login failed when the campaign's declaration refused
+    it, with the recorded reason and row nowhere on the screen."""
+    client = MagicMock()
+    client.post.side_effect = CLIError(
+        "Error: authentication failed — x",
+        exit_codes.AUTH_ERROR,
+        detail={
+            "entry_id": "ent_9",
+            "refusal": "resume_not_delegated",
+            "why": "the campaign's unattended_resume ['plan_gate'] does not declare launch_blocked",
+        },
+    )
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "resume", "cmp_1", "--reason", "overnight"])
+
+    assert result.exit_code == exit_codes.AUTH_ERROR
+    assert "resume not delegated (recorded as ent_9)" in result.output
+    assert "does not declare launch_blocked" in result.output
+    assert "authentication failed" not in result.output
+
+
 _REFUSED_ROW = {
     "seq": 2,
     "committed_at": "t",
@@ -266,7 +337,7 @@ def test_the_lease_commands_send_the_hold_and_its_return_to_their_routes(get_cli
     sent to the acquire route, which would renew the lease instead of returning it."""
     lease = {
         "holder": "supervisor",
-        "held_by": "crew",
+        "held_by": "operator",
         "campaign_id": "cmp_1",
         "acquired_at": "2026-10-03T14:00:00Z",
         "expires_at": "2026-10-03T14:15:00Z",
@@ -484,3 +555,92 @@ def test_push_review_without_its_own_token_sends_nothing(get_client):
     assert result.exit_code == 2
     assert "--token-from-gh" in result.output
     get_client.assert_not_called()
+
+
+def _contributed(**overrides) -> dict:
+    return {
+        "contribution": {
+            "campaign_id": "cmp_1", "commit": "c" * 40, "state": "pending",
+            "mode": "review_request", "review_url": "https://forge.example.invalid/pull/9",
+        } | overrides,
+        "replayed": False,
+    }  # fmt: skip
+
+
+@patch("squadops.cli.commands.campaigns.gh_token", return_value="tok_invented_cli")
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_contribute_sends_the_callers_token_and_says_where_it_opened(get_client, _token):
+    """SIP-0109 §24dc. Bugs caught: the token dropped or printed; the review request's address not
+    said; the short timeout on a request that runs the criteria on the product's runner."""
+    client = _client(post=_contributed())
+    client.long_timeout = 600
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "contribute", "cmp_1", "--token-from-gh"])
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/contributions", json={"token": "tok_invented_cli"}, timeout=600
+    )
+    assert "cmp_1: cccccccccccc, pending: https://forge.example.invalid/pull/9" in result.output
+    assert "tok_invented_cli" not in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_contribute_without_its_own_token_sends_nothing(get_client):
+    """The owner's ruling: the token comes with the request. Bug caught: a request whose only way
+    to succeed would be a token stored in the deploy."""
+    result = runner.invoke(app, ["campaigns", "contribute", "cmp_1"])
+
+    assert result.exit_code == 2
+    assert "--token-from-gh" in result.output
+    get_client.assert_not_called()
+
+
+def _backlog(**overrides) -> dict:
+    return {
+        "campaign_id": "cmp_1", "project_id": "prj-x", "revision": 3, "reads": "current",
+        "next_item": "B-2", "done": False,
+        "items": [
+            {"item_id": "B-1", "title": "Record", "serves": ["ER-1"], "status": "accepted",
+             "label": "accepted (removed in r3)", "position": None, "proposal_id": "prop_a",
+             "version": 2, "cycle_id": "cyc_a", "revision": 2, "row": None, "reason": None},
+            {"item_id": "B-2", "title": "Total", "serves": ["ER-2"], "status": "pending",
+             "label": "pending", "position": 1, "proposal_id": None, "version": None,
+             "cycle_id": None, "revision": None, "row": None, "reason": None},
+        ],
+    } | overrides  # fmt: skip
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_backlog_prints_each_item_its_label_and_the_next_item(get_client):
+    """SIP-0115 §4. Bugs caught: the derived label dropped for the bare status, so an item a
+    revision removed after its acceptance reads as plainly accepted; or the revision the proposal
+    was bound to left out of the row."""
+    get_client.return_value = _client(get=_backlog())
+
+    with patch("squadops.cli.commands.campaigns.print_table") as table:
+        result = runner.invoke(app, ["campaigns", "backlog", "cmp_1"])
+
+    assert result.exit_code == 0, result.output
+    assert "reads revision 3 (current); next item: B-2" in result.output
+    headers, rows = table.call_args.args
+    assert headers == ["#", "Item", "Title", "Status", "Last proposal", "Why"]
+    assert rows == [
+        ["—", "B-1", "Record", "accepted (removed in r3)", "prop_a v2 (r2)", "—"],
+        ["1", "B-2", "Total", "pending", "—", "—"],
+    ]
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_backlog_on_a_campaign_with_no_goal_set_exits_with_the_routes_error(get_client):
+    """The edge: the route's 404. Bug caught: the CLI printing an empty table, which reads as a
+    backlog with nothing left."""
+    client = _client()
+    client.get.side_effect = CLIError("campaign cmp_1 names no goal set", exit_codes.NOT_FOUND)
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "backlog", "cmp_1"])
+
+    assert result.exit_code == exit_codes.NOT_FOUND
+    assert "names no goal set" in result.output

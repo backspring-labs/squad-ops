@@ -289,23 +289,27 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
     commit = "c" * 40
 
     failed, _ = await registry.record_validation(
-        "prj-tally", commit=None, diagnostic="clone: denied", actor="owner", idempotency_key="v-1"
-    )
+        "prj-tally", commit=None, diagnostic="clone: denied", actor="owner", idempotency_key="v-1",
+        expected_baseline=None,
+    )  # fmt: skip
     ready, replayed = await registry.record_validation(
-        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2"
-    )
+        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2",
+        expected_baseline=None,
+    )  # fmt: skip
     again, again_replayed = await registry.record_validation(
-        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2"
-    )
+        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2",
+        expected_baseline=None,
+    )  # fmt: skip
     with pytest.raises(ProjectStateConflictError, match="READY"):
         await registry.record_validation(
             "prj-tally", commit=None, diagnostic="fetch: denied", actor="owner",
-            idempotency_key="v-3",
+            idempotency_key="v-3", expected_baseline=commit,
         )  # fmt: skip
     upstream = "d" * 40
     moved, _ = await registry.record_validation(
-        "prj-tally", commit=upstream, diagnostic=None, actor="owner", idempotency_key="v-4"
-    )
+        "prj-tally", commit=upstream, diagnostic=None, actor="owner", idempotency_key="v-4",
+        expected_baseline=commit,
+    )  # fmt: skip
 
     assert (failed.lifecycle_status, failed.validation_diagnostic, failed.record_version) == (
         ProjectLifecycleStatus.FAILED_REGISTRATION,
@@ -641,3 +645,59 @@ async def test_an_initialization_is_recorded_once_and_reads_back_whole(pool):
             )
             == 1
         )
+
+
+async def test_the_validation_record_contract_holds_on_postgres(pool):
+    """H.30, the outside review's items 1 and 2: the contract the unit tests' stand-in keeps, on
+    the store. Bugs caught: a replay that adopts; a stale validation that moves a newer adoption
+    back; a spent key read as an adoption."""
+    from tests.fixtures.project_writes import validation_record_contract
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    base = "b" * 40
+    await registry.record_validation(
+        "prj-tally", commit=base, diagnostic=None, actor="owner", idempotency_key="base",
+        expected_baseline=None,
+    )  # fmt: skip
+
+    await validation_record_contract(registry, "prj-tally", baseline=base)
+
+
+async def test_two_validations_racing_from_one_baseline_adopt_once(pool):
+    """The outside review's item 1, under the row lock: two validations read the same baseline and
+    record different commits at once. Bug caught: the later write moving the baseline back over
+    the earlier adoption, as an unfenced update does."""
+    import asyncio
+
+    from squadops.cycles.models import ProjectBaselineMovedError
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    base = "b" * 40
+    await registry.record_validation(
+        "prj-tally", commit=base, diagnostic=None, actor="owner", idempotency_key="base",
+        expected_baseline=None,
+    )  # fmt: skip
+
+    outcomes = await asyncio.gather(
+        *(
+            registry.record_validation(
+                "prj-tally",
+                commit=c * 40,
+                diagnostic=None,
+                actor="owner",
+                idempotency_key=f"race-{c}",
+                expected_baseline=base,
+            )  # fmt: skip
+            for c in "12"
+        ),
+        return_exceptions=True,
+    )
+
+    adopted = [o[0].development_baseline_commit for o in outcomes if isinstance(o, tuple)]
+    refused = [o for o in outcomes if isinstance(o, ProjectBaselineMovedError)]
+    held = await registry.get_project("prj-tally")
+    assert (len(adopted), len(refused)) == (1, 1)
+    assert held.development_baseline_commit == held.integrated_upstream_commit == adopted[0]
+    assert refused[0].held == adopted[0]

@@ -22,7 +22,7 @@ blueprints)
 ## Intake check
 
 Checked 2026-10-31 against `sips/PORTFOLIO.md`. **Conflicts:** one, for the owner (Q45). **Overlaps,** each
-with its boundary (portfolio cluster 17, Q45–Q48):
+with its boundary (portfolio cluster 18, Q45–Q48):
 - **Capability-Backed Agents** (cluster 8, deferred to 3.x on 2026-10-04: "move them to 3.x including
   capability-backed agents"). **The conflict:** this SIP needs a first slice of that SIP's foundation before
   3.x. **The boundary proposed:** this SIP takes the smallest cycle-bound foundation (§4) and nothing else of
@@ -31,7 +31,7 @@ with its boundary (portfolio cluster 17, Q45–Q48):
   needs,** recorded in its own header by this PR: its §5 extends the SIP-0040 skill layer, which was deleted
   (#400, #401). Its §21 taxonomy (identity, capability, skill, tool) is what this SIP builds on, and §5's
   premise isn't.
-- **The game SIP's engine plugins** (cluster 17). **Boundary:** an engine plugin provides typed operations,
+- **The game SIP's engine plugins** (cluster 18). **Boundary:** an engine plugin provides typed operations,
   workers and result readers. A capability pack provides what a role does with them: prompt guidance,
   skills, which operations it may invoke, the artifacts it owes and the checks that judge them. Both are
   discovered, versioned and pinned by §4's one foundation.

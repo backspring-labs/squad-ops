@@ -8,7 +8,8 @@ narrative rationale cannot outvote it while the current chain's repair slot
 is unspent. Environment failures (``executed: false`` — subject_missing,
 runner errors) are exempt: repairing correct code against harness config
 burns budget for nothing (the attempt-3.5 case, where ``continue`` was
-right). ``abort`` is never overridden — it is a deliberate hard stop.
+right). ``abort`` is never overridden — it is a deliberate hard stop — except by the fourth
+anchor below.
 
 Second anchor (pf-45): a ``rewind`` on a **work_product** classification is
 escalated to ``patch`` while the chain's repair slot is unspent. Rewind is
@@ -30,6 +31,13 @@ run, run death is not what rewind means. Measured on the deploy's 737 stored dec
 25 of the 30 model-limitation rounds that resolved to ``patch`` went on to complete. A run that
 still ends is absorbed at cycle level by the campaign's repair and retry rows (SIP-0109 §10).
 
+Fourth anchor (SIP-0109 §24do, #2933, the owner's ruling of 2026-11-07): a qa emission the
+executor refused because a criterion's test passes on the campaign branch's head is **patched,
+whatever the decision proposed, ``abort`` included.** The refusal is the executor's own reading on
+the head, not a failure a model diagnosed: the ruling grants the suite's author one repair round
+for it, and a decision that aborted or moved on would end the run without that round, by a model's
+choice. The override is disclosed as every other one is.
+
 This module is the intended home for the #435 convergence policy
 (signature strikes, progress requirement, artifact-delta guard).
 """
@@ -40,9 +48,14 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from squadops.cycles.failure_evidence import criteria_passing_on_head
 from squadops.cycles.task_outcome import FailureClassification
 
-#: Correction paths the guard may escalate. ``abort`` is deliberately absent.
+#: The override reason the fourth anchor records (SIP-0109 §24do).
+CRITERION_PASSES_ON_HEAD_OVERRIDE = "criterion_passes_on_head"
+
+#: Correction paths the guard may escalate. ``abort`` is deliberately absent (the fourth anchor,
+#: which reads a refusal the executor made, is the one exception).
 _ESCALATABLE_PATHS = frozenset({"continue", "rewind"})
 
 #: The classifications whose rewind is escalated to a patch while the repair slot is unspent,
@@ -120,6 +133,14 @@ def resolve_correction_path(
     Returns:
         The path to act on, with override provenance when the guard fired.
     """
+    if criteria_passing_on_head(failure_evidence) and decision_path != "patch":
+        # SIP-0109 §24do: the suite's author is owed its one round on the head's refusal.
+        return CorrectionPathResolution(
+            path="patch",
+            overridden_from=decision_path,
+            override_reason=CRITERION_PASSES_ON_HEAD_OVERRIDE,
+        )
+
     if decision_path not in _ESCALATABLE_PATHS:
         return CorrectionPathResolution(path=decision_path)
 

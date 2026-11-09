@@ -527,6 +527,10 @@ class TerminalKind(StrEnum):
     #: #2553: a handler refused its task's inputs (``INPUT_REFUSAL_EVIDENCE`` on its reply), and
     #: the run ended at once, since the same envelope is refused every time.
     INPUT_REFUSED = "input_refused"
+    #: #2890 (SIP-0109 §24cz): a repository-backed increment's criterion already passes on its
+    #: campaign branch's head, read as soon as the qa task's test for it existed, before the run
+    #: delivered. The run ended there: nothing it built can make that criterion discriminate.
+    CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
     COMPLETED = "completed"
     OTHER = "other"
 
@@ -668,6 +672,17 @@ def _single_class(contributions: Iterable[Contribution]) -> AttributionClass:
     return classes.pop() if len(classes) == 1 else AttributionClass.UNATTRIBUTED
 
 
+#: The terminal kinds whose primary is the kind alone, with every failure event contributing: the
+#: raise site declared the cause when it ended the run. #2890's criteria-not-checkable ending reads
+#: the criteria as the fault, not the work (SIP-0109 §24ct, §24cz).
+_PRIMARY_DECLARED_BY_KIND: dict[TerminalKind, AttributionClass] = {
+    TerminalKind.RUN_TIME_BUDGET_EXCEEDED: AttributionClass.BUDGET_EXHAUSTION,
+    TerminalKind.INFRASTRUCTURE_FAILED: AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE,
+    TerminalKind.INPUT_REFUSED: AttributionClass.INPUT_CONTRACT_FAILURE,
+    TerminalKind.CRITERIA_NOT_CHECKABLE: AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
+}
+
+
 def attribute(terminal: TerminalEvidence) -> Attribution:
     """The primary disposition — the terminal evidence of the final state transition — and
     everything earlier as contributing, ordered by run, round, task and check (SIP-0108 §4.2).
@@ -717,14 +732,8 @@ def attribute(terminal: TerminalEvidence) -> Attribution:
             )
             for e in terminal.failure_events
         ]
-    elif kind == TerminalKind.RUN_TIME_BUDGET_EXCEEDED:
-        primary = AttributionClass.BUDGET_EXHAUSTION
-        contributing = events
-    elif kind == TerminalKind.INFRASTRUCTURE_FAILED:
-        primary = AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
-        contributing = events
-    elif kind == TerminalKind.INPUT_REFUSED:
-        primary = AttributionClass.INPUT_CONTRACT_FAILURE
+    elif kind in _PRIMARY_DECLARED_BY_KIND:
+        primary = _PRIMARY_DECLARED_BY_KIND[kind]
         contributing = events
     elif kind == TerminalKind.COMPLETED and terminal.verdict == _VERDICT_ACCEPTED:
         return Attribution(primary=None, contributing=())

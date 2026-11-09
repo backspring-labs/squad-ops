@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -99,6 +99,7 @@ from squadops.events.types import EventType
 from squadops.execution.correction_ids import correction_task_id
 from squadops.execution.correction_repair import OWNERSHIP_DROPPED_KEY, CorrectionRepair
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.product_suite import RETEST_SUITE_KEY
 from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import TaskType
@@ -362,6 +363,10 @@ class CorrectionProtocolResult:
     #: dropped a failing assertion's subject, each naming the slot and the subject. Such a round
     #: is spent: the repair failed a gate, it did not emit nothing.
     repair_subject_dropped: tuple[dict[str, Any], ...] = ()
+    #: #2612: the product files the repair removed, beside its files. Inside the plan the round is
+    #: refused for them (``REPAIR_REMOVAL_REFUSED_MARKER``); at a source-backed run's end of plan
+    #: they are stored with the repair and judged by the next delivery (SIP-0112 H.20, H.23).
+    repair_deletions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1235,6 +1240,7 @@ class CorrectionRunner:
             ),
             repair_dropped=repair_dropped,
             repair_subject_dropped=repair_subject_dropped,
+            repair_deletions=tuple(repair.deletions),
         )
 
     async def _diagnose(
@@ -1642,7 +1648,10 @@ class CorrectionRunner:
         # path. The record then says an analyzer and a lead were not in this loop.
         analyzed = "analyze" in declared_correction_steps(cycle.resolved_config())
         affected = tuple(decision_outputs.get("affected_task_types", []))
-        if not decided and not affected:
+        # The same holds where a declared decision's path was overridden (SIP-0109 §24do: a lead's
+        # `abort` of a refusal on the head names nothing to change, and the rule patches it).
+        rule_chose = not decided or decision_outputs.get("correction_path") != correction_path
+        if rule_chose and not affected:
             affected = (envelope.task_type,)
         # 6. Store plan delta as artifact
         delta = PlanDelta(
@@ -1736,6 +1745,7 @@ class CorrectionRunner:
         profile: Any,
         flow_run_id: str | None = None,
         budget_guard: Callable[[], None] | None = None,
+        failed_suite: Sequence[Mapping[str, Any]] = (),
     ) -> TaskResult | None:
         """Re-execute a repaired qa.test suite in the QA agent's environment (#456).
 
@@ -1747,6 +1757,10 @@ class CorrectionRunner:
         task_type back to the QA agent in execute-only mode (``retest_files``
         set, no generation): same workspace, same runner, honestly fresh
         evidence for §6.5 final-state resolution to supersede with.
+
+        ``failed_suite`` is the failed task's own artifacts. Its test files ride the retest as
+        ``RETEST_SUITE_KEY``, the suite the product's runner judges (#2881): after a dev repair,
+        ``retest_files`` hold only the repaired source. The qa image's run doesn't read them.
 
         Returns the retest ``TaskResult`` (its Prefect task_run, events,
         artifacts and checkpoint are handled by ``_dispatch_protocol_step``),
@@ -1791,6 +1805,15 @@ class CorrectionRunner:
             "agent_config_overrides": resolved.config_overrides,
             **retest_forwarded_inputs(failed_inputs),
         }
+        retest_suite = [
+            {"filename": art["name"], "content": art.get("content", "")}
+            for art in failed_suite
+            if isinstance(art, Mapping)
+            and art.get("type") == "test"
+            and isinstance(art.get("name"), str)
+        ]
+        if retest_suite:
+            retest_inputs[RETEST_SUITE_KEY] = retest_suite
 
         retest_envelope = TaskEnvelope(
             task_id=correction_task_id(

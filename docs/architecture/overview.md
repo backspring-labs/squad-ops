@@ -98,11 +98,6 @@ dataclasses, the lifecycle state machine, task planning (`task_plan`), the imple
 verification evidence rules (SIP-0096) and the delivered-tree rules. Its executor is
 `squadops.execution` (#1992).
 
-### `squadops.embeddings`
-The embeddings domain: the request and result models an `EmbeddingsPort` adapter serves. Nothing
-consumes it since the LanceDB store's retirement (#2184); a semantic index, if one is ever added, is
-derived from Postgres (SIP-0110 §A.3.10).
-
 ### `squadops.execution`
 The cycle's orchestration (#1992): `DispatchedFlowExecutor`, which implements `FlowExecutionPort`, and
 its collaborators: run admission, provisioning and completion, task dispatch and the reply router, the
@@ -116,7 +111,9 @@ implementations are adapters (`adapters.events`).
 
 ### `squadops.llm`
 The LLM domain: request, response and chat-message models, its exceptions, and the model context
-registry (SIP-0073), which maps each model name to its context window and defaults.
+registry (SIP-0073), which maps each model name to its context window and defaults. Also the
+scripted squad's recorded scripts (#2495): their format, versions and packaged library, and the
+call scope that names the task an LLM call serves.
 
 ### `squadops.memory`
 The memory domain, Cross-Cycle Memory's (SIP-0110): the observations projected from three sources and the repeat
@@ -211,14 +208,13 @@ profile registries, the filesystem artifact vault, the Prefect workflow tracker 
 config-backed project registry, and the factory that composes the executor from `squadops.execution`
 with the ports a root has bound.
 
-### `adapters.embeddings`
-Implementations of `EmbeddingsPort`, which nothing builds since the LanceDB store's retirement (#2184).
-
 ### `adapters.events`
 Cycle event buses: in-process and NoOp, the runtime event publisher, and their factory.
 
 ### `adapters.llm`
-Model servers: Ollama, vLLM's OpenAI-compatible API, and Atlas (SIP-0106).
+Model servers: Ollama, vLLM's OpenAI-compatible API, and Atlas (SIP-0106). Also the scripted
+provider (#2495), which answers the model `scripted` from a recorded script, and the port every
+root builds that serves it beside the engine.
 
 ### `adapters.memory`
 Cross-Cycle Memory's store (Postgres beside the cycle registry, and in memory for tests) with the

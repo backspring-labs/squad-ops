@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 import yaml
 
-from squadops.campaigns.models import ControlOperation
+from squadops.campaigns.models import ControlOperation, RefusalReason
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
 from squadops.cli.forge_token import gh_token
@@ -40,7 +40,15 @@ def _call(ctx: typer.Context, method: str, path: str, *, long_wait: bool = False
         data = getattr(client, method)(path, **kwargs)
         client.close()
     except CLIError as e:
-        print_error(str(e))
+        detail = e.detail if isinstance(e.detail, dict) else {}
+        if detail.get("refusal") == RefusalReason.RESUME_NOT_DELEGATED:
+            # SIP-0109 §24da: the operator's resume refused by the campaign's declaration, which the
+            # 403's "authentication failed" would misname: the reason, and the row recording it.
+            print_error(
+                f"resume not delegated (recorded as {detail.get('entry_id')}): {detail.get('why')}"
+            )
+        else:
+            print_error(str(e))
         raise typer.Exit(code=e.exit_code) from e
     return data
 
@@ -239,6 +247,34 @@ def ledger(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
     print_table(["Proposal", "Ruling", "Decided (row)", "Cycles", "Classified"], rows, quiet=quiet)
 
 
+@app.command("backlog")
+def backlog(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
+    """A goal-set Campaign's backlog (SIP-0115 §4): each item's status, derived from its control
+    log at the revision it reads now, and the next item a proposal must name."""
+    data = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/backlog")
+    fmt, quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(data)
+        return
+    following = data["next_item"] or ("none: the backlog is done" if data["done"] else "none")
+    print_success(
+        f"{data['campaign_id']} reads revision {data['revision']} ({data['reads']}); "
+        f"next item: {following}"
+    )
+    rows = [
+        [
+            str(i["position"]) if i["position"] is not None else "—",
+            i["item_id"],
+            i["title"],
+            i["label"],
+            f"{i['proposal_id']} v{i['version']} (r{i['revision']})" if i["proposal_id"] else "—",
+            i.get("reason") or "—",
+        ]
+        for i in data["items"]
+    ]
+    print_table(["#", "Item", "Title", "Status", "Last proposal", "Why"], rows, quiet=quiet)
+
+
 @app.command("classify")
 def classify(
     ctx: typer.Context,
@@ -381,6 +417,62 @@ def push_review(
     )
 
 
+@app.command("contribute")
+def contribute(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Open it with your own GitHub access (`gh auth token`), for this act only: required",
+    ),
+):
+    """Open a closed Campaign's contribution to the product (SIP-0109 §24dc). A close records what
+    is due and opens nothing, so this is the act that does. Its criterion files are moved and run
+    on the product's runner first. Once per Campaign: one already contributed is answered with its
+    record, and a failed attempt's reason is on its `contribution_failed` row. Merging stays the
+    owner's."""
+    if not token_from_gh:
+        print_error(
+            "a campaign's contribution is opened with your own token, for this act only: "
+            "pass --token-from-gh"
+        )
+        raise typer.Exit(code=2)
+    body = {"token": gh_token()}
+    data = _call(
+        ctx, "post", f"/api/v1/campaigns/{campaign_id}/contributions", long_wait=True, json=body
+    )
+    fmt, _quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(data)
+        return
+    c = data["contribution"]
+    where = c["review_url"] or f"{c['mode']}, nothing pushed"
+    again = " (already contributed)" if data.get("replayed") else ""
+    print_success(f"{campaign_id}: {c['commit'][:12]}, {c['state']}: {where}{again}")
+
+
+@app.command("dismiss-contribution")
+def dismiss_contribution(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    reason: str = _REASON,
+    source_ref: str | None = typer.Option(
+        None, "--source-ref", help="Where the decision came from: a conversation's or issue's link"
+    ),
+    idempotency_key: str | None = _KEY,
+):
+    """Declare a closed, unmerged contribution won't land (SIP-0109 §24dg): the owner's alone. It
+    stops blocking `projects unintegrated`, and the record stays, with who and why. It can't be
+    undone: re-opening isn't built."""
+    key = _key(idempotency_key)
+    body = {"reason": reason, "idempotency_key": key}
+    if source_ref is not None:
+        body["source_ref"] = source_ref
+    path = f"/api/v1/campaigns/{campaign_id}/contribution-dismissal"
+    _show_result(ctx, _call(ctx, "post", path, json=body), key)
+
+
 @app.command("start")
 def start(
     ctx: typer.Context,
@@ -404,6 +496,30 @@ def pause(
 ):
     """Pause a campaign (the supervisor's brake)."""
     _control(ctx, "pause", campaign_id, reason, idempotency_key, expected_state)
+
+
+@app.command("delegate")
+def delegate(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    reason: str = _REASON,
+    source_ref: str | None = typer.Option(
+        None, "--source-ref", help="Where the decision came from: a conversation's or issue's link"
+    ),
+    idempotency_key: str | None = _KEY,
+    expected_state: str | None = _EXPECTED,
+):
+    """Grant the operator this Campaign's goal-set curation: its promotions, drops and splits (SIP-0115
+    Q41). The owner's alone, for the Campaign's life, and needed once on every Campaign the operator
+    should curate, whoever created it."""
+    key = _key(idempotency_key)
+    body = {"reason": reason, "idempotency_key": key}
+    if source_ref is not None:
+        body["source_ref"] = source_ref
+    if expected_state:
+        body["expected_state"] = expected_state
+    path = f"/api/v1/campaigns/{campaign_id}/goal-delegation"
+    _show_result(ctx, _call(ctx, "post", path, json=body), key)
 
 
 @app.command("resume")
@@ -499,7 +615,7 @@ def lease_release(
     reason: str = _REASON,
     idempotency_key: str | None = _KEY,
 ):
-    """Give the box back to the squad, the crew's models unloaded."""
+    """Give the box back to the squad, the operator's models unloaded."""
     key = _key(idempotency_key)
     data = _call(
         ctx,

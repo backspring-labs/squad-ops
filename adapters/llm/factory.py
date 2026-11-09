@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING
 
 from adapters.llm.atlas import AtlasAdapter
 from adapters.llm.ollama import OllamaAdapter
+from adapters.llm.scripted import ScriptedLLMAdapter, ScriptedModelRouter
 from adapters.llm.tensorfold import TensorFoldAdapter
 from adapters.llm.vllm import VLLMAdapter
+from squadops.llm.script import ScriptLibrary
 from squadops.ports.llm.provider import LLMPort
 
 if TYPE_CHECKING:
@@ -83,3 +85,17 @@ def create_llm_provider(
     # than silently running the previous one (the standing no-masking-fallbacks
     # rule). A typo in configuration is a misconfiguration, not a default.
     raise ValueError(f"Unknown LLM provider: {provider}")
+
+
+def with_scripted_model(engine: LLMPort, library: ScriptLibrary | None = None) -> LLMPort:
+    """The deploy's LLM port: ``engine``, also serving the model ``scripted`` from recorded
+    scripts (#2495).
+
+    Every composition root that builds the engine wraps it here, so the runtime (which checks a
+    cycle's models at create) and the agents (which answer them) agree that the deploy serves
+    ``scripted``. A call naming any other model reaches ``engine`` unchanged; one naming
+    ``scripted`` never does. ``library`` is the package's own scripts unless a test names another.
+    """
+    return ScriptedModelRouter(
+        engine, ScriptedLLMAdapter(library if library is not None else ScriptLibrary.packaged())
+    )

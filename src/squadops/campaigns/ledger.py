@@ -25,6 +25,11 @@ from squadops.campaigns.models import (
     LaunchIntent,
 )
 
+#: The submission binding's keys for the backlog item a proposal serves and the goal-set revision
+#: it was created under (SIP-0115 §5.5a; written by ``gate.submission`` from the change request).
+BACKLOG_ITEM_KEY = "backlog_item"
+GOALS_REVISION_KEY = "goals_revision"
+
 
 @dataclass(frozen=True)
 class LedgerEntry:
@@ -44,10 +49,13 @@ class LedgerEntry:
     cycles: tuple[dict, ...] = ()
     #: The supervisor's latest classification of this version, with its reason and who.
     classification: dict | None = None
+    #: A goal-set Campaign's version: the item it serves and the revision it is bound to (§24cy).
+    backlog_item: str | None = None
+    goals_revision: int | None = None
 
 
 #: The decision fields a cycle's entry shows, in the order the ledger reads them.
-_DECISION_FIELDS = ("row", "ending", "verdict", "action", "outcome", "unbuilt")
+_DECISION_FIELDS = ("row", "ending", "verdict", "action", "outcome", "cause", "unbuilt")
 _CONTINUATIONS = (CycleKind.REPAIR, CycleKind.RETRY)
 
 
@@ -69,6 +77,8 @@ def ledger(log: list[ControlLogEntry], launches: Iterable[LaunchIntent] = ()) ->
                 "cycle_id": b["cycle_id"],
                 "run_id": e.target,
                 "submitted_at": e.committed_at.isoformat(),
+                "backlog_item": b.get(BACKLOG_ITEM_KEY),
+                "goals_revision": b.get(GOALS_REVISION_KEY),
             }
     decides_for, cycles = _carrying_cycles(entries, launches)
     for e in applied:

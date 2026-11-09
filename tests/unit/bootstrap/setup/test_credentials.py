@@ -40,7 +40,7 @@ _DSN = next(c for c in REGISTRY_ROWS if c["env"] == "KEYCLOAK_DB_PASSWORD")
 def test_tensorfold_ensure_preserves_independent_callers_and_adopts_only_its_label():
     credential = next(c for c in REGISTRY_ROWS if c["env"] == "SQUADOPS_TENSORFOLD_API_KEY")
     target = credential["secret_file"]
-    original = "# callers\nnostromo-mother: mother-fixture\nsquadops: squad-fixture\nnostromo-brett: brett-fixture\n"
+    original = "# callers\ncaller-a: a-fixture\nsquadops: squad-fixture\ncaller-b: b-fixture\n"
     assert value_from_secret_file(credential, original) == "squad-fixture"
     adopted = plan([credential], {}, {target: original}, existing=True)
     assert adopted.env_updates[credential["env"]] == ("squad-fixture", "adopted")

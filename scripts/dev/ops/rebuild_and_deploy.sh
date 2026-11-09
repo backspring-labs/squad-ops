@@ -566,6 +566,18 @@ if [ "$REBUILD_SANDBOX" = true ]; then
     "$REPO_ROOT/scripts/dev/build_sandbox_env_image.sh" --if-absent || SANDBOX_ENV_FAILED=1
 fi
 
+# #2960: Caddy mounts console/Caddyfile as a single file, so a pulled change never reached it and a
+# reload re-read the old file. Every deploy, whatever it rebuilt, compares the file Caddy reads with
+# the checkout's and restarts Caddy when they differ.
+echo ""
+echo -e "${BLUE}🔀 Caddy's Caddyfile (#2960)...${NC}"
+if python3 "$REPO_ROOT/scripts/dev/ops/caddy_config.py"; then
+    CADDY_FAILED=0
+else
+    CADDY_FAILED=1
+    echo -e "${RED}❌ Caddy doesn't run the checkout's Caddyfile (see above)${NC}"
+fi
+
 # Step 6: Verify deployment
 echo ""
 echo -e "${BLUE}✅ Step 6: Verifying deployment...${NC}"
@@ -595,6 +607,7 @@ DEPLOY_FAILED=0
 [ "${PROMPT_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${REALM_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${DEPLOY_RECORD_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${CADDY_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 if [ "$DEPLOY_FAILED" = "1" ]; then
     echo -e "${RED}⚠️  Rebuild and deploy completed WITH FAILURES (details below).${NC}"
 else

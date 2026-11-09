@@ -79,3 +79,11 @@ run_or_dry() {
         "$@"
     fi
 }
+
+# Edits a file in place with GNU and BSD sed alike (#2402). BSD sed reads a bare `-i`'s next
+# argument as the backup suffix, so `sed -i "s|a|b|" .env` fails on macOS. An attached suffix is read
+# the same way by both, and the backup is removed.
+sed_in_place() {
+    local expr="$1" file="$2"
+    sed -i.squadops-bak "$expr" "$file" && rm -f "${file}.squadops-bak"
+}

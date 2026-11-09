@@ -68,7 +68,7 @@ def _later(seconds: int) -> datetime:
 
 
 async def test_a_launch_the_box_refuses_blocks_the_campaign_and_creates_no_cycle():
-    """Bug caught: a campaign launching beside a crew model; and a blocked campaign whose
+    """Bug caught: a campaign launching beside an operator model; and a blocked campaign whose
     refusal leaves no row naming the attempt, the refusal and its reasons."""
     campaigns, cycles, _box, launcher, intent = await _world()
 

@@ -1848,6 +1848,22 @@ class TestUncollectedSuitesAreReadFromTheStoredReports:
             "`tests/api.test.ts` (1 report: 1 stored)"
         )
 
+    def test_a_report_banked_with_a_hand_off_reads_as_one(self, driver, monkeypatch, tmp_path):
+        """#2949. Bug caught: a hand-off's report read as failed, or left out of the counts the
+        line renders, so the reports it names don't add up."""
+        tree = self._tree(
+            tmp_path,
+            [
+                ("task-m005-qa.test", "handed_off", ["test/criterion_T1.test.js"]),
+                ("task-m005-qa.test", None, ["test/criterion_T1.test.js"]),
+            ],
+        )
+        out = self._read(driver, monkeypatch, tree)
+        assert [e["banked"] for e in out] == ["handed_off", "stored"]
+        assert driver._render_uncollected(out) == (
+            "`test/criterion_T1.test.js` (2 reports: 1 handed_off, 1 stored)"
+        )
+
     @pytest.mark.parametrize(
         ("reports", "state"),
         [([], "unaskable"), ([("task-m005-qa.test", None, [])], "asked_none")],
@@ -3111,14 +3127,17 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
 
     def _cycle(self, driver, tmp_path, monkeypatch, artifacts):
         dirs = []
-        for i, (task_id, filename) in enumerate(artifacts):
+        for i, (task_id, filename, *status) in enumerate(artifacts):
             art = tmp_path / f"art_{i:012x}"
             art.mkdir()
             (art / "metadata.json").write_text(
                 json.dumps(
                     {
                         "filename": filename,
-                        "metadata": {"task_id": task_id, "emission_status": "failed"},
+                        "metadata": {
+                            "task_id": task_id,
+                            "emission_status": (status or ["failed"])[0],
+                        },
                     }
                 )
             )
@@ -3189,6 +3208,24 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
         assert driver.value_at(rec, "failed_emission_artifacts_banked") == 2
         # Pre-stamp: the two attempts are NOT inferred from timestamps or filenames.
         assert driver.Evidence.read(rec["failed_emissions_banked"]).state == driver.UNASKABLE
+
+    def test_a_hand_off_the_products_runner_passed_is_no_failed_emission(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """#2949: a qa task whose suite the image left to the product's runner, which passed it,
+        banks its emission ``handed_off``. Bug caught: the record counting the hand-off as a failed
+        emission of a roll whose qa task never failed."""
+        rec = self._cycle(
+            driver,
+            tmp_path,
+            monkeypatch,
+            [
+                ("task-m005-qa.test", "test/criterion_T1.test.js", "handed_off"),
+                ("task-m005-qa.test", "test_report.md", "handed_off"),
+                ("task-m006-qa.test", "test_report.md"),
+            ],
+        )
+        assert driver.value_at(rec, "failed_emission_artifacts_banked") == 1
 
     def test_a_clean_roll_reports_zero(self, driver, tmp_path, monkeypatch):
         rec = self._cycle(driver, tmp_path, monkeypatch, [])
@@ -7009,7 +7046,7 @@ class TestTheHangBoundIsReadFromTheLineTheDispatcherWrites:
             async def ensure_subscribed(self, agent_id):
                 return None
 
-            def register(self, task_id):
+            def register(self, task_id, dispatch_id):
                 return asyncio.get_running_loop().create_future()
 
             def cancel(self, task_id):

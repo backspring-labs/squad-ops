@@ -118,7 +118,9 @@ _CONTINUING = frozenset({CycleKind.REPAIR, CycleKind.RETRY})
 Reconciled = Callable[["Project", LaunchIntent], Awaitable[None]]
 #: Row 6's fresh proposal on the rebased head, or why it can't be launched; given the campaign
 #: as the rebase leaves it and the abandoned increment's cycle (``CampaignProgress``).
-ProposeAfterRebase = Callable[[Campaign, "str | None"], Awaitable["LaunchRequest | str"]]
+#: ``(campaign at the rebased head, the continued cycle's id, the superseded launch's id)``: row
+#: 6's fresh proposal, built before the rebase's row commits (``CampaignProgress.proposal_after_rebase``).
+ProposeAfterRebase = Callable[[Campaign, "str | None", str], Awaitable["LaunchRequest | str"]]
 
 
 @dataclass(frozen=True)
@@ -381,7 +383,9 @@ class BranchRebase:
                     accepted, identity=made.tree_identity, commit=made.rebased.commit
                 ),
             )
-            built = await self._propose(moved, _continued(intent))
+            # §24cy item 7: the proposal is built before this row commits, so it is told which
+            # launch the row supersedes, and reads a goal set's backlog as the row will leave it.
+            built = await self._propose(moved, _continued(intent), intent.launch_id)
             launch, unbuilt = (built, None) if isinstance(built, LaunchRequest) else (None, built)
         transition = rebase_transition(
             campaign,

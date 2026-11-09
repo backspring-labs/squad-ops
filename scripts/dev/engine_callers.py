@@ -2,7 +2,7 @@
 """Who called the engine: TensorFold's request counter by key label, and its two gauges (the 2.5
 cut's pre-registration, "The engine's other callers"; the owner chose "2 metrics", 2026-10-29).
 
-The counted set runs beside the crews' load, so a roll is read inconclusive for another caller only
+The counted set runs beside the operators' load, so a roll is read inconclusive for another caller only
 on this evidence, never on assertion. Each reading is one JSON line:
 
     {"at": "<UTC>", "requests_total": {"<key label>": {"<status>": n}}, "running": n, "waiting": n}

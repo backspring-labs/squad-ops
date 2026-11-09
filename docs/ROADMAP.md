@@ -23,7 +23,88 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.5.0 (2026-10-30) — Current — a Campaign on a product SquadOps doesn't own, and the yardstick re-cut once
+### v2.6.1 (2026-11-07) — Current — what an operator meets first on 2.6.0, fixed small
+
+**v2.6.1, the 2.6 line's first patch** (`docs/plans/2-6-1-plan.md`, placed by the owner after the 2.6.0 cut):
+- **a rebuilt console plugin reaches the browser on a normal reload:** Continuum 1.0.3 versions each bundle's URL by
+  its content, caches the current one for good and revalidates the rest (#2958, #2959, backspring-labs/continuum#4);
+- **the selected model engine comes back after a reboot,** and a stopped or killed one stays down (#2932, ask 1);
+- **a deploy runs the Caddyfile it pulled,** restarting Caddy when the file it reads differs (#2960);
+- **Home's Create Cycle opens the Cycles create form** (#2909);
+- **the qa briefs show a criterion test that asserts on what it made sure is there,** and a repair that keeps the
+  suite's fixture (#2933's prompt work);
+- **the console's Signal view no longer holds the runtime API for seconds** (#2921, added by the owner).
+
+The owner moved two parts to 2.7: a hand-off to the product's runner reading as handed off (#2949), and D1, a
+first-emission pass on the head refused to qa rather than abandoned at row 19 (#2933). The cut's run is one
+uncounted `group_run` shakeout on the final deploy.
+
+### v2.6.0 (2026-11-07) — a Project's goal set drives its Campaigns
+
+**v2.6.0, a feature release led by SIP-0115.** A Project keeps a goal set: its goal, expected results and an ordered
+backlog. On it:
+- **a Campaign works the backlog one item at a time,** proposing the next eligible item of the revision it reads, and
+  every increment reaches a named ending at a §10 row (SIP-0115 slices 1 and 2, SIP-0109 §24cy);
+- **learning returns to the goal set:** candidates and assessments are recorded, a promotion makes a new revision, a
+  running Campaign reads it uninterrupted, and a product's own reading reaches the next proposal (slice 3, §24dj, §24dk);
+- **an operator reaches it through scoped principals,** with the goal set in each gate's evidence (slice 5, §24df);
+- **a product runs on its own stack,** and a qa suite sees the code it calls (SIP-0112 H.26, #2952);
+- **the console gains a goals panel and a read-only Campaigns view** (slice 4, #2834).
+
+**What the cut rests on, and what it doesn't.** The owner narrowed the claim on 2026-11-07 to the machinery, read on
+battle-trainer: `docs/plans/verification-sets/2-6-0-cut-record.md`. It doesn't claim tanks play better, a backlog
+finished, or an unattended overnight run: the soak and the sealed play claim moved to 2.7, and improving the product
+is an operator's work on this line. SIP-0115 stays accepted: its close needs three accepted items in one Campaign, read by an operator.
+
+### v2.5.1 (2026-11-03) — the fixes a Campaign on a product needed to accept increments
+
+**v2.5.1, the 2.5 line's first patch** (the 2.6 plan's §0, §0a and §1a, D11). It carries what the 2.6 plan's two
+spikes found on `prj-shelfnote`, and the 2.5 cut's open defects on a Campaign's path:
+- **a product's suite judged on its own runner** when the qa image fails it (#2818, #2838, #2845);
+- **a revised proposal's repair or retry** binds its approved version (#2824);
+- **the campaign supervisor answers a Campaign cycle's plan gate,** and a product's plan gate reads its approved change
+  request (#2837, #2796);
+- **an already-met criterion is kept as a preservation check,** and row 16's abandonment counts toward no limit (#2849);
+- **a busy engine serving only declared models is a quiet box** (#2851);
+- **an increment approval's notes reach its framing** (#2854);
+- **a criterion file is placed beside its runner's tests,** never under a file name the product already holds (#2858,
+  #2860);
+- **a product's qa run is bounded:** the framework's own pytest configuration, and a runner's pattern under its roots
+  (#2817);
+- **tree-sitter pinned below 0.26,** whose trees for long JS/TS files were corrupt (#2814);
+- **typed-check subjects resolved as their evaluators read them** (#2804), **the qa monolithic prompt counted as shown**
+  (#2809), **a repair's call guarded against its window** (#2813);
+- **the release records attach scans for held-out content** (#2830).
+
+**One addition, on the owner's decision** (2026-11-03, "option 1"): the read-only product-file route the crew drafts
+from (#2855). 2.5 is feature-free by rule; the tag is cut from the tree the spikes ran on, and this names it.
+
+**Validated:** each fix's tests, failing on the code before it; the regression suite on every merge; and, on the
+deploy `dep_9b2e46f055c7` (`ab996e9b`), all 247 loaded checks answering and #2814, #2817 and #2813 read in the live
+containers. The spikes' fixes were read live by their Campaigns (`var/verification_sets/2-6-0-spike/readings.md`),
+the overnight run accepting 10 of 10 in 5 h 21 min.
+
+**Validated before the tag, on that deploy** (pre-registered; `var/verification_sets/2-5-1-validation/`):
+- **An uncounted regression pair, accepted on both stacks:** FastAPI + React 21/21 with one correction round, Next.js
+  21/21 with two. Its three anchored JSX/TSX repairs were accepted (#2814, #2813).
+- **A 3-increment Campaign on `prj-shelfnote`:** it accepted 1 of 3 and ended `failure` by its unaccepted-increment
+  limit.
+  - Each rejection was a criterion test failing on the product's own runner, so #2817's bounded run and #2818's
+    judgement were read live.
+  - It found #2881, which predates 2.5.1.
+
+**Not covered:** these were read only by their tests and the PR-time live probes:
+- #2804 and #2809, which triggered in no run;
+- the repair guard's refusal and truncation, and the criterion basename-clash refusal, which no run reached;
+- a hostile product pytest configuration, which Shelfnote doesn't have.
+
+**What it moves on:** #2798, #2765 and #2402 to a later patch; #2839 to 2.6's Track A; #2861–#2863 and #2881 for
+2.6's placement.
+
+**Upgrade from 2.5.0:** no migration and no configuration change. Rebuild the runtime API and the agents. The records
+attach now requires `SQUADOPS_HELDOUT_SUITES`.
+
+### v2.5.0 (2026-10-30) — a Campaign on a product SquadOps doesn't own, and the yardstick re-cut once
 
 **v2.5.0, a stabilization release, feature-free by rule** (plan `docs/plans/2-5-0-plan.md`). It finishes what 2.4
 shipped apart, and fixes what the 2.4 line found weak:
@@ -1034,8 +1115,10 @@ The following areas are identified for future work but do not block 1.0 readines
 | 2.3 | stabilization; **the plan is `docs/plans/2-3-0-plan.md` (adopted 2026-10-11): TensorFold first, carried to the owner's G4 decision (#2229), with Qwen3.8-Flash-Next as a second candidate (#2230), then stabilization on the engine that ships** | the comms (#1977) and API contract (#1976) hardening; the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994); **placed, dark (the owner's waiver):** SIP-0111's TensorFold v0.6.6 trial (S, G0 and G1, #2199) and, only if those gates pass, its adapter (#2200); **placed (SIP-0110 §5g, Q25):** the legacy agent store made dormant with its failures visible (#2174), chat's history reaching the agent, with session ownership checked (#2175), and the context-assembly port, inert (#2176) |
 | 2.3.1 | patch: what the 2.3 cut found, fixed small, **shipped 2026-10-17** (`docs/plans/2-3-1-plan.md`) | **placed by the owner after the 2.3.0 cut:** the runtime's unused AMQP connection removed (#2322); a late answer updates the stored digest and can be an agent's (#2305, SIP-0109); the signature check accepts a declared query parameter, the smaller fix (#2378); two reads first, each fixed in 2.3.1 only where the read points: QA's view of the leave endpoint (#2297, moved to 2.4) and a patch-verification skip replacing a pass (#2381, fixed). **Ruled in:** a failed cycle no longer rolls up `accepted` (#2384, D2); the Next.js vitest config compiles a page's JSX (#2394, D4); a detail page spelled apart from its API is seeded by its parameter (#2398, D5) |
 | 2.4 | two features, one per lane, **shipped 2026-10-23** (`docs/plans/2-4-0-cut-preregistration.md` §13): **Outcome Evaluation** (SIP-0113, accepted 2026-10-17) on the Spark lane and **Project Lifecycle Management** (SIP-0112, accepted 2026-10-17) on the MacBook lane (the owner's direction of 2026-10-17, PR #2401, §8). The plan, adopted 2026-10-17 (D1–D14 ruled), is `docs/plans/2-4-0-plan.md`: Outcome Evaluation's instruments first, its phase 2 conditional on their data, and if it moves, Project Lifecycle Management is the headline (D14); Project Lifecycle's brownfield and greenfield demonstrations, greenfield shipped at the cut (its G6) | **moved from 2.3 (2026-10-15, the owner):** Outcome Evaluation's reporting-only instruments and the request-profile taxonomy (#316), each after its SIP's design review; Verification Yield's risk-first instructions (#1966); the judgement steps it measures (#557, #949, #950) are not in 2.4, re-read at its cut (D10); **placed (SIP-0110 §5g, Q25):** memory entry points for chat and task assignment beside it (SIP-0110 Appendix A, epic #2173, #2177–#2183); **Project Lifecycle Management (proposed, PR #2401):** existing-product registration, discovery and the inherited baseline, two features across an outside contribution, and greenfield creation (its E.4.1–E.4.4 and E.4.6), meeting Outcome Evaluation at seven shared contracts; **placed by the owner on the 2.3 line:** #2395 (a Next.js plan's page-state tests the stack's vitest can't run, before the window) and #2297 (QA's empty-name case against a name in the path) |
-| 2.5 | stabilization, **shipped 2026-10-30** (`docs/plans/2-5-0-cut-preregistration.md`); **the plan, adopted 2026-10-24** (D1–D11 ruled, D12 on 2026-10-28; one lane from 2026-10-28), is `docs/plans/2-5-0-plan.md`: a Campaign on a repository-backed Project (#2619), the yardstick re-cut once, and the hardening the 2.4 line found. **The claim narrowed by the owner on 2026-10-29:** not an accepted increment on a product whose in-cycle tests need its own dependencies (#2818) | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK), **shipped** (#2735) |
-| 2.6 | the squad-authored backlog (no SIP yet) | features from the strategy role, debt refactors from the lead; Test-First's greenfield gate (#1978); placed by 2.6's plan. **The TensorFold 1.x upgrade (#2230) is deferred to 3.x consideration** (the owner, 2026-10-30), replacing the 2.5 plan's D5, which had made it 2.6's recommended first track |
+| 2.5 | stabilization, **shipped 2026-10-30** (`docs/plans/2-5-0-cut-preregistration.md`), **2.5.1 shipped 2026-11-03** (the 2.6 plan's §0–§1a fixes); **the plan, adopted 2026-10-24** (D1–D11 ruled, D12 on 2026-10-28; one lane from 2026-10-28), is `docs/plans/2-5-0-plan.md`: a Campaign on a repository-backed Project (#2619), the yardstick re-cut once, and the hardening the 2.4 line found. **The claim narrowed by the owner on 2026-10-29:** not an accepted increment on a product whose in-cycle tests need its own dependencies (#2818) | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK), **shipped** (#2735) |
+| 2.6 | **Project Goals and Backlog** (SIP-0115, the headline), **shipped 2026-11-07** | **the plan, adopted 2026-11-03,** is `docs/plans/2-6-0-plan.md`. It asks whether a multi-hour Campaign can run on a product the owner wants built. The proving Project is **battle-trainer** (D2, the owner, 2026-11-03), a Node product tested with vitest. A Project's goals and ordered backlog become records the crew and the owner work through, off the terminal (slices 1–5). The floor is SIP-0109's and SIP-0112's completion: an increment accepted on a product (Track A), recovery past a failure (B), unattended hours (C). The claim is a ladder of three rungs (§4). The strategy role ordering its own features waits for a later line (D5). Test-First's greenfield gate (#1978) is not in 2.6. **The TensorFold 1.x upgrade (#2230) is deferred to 3.x consideration** (the owner, 2026-10-30) |
+| 2.6.1 | patch: what an operator meets first on 2.6.0, fixed small, **shipped 2026-11-07** (`docs/plans/2-6-1-plan.md`) | **placed by the owner after the 2.6.0 cut (2026-11-07):** console plugins cached by version (Continuum 1.0.3; #2958, #2959); the selected model engine comes back after a reboot (#2932, ask 1); a merged Caddyfile change takes effect on deploy (#2960); a criterion test that asserts nothing is shown against (#2933's prompt work); Home's "New Cycle" button works (#2909); the Signal view no longer stalls the runtime API (#2921, added by the owner). The owner moved #2949's remainder and D1 (a first-emission head pass refused to qa rather than abandoned at row 19) to 2.7 |
+| 2.7 | stabilization, feature-free by rule; **the plan, adopted 2026-11-08** (R1–R9 ruled by the owner), is `docs/plans/2-7-0-plan.md`: the 2.6 line's debts closed. A verdict says what happened (D1, #2933, and the page and criterion readers); a run survives a power loss, a reboot or a redelivered task (#2931, #2932); the overnight soak, scripted on `z_shelfnote`, is a release gate (#2495, #2892); an accepted product increment read end to end on `z_continuum` (#2827) | **one named exception (R2):** a merged contribution syncs its Project (#2862). **Moved to 2.8 (R1, R2):** #2287, #2421, #950, #2781, #2709's lifecycle operations and #2954, so SIP-0112 stays open. **Deferred (R5):** #2782, to the next evaluator cut. Expected: 25 of the 44 issues open at the plan, 20 by work and 5 administrative |
 
 **3.x: agents running continuously in the world (duty mode).** Deferred here by ruling, and placed by 3.0's plan:
 - SIP-0088 Agent Runtime Modes (umbrella);
@@ -1083,10 +1166,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-10-30 (v2.5.0):*
+*As of 2026-11-07 (v2.6.1):*
 
-- **Framework version**: 2.5.0
-- **SIPs** (2026-10-30, after the 2.5 sweep, which promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.6.1
+- **SIPs** (2026-11-07, after the 2.6.1 sweep, which like 2.6.0's promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

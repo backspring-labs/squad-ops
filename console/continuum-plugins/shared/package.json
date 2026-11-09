@@ -1,0 +1,10 @@
+{
+  "name": "squadops-console-shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Helpers the console plugins bundle (paging, the command bus). No dependencies; `npm test` runs node's own runner.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

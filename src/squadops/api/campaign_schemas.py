@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_serializer
 
 from squadops.campaigns.models import PlanGate
 
@@ -23,6 +23,17 @@ class WorkClassDTO(BaseModel):
 
     prd_tier: Literal["core", "tier-1", "tier-2", "tier-3"]
     attendance: Literal["attended", "unattended"]
+
+
+class CampaignGoalsDTO(BaseModel):
+    """SIP-0115 §5.1 (SIP-0109 §24cy): the goal set a repository-backed Campaign works through, in
+    place of a requirements source. ``goal_set`` is the Campaign's Project's id (a Project has
+    one, Q44); ``revision`` pins one revision for the Campaign's life, or reads ``current``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal_set: str
+    revision: int | Literal["current"]
 
 
 class CampaignObjectiveDTO(BaseModel):
@@ -39,6 +50,11 @@ class CampaignObjectiveDTO(BaseModel):
     #: ``repo:file:<path>@current`` or a stored artifact's id. Required at creation for one, and
     #: refused for a sample application.
     requirements: str | None = None
+    #: SIP-0115 §5.1: a repository-backed Project's goal set, named in place of ``requirements``
+    #: and never beside it.
+    goals: CampaignGoalsDTO | None = None
+    #: SIP-0115 §5.6: ``backlog_done``, read at §10 row 3 beside the target. Only with ``goals``.
+    stop_when: Literal["backlog_done"] | None = None
 
 
 class CampaignPolicyDTO(BaseModel):
@@ -63,6 +79,10 @@ class CampaignPolicyDTO(BaseModel):
     #: §24bs (#2443): the stack every cycle the campaign launches builds on. Omitted, it is the
     #: campaign profiles' own.
     stack: str | None = None
+    #: §24da (the 2.6 plan's D6): the escalation classes the operator's supervisor principal may
+    #: resume on its own (``plan_gate``, ``in_cycle_failure``, ``launch_blocked``). Omitted or
+    #: empty, nothing is delegated. An unknown class is refused at creation.
+    unattended_resume: list[str] = []
 
 
 class CampaignDefinitionDTO(BaseModel):
@@ -139,6 +159,27 @@ class LeaseResultResponse(BaseModel):
     entry: ControlLogEntryResponse
     replayed: bool
     lease: LeaseResponse
+
+
+class GoalDelegationRequest(ControlRequest):
+    """The owner's grant of a Campaign's goal-set curation to the operator (SIP-0115 Q41, §10c):
+    ``source_ref`` is where the decision came from, when a conversation (§6): a link, never its
+    content."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
+class ContributionDismissalRequest(BaseModel):
+    """The owner's "this work won't land" on a closed, unmerged contribution (SIP-0109 §24dg):
+    why, under which key, and where the decision came from, when a conversation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+    idempotency_key: str
+    source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
 class ClassificationRequest(ControlRequest):
@@ -232,6 +273,21 @@ class ControlLogEntryResponse(BaseModel):
     launch_id: str | None
 
 
+class GateGoalEvidenceResponse(BaseModel):
+    """What a gate's reviewer judges a goal-set increment against (SIP-0115 §8.5): the goal, the
+    backlog item and the expected results it serves, in the goal set's own document shape, as the
+    revision the proposal is bound to holds them."""
+
+    goal: str
+    item: dict[str, Any]
+    expected_results: list[dict[str, Any]]
+
+
+#: A ledger row's fields only a goal-set Campaign has. Left out when unset, so a requirements
+#: Campaign's rows, which a reviewer's bounded request carries whole, are as they were.
+_GOAL_SET_ROW_FIELDS = ("backlog_item", "goals_revision", "goal_evidence")
+
+
 class LedgerEntryResponse(BaseModel):
     """One proposal version in the ledger (§9.4): its submission, then its ruling, its cycle's
     outcome and its classification as each is recorded."""
@@ -248,6 +304,57 @@ class LedgerEntryResponse(BaseModel):
     classification: dict[str, Any] | None = None
     #: #2578 part 4: each cycle that carried the version, in launch order, with its deciding row.
     cycles: list[dict[str, Any]] = Field(default_factory=list)
+    #: SIP-0115 §8.5, a goal-set Campaign only: the item this version serves and the revision it
+    #: is bound to, on every row; ``goal_evidence`` while an open gate can be on it.
+    backlog_item: str | None = None
+    goals_revision: int | None = None
+    goal_evidence: GateGoalEvidenceResponse | None = None
+
+    @model_serializer(mode="wrap")
+    def _without_unset_goal_fields(self, handler):
+        return {
+            k: v for k, v in handler(self).items() if k not in _GOAL_SET_ROW_FIELDS or v is not None
+        }
+
+
+class BacklogItemResponse(BaseModel):
+    """One goal-set backlog item as the Campaign stands on it (SIP-0115 §4), derived from its
+    control log, never stored."""
+
+    item_id: str
+    title: str
+    serves: list[str]
+    #: ``pending``, ``proposed``, ``in_increment``, ``accepted``, ``abandoned`` or ``removed``.
+    status: str
+    #: The status as SIP-0115 writes it: ``accepted (removed in r4)``, say.
+    label: str
+    #: Its place in the revision read's order, from 1; ``None`` when that revision dropped it.
+    position: int | None
+    proposal_id: str | None = None
+    version: int | None = None
+    cycle_id: str | None = None
+    #: The goal-set revision the proposal that last named it was created under.
+    revision: int | None = None
+    row: int | None = None
+    reason: str | None = None
+    removed_in: int | None = None
+    results_changed_in: int | None = None
+    #: Dropped by a split (SIP-0115 §5.5a): the items that took its place; empty otherwise.
+    split_into: list[str] = []
+
+
+class BacklogResponse(BaseModel):
+    """A goal-set Campaign's backlog (SIP-0115 §4, §8.1; SIP-0109 §24cy): the revision it reads
+    now, each item's derived status, the next eligible item and whether the backlog is done."""
+
+    campaign_id: str
+    project_id: str
+    revision: int
+    #: ``current`` (the latest at each read) or ``pinned``.
+    reads: Literal["current", "pinned"]
+    next_item: str | None
+    done: bool
+    items: list[BacklogItemResponse]
 
 
 class PackageMaterializedResponse(BaseModel):
@@ -291,6 +398,18 @@ class ReviewPushResponse(BaseModel):
     review_url: str
     entry_id: str
     replayed: bool
+
+
+class CampaignContributionRequest(BaseModel):
+    """Open a closed Campaign's contribution (SIP-0109 §24dc): the supervisor's act, with the
+    supervisor's own forge token. Once per Campaign: a Campaign already contributed is answered
+    with its record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The supervisor's own forge token, for this one attempt: used in memory, never stored,
+    #: logged or returned. Required: nothing in the deploy is read for it (§24ci (b)).
+    token: SecretStr = Field(min_length=1, max_length=512)
 
 
 class ControlResultResponse(BaseModel):

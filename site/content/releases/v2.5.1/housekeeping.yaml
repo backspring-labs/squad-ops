@@ -1,0 +1,31 @@
+tag: v2.5.1
+applied_at: '2026-11-03T23:19:53+00:00'
+worktrees_removed:
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a101efc1a7d6c3880
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a6d076fde453844b8
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-aa7d2336102dee7ea
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-aabe13b0429b8fe65
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-acdcec0563dc3f708
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-afebe5038193a16b7
+- /home/jladd/Code/squad-ops/.claude/worktrees/criterion-check
+- /home/jladd/Code/squad-ops/.claude/worktrees/fix-2796
+- /home/jladd/Code/squad-ops/.claude/worktrees/fix-2818
+- /home/jladd/Code/squad-ops/.claude/worktrees/fix-2824
+- /home/jladd/Code/squad-ops/.claude/worktrees/fix-2837
+- /home/jladd/Code/squad-ops/.claude/worktrees/fix-2845
+- /home/jladd/Code/squad-ops/.claude/worktrees/fix-audit
+branches_deleted:
+- docs/changelog-2-5-1-catchup
+- docs/changelog-2-5-1-fixes
+- docs/release-package-2-5-0
+- fix/2804-criterion-check-subjects
+- fix/2809-qa-monolithic-budget-parity
+- fix/2813-repair-prompt-guard
+- fix/2814-jsx-resolver-long-files
+- fix/2817-qa-run-tree-product-config
+- fix/2818-product-runner-in-cycle
+- fix/2830-attach-scans-heldout
+- fix/2860-placement-basename-in-tree
+- release/2.5.1
+problems: []
+scenario_evidence_purged: 0

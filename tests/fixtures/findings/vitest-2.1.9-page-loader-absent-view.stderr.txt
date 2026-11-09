@@ -1,0 +1,30 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/criterion_P1.test.jsx > P1: the trail search page > lists a trail matching the query
+TestingLibraryElementError: Unable to find an element by: [data-testid="trail-search-view"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [0mcriterion view not found: no module at ../views/TrailSearchView.jsx[0m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [0mcriterion view not found: no module at ../views/TrailSearchView.jsx[0m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/__tests__/criterion_P1.test.jsx:15:25
+     13|       </MemoryRouter>,
+     14|     )
+     15|     expect(await screen.findByTestId('trail-search-view')).toHaveTextC…
+       |                         ^
+     16|   })
+     17| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

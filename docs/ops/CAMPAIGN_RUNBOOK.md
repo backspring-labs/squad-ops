@@ -42,6 +42,24 @@ squadops campaigns start <campaign_id> --reason "<why>"      # the calibration c
 python scripts/dev/campaign_log_archive.py <campaign_id> --follow   # beside it, until it closes
 ```
 
+**A Campaign the operator should curate needs the owner's grant** (SIP-0115 Q41, §10c). On a Campaign that names a goal
+set, the operator may add candidates freely, but may promote or drop one, or split a backlog item, only after the owner
+records the grant, whoever created the Campaign. It lasts the Campaign's life, and a completed Campaign refuses it:
+
+```bash
+squadops campaigns delegate <campaign_id> --reason "<why>" --source-ref <the conversation's link>
+```
+
+Until then each of those acts answers `403 NOT_DELEGATED`, naming this command. The grant needs `campaigns:control`,
+so the supervisor can't run it. The control log shows it as `goal_delegation_granted`.
+
+**The operator reports on a goal set without any grant** (SIP-0115 §5.7, §10d). Its assessment of an expected result is
+`POST /api/v1/projects/{id}/goal-set/assessments`, on a live or a completed Campaign, and it decides nothing. How each
+result stands is `GET /api/v1/campaigns/{id}/assessments`, which the console shows. Read that first and send its `log_seq`
+with the assessment: it says where the evidence was read, so an acceptance after that read makes the assessment stale. At
+a gate, the ledger's row for the
+version names its backlog item and carries the goal and expected results it is judged against.
+
 **Start the log archive with the campaign** (#1710). The containers' logs are the triage
 evidence, and the next rebuild destroys them. The archive keeps each cycle's window under
 `var/campaigns/<campaign_id>/logs/<cycle_id>/`, with a manifest naming its window, each file's
@@ -162,7 +180,7 @@ squadops runs gate <project> <cycle_id> <proposal_run_id> progress_increment_rul
   `max_rejected_proposals_in_row`.
 - **Never edit the proposal.** The supervisor is not an author (§9.2).
 - **The ruling bound** (`ruling_bound_s`) is the supervisor's, whoever holds the seat, the
-  owner or the crew (§24al). Once it passes, a `ruling_overdue` row is recorded and the digest
+  owner or the operator (§24al). Once it passes, a `ruling_overdue` row is recorded and the digest
   names it. Nothing rules for you (§24ae).
 
 ---
@@ -187,6 +205,18 @@ notes answers nothing, and the question is asked again.
 retry, as `build_profile` and `development_profile`. Leave it out and the campaign runs on its
 profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
 creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
+
+**Which escalations the operator may resume on its own is the campaign's declaration too**
+(`policy.unattended_resume`, SIP-0109 §24da; the 2.6 plan's D6). Leave it out and nothing is delegated: every
+escalation waits for you, as before. Each class you list lets the operator's `campaign-supervisor` principal make one
+move: `plan_gate` (answer a plan gate the tier escalated, at the gate), `in_cycle_failure` (`resume --action repair`
+or `retry` after the cycle's own failure, within the per-increment limits) and `launch_blocked` (`resume` with no
+action, once the box kept refusing). An upstream conflict, a limit's pause, a security finding and your own pause
+can't be declared. The list is fixed at creation and is part of the definition's hash, so widening it is a new
+campaign. Every operator resume and every refusal (403 `RESUME_NOT_DELEGATED`, with the reason) is a control-log row
+naming who, the class, the escalation and that hash, and the digest's **Unattended resumes** section lists them.
+**Your pause revokes the grant:** while you hold the campaign, the operator's resumes are refused, and your resume
+restores it.
 
 **Who decides a plan gate is the campaign's declaration** (`policy.plan_gate`, §24bj). Every new
 definition declares it; one that does not is refused at creation:
@@ -272,6 +302,26 @@ operation.
   cycle. Abort only when the campaign cannot continue by its own rules. Shakeout 3 was aborted on
   #1887: a partial accepted tree that no later cycle could converge on.
 
+### After a repository-backed campaign closes
+A close opens nothing (SIP-0109 §24dc, §24ci (b)). Its closing row records `contribution`, and the
+accepted work stays on the campaign branch until the supervisor opens it:
+- **Open it:** `squadops campaigns contribute <id> --token-from-gh`. The criterion files are moved and
+  run on the product's runner first, so it can take a while. A refusal or failure is a
+  `contribution_failed` row naming why, and the same command tries again.
+- **Read what isn't in yet:** `squadops projects unintegrated <project>`. Nothing listed means every
+  accepted increment is in the Project's integrated commit.
+- **After the owner merges it, before the next draft:** `squadops projects check-integration <project>
+  --token-from-gh`. It syncs, re-validates the Project where the merge is in, and lists what still waits, each
+  row with what clears it. It only reads the forge. `merge_state_unread` means the merge wasn't read, never that
+  it isn't merged. After a re-validation, record the configuration and capture the baseline at the new commit
+  before a cycle starts (SIP-0112 H.30). Compose the draft from reads at the `integrated_commit` it answered: a
+  `source-file` read at another commit means the commit moved, so check again (SIP-0109 §24ds).
+- **`contribution_closed`:** the request was closed unmerged, and it keeps blocking. The command above
+  can't reopen it, and the check doesn't read it. The owner reopens it on the forge, merges it with a merge
+  commit, then syncs and re-validates the Project (`squadops projects sync`, then `projects validate`). If the work won't land, the owner says so, which clears it and can't be undone:
+  `squadops campaigns dismiss-contribution <id> --reason "<why>"` (SIP-0109 §24dg). The supervisor
+  can't run it, and the control log shows it as `contribution_dismissed`.
+
 ---
 
 ## 6. Triage during a campaign: the outer loop's first half
@@ -319,6 +369,7 @@ nothing merges at all; a fix voids the set (2.0 plan §4).
 ```bash
 squadops campaigns digest <campaign_id>     # what was accepted, how each cycle ended, what waits
 squadops campaigns ledger <campaign_id>     # each proposal version, its ruling and its outcome
+squadops campaigns backlog <campaign_id>    # a goal-set Campaign: each item's status, the next item
 ```
 
 **The evidence package** is materialized at close from records alone. Its identity is the hash of its
@@ -381,12 +432,13 @@ turns findings into a framework change and measures it.
 
 ## 10. The approval boundary
 
-What the supervisor (the crew, or whoever holds the seat, §24al) does alone, and what stops for the owner.
+What the supervisor (the operator, or whoever holds the seat, §24al) does alone, and what stops for the owner.
 
 | alone | stops for the owner |
 |---|---|
 | rule increment gates and answer plan gates; pause a campaign; classify a proposal; take the lease at an open gate with no run in flight (all `campaigns:supervise`, which the `campaign-supervisor` role holds) | a pre-registration, or any material change to one (a policy value, a prediction, the set's size or frame) |
-| create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone) |
+| create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az); and the draft's integration check, which may sync a Project and re-validate it only in its bounded delegation: READY, after its own sync, at that sync's commit, fenced (SIP-0112 H.30). `projects sync` and `projects validate` themselves stay the owner's (`admin:write`) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone), except the classes a campaign declares in `policy.unattended_resume` (§24da) |
+| add goal-set candidates; promote or drop one, or split a backlog item, within a Campaign the owner has granted (`campaigns:supervise`; a promotion appends) | granting a Campaign's goal-set curation (`campaigns delegate`; `campaigns:control`, the admin role alone), and any reorder of the backlog |
 | file findings; fix them on branches; merge on full green, reading main's run | an unexplained red on main |
 | rebuild between campaigns, verifying the new code is loaded | a fix needed while a counted set is open: it voids the set |
 | run the reference scenario and the recovery diagnostics outside a counted set | anything touching security, and any public Release (tag, Release notes, records upload) |
