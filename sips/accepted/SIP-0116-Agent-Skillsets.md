@@ -14,8 +14,8 @@ updated_at: '2026-11-09T17:12:21.413769Z'
 **Status:** **Accepted (2026-11-09):** the owner, "accept Agent Skillsets, Q67 add headless". Proposed the same day.
 Revision 2 applied the owner's outside review, whose answers to Q52–Q65 the owner ruled ("make the revision and yes
 they can be rulings"); revision 3 applied the review's refinement on specialization (Q66). **Building:** the phases may
-be built in a MacBook worktree during 2.7 (the game-dev-roblox plan's D6). Nothing merges until 2.8 opens and its plan
-places them.
+be built in a MacBook worktree during 2.7, as the 2.7 plan's §5a records (the owner's D6 ruling on PR #2972,
+2026-11-08). Nothing merges until 2.8 opens and its plan places them.
 **Revision:** 3
 **Target:** unplaced. A 2.8 feature and the MacBook lane's input to the 2.8 plan. It creates no exception for 2.7.
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
