@@ -15,6 +15,12 @@ created_at: '2026-07-01'
 > - **Its package is not `squadops.capabilities`** (the structure audit, ruled 2026-10-04, #1993). #922 gave this SIP the word *capability* and renamed the identifiers that collided. The package `src/squadops/capabilities/` keeps its name: 1,209 import sites would move for no behaviour change, and after #1993's `stacks` extraction (2.3) it holds task contracts and handlers only. This SIP's bindable-competence model takes a distinct package (e.g. `squadops/capability_packs/`), named when 3.0's plan places it. A pack must never be wired into `HandlerRegistry`, the task-type registry, which is #922's original hazard.
 
 
+> **Split, 2026-11-09: §21's four layers and §27's assembly rules move to Agent Skillsets for 2.x**
+> (`sips/proposed/SIP-Agent-Skillsets.md`; the owner: "agree, pull it forward and draft the assembly SIP"). Agent
+> Skillsets is the first of the bounded SIPs §17 plans: the four layers and the rules, restated against SIP-0112's
+> Project and SIP-0072's development profile and put on the agent, with the skillset spec a capability pack will
+> carry. Everything else here stays deferred to 3.x. §28 records the split.
+
 **Status:** Proposed (2.0 umbrella / architecture target)
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Created:** 2026-07-01
@@ -726,6 +732,42 @@ attribution epoch.
 
 Same discipline as holding rebuild scope to one named change inside a measurement window,
 for the same reason.
+
+## 28. Split: the four layers and the assembly rules move to Agent Skillsets (2026-11-09)
+
+**What changed.**
+- **§21's four layers** (identity, capability, skill, tool), with the test that places a thing in one, and **§27's
+  rules** (27a–27f) are governed for 2.x by Agent Skillsets (`sips/proposed/SIP-Agent-Skillsets.md`). It restates
+  them against SIP-0112's Project and Development Configuration and SIP-0072's development profile. Where the two
+  differ, Agent Skillsets governs.
+- **The changes of substance, recorded there:**
+  - agents are what is equipped: each carries *skillsets* for a cycle, its roles' base skillsets plus those the
+    stack's development profile assigns to its roles (its §5). §27b named the stack by `build_profile` and
+    `dev_capability`; the second has since been renamed `development_profile` (#922);
+  - a *skillset* is a spec binding capabilities, the skills loaded for them and the tools they may call, in one
+    directory a capability pack will carry unchanged (its §4). It is the part of §7's pack manifest 2.x needs: the
+    capability-skill contract and the tool requirements, with roles standing in for the binding contract;
+  - §9 named the adopted `SKILL.md` bundles "skill packs / playbooks". They are *skills* inside a skillset, and
+    *playbook* is kept for what a squad follows (the owner, 2026-11-09).
+- **§17 item 1** (core vocabulary and contracts) is delivered in part: the four layers and the skillset spec,
+  without the pack, binding, working-set and evidence vocabulary.
+- **Everything else stays deferred to 3.x:** pack loading and packaging (§7), Switchboard and the pack interface
+  (§21), per-agent capability bindings beyond roles (§8), working sets (§10), memory (§11), the workspace and
+  evidence ledger (§12), the design pack (§13), activation and permissions (§14–15), and §17 items 2–10. Model-side
+  tool use (§9) stays here too: Agent Skillsets has a capability's handler invoke tools, never the model (its Q59).
+
+**Evidence.**
+- The game-dev-roblox plan's spikes (2026-11-08, PR #2972) need, in 2.8, a step a stack enables, skills for its
+  agents, tools on a remote worker and a pinned record.
+- Revision 3 of the game SIPs (PRs #2405 and #2841) built them as a *specialty* beside the existing seams, and in
+  doing so re-derived §27c, §27d and §27f under a new name. The owner's question about the word exposed it
+  (2026-11-09).
+- §27's rules need none of the packaging, so they can land ahead of it.
+
+**Who ruled it.** The owner, 2026-11-09: "agree, pull it forward and draft the assembly SIP"; then, on the draft,
+that agents carry the equipment, as a *skillset*, and "for an agent and a skillset, I'd need a spec that could be
+distributed in the capability pack". The same ruling answers Q51 (raised on PR #2841, whether this SIP takes an
+amendment now that the game work builds none of its mechanism): it takes this one.
 
 ## 24. References
 

@@ -1210,6 +1210,15 @@ sips:
   approver: null
   created_at: null
   updated_at: '2026-10-05T00:09:40.117678Z'
+- sip_uid: '17942318023754850'
+  sip_number: null
+  title: Agent Skillsets
+  path: sips/proposed/SIP-Agent-Skillsets.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-11-09T00:00:00Z'
+  updated_at: null
 - sip_uid: '17909028044686722'
   sip_number: null
   title: Verification Yield and Test Value
