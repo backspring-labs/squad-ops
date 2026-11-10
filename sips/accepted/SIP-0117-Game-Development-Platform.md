@@ -1,20 +1,20 @@
 ---
 sip_uid: '17922784453538440'
-sip_number: null
-title: "Game Development Platform Capability"
+sip_number: 117
+title: Game Development Platform Capability
 revision: 4
-status: "proposed"
-author: "Framework Committee"
+status: accepted
+author: Framework Committee
 approver: null
-created_at: "2026-10-16T00:00:00Z"
-updated_at: "2026-10-16T00:00:00Z"
-original_filename: "SIP-Game-Development-Platform.md"
+created_at: '2026-10-16T00:00:00Z'
+updated_at: '2026-11-10T13:51:38.893678Z'
+original_filename: SIP-Game-Development-Platform.md
 ---
-# SIP-XXX — Game Development Platform Capability
+# SIP-0117 — Game Development Platform Capability
 ## Engine integration plugins (Roblox, Godot, Unity) and Remote Tool Execution
 
-**Status:** Proposed (the owner's draft, filed 2026-10-17)  
-**Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. Roblox integration is a development profile that requires skillsets, agents that carry them, and a provider behind the remote-execution adapter (§R4, which governs where §R3, §R2 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.8). Acceptance waits for the owner's renewed review (D9).  
+**Status:** **Accepted (2026-11-10):** the owner, "accept 2405 then 2841", after the renewed review D9 called for. Filed 2026-10-17 as the owner's draft. **Building:** its phases may be built in a MacBook worktree during 2.7 (D6); nothing merges until 2.8 opens and its plan places them.  
+**Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. Roblox integration is a development profile that requires skillsets, agents that carry them, and a provider behind the remote-execution adapter (§R4, which governs where §R3, §R2 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.8).  
 **Target Version:** TBD  
 **Author:** Framework Committee  
 **Roles Impacted:** Lead, Strategy, Dev, QA, Data  
@@ -157,7 +157,7 @@ in the portfolio's §4).
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
   `docs/ideas/Doc traceability.txt`; the repository's SIP template, `sips/TEMPLATE.md`.
 
-## Delivery ledger (current as of 2026-11-09)
+## Delivery ledger (current as of 2026-11-10)
 
 One row per part that ships separately. Statuses: *shipped* (the release, the PR, and the issue it closed),
 *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once numbered), *unplaced* (said
@@ -364,7 +364,7 @@ form, and the Roblox dev skillset is `roblox-luau-dev`, so that every Roblox ski
 - the companion's fourth contract, `game.increment_design`, with a strategy skillset, and its builder with no step in
   the first milestone (its R4.2).
 
-**Still the owner's:** the renewed review and acceptance of this SIP, then the companion (D9).
+**Accepted by the owner on 2026-11-10** ("accept 2405 then 2841"), as SIP-0117, with the companion accepted after it.
 
 ---
 
@@ -575,7 +575,7 @@ The plan's D1–D10, accepted by the owner on 2026-11-08, as they touch this SIP
 | D5 | typed, deny-by-default operations; `execute_luau` only through the harness | R3.6 |
 | D7 | one engine-neutral task type with operation ids; planning property-driven | R3.5 |
 | D8 | `game-dev-<engine>` naming | R3.1 |
-| D9 | the two-document split kept; acceptance after renewed review | this revision |
+| D9 | the two-document split kept; acceptance after renewed review | this revision; accepted 2026-11-10 |
 | D10 | the adapter owns sync | R3.6 |
 
 D1 (the claim) and D6 (parallel development) are the companion's and the plan's.

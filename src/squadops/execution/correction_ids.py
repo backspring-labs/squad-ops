@@ -8,6 +8,15 @@ LangFuse traces, the ``from=repair-…`` attribution in stored evidence, and #16
 
 from __future__ import annotations
 
+#: The retest's prefix. A retest runs the repaired suite again in execute-only mode, with no model
+#: call (``CorrectionRunner``'s retest), so what it stores answers no prompt (#2892).
+RETEST_PREFIX = "retest"
+
+
+def is_retest_task_id(task_id: str) -> bool:
+    """Whether ``task_id`` is a retest's, as :func:`correction_task_id` names one."""
+    return task_id.startswith(f"{RETEST_PREFIX}-")
+
 
 def correction_task_id(
     prefix: str, run_id: str, attempt: int, round_seq: int, task_type: str

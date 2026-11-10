@@ -1,0 +1,52 @@
+# The 2.7 soak's Campaign (#2892), pre-registration §4. Created only once §9 is filled and committed.
+# One script per launch, in the recording's launch order (cmp_f14bab82c35f, 15 launches); a repair
+# takes the next script, as the recording's did. No scenario_suite: none is pinned.
+project_id: prj-shelfnote
+objective:
+  statement: "the 2.7 soak: Shelfnote's goal set worked in its order, one backlog item per increment, every call answered from the recording's scripts"
+  allowed_scope: ["backend/**", "tests/**"]
+  measurement: "at least eight increments ended, any verdict, and at least nine hours, each increment judged on the product's own pytest runner; the launch order, kinds and acceptances are the recording's (pre-registration §7)"
+  target_accepted_increments: 6
+  work_class:
+    prd_tier: tier-1
+    attendance: unattended
+  goals:
+    goal_set: prj-shelfnote
+    revision: 3
+  stop_when: backlog_done
+policy:
+  max_cycles: 17
+  max_elapsed_s: 54000
+  budget_tokens: 14000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 4
+  max_unaccepted_increments: 10
+  ruling_bound_s: 7200
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: campaign-increment-source
+  proposal_profile: campaign-increment-source
+  squad_profile: machinery
+  plan_gate: tier
+  stack: null
+  unattended_resume: []
+  llm_scripts:
+    - shelfnote-soak-c01@e9a159c699e6
+    - shelfnote-soak-c02@5ed2831c5082
+    - shelfnote-soak-c03@4ab10a2e2d50
+    - shelfnote-soak-c04@2d35a9154c75
+    - shelfnote-soak-c05@e516bb753704
+    - shelfnote-soak-c06@9331e1c72e11
+    - shelfnote-soak-c07@1589a3f59980
+    - shelfnote-soak-c08@4362a231ae21
+    - shelfnote-soak-c09@88fad7abeb9b
+    - shelfnote-soak-c10@26e2c5213ac5
+    - shelfnote-soak-c11@63abed2ed581
+    - shelfnote-soak-c12@cd9d8ea1f3c9
+    - shelfnote-soak-c13@2b5251d36e04
+    - shelfnote-soak-c14@c62023e3dafe
+    - shelfnote-soak-c15@e2ddcd4ff645

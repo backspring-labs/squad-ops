@@ -1,0 +1,2128 @@
+script: shelfnote-soak-c02
+description: 'The 2.7 soak (#2892), launch 2 of 15: increment 2 (SN-7), accepted.
+  Recorded from cyc_39f69c62f20b of Campaign cmp_f14bab82c35f on deploy dep_16a1cb4f54c8.
+  Its latency is the recorded gap times 3, held at 1,500 s.'
+replay_latency: true
+recorded_from:
+  project_id: prj-shelfnote
+  cycle_id: cyc_39f69c62f20b
+  change_requests:
+    strategy.propose_increment occurrence 1 call 1:
+      proposal_id: prop_9eaac178521b
+      version: 1
+      baseline_tree: 47f1e1d771218817dbc12f27296142b3587680dad4c7c46b3fdbed63817d0763
+      basis: campaign_branch
+      criterion_files:
+      - criterion_id: T3
+        path: tests/test_criterion_T3.py
+      goals_revision: 3
+      content_hash: 04c036ad9bb80115830ead00a0297624f3f4617e73b961c246fbfa3b3d7a53df
+      footprint:
+      - backend/routes.py
+      - backend/store.py
+      - backend/models.py
+      - tests/test_criterion_T3.py
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
+  latency:
+    scale: 3.0
+    cap_seconds: 1500.0
+    capped: 0
+    total_seconds: 2950.692
+answers:
+- task_type: strategy.propose_increment
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:change_request.yaml
+    kind: feature
+    prd_delta: []
+    manifest_delta: []
+    criteria:
+    - id: T3
+      statement: GET /books supports page and per_page query parameters and returns only
+        the books for the requested page with pagination metadata
+      surface_kind: endpoint
+      surface: GET /books
+      observable: When GET /books is called with page=2 and per_page=3 against a shelf
+        of 12 books, the response body is a JSON object whose 'items' array contains exactly
+        3 books (the 4th through 6th in the default ordering) and whose 'pagination' object
+        reports total=12, page=2, per_page=3, total_pages=4
+      paths:
+      - backend/routes.py
+      - backend/store.py
+      - backend/models.py
+    must_not_break:
+    - T1
+    - T2
+    retires: []
+    replaces_verifiers: []
+    footprint:
+    - backend/routes.py
+    - backend/store.py
+    - backend/models.py
+    backlog_item: SN-7
+    ```
+- task_type: development.design_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    # Technical Design — T3: Pagination for GET /books
+
+    ## Architecture Overview
+
+    This increment adds opt-in pagination to the existing `GET /books` endpoint. Three files change, each with a single, focused responsibility:
+
+    ```
+    ┌──────────────────────────────────────────────────────────────────┐
+    │  routes.py  (HTTP layer)                                         │
+    │  • Accepts optional page / per_page query params                │
+    │  • Validates ranges (ge=1, le=100)                              │
+    │  • Delegates to store, shapes response                          │
+    │  • Handler stays < 30 lines                                     │
+    └──────────────────────────┬───────────────────────────────────────┘
+                               │  (page, per_page) or (None, None)
+    ┌──────────────────────────▼───────────────────────────────────────┐
+    │  store.py  (data access)                                         │
+    │  • get_books_paginated(page, per_page) → (items, total)          │
+    │  • count_books() → int                                          │
+    │  • Slices the in-memory list; no SQL / DB involved               │
+    └──────────────────────────────────────────────────────────────────┘
+    ┌──────────────────────────────────────────────────────────────────┐
+    │  models.py  (schemas)                                            │
+    │  • Pagination (total, page, per_page, total_pages)              │
+    │  • PaginatedBooksResponse (items, pagination)                   │
+    │  • Reuses existing Book model                                   │
+    └──────────────────────────────────────────────────────────────────┘
+    ```
+
+    **Key decision — opt-in pagination.** When neither `page` nor `per_page` is supplied the endpoint returns the same response shape it does today (a plain list of books). This preserves T1 and T2 without modification. When at least one parameter is present the response becomes `{"items": [...], "pagination": {...}}`.
+
+    ---
+
+    ## Interface Definitions
+
+    ### models.py — additions
+
+    ```python
+    class Pagination(BaseModel):
+        total: int
+        page: int
+        per_page: int
+        total_pages: int
+
+    class PaginatedBooksResponse(BaseModel):
+        items: list[Book]
+        pagination: Pagination
+    ```
+
+    Both are additive. The existing `Book` model is untouched.
+
+    ### store.py — additions
+
+    ```python
+    def get_books_paginated(self, page: int, per_page: int) -> tuple[list[Book], int]:
+        """Return (page_of_books, total_count) for the given 1-based page."""
+        all_books = self._books          # existing private list, default ordering
+        total = len(all_books)
+        start = (page - 1) * per_page
+        end = start + per_page
+        return all_books[start:end], total
+    ```
+
+    The existing `get_all_books()` (or equivalent) is left intact for the non-paginated path.
+
+    ### routes.py — modified handler
+
+    ```python
+    @router.get("/books")
+    async def list_books(
+        page: Optional[int] = Query(None, ge=1, description="1-based page number"),
+        per_page: Optional[int] = Query(None, ge=1, le=100, description="Books per page"),
+    ):
+        if page is None and per_page is None:
+            return store.get_all_books()          # existing shape, no change
+        p = page if page is not None else 1
+        pp = per_page if per_page is not None else 10
+        items, total = store.get_books_paginated(p, pp)
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=Pagination(total=total, page=p, per_page=pp,
+                                  total_pages=math.ceil(total / pp)),
+        )
+    ```
+
+    **Line count:** 12 lines of logic (well under the 30-line ceiling in CONTRIBUTING.md).
+
+    ### Response contract (paginated path)
+
+    | Field | Type | Notes |
+    |---|---|---|
+    | `items` | `Book[]` | Books for this page, default ordering (insertion / ID order) |
+    | `pagination.total` | `int` | Total books on the shelf |
+    | `pagination.page` | `int` | The page requested |
+    | `pagination.per_page` | `int` | The per-page size used |
+    | `pagination.total_pages` | `int` | `ceil(total / per_page)` |
+
+    ### Validation / error behaviour
+
+    | Condition | Response |
+    |---|---|
+    | `page < 1` or `per_page < 1` | `422` (FastAPI `Query(ge=1)`) |
+    | `per_page > 100` | `422` (FastAPI `Query(le=100)`) |
+    | `page > total_pages` | `200`, `items: []`, correct pagination metadata |
+    | Shelf empty, pagination requested | `200`, `items: []`, `total: 0`, `total_pages: 0` |
+
+    ---
+
+    ## Implementation Sequencing
+
+    | Phase | Work | Depends on | Est. time |
+    |---|---|---|---|
+    | 1 | Add `Pagination` + `PaginatedBooksResponse` to `models.py` | — | 5 min |
+    | 2 | Add `get_books_paginated` to `store.py` | 1 | 5 min |
+    | 3 | Modify `list_books` handler in `routes.py` | 1, 2 | 10 min |
+    | 4 | Write `tests/test_criterion_T3.py` | 1, 2, 3 | 15 min |
+    | 5 | Run full `pytest -q` (T1, T2, T3, all existing suites) + `boots` check | 4 | 5 min |
+    | 6 | Run `npm --prefix frontend test --silent` (regression only) | 5 | 2 min |
+
+    **Total: ~42 min.** Well inside the 3-hour budget. No frontend files are touched; the frontend test run is a regression gate only.
+
+    No parallelism is needed — the dependency chain is linear and short.
+
+    ---
+
+    ## Proto Validation Plan
+
+    The risk surface here is small and well-understood (in-memory list slicing + optional query params). I identify **one** prototype worth spending 10 minutes on before committing to the full implementation:
+
+    **Proto P1 — response-shape compatibility with T1/T2.**
+
+    *Question:* Do existing T1 or T2 tests call `GET /books` without pagination params and assert on the response body shape (e.g., `assert data == [...]` expecting a bare list)?
+
+    *Approach:* Read `tests/test_criterion_T1.py` and `tests/test_criterion_T2.py` at the baseline commit. If either asserts on the GET /books list shape, confirm that the opt-in design (no params → same list) keeps them green. If a test *does* pass `page` or `per_page` (unlikely, since the params don't exist yet), flag it.
+
+    *Disposal:* If the answer is "T1/T2 don't touch GET /books response shape" or "they only check status code + a subset of fields," the opt-in design is confirmed and the proto is discarded. If a conflict is found, escalate as a `blocker`.
+
+    No other prototype is warranted. List slicing, `math.ceil`, and FastAPI `Query` validation are all standard library / framework behaviour with no feasibility risk.
+
+    ---
+
+    ## Unknown Classification
+
+    | # | Unknown | Classification | Rationale |
+    |---|---|---|---|
+    | U1 | Exact response shape T1 and T2 assert on for GET /books | `proto_validated` | Resolved by Proto P1 (reading the two test files). If they expect a bare list, opt-in design is confirmed. |
+    | U2 | What "default ordering" means for the book list | `resolved` | The store holds an in-memory list. Default ordering is insertion order (list order). The existing `test_sorting_t1.py` tests an explicit `sort` param; absence of that param means list order. Pagination slices the same ordered list. |
+    | U3 | Default `per_page` when only `page` is given (or vice-versa) | `acceptable_risk` | Set to 10. The criterion tests only explicit `per_page=3`. If a future test expects a different default, the constant is a one-line change. Mitigation: document the default in the Query description string. |
+    | U4 | Whether `total_pages` should be 0 when total is 0 | `resolved` | `math.ceil(0 / pp)` = 0. The criterion's arithmetic (`12/3 → 4`) confirms `ceil` semantics. Zero-books case yields `total_pages=0`. |
+    | U5 | Max value for `per_page` | `acceptable_risk` | Capped at 100 (conventional). No criterion tests beyond that. If the product later needs a different cap it's a constant change. |
+    | U6 | Whether the frontend `BooksListView.jsx` will break if the response shape changes | `resolved` | The frontend is **not** in the footprint. It keeps its accepted implementation. Since pagination is opt-in (no params → same list shape), the frontend's existing `fetch` call (which passes no params) is unaffected. The frontend test run (`npm --prefix frontend test`) is a regression gate, not a redesign. |
+
+    **No `blocker` or `requires_human_decision` unknowns.** All unknowns are resolved, proto-validated, or acceptable risk with a clear mitigation.
+
+    ---
+
+    ## Files to Emit (full, replacing the path)
+
+    | File | Action |
+    |---|---|
+    | `backend/models.py` | **Modify** — add `Pagination`, `PaginatedBooksResponse` |
+    | `backend/store.py` | **Modify** — add `get_books_paginated` method |
+    | `backend/routes.py` | **Modify** — add optional query params to `list_books`, branch on presence |
+    | `tests/test_criterion_T3.py` | **Create** — new test file |
+
+    No other file changes. The build starts from the accepted code at the baseline commit.
+
+    ---
+
+    ## Test Plan (tests/test_criterion_T3.py)
+
+    The test file follows the product's convention: pytest, `TestClient`, no external imports beyond what `requirements.txt` declares.
+
+    | Test | Setup | Request | Assert |
+    |---|---|---|---|
+    | `test_page_2_per_page_3_returns_correct_slice` | 12 books seeded (via existing fixture or `POST /books`) | `GET /books?page=2&per_page=3` | `items` length = 3; items are books[3:6] (0-indexed); `pagination == {total:12, page:2, per_page:3, total_pages:4}` |
+    | `test_page_1_per_page_3_returns_first_page` | 12 books | `GET /books?page=1&per_page=3` | `items` = first 3 books; pagination correct |
+    | `test_last_partial_page` | 10 books | `GET /books?page=3&per_page=4` | `items` length = 2; `total_pages = 3` |
+    | `test_page_beyond_range_returns_empty` | 5 books | `GET /books?page=99&per_page=10` | `items == []`; `pagination.total = 5`; `total_pages = 1` |
+    | `test_page_lt_1_returns_422` | any | `GET /books?page=0&per_page=10` | status 422 |
+    | `test_per_page_gt_100_returns_422` | any | `GET /books?page=1&per_page=101` | status 422 |
+    | `test_no_params_returns_list` (must-not-break) | 5 books | `GET /books` (no params) | response is a JSON **list** (not an object) — confirms T1/T2 compat |
+    | `test_empty_shelf_paginated` | 0 books | `GET /books?page=1&per_page=5` | `items == []`; `pagination.total = 0`; `total_pages = 0` |
+
+    Each test fails on the **response body** (per CONTRIBUTING.md), not on imports.
+
+    ---
+
+    ## Risks & Mitigations
+
+    | Risk | Likelihood | Mitigation |
+    |---|---|---|
+    | T1 or T2 asserts a specific response structure for GET /books that the opt-in change breaks | Low (opt-in preserves no-param shape) | Proto P1 reads both files before implementation. If conflict found, escalate as blocker. |
+    | `math.ceil` import not present in routes.py | Low | Add `import math` at top of routes.py. |
+    | Existing store method name differs from `get_all_books` | Low | Read `store.py` at baseline before writing; use the actual method name. |
+    | Per-page cap of 100 is too low for a test | Very low | No existing test uses > 100. Easy to adjust. |
+
+    ---
+
+    ## Out of Scope (explicitly deferred)
+
+    - Cursor-based or keyset pagination (the criterion specifies offset-based: page + per_page).
+    - Pagination on other endpoints (`/books/search`, `/books/{id}`, etc.) — not in footprint or criteria.
+    - Frontend changes to display pagination controls — not in footprint.
+    - Configurable default `per_page` via environment variable — not in criteria.
+    - Adding a `page` param to the search endpoint — separate change request.
+
+    All of the above would require their own change requests and footprints.
+
+    ---
+
+    **Summary.** This is a small, well-bounded feature: three additions to existing files and one new test file. The design is conventional (optional offset pagination, standard response envelope), the risk surface is minimal, and the implementation should complete in under an hour including full regression runs. No blockers, no human decisions required. Ready to proceed to implementation.
+  latency_seconds: 494.303
+- task_type: qa.define_test_strategy
+  occurrence: 1
+  call: 1
+  content: |-
+    # Test Strategy — T3: Pagination for GET /books
+
+    **Proposition:** `prop_9eaac178521b` v1 · **Backlog:** SN-7 · **Budget:** 3 h
+
+    ---
+
+    ## 1. Acceptance Checklist
+
+    These are the concrete pass/fail gates. All must be green before the change is approvable.
+
+    ### 1.1 Criterion T3 (new behaviour)
+
+    - [ ] **T3-core:** `GET /books?page=2&per_page=3` against a fixture of 12 books returns HTTP 200 with a JSON body whose top-level keys include `items` and `pagination`.
+    - [ ] **T3-slice:** The `items` array contains exactly 3 book objects, corresponding to the 4th, 5th, and 6th books in the shelf's default ordering (i.e. the slice `[3:6]` zero-indexed).
+    - [ ] **T3-meta:** The `pagination` object reports `total=12`, `page=2`, `per_page=3`, `total_pages=4` (integer division `ceil(12/3)`).
+    - [ ] **T3-status:** The response status code is 200 (not 201, 204, or an error code).
+
+    ### 1.2 Boundary & edge cases (derived from T3)
+
+    - [ ] **T3-page-1:** `page=1&per_page=3` returns books 1–3 in `items`; `pagination.page=1`.
+    - [ ] **T3-last-page:** `page=4&per_page=3` returns book 12 only (1 item); `pagination.total_pages=4`.
+    - [ ] **T3-beyond-range:** `page=5&per_page=3` returns HTTP 404 (or 400) with a JSON error body — does **not** silently return an empty list as if it were valid.
+    - [ ] **T3-page-zero:** `page=0` returns HTTP 422 (FastAPI validation) or 400; no items returned.
+    - [ ] **T3-neg-page:** `page=-1` returns HTTP 422 or 400.
+    - [ ] **T3-neg-perpage:** `per_page=-1` returns HTTP 422 or 400.
+    - [ ] **T3-perpage-1:** `page=1&per_page=1` returns exactly 1 book; `pagination.total_pages=12`.
+    - [ ] **T3-perpage-exceeds-total:** `page=1&per_page=50` returns all 12 books; `pagination.total_pages=1`.
+    - [ ] **T3-perpage-0:** `per_page=0` returns HTTP 422 or 400 (division-by-zero guard).
+
+    ### 1.3 Backward compatibility (must-not-break)
+
+    - [ ] **T1-still-passes:** Running `pytest tests/test_criterion_T1.py` produces the same pass count as at baseline commit `2039e0da`.
+    - [ ] **T2-still-passes:** Running `pytest tests/test_criterion_T2.py` produces the same pass count as at baseline commit `2039e0da`.
+    - [ ] **T-implicit-default:** `GET /books` with **no** `page` or `per_page` query parameters returns the same response shape as before the change (no `pagination` key, or a `pagination` key that is `null`/absent — matching the pre-change contract that T1/T2 assert).
+
+    ### 1.4 Structural / code-quality gates (from CONTRIBUTING.md)
+
+    - [ ] **Handler-length:** The modified `GET /books` handler in `backend/routes.py` is ≤ 30 lines.
+    - [ ] **No-external-import:** The new test file imports only packages declared in `backend/requirements.txt` (pytest, httpx/FastAPI TestClient). No undeclared package is imported.
+    - [ ] **TestClient-only:** The new test exercises the API through FastAPI `TestClient` or `httpx.AsyncClient`, not a running server.
+    - [ ] **Footprint-respect:** Only `backend/routes.py`, `backend/store.py`, `backend/models.py`, and `tests/test_criterion_T3.py` differ from baseline. No other file changes.
+    - [ ] **Boots-check:** `.venv/bin/python -c "from backend.main import app"` exits 0.
+
+    ---
+
+    ## 2. Test Strategy Note
+
+    ### 2.1 Scope decision
+
+    | Layer | Decision | Rationale |
+    |-------|----------|-----------|
+    | Unit (function-level) | **Not written separately** | The pagination slicing lives in `store.py`; it is exercised end-to-end through the endpoint. A separate unit test would duplicate the same logic without adding fault-detection value in a 3-h window. |
+    | Integration (endpoint via TestClient) | **Primary coverage** | `tests/test_criterion_T3.py` is the sole new test file. It drives `GET /books` through FastAPI's `TestClient` with various query-parameter combinations, asserting on status code, body shape, item count, item identity, and pagination metadata. |
+    | Contract / schema | **Asserted inline** | Each test asserts the exact JSON keys and types in the response. No separate OpenAPI/Pydantic contract test is warranted at this scale. |
+    | E2E / frontend | **Out of scope** | The footprint is backend-only. The frontend's `BooksListView.jsx` and `api.js` are not in the footprint and must remain unchanged. No vitest changes. |
+    | Regression (existing suite) | **Full run** | The product's `backend_tests` runner (`pytest -q`) picks up every `test_*.py` under `.`. T1, T2, search, sorting, tags, ratings, reading-status tests all run. They must all pass. |
+
+    ### 2.2 Fixture strategy
+
+    The test file `tests/test_criterion_T3.py` should:
+
+    1. Use the product's existing `conftest.py` fixture (which appears to seed a known set of books via `TestClient`).
+    2. Ensure exactly **12 books** exist in the shelf before the pagination test runs (seed or assert). If the conftest seeds fewer, the test file creates the remaining books via `POST /books` within a `setup` scope.
+    3. Record the **default ordering** (the order `GET /books` returns without pagination) so that the test can assert the correct 3 books appear at `page=2&per_page=3`.
+    4. Use `TestClient` with the app from `backend.main` — no network, no running server.
+
+    ### 2.3 What the tests must NOT do
+
+    - They must not import `backend.models` or `backend.store` directly to inspect internal state — assertions are on the HTTP response only (per CONTRIBUTING.md: "fails on what the response says, not on importing something the change adds").
+    - They must not monkey-patch the store; the running app is the system under test.
+    - They must not be satisfied by FastAPI's default `404` for an unknown path.
+
+    ### 2.4 Test count estimate
+
+    Approximately **9–12 test functions** in `tests/test_criterion_T3.py`:
+
+    | # | Test | Checks |
+    |---|------|--------|
+    | 1 | `test_pagination_core` | T3-core, T3-slice, T3-meta, T3-status |
+    | 2 | `test_pagination_first_page` | T3-page-1 |
+    | 3 | `test_pagination_last_page_partial` | T3-last-page |
+    | 4 | `test_pagination_beyond_range` | T3-beyond-range |
+    | 5 | `test_pagination_page_zero` | T3-page-zero |
+    | 6 | `test_pagination_negative_values` | T3-neg-page, T3-neg-perpage, T3-perpage-0 |
+    | 7 | `test_pagination_per_page_one` | T3-perpage-1 |
+    | 8 | `test_pagination_per_page_exceeds_total` | T3-perpage-exceeds-total |
+    | 9 | `test_no_params_backward_compat` | T-implicit-default |
+    | 10 | `test_pagination_items_are_valid_books` | Every item in `items` is a dict with the expected book fields (id, title, etc.) |
+
+    ---
+
+    ## 3. Defect Severity Rubric
+
+    | Severity | Definition | Examples in this change | Block approval? |
+    |----------|-----------|------------------------|-----------------|
+    | **S0 — Critical** | Data corruption, security exposure, app does not boot, or an accepted behaviour is permanently lost. | `GET /books` without params now returns 500; a book is lost or duplicated; a test in T1/T2 fails and cannot be recovered. | **Yes** — stop, fix, re-run full suite. |
+    | **S1 — Major** | The API returns wrong data for a valid request, or violates the stated criterion. | `page=2&per_page=3` returns books 1–3 instead of 4–6; `total_pages` is 5 instead of 4; the `pagination` key is absent. | **Yes** — stop, fix, re-run T3 + T1 + T2. |
+    | **S2 — Minor** | Edge-case handling is sub-optimal but does not return incorrect data for in-range requests. | `page=5&per_page=3` returns `200` with an empty `items` array instead of 404; error message body is empty `{}`. | **No** — file as follow-up, note in review. Does not block if T1/T2 pass. |
+    | **S3 — Cosmetic** | Formatting, naming, or documentation nit. | Pagination metadata key is `totalPages` instead of `total_pages`; a docstring is missing. | **No** — note only. |
+
+    **Escalation rule:** If two S2 defects are found in the same test run, escalate the second to S1 (pattern suggests a systemic misunderstanding of boundary semantics).
+
+    ---
+
+    ## 4. Risk-Based Test Priorities
+
+    Ranked by probability of fault × impact if fault ships.
+
+    | Priority | Area | Why it's risky | Coverage |
+    |----------|------|---------------|----------|
+    | **P0** | **Backward compatibility (no params)** | The pre-change `GET /books` returns a bare list (or a specific envelope) that T1 and T2 assert. If the refactor always wraps the response in `{"items":…, "pagination":…}`, T1/T2 break. This is the single most likely regression. | `test_no_params_backward_compat` + full T1/T2 run. |
+    | **P1** | **Off-by-one in item slicing** | `page=2, per_page=3` → slice `[3:6]` vs `[2:5]`. The "4th through 6th" wording in the criterion is 1-indexed; the code is 0-indexed. A one-position shift is the most common pagination bug. | `test_pagination_core` asserts exact book IDs/titles, not just count. |
+    | **P2** | **`total_pages` arithmetic** | `ceil(12/3)=4` is straightforward, but `ceil(12/5)=3`, `ceil(12/13)=1` need correct integer division. A `//` vs `math.ceil` mix-up produces off-by-one page counts. | `test_pagination_per_page_exceeds_total` and `test_pagination_per_page_one` exercise non-divisible cases. |
+    | **P3** | **Boundary / invalid-input handling** | `page=0`, negative values, `per_page=0`. FastAPI's `Query(..., ge=1)` can handle some, but the store layer may still receive a zero and divide by it. | `test_pagination_beyond_range`, `test_pagination_negative_values`. |
+    | **P4** | **Interaction with existing sort/filter** | If `GET /books` already supports a `sort` or `filter` param, pagination must apply *after* filtering, not before. The criterion says "default ordering" but the code must not silently break a combined query. | Not in the criterion's observable, but covered implicitly if the full suite (sorting tests, search tests) passes. Flag as S2 if a combined query misbehaves. |
+
+    ---
+
+    ## 5. Verification Run Plan (for implementation phase)
+
+    When the implementation is ready, the QA agent runs:
+
+    ```
+    # 1. Boot check
+    .venv/bin/python -c "from backend.main import app"
+    # expect: exit 0, no output
+
+    # 2. Full backend test suite (includes T1, T2, T3, and all existing tests)
+    .venv/bin/python -m pytest -q -p no:cacheprovider
+    # expect: all pass; count ≥ baseline + 9 (new T3 tests)
+
+    # 3. Frontend tests (must be unchanged but confirmed green)
+    npm --prefix frontend test --silent
+    # expect: same pass count as baseline
+    ```
+
+    Any failure is triaged against the severity rubric in §3. S0/S1 defects halt the cycle.
+
+    ---
+
+    ## 6. Out-of-Scope / Deferred
+
+    - **Frontend pagination UI** (page controls, "next/prev" buttons in `BooksListView.jsx`): The footprint does not include any frontend file. The API change is available to the frontend, but no frontend work is in this cycle.
+    - **Caching of paginated results**: No requirement for caching; deferred to a future increment if performance demands it.
+    - **Cursor-based pagination as an alternative**: The criterion specifies offset-based (`page`, `per_page`). Cursor pagination is a different design and out of scope.
+    - **Pagination on other endpoints** (`GET /search`, `GET /books/{id}/ratings`, etc.): The footprint and criterion name only `GET /books`.
+
+    ---
+
+    *Document produced at Stage A (planning). No test files are written here; the concrete `tests/test_criterion_T3.py` is produced during the implementation workload within the 3-hour budget.*
+  latency_seconds: 235.865
+- task_type: governance.prepare_plan_authoring_brief
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_authoring_brief.yaml
+    version: 1
+    brief_id: brief-prop_9eaac178521b-001
+    objective_summary: |
+      Add opt-in offset pagination to the existing GET /books endpoint on the
+      Shelfnote product. When page and/or per_page query parameters are supplied,
+      the response becomes a JSON object containing an items array (the requested
+      page of books) and a pagination metadata object (total, page, per_page,
+      total_pages). When neither parameter is supplied the response shape is
+      unchanged from the accepted baseline (a bare JSON array of books), preserving
+      criteria T1 and T2. The change touches exactly three backend source files
+      (models.py, store.py, routes.py) and adds one new test file
+      (tests/test_criterion_T3.py). No frontend file is modified.
+    accepted_stack:
+      backend: "Python 3 + FastAPI + in-memory list store (no database)"
+      frontend: "React + Vite (untouched this cycle; regression gate only)"
+      schemas: "Pydantic (via FastAPI response models)"
+      testing_backend: "pytest + FastAPI TestClient (no running server)"
+      testing_frontend: "vitest (regression gate only; no new frontend tests this cycle)"
+    must_cover_requirements:
+      - "GET /books accepts optional page (integer, >=1) and per_page (integer, >=1, <=100) query parameters"
+      - "When page=2 and per_page=3 against a shelf of 12 books, the response body is a JSON object whose items array holds exactly 3 books (the 4th through 6th in default ordering) and whose pagination object reports total=12, page=2, per_page=3, total_pages=4"
+      - "When neither page nor per_page is supplied, the response is a bare JSON array of books (the accepted baseline shape); it must not be an object — T1 and T2 remain green"
+      - "total_pages is ceil(total / per_page); when total is 0, total_pages is 0"
+      - "A page value exceeding total_pages yields an empty items array with correct pagination metadata (total, requested page, per_page, total_pages)"
+      - "page < 1, per_page < 1, or per_page > 100 are rejected by FastAPI query validation before the handler logic runs"
+      - "The modified GET /books handler in routes.py remains under 30 lines of logic (CONTRIBUTING.md ceiling)"
+      - "The new test file drives the endpoint exclusively through FastAPI TestClient and asserts on response bodies, never on internal imports"
+      - "Only the four footprint files change: backend/models.py, backend/store.py, backend/routes.py, tests/test_criterion_T3.py; every other file keeps its accepted implementation"
+    scope_cuts:
+      - "Frontend pagination UI (page controls, next/prev in BooksListView.jsx): deferred to a follow-up cycle"
+      - "Pagination on other endpoints (/books/search, /books/{id}, ratings, reading-status): deferred"
+      - "Cursor-based or keyset pagination: out of scope (criterion specifies offset-based page + per_page)"
+      - "Configurable per_page default via environment variable: deferred"
+      - "Caching of paginated results: deferred"
+      - "Any modification to a frontend file: out of footprint"
+    risk_areas:
+      - "Backward compatibility: the no-params GET /books response must remain a bare JSON array; wrapping it in an object silently breaks T1 and T2"
+      - "Off-by-one in slice indexing: page is 1-based, the in-memory list is 0-based; start = (page-1) * per_page"
+      - "total_pages arithmetic: ceil division, not floor; ceil(12/5) = 3 not 2; a // operator produces the wrong answer for non-divisible totals"
+      - "Interaction with existing sort or filter query parameters on GET /books: pagination must slice the already-filtered/sorted list, not the raw list"
+    source_artifact_refs:
+      - "change_request.yaml"
+      - "ruling_notes.md"
+      - "technical_design.md"
+      - "test_strategy.md"
+    major_components:
+      - "backend/models.py — additive Pydantic schemas: Pagination, PaginatedBooksResponse"
+      - "backend/store.py — additive method: get_books_paginated(page, per_page) returning (items, total)"
+      - "backend/routes.py — modified list_books handler: optional query params, branch on presence, shape response"
+      - "tests/test_criterion_T3.py — new test suite covering pagination behaviour and backward compatibility"
+    dependency_assumptions:
+      - "Books are held in an in-memory Python list; no database, no external service"
+      - "conftest.py at the repository root provides a TestClient fixture usable by the new test file"
+      - "backend/requirements.txt declares pytest and the HTTP client the TestClient path needs; the new test imports only what it declares"
+      - "FastAPI Query(ge=, le=) constraint validation is sufficient for input-range enforcement; no custom validator is needed"
+    time_budget_guidance:
+      backend_models: 10
+      backend_store: 15
+      backend_routes: 25
+      tests: 35
+      regression_validation: 15
+    task_granularity_guidance: "Aim for 2–5 minute LLM generations per task; four files with a linear dependency chain should decompose into at most 4–5 tasks."
+    artifact_naming_conventions:
+      - "All new Pydantic response models live in backend/models.py"
+      - "Store-layer methods live in backend/store.py"
+      - "Route handlers live in backend/routes.py"
+      - "The new test file is tests/test_criterion_T3.py (root-level tests/ directory, matching the product's existing layout and the change request footprint)"
+      - "Test functions are named test_<behaviour> following the product's existing pytest convention"
+    open_questions: []
+    ```
+  latency_seconds: 323.26
+- task_type: development.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-2f81c49a
+    source_brief_id: brief-prop_9eaac178521b-001
+    proposing_role: development
+    scope_statement: |
+      Three linearly-ordered implementation tasks for the opt-in offset-pagination
+      feature on GET /books. Task 1 adds the Pagination and PaginatedBooksResponse
+      Pydantic schemas to models.py. Task 2 adds the get_books_paginated slicing
+      method to store.py. Task 3 modifies the list_books handler in routes.py to
+      accept optional page/per_page query params, branch on their presence to
+      preserve the bare-array baseline, and shape the paginated response with
+      correct total_pages arithmetic. The test file (tests/test_criterion_T3.py)
+      is QA's domain and is excluded here.
+    tasks:
+      - task_type: development.develop
+        role: dev
+        focus: "Pagination response models"
+        description: |
+          Add two additive Pydantic schemas to backend/models.py:
+          - Pagination(BaseModel): total (int), page (int), per_page (int), total_pages (int)
+          - PaginatedBooksResponse(BaseModel): items (list[Book]), pagination (Pagination)
+          Both classes are new additions; the existing Book model and all other
+          schemas in the file are untouched. The file is emitted in full, replacing
+          its prior content with the additions included.
+        expected_artifacts:
+          - "backend/models.py"
+        acceptance_criteria:
+          - check: field_present
+            file: backend/models.py
+            class_name: Pagination
+            fields: [total, page, per_page, total_pages]
+            severity: error
+          - check: field_present
+            file: backend/models.py
+            class_name: PaginatedBooksResponse
+            fields: [items, pagination]
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/models.py']
+            severity: error
+          - check: module_imports
+            file: backend/models.py
+            severity: error
+        depends_on_focus: []
+
+      - task_type: development.develop
+        role: dev
+        focus: "Paginated store method"
+        description: |
+          Add a get_books_paginated method to the existing store class in
+          backend/store.py. The method signature is:
+            get_books_paginated(self, page: int, per_page: int) -> tuple[list[Book], int]
+          It computes start = (page - 1) * per_page and end = start + per_page,
+          slices the in-memory book list (self._books or equivalent) at those
+          indices, and returns the slice together with len(all_books) as the total.
+          page is 1-based; the list is 0-based, so the off-by-one is handled by
+          the (page - 1) factor. A page beyond the list bounds yields an empty
+          slice (Python list slicing is safe). The existing get_all_books (or
+          equivalent full-list accessor) is left intact for the non-paginated path.
+          The file is emitted in full with the new method included.
+        expected_artifacts:
+          - "backend/store.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: backend/store.py
+            name_prefix: 'get_books_paginated'
+            min_count: 1
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/store.py']
+            severity: error
+          - check: module_imports
+            file: backend/store.py
+            severity: error
+        depends_on_focus:
+          - "dev:Pagination response models"
+
+      - task_type: development.develop
+        role: dev
+        focus: "Paginated books endpoint"
+        description: |
+          Modify the existing list_books handler (GET /books) in backend/routes.py:
+          - Add two optional query parameters: page (Optional[int], Query(None, ge=1))
+            and per_page (Optional[int], Query(None, ge=1, le=100)).
+          - Branch: when BOTH page and per_page are None, return the store's
+            full-list result as-is (bare JSON array — preserves T1/T2 baseline).
+          - When at least one is present, default the missing one (page→1,
+            per_page→10), call store.get_books_paginated(p, pp), and return a
+            PaginatedBooksResponse with items and a Pagination object whose
+            total_pages is math.ceil(total / pp) (0 when total is 0).
+          - Add import math and the necessary model imports (Pagination,
+            PaginatedBooksResponse) at the top of the file.
+          - The handler body stays under 30 lines of logic per CONTRIBUTING.md.
+          - Existing sort/filter query parameters on the handler are preserved;
+            pagination slices the already-filtered/sorted result, not the raw
+            store list.
+          The file is emitted in full, replacing its prior content.
+        expected_artifacts:
+          - "backend/routes.py"
+        acceptance_criteria:
+          - check: import_present
+            file: backend/routes.py
+            module: 'backend.models'
+            symbol: 'PaginatedBooksResponse'
+            severity: error
+          - check: import_present
+            file: backend/routes.py
+            module: 'backend.models'
+            symbol: 'Pagination'
+            severity: error
+          - check: endpoint_defined
+            file: backend/routes.py
+            methods_paths: ['GET /books']
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/routes.py']
+            severity: error
+          - check: module_imports
+            file: backend/routes.py
+            severity: error
+          - "Handler logic (excluding decorators and type annotations) stays under 30 lines per CONTRIBUTING.md"
+          - "When neither page nor per_page is supplied, the response is a bare JSON array (not wrapped in an object), preserving the accepted T1/T2 baseline"
+          - "total_pages uses ceil division (math.ceil), not floor (//); ceil(12/3)=4, ceil(10/4)=3"
+          - "A page value exceeding total_pages yields an empty items array with correct pagination metadata (total, requested page, per_page, total_pages)"
+        depends_on_focus:
+          - "dev:Pagination response models"
+          - "dev:Paginated store method"
+    brief_conflicts: []
+    confidence: high
+    ```
+  latency_seconds: 234.491
+- task_type: qa.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-da364832
+    source_brief_id: brief-prop_9eaac178521b-001
+    proposing_role: qa
+    scope_statement: |
+      Single qa.test task authoring tests/test_criterion_T3.py, the new criterion
+      verifier for T3 (opt-in offset pagination on GET /books). The suite exercises
+      the endpoint exclusively through FastAPI TestClient and asserts on HTTP
+      response bodies, distinguishing the faults the brief's must_cover_requirements
+      could be built with: backward-compat breakage (no-params response wrapped in
+      an object instead of a bare array), off-by-one in 1-based page slicing,
+      floor-vs-ceil in total_pages arithmetic, beyond-range page returning wrong
+      metadata, and query-parameter range rejections. Regression of frozen T1/T2
+      is covered by the framework's frozen-suite re-run plus an explicit
+      no-params shape assertion in the new file. No separate regression task is
+      proposed because the framework's tests_pass check already re-runs every
+      collected suite on the candidate.
+    tasks:
+      - task_type: qa.test
+        role: qa
+        focus: "T3 pagination endpoint test suite"
+        description: |
+          Write tests/test_criterion_T3.py covering the T3 criterion and its
+          derived boundary and edge cases. Each test function drives GET /books
+          through FastAPI TestClient and asserts on the HTTP response status code
+          and JSON body structure. No test imports backend.models, backend.store,
+          or any other internal module to inspect state; all assertions are on
+          what the endpoint returns.
+
+          Faults distinguished by the suite:
+
+          1. Backward-compat breakage (P0 risk): a GET /books with neither page
+             nor per_page returns a JSON object ({"items":…, "pagination":…})
+             instead of a bare JSON array. This silently breaks T1 and T2.
+             Distinguished by an explicit check that the parsed body is a list,
+             not a dict, and that it contains the expected books.
+
+          2. Off-by-one in slice indexing (P1 risk): page is 1-based, the in-memory
+             list is 0-based. A wrong start index (page * per_page instead of
+             (page-1) * per_page) shifts the window. Distinguished by asserting
+             the exact book IDs or titles in the items array for page=2,
+             per_page=3 against a known 12-book shelf (expecting the 4th through
+             6th books in default ordering).
+
+          3. total_pages arithmetic (P2 risk): floor division (total // per_page)
+             instead of ceil (math.ceil(total / per_page)) undercounts when the
+             division is not exact. Distinguished by a non-divisible case (e.g.,
+             10 books with per_page=4 expecting total_pages=3, not 2) and a
+             zero-total case (0 books with per_page=5 expecting total_pages=0).
+
+          4. Beyond-range page: a page value exceeding total_pages must yield a
+             200 response with an empty items array and correct pagination
+             metadata (total, the requested page number, per_page, total_pages).
+             Distinguished from both a missing-pagination bug and an error-status
+             bug.
+
+          5. Query-parameter validation: page < 1, per_page < 1, and per_page > 100
+             are rejected by FastAPI's Query(ge=, le=) constraints before handler
+             logic runs. Distinguished by asserting a 422 status for each
+             out-of-range value.
+
+          6. Partial last page: when the final page holds fewer items than
+             per_page (e.g., 10 books, per_page=4, page=3 → 2 items), the items
+             array contains exactly that many entries.
+
+          7. per_page exceeding total shelf size: per_page=50 against 12 books
+             returns all 12 in a single items array with total_pages=1.
+
+          Fixture strategy: seed exactly 12 books via POST /books (or use the
+          product's existing conftest fixture if it provides a known shelf),
+          record the default ordering from a no-params GET /books, and use that
+          ordering to assert correct slice membership in the pagination tests.
+          For the zero-shelf test, use a fresh client or clear state as the
+          product's conftest permits.
+        expected_artifacts:
+          - "tests/test_criterion_T3.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: tests/test_criterion_T3.py
+            name_prefix: "test_"
+            min_count: 8
+            severity: error
+        depends_on_focus:
+          - "dev:Pagination response models"
+          - "dev:Paginated store method"
+          - "dev:Paginated books endpoint"
+    brief_conflicts: []
+    assumptions:
+      - "The product's root conftest.py provides a TestClient fixture (or the test file constructs one from backend.main.app) that is usable by tests/test_criterion_T3.py."
+      - "Books can be seeded via POST /books to build a known 12-book shelf for the pagination tests, or the conftest fixture already seeds a known set."
+      - "The product's pytest runner (invoked as `pytest -q -p no:cacheprovider` from the repo root) collects tests/test_criterion_T3.py by its test_*.py name pattern."
+    risks:
+      - "If the existing conftest.py seeds a fixed number of books that differs from 12, the test file must create or delete books via POST/DELETE /books to reach exactly 12 before the pagination assertions."
+    gaps_not_covered:
+      - "Handler length (≤ 30 lines) in routes.py is a code-quality gate enforced by the dev task's prose acceptance criterion and by human review; it is not a behavioural test and has no qa.test task."
+      - "Frontend regression (npm --prefix frontend test) is a build-level check, not a qa-authored test; no frontend file changes this cycle."
+    confidence: high
+    ```
+  latency_seconds: 500.731
+- task_type: strategy.propose_plan_guidance
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_guidance.yaml
+    version: 1
+    guidance_id: guid-5452b3d1
+    source_brief_id: brief-prop_9eaac178521b-001
+    proposing_role: strategy
+    priority_guidance:
+      - area: backend_routes
+        priority: high
+        rationale: |
+          The list_books handler is the single integration point where the
+          dual-shape response decision (bare array vs. paginated object) is made.
+          A branch-inversion here silently breaks T1 and T2 with no runtime error —
+          the response is valid JSON, just the wrong shape. This is the highest-
+          failure-cost file in the change and deserves the tightest review.
+      - area: tests
+        priority: high
+        rationale: |
+          The test suite is the only automated gate for backward compatibility,
+          off-by-one slicing, and ceil-division correctness. Without a no-params
+          assertion that explicitly checks isinstance(response_json, list), the
+          change can ship a wrapped response that no other check catches.
+      - area: backend_store
+        priority: medium
+        rationale: |
+          The slicing method contains the off-by-one risk (page is 1-based, list
+          is 0-based) but is a small, isolated method. Lower structural risk than
+          routes, but a single arithmetic error shifts every page by one book.
+      - area: backend_models
+        priority: low
+        rationale: |
+          Two Pydantic dataclass-style schemas (Pagination, PaginatedBooksResponse).
+          Straightforward additive definitions with no branching logic. Minimal
+          failure surface.
+    ordering_guidance:
+      - before: "dev:backend_store"
+        after: "dev:backend_models"
+        rationale: |
+          The store method's return type may reference the Pagination schema or
+          at minimum the typing conventions it establishes. Land the schema
+          definitions first so the store task has a stable import target.
+      - before: "dev:backend_routes"
+        after: "dev:backend_store"
+        rationale: |
+          The modified list_books handler calls store.get_books_paginated(page,
+          per_page). The handler cannot be authored or tested meaningfully before
+          the store method exists and its signature is fixed.
+      - before: "qa:pagination_tests"
+        after: "dev:backend_routes"
+        rationale: |
+          The test suite exercises the endpoint through TestClient. The handler
+          must be in its final form (including the branch on param presence)
+          before tests can assert on response shapes. Writing tests against a
+          stub or partial handler produces false-green or false-red signals.
+    risk_guidance:
+      - target: "dev:backend_routes"
+        risk: |
+          Backward-compat inversion: if the handler defaults to the paginated-object
+          shape and only falls back to bare array in an explicit "no params" branch
+          that is never hit due to a falsy-check on the query params, T1 and T2
+          break silently. The safe pattern is: if neither param is supplied, return
+          the bare array FIRST and return early; only then build the paginated
+          object. The test suite must assert isinstance(body, list) for the
+          no-params case to catch this.
+      - target: "dev:backend_store"
+        risk: |
+          Off-by-one in slice indices: page=1 must map to start=0, not start=1.
+          The formula is start = (page - 1) * per_page. A developer who writes
+          start = page * per_page (forgetting the -1) will skip the first
+          per_page books on every request. Pair this with a test that asserts
+          page=1, per_page=3 returns books[0:3] in the default ordering.
+      - target: "dev:backend_routes"
+        risk: |
+          Ceil vs. floor division for total_pages: 12 books at per_page=5 gives
+          total_pages=3, not 2. Using total // per_page (floor) understates the
+          page count whenever total % per_page != 0. Must use math.ceil(total /
+          per_page) or the integer idiom (total + per_page - 1) // per_page.
+          Also: when total is 0, total_pages must be 0, not 1 (some ceil
+          implementations return 1 for 0/n).
+      - target: "dev:backend_routes"
+        risk: |
+          Pagination must operate on the already-sorted/filtered list. GET /books
+          currently supports sort and filter query params. If the handler fetches
+          the raw book list for the total count but slices the filtered list (or
+          vice-versa), total_pages and the items array disagree. The store method
+          must receive the full filtered/sorted list and return both the slice
+          and the total length of that list.
+      - target: "dev:backend_routes"
+        risk: |
+          30-line handler ceiling (CONTRIBUTING.md). The branch logic (check param
+          presence, compute total, slice, build pagination metadata, shape
+          response) plus the existing filter/sort handling can exceed 30 lines of
+          logic. If it does, extract a _paginate helper. The ceiling counts logic
+          lines, not blank lines or imports, but the merger should flag a
+          routes.py task that looks like it will need more than 30 lines of logic.
+    time_budget_guidance:
+      - area: backend_models
+        budget_pct: 10
+      - area: backend_store
+        budget_pct: 15
+      - area: backend_routes
+        budget_pct: 25
+      - area: tests
+        budget_pct: 35
+      - area: regression_validation
+        budget_pct: 15
+    scope_cut_guidance: []
+    must_not_skip:
+      - "No-params GET /books returns a bare JSON array (isinstance check on list, not dict) — the single most fragile backward-compat assertion"
+      - "total_pages == 0 when total == 0 (empty-shelf edge case) — without this, an empty shelf returns total_pages=1 or crashes on division"
+    defer_if_time_constrained: []
+    confidence: "high"
+    ```
+  latency_seconds: 261.797
+- task_type: governance.merge_plan
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:implementation_plan.yaml
+    version: 1
+    project_id: prj-shelfnote
+    cycle_id: cyc_39f69c62f20b
+    prd_hash: f2771bd4ed5bba87e0b33646a8230cec75bdbf5a66d160840bbe68e05cbf3d1e
+    tasks:
+    - task_index: 0
+      task_type: development.develop
+      role: dev
+      focus: Pagination response models
+      description: 'Add two additive Pydantic schemas to backend/models.py:
+
+        - Pagination(BaseModel): total (int), page (int), per_page (int), total_pages
+        (int)
+
+        - PaginatedBooksResponse(BaseModel): items (list[Book]), pagination (Pagination)
+
+        Both classes are new additions; the existing Book model and all other
+
+        schemas in the file are untouched. The file is emitted in full, replacing
+
+        its prior content with the additions included.'
+      expected_artifacts:
+      - backend/models.py
+      acceptance_criteria:
+      - check: field_present
+        file: backend/models.py
+        class_name: Pagination
+        fields:
+        - total
+        - page
+        - per_page
+        - total_pages
+      - check: field_present
+        file: backend/models.py
+        class_name: PaginatedBooksResponse
+        fields:
+        - items
+        - pagination
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/models.py
+      - check: module_imports
+        file: backend/models.py
+      depends_on: []
+    - task_index: 1
+      task_type: development.develop
+      role: dev
+      focus: Paginated store method
+      description: "Add a get_books_paginated method to the existing store class in\n\
+        backend/store.py. The method signature is:\n  get_books_paginated(self, page:\
+        \ int, per_page: int) -> tuple[list[Book], int]\nIt computes start = (page - 1)\
+        \ * per_page and end = start + per_page,\nslices the in-memory book list (self._books\
+        \ or equivalent) at those\nindices, and returns the slice together with len(all_books)\
+        \ as the total.\npage is 1-based; the list is 0-based, so the off-by-one is handled\
+        \ by\nthe (page - 1) factor. A page beyond the list bounds yields an empty\nslice\
+        \ (Python list slicing is safe). The existing get_all_books (or\nequivalent full-list\
+        \ accessor) is left intact for the non-paginated path.\nThe file is emitted in\
+        \ full with the new method included."
+      expected_artifacts:
+      - backend/store.py
+      acceptance_criteria:
+      - check: function_defined
+        file: backend/store.py
+        name_prefix: get_books_paginated
+        min_count: 1
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/store.py
+      - check: module_imports
+        file: backend/store.py
+      depends_on:
+      - 0
+    - task_index: 2
+      task_type: development.develop
+      role: dev
+      focus: Paginated books endpoint
+      description: "Modify the existing list_books handler (GET /books) in backend/routes.py:\n\
+        - Add two optional query parameters: page (Optional[int], Query(None, ge=1))\n\
+        \  and per_page (Optional[int], Query(None, ge=1, le=100)).\n- Branch: when BOTH\
+        \ page and per_page are None, return the store's\n  full-list result as-is (bare\
+        \ JSON array — preserves T1/T2 baseline).\n- When at least one is present, default\
+        \ the missing one (page→1,\n  per_page→10), call store.get_books_paginated(p,\
+        \ pp), and return a\n  PaginatedBooksResponse with items and a Pagination object\
+        \ whose\n  total_pages is math.ceil(total / pp) (0 when total is 0).\n- Add import\
+        \ math and the necessary model imports (Pagination,\n  PaginatedBooksResponse)\
+        \ at the top of the file.\n- The handler body stays under 30 lines of logic per\
+        \ CONTRIBUTING.md.\n- Existing sort/filter query parameters on the handler are\
+        \ preserved;\n  pagination slices the already-filtered/sorted result, not the\
+        \ raw\n  store list.\nThe file is emitted in full, replacing its prior content."
+      expected_artifacts:
+      - backend/routes.py
+      acceptance_criteria:
+      - check: import_present
+        file: backend/routes.py
+        module: backend.models
+        symbol: PaginatedBooksResponse
+      - check: import_present
+        file: backend/routes.py
+        module: backend.models
+        symbol: Pagination
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths:
+        - GET /books
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/routes.py
+      - check: module_imports
+        file: backend/routes.py
+      - Handler logic (excluding decorators and type annotations) stays under 30 lines
+        per CONTRIBUTING.md
+      - When neither page nor per_page is supplied, the response is a bare JSON array
+        (not wrapped in an object), preserving the accepted T1/T2 baseline
+      - total_pages uses ceil division (math.ceil), not floor (//); ceil(12/3)=4, ceil(10/4)=3
+      - A page value exceeding total_pages yields an empty items array with correct pagination
+        metadata (total, requested page, per_page, total_pages)
+      depends_on:
+      - 0
+      - 1
+    - task_index: 3
+      task_type: qa.test
+      role: qa
+      focus: T3 pagination endpoint test suite
+      description: "Write tests/test_criterion_T3.py covering the T3 criterion and its\n\
+        derived boundary and edge cases. Each test function drives GET /books\nthrough\
+        \ FastAPI TestClient and asserts on the HTTP response status code\nand JSON body\
+        \ structure. No test imports backend.models, backend.store,\nor any other internal\
+        \ module to inspect state; all assertions are on\nwhat the endpoint returns.\n\
+        \nFaults distinguished by the suite:\n\n1. Backward-compat breakage (P0 risk):\
+        \ a GET /books with neither page\n   nor per_page returns a JSON object ({\"items\"\
+        :…, \"pagination\":…})\n   instead of a bare JSON array. This silently breaks\
+        \ T1 and T2.\n   Distinguished by an explicit check that the parsed body is a\
+        \ list,\n   not a dict, and that it contains the expected books.\n\n2. Off-by-one\
+        \ in slice indexing (P1 risk): page is 1-based, the in-memory\n   list is 0-based.\
+        \ A wrong start index (page * per_page instead of\n   (page-1) * per_page) shifts\
+        \ the window. Distinguished by asserting\n   the exact book IDs or titles in the\
+        \ items array for page=2,\n   per_page=3 against a known 12-book shelf (expecting\
+        \ the 4th through\n   6th books in default ordering).\n\n3. total_pages arithmetic\
+        \ (P2 risk): floor division (total // per_page)\n   instead of ceil (math.ceil(total\
+        \ / per_page)) undercounts when the\n   division is not exact. Distinguished by\
+        \ a non-divisible case (e.g.,\n   10 books with per_page=4 expecting total_pages=3,\
+        \ not 2) and a\n   zero-total case (0 books with per_page=5 expecting total_pages=0).\n\
+        \n4. Beyond-range page: a page value exceeding total_pages must yield a\n   200\
+        \ response with an empty items array and correct pagination\n   metadata (total,\
+        \ the requested page number, per_page, total_pages).\n   Distinguished from both\
+        \ a missing-pagination bug and an error-status\n   bug.\n\n5. Query-parameter\
+        \ validation: page < 1, per_page < 1, and per_page > 100\n   are rejected by FastAPI's\
+        \ Query(ge=, le=) constraints before handler\n   logic runs. Distinguished by\
+        \ asserting a 422 status for each\n   out-of-range value.\n\n6. Partial last page:\
+        \ when the final page holds fewer items than\n   per_page (e.g., 10 books, per_page=4,\
+        \ page=3 → 2 items), the items\n   array contains exactly that many entries.\n\
+        \n7. per_page exceeding total shelf size: per_page=50 against 12 books\n   returns\
+        \ all 12 in a single items array with total_pages=1.\n\nFixture strategy: seed\
+        \ exactly 12 books via POST /books (or use the\nproduct's existing conftest fixture\
+        \ if it provides a known shelf),\nrecord the default ordering from a no-params\
+        \ GET /books, and use that\nordering to assert correct slice membership in the\
+        \ pagination tests.\nFor the zero-shelf test, use a fresh client or clear state\
+        \ as the\nproduct's conftest permits."
+      expected_artifacts:
+      - tests/test_criterion_T3.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_T3.py
+        name_prefix: test_
+        min_count: 8
+      depends_on:
+      - 0
+      - 1
+      - 2
+    summary:
+      total_dev_tasks: 3
+      total_qa_tasks: 1
+      total_tasks: 4
+      estimated_layers: []
+    ```
+
+    ```yaml:merge_decisions.yaml
+    version: 1
+    target_plan_id: plan-cyc_39f69c62f20b
+    brief_id: brief-prop_9eaac178521b-001
+    proposal_ids:
+    - prop-2f81c49a
+    - prop-da364832
+    guidance_ids:
+    - guid-5452b3d1
+    authoring_mode: multi_role
+    sole_author_reason: null
+    proposal_completeness: complete
+    missing_proposals: []
+    canonical_tasks:
+    - task_index: 0
+      source_proposal_task_keys:
+      - dev:pagination response models
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 1
+      source_proposal_task_keys:
+      - dev:paginated store method
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 2
+      source_proposal_task_keys:
+      - dev:paginated books endpoint
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 3
+      source_proposal_task_keys:
+      - qa:t3 pagination endpoint test suite
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    brief_conflicts_disposition: []
+    operator_notes: ''
+    ```
+  latency_seconds: 0.579
+- task_type: governance.review_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    ---
+    readiness: go
+    sufficiency_score: 4
+    blocker_unknowns: 0
+    ---
+
+    ## Consolidated Plan
+
+    ### 1. Context & Objective Frame
+
+    This is an increment on an accepted application (Shelfnote, commit `2039e0da`). The approved change request (`prop_9eaac178521b`, basis `campaign_branch`, backlog item SN-7) adds pagination to the `GET /books` endpoint. No PRD delta or manifest delta is introduced; the existing requirements and interface contract stand. The reviewer's notes contain no additional design directives beyond the pre-registration approval rule.
+
+    **Objective**: `GET /books` accepts optional `page` and `per_page` query parameters. When invoked with those parameters, the response is a JSON object containing an `items` array (the requested slice) and a `pagination` object with `total`, `page`, `per_page`, and `total_pages`.
+
+    **Footprint (exclusive)**:
+    | File | Role |
+    |------|------|
+    | `backend/routes.py` | Route handler: accept query params, delegate to store, shape response |
+    | `backend/store.py` | Data layer: return a paginated slice + total count |
+    | `backend/models.py` | Pydantic models: response envelope for paginated books |
+    | `tests/test_criterion_T3.py` | Test file: verify T3 observable and must-not-break behaviour |
+
+    All other files retain their accepted implementation.
+
+    ---
+
+    ### 2. Technical Design
+
+    #### 2.1 Backward-compatibility rule
+
+    `must_not_break: [T1, T2]` constrains the default (no-params) response shape. The design applies:
+
+    - **With `page` and/or `per_page` present** → response is a paginated object:
+      ```json
+      { "items": [ … ], "pagination": { "total": N, "page": p, "per_page": pp, "total_pages": tp } }
+      ```
+    - **Without either parameter** → response retains the existing shape accepted by T1/T2 (a bare list of book objects, or whatever the current handler returns).
+
+    This conditional branching keeps the accepted contract intact while introducing the new behaviour behind explicit query parameters.
+
+    #### 2.2 `backend/models.py`
+
+    Add a Pydantic model:
+
+    ```python
+    class PaginationMeta(BaseModel):
+        total: int
+        page: int
+        per_page: int
+        total_pages: int
+
+    class PaginatedBooksResponse(BaseModel):
+        items: List[BookResponse]   # reuse existing book model
+        pagination: PaginationMeta
+    ```
+
+    No existing model is modified; the new models are additive.
+
+    #### 2.3 `backend/store.py`
+
+    Add a method (or extend the existing list method) that accepts `offset: int` and `limit: int` and returns a tuple:
+
+    ```python
+    def list_books_paginated(self, offset: int, limit: int) -> tuple[list[Book], int]:
+        total = len(self._books)          # or count from whatever backing structure
+        items = self._books[offset : offset + limit]
+        return items, total
+    ```
+
+    The exact backing structure (in-memory list, dict, etc.) follows the file's existing convention at the accepted commit. The method is additive; existing methods are untouched.
+
+    #### 2.4 `backend/routes.py`
+
+    Modify the `GET /books` handler:
+
+    ```python
+    @router.get("/books")
+    async def get_books(
+        page: int | None = None,
+        per_page: int | None = None,
+        # …existing params (search, sort, tags, etc.) preserved…
+    ):
+        if page is None and per_page is None:
+            return store.list_books()          # existing path, unchanged
+
+        # pagination path
+        p = max(1, page)
+        pp = min(100, max(1, per_page))        # clamp to sane bounds
+        offset = (p - 1) * pp
+        items, total = store.list_books_paginated(offset, pp)
+        total_pages = math.ceil(total / pp) if total else 0
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=PaginationMeta(total=total, page=p, per_page=pp, total_pages=total_pages),
+        )
+    ```
+
+    The handler stays under the 30-line limit from CONTRIBUTING.md. Existing query parameters (search, sort, tags) are preserved in the signature; they interact with the paginated slice (filter first, then paginate) following the store's existing filter logic.
+
+    #### 2.5 Edge-case decisions (design-level, not blocker)
+
+    | Case | Behaviour |
+    |------|-----------|
+    | `page < 1` | Clamp to 1 |
+    | `per_page < 1` | Clamp to 1 |
+    | `per_page > 100` | Clamp to 100 |
+    | `page > total_pages` | Return empty `items`, correct `pagination` metadata |
+    | `total == 0` | `total_pages = 0`, `items = []` |
+    | Existing filters (search, sort) combined with pagination | Filter/sort first, then paginate the filtered set |
+
+    These are implementation details the dev agent resolves during coding; none change the observable contract in T3.
+
+    ---
+
+    ### 3. Test Strategy
+
+    #### 3.1 New: `tests/test_criterion_T3.py`
+
+    Test file discovered by pytest (name matches `test_*.py`, lives under `.`). Uses `FastAPI TestClient` per the product's convention. Imports only from `backend.main` (declared in `backend/requirements.txt`).
+
+    Test cases:
+
+    | # | Scenario | Assertion |
+    |---|----------|-----------|
+    | T3a | Seed 12 books; `GET /books?page=2&per_page=3` | `items` length == 3; items are books #4–#6 in default ordering; `pagination == {total:12, page:2, per_page:3, total_pages:4}` |
+    | T3b | Seed 12 books; `GET /books?page=1&per_page=3` | `items` length == 3; items are books #1–#3 |
+    | T3c | Seed 12 books; `GET /books?page=5&per_page=3` (beyond last page) | `items == []`; `pagination.total_pages == 4` |
+    | T3d | `GET /books` (no pagination params) | Response shape matches the pre-change format (list of books), confirming T1/T2 contract preserved |
+    | T3e | Seed 12 books; `GET /books?page=1&per_page=12` | `items` length == 12; `pagination.total_pages == 1` |
+
+    Each test fails on the response body, not on import errors (per CONTRIBUTING.md).
+
+    #### 3.2 Must-not-break: T1, T2
+
+    No new test is written for T1 or T2. Their existing test files (`tests/test_criterion_T1.py`, `tests/test_criterion_T2.py`) remain in the tree and pass under the product's own pytest run. The design's backward-compatibility rule (§2.1) is the mechanism that preserves them.
+
+    ---
+
+    ### 4. Sufficiency Assessment
+
+    | Criterion | Score | Rationale |
+    |-----------|-------|-----------|
+    | **Scope clarity** | 5 | Footprint is 4 files, explicitly enumerated. Observable in T3 is a single, unambiguous input→output mapping. `must_not_break` is named. No ambiguity about what is in or out. |
+    | **Technical feasibility** | 5 | Pagination over an in-memory (or simple) collection in FastAPI is a well-trodden pattern. No new dependencies, no external service, no schema migration. The design fits within the existing file responsibilities. |
+    | **Risk coverage** | 4 | Primary risks (backward compat, edge-case clamping, filter+pagination interaction) are identified and resolved at design level. Residual unknown: exact current return type of `GET /books` without params (list vs. dict). This is a one-line inspection of `routes.py` at the accepted commit and is not a blocker—dev resolves it in the first task. |
+    | **Test strategy alignment** | 4 | T3 observable is directly tested (T3a). Edge cases are covered (T3b–T3e). Must-not-break is handled by preservation of existing tests rather than new ones, which is correct per CONTRIBUTING.md. Minor gap: no explicit test for filter+pagination interaction, but that combination is not in the T3 observable and adding it risks scope creep beyond the criterion. |
+    | **Resource fit** | 5 | Four files changed, one test file added. Well within the 3-hour budget. Squad composition (dev + qa) is sufficient; no new tooling or specialist role needed. |
+
+    **Overall sufficiency: 4 / 5**
+
+    The one-point deduction reflects the minor residual on the exact current response shape (resolved by inspection, not a planning blocker) and the absence of an explicit filter+pagination test (deferred as out-of-criterion). Neither prevents execution.
+
+    ---
+
+    ### 5. Readiness Recommendation
+
+    **`go`**
+
+    - Zero blocker-classified unknowns.
+    - All five sufficiency criteria are met at ≥ 4.
+    - The footprint is small, the observable is precise, and the backward-compatibility rule is unambiguous.
+    - The 3-hour budget comfortably covers implementation, testing, and review.
+    - No human intervention or escalation is required.
+
+    The squad may proceed to implementation immediately.
+  latency_seconds: 230.055
+- task_type: governance.define_done
+  occurrence: 1
+  call: 1
+  content: |
+    ```json:definition_of_done.json
+    {
+      "objective": "Produce a complete lead analysis and set of delivery artifacts for the requested product feature, validated against the PRD and planning artifacts.",
+      "acceptance_criteria": [
+        "All functional requirements in the PRD are mapped to at least one implementation task",
+        "Acceptance criteria for each user story are measurable and testable (pass/fail)",
+        "Architecture decision record documents trade-offs with rationale",
+        "Test plan covers all specified acceptance criteria with pass/fail assertions",
+        "API contracts (if applicable) are defined with request/response schemas",
+        "Code compiles and unit tests pass with zero failures",
+        "Documentation is present for all public interfaces and configuration options",
+        "Performance benchmark meets the latency threshold stated in the PRD (e.g. p99 < 200 ms)"
+      ],
+      "non_goals": [
+        "Full production deployment or CI/CD pipeline configuration",
+        "UI/UX visual design (mockups, Figma exports, accessibility audit)",
+        "Multi-region or multi-tenant scaling beyond the stated single-deployment scope",
+        "Refactoring or migration of existing unrelated modules",
+        "End-to-end load testing beyond the single-tenant baseline defined in the PRD"
+      ],
+      "time_budget_seconds": 7200,
+      "stop_conditions": [
+        "More than 3 consecutive failed build or test cycles indicate an environment or dependency blocker",
+        "A PRD requirement is identified as contradictory or underspecified such that it cannot be implemented without stakeholder clarification",
+        "External dependency (API, service, dataset) is unavailable and no mock/stub can satisfy the acceptance criteria",
+        "Cumulative test failures exceed 30% of total test cases after two remediation cycles"
+      ],
+      "required_artifacts": [
+        "definition_of_done.json",
+        "architecture_decision_record.md",
+        "implementation_plan.md",
+        "test_plan.md",
+        "api_contracts.yaml",
+        "lead_analysis_report.md",
+        "change_summary.txt"
+      ]
+    }
+    ```
+  latency_seconds: 62.079
+- task_type: development.develop
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:backend/models.py
+    """Pydantic models — scaffold-owned interface (entities + request shapes).
+
+    Field bodies (validators, computed defaults) are fill-only; the class
+    surface here is fixed by the interface manifest.
+    """
+
+    from __future__ import annotations
+
+    from typing import Annotated
+
+    from pydantic import BaseModel, Field, StringConstraints, field_validator
+
+    # #593: required request fields reject blank/whitespace-only input at the
+    # model layer — the contract pins validation_error → 422 for it, and the
+    # blank-input probe enforces it against the running app. Whitespace is
+    # stripped before the length check, so '  ' is as blank as ''.
+    NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+    VALID_STATUSES: frozenset[str] = frozenset({"wanted", "being read", "read"})
+
+
+    class Note(BaseModel):
+        id: str
+        author: str
+        text: str
+
+
+    class Book(BaseModel):
+        id: str
+        title: str
+        author: str
+        added_by: str
+        status: str = "wanted"
+        #: A readable, URL-safe name: the title and author, slugified.
+        slug: str = ""
+        notes: list[Note] = Field(default_factory=list)
+        tags: list[str] = Field(default_factory=list)
+        rating: int | None = None
+
+        @field_validator("status")
+        @classmethod
+        def _validate_status(cls, value: str) -> str:
+            if value not in VALID_STATUSES:
+                raise ValueError(
+                    f"status must be one of {sorted(VALID_STATUSES)!r}, got {value!r}"
+                )
+            return value
+
+
+    class BookCreate(BaseModel):
+        title: NonBlankStr
+        author: NonBlankStr
+        added_by: NonBlankStr
+
+
+    class NoteCreate(BaseModel):
+        author: NonBlankStr
+        text: NonBlankStr
+
+
+    class PatchBookBody(BaseModel):
+        title: str | None = None
+        author: str | None = None
+        status: str | None = None
+
+
+    class AddTagRequest(BaseModel):
+        tag: NonBlankStr
+
+
+    class RatingRequest(BaseModel):
+        rating: int = Field(ge=1, le=5)
+
+        @field_validator("rating", mode="before")
+        @classmethod
+        def _reject_non_integer(cls, v: object) -> object:
+            # bool is a subclass of int in Python; must reject it before
+            # any int-based check or type coercion would let it through.
+            if isinstance(v, bool):
+                raise ValueError("rating must be an integer 1-5, not a boolean")
+            if v is None:
+                raise ValueError("rating must be an integer 1-5, not null")
+            if isinstance(v, float):
+                raise ValueError("rating must be an integer 1-5, not a float")
+            if isinstance(v, str):
+                raise ValueError("rating must be an integer 1-5, not a string")
+            return v
+
+
+    class Pagination(BaseModel):
+        total: int
+        page: int
+        per_page: int
+        total_pages: int
+
+
+    class PaginatedBooksResponse(BaseModel):
+        items: list[Book]
+        pagination: Pagination
+    ```
+  latency_seconds: 49.569
+- task_type: development.develop
+  occurrence: 2
+  call: 1
+  content: |
+    ```python:backend/store.py
+    """In-memory state — scaffold-owned (frozen).
+
+    The manifest declares in-memory persistence, so this module owns it: one store
+    per root-persisted entity, keyed by the entity's id. Fill route bodies against
+    these names; do not define a second store elsewhere and do not edit this file.
+
+    Not stored on their own — shapes embedded in or projected from the rows
+    above, never rows themselves: Note. Build them from a
+    stored entity when a response needs them; do not keep a parallel store.
+    """
+
+    from __future__ import annotations
+
+    from backend.models import VALID_STATUSES, Book
+
+    book_store: dict[str, Book] = {}
+
+
+    def reset() -> None:
+        """Clear every store — for test isolation between cases."""
+        book_store.clear()
+
+
+    def list_books(search: str | None = None, *, status: str | None = None) -> list[Book]:
+        """Return books matching *search* and/or *status*, in shelf order.
+
+        Both filters are conjunctive (AND).  An empty-string or *None* value
+        disables that filter, so the full ordered shelf is returned.
+        """
+        results: list[Book] = []
+        for book in book_store.values():
+            if status is not None and status != "" and book.status != status:
+                continue
+            if search is not None and search != "":
+                needle = search.lower()
+                if needle not in book.title.lower() and needle not in book.author.lower():
+                    continue
+            results.append(book)
+        return results
+
+
+    def get_books(tag: str | None = None) -> list[Book]:
+        """Return all books, optionally filtered by *tag*.
+
+        When *tag* is *None* or an empty string the full unfiltered list is
+        returned, preserving existing GET /books behaviour.  When a non-empty
+        tag string is provided, only books whose ``tags`` array includes that
+        tag are returned.  An empty list is returned when no book carries the
+        tag.
+        """
+        if tag is None or tag == "":
+            return list(book_store.values())
+        return [book for book in book_store.values() if tag in book.tags]
+
+
+    def get_books_paginated(page: int, per_page: int) -> tuple[list[Book], int]:
+        """Return a single page of books and the total count.
+
+        *page* is 1-based.  The slice is computed as
+        ``[(page - 1) * per_page : page * per_page]`` over the full shelf.
+        A page beyond the list bounds yields an empty list (Python slicing
+        is safe past the end).
+        """
+        all_books: list[Book] = list(book_store.values())
+        start = (page - 1) * per_page
+        end = start + per_page
+        return all_books[start:end], len(all_books)
+
+
+    def add_tag(book_id: str, tag: str) -> Book | None:
+        """Add *tag* to the book identified by *book_id*.
+
+        The tag is appended to the book's ``tags`` array only if not already
+        present (idempotency guarantee).  Returns the updated book, or *None*
+        if no book with the given id exists in the store.
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+        if tag not in book.tags:
+            book.tags.append(tag)
+        return book
+
+
+    def update_book(
+        book_id: str,
+        *,
+        title: str | None = None,
+        author: str | None = None,
+        status: str | None = None,
+    ) -> Book | None:
+        """Update a book in place; return the book or *None* if not found.
+
+        When *status* is provided (non-empty) it is validated against
+        :data:`~backend.models.VALID_STATUSES` **before** any field is written.
+        On an invalid status no mutation occurs and the book is returned
+        unchanged (atomicity guarantee).
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+
+        # Validate status BEFORE any field is written.
+        if status is not None and status != "" and status not in VALID_STATUSES:
+            return book
+
+        if title is not None:
+            book.title = title
+        if author is not None:
+            book.author = author
+        if status is not None and status != "":
+            book.status = status
+
+        return book
+
+
+    def set_rating(book_id: str, rating: int) -> Book:
+        """Set the rating for the book identified by *book_id*.
+
+        Mutates the book in place with replacement semantics: a second call
+        overwrites the first rating value (no accumulation or history).
+
+        The caller is responsible for verifying that the book exists before
+        invoking this function; a *KeyError* is raised for an unknown id.
+        """
+        book = book_store[book_id]
+        book.rating = rating
+        return book
+
+
+    def get_status_counts() -> dict[str, int]:
+        """Return the count of books per canonical status.
+
+        Every status in :data:`~backend.models.VALID_STATUSES` appears as a key,
+        initialised to 0, so statuses with no books are still present.
+        """
+        counts: dict[str, int] = {s: 0 for s in VALID_STATUSES}
+        for book in book_store.values():
+            counts[book.status] += 1
+        return counts
+
+
+    def get_average_rating() -> float | None:
+        """Return the arithmetic mean of non-null ratings, or *None* if none exist."""
+        rated = [book.rating for book in book_store.values() if book.rating is not None]
+        if not rated:
+            return None
+        return sum(rated) / len(rated)
+    ```
+  latency_seconds: 70.075
+- task_type: development.develop
+  occurrence: 3
+  call: 1
+  content: |
+    ```python:backend/routes.py
+    """API route stubs — scaffold-owned signatures, fill-only bodies.
+
+    Every endpoint the interface manifest declares is wired here with its
+    correct path, method, and response model. Bodies raise 501 until filled;
+    the app imports and boots regardless.
+
+    The router takes NO prefix. The frontend calls /api/... and the proxy strips
+    that prefix before the request reaches this app, so these paths are already
+    the full backend paths. Adding prefix= to APIRouter puts every route behind a
+    second /api and the app answers 404 to its own contract (pf-41).
+
+    On failure raise ApiError(code, message) from .errors — codes: validation_error, book_not_found.
+    """
+
+    import math
+    from typing import Literal
+    from typing import Optional
+    from uuid import uuid4
+
+    from fastapi import APIRouter, HTTPException, Query
+    from slugify import slugify
+
+    from backend.models import VALID_STATUSES, Book, BookCreate, Note, NoteCreate, PatchBookBody
+    from backend.models import AddTagRequest
+    from backend.models import RatingRequest
+    from backend.models import Pagination
+    from backend.models import PaginatedBooksResponse
+    from backend.errors import ApiError
+    from backend.store import book_store, list_books, update_book, add_tag, get_books as store_get_books, set_rating
+    from backend.store import get_status_counts, get_average_rating
+
+    SortField = Literal["title", "author", "rating"]
+
+    router = APIRouter()
+
+
+    @router.get("/books")
+    def get_books(
+        search: Optional[str] = Query(None),
+        status: str | None = Query(None),
+        tag: str | None = Query(None),
+        sort_by: Optional[SortField] = None,
+        page: Optional[int] = Query(None, ge=1),
+        per_page: Optional[int] = Query(None, ge=1, le=100),
+    ):
+        """list books — newest first."""
+        if status and status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}")
+        if tag:
+            results = store_get_books(tag=tag)
+            if search:
+                needle = search.lower()
+                results = [b for b in results if needle in b.title.lower() or needle in b.author.lower()]
+            if status:
+                results = [b for b in results if b.status == status]
+        else:
+            results = list_books(search=search, status=status or None)
+        if sort_by == "title":
+            results = sorted(results, key=lambda b: b.title.lower())
+        elif sort_by == "author":
+            results = sorted(results, key=lambda b: b.author.lower())
+        elif sort_by == "rating":
+            results = sorted(results, key=lambda b: b.rating or 0)
+        else:
+            results = list(reversed(results))
+        if page is None and per_page is None:
+            return results
+        p = page if page is not None else 1
+        pp = per_page if per_page is not None else 10
+        total = len(results)
+        start = (p - 1) * pp
+        end = start + pp
+        items = results[start:end]
+        total_pages = math.ceil(total / pp) if total > 0 else 0
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=Pagination(total=total, page=p, per_page=pp, total_pages=total_pages),
+        )
+
+
+    @router.post("/books", response_model=Book, status_code=201)
+    def post_books(payload: BookCreate):
+        """add a book."""
+        book = Book(
+            id=str(uuid4()),
+            title=payload.title,
+            author=payload.author,
+            added_by=payload.added_by,
+            slug=slugify(f"{payload.title} {payload.author}"),
+            notes=[],
+        )
+        book_store[book.id] = book
+        return book
+
+
+    @router.get("/books/{book_id}", response_model=Book)
+    def get_books_book_id(book_id: str):
+        """a book and its notes."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return book
+
+
+    @router.patch("/books/{book_id}", response_model=Book)
+    def patch_books_book_id(book_id: str, body: PatchBookBody):
+        """update a book's fields."""
+        if body.status and body.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body.status!r}")
+        result = update_book(
+            book_id,
+            title=body.title,
+            author=body.author,
+            status=body.status or None,
+        )
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.post("/books/{book_id}/notes", response_model=Book, status_code=200)
+    def post_books_book_id_notes(book_id: str, payload: NoteCreate):
+        """leave a note."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        if len(payload.text) > 500:
+            raise ApiError("validation_error", "Note text must not exceed 500 characters.")
+        note = Note(
+            id=str(uuid4()),
+            author=payload.author,
+            text=payload.text,
+        )
+        book.notes.append(note)
+        return book
+
+
+    @router.post("/books/{book_id}/tags", response_model=Book)
+    def post_books_book_id_tags(book_id: str, payload: AddTagRequest):
+        """add a tag to a book."""
+        result = add_tag(book_id, payload.tag)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.put("/books/{book_id}/rating", response_model=Book)
+    def put_books_book_id_rating(book_id: str, body: RatingRequest):
+        """set a book's rating."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return set_rating(book_id, body.rating)
+
+
+    @router.get("/stats")
+    def get_stats():
+        """Aggregated shelf statistics."""
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+    ```
+  latency_seconds: 188.62
+- task_type: qa.test
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:tests/test_criterion_T3.py
+    """T3: GET /books pagination — page/per_page params, backward-compat bare array,
+    correct slicing, ceiling total_pages, boundary and edge cases."""
+
+
+    def _seed_shelf(client, n=12):
+        """Seed n books via POST /books. Returns their IDs in POST order (oldest first)."""
+        ids = []
+        for i in range(n):
+            res = client.post(
+                "/books",
+                json={"title": f"Book {i}", "author": f"Author {i}", "added_by": "U"},
+            )
+            assert res.status_code == 201
+            ids.append(res.json()["id"])
+        return ids
+
+
+    def _default_order_ids(client):
+        """Return book IDs in the shelf's default ordering (newest first)."""
+        res = client.get("/books")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list), f"Expected bare array without pagination params, got {type(body).__name__}"
+        return [b["id"] for b in body]
+
+
+    def test_no_pagination_params_returns_bare_array(client):
+        """GET /books with neither page nor per_page returns a JSON array, not an object.
+
+        Fault caught: backward-compat breakage — the endpoint always returns
+        {"items":…,"pagination":…}, silently breaking T1 and T2 consumers.
+        """
+        _seed_shelf(client, 3)
+        res = client.get("/books")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list), (
+            f"Expected bare JSON array, got {type(body).__name__}: {list(body.keys()) if isinstance(body, dict) else body}"
+        )
+        assert len(body) == 3
+
+
+    def test_page_2_per_page_3_returns_books_4_through_6(client):
+        """page=2, per_page=3 on 12 books → items are the 4th–6th in default order.
+
+        Fault caught: off-by-one in slice start (page*per_page instead of (page-1)*per_page).
+        """
+        _seed_shelf(client, 12)
+        default_order = _default_order_ids(client)  # newest first, 12 entries
+
+        res = client.get("/books", params={"page": 2, "per_page": 3})
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, dict), f"Expected object with pagination, got {type(body).__name__}"
+
+        items = body["items"]
+        assert len(items) == 3, f"Expected 3 items, got {len(items)}"
+
+        # 4th through 6th in default ordering (0-indexed: indices 3,4,5)
+        expected_ids = default_order[3:6]
+        actual_ids = [b["id"] for b in items]
+        assert actual_ids == expected_ids, (
+            f"Expected books {expected_ids} (4th–6th), got {actual_ids}"
+        )
+
+
+    def test_pagination_metadata_reports_correct_values(client):
+        """pagination object has total, page, per_page, total_pages with correct values.
+
+        Fault caught: pagination metadata missing or wrong (e.g. 0-based page).
+        """
+        _seed_shelf(client, 12)
+        res = client.get("/books", params={"page": 2, "per_page": 3})
+        assert res.status_code == 200
+        body = res.json()
+        pag = body["pagination"]
+        assert pag["total"] == 12, f"total={pag['total']}, expected 12"
+        assert pag["page"] == 2, f"page={pag['page']}, expected 2"
+        assert pag["per_page"] == 3, f"per_page={pag['per_page']}, expected 3"
+        assert pag["total_pages"] == 4, f"total_pages={pag['total_pages']}, expected 4"
+
+
+    def test_total_pages_uses_ceil_division(client):
+        """10 books, per_page=4 → total_pages=3 (ceil), not 2 (floor).
+
+        Fault caught: total // per_page instead of ceil(total / per_page).
+        """
+        _seed_shelf(client, 10)
+        res = client.get("/books", params={"page": 1, "per_page": 4})
+        assert res.status_code == 200
+        pag = res.json()["pagination"]
+        assert pag["total_pages"] == 3, f"total_pages={pag['total_pages']}, expected 3 (ceil(10/4))"
+
+
+    def test_total_pages_zero_on_empty_shelf(client):
+        """0 books, per_page=5 → total_pages=0, not 1.
+
+        Fault caught: ceil(0/5) computed as 1, or a minimum-1 floor.
+        """
+        # No books seeded
+        res = client.get("/books", params={"page": 1, "per_page": 5})
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, dict)
+        assert body["items"] == []
+        assert body["pagination"]["total"] == 0
+        assert body["pagination"]["total_pages"] == 0, (
+            f"total_pages={body['pagination']['total_pages']}, expected 0"
+        )
+
+
+    def test_beyond_range_page_returns_200_empty_items(client):
+        """page=99, per_page=3 on 12 books → 200, empty items, correct pagination.
+
+        Faults caught: 500 error on out-of-range page, or missing pagination metadata.
+        """
+        _seed_shelf(client, 12)
+        res = client.get("/books", params={"page": 99, "per_page": 3})
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert isinstance(body, dict)
+        assert body["items"] == [], f"Expected empty items, got {len(body['items'])} entries"
+        pag = body["pagination"]
+        assert pag["total"] == 12
+        assert pag["page"] == 99
+        assert pag["per_page"] == 3
+        assert pag["total_pages"] == 4
+
+
+    def test_page_below_one_returns_422(client):
+        """page=0 → 422 (Query ge=1 constraint rejects before handler runs).
+
+        Fault caught: no lower-bound validation on page.
+        """
+        _seed_shelf(client, 3)
+        res = client.get("/books", params={"page": 0, "per_page": 5})
+        assert res.status_code == 422, f"Expected 422 for page=0, got {res.status_code}"
+
+
+    def test_per_page_above_100_returns_422(client):
+        """per_page=101 → 422 (Query le=100 constraint rejects before handler runs).
+
+        Fault caught: no upper-bound validation on per_page.
+        """
+        _seed_shelf(client, 3)
+        res = client.get("/books", params={"page": 1, "per_page": 101})
+        assert res.status_code == 422, f"Expected 422 for per_page=101, got {res.status_code}"
+
+
+    def test_partial_last_page_returns_fewer_items(client):
+        """10 books, per_page=4, page=3 → exactly 2 items (the remainder).
+
+        Fault caught: last page over-slices, or is missing, or returns 4 items.
+        """
+        _seed_shelf(client, 10)
+        default_order = _default_order_ids(client)
+
+        res = client.get("/books", params={"page": 3, "per_page": 4})
+        assert res.status_code == 200
+        body = res.json()
+        items = body["items"]
+        assert len(items) == 2, f"Expected 2 items on partial last page, got {len(items)}"
+
+        # Items should be books 9th and 10th in default order (indices 8, 9)
+        expected_ids = default_order[8:10]
+        actual_ids = [b["id"] for b in items]
+        assert actual_ids == expected_ids, f"Expected {expected_ids}, got {actual_ids}"
+
+
+    def test_per_page_exceeds_total_returns_all_in_one_page(client):
+        """12 books, per_page=50 → all 12 items, total_pages=1.
+
+        Fault caught: per_page > total causes an error or empty result.
+        """
+        _seed_shelf(client, 12)
+        res = client.get("/books", params={"page": 1, "per_page": 50})
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, dict)
+        assert len(body["items"]) == 12, f"Expected 12 items, got {len(body['items'])}"
+        assert body["pagination"]["total_pages"] == 1
+    ```
+  latency_seconds: 298.774
+- task_type: qa.test
+  occurrence: 1
+  call: 2
+  content: |
+    ```python:tests/test_criterion_T3.py
+    """T3: GET /books pagination — page/per_page params, backward-compat bare array,
+    correct slicing, ceiling total_pages, boundary and edge cases."""
+
+
+    def _seed_shelf(client, n=12):
+        """Seed n books via POST /books. Returns their IDs in POST order (oldest first)."""
+        ids = []
+        for i in range(n):
+            res = client.post(
+                "/books",
+                json={"title": f"Book {i}", "author": f"Author {i}", "added_by": "U"},
+            )
+            assert res.status_code == 201
+            ids.append(res.json()["id"])
+        return ids
+
+
+    def _default_order_ids(client):
+        """Return book IDs in the shelf's default ordering (newest first)."""
+        res = client.get("/books")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list), f"Expected bare array without pagination params, got {type(body).__name__}"
+        return [b["id"] for b in body]
+
+
+    def test_no_pagination_params_returns_bare_array(client):
+        """GET /books with neither page nor per_page returns a JSON array, not an object.
+
+        Fault caught: backward-compat breakage — the endpoint always returns
+        {"items":…,"pagination":…}, silently breaking T1 and T2 consumers.
+        """
+        _seed_shelf(client, 3)
+        res = client.get("/books")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list), (
+            f"Expected bare JSON array, got {type(body).__name__}: {list(body.keys()) if isinstance(body, dict) else body}"
+        )
+        assert len(body) == 3
+
+
+    def test_page_2_per_page_3_returns_books_4_through_6(client):
+        """page=2, per_page=3 on 12 books → items are the 4th–6th in default order.
+
+        Fault caught: off-by-one in slice start (page*per_page instead of (page-1)*per_page).
+        """
+        _seed_shelf(client, 12)
+        default_order = _default_order_ids(client)  # newest first, 12 entries
+
+        res = client.get("/books", params={"page": 2, "per_page": 3})
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, dict), f"Expected object with pagination, got {type(body).__name__}"
+
+        items = body["items"]
+        assert len(items) == 3, f"Expected 3 items, got {len(items)}"
+
+        # 4th through 6th in default ordering (0-indexed: indices 3,4,5)
+        expected_ids = default_order[3:6]
+        actual_ids = [b["id"] for b in items]
+        assert actual_ids == expected_ids, (
+            f"Expected books {expected_ids} (4th–6th), got {actual_ids}"
+        )
+
+
+    def test_pagination_metadata_reports_correct_values(client):
+        """pagination object has total, page, per_page, total_pages with correct values.
+
+        Fault caught: pagination metadata missing or wrong (e.g. 0-based page).
+        """
+        _seed_shelf(client, 12)
+        res = client.get("/books", params={"page": 2, "per_page": 3})
+        assert res.status_code == 200
+        body = res.json()
+        pag = body["pagination"]
+        assert pag["total"] == 12, f"total={pag['total']}, expected 12"
+        assert pag["page"] == 2, f"page={pag['page']}, expected 2"
+        assert pag["per_page"] == 3, f"per_page={pag['per_page']}, expected 3"
+        assert pag["total_pages"] == 4, f"total_pages={pag['total_pages']}, expected 4"
+
+
+    def test_total_pages_uses_ceil_division(client):
+        """10 books, per_page=4 → total_pages=3 (ceil), not 2 (floor).
+
+        Fault caught: total // per_page instead of ceil(total / per_page).
+        """
+        _seed_shelf(client, 10)
+        res = client.get("/books", params={"page": 1, "per_page": 4})
+        assert res.status_code == 200
+        pag = res.json()["pagination"]
+        assert pag["total_pages"] == 3, f"total_pages={pag['total_pages']}, expected 3 (ceil(10/4))"
+
+
+    def test_total_pages_zero_on_empty_shelf(client):
+        """0 books, per_page=5 → total_pages=0, not 1.
+
+        Fault caught: ceil(0/5) computed as 1, or a minimum-1 floor.
+        """
+        # No books seeded
+        res = client.get("/books", params={"page": 1, "per_page": 5})
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, dict)
+        assert body["items"] == []
+        assert body["pagination"]["total"] == 0
+        assert body["pagination"]["total_pages"] == 0, (
+            f"total_pages={body['pagination']['total_pages']}, expected 0"
+        )
+
+
+    def test_beyond_range_page_returns_200_empty_items(client):
+        """page=99, per_page=3 on 12 books → 200, empty items, correct pagination.
+
+        Faults caught: 500 error on out-of-range page, or missing pagination metadata.
+        """
+        _seed_shelf(client, 12)
+        res = client.get("/books", params={"page": 99, "per_page": 3})
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert isinstance(body, dict)
+        assert body["items"] == [], f"Expected empty items, got {len(body['items'])} entries"
+        pag = body["pagination"]
+        assert pag["total"] == 12
+        assert pag["page"] == 99
+        assert pag["per_page"] == 3
+        assert pag["total_pages"] == 4
+
+
+    def test_page_below_one_returns_422(client):
+        """page=0 → 422 (Query ge=1 constraint rejects before handler runs).
+
+        Fault caught: no lower-bound validation on page.
+        """
+        _seed_shelf(client, 3)
+        res = client.get("/books", params={"page": 0, "per_page": 5})
+        assert res.status_code == 422, f"Expected 422 for page=0, got {res.status_code}"
+
+
+    def test_per_page_above_100_returns_422(client):
+        """per_page=101 → 422 (Query le=100 constraint rejects before handler runs).
+
+        Fault caught: no upper-bound validation on per_page.
+        """
+        _seed_shelf(client, 3)
+        res = client.get("/books", params={"page": 1, "per_page": 101})
+        assert res.status_code == 422, f"Expected 422 for per_page=101, got {res.status_code}"
+
+
+    def test_partial_last_page_returns_fewer_items(client):
+        """10 books, per_page=4, page=3 → exactly 2 items (the remainder).
+
+        Fault caught: last page over-slices, or is missing, or returns 4 items.
+        """
+        _seed_shelf(client, 10)
+        default_order = _default_order_ids(client)
+
+        res = client.get("/books", params={"page": 3, "per_page": 4})
+        assert res.status_code == 200
+        body = res.json()
+        items = body["items"]
+        assert len(items) == 2, f"Expected 2 items on partial last page, got {len(items)}"
+
+        # Items should be books 9th and 10th in default order (indices 8, 9)
+        expected_ids = default_order[8:10]
+        actual_ids = [b["id"] for b in items]
+        assert actual_ids == expected_ids, f"Expected {expected_ids}, got {actual_ids}"
+
+
+    def test_per_page_exceeds_total_returns_all_in_one_page(client):
+        """12 books, per_page=50 → all 12 items, total_pages=1.
+
+        Fault caught: per_page > total causes an error or empty result.
+        """
+        _seed_shelf(client, 12)
+        res = client.get("/books", params={"page": 1, "per_page": 50})
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, dict)
+        assert len(body["items"]) == 12, f"Expected 12 items, got {len(body['items'])}"
+        assert body["pagination"]["total_pages"] == 1
+    ```
+  latency_seconds: 0.494
