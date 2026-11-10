@@ -680,9 +680,9 @@ revises a skill leaves the Campaign on its kept copy; moving to the revision is 
 
 ### 17a. Phase 1 as built (2026-11-09)
 
-Building phase 1 (#3011) read the accepted text against the code. Six points narrow or correct it. **Raised by the
-implementer in phase 1's PR, for the owner's ruling at its review:** none is ruled yet, and the PR merges nothing
-before 2.8.
+Building phase 1 (#3011) read the accepted text against the code. Six points narrow or correct it. **Ruled by the
+owner on 2026-11-09, each as recommended** ("approve as recommended"), on the implementer's write-up in phase 1's PR
+(#3013). The PR merges nothing before 2.8.
 
 1. **The development profile's fingerprint covers its prompt assets by name, as it does today.** §10's table says it
    "covers `requires` and its assets' content", and §2's table had it right: by name only.
@@ -720,9 +720,9 @@ before 2.8.
      that fails the day a stack populates either, so the exception can't outlive its reason. When
      `game_dev_roblox` is registered they become declared optionals, with the reason the other stacks leave them
      unset.
-   - **The alternative, for the owner:** hold the two fields back until the PR that registers the first profile
+   - **The alternative, not taken:** hold the two fields back until the PR that registers the first profile
      declaring them. Phase 2's coverage check reads `requires`, so they would still precede that profile by
-     several phases, and the exception would only start later.
+     several phases, and the exception would only start later. The owner ruled the recorded exception.
    - This is the one place phase 1 is in tension with a standing rule, and the intake check's "its governance
      applies to the new fields" did not foresee it.
 
@@ -741,6 +741,17 @@ before 2.8.
 - §5.3's "first enabled agent serving that role" has one enabled agent per role only for a profile written through
   the API (`validate_agent_entries`). A profile seeded from `config/squad-profiles.yaml` isn't run through that
   check. Phase 2's coverage check reads the routed agent either way.
+
+### 17b. The Roblox dev skillset's id (2026-11-09)
+
+**What changed.** The game SIPs' Q68 asked whether skillset ids take the game-dev-roblox plan's D8 form. **The owner
+ruled it on 2026-11-09** ("approve as recommended"): ids keep this SIP's platform-first form, and the Roblox dev
+skillset is `roblox-luau-dev`, so that every Roblox skillset sorts together. §5.1, §7.1, §16 and Appendix A write
+that skillset as `luau-dev`. Those examples are illustrative (§4.1), and they read as `roblox-luau-dev`.
+
+**The same ruling approved the first consumer's additions** to §16's worked example, which the game SIPs' revision 4
+records: a fourth contract, `game.increment_design`, over `strategy.propose_increment`, and a strategy skillset
+(`roblox-increment-design`), since strategy writes each play scenario.
 
 ---
 

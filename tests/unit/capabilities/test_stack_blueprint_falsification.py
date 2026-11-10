@@ -206,7 +206,7 @@ _DECORATIVE_FOUND: dict[tuple[str, str], str] = {}
 #: requirements as inert declarations first, and switches on the first profile that declares
 #: any (``game_dev_roblox``) only after its phases 2-6. Until then both are read by the cycle's
 #: skillset record and populated by no stack, which is this list's case exactly. The exception
-#: is recorded in the SIP's §17a point 6 for the owner's ruling, and
+#: is recorded in the SIP's §17a point 6, ruled by the owner on 2026-11-09, and
 #: ``test_an_unevidenced_field_is_still_populated_by_no_stack`` ends it the day a stack
 #: populates one: the entry then moves to ``_DECLARED_OPTIONAL`` with that stack's reason.
 _UNEVIDENCED: dict[tuple[str, str], str] = {
