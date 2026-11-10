@@ -676,6 +676,58 @@ Had the operator selected `full`, where no agent declares a skillset, the Campai
 be an availability one, naming the worker. §7.1 shows what each step of a failure and its repair loads. A redeploy that
 revises a skill leaves the Campaign on its kept copy; moving to the revision is the owner's recorded transition.
 
+## 17. Post-acceptance amendments
+
+### 17a. Phase 1 as built (2026-11-09)
+
+Building phase 1 (#3011) read the accepted text against the code. Five points narrow or correct it. **Raised by the
+implementer in phase 1's PR, for the owner's ruling at its review:** none is ruled yet, and the PR merges nothing
+before 2.8.
+
+1. **The development profile's fingerprint covers its prompt assets by name, as it does today.** §10's table says it
+   "covers `requires` and its assets' content", and §2's table had it right: by name only.
+   - **Evidence:** `development_profile_fingerprint` digests the profile's dataclass fields
+     (`stacks/development_profiles.py`), and an asset is a template name there.
+   - **Why it stays:** digesting asset content changes all seven fingerprints. Every stored
+     `development_profile_selection` would stop matching, and every retry of a pinned cycle would report drift on a
+     profile nobody changed. Covering content belongs with the consolidation of the stack's prompt routes (Q54).
+     A skill's content is digested in the record's own `content` part (phase 3), which is what §10 needs.
+2. **`platform` and `requires` are covered by the fingerprint where declared.** §5.1 says the fingerprint covers
+   them and that every existing profile takes the empty value. A profile that declares neither is digested without
+   their keys, so each existing fingerprint is unchanged. It's Q57's rule for the roster hash, applied to the
+   profile. `test_profile_requirements.py` holds it for every registered profile.
+3. **The record is its own column.** §10 says "stored with the cycle beside `squad_profile_snapshot_ref`". It's
+   `cycle_registry.skillset_record` (migration 2200), and `Cycle.skillset_record`.
+   - **Why not a key in `execution_overrides`,** where `development_profile_selection` sits: a key there reaches
+     every task as part of `resolved_config`, is counted by the prompt budget, and changes each run's
+     `resolved_config_hash`. Phase 1 would not be inert.
+4. **In phase 1 the record's base-set part names the base set, and the offered set arrives with phase 2.** §16's
+   worked example shows `builder.assemble` absent for a repository-backed cycle. That narrowing is today's builder
+   rule, applied where the planner is offered its types (`_plan_authoring_service.py`). The record lists
+   `base@1`'s three plannable types for every cycle until phase 2 builds the offered set and records it.
+   `assignment` and `content` are empty for the same reason: phases 2 and 3 fill them.
+5. **How a greenfield cycle's profile was selected is recorded with two new origins.** §2 notes that only a
+   repository-backed cycle records a selection. The record's "how it was selected" reads that selection's origin
+   where one exists (`operator`, `blueprint`, `derived`), and otherwise `stack` (the scaffold stack requires the
+   profile), `operator` (the configuration names it) or `default`.
+
+**Corrections to anchors and citations,** none of which changes the design:
+- five cited lines sit one line above their target (`cycles/agent_config.py:101`, `stacks/scaffold.py:2350` and
+  `:2375`, `cycles/replay.py:56`, `cycles/implementation_plan.py:59`,
+  `capabilities/handlers/_plan_authoring_service.py:119`);
+- §10's "Replay matches the record's digest (`cycles/replay.py:56`)" describes later work. Today the create route
+  compares `prd_ref`, `build_profile` and `contract_ref` only, so the listed `development_profile_fingerprint`
+  element is never compared there;
+- §6.1 and §12 cite Q23 for the `squadops.capabilities` package holding task contracts. Q23 rules that the package
+  keeps its name and that packs never bind into the task-type registry. The contracts it holds today are SIP-0.8.6's
+  `TaskContract` manifests, a different record, and the capability contracts sit beside them in
+  `capabilities/capability_contracts.py`;
+- §5.3's "first enabled agent serving that role" has one enabled agent per role only for a profile written through
+  the API (`validate_agent_entries`). A profile seeded from `config/squad-profiles.yaml` isn't run through that
+  check. Phase 2's coverage check reads the routed agent either way.
+
+---
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each

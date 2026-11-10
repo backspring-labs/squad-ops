@@ -599,3 +599,17 @@ definition. This section records only what it means for the two stack profiles t
 owns.
 
 **Ruled by.** Issue #1312 with #1254, the 1.7.4 plan §3.2 row 1 (one PR, atomic invariant).
+
+### 10c. A development profile declares its platform and what its work requires (2026-11-09)
+
+**What changed.** `DevelopmentProfile` gains two fields, by SIP-0116 §5.1 (accepted 2026-11-09; its phase 1, #3011):
+`platform`, the platform and variant the profile's work targets, and `requires`, the skillsets each responsibility
+needs, with the capability contracts and verification modes needed from each. Both are empty on every profile this
+SIP registers, which means the work requires nothing beyond the base set.
+
+**What it doesn't change.** A profile's prompts, source filter, test settings and selection are as before, and so is
+its fingerprint: the two fields are covered only where declared (SIP-0116 §17a point 2). Selecting a profile equips
+no agent. The requirements are compared with what the selected squad's agents carry, in SIP-0116's later phases.
+
+**Who ruled it.** The owner, by accepting SIP-0116 ("accept Agent Skillsets, Q67 add headless"), whose intake check
+names this amendment.
