@@ -40,7 +40,7 @@ from squadops.api.routes.cycles.cycles import (
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.campaigns.campaign_branch import CampaignHead, NoCampaignHead, head
-from squadops.campaigns.launch_requests import bound_at_head, increment_id_of
+from squadops.campaigns.launch_requests import bound_at_head, increment_id_of, scripted_launch
 from squadops.campaigns.launcher import (
     BeforeLaunch,
     BoxVerdict,
@@ -168,6 +168,19 @@ class CampaignLaunchService:
             cycle_request = bound_at_head(intent.cycle_kind, intent.cycle_request, at)
         except ValueError as e:
             raise LaunchRefused(f"VALIDATION_ERROR: {e}") from e
+        # §24dt (#2892): a scripted campaign's cycle names the script for its place in the launch
+        # order, counted from the launches the control log already marked.
+        if campaign.policy.llm_scripts:
+            intents = await self._campaigns.launch_intents(campaign.campaign_id)
+            launched_before = sum(
+                1
+                for i in intents
+                if i.state is LaunchIntentState.LAUNCHED and i.launch_id != intent.launch_id
+            )
+            try:
+                cycle_request = scripted_launch(campaign, cycle_request, launched_before)
+            except ValueError as e:
+                raise LaunchRefused(f"LLM_SCRIPT_MISSING: {e}") from e
         try:
             request = CycleCreateRequest(**cycle_request["body"])
         except pydantic.ValidationError as e:

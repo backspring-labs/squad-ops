@@ -315,11 +315,16 @@ It lands after this plan merges, and before any build. It:
 
 ## 5a. Open design pull requests (not counted in the 44)
 
-Revised at adoption (2026-11-08): #2841's rulings, and #2972 added.
+Revised at adoption (2026-11-08): #2841's rulings, and #2972 added. Revised 2026-11-09: #3006 added, accepted as
+SIP-0116.
 
 **Merging a proposed SIP or a draft plan isn't a feature, so 2.7 can carry their reviews.** Each merges only as a
 proposal: unnumbered for a SIP, still a draft for a plan. Accepting and building it are separate decisions, for a
 feature line (R8).
+
+**#3006 is the one the owner accepted during 2.7** (2026-11-09), so it merged numbered. Acceptance is a design
+commitment on main with no code, the separate decision R8 names. Building it is the feature, and that stays out of
+2.7's main.
 
 | PR | What | State on 2026-11-08 | In 2.7 |
 |---|---|---|---|
@@ -328,6 +333,7 @@ feature line (R8).
 | #2841 | Game Capability Packs and Squad Composition, stacked on #2405 | Mergeable. Q45 (the foundation, F1, may precede 3.x by an amendment to Capability-Backed Agents) and Q46 (Switchboard as the loader) were ruled on 2026-10-31 | Merges as proposed after #2405. **The open question** is whether these SIPs' revision 3 replaces the foundation Q45 and Q46 selected, as #2972 §8 proposes (F1 shrinks to an in-tree seam; the loader deferred, not reversed) |
 | #2972 | The game-dev-roblox plan, revision 2: the MacBook lane's input to 2.8 (a Roblox specialty, QA playing frozen scenarios in Roblox Studio through a worker on the MacBook) | Open for the owner's review, added 2026-11-08 | **Nothing in 2.7:** nothing merges to main for it, and #2906 stays out. A 2.8 input, not placed: the 2.8 plan places its demonstration and the worker registry's migration, on the owner's ruling |
 | #2848 | Nebulus, the proving Project plan | A draft. Its environment is #2847, which is out of 2.7. 9 added lines name the operator | Stays a draft until #2847 is placed. Its names are fixed when it's next revised |
+| #3006 | Agent Skillsets, split from Capability-Backed Agents §21 and §27: a skillset coverage check for an explicitly selected squad. The MacBook lane's input to 2.8, beside #2972 | Added 2026-11-09. Accepted by the owner that day as SIP-0116 ("accept Agent Skillsets, Q67 add headless") and merged numbered (`66d72864`) | **Accepted; its phases unplaced.** Asked before accepting whether building could run in parallel with 2.7, the owner was answered yes on #2972's D6 (ruled 2026-11-08): the phases may be built in a MacBook worktree and rehearsed locally, and nothing merges to main for them until the 2.8 plan places them. Its ledger is unplaced, so the cut's SIP sweep reads nothing for it (`sip_sweep.py 2.7.0`, 2026-11-09) |
 
 ## 6. The owner's rulings (2026-11-08)
 

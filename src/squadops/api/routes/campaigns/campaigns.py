@@ -153,6 +153,7 @@ from squadops.campaigns.review_push import ReviewPushRefused, push_review
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.models import CycleStatus, GoalSetNotFoundError, ProjectNotFoundError
 from squadops.execution.size_preflight import size_preflight
+from squadops.llm.script import LLMScriptError, ScriptLibrary, ScriptReference
 from squadops.memory.pinning import pin_campaign
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.contribution import ContributionRefused
@@ -433,6 +434,7 @@ async def create_campaign(
             updated_at=now,
         )
         _require_profiles(campaign.policy)
+        _require_scripts(campaign.policy, ScriptLibrary.packaged())
         await _require_project_rules(request, campaign)
         definition = CampaignDefinition(**body.definition.model_dump()) if body.definition else None
         scenarios = await _pinnable_scenario_store(request, body.scenario_suite)
@@ -1319,6 +1321,18 @@ def _require_profiles(policy: CampaignPolicy) -> None:
     refusal = increment_sequence_refusal(profiles["proposal_profile"].defaults)
     if refusal:
         raise ValueError(f"policy.proposal_profile {policy.proposal_profile!r}: {refusal}")
+
+
+def _require_scripts(policy: CampaignPolicy, library: ScriptLibrary) -> None:
+    """§24dt: every script a scripted campaign names is one this deploy holds, at the version the
+    campaign pins, so a campaign that could never answer a launch is refused at its creation and
+    not at its first cycle. Which squad reads them is the cycle-create preflight's check, at each
+    launch (``scripted_squad_decision``)."""
+    for position, named in enumerate(policy.llm_scripts, start=1):
+        try:
+            library.resolve(ScriptReference.parse(named))
+        except LLMScriptError as e:
+            raise ValueError(f"policy.llm_scripts entry {position}: {e}") from e
 
 
 async def _materialize_after_close(request: Request, campaign_id: str) -> None:

@@ -206,6 +206,14 @@ retry, as `build_profile` and `development_profile`. Leave it out and the campai
 profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
 creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
 
+**A scripted Campaign names its scripts** (`policy.llm_scripts`, SIP-0109 §24dt; #2892). On the `machinery`
+squad every call is answered from a recorded script (#2495), and a Campaign names one pinned script,
+`<name>@<version>`, per cycle it launches, in launch order: its first launch takes the first, a repair or a retry
+the next one, like any other launch. Creation refuses a script this deploy doesn't hold at that version. A launch
+past the last script escalates the Campaign as `LLM_SCRIPT_MISSING`, with the intent pending: add the script, which
+is package data (`src/squadops/llm/llm_scripts/`), so it reaches a deploy only by a rebuild. A scripted Campaign is
+evidence about the machinery, never about a model.
+
 **Which escalations the operator may resume on its own is the campaign's declaration too**
 (`policy.unattended_resume`, SIP-0109 §24da; the 2.6 plan's D6). Leave it out and nothing is delegated: every
 escalation waits for you, as before. Each class you list lets the operator's `campaign-supervisor` principal make one
