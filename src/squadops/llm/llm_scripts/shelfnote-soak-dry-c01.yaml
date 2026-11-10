@@ -1,0 +1,1795 @@
+script: shelfnote-soak-dry-c01
+description: 'The 2.7 soak (#2892), launch 1 of 15: increment 1 (backlog item SN-6),
+  accepted. Recorded from cyc_dbb56e0feb6f of Campaign cmp_f14bab82c35f on deploy
+  dep_16a1cb4f54c8. The dry run''s copy: no latency replayed.'
+replay_latency: false
+recorded_from:
+  project_id: prj-shelfnote
+  cycle_id: cyc_dbb56e0feb6f
+  change_requests:
+    strategy.propose_increment occurrence 1 call 1:
+      proposal_id: prop_94a7fd22f72b
+      version: 1
+      baseline_tree: b8fd3cd82b680cd8afc0963c35539ac8a406295edb10fcaf933efb0797429780
+      basis: campaign_branch
+      criterion_files:
+      - criterion_id: T1
+        path: tests/test_criterion_T1.py
+      - criterion_id: T2
+        path: tests/test_criterion_T2.py
+      goals_revision: 3
+      content_hash: 2cce5e1453240e526b4d5f57abc46b275437459eb7e08ee7f64c175d7ee7b704
+      footprint:
+      - backend/routes.py
+      - backend/store.py
+      - tests/test_criterion_T1.py
+      - tests/test_criterion_T2.py
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
+  - qa.test occurrence 2 call 1
+answers:
+- task_type: strategy.propose_increment
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:change_request.yaml
+    kind: feature
+    prd_delta: []
+    manifest_delta: []
+    criteria:
+    - id: T1
+      statement: GET /stats returns the number of books in each status
+      surface_kind: endpoint
+      surface: GET /stats
+      observable: the response is HTTP 200 with a JSON body containing a `status_counts`
+        object whose keys are the book status values and whose values are the integer
+        count of books currently in that status; statuses with zero books appear with
+        value 0
+      paths:
+      - backend/routes.py
+      - backend/store.py
+    - id: T2
+      statement: GET /stats returns the average rating of rated books
+      surface_kind: endpoint
+      surface: GET /stats
+      observable: the response JSON contains an `average_rating` field equal to the arithmetic
+        mean of the ratings assigned to books that have a rating, expressed as a number;
+        when no book carries a rating the value is null
+      paths:
+      - backend/routes.py
+      - backend/store.py
+    must_not_break: []
+    retires: []
+    replaces_verifiers: []
+    footprint:
+    - backend/routes.py
+    - backend/store.py
+    backlog_item: SN-6
+    ```
+- task_type: development.design_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    # Technical Design: `GET /stats` Endpoint (SN-6)
+
+    ## Architecture Overview
+
+    This increment adds a single read-only aggregation endpoint to the existing Shelfnote backend. No new dependencies, no schema changes, no frontend work. The change is contained to two backend files and two new test files.
+
+    ```
+    ┌─────────────────────────────────────────────────┐
+    │  GET /stats                                     │
+    │  (routes.py — handler, < 30 lines)              │
+    │                                                 │
+    │  ┌───────────────────────────────────────────┐  │
+    │  │ store.get_status_counts() -> dict         │  │
+    │  │ store.get_average_rating() -> float|None  │  │
+    │  └───────────────────────────────────────────┘  │
+    │                                                 │
+    │  Response:                                      │
+    │  { "status_counts": {"unread":3,...},           │
+    │    "average_rating": 4.2 }                      │
+    └─────────────────────────────────────────────────┘
+    ```
+
+    The handler is a thin composition: it calls two store-level aggregation functions and returns the combined JSON. No business logic in the route layer.
+
+    ---
+
+    ## Interface Definitions
+
+    ### Endpoint Contract
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `status_counts` | `object` | Keys are every book-status value (canonical set), values are integer counts. Zero-count statuses are present with value `0`. |
+    | `average_rating` | `number \| null` | Arithmetic mean of ratings on books where a rating is set. `null` when no book carries a rating. |
+
+    HTTP status: `200` on success. No error cases are expected (the endpoint reads from the same in-memory store the app already serves; an empty shelf returns `{"status_counts": {...all zeros}, "average_rating": null}`).
+
+    ### Store Functions (new, in `store.py`)
+
+    ```python
+    def get_status_counts() -> dict[str, int]:
+        """Return a dict mapping every known status to the number of books in it.
+        Statuses with no books appear with value 0."""
+        ...
+
+    def get_average_rating() -> float | None:
+        """Return the arithmetic mean of all non-null book ratings,
+        or None if no book has a rating."""
+        ...
+    ```
+
+    Both operate on the existing in-memory collection (whatever structure `store.py` already uses — a list of book dicts or model instances). They are pure reads with no mutation.
+
+    ### Route Handler (new, in `routes.py`)
+
+    ```python
+    @router.get("/stats")
+    def get_stats():
+        status_counts = store.get_status_counts()
+        avg_rating = store.get_average_rating()
+        return {"status_counts": status_counts, "average_rating": avg_rating}
+    ```
+
+    ~5 lines of body. Well under the 30-line handler limit.
+
+    ### Status Canonical Set
+
+    The set of keys in `status_counts` is the **full** set of statuses the model recognises (e.g. `"unread"`, `"reading"`, `"finished"` — exact values read from `models.py`). The store function initialises the dict with every status at `0`, then increments. This guarantees zero-count statuses are present per the T1 observable.
+
+    ---
+
+    ## Implementation Sequencing
+
+    | Phase | Work | Depends on | Time est. |
+    |-------|------|-----------|-----------|
+    | 1 | Add `get_status_counts()` and `get_average_rating()` to `store.py` | — | 15 min |
+    | 2 | Add `GET /stats` handler to `routes.py` | Phase 1 | 10 min |
+    | 3 | Write `tests/test_criterion_T1.py` | Phase 2 | 20 min |
+    | 4 | Write `tests/test_criterion_T2.py` | Phase 2 | 20 min |
+    | 5 | Run full test suite (`pytest -q`), fix any regression | Phase 3-4 | 15 min |
+
+    Total planned: **~80 min** of a 3-hour budget. Remaining budget is slack for debugging or edge-case fixes.
+
+    ---
+
+    ## Proto Validation Plan
+
+    This change is a straightforward read-only aggregation over an existing in-memory collection. The risk surface is minimal. I identify **no prototype required** to validate feasibility, for these reasons:
+
+    1. **Status enumeration** — the canonical statuses are already defined in `models.py` (used by existing status-update endpoints and validated by the seven `test_reading_status_*` files). The store function simply iterates a known constant. No new mechanism.
+
+    2. **Rating arithmetic** — books already carry an optional rating (validated by `test_ratings_t3.py` / `t4.py`). Computing a mean over a filtered list is a one-liner. No new data structure.
+
+    3. **In-memory iteration** — the store already holds all books in a single collection that other routes (search, sort, list) iterate. Aggregation is the same pattern.
+
+    If during implementation I discover the store is keyed differently than expected (e.g. sharded by user), that would surface immediately in Phase 1 and require at most a 5-minute adjustment. No throwaway proto is warranted.
+
+    ---
+
+    ## Test Design
+
+    Both test files follow the product's conventions:
+    - Import `TestClient` (or `httpx.AsyncClient`) from the existing test setup in `conftest.py`.
+    - Seed the store via the existing API endpoints (POST books, set status, set rating) so the test exercises the running app's API.
+    - Assert on response JSON content, not on internal imports.
+    - Each test file is self-contained and idempotent.
+
+    ### `tests/test_criterion_T1.py`
+
+    | Test | Setup | Assertion |
+    |------|-------|-----------|
+    | `test_status_counts_reflects_current_state` | Create books in mixed statuses via API | `response.json()["status_counts"]` has correct per-status integers |
+    | `test_zero_count_status_present` | Create books in only 2 of N statuses | All N status keys present; absent ones are `0` |
+    | `test_empty_shelf_all_zero` | No books created | All counts are `0` |
+
+    ### `tests/test_criterion_T2.py`
+
+    | Test | Setup | Assertion |
+    |------|-------|-----------|
+    | `test_average_rating_computed` | Assign ratings 3, 4, 5 to three books | `average_rating == 4.0` |
+    | `test_unrated_books_excluded` | Mix rated and unrated books | Mean computed over rated books only |
+    | `test_null_when_no_rated_books` | Books exist but none have ratings | `average_rating is None` (JSON `null`) |
+    | `test_null_when_no_books` | Empty shelf | `average_rating is None` |
+
+    ---
+
+    ## Unknowns Classification
+
+    | # | Unknown | Classification | Rationale |
+    |---|---------|---------------|-----------|
+    | U1 | Exact status string values in the model | `resolved` | Readable from `models.py` at the baseline commit; already exercised by 7 existing test files. Will be confirmed during Phase 1 implementation. |
+    | U2 | Store collection structure (list vs dict vs other) | `resolved` | Readable from `store.py` at baseline; other routes already iterate it. Confirmed during Phase 1. |
+    | U3 | Rating field name and type (int? float? optional?) | `resolved` | Readable from `models.py`; existing rating tests (T3, T4) exercise it. Confirmed during Phase 1. |
+    | U4 | Whether `conftest.py` fixture provides a pre-seeded or empty client | `resolved` | Readable from `conftest.py` at baseline. Test setup follows whatever fixture pattern it exposes. |
+    | U5 | Floating-point precision of the mean (e.g. 1/3 recurring) | `acceptable_risk` | Python's `sum/len` gives IEEE-754 double precision. Tests will use `pytest.approx` or choose integer-friendly means (e.g. 3+4+5=4.0). No spec mandates a specific precision. |
+
+    **No `blocker` unknowns. No `requires_human_decision` items.**
+
+    ---
+
+    ## Files to Emit
+
+    | Path | Action |
+    |------|--------|
+    | `backend/routes.py` | Replace (full file, adding `GET /stats` handler) |
+    | `backend/store.py` | Replace (full file, adding two aggregation functions) |
+    | `tests/test_criterion_T1.py` | New file |
+    | `tests/test_criterion_T2.py` | New file |
+
+    All other files at the baseline commit remain untouched.
+
+    ---
+
+    ## Risk Notes
+
+    - **Regression risk:** Very low. The change is purely additive (new functions, new route). No existing function signature or route path is modified. The existing 17 test files should pass unchanged.
+    - **Concurrency:** The store is in-memory and the app is single-process (per blueprint). No locking needed for a read.
+    - **Empty state:** Both aggregations handle the empty collection gracefully (all-zero counts, `None` rating). No division-by-zero guard needed beyond checking the rated list is non-empty before dividing.
+
+    ---
+
+    ## Summary
+
+    A 4-file, read-only increment that adds a `/stats` endpoint returning pre-computed shelf statistics. No proto required, no blockers, ~80 minutes of implementation within the 3-hour budget. Ready for implementation.
+- task_type: qa.define_test_strategy
+  occurrence: 1
+  call: 1
+  content: |-
+    # Test Strategy: `GET /stats` Endpoint (SN-6)
+
+    ## 1. Acceptance Checklist
+
+    Derived from criteria T1 and T2 in the approved change request. Use this checklist during implementation review to confirm each criterion is met before approval.
+
+    ### T1 — `status_counts` correctness
+
+    - [ ] `GET /stats` responds with HTTP status **200**.
+    - [ ] Response body is valid JSON (Content-Type includes `application/json`).
+    - [ ] JSON body contains a top-level key named exactly `status_counts`.
+    - [ ] `status_counts` is a JSON object (not array, not string).
+    - [ ] Every key in `status_counts` is a valid book status value defined by the product's model (e.g., `to_read`, `reading`, `finished`, etc. — as enumerated in `backend/models.py`).
+    - [ ] Each value in `status_counts` is a JSON **integer** (not float, not string).
+    - [ ] For each status, the value equals the actual count of books currently in that status.
+    - [ ] **Zero-count statuses are present.** If a status has no books, it appears with value `0` (it is not omitted).
+    - [ ] No extra keys appear in `status_counts` that are not valid book statuses.
+
+    ### T2 — `average_rating` correctness
+
+    - [ ] JSON body contains a top-level key named exactly `average_rating`.
+    - [ ] When at least one book has a rating, `average_rating` is a JSON **number** (not string, not null).
+    - [ ] The number equals the arithmetic mean of all ratings on books that carry a rating (unrated books are excluded from both numerator and denominator).
+    - [ ] When **no** book in the store carries a rating, `average_rating` is JSON `null`.
+    - [ ] When the store is completely empty (no books at all), `average_rating` is JSON `null`.
+
+    ### Cross-cutting / structural
+
+    - [ ] The response does not require authentication or special headers beyond what the app already expects.
+    - [ ] The endpoint does not mutate state: a second identical `GET /stats` call returns identical JSON.
+    - [ ] The handler in `backend/routes.py` is ≤ 30 lines (CONTRIBUTING.md constraint).
+    - [ ] No new third-party dependencies are added (blueprint convention: only what `requirements.txt` already declares).
+    - [ ] `backend/store.py` changes are additive only; existing store methods are unchanged in signature and behaviour.
+
+    ### Must-not-break (regression guard)
+
+    - [ ] All existing backend tests pass unchanged: `pytest -q -p no:cacheprovider` exits 0.
+    - [ ] `boots` check passes: `python -c "from backend.main import app"` exits 0.
+    - [ ] Frontend tests pass unchanged: `npm --prefix frontend test --silent` exits 0.
+
+    ---
+
+    ## 2. Test Strategy Note
+
+    ### Scope Decision
+
+    | Layer | Included? | Rationale |
+    |-------|-----------|-----------|
+    | Unit (store methods) | **Indirect** | Aggregation logic lives in `store.py`; verified through the endpoint, not in isolation. Keeps tests to the product's API-surface convention. |
+    | Integration (endpoint) | **Yes — primary** | Both criteria are endpoint-surface. Tests call `GET /stats` via FastAPI `TestClient` and assert on the JSON response. |
+    | Contract | N/A | No external consumer contract; single-service app. |
+    | E2E / Frontend | **No** | No frontend file is in the footprint. The endpoint is backend-only. |
+
+    ### Test File Placement & Conventions
+
+    - **`tests/test_criterion_T1.py`** — tests for `status_counts`.
+    - **`tests/test_criterion_T2.py`** — tests for `average_rating`.
+    - Both use `TestClient` (or `httpx.AsyncClient` if the existing tests in `tests/` already use async — check `conftest.py` and existing test files for the established pattern).
+    - Each test function exercises the **running app through the test client** and **asserts on response content** (status code, JSON fields, values). No test may pass merely because a module imports cleanly.
+    - Tests must **not** be satisfied by FastAPI's default behaviour (e.g., a 404 on an unregistered path does not satisfy T1/T2).
+    - Setup: each test (or a fixture) seeds the in-memory store with a known set of books and ratings, then calls `GET /stats`. Teardown resets state (the existing `conftest.py` likely provides a fixture for this — reuse it).
+
+    ### Test Matrix
+
+    #### `test_criterion_T1.py`
+
+    | # | Scenario | Setup | Assert |
+    |---|----------|-------|--------|
+    | T1-1 | Mixed statuses | Books in ≥2 different statuses | `status_counts` has correct integer for each; zero-count statuses present as 0 |
+    | T1-2 | Single status only | All books in one status | That status has correct count; all other statuses = 0 |
+    | T1-3 | Empty store | No books | All statuses = 0 |
+    | T1-4 | All statuses represented | Books in every possible status | Each count ≥ 1; no extra keys |
+    | T1-5 | Response shape | Any store state | Status 200; body is JSON; `status_counts` is a dict |
+
+    #### `test_criterion_T2.py`
+
+    | # | Scenario | Setup | Assert |
+    |---|----------|-------|--------|
+    | T2-1 | Multiple rated books | ≥3 books with distinct ratings | `average_rating` = mean (± floating-point tolerance) |
+    | T2-2 | Single rated book | 1 rated, several unrated | `average_rating` = that single rating |
+    | T2-3 | No ratings | Books exist but none rated | `average_rating` is `null` |
+    | T2-4 | Empty store | No books at all | `average_rating` is `null` |
+    | T2-5 | Mixed rated/unrated | 2 rated (4.0, 5.0), 3 unrated | `average_rating` = 4.5 (only rated in mean) |
+    | T2-6 | Type check | Any rated book | `average_rating` is a JSON number, not a string |
+
+    ### Assertion Style
+
+    - Use `resp.status_code == 200` for status.
+    - Use `resp.json()` to parse and assert on fields.
+    - For floating-point comparison: `abs(actual - expected) < 1e-9` or `pytest.approx`.
+    - For null: `assert data["average_rating"] is None` (Python `None` maps from JSON `null`).
+    - For integer counts: `assert isinstance(val, int)` and `val == expected`.
+
+    ---
+
+    ## 3. Defect Severity Rubric
+
+    | Severity | Definition | Examples (this change) |
+    |----------|------------|------------------------|
+    | **Critical (P0)** | Endpoint is unreachable, returns 5xx on any valid request, or the app fails to boot. | `GET /stats` returns 500; `from backend.main import app` fails. |
+    | **Major (P1)** | A criterion's observable is violated in a way a consumer would notice. | `status_counts` omits a zero-count status; `average_rating` includes unrated books; `average_rating` is a string instead of number; response is 404. |
+    | **Minor (P2)** | A criterion's observable is violated but impact is limited or edge-case. | Float precision off by >1e-6 but <1e-3; an extra top-level JSON key not in spec (e.g., `"total_books"`). |
+    | **Cosmetic (P3)** | No observable behaviour is wrong; style or maintainability concern. | Handler exceeds 30 lines; variable naming inconsistent with `store.py` conventions; missing docstring. |
+
+    **Release gate:** No P0 or P1 defects may be open at approval. P2 may be deferred with a documented rationale. P3 is advisory.
+
+    ---
+
+    ## 4. Risk-Based Test Priorities
+
+    | Priority | Area | Why | Mitigation |
+    |----------|------|-----|------------|
+    | **1 (Highest)** | Aggregation correctness in `store.py` | The core logic (counting by status, computing mean) is new. A bug here silently returns wrong data. | T1-1, T1-4, T2-1, T2-5 exercise the happy path with multiple books. |
+    | **2** | Zero / empty edge cases | "Statuses with zero books appear with value 0" and "null when no rating" are explicitly called out in the criteria. Easy to miss (e.g., iterating only over books present). | T1-2, T1-3, T2-3, T2-4. |
+    | **3** | Type fidelity | JSON `null` vs `0` vs missing key; integer vs float for counts. A consumer parsing the response could break. | T1-5, T2-6, explicit `isinstance` / `is None` assertions. |
+    | **4** | Regression on existing endpoints | Changes to `store.py` or `routes.py` could alter existing route behaviour. | Full `pytest` run (all existing test files) + `boots` check. No `must_not_break` items in this CR, but the existing suite is the guard. |
+    | **5** | Handler size / dependency scope | CONTRIBUTING.md cap (30 lines) and "no new deps" rule. | Code review at plan/impl gate; quick line-count check. |
+
+    ---
+
+    ## 5. Out-of-Scope / Deferred
+
+    - **Performance / load testing** — dataset is in-memory and small; not justified within the 3-hour budget.
+    - **Frontend integration** — no frontend file in the footprint; the endpoint is consumed by the frontend only in a future cycle.
+    - **Caching or concurrent-write correctness** — single-process in-memory store; no concurrency scenario in scope.
+    - **Authentication / authorization on `/stats`** — the product has no auth layer; not in the criteria.
+
+    ---
+
+    *Document produced at Stage A (planning). Actual test files (`tests/test_criterion_T1.py`, `tests/test_criterion_T2.py`) will be authored during the implementation workload, guided by the test matrix above.*
+- task_type: governance.prepare_plan_authoring_brief
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_authoring_brief.yaml
+    version: 1
+    brief_id: brief-sn6-stats-001
+    objective_summary: |
+      Add a single read-only aggregation endpoint, GET /stats, to the existing
+      Shelfnote backend. The endpoint returns a JSON body with two fields:
+      (1) status_counts — an object whose keys are every book-status value
+      recognised by the product's model and whose values are the integer count
+      of books currently in that status, with zero-count statuses present at 0;
+      and (2) average_rating — the arithmetic mean of the ratings on books that
+      carry a rating, expressed as a JSON number, or null when no book has a
+      rating. The change is purely additive: two new store-level aggregation
+      functions, one new route handler, and two new test files. No existing
+      route, model, or store method is modified. No frontend work is in scope
+      for this cycle.
+    accepted_stack:
+      backend: "FastAPI (Python 3)"
+      frontend: "React + Vite (unchanged this cycle)"
+      storage: "In-memory collection in backend/store.py (no external database)"
+      test_backend: "pytest + FastAPI TestClient (via root conftest.py)"
+      test_frontend: "vitest + Testing Library (unchanged this cycle)"
+    must_cover_requirements:
+      - "T1: GET /stats returns a JSON body containing a status_counts object whose keys are all book status values defined in the model and whose values are the integer count of books currently in that status; statuses with zero books appear with value 0"
+      - "T2: GET /stats returns a JSON body containing an average_rating field equal to the arithmetic mean of ratings on books that have a rating; when no book carries a rating the value is null"
+      - "The new route handler in routes.py is at most 30 lines (CONTRIBUTING.md constraint)"
+      - "No new third-party dependencies are added to backend/requirements.txt"
+      - "Changes to store.py are additive only: existing function signatures and behaviour are unchanged"
+      - "Tests exercise the running app through the TestClient and assert on response content; they must not pass by virtue of a clean import or a framework default (e.g. an unknown path's 404)"
+      - "All existing backend and frontend test files continue to pass unchanged"
+    scope_cuts:
+      - "Frontend consumption of /stats: deferred to a future cycle (no frontend file is in the footprint)"
+      - "Authentication or authorization on /stats: the product has no auth layer; not in the criteria"
+      - "Performance, load, or caching: in-memory store, single-process; not justified within budget"
+      - "Concurrent-write correctness on /stats: read-only endpoint; no locking needed"
+      - "Any modification to models.py, main.py, errors.py, or any other file outside the four footprint paths"
+    risk_areas:
+      - "Aggregation correctness: the new store functions must count by the exact status strings the model defines and compute the mean over rated books only (exclude unrated)"
+      - "Zero and empty edge cases: all-zero status_counts on an empty shelf; null average_rating when no book has a rating; no division-by-zero"
+      - "Type fidelity in the JSON response: integer (not float) for counts; number (not string) for average_rating; JSON null (not 0, not missing key) when no rated books exist"
+      - "Regression on existing endpoints: additive changes to store.py and routes.py must not alter any existing route's behaviour or any existing store method's contract"
+      - "Floating-point precision of the mean: tests should use pytest.approx or choose integer-friendly means to avoid brittleness"
+    source_artifact_refs:
+      - change_request.yaml
+      - technical_design.md
+      - test_strategy.md
+    major_components:
+      - "Store aggregation functions (get_status_counts, get_average_rating) in backend/store.py"
+      - "GET /stats route handler in backend/routes.py"
+      - "T1 test suite (status_counts) in backend/tests/test_criterion_T1.py"
+      - "T2 test suite (average_rating) in backend/tests/test_criterion_T2.py"
+    dependency_assumptions:
+      - "The existing in-memory collection in store.py holds all book records and is iterable (confirmed by existing routes that list, search, and sort books)"
+      - "The canonical set of book status values is defined as a constant or enum in backend/models.py (exercised by the seven existing test_reading_status_* files)"
+      - "Books carry an optional rating field (exercised by test_ratings_t3.py and test_ratings_t4.py); the field is null/absent when a book is unrated"
+      - "The root conftest.py provides a TestClient fixture (or equivalent) that yields a fresh, empty app instance per test"
+      - "No external database, message queue, or third-party API is required"
+    time_budget_guidance:
+      backend_store_and_route: 30
+      tests: 50
+      verification_and_fixup: 20
+    task_granularity_guidance: "Aim for 2-5 minute LLM generations per task: one task for the store functions plus route handler, one task per test file, with each test file containing 3-6 focused test functions."
+    artifact_naming_conventions:
+      - "Store aggregation functions follow the existing naming and docstring style in backend/store.py"
+      - "The route handler uses the existing @router decorator pattern in backend/routes.py"
+      - "Test files are named test_criterion_T1.py and test_criterion_T2.py inside backend/tests/"
+      - "Test functions use descriptive snake_case names (e.g. test_zero_count_status_present, test_null_when_no_rated_books)"
+    open_questions:
+      - "The change request's footprint lists test files at tests/test_criterion_T1.py and tests/test_criterion_T2.py (repository root), but the plan shape rule qa-tests-live-in-the-stacks-namespace requires FastAPI+React QA test files in backend/tests/. This brief resolves the path to backend/tests/ per the plan shape rule. Confirm the operator accepts this path adjustment; the root conftest.py serves backend/tests/ unchanged, and pytest discovers test_*.py under . regardless of subdirectory."
+    ```
+- task_type: development.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-a9beab93
+    source_brief_id: brief-sn6-stats-001
+    proposing_role: development
+    scope_statement: |
+      Proposes a single development task that adds two store-level aggregation
+      functions (get_status_counts, get_average_rating) to backend/store.py and a
+      thin GET /stats route handler to backend/routes.py. The change is purely
+      additive: no existing function signature, route, or model is modified.
+      Test files (test_criterion_T1.py, test_criterion_T2.py) are owned by the QA
+      proposal and are excluded from this dev proposal.
+    tasks:
+      - task_type: development.develop
+        role: dev
+        focus: "stats aggregation store functions and route handler"
+        description: |
+          Add two pure-read aggregation functions to backend/store.py:
+
+          (1) get_status_counts() -> dict[str, int]
+              Returns a dict whose keys are every canonical book-status value
+              defined in the model and whose values are the integer count of
+              books currently in that status. Statuses with zero books appear
+              with value 0. The function initialises the dict with every status
+              at 0, then iterates the existing in-memory book collection and
+              increments the appropriate counter.
+
+          (2) get_average_rating() -> float | None
+              Returns the arithmetic mean of the rating field on books that
+              carry a non-null rating, or None when no book has a rating.
+              Guards against division-by-zero by checking the rated list is
+              non-empty before dividing.
+
+          Add a GET /stats route handler to backend/routes.py using the existing
+          @router decorator pattern. The handler calls the two store functions and
+          returns the combined dict {"status_counts": ..., "average_rating": ...}
+          as the JSON response body. The handler body is at most 30 lines per
+          CONTRIBUTING.md.
+
+          Both store functions operate on the existing in-memory book collection
+          and introduce no mutation, no new dependency, and no change to any
+          existing function signature or behaviour.
+        expected_artifacts:
+          - "backend/store.py"
+          - "backend/routes.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: backend/store.py
+            name_prefix: get_status_counts
+            min_count: 1
+            severity: error
+          - check: function_defined
+            file: backend/store.py
+            name_prefix: get_average_rating
+            min_count: 1
+            severity: error
+          - check: endpoint_defined
+            file: backend/routes.py
+            methods_paths:
+              - "GET /stats"
+            severity: error
+          - check: command_exit_zero
+            argv:
+              - python
+              - -m
+              - py_compile
+              - backend/store.py
+            severity: error
+          - check: command_exit_zero
+            argv:
+              - python
+              - -m
+              - py_compile
+              - backend/routes.py
+            severity: error
+          - check: module_imports
+            file: backend/store.py
+            severity: error
+          - check: module_imports
+            file: backend/routes.py
+            severity: error
+          - "The GET /stats handler body (excluding the @router decorator line) is at most 30 lines, per CONTRIBUTING.md."
+          - "Changes to backend/store.py are purely additive: every pre-existing function signature and its behaviour are unchanged; no existing function is renamed, removed, or has its parameter list altered."
+        depends_on_focus: []
+    brief_conflicts: []
+    assumptions:
+      - "The canonical set of book status values is accessible from within store.py as a constant or enum defined in backend/models.py (confirmed by dependency_assumptions in the brief)."
+      - "The existing in-memory book collection in store.py is iterable and each book record exposes its status and rating fields (confirmed by existing routes that list, search, and sort books)."
+      - "The route handler uses the same @router instance already defined in backend/routes.py."
+    risks:
+      - "If the store collection is structured differently than a flat iterable (e.g. sharded), the aggregation functions will need a minor adjustment; the brief classifies this as resolved and expects it to be confirmed during implementation."
+      - "Floating-point precision of the mean is an acceptable risk per the brief; tests will use pytest.approx or integer-friendly means."
+    gaps_not_covered:
+      - "Test files test_criterion_T1.py and test_criterion_T2.py are proposed by the QA role."
+      - "Frontend consumption of /stats is explicitly out of scope (scope_cuts)."
+    confidence: high
+    ```
+- task_type: qa.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-d6034c4c
+    source_brief_id: brief-sn6-stats-001
+    proposing_role: qa
+    scope_statement: |
+      Proposes two qa.test tasks, one per acceptance criterion (T1 status_counts,
+      T2 average_rating), each authoring a pytest suite in the product's test
+      namespace that exercises GET /stats through the TestClient and asserts on
+      response content. The suites cover the brief's risk areas: aggregation
+      correctness, zero/empty edge cases, JSON type fidelity, and floating-point
+      tolerance. No regression-verification task is proposed because the
+      framework's tests_pass check re-runs every existing suite on the candidate.
+    tasks:
+      - task_type: qa.test
+        role: qa
+        focus: "T1 status_counts endpoint test suite"
+        description: |
+          Verify the observable for T1: GET /stats returns a status_counts object
+          whose keys are every canonical book status and whose values are integer
+          counts, with zero-count statuses present as 0.
+
+          Faults this suite distinguishes from correct behaviour:
+          - A status that has no books is omitted from the response (missing key
+            instead of value 0) — caught by seeding books in a subset of statuses
+            and asserting every canonical status key is present.
+          - A count is off by one or tallies the wrong status — caught by seeding
+            a known mix of statuses and asserting exact per-status integers.
+          - Counts are returned as floats or strings instead of integers — caught
+            by an isinstance(val, int) assertion on every value.
+          - The response is not 200 or not JSON — caught by status_code and
+            Content-Type assertions.
+          - Extra keys appear in status_counts that are not valid book statuses —
+            caught by asserting the key set equals the canonical status set.
+          - An empty shelf returns an empty object or an error instead of
+            all-zero counts — caught by asserting every status key is present
+            with value 0 on a fresh, unseeded client.
+        expected_artifacts:
+          - "tests/test_criterion_T1.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: tests/test_criterion_T1.py
+            name_prefix: "test_"
+            min_count: 3
+            severity: error
+        depends_on_focus:
+          - "dev:stats aggregation store functions and route handler"
+      - task_type: qa.test
+        role: qa
+        focus: "T2 average_rating endpoint test suite"
+        description: |
+          Verify the observable for T2: GET /stats returns an average_rating
+          field equal to the arithmetic mean of ratings on rated books, or null
+          when no book carries a rating.
+
+          Faults this suite distinguishes from correct behaviour:
+          - Unrated books are included in the mean (dividing by total books
+            instead of rated books) — caught by seeding a mix of rated and
+            unrated books and asserting the mean matches only the rated subset.
+          - No book has a rating but the field is 0 or missing instead of JSON
+            null — caught by asserting the parsed value is None on a shelf with
+            books but no ratings, and on an empty shelf.
+          - Division by zero on an empty shelf — caught by the empty-shelf test
+            that would crash if the implementation divides without a guard.
+          - The mean is returned as a string instead of a JSON number — caught by
+            an isinstance(val, (int, float)) assertion excluding str and None.
+          - Floating-point imprecision causes a brittle exact-equality failure —
+            mitigated by using pytest.approx or choosing integer-friendly means
+            (e.g. ratings 3, 4, 5 giving mean 4.0).
+        expected_artifacts:
+          - "tests/test_criterion_T2.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: tests/test_criterion_T2.py
+            name_prefix: "test_"
+            min_count: 3
+            severity: error
+        depends_on_focus:
+          - "dev:stats aggregation store functions and route handler"
+    brief_conflicts: []
+    assumptions:
+      - "The root conftest.py provides a TestClient fixture that yields a fresh, empty app instance per test, as confirmed by the brief's dependency_assumptions and the existing test files that rely on it."
+      - "The canonical set of book status values is accessible from within the test as a constant or importable value from backend.models, matching the brief's dependency assumption."
+      - "Books are seeded via existing API endpoints (POST, status update, rating update) so the test exercises the running app's full request path, per CONTRIBUTING.md and the brief's must_cover_requirements."
+    risks:
+      - "If the conftest.py fixture does not reset the in-memory store between tests, tests may interfere with each other; the existing 17 test files pass, so the fixture is assumed to provide isolation."
+    gaps_not_covered:
+      - "Regression verification (all existing tests still pass) is handled by the framework's tests_pass check, which re-runs every collected suite on the candidate; no separate QA task is needed."
+      - "The handler-line-count constraint (≤30) and the additive-only store.py constraint are already in the development task's acceptance criteria."
+      - "No-new-dependencies is a build/packaging verification in the builder's domain."
+      - "Frontend tests are unchanged this cycle (scope_cuts); no QA task is proposed for them."
+    confidence: high
+    ```
+- task_type: strategy.propose_plan_guidance
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_guidance.yaml
+    version: 1
+    guidance_id: guid-26f8dd8c
+    source_brief_id: brief-sn6-stats-001
+    proposing_role: strategy
+    priority_guidance:
+      - area: store_aggregation
+        priority: high
+        rationale: |
+          The two store functions carry the entire correctness burden: counting
+          by exact model status strings, seeding zero-count statuses, and
+          computing the mean over rated-only books. Every downstream consumer
+          (route handler, both test suites) is correct only if these functions
+          are correct. Prioritize careful implementation and review here.
+      - area: test_suites
+        priority: high
+        rationale: |
+          The brief allocates 50% of budget to tests and CONTRIBUTING.md
+          mandates TestClient-exercised tests that fail on response content,
+          not on imports. The T1 and T2 suites are the primary verification
+          mechanism for type fidelity (int vs float, null vs 0), zero-count
+          presence, and empty-shelf edge cases. They must be thorough, not
+          merely present.
+      - area: route_handler
+        priority: medium
+        rationale: |
+          The handler is a thin pass-through (under 30 lines per
+          CONTRIBUTING.md) that calls the two store functions and returns the
+          result. Low intrinsic complexity, but it is the seam where type
+          fidelity of the JSON response is established, so it should still
+          receive explicit attention to JSON encoding (int not float, null
+          not 0).
+    ordering_guidance:
+      - before: "dev:route_handler"
+        after: "dev:store_aggregation"
+        rationale: |
+          The route handler calls get_status_counts and get_average_rating.
+          The store functions must exist (with correct signatures and return
+          types) before the handler can be written and verified.
+      - before: "qa:test_t1_status_counts"
+        after: "dev:route_handler"
+        rationale: |
+          T1 tests exercise the running app via TestClient against GET /stats.
+          The route must be registered and the store functions wired in before
+          the test file can be authored and run.
+      - before: "qa:test_t2_average_rating"
+        after: "dev:route_handler"
+        rationale: |
+          Same dependency as T1: the route and store functions must be in
+          place before T2 tests can exercise the average_rating field through
+          the TestClient.
+    risk_guidance:
+      - target: "dev:store_aggregation"
+        risk: |
+          The get_status_counts function must seed every status value defined
+          in models.py at 0 before incrementing. If the implementer iterates
+          only over the in-memory collection, zero-count statuses will be
+          missing from the response. The function must import or reference
+          the canonical status set from models.py, not derive it from the
+          current collection contents.
+      - target: "dev:store_aggregation"
+        risk: |
+          The get_average_rating function must exclude unrated books (rating
+          is null/absent) from both numerator and denominator. A common
+          failure is including a 0 or None in the mean calculation, which
+          shifts the arithmetic mean and violates T2.
+      - target: "qa:test_t1_status_counts"
+        risk: |
+          Type fidelity: the test must assert that counts are JSON integers,
+          not floats. Python's json module will serialize a float like 3.0 as
+          3.0, not 3. If the store function returns a float, the test must
+          catch it. Use explicit isinstance or value-equality checks that
+          distinguish 3 from 3.0.
+      - target: "qa:test_t2_average_rating"
+        risk: |
+          The null-vs-0 distinction: when no book has a rating, the response
+          must contain "average_rating": null (JSON null), not 0, not a
+          missing key. Tests must assert the key is present AND the value is
+          None (Python) / null (JSON), not merely that the key is absent or
+          that the value is 0.
+      - target: "dev:store_aggregation"
+        risk: |
+          Regression on existing store methods: store.py is a shared module.
+          The new functions must be purely additive — no modification to
+          existing function signatures, no import that shadows an existing
+          name, no mutation of the in-memory collection. A careless import
+          or a modified helper could break the nine existing test files.
+      - target: "qa:test_t2_average_rating"
+        risk: |
+          Floating-point brittleness: if tests use a fixed mean like 3.5
+          from books rated 2 and 5, floating-point is fine. But if tests
+          use means like 1/3 or 2/3, strict equality will fail. Use
+          pytest.approx or choose ratings that yield exact binary fractions.
+    time_budget_guidance:
+      - area: store_aggregation
+        budget_pct: 15
+      - area: route_handler
+        budget_pct: 15
+      - area: test_suites
+        budget_pct: 50
+      - area: verification_and_fixup
+        budget_pct: 20
+    scope_cut_guidance: []
+    must_not_skip:
+      - "Zero-count statuses must be present in the response with value 0 (T1 load-bearing edge case)"
+      - "average_rating must be JSON null (not 0, not missing) when no book has a rating (T2 load-bearing edge case)"
+      - "Tests must exercise the running app through TestClient and assert on response content per CONTRIBUTING.md"
+      - "No modification to existing store.py function signatures or models.py"
+    defer_if_time_constrained:
+      - "Additional edge-case test functions beyond the core 3-6 per test file (e.g., stress with 100+ books)"
+    confidence: high
+    ```
+- task_type: governance.merge_plan
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:implementation_plan.yaml
+    version: 1
+    project_id: prj-shelfnote
+    cycle_id: cyc_dbb56e0feb6f
+    prd_hash: bf415e50d94914b8de1edff6e1a1a35bf4d2e981634985a4a4f94becc1af5d7f
+    tasks:
+    - task_index: 0
+      task_type: development.develop
+      role: dev
+      focus: stats aggregation store functions and route handler
+      description: "Add two pure-read aggregation functions to backend/store.py:\n\n(1)\
+        \ get_status_counts() -> dict[str, int]\n    Returns a dict whose keys are every\
+        \ canonical book-status value\n    defined in the model and whose values are the\
+        \ integer count of\n    books currently in that status. Statuses with zero books\
+        \ appear\n    with value 0. The function initialises the dict with every status\n\
+        \    at 0, then iterates the existing in-memory book collection and\n    increments\
+        \ the appropriate counter.\n\n(2) get_average_rating() -> float | None\n    Returns\
+        \ the arithmetic mean of the rating field on books that\n    carry a non-null\
+        \ rating, or None when no book has a rating.\n    Guards against division-by-zero\
+        \ by checking the rated list is\n    non-empty before dividing.\n\nAdd a GET /stats\
+        \ route handler to backend/routes.py using the existing\n@router decorator pattern.\
+        \ The handler calls the two store functions and\nreturns the combined dict {\"\
+        status_counts\": ..., \"average_rating\": ...}\nas the JSON response body. The\
+        \ handler body is at most 30 lines per\nCONTRIBUTING.md.\n\nBoth store functions\
+        \ operate on the existing in-memory book collection\nand introduce no mutation,\
+        \ no new dependency, and no change to any\nexisting function signature or behaviour."
+      expected_artifacts:
+      - backend/store.py
+      - backend/routes.py
+      acceptance_criteria:
+      - check: function_defined
+        file: backend/store.py
+        name_prefix: get_status_counts
+        min_count: 1
+      - check: function_defined
+        file: backend/store.py
+        name_prefix: get_average_rating
+        min_count: 1
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths:
+        - GET /stats
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/store.py
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/routes.py
+      - check: module_imports
+        file: backend/store.py
+      - check: module_imports
+        file: backend/routes.py
+      - The GET /stats handler body (excluding the @router decorator line) is at most
+        30 lines, per CONTRIBUTING.md.
+      - 'Changes to backend/store.py are purely additive: every pre-existing function
+        signature and its behaviour are unchanged; no existing function is renamed, removed,
+        or has its parameter list altered.'
+      depends_on: []
+    - task_index: 1
+      task_type: qa.test
+      role: qa
+      focus: T1 status_counts endpoint test suite
+      description: "Verify the observable for T1: GET /stats returns a status_counts object\n\
+        whose keys are every canonical book status and whose values are integer\ncounts,\
+        \ with zero-count statuses present as 0.\n\nFaults this suite distinguishes from\
+        \ correct behaviour:\n- A status that has no books is omitted from the response\
+        \ (missing key\n  instead of value 0) — caught by seeding books in a subset of\
+        \ statuses\n  and asserting every canonical status key is present.\n- A count\
+        \ is off by one or tallies the wrong status — caught by seeding\n  a known mix\
+        \ of statuses and asserting exact per-status integers.\n- Counts are returned\
+        \ as floats or strings instead of integers — caught\n  by an isinstance(val, int)\
+        \ assertion on every value.\n- The response is not 200 or not JSON — caught by\
+        \ status_code and\n  Content-Type assertions.\n- Extra keys appear in status_counts\
+        \ that are not valid book statuses —\n  caught by asserting the key set equals\
+        \ the canonical status set.\n- An empty shelf returns an empty object or an error\
+        \ instead of\n  all-zero counts — caught by asserting every status key is present\n\
+        \  with value 0 on a fresh, unseeded client."
+      expected_artifacts:
+      - tests/test_criterion_T1.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_T1.py
+        name_prefix: test_
+        min_count: 3
+      depends_on:
+      - 0
+    - task_index: 2
+      task_type: qa.test
+      role: qa
+      focus: T2 average_rating endpoint test suite
+      description: "Verify the observable for T2: GET /stats returns an average_rating\n\
+        field equal to the arithmetic mean of ratings on rated books, or null\nwhen no\
+        \ book carries a rating.\n\nFaults this suite distinguishes from correct behaviour:\n\
+        - Unrated books are included in the mean (dividing by total books\n  instead of\
+        \ rated books) — caught by seeding a mix of rated and\n  unrated books and asserting\
+        \ the mean matches only the rated subset.\n- No book has a rating but the field\
+        \ is 0 or missing instead of JSON\n  null — caught by asserting the parsed value\
+        \ is None on a shelf with\n  books but no ratings, and on an empty shelf.\n- Division\
+        \ by zero on an empty shelf — caught by the empty-shelf test\n  that would crash\
+        \ if the implementation divides without a guard.\n- The mean is returned as a\
+        \ string instead of a JSON number — caught by\n  an isinstance(val, (int, float))\
+        \ assertion excluding str and None.\n- Floating-point imprecision causes a brittle\
+        \ exact-equality failure —\n  mitigated by using pytest.approx or choosing integer-friendly\
+        \ means\n  (e.g. ratings 3, 4, 5 giving mean 4.0)."
+      expected_artifacts:
+      - tests/test_criterion_T2.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_T2.py
+        name_prefix: test_
+        min_count: 3
+      depends_on:
+      - 0
+    summary:
+      total_dev_tasks: 1
+      total_qa_tasks: 2
+      total_tasks: 3
+      estimated_layers: []
+    ```
+
+    ```yaml:merge_decisions.yaml
+    version: 1
+    target_plan_id: plan-cyc_dbb56e0feb6f
+    brief_id: brief-sn6-stats-001
+    proposal_ids:
+    - prop-a9beab93
+    - prop-d6034c4c
+    guidance_ids:
+    - guid-26f8dd8c
+    authoring_mode: multi_role
+    sole_author_reason: null
+    proposal_completeness: complete
+    missing_proposals: []
+    canonical_tasks:
+    - task_index: 0
+      source_proposal_task_keys:
+      - dev:stats aggregation store functions and route handler
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 1
+      source_proposal_task_keys:
+      - qa:t1 status_counts endpoint test suite
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    - task_index: 2
+      source_proposal_task_keys:
+      - qa:t2 average_rating endpoint test suite
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    brief_conflicts_disposition: []
+    operator_notes: ''
+    ```
+- task_type: governance.review_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    ---
+    readiness: go
+    sufficiency_score: 5
+    blocker_unknowns: 0
+    ---
+
+    ## Consolidated Plan
+
+    ### 1. Objective Frame (Change Request Scope)
+
+    This increment adds a single read-only endpoint, `GET /stats`, to the existing Shelfnote application. It exposes two aggregate fields:
+
+    - **`status_counts`** — an object mapping every book status value to the integer count of books currently in that status. Statuses with zero books are present with value `0`.
+    - **`average_rating`** — the arithmetic mean of ratings on books that have a rating, as a number. `null` when no book carries a rating.
+
+    Nothing else in the application changes. No `prd_delta`, no `manifest_delta`, no retired or replaced verifiers. The ruling notes impose no additional behavioural constraints beyond the change request.
+
+    ### 2. Footprint & File Contracts
+
+    | File | Role |
+    |---|---|
+    | `backend/routes.py` | Add a `GET /stats` handler (≤ 30 lines per CONTRIBUTING.md). |
+    | `backend/store.py` | Add (or extend) store-level queries that compute per-status counts and the mean rating. |
+    | `tests/test_criterion_T1.py` | pytest tests exercising `GET /stats` → `status_counts` contract. |
+    | `tests/test_criterion_T2.py` | pytest tests exercising `GET /stats` → `average_rating` contract. |
+
+    All other files retain their accepted implementation at the baseline commit.
+
+    ### 3. Technical Design
+
+    #### 3.1 Data availability (assumed from accepted models)
+
+    The accepted `backend/models.py` already defines a Book with a `status` field and an optional `rating` field (the existing T3/T4/T5/T6/T7/T8 tests for reading status and ratings confirm this). The accepted `backend/store.py` already persists and retrieves books. No schema migration is needed.
+
+    #### 3.2 `backend/store.py` — new query helpers
+
+    Two small functions (or one composite, at the developer's discretion) that operate on the existing in-memory (or SQLite) book collection:
+
+    ```
+    status_counts() -> dict[str, int]
+    ```
+    - Iterate all books, tally by `status`.
+    - Ensure **every** status value that the model recognises appears as a key, defaulting to `0`. The set of valid statuses is the one already enumerated in `models.py` (e.g. `want_to_read`, `reading`, `finished` — the developer reads the accepted model to confirm the exact set).
+
+    ```
+    average_rating() -> float | None
+    ```
+    - Filter books where `rating` is not `None`.
+    - If the filtered set is empty → return `None`.
+    - Otherwise → return `sum(ratings) / len(ratings)`.
+
+    Both are O(n) single-pass over the books list. No new dependencies.
+
+    #### 3.3 `backend/routes.py` — new handler
+
+    ```python
+    @router.get("/stats")
+    def get_stats():
+        counts = store.status_counts()
+        avg = store.average_rating()
+        return {"status_counts": counts, "average_rating": avg}
+    ```
+
+    - Returns HTTP 200 with a JSON body.
+    - Handler body is well under the 30-line limit.
+    - No new imports beyond what `routes.py` already has (`store` is already imported; the router decorator pattern is already in use).
+    - No error branches needed: this is a pure read over the in-process collection; it cannot 404 or 500 under normal operation. The only status code is 200.
+
+    #### 3.4 No changes to `main.py`, `models.py`, `errors.py`, or any frontend file
+
+    The route is registered on the existing router; the app wiring in `main.py` already includes the router. No CORS, model, or error-handling changes are required.
+
+    ### 4. Test Strategy
+
+    Both test files follow the product's pytest convention: import the FastAPI `app` from `backend.main`, use `TestClient` (or `httpx.AsyncClient` per the product's existing test pattern in `tests/test_books_api.py`), and assert on response body fields.
+
+    #### `tests/test_criterion_T1.py` — `status_counts`
+
+    | Test | Setup | Assert |
+    |---|---|---|
+    | All statuses present with correct counts | Seed 2 `want_to_read`, 1 `reading`, 0 `finished` (or the product's exact status names) | 200; `status_counts["want_to_read"] == 2`; `status_counts["reading"] == 1`; `status_counts["finished"] == 0` |
+    | Zero-book edge | Empty collection (or no books in any status) | Every status key present with value `0` |
+    | Mixed multi-book | Seed a larger varied set | Counts match expected integers |
+
+    Each test fails on the **response body content**, not on import side-effects. The endpoint is new, so a 200 is not a framework default — the tests are not vacuous.
+
+    #### `tests/test_criterion_T2.py` — `average_rating`
+
+    | Test | Setup | Assert |
+    |---|---|---|
+    | Mean of rated books | Seed books with ratings 4, 5, 3 | `average_rating == 4.0` (arithmetic mean) |
+    | Null when no ratings | Seed books, all with `rating = None` | `average_rating is None` |
+    | Partial ratings | 2 rated (4, 5), 1 unrated | `average_rating == 4.5` (mean of rated only) |
+    | Single rating | One book rated 3.5 | `average_rating == 3.5` |
+
+    #### `must_not_break`
+
+    The change request lists no `must_not_break` criteria and no `retires`. The existing test suite (`test_books_api.py`, `test_ratings_t3.py`, `test_ratings_t4.py`, `test_reading_status_t4.py`–`t8.py`, `test_search_t1.py`–`t3.py`, `test_sorting_t1.py`, `test_tags_t1.py`–`t2.py`) must continue to pass unchanged. The backend test runner (`pytest -q -p no:cacheprovider`) picks up all `test_*.py` under the project root, including the two new files, and the full suite is the acceptance gate.
+
+    ### 5. Sufficiency Assessment
+
+    | Criterion | Rating (1-5) | Rationale |
+    |---|---|---|
+    | Scope clarity | 5 | Two JSON fields, one endpoint, four files. No ambiguity in observable behaviour. |
+    | Technical feasibility | 5 | Two O(n) aggregate queries over an existing collection. No new dependencies, no schema change, no frontend work. Trivially implementable. |
+    | Risk coverage | 4 | The only edge cases (zero books, no rated books) are explicitly called out in the criteria. No integration or concurrency risk for an in-process read. Minor residual: developer must confirm the exact status enumeration from the accepted `models.py` — low effort, no structural risk. |
+    | Test strategy alignment | 5 | Each criterion maps to a dedicated test file. Edge cases (zero counts, null average, partial ratings) are covered. Tests assert on response content per CONTRIBUTING.md. |
+    | Resource fit | 5 | Well within the 3-hour budget. Single-backend increment, no frontend, no infra. One dev task, one QA task, parallelisable. |
+
+    **Overall sufficiency: 5 / 5.**
+
+    ### 6. Blocker & Open-Unknown Register
+
+    | # | Unknown | Class | Disposition |
+    |---|---|---|---|
+    | — | None identified. | — | — |
+
+    No blocker-classified unknowns. The status enumeration is confirmed by reading the accepted `models.py` (trivial, no design risk). The ruling notes add no constraints.
+
+    ### 7. Execution Sequence & Budget
+
+    | Step | Owner | Est. | Notes |
+    |---|---|---|---|
+    | 1. Implement `status_counts()` + `average_rating()` in `store.py` | dev | 15 min | Read accepted `models.py` for status set. |
+    | 2. Add `GET /stats` handler in `routes.py` | dev | 10 min | ≤ 30 lines, return dict. |
+    | 3. Write `tests/test_criterion_T1.py` | dev | 20 min | Follow existing test-file patterns. |
+    | 4. Write `tests/test_criterion_T2.py` | dev | 20 min | Follow existing test-file patterns. |
+    | 5. Run full `pytest` suite; fix any regressions | dev | 15 min | `boots` check + `backend_tests`. |
+    | 6. QA review: confirm criteria observables, edge cases, CONTRIBUTING.md compliance | qa | 20 min | Review response shapes, line count, test assertions. |
+    | **Total** | | **~100 min** | Comfortably within 180-min budget. |
+
+    No frontend tests are affected or required (`frontend_tests` unaffected). The `boots` check (import) passes because no new modules are introduced — only functions in already-imported files.
+
+    ### 8. Readiness Recommendation
+
+    **`go`** — The plan is complete, unambiguous, and within budget. All five sufficiency criteria are met or near-met. No blockers. The squad can begin implementation immediately.
+- task_type: governance.define_done
+  occurrence: 1
+  call: 1
+  content: |
+    ```json:definition_of_done.json
+    {
+      "objective": "Produce a comprehensive lead analysis report with clearly defined deliverables for the product effort",
+      "acceptance_criteria": [
+        "Analysis identifies at least 3 key strategic insights with supporting rationale",
+        "Each deliverable is enumerated with a clear owner, due date, and success metric",
+        "Recommendations section contains at least 5 actionable items prioritized by impact/effort",
+        "All claims are traceable to stated assumptions or cited data sources",
+        "Document is self-contained and readable by a stakeholder unfamiliar with prior context",
+        "Deliverables table includes estimated effort in person-hours for each item"
+      ],
+      "non_goals": [
+        "No code implementation or prototype development in this phase",
+        "No vendor selection or contractual negotiations",
+        "No budget allocation beyond relative effort estimates",
+        "No final go/no-go decision (analysis informs, does not mandate)"
+      ],
+      "time_budget_seconds": 3600,
+      "stop_conditions": [
+        "Source data or planning artifacts are unavailable or contradictory and cannot be reconciled",
+        "Requirements exceed scope of a single analysis pass (i.e., multiple PRDs needed)",
+        "Stakeholder feedback loop is required to resolve a critical ambiguity in the objective"
+      ],
+      "required_artifacts": [
+        "lead_analysis_report.md",
+        "deliverables_registry.json",
+        "risk_register.yaml",
+        "recommendations_prioritized.md"
+      ]
+    }
+    ```
+- task_type: development.develop
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:backend/routes.py
+    """API route stubs — scaffold-owned signatures, fill-only bodies.
+
+    Every endpoint the interface manifest declares is wired here with its
+    correct path, method, and response model. Bodies raise 501 until filled;
+    the app imports and boots regardless.
+
+    The router takes NO prefix. The frontend calls /api/... and the proxy strips
+    that prefix before the request reaches this app, so these paths are already
+    the full backend paths. Adding prefix= to APIRouter puts every route behind a
+    second /api and the app answers 404 to its own contract (pf-41).
+
+    On failure raise ApiError(code, message) from .errors — codes: validation_error, book_not_found.
+    """
+
+    from typing import Literal
+    from typing import Optional
+    from uuid import uuid4
+
+    from fastapi import APIRouter, HTTPException, Query
+    from slugify import slugify
+
+    from backend.models import VALID_STATUSES, Book, BookCreate, Note, NoteCreate, PatchBookBody
+    from backend.models import AddTagRequest
+    from backend.models import RatingRequest
+    from backend.errors import ApiError
+    from backend.store import book_store, list_books, update_book, add_tag, get_books as store_get_books, set_rating
+    from backend.store import get_status_counts, get_average_rating
+
+    SortField = Literal["title", "author", "rating"]
+
+    router = APIRouter()
+
+
+    @router.get("/books", response_model=list[Book])
+    def get_books(
+        search: Optional[str] = Query(None),
+        status: str | None = Query(None),
+        tag: str | None = Query(None),
+        sort_by: Optional[SortField] = None,
+    ):
+        """list books — newest first."""
+        if status and status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}")
+        if tag:
+            results = store_get_books(tag=tag)
+            if search:
+                needle = search.lower()
+                results = [b for b in results if needle in b.title.lower() or needle in b.author.lower()]
+            if status:
+                results = [b for b in results if b.status == status]
+        else:
+            results = list_books(search=search, status=status or None)
+        if sort_by == "title":
+            results = sorted(results, key=lambda b: b.title.lower())
+        elif sort_by == "author":
+            results = sorted(results, key=lambda b: b.author.lower())
+        elif sort_by == "rating":
+            results = sorted(results, key=lambda b: b.rating or 0)
+        else:
+            results = list(reversed(results))
+        return results
+
+
+    @router.post("/books", response_model=Book, status_code=201)
+    def post_books(payload: BookCreate):
+        """add a book."""
+        book = Book(
+            id=str(uuid4()),
+            title=payload.title,
+            author=payload.author,
+            added_by=payload.added_by,
+            slug=slugify(f"{payload.title} {payload.author}"),
+            notes=[],
+        )
+        book_store[book.id] = book
+        return book
+
+
+    @router.get("/books/{book_id}", response_model=Book)
+    def get_books_book_id(book_id: str):
+        """a book and its notes."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return book
+
+
+    @router.patch("/books/{book_id}", response_model=Book)
+    def patch_books_book_id(book_id: str, body: PatchBookBody):
+        """update a book's fields."""
+        if body.status and body.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body.status!r}")
+        result = update_book(
+            book_id,
+            title=body.title,
+            author=body.author,
+            status=body.status or None,
+        )
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.post("/books/{book_id}/notes", response_model=Book, status_code=200)
+    def post_books_book_id_notes(book_id: str, payload: NoteCreate):
+        """leave a note."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        if len(payload.text) > 500:
+            raise ApiError("validation_error", "Note text must not exceed 500 characters.")
+        note = Note(
+            id=str(uuid4()),
+            author=payload.author,
+            text=payload.text,
+        )
+        book.notes.append(note)
+        return book
+
+
+    @router.post("/books/{book_id}/tags", response_model=Book)
+    def post_books_book_id_tags(book_id: str, payload: AddTagRequest):
+        """add a tag to a book."""
+        result = add_tag(book_id, payload.tag)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.put("/books/{book_id}/rating", response_model=Book)
+    def put_books_book_id_rating(book_id: str, body: RatingRequest):
+        """set a book's rating."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return set_rating(book_id, body.rating)
+
+
+    @router.get("/stats")
+    def get_stats():
+        """Aggregated shelf statistics."""
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+    ```
+
+    ```python:backend/store.py
+    """In-memory state — scaffold-owned (frozen).
+
+    The manifest declares in-memory persistence, so this module owns it: one store
+    per root-persisted entity, keyed by the entity's id. Fill route bodies against
+    these names; do not define a second store elsewhere and do not edit this file.
+
+    Not stored on their own — shapes embedded in or projected from the rows
+    above, never rows themselves: Note. Build them from a
+    stored entity when a response needs them; do not keep a parallel store.
+    """
+
+    from __future__ import annotations
+
+    from backend.models import VALID_STATUSES, Book
+
+    book_store: dict[str, Book] = {}
+
+
+    def reset() -> None:
+        """Clear every store — for test isolation between cases."""
+        book_store.clear()
+
+
+    def list_books(search: str | None = None, *, status: str | None = None) -> list[Book]:
+        """Return books matching *search* and/or *status*, in shelf order.
+
+        Both filters are conjunctive (AND).  An empty-string or *None* value
+        disables that filter, so the full ordered shelf is returned.
+        """
+        results: list[Book] = []
+        for book in book_store.values():
+            if status is not None and status != "" and book.status != status:
+                continue
+            if search is not None and search != "":
+                needle = search.lower()
+                if needle not in book.title.lower() and needle not in book.author.lower():
+                    continue
+            results.append(book)
+        return results
+
+
+    def get_books(tag: str | None = None) -> list[Book]:
+        """Return all books, optionally filtered by *tag*.
+
+        When *tag* is *None* or an empty string the full unfiltered list is
+        returned, preserving existing GET /books behaviour.  When a non-empty
+        tag string is provided, only books whose ``tags`` array includes that
+        tag are returned.  An empty list is returned when no book carries the
+        tag.
+        """
+        if tag is None or tag == "":
+            return list(book_store.values())
+        return [book for book in book_store.values() if tag in book.tags]
+
+
+    def add_tag(book_id: str, tag: str) -> Book | None:
+        """Add *tag* to the book identified by *book_id*.
+
+        The tag is appended to the book's ``tags`` array only if not already
+        present (idempotency guarantee).  Returns the updated book, or *None*
+        if no book with the given id exists in the store.
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+        if tag not in book.tags:
+            book.tags.append(tag)
+        return book
+
+
+    def update_book(
+        book_id: str,
+        *,
+        title: str | None = None,
+        author: str | None = None,
+        status: str | None = None,
+    ) -> Book | None:
+        """Update a book in place; return the book or *None* if not found.
+
+        When *status* is provided (non-empty) it is validated against
+        :data:`~backend.models.VALID_STATUSES` **before** any field is written.
+        On an invalid status no mutation occurs and the book is returned
+        unchanged (atomicity guarantee).
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+
+        # Validate status BEFORE any field is written.
+        if status is not None and status != "" and status not in VALID_STATUSES:
+            return book
+
+        if title is not None:
+            book.title = title
+        if author is not None:
+            book.author = author
+        if status is not None and status != "":
+            book.status = status
+
+        return book
+
+
+    def set_rating(book_id: str, rating: int) -> Book:
+        """Set the rating for the book identified by *book_id*.
+
+        Mutates the book in place with replacement semantics: a second call
+        overwrites the first rating value (no accumulation or history).
+
+        The caller is responsible for verifying that the book exists before
+        invoking this function; a *KeyError* is raised for an unknown id.
+        """
+        book = book_store[book_id]
+        book.rating = rating
+        return book
+
+
+    def get_status_counts() -> dict[str, int]:
+        """Return the count of books per canonical status.
+
+        Every status in :data:`~backend.models.VALID_STATUSES` appears as a key,
+        initialised to 0, so statuses with no books are still present.
+        """
+        counts: dict[str, int] = {s: 0 for s in VALID_STATUSES}
+        for book in book_store.values():
+            counts[book.status] += 1
+        return counts
+
+
+    def get_average_rating() -> float | None:
+        """Return the arithmetic mean of non-null ratings, or *None* if none exist."""
+        rated = [book.rating for book in book_store.values() if book.rating is not None]
+        if not rated:
+            return None
+        return sum(rated) / len(rated)
+    ```
+- task_type: qa.test
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:tests/test_criterion_T1.py
+    """T1: GET /stats — status_counts has every canonical status as an integer key-value,
+    zero-count statuses present as 0, no extra keys."""
+
+    CANONICAL_STATUSES = {"wanted", "being read", "read"}
+
+
+    def _make_book(client, title="T", author="A", added_by="U"):
+        """POST a book and return its JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def _set_status(client, book_id, status):
+        """PATCH a book's status and assert 200."""
+        res = client.patch(f"/books/{book_id}", json={"status": status})
+        assert res.status_code == 200
+
+
+    def test_empty_shelf_returns_all_zero_counts(client):
+        """A fresh, unseeded shelf: GET /stats → 200, status_counts has all canonical
+        statuses with value 0.
+
+        Faults caught: endpoint missing (404/405), empty object {}, error response,
+        or zero-count statuses omitted.
+        """
+        res = client.get("/stats")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert "status_counts" in body, f"Missing status_counts: {body}"
+        sc = body["status_counts"]
+        assert isinstance(sc, dict), f"status_counts is not a dict: {type(sc)}"
+        assert set(sc.keys()) == CANONICAL_STATUSES, (
+            f"Keys {set(sc.keys())} != canonical {CANONICAL_STATUSES}"
+        )
+        for status in CANONICAL_STATUSES:
+            assert sc[status] == 0, f"Expected 0 for '{status}', got {sc[status]!r}"
+
+
+    def test_exact_counts_for_known_mix(client):
+        """Seed 3 'wanted', 2 'being read', 1 'read' → status_counts matches exactly.
+
+        Faults caught: off-by-one, wrong status tallied, or count swapped between keys.
+        """
+        for _ in range(3):
+            b = _make_book(client)
+            _set_status(client, b["id"], "wanted")
+        for _ in range(2):
+            b = _make_book(client)
+            _set_status(client, b["id"], "being read")
+        b = _make_book(client)
+        _set_status(client, b["id"], "read")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        sc = res.json()["status_counts"]
+        assert sc["wanted"] == 3, f"Expected 3 wanted, got {sc['wanted']}"
+        assert sc["being read"] == 2, f"Expected 2 being read, got {sc['being read']}"
+        assert sc["read"] == 1, f"Expected 1 read, got {sc['read']}"
+
+
+    def test_all_keys_present_when_only_subset_seeded(client):
+        """Seed books in only 'read'; 'wanted' and 'being read' must still appear as 0.
+
+        Fault caught: zero-count statuses omitted from the response (missing key
+        instead of value 0).
+        """
+        for _ in range(2):
+            b = _make_book(client)
+            _set_status(client, b["id"], "read")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        sc = res.json()["status_counts"]
+
+        # Every canonical key must be present, even if no book holds it
+        for status in CANONICAL_STATUSES:
+            assert status in sc, f"Key '{status}' missing from status_counts: {sc}"
+
+        assert sc["wanted"] == 0
+        assert sc["being read"] == 0
+        assert sc["read"] == 2
+
+
+    def test_counts_are_integers_and_no_extra_keys(client):
+        """Every value is an int (not float, not string); key set equals canonical set exactly.
+
+        Faults caught: counts returned as 3.0 or "3"; extra keys like "archived"
+        leaking into status_counts.
+        """
+        b = _make_book(client)
+        _set_status(client, b["id"], "wanted")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        sc = res.json()["status_counts"]
+
+        # Values are integers, not floats or strings
+        for key, val in sc.items():
+            assert isinstance(val, int), (
+                f"status_counts['{key}'] is {type(val).__name__} ({val!r}), expected int"
+            )
+            assert not isinstance(val, bool), f"status_counts['{key}'] is a bool"
+
+        # No extra keys beyond the canonical set
+        assert set(sc.keys()) == CANONICAL_STATUSES, (
+            f"status_counts keys {set(sc.keys())} != canonical {CANONICAL_STATUSES}"
+        )
+    ```
+- task_type: qa.test
+  occurrence: 1
+  call: 2
+  content: |
+    ```python:tests/test_criterion_T1.py
+    """T1: GET /stats — status_counts has every canonical status as an integer key-value,
+    zero-count statuses present as 0, no extra keys."""
+
+    CANONICAL_STATUSES = {"wanted", "being read", "read"}
+
+
+    def _make_book(client, title="T", author="A", added_by="U"):
+        """POST a book and return its JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def _set_status(client, book_id, status):
+        """PATCH a book's status and assert 200."""
+        res = client.patch(f"/books/{book_id}", json={"status": status})
+        assert res.status_code == 200
+
+
+    def test_empty_shelf_returns_all_zero_counts(client):
+        """A fresh, unseeded shelf: GET /stats → 200, status_counts has all canonical
+        statuses with value 0.
+
+        Faults caught: endpoint missing (404/405), empty object {}, error response,
+        or zero-count statuses omitted.
+        """
+        res = client.get("/stats")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert "status_counts" in body, f"Missing status_counts: {body}"
+        sc = body["status_counts"]
+        assert isinstance(sc, dict), f"status_counts is not a dict: {type(sc)}"
+        assert set(sc.keys()) == CANONICAL_STATUSES, (
+            f"Keys {set(sc.keys())} != canonical {CANONICAL_STATUSES}"
+        )
+        for status in CANONICAL_STATUSES:
+            assert sc[status] == 0, f"Expected 0 for '{status}', got {sc[status]!r}"
+
+
+    def test_exact_counts_for_known_mix(client):
+        """Seed 3 'wanted', 2 'being read', 1 'read' → status_counts matches exactly.
+
+        Faults caught: off-by-one, wrong status tallied, or count swapped between keys.
+        """
+        for _ in range(3):
+            b = _make_book(client)
+            _set_status(client, b["id"], "wanted")
+        for _ in range(2):
+            b = _make_book(client)
+            _set_status(client, b["id"], "being read")
+        b = _make_book(client)
+        _set_status(client, b["id"], "read")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        sc = res.json()["status_counts"]
+        assert sc["wanted"] == 3, f"Expected 3 wanted, got {sc['wanted']}"
+        assert sc["being read"] == 2, f"Expected 2 being read, got {sc['being read']}"
+        assert sc["read"] == 1, f"Expected 1 read, got {sc['read']}"
+
+
+    def test_all_keys_present_when_only_subset_seeded(client):
+        """Seed books in only 'read'; 'wanted' and 'being read' must still appear as 0.
+
+        Fault caught: zero-count statuses omitted from the response (missing key
+        instead of value 0).
+        """
+        for _ in range(2):
+            b = _make_book(client)
+            _set_status(client, b["id"], "read")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        sc = res.json()["status_counts"]
+
+        # Every canonical key must be present, even if no book holds it
+        for status in CANONICAL_STATUSES:
+            assert status in sc, f"Key '{status}' missing from status_counts: {sc}"
+
+        assert sc["wanted"] == 0
+        assert sc["being read"] == 0
+        assert sc["read"] == 2
+
+
+    def test_counts_are_integers_and_no_extra_keys(client):
+        """Every value is an int (not float, not string); key set equals canonical set exactly.
+
+        Faults caught: counts returned as 3.0 or "3"; extra keys like "archived"
+        leaking into status_counts.
+        """
+        b = _make_book(client)
+        _set_status(client, b["id"], "wanted")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        sc = res.json()["status_counts"]
+
+        # Values are integers, not floats or strings
+        for key, val in sc.items():
+            assert isinstance(val, int), (
+                f"status_counts['{key}'] is {type(val).__name__} ({val!r}), expected int"
+            )
+            assert not isinstance(val, bool), f"status_counts['{key}'] is a bool"
+
+        # No extra keys beyond the canonical set
+        assert set(sc.keys()) == CANONICAL_STATUSES, (
+            f"status_counts keys {set(sc.keys())} != canonical {CANONICAL_STATUSES}"
+        )
+    ```
+- task_type: qa.test
+  occurrence: 2
+  call: 1
+  content: |
+    ```python:tests/test_criterion_T2.py
+    """T2: GET /stats — average_rating is the arithmetic mean of rated books, or null if none."""
+
+
+    def test_average_rating_uses_only_rated_books(client):
+        """Mean is over rated books only, not the full shelf.
+
+        Fault caught: dividing by total book count instead of rated count.
+        Three books; two rated 3 and 5, one unrated.
+        Correct mean: (3+5)/2 = 4.0.
+        Faulty mean: (3+5+0)/3 = 2.67 or (3+5)/3 = 2.67.
+        """
+        b1 = client.post("/books", json={"title": "A", "author": "X", "added_by": "U"}).json()
+        b2 = client.post("/books", json={"title": "B", "author": "Y", "added_by": "U"}).json()
+        b3 = client.post("/books", json={"title": "C", "author": "Z", "added_by": "U"}).json()
+
+        # Rate only b1 and b2; b3 stays unrated
+        assert client.put(f"/books/{b1['id']}/rating", json={"rating": 3}).status_code == 200
+        assert client.put(f"/books/{b2['id']}/rating", json={"rating": 5}).status_code == 200
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        body = res.json()
+        assert "average_rating" in body, f"average_rating key missing: {list(body.keys())}"
+
+        val = body["average_rating"]
+        # Must be a number, not a string or None
+        assert isinstance(val, (int, float)), f"Expected a number, got {type(val).__name__}: {val!r}"
+        assert not isinstance(val, bool)
+        # Integer-friendly mean: (3 + 5) / 2 = 4.0 exactly
+        assert val == 4.0, f"Expected 4.0 (mean of rated only), got {val}"
+
+
+    def test_average_rating_null_when_books_exist_but_unrated(client):
+        """Books on the shelf, none rated → average_rating is JSON null, not 0 or absent.
+
+        Fault caught: returning 0, an empty string, or omitting the key.
+        """
+        client.post("/books", json={"title": "Solo", "author": "A", "added_by": "U"})
+        client.post("/books", json={"title": "Duo", "author": "B", "added_by": "U"})
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        body = res.json()
+
+        assert "average_rating" in body, f"average_rating key missing: {list(body.keys())}"
+        assert body["average_rating"] is None, (
+            f"Expected null when no ratings exist, got {body['average_rating']!r}"
+        )
+
+
+    def test_average_rating_null_on_empty_shelf_no_crash(client):
+        """Zero books → 200 with average_rating null; no division-by-zero crash.
+
+        Fault caught: unguarded division returns 500 or the key is absent.
+        """
+        res = client.get("/stats")
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        body = res.json()
+        assert "average_rating" in body, f"average_rating key missing on empty shelf: {list(body.keys())}"
+        assert body["average_rating"] is None, (
+            f"Expected null on empty shelf, got {body['average_rating']!r}"
+        )
+
+
+    def test_average_rating_is_number_not_string(client):
+        """average_rating is a JSON number (int/float), not a string.
+
+        Fault caught: the handler serialises the mean as a string (e.g. "4.0").
+        """
+        b1 = client.post("/books", json={"title": "N1", "author": "A", "added_by": "U"}).json()
+        b2 = client.post("/books", json={"title": "N2", "author": "B", "added_by": "U"}).json()
+        assert client.put(f"/books/{b1['id']}/rating", json={"rating": 4}).status_code == 200
+        assert client.put(f"/books/{b2['id']}/rating", json={"rating": 4}).status_code == 200
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        val = res.json()["average_rating"]
+
+        assert isinstance(val, (int, float)), (
+            f"average_rating must be a JSON number, got {type(val).__name__}: {val!r}"
+        )
+        assert not isinstance(val, str), f"average_rating is a string: {val!r}"
+        assert val == 4.0, f"Expected 4.0, got {val}"
+    ```
+- task_type: qa.test
+  occurrence: 2
+  call: 2
+  content: |
+    ```python:tests/test_criterion_T2.py
+    """T2: GET /stats — average_rating is the arithmetic mean of rated books, or null if none."""
+
+
+    def test_average_rating_uses_only_rated_books(client):
+        """Mean is over rated books only, not the full shelf.
+
+        Fault caught: dividing by total book count instead of rated count.
+        Three books; two rated 3 and 5, one unrated.
+        Correct mean: (3+5)/2 = 4.0.
+        Faulty mean: (3+5+0)/3 = 2.67 or (3+5)/3 = 2.67.
+        """
+        b1 = client.post("/books", json={"title": "A", "author": "X", "added_by": "U"}).json()
+        b2 = client.post("/books", json={"title": "B", "author": "Y", "added_by": "U"}).json()
+        b3 = client.post("/books", json={"title": "C", "author": "Z", "added_by": "U"}).json()
+
+        # Rate only b1 and b2; b3 stays unrated
+        assert client.put(f"/books/{b1['id']}/rating", json={"rating": 3}).status_code == 200
+        assert client.put(f"/books/{b2['id']}/rating", json={"rating": 5}).status_code == 200
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        body = res.json()
+        assert "average_rating" in body, f"average_rating key missing: {list(body.keys())}"
+
+        val = body["average_rating"]
+        # Must be a number, not a string or None
+        assert isinstance(val, (int, float)), f"Expected a number, got {type(val).__name__}: {val!r}"
+        assert not isinstance(val, bool)
+        # Integer-friendly mean: (3 + 5) / 2 = 4.0 exactly
+        assert val == 4.0, f"Expected 4.0 (mean of rated only), got {val}"
+
+
+    def test_average_rating_null_when_books_exist_but_unrated(client):
+        """Books on the shelf, none rated → average_rating is JSON null, not 0 or absent.
+
+        Fault caught: returning 0, an empty string, or omitting the key.
+        """
+        client.post("/books", json={"title": "Solo", "author": "A", "added_by": "U"})
+        client.post("/books", json={"title": "Duo", "author": "B", "added_by": "U"})
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        body = res.json()
+
+        assert "average_rating" in body, f"average_rating key missing: {list(body.keys())}"
+        assert body["average_rating"] is None, (
+            f"Expected null when no ratings exist, got {body['average_rating']!r}"
+        )
+
+
+    def test_average_rating_null_on_empty_shelf_no_crash(client):
+        """Zero books → 200 with average_rating null; no division-by-zero crash.
+
+        Fault caught: unguarded division returns 500 or the key is absent.
+        """
+        res = client.get("/stats")
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        body = res.json()
+        assert "average_rating" in body, f"average_rating key missing on empty shelf: {list(body.keys())}"
+        assert body["average_rating"] is None, (
+            f"Expected null on empty shelf, got {body['average_rating']!r}"
+        )
+
+
+    def test_average_rating_is_number_not_string(client):
+        """average_rating is a JSON number (int/float), not a string.
+
+        Fault caught: the handler serialises the mean as a string (e.g. "4.0").
+        """
+        b1 = client.post("/books", json={"title": "N1", "author": "A", "added_by": "U"}).json()
+        b2 = client.post("/books", json={"title": "N2", "author": "B", "added_by": "U"}).json()
+        assert client.put(f"/books/{b1['id']}/rating", json={"rating": 4}).status_code == 200
+        assert client.put(f"/books/{b2['id']}/rating", json={"rating": 4}).status_code == 200
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        val = res.json()["average_rating"]
+
+        assert isinstance(val, (int, float)), (
+            f"average_rating must be a JSON number, got {type(val).__name__}: {val!r}"
+        )
+        assert not isinstance(val, str), f"average_rating is a string: {val!r}"
+        assert val == 4.0, f"Expected 4.0, got {val}"
+    ```

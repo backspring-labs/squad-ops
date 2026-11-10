@@ -1,0 +1,1790 @@
+script: shelfnote-soak-dry-c04
+description: 'The 2.7 soak (#2892), launch 4 of 15: increment 4 (SN-9), failed, so
+  launch 5 repairs it. Recorded from cyc_4875f91fd6d4 of Campaign cmp_f14bab82c35f
+  on deploy dep_16a1cb4f54c8. The dry run''s copy: no latency replayed.'
+replay_latency: false
+recorded_from:
+  project_id: prj-shelfnote
+  cycle_id: cyc_4875f91fd6d4
+  change_requests:
+    strategy.propose_increment occurrence 1 call 1:
+      proposal_id: prop_95ba337d5303
+      version: 1
+      baseline_tree: e6f85d3179a5aa1d654163e31994b80ca76daddb21bceadf7537b7f439c0ad12
+      basis: campaign_branch
+      criterion_files:
+      - criterion_id: A1
+        path: tests/test_criterion_A1.py
+      goals_revision: 3
+      content_hash: 2f8c34dc092221147de94507aacdd70e9db3d84da45673af28061787996b907a
+      footprint:
+      - backend/routes.py
+      - backend/store.py
+      - tests/test_criterion_A1.py
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
+  - qa.test occurrence 1 call 2
+answers:
+- task_type: strategy.propose_increment
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:change_request.yaml
+    kind: feature
+    prd_delta: []
+    manifest_delta: []
+    criteria:
+    - id: A1
+      statement: GET /stats returns each author on the shelf and the count of their books
+      surface_kind: endpoint
+      surface: GET /stats
+      observable: The JSON response body contains an 'authors' key whose value is an object;
+        each key is an author name with at least one book on the shelf, and each value
+        is the integer count of that author's books on the shelf; no key exists for an
+        author with zero books
+      paths:
+      - backend/routes.py
+      - backend/store.py
+    must_not_break:
+    - T1
+    - T2
+    - T3
+    - C1
+    - C2
+    retires: []
+    replaces_verifiers: []
+    footprint:
+    - backend/routes.py
+    - backend/store.py
+    backlog_item: SN-9
+    ```
+- task_type: development.design_plan
+  occurrence: 1
+  call: 1
+  content: "# Technical Design: `GET /stats` Endpoint\n\n## 1. Architecture Overview\n\
+    \nThis change adds a single read-only endpoint to the existing FastAPI backend.\
+    \ The data flow is linear:\n\n```\nClient → GET /stats → route handler → store.get_author_counts()\
+    \ → JSON response\n```\n\nTwo files are modified within the footprint; one test\
+    \ file is added. No new dependencies, no new models, no frontend changes.\n\n\
+    ```\nbackend/routes.py        # +1 route handler (~8 lines)\nbackend/store.py\
+    \         # +1 method: get_author_counts()\ntests/test_criterion_A1.py  # new:\
+    \ pytest via TestClient\n```\n\nThe endpoint is a pure aggregation over the existing\
+    \ book collection. It introduces no state mutation, no new storage concept, and\
+    \ no new HTTP method beyond the existing GET pattern.\n\n## 2. Interface Definitions\n\
+    \n### 2.1 Store Layer — `backend/store.py`\n\n**New method:**\n\n```python\ndef\
+    \ get_author_counts(self) -> dict[str, int]:\n    \"\"\"Return a mapping of author\
+    \ name → number of books on the shelf.\n\n    Only authors with at least one book\
+    \ appear as keys.\n    \"\"\"\n```\n\n- Iterates the store's existing book collection\
+    \ (the same collection `list_books` reads from).\n- Returns an empty dict `{}`\
+    \ when the shelf is empty.\n- Author identity is the exact string stored on the\
+    \ book's `author` field (case-sensitive, per existing model conventions).\n- No\
+    \ new attributes, no new data structure; the count is derived at call time.\n\n\
+    ### 2.2 Route Layer — `backend/routes.py`\n\n**New handler:**\n\n```python\n@router.get(\"\
+    /stats\")\ndef get_stats():\n    \"\"\"Return per-author book counts for the current\
+    \ shelf.\"\"\"\n    counts = store.get_author_counts()\n    return {\"authors\"\
+    : counts}\n```\n\n- Returns HTTP 200 with JSON body `{\"authors\": {...}}`.\n\
+    - No query parameters, no path parameters, no auth.\n- Handler body is well under\
+    \ the 30-line limit from CONTRIBUTING.md.\n- The only status code this endpoint\
+    \ can answer is **200** (GET on existing data; no failure path in the observable).\n\
+    \n### 2.3 Response Contract\n\n| Shelf state | Response body |\n|---|---|\n| Empty\
+    \ shelf | `{\"authors\": {}}` |\n| Books by authors A, B (A has 3, B has 1) |\
+    \ `{\"authors\": {\"A\": 3, \"B\": 1}}` |\n| Author X had a book that was deleted\
+    \ (0 remaining) | No key for X |\n\n### 2.4 Data Model (unchanged)\n\nThe existing\
+    \ `Book` model in `backend/models.py` already carries an `author` field. No schema\
+    \ change is needed. The store's in-memory (or file-backed) book list is the sole\
+    \ source.\n\n## 3. Implementation Sequencing\n\n| Phase | Work | Dependency |\
+    \ Est. |\n|---|---|---|---|\n| **P1** | Add `get_author_counts()` to `backend/store.py`\
+    \ | None | 5 min |\n| **P2** | Add `GET /stats` handler to `backend/routes.py`\
+    \ | P1 | 5 min |\n| **P3** | Write `tests/test_criterion_A1.py` | P1, P2 | 15\
+    \ min |\n| **P4** | Run full test suite (`backend_tests`) to confirm `must_not_break`\
+    \ (T1–T3, C1–C2) all pass | P1–P3 | 5 min |\n| **P5** | Verify `boots` check (`from\
+    \ backend.main import app`) | P1–P2 | 1 min |\n\nTotal estimated effort: **~30\
+    \ minutes** of implementation, well within the 3-hour budget.\n\n## 4. Proto Validation\
+    \ Plan\n\nNo prototypes are required. The feasibility concerns are trivially resolved:\n\
+    \n| Question | Resolution |\n|---|---|\n| Can the store enumerate all books and\
+    \ aggregate by a string field? | Yes — `list_books` already iterates the collection;\
+    \ a `collections.Counter` or a simple dict loop suffices. No new I/O, no concurrency\
+    \ concern (single-process FastAPI). |\n| Will adding a route to the existing `APIRouter`\
+    \ conflict with any existing path? | No — `/stats` is a new path; no existing\
+    \ route matches it. |\n| Will the new test file be discovered by pytest under\
+    \ the product's runner? | Yes — file named `test_criterion_A1.py` under `tests/`,\
+    \ matching the `test_*.py` pattern, and it imports `backend.main` (declared in\
+    \ `backend/requirements.txt` via `fastapi`). |\n\n**Classification: all unknowns\
+    \ resolved during planning. No proto needed.**\n\n## 5. Unknowns Table\n\n| #\
+    \ | Unknown | Classification | Notes |\n|---|---|---|---|\n| U1 | Exact internal\
+    \ structure of `store.py`'s book collection (list vs. dict vs. DB) | **resolved**\
+    \ | The method iterates the same collection `list_books` uses; implementation\
+    \ adapts to whatever that is (likely a `list[Book]` or `dict[str, Book]`). No\
+    \ external dependency. |\n| U2 | Whether `author` field can be `None` or empty\
+    \ string | **acceptable_risk** | The model likely enforces a non-empty string\
+    \ at creation time (existing tests T1–T3 create books with authors). If a `None`\
+    \ author ever appears, it would key as `\"None\"` — a degenerate case not covered\
+    \ by the observable. Mitigation: skip entries where author is falsy in the counter\
+    \ loop. |\n| U3 | Whether `GET /stats` path collides with any existing route |\
+    \ **resolved** | No existing route in the product uses `/stats`. The existing\
+    \ routes are under `/books`, `/search`, `/ratings`, `/reading-status`, `/tags`\
+    \ (inferred from test filenames). |\n| U4 | Status codes the endpoint can return\
+    \ | **resolved** | Only 200. No validation input, no auth, no resource-that-can-404.\
+    \ CONTRIBUTING.md says \"a test for each status code it can answer\" → one test\
+    \ block for 200. |\n| U5 | Whether the test needs to seed the shelf or reuse conftest\
+    \ fixtures | **resolved** | `conftest.py` (1102 bytes) likely provides a `client`\
+    \ fixture via `TestClient(app)`. The test will seed books via `POST /books` (or\
+    \ the store directly if conftest exposes it) then call `GET /stats`. Follow existing\
+    \ test patterns in `test_criterion_T1.py` etc. |\n\n**No blockers. No items requiring\
+    \ human decision.**\n\n## 6. Test Design — `tests/test_criterion_A1.py`\n\nFollowing\
+    \ the product's test conventions (pytest + TestClient, fail on response content):\n\
+    \n```python\n# tests/test_criterion_A1.py\n\"\"\"Criterion A1: GET /stats returns\
+    \ per-author book counts.\"\"\"\nimport pytest\n\ndef test_stats_returns_author_counts(client):\n\
+    \    \"\"\"Authors with books appear with correct counts; empty shelf → empty\
+    \ object.\"\"\"\n    # Seed: 2 books by 'Ada', 1 book by 'Linus'\n    # POST /books\
+    \ {...} × 3\n\n    resp = client.get(\"/stats\")\n    assert resp.status_code\
+    \ == 200\n    body = resp.json()\n    assert \"authors\" in body\n    assert body[\"\
+    authors\"] == {\"Ada\": 2, \"Linus\": 1}\n\n\ndef test_stats_empty_shelf(client):\n\
+    \    \"\"\"No books → authors is an empty object, no keys.\"\"\"\n    resp = client.get(\"\
+    /stats\")\n    assert resp.status_code == 200\n    assert resp.json() == {\"authors\"\
+    : {}}\n\n\ndef test_stats_author_with_zero_books_absent(client):\n    \"\"\"If\
+    \ all books by an author are removed, that author's key vanishes.\"\"\"\n    #\
+    \ Seed 1 book by 'Zed', then DELETE it (if delete exists) \n    # OR: seed a fresh\
+    \ shelf with only 'Ada', verify 'Zed' absent\n    resp = client.get(\"/stats\"\
+    )\n    body = resp.json()\n    assert \"Zed\" not in body[\"authors\"]\n```\n\n\
+    Key points:\n- Uses the `client` fixture from `conftest.py` (product convention).\n\
+    - Fails on response content (`resp.json()`), not on imports.\n- No new package\
+    \ imports beyond `pytest` and what `conftest.py` provides.\n- Each test is independent\
+    \ (fresh shelf via fixture teardown or in-test isolation, matching existing test\
+    \ patterns).\n\n## 7. must-not-break Verification\n\n| Test | What it checks |\
+    \ Risk from this change |\n|---|---|---|\n| T1, T2, T3 | Core book CRUD / list\
+    \ behaviour | None — no existing route modified, no model changed |\n| C1, C2\
+    \ | Rating / category behaviour (inferred from test names) | None — `/stats` is\
+    \ additive; no shared mutable state touched |\n\nThe only shared file touched\
+    \ is `store.py`, where a **new method** is appended. No existing method's signature\
+    \ or behaviour changes. `routes.py` gains a **new handler** on the same router;\
+    \ no existing handler is altered.\n\n## 8. What Is Explicitly Out of Scope\n\n\
+    - No frontend change (no `manifest_delta`, no frontend file in footprint).\n-\
+    \ No new model, no new dependency, no new configuration.\n- No pagination, filtering,\
+    \ or sorting on the stats endpoint (the observable specifies a flat object only).\n\
+    - No modification to any existing test file.\n- No `prd_delta` — the endpoint's\
+    \ behaviour is fully specified by criterion A1's observable.\n\n## 9. Summary\n\
+    \nA minimal, additive change: one store method, one route handler, one test file.\
+    \ All within the 3-hour budget with large margin. No blockers, no prototypes required,\
+    \ no human decisions pending. Ready for implementation."
+- task_type: qa.define_test_strategy
+  occurrence: 1
+  call: 1
+  content: |-
+    # Test Strategy: `GET /stats` Endpoint (prop_95ba337d5303)
+
+    ## 1. Acceptance Checklist
+
+    Derived from criterion **A1** and the `must_not_break` set. Each item is a concrete pass/fail check usable during implementation review.
+
+    ### A1 — New behaviour (`GET /stats`)
+
+    - [ ] **A1.1** `GET /stats` responds with HTTP `200` when the shelf has at least one book.
+    - [ ] **A1.2** The response body is valid JSON with `Content-Type: application/json`.
+    - [ ] **A1.3** The JSON body contains a top-level key named `"authors"` whose value is a JSON object (dict).
+    - [ ] **A1.4** Every key in `authors` is a string author name for which **at least one** book currently exists on the shelf.
+    - [ ] **A1.5** Every value in `authors` is a JSON integer (not a string, not a float) equal to the number of books on the shelf attributed to that author.
+    - [ ] **A1.6** No key appears in `authors` for an author whose book count is zero. (e.g., if a book previously authored by "X" is removed, "X" must not appear.)
+    - [ ] **A1.7** Empty-shelf case: when no books exist on the shelf, `authors` is an empty object `{}` (not `null`, not omitted).
+    - [ ] **A1.8** Multiple books by the same author are aggregated into a single count (e.g., 3 books by "Ursula K. Le Guin" → `"Ursula K. Le Guin": 3`).
+    - [ ] **A1.9** The endpoint does not mutate shelf state (subsequent `GET /books` returns the same set).
+
+    ### Regression — `must_not_break` (T1, T2, T3, C1, C2)
+
+    - [ ] **R.1** `tests/test_criterion_T1.py` passes unchanged.
+    - [ ] **R.2** `tests/test_criterion_T2.py` passes unchanged.
+    - [ ] **R.3** `tests/test_criterion_T3.py` passes unchanged.
+    - [ ] **R.4** `tests/test_criterion_C1.py` passes unchanged.
+    - [ ] **R.5** `tests/test_criterion_C2.py` passes unchanged.
+    - [ ] **R.6** All other existing test files under `tests/` pass unchanged (full `pytest` run is green).
+    - [ ] **R.7** Frontend test suite (`npm --prefix frontend test --silent`) passes unchanged.
+    - [ ] **R.8** Application boots: `.venv/bin/python -c "from backend.main import app"` succeeds with no error.
+
+    ### Contributor-contract checks
+
+    - [ ] **C.1** The new route handler in `backend/routes.py` is ≤ 30 lines.
+    - [ ] **C.2** The test in `tests/test_criterion_A1.py` exercises the API via `TestClient` (or `httpx.AsyncClient`) and asserts on response content, not on internal imports.
+    - [ ] **C.3** The test does not rely on a framework default (e.g., FastAPI's automatic 404 for unknown paths) to pass.
+
+    ---
+
+    ## 2. Test Strategy Note
+
+    ### Scope & layering
+
+    | Layer | What it verifies | Where it lives |
+    |---|---|---|
+    | **Criterion (integration)** | The full request→response contract of `GET /stats` through the FastAPI `TestClient` | `tests/test_criterion_A1.py` (footprint) |
+    | **Regression (integration)** | Existing behaviour is undisturbed | All existing `tests/test_*.py` files (unchanged) |
+    | **Frontend (regression)** | Frontend still builds and its tests pass | `frontend/src/__tests__/harness.test.jsx` (unchanged) |
+
+    No unit-level tests are required for this change. The store method (`store.get_author_counts` or equivalent) is exercised exclusively through the endpoint, consistent with the product's testing convention ("each test of a new behaviour exercises the running app's API through the test client"). A unit test for the store function would be a duplication that the product's conventions do not call for and that falls outside the footprint (only `routes.py`, `store.py`, and `test_criterion_A1.py` may change).
+
+    ### Test-client pattern
+
+    The criterion test must follow the product's established pattern visible in `conftest.py` and existing criterion tests:
+
+    1. Import `TestClient` from `fastapi.testclient` (already a declared dependency via `httpx`).
+    2. Use the shared fixture (or construct a client against `backend.main.app`) to seed books via `POST /books` as needed.
+    3. Issue `GET /stats`.
+    4. Assert on status code, `Content-Type`, and the parsed JSON body.
+
+    The test must **fail on response content** (wrong count, missing key, extra key, non-integer value), not on import errors or internal function signatures.
+
+    ### Status-code coverage (CONTRIBUTING.md rule)
+
+    The change adds a read-only `GET` endpoint. The only status code it answers is `200` on success. No error states (404, 422, 500) are introduced by this endpoint because:
+
+    - It takes no path parameters or query parameters that could be malformed.
+    - It performs no validation that can reject the request.
+    - An empty shelf is a valid state (returns `{"authors": {}}`).
+
+    Therefore one status-code test (200) satisfies the "test for each status code it can answer" rule. If implementation introduces an unexpected error path (e.g., an unhandled exception in the store layer), that is a defect, not a new status code to test.
+
+    ### What is NOT tested in this cycle
+
+    - Frontend changes (none are in the footprint).
+    - Auth, CORS, or middleware (unchanged).
+    - Concurrency / race conditions on the store (out of scope for a planning-stage note; would be an integration concern if the store were mutable during reads).
+    - Performance or load characteristics.
+
+    ---
+
+    ## 3. Defect Severity Rubric
+
+    | Severity | Label | Definition | Examples in this change |
+    |---|---|---|---|
+    | **S1 — Blocker** | Cycle cannot be accepted. A `must_not_break` criterion fails, or the new endpoint is absent / returns non-JSON / 500. | T1–T3 or C1–C2 regression fails; `GET /stats` returns 500; response body is not JSON | A key-error crash in `store.get_author_counts()` on an empty shelf |
+    | **S2 — Major** | A1 acceptance criterion is violated. The endpoint exists and responds, but the data is wrong. | `authors` contains a key with count 0; a count is off by one; `authors` is a list instead of an object; an author with books is missing from the response | "Ursula K. Le Guin" has 3 books but `authors["Ursula K. Le Guin"]` is 2 |
+    | **S3 — Minor** | The response is correct but a secondary attribute is off. No data is wrong. | `Content-Type` is `text/plain` instead of `application/json`; the `authors` key is nested under an extra wrapper object | Response is `{"data": {"authors": {...}}}` instead of `{"authors": {...}}` |
+    | **S4 — Trivial** | Cosmetic or stylistic issue that does not affect the observable contract. | Handler exceeds 30 lines by 1–2 lines; test name is slightly inconsistent with naming convention; unused import in `routes.py` | Handler is 31 lines due to a trailing blank line |
+
+    **Resolution policy:**
+    - S1 and S2 must be resolved before the cycle is accepted.
+    - S3 must be resolved unless the supervisor explicitly waives it.
+    - S4 is advisory; it is noted in the report but does not block acceptance.
+
+    ---
+
+    ## 4. Risk-Based Test Priorities
+
+    Ranked by the probability that a fault will be *missed* if the corresponding test is absent, multiplied by the cost of that fault reaching the accepted product.
+
+    | Priority | Risk area | Why it matters | Mitigation in the criterion test |
+    |---|---|---|---|
+    | **P1 (highest)** | **Zero-book author leakage** | The most likely implementation bug: iterating a dict that retains authors after book removal, or counting from a cache that wasn't evicted. A leaked key violates A1.6 directly. | Seed 2 books by author A, 1 by author B. Delete all of A's books via `DELETE`. Assert `authors` has no key for A and still has B with count 1. |
+    | **P2** | **Count aggregation correctness** | Multiple books by one author must sum, not overwrite. A `dict[author] = 1` loop instead of `dict[author] += 1` is a common mistake. | Seed 3 books by the same author, 1 by another. Assert counts are 3 and 1 respectively. |
+    | **P3** | **Empty-shelf edge case** | No books at all. A `max()` or index-0 access in the aggregation can throw. Must return `{"authors": {}}`, not 500. | Call `GET /stats` on a freshly seeded (empty) app. Assert 200 and `{"authors": {}}`. |
+    | **P4** | **Regression on existing endpoints** | Adding a route or a store method can accidentally shadow an existing path, change import order, or alter shared state. | The full `pytest` run (all existing `tests/test_*.py`) is the guard. No new test needed; the regression gate is the existing suite passing. |
+    | **P5** | **Author names with special characters** | Unicode, apostrophes, or very long names in author fields. The store should treat them as opaque strings; JSON serialization should handle them. | Seed a book with author `"O'Brien, José de la"`. Assert the key in `authors` matches exactly. (Low probability of failure but cheap to include.) |
+    | **P6 (lowest)** | **Response shape drift** | The handler accidentally wraps the payload (`{"data": ...}`) or omits the `authors` key. | Assert the top-level structure: `resp.json()` is a dict with exactly the `authors` key (or at least contains it). |
+
+    ### Coverage allocation
+
+    Within the 3-hour budget and the footprint constraint (one test file: `tests/test_criterion_A1.py`), the test file should include test functions covering **P1 through P4**. P5 is a one-line addition and should be included if natural. P6 is subsumed by the structural assertions in P1–P4 tests.
+
+    A realistic test file contains **5–7 test functions**, each focused on one observable from the acceptance checklist, using the shared `TestClient` fixture and seeding books via `POST /books` before hitting `GET /stats`.
+
+    ---
+
+    ## 5. Verification Commands (for implementation-time execution)
+
+    These are the exact commands the product's own check harness runs. The plan does not execute them at planning stage; they are listed so the implementer and reviewer know the gate:
+
+    ```bash
+    # Boots
+    .venv/bin/python -c "from backend.main import app"
+
+    # Backend tests (includes test_criterion_A1.py and all regression tests)
+    .venv/bin/python -m pytest -q -p no:cacheprovider
+
+    # Frontend tests (unchanged, but must still pass)
+    npm --prefix frontend test --silent
+    ```
+
+    All three must be green for the cycle to pass its quality gate.
+
+    ---
+
+    ## 6. Out-of-Scope / Deferred Items
+
+    The following are explicitly **not** in scope for this cycle and are noted to prevent scope creep during implementation:
+
+    - Frontend display of author statistics (no frontend file is in the footprint).
+    - Caching, pagination, or filtering of the `/stats` response.
+    - Additional endpoints or query parameters on `/stats`.
+    - Performance benchmarks.
+    - Any change to `backend/models.py`, `backend/main.py`, or any other file outside the footprint.
+
+    If implementation reveals a need to touch a file outside `{backend/routes.py, backend/store.py, tests/test_criterion_A1.py}`, the change request must be re-submitted for re-approval. Proceeding without re-approval is a gate violation.
+- task_type: governance.prepare_plan_authoring_brief
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_authoring_brief.yaml
+    version: 1
+    brief_id: brief-prop_95ba337d5303-001
+    objective_summary: |
+      Add a single read-only GET /stats endpoint to the existing Shelfnote
+      bookshelf API. The endpoint responds with a JSON body containing one
+      top-level key, "authors", whose value is an object mapping each author
+      name (the exact string stored on the Book model's author field) to the
+      integer count of that author's books currently on the shelf. No key
+      appears for an author whose book count is zero. An empty shelf yields
+      {"authors": {}}. This is a purely additive increment: one new method
+      in the store, one new route handler, one new test file. No existing
+      endpoint, model, configuration, or frontend behaviour is modified.
+      The build starts from the accepted baseline commit and changes only
+      the three footprint files.
+    accepted_stack:
+      backend: "FastAPI + Pydantic, in-memory book store (no external database)"
+      frontend: "React + Vite (unchanged this cycle; no frontend file in footprint)"
+      test_backend: "pytest + FastAPI TestClient"
+      test_frontend: "vitest + Testing Library (unchanged this cycle)"
+    must_cover_requirements:
+      - "A1-observable: GET /stats returns a JSON body with a top-level 'authors' key whose value is an object; each key is an author name having at least one book on the shelf; each value is the integer count of that author's books; no key exists for an author with zero books"
+      - "A1-empty-shelf: when no books exist on the shelf, the response body is {\"authors\": {}}"
+      - "A1-aggregation: multiple books by the same author are summed into a single count, not overwritten"
+      - "must_not_break T1: existing book creation and retrieval behaviour is unchanged"
+      - "must_not_break T2: existing book listing and search behaviour is unchanged"
+      - "must_not_break T3: existing ratings behaviour is unchanged"
+      - "must_not_break C1: existing category or tag behaviour is unchanged"
+      - "must_not_break C2: existing reading-status behaviour is unchanged"
+      - "CONTRIBUTING handler-size: the new route handler body is under 30 lines"
+      - "CONTRIBUTING test-pattern: the new test exercises the API through the TestClient fixture and asserts on response content, not on internal imports"
+      - "CONTRIBUTING no-default-pass: the test does not pass merely because of a framework default such as FastAPI's automatic 404"
+    scope_cuts:
+      - "Frontend display of author statistics: no frontend file is in the footprint; deferred to a follow-up cycle"
+      - "Caching, pagination, sorting, or query parameters on /stats: not in the observable"
+      - "New Pydantic models, new dependencies, new configuration entries: not in the footprint"
+      - "Any file outside {backend/routes.py, backend/store.py, tests/test_criterion_A1.py}: frozen at baseline commit 995eebf"
+      - "Modifications to any existing test file: not permitted; regression is verified by the existing suite passing"
+      - "New endpoints, new HTTP methods, new middleware: not in scope"
+    risk_areas:
+      - "Zero-book author leakage: the aggregation must not retain a key for an author whose books were all removed or for an author who never had a book"
+      - "Count aggregation correctness: the loop must increment (+=) not overwrite (=) when the same author appears on multiple books"
+      - "Empty-shelf edge case: iteration or index access over an empty collection must not raise; must return an empty dict"
+      - "Regression on existing endpoints: appending a method to store.py and a handler to routes.py must not alter existing method signatures, import order, or shared mutable state"
+      - "Test discovery and isolation: the new test file must be collected by pytest under the product's runner config, and its tests must be independent of execution order"
+    source_artifact_refs:
+      - "change_request.yaml"
+      - "technical_design.md"
+      - "test_strategy.md"
+    major_components:
+      - "backend/store.py: new get_author_counts() method on the existing store class"
+      - "backend/routes.py: new GET /stats handler on the existing APIRouter"
+      - "tests/test_criterion_A1.py: new pytest test file exercising the endpoint via TestClient"
+    dependency_assumptions:
+      - "The Book model in backend/models.py carries a non-empty 'author' string field; no schema change is needed"
+      - "The store's book collection is iterable (a list or dict of Book objects) and is the same collection existing methods like list_books read from"
+      - "conftest.py at the repository root provides a TestClient fixture (named 'client' or similar) that the new test can consume, consistent with existing criterion tests"
+      - "No external database, API service, or auth provider is involved; the app is self-contained in-process"
+      - "backend/requirements.txt already declares all packages the new code and test need (fastapi, pydantic, httpx or starlette testclient); no new dependency is added"
+    time_budget_guidance:
+      store_method: 15
+      route_handler: 15
+      criterion_test: 45
+      regression_verification: 25
+    task_granularity_guidance: "Plan three tasks: one developer task for the store method, one developer task for the route handler, and one qa task for the test file. Each task produces exactly one footprint file. The route handler depends on the store method; the test depends on both."
+    artifact_naming_conventions:
+      - "The store method is appended to backend/store.py within the existing store class, snake_case name"
+      - "The route handler is appended to backend/routes.py under the existing APIRouter instance, following the @router.get decorator pattern"
+      - "The test file is at tests/test_criterion_A1.py (exact path from the footprint; the product's pytest discovers test_*.py under the repository root)"
+      - "Test function names follow the existing criterion-test pattern: test_<short_behaviour_description>"
+      - "No new files outside the three footprint paths"
+    open_questions:
+      - "What is the exact internal representation of the store's book collection (list[Book], dict[str, Book], or other)? The implementer must inspect the baseline store.py before writing get_author_counts; the method must iterate whatever structure is there."
+      - "Does conftest.py expose a shared 'client' fixture, and does it yield a fresh (empty) shelf per test or a pre-seeded one? The new test must match the existing isolation pattern used by test_criterion_T1.py and peers."
+      - "To verify the zero-book-author case (A1-observable last clause), can the test DELETE a book via an existing endpoint, or must it seed a shelf that simply omits the author? This depends on whether a DELETE /books/{id} route exists and whether conftest supports per-test shelf reset."
+      - "The plan-shape rule 'qa-tests-live-in-the-stacks-namespace' lists backend/tests/ as the default qa namespace on this stack, but the product's established layout places all tests under tests/ at the repository root. The change request's footprint explicitly names tests/test_criterion_A1.py. The merger should confirm the product's own test layout takes precedence over the generic stack default."
+    ```
+- task_type: development.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-76a88b37
+    source_brief_id: brief-prop_95ba337d5303-001
+    proposing_role: development
+    scope_statement: |
+      Two development tasks producing the two backend footprint files for the
+      GET /stats endpoint: a get_author_counts() method appended to the existing
+      store class in backend/store.py, and a GET /stats route handler appended to
+      the existing APIRouter in backend/routes.py. The handler depends on the
+      store method. The test file (tests/test_criterion_A1.py) is QA's domain and
+      is excluded here. No frontend, packaging, or configuration work is included.
+    tasks:
+      - task_type: development.develop
+        role: dev
+        focus: "Store get_author_counts method"
+        description: |
+          Append a new get_author_counts() method to the existing store class in
+          backend/store.py. The method iterates the store's existing book
+          collection (the same collection list_books reads from) and returns a
+          dict[str, int] mapping each author name to the integer count of that
+          author's books currently on the shelf. Authors with zero books must not
+          appear as keys. An empty shelf yields an empty dict. The method must
+          use increment (+=) when the same author appears on multiple books,
+          never overwrite (=). No new attributes, data structures, or imports
+          beyond what the existing class already uses. No existing method in
+          store.py is modified, renamed, or reordered.
+        expected_artifacts:
+          - "backend/store.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: backend/store.py
+            name_prefix: get_author_counts
+            min_count: 1
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/store.py']
+            severity: error
+          - check: module_imports
+            file: backend/store.py
+            severity: error
+          - "The method must increment the count (+=) for a repeated author, not overwrite it, so that multiple books by the same author are summed into a single integer."
+          - "The method must return an empty dict {} when the shelf contains no books; iteration over an empty collection must not raise an exception."
+          - "No key may appear in the returned dict for an author whose book count is zero (e.g. all books by that author were removed)."
+          - "No existing method signature, return value, or behaviour in store.py is altered; the new method is appended within the class."
+        depends_on_focus: []
+
+      - task_type: development.develop
+        role: dev
+        focus: "GET /stats route handler"
+        description: |
+          Append a new GET /stats route handler to the existing APIRouter in
+          backend/routes.py. The handler calls store.get_author_counts() and
+          returns the result wrapped as a JSON-serialisable dict with a single
+          top-level key 'authors'. No query parameters, path parameters,
+          middleware, or authentication are added. The handler body is well under
+          the 30-line limit from CONTRIBUTING.md. No existing route, handler
+          signature, import, or router registration in routes.py is modified.
+        expected_artifacts:
+          - "backend/routes.py"
+        acceptance_criteria:
+          - check: endpoint_defined
+            file: backend/routes.py
+            methods_paths: ['GET /stats']
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/routes.py']
+            severity: error
+          - check: module_imports
+            file: backend/routes.py
+            severity: error
+          - "The handler body (excluding the decorator line) is under 30 lines per CONTRIBUTING.md."
+          - "The handler calls store.get_author_counts() and returns a dict with a single top-level key 'authors' whose value is the returned counts dict."
+          - "No query parameters, path parameters, or authentication are introduced on the endpoint."
+          - "No existing route path, handler function signature, import statement, or router registration in routes.py is modified; the new handler is appended."
+        depends_on_focus:
+          - "dev:Store get_author_counts method"
+    brief_conflicts: []
+    confidence: high
+    ```
+- task_type: qa.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-1bf7dc8a
+    source_brief_id: brief-prop_95ba337d5303-001
+    proposing_role: qa
+    scope_statement: |
+      One qa.test task authoring tests/test_criterion_A1.py, the criterion-A1
+      verifier that exercises GET /stats through the product's TestClient fixture.
+      The tests distinguish the faults the brief's risk areas name: zero-book
+      author leakage, count overwriting instead of incrementing, empty-shelf
+      crash, and structural drift in the response envelope. Regression on
+      T1–T3 and C1–C2 is verified by the existing frozen test suite running
+      green under the backend_tests check; no new regression test file is
+      authored here per the brief's scope_cuts.
+    tasks:
+      - task_type: qa.test
+        role: qa
+        focus: "GET /stats criterion A1 test suite"
+        description: |
+          Author tests/test_criterion_A1.py exercising the GET /stats endpoint
+          through the shared TestClient fixture (conftest.py). The suite
+          distinguishes the following faults from correct behaviour:
+
+          1. Zero-book author leakage: seed books by author A and B, then remove
+             all of A's books (via DELETE or by seeding a shelf that omits A).
+             Assert no key for A appears in the response while B retains its count.
+             Fails if the store retains a stale key or the aggregation includes
+             authors with count 0.
+
+          2. Count aggregation overwrite: seed three books by the same author and
+             one by a different author. Assert the same-author count is 3, not 1.
+             Fails if the loop uses dict[author] = 1 instead of dict[author] += 1.
+
+          3. Empty-shelf edge case: on a fresh shelf with no books, assert the
+             response body is exactly {"authors": {}}. Fails if iteration or
+             index access over the empty collection raises, or if the response
+             omits the key, uses null, or returns a list.
+
+          4. Response structure: assert the top-level JSON body contains the key
+             "authors" whose value is a dict (object), and that every value is an
+             integer (not a string or float). Fails if the handler wraps the
+             payload in an extra envelope or returns a list.
+
+          Each test seeds its own shelf via POST /books (or the conftest fixture
+          pattern) before calling GET /stats, ensuring independence from execution
+          order. The suite must not import backend internals directly; it reaches
+          the app exclusively through the TestClient.
+        expected_artifacts:
+          - "tests/test_criterion_A1.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: tests/test_criterion_A1.py
+            name_prefix: "test_"
+            min_count: 4
+            severity: error
+          - "The test exercises the API through the TestClient fixture from conftest.py and asserts on response status code and parsed JSON body, never on internal imports or store method return values directly."
+          - "The test does not pass merely because of a framework default such as FastAPI's automatic 404 for an unknown path; each assertion is on the specific response body of GET /stats."
+          - "The empty-shelf test (no books seeded) asserts the response body is exactly the dict {'authors': {}} — the key is present, the value is an empty dict, and the response is successful."
+          - "The aggregation test seeds at least 3 books by one author and asserts the returned count equals 3, not 1, proving increment-not-overwrite."
+          - "The zero-book test ensures no key exists in the authors object for an author whose books are all absent; it asserts the key is not present rather than asserting its value is 0."
+          - "All values in the authors object are integers; the test asserts type or exact-equality against integer literals, catching a string or float return."
+          - "Tests are order-independent: each test function seeds its own shelf state (or relies on the conftest fixture's per-test reset) and does not mutate shared state visible to sibling tests."
+        depends_on_focus:
+          - "dev:Store get_author_counts method"
+          - "dev:GET /stats route handler"
+    brief_conflicts:
+      - rule: "qa-tests-live-in-the-stacks-namespace"
+        observation: |
+          The generic FastAPI + React stack default lists backend/tests/ as the
+          qa namespace, but this product's established layout places all test
+          files under tests/ at the repository root (see the product map: 20+
+          test files at tests/test_*.py, conftest.py at root, pytest discovers
+          test_*.py under .). The change request footprint and the criterion
+          file directive both name tests/test_criterion_A1.py explicitly. The
+          product's own runner config (pytest under .) confirms discoverability
+          at that path. Requesting the merger confirm that the product's
+          established test layout takes precedence over the generic stack
+          default for this increment.
+        resolution_requested: "Merger confirms tests/ at root is this product's qa namespace; the plan proceeds with tests/test_criterion_A1.py as stated."
+    source_artifact_refs:
+      - "test_strategy.md"
+      - "technical_design.md"
+    assumptions:
+      - "conftest.py at the repository root provides a shared 'client' fixture (TestClient-backed) that yields a fresh, empty shelf per test, consistent with the existing criterion test files (test_criterion_T1.py, etc.)."
+      - "The product's pytest runner discovers test_*.py under the repository root (.), so tests/test_criterion_A1.py is collected and executed by the backend_tests check."
+      - "A DELETE /books/{id} endpoint or equivalent removal mechanism exists (or the conftest fixture resets the shelf per test) to enable the zero-book-author test; if neither exists, the test seeds a shelf that simply omits the target author."
+      - "The frozen test files (test_criterion_T1.py through C2) and all other existing tests/ files are unmodified by this increment; their green execution under backend_tests verifies the must_not_break set."
+    risks:
+      - "If conftest.py does not provide a per-test shelf reset and no DELETE endpoint exists, the zero-book-author test (P1 risk) may require a workaround (seed a shelf with only the other author). The test still proves the observable: no key for an author with zero books."
+    gaps_not_covered:
+      - "Frontend display of author statistics is out of scope per brief scope_cuts; no frontend test is authored."
+      - "Caching, pagination, sorting, or query-parameter behaviour on /stats is out of scope per brief scope_cuts."
+      - "Performance or concurrency characteristics are not tested in this cycle per test_strategy.md §6."
+    confidence: high
+    ```
+- task_type: strategy.propose_plan_guidance
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_guidance.yaml
+    version: 1
+    guidance_id: guid-898268ef
+    source_brief_id: brief-prop_95ba337d5303-001
+    proposing_role: strategy
+    priority_guidance:
+      - area: qa_test
+        priority: high
+        rationale: >
+          The test file carries the largest budget allocation (45%) and is the
+          sole verification vehicle for all three A1 acceptance criteria
+          (A1-observable, A1-empty-shelf, A1-aggregation). Every CONTRIBUTING
+          rule that constrains the test (test-pattern, no-default-pass) is
+          enforced through this file. Under-scoping this task is the
+          highest-impact scheduling risk in the increment: if the test is
+          rushed, the A1 criteria go unverified and the regression gate loses
+          its teeth.
+      - area: regression_protection
+        priority: high
+        rationale: >
+          Five must_not_break requirements (T1, T2, T3, C1, C2) protect
+          existing endpoints. The 25% regression_verification budget is a
+          gate-level constraint, not a separate task to be absorbed into the
+          qa task's authoring time. The existing suite passing is the only
+          safety net against side-effects from the new store method or route
+          handler. If this budget is squeezed, a silent break in any of the
+          five existing endpoints ships undetected.
+      - area: backend_store
+        priority: medium
+        rationale: >
+          First link in the dependency chain and the simplest task (15%
+          budget). Low effort but load-bearing: aggregation-loop correctness
+          and empty-collection handling here determine whether the route
+          handler and test proceed without rework. The open question about the
+          collection's internal representation (list vs dict vs other) is
+          load-bearing for this task specifically.
+      - area: backend_route
+        priority: medium
+        rationale: >
+          Thin integration layer (15% budget) that composes the store method
+          into an HTTP response. The CONTRIBUTING handler-size constraint
+          (<30 lines) bounds the task tightly. Must sequence after the store
+          method to avoid a dangling reference.
+    ordering_guidance:
+      - before: "dev:store_method"
+        after: "dev:route_handler"
+        rationale: >
+          The route handler calls the store method. The store method must
+          exist and be stable before the route handler is written; otherwise
+          the handler has a dangling reference and the test has nothing to
+          exercise end-to-end.
+      - before: "dev:route_handler"
+        after: "qa:criterion_test"
+        rationale: >
+          The test exercises the endpoint through TestClient. Both the store
+          method and the route handler must be in place before the test can
+          be authored against a working endpoint. Writing the test against a
+          spec the implementation may not match produces rework on both
+          sides.
+    risk_guidance:
+      - target: "qa:criterion_test"
+        risk: >
+          Test file location vs plan-shape namespace. The plan-shape rule
+          qa-tests-live-in-the-stacks-namespace names backend/tests/ as the
+          default qa namespace on the FastAPI stack, but the product's
+          established layout places every test under tests/ at the repository
+          root, served by the root conftest.py. The brief's footprint
+          explicitly names tests/test_criterion_A1.py, and the product's
+          pytest runner discovers test_*.py under . The merger must confirm
+          the product's own layout takes precedence over the generic stack
+          default before the plan is validated; otherwise the qa task's
+          expected_artifacts will be rejected by the namespace check and the
+          plan is re-rolled. The brief's open-question list flags this
+          explicitly; the merger's resolution should be recorded in
+          operator_notes at gate.
+      - target: "dev:store_method"
+        risk: >
+          Aggregation correctness and zero-book author leakage. The
+          get_author_counts() method must iterate whatever collection the
+          baseline store.py uses (list, dict, or other) and build a count
+          map. Two failure modes are flagged in the brief's risk_areas:
+          (a) the loop must increment (+=) not overwrite (=) when the same
+          author appears on multiple books, and (b) no key may be retained
+          for an author whose book count is zero. The implementer must
+          inspect the baseline store.py before writing the method; the open
+          question about the collection's internal representation is
+          load-bearing and cannot be resolved by assumption.
+      - target: "dev:route_handler"
+        risk: >
+          Regression on existing endpoints via careless append. Appending a
+          new handler to the existing APIRouter in routes.py must not alter
+          existing method signatures, import order, or shared mutable state.
+          The five must_not_break requirements (T1-T3, C1-C2) are verified
+          solely by the existing suite passing. A careless append
+          (reordering imports, modifying a shared dict, shadowing a variable
+          name in the module scope) breaks up to five existing endpoints
+          with no new test to catch the break.
+      - target: "qa:criterion_test"
+        risk: >
+          Test isolation and fixture dependency. The new test must consume
+          the conftest.py fixture consistently with existing criterion tests
+          (test_criterion_T1.py and peers). The open question about whether
+          the fixture yields a fresh empty shelf or a pre-seeded one
+          determines how the A1-empty-shelf and A1-aggregation cases are
+          constructed. Matching the existing isolation pattern is
+          non-negotiable per the CONTRIBUTING test-pattern rule. A test that
+          assumes a different fixture shape than the one conftest.py
+          actually provides will fail on load or produce false positives.
+      - target: "qa:criterion_test"
+        risk: >
+          Zero-book-author verification path. The A1-observable criterion
+          requires that no key exists for an author with zero books.
+          Testing this requires either (a) seeding a shelf that simply
+          omits the author, or (b) adding a book and then deleting it via
+          an existing DELETE endpoint. Option (b) couples the new test to
+          existing endpoint behaviour and depends on whether
+          DELETE /books/{id} exists in the baseline. Option (a) is
+          simpler and avoids that coupling. The qa task should prefer
+          option (a) unless the brief's open-question resolution indicates
+          otherwise.
+    time_budget_guidance:
+      - area: backend_store
+        budget_pct: 15
+      - area: backend_route
+        budget_pct: 15
+      - area: qa_test
+        budget_pct: 45
+      - area: regression_protection
+        budget_pct: 25
+    scope_cut_guidance:
+      - >
+        Modifying the root conftest.py to add a new fixture, alter an
+        existing fixture, or change the shelf-seeding behaviour: frozen at
+        baseline commit 995eebf per the brief's footprint rule ("any file
+        outside the three footprint paths: frozen"). The new test must work
+        with the fixture as-is. If the fixture shape makes a particular A1
+        case awkward, the test adapts to the fixture, not vice versa.
+    must_not_skip:
+      - >
+        A1-observable: the response shape (top-level authors key, author-name
+        keys, integer-count values, no zero-count keys) is the core
+        observable of this increment and must be verified by the test.
+      - >
+        A1-empty-shelf: the empty-shelf edge case must return {"authors": {}}
+        and must be tested explicitly, not only implied by the general
+        aggregation test.
+      - >
+        must_not_break T1 through C2: the existing suite passing is the
+        regression gate. It cannot be skipped, partially bypassed, or
+        reduced to a subset under time pressure. All five existing
+        endpoint families must be exercised.
+      - >
+        CONTRIBUTING test-pattern: the test must exercise the API through
+        the TestClient fixture and assert on response content, not on
+        internal imports. A test that imports the store method directly
+        or the route handler function directly violates the pattern and
+        would pass even if the HTTP layer were broken.
+    defer_if_time_constrained: []
+    confidence: high
+    ```
+- task_type: governance.merge_plan
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:implementation_plan.yaml
+    version: 1
+    project_id: prj-shelfnote
+    cycle_id: cyc_4875f91fd6d4
+    prd_hash: 9c36239f6f97f34aaf3c4f05ac74e5f764902bb25283f96ae6055beddfbcdf94
+    tasks:
+    - task_index: 0
+      task_type: development.develop
+      role: dev
+      focus: Store get_author_counts method
+      description: 'Append a new get_author_counts() method to the existing store class
+        in
+
+        backend/store.py. The method iterates the store''s existing book
+
+        collection (the same collection list_books reads from) and returns a
+
+        dict[str, int] mapping each author name to the integer count of that
+
+        author''s books currently on the shelf. Authors with zero books must not
+
+        appear as keys. An empty shelf yields an empty dict. The method must
+
+        use increment (+=) when the same author appears on multiple books,
+
+        never overwrite (=). No new attributes, data structures, or imports
+
+        beyond what the existing class already uses. No existing method in
+
+        store.py is modified, renamed, or reordered.'
+      expected_artifacts:
+      - backend/store.py
+      acceptance_criteria:
+      - check: function_defined
+        file: backend/store.py
+        name_prefix: get_author_counts
+        min_count: 1
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/store.py
+      - check: module_imports
+        file: backend/store.py
+      - The method must increment the count (+=) for a repeated author, not overwrite
+        it, so that multiple books by the same author are summed into a single integer.
+      - The method must return an empty dict {} when the shelf contains no books; iteration
+        over an empty collection must not raise an exception.
+      - No key may appear in the returned dict for an author whose book count is zero
+        (e.g. all books by that author were removed).
+      - No existing method signature, return value, or behaviour in store.py is altered;
+        the new method is appended within the class.
+      depends_on: []
+    - task_index: 1
+      task_type: development.develop
+      role: dev
+      focus: GET /stats route handler
+      description: 'Append a new GET /stats route handler to the existing APIRouter in
+
+        backend/routes.py. The handler calls store.get_author_counts() and
+
+        returns the result wrapped as a JSON-serialisable dict with a single
+
+        top-level key ''authors''. No query parameters, path parameters,
+
+        middleware, or authentication are added. The handler body is well under
+
+        the 30-line limit from CONTRIBUTING.md. No existing route, handler
+
+        signature, import, or router registration in routes.py is modified.'
+      expected_artifacts:
+      - backend/routes.py
+      acceptance_criteria:
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths:
+        - GET /stats
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/routes.py
+      - check: module_imports
+        file: backend/routes.py
+      - The handler body (excluding the decorator line) is under 30 lines per CONTRIBUTING.md.
+      - The handler calls store.get_author_counts() and returns a dict with a single top-level
+        key 'authors' whose value is the returned counts dict.
+      - No query parameters, path parameters, or authentication are introduced on the
+        endpoint.
+      - No existing route path, handler function signature, import statement, or router
+        registration in routes.py is modified; the new handler is appended.
+      depends_on:
+      - 0
+    - task_index: 2
+      task_type: qa.test
+      role: qa
+      focus: GET /stats criterion A1 test suite
+      description: "Author tests/test_criterion_A1.py exercising the GET /stats endpoint\n\
+        through the shared TestClient fixture (conftest.py). The suite\ndistinguishes\
+        \ the following faults from correct behaviour:\n\n1. Zero-book author leakage:\
+        \ seed books by author A and B, then remove\n   all of A's books (via DELETE or\
+        \ by seeding a shelf that omits A).\n   Assert no key for A appears in the response\
+        \ while B retains its count.\n   Fails if the store retains a stale key or the\
+        \ aggregation includes\n   authors with count 0.\n\n2. Count aggregation overwrite:\
+        \ seed three books by the same author and\n   one by a different author. Assert\
+        \ the same-author count is 3, not 1.\n   Fails if the loop uses dict[author] =\
+        \ 1 instead of dict[author] += 1.\n\n3. Empty-shelf edge case: on a fresh shelf\
+        \ with no books, assert the\n   response body is exactly {\"authors\": {}}. Fails\
+        \ if iteration or\n   index access over the empty collection raises, or if the\
+        \ response\n   omits the key, uses null, or returns a list.\n\n4. Response structure:\
+        \ assert the top-level JSON body contains the key\n   \"authors\" whose value\
+        \ is a dict (object), and that every value is an\n   integer (not a string or\
+        \ float). Fails if the handler wraps the\n   payload in an extra envelope or returns\
+        \ a list.\n\nEach test seeds its own shelf via POST /books (or the conftest fixture\n\
+        pattern) before calling GET /stats, ensuring independence from execution\norder.\
+        \ The suite must not import backend internals directly; it reaches\nthe app exclusively\
+        \ through the TestClient."
+      expected_artifacts:
+      - tests/test_criterion_A1.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_A1.py
+        name_prefix: test_
+        min_count: 4
+      - The test exercises the API through the TestClient fixture from conftest.py and
+        asserts on response status code and parsed JSON body, never on internal imports
+        or store method return values directly.
+      - The test does not pass merely because of a framework default such as FastAPI's
+        automatic 404 for an unknown path; each assertion is on the specific response
+        body of GET /stats.
+      - 'The empty-shelf test (no books seeded) asserts the response body is exactly the
+        dict {''authors'': {}} — the key is present, the value is an empty dict, and the
+        response is successful.'
+      - The aggregation test seeds at least 3 books by one author and asserts the returned
+        count equals 3, not 1, proving increment-not-overwrite.
+      - The zero-book test ensures no key exists in the authors object for an author whose
+        books are all absent; it asserts the key is not present rather than asserting
+        its value is 0.
+      - All values in the authors object are integers; the test asserts type or exact-equality
+        against integer literals, catching a string or float return.
+      - 'Tests are order-independent: each test function seeds its own shelf state (or
+        relies on the conftest fixture''s per-test reset) and does not mutate shared state
+        visible to sibling tests.'
+      depends_on:
+      - 0
+      - 1
+    summary:
+      total_dev_tasks: 2
+      total_qa_tasks: 1
+      total_tasks: 3
+      estimated_layers: []
+    ```
+
+    ```yaml:merge_decisions.yaml
+    version: 1
+    target_plan_id: plan-cyc_4875f91fd6d4
+    brief_id: brief-prop_95ba337d5303-001
+    proposal_ids:
+    - prop-76a88b37
+    - prop-1bf7dc8a
+    guidance_ids:
+    - guid-898268ef
+    authoring_mode: multi_role
+    sole_author_reason: null
+    proposal_completeness: complete
+    missing_proposals: []
+    canonical_tasks:
+    - task_index: 0
+      source_proposal_task_keys:
+      - dev:store get_author_counts method
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 1
+      source_proposal_task_keys:
+      - dev:get /stats route handler
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 2
+      source_proposal_task_keys:
+      - qa:get /stats criterion a1 test suite
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    brief_conflicts_disposition: []
+    operator_notes: ''
+    ```
+- task_type: governance.review_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    ---
+    readiness: go
+    sufficiency_score: 5
+    blocker_unknowns: 0
+    ---
+
+    ## Consolidated Plan
+
+    ### 1. Objective Frame
+
+    This cycle adds a single `GET /stats` endpoint to the existing Shelfnote application. The endpoint returns a JSON object mapping each author name (who has at least one book on the shelf) to the integer count of that author's books. No other behaviour is added, modified, or retired. The accepted application at commit `995eebf` remains the baseline; only the footprint files change.
+
+    **Reviewer ruling:** Approved as it stands by pre-registration rule §2892 §3 step 1. No additional constraints beyond the change request.
+
+    ### 2. Technical Design
+
+    #### 2.1 `backend/store.py` — Data Access
+
+    Add one new function:
+
+    ```python
+    def author_counts(self) -> dict[str, int]:
+        """Return {author: count} for every author with at least one book on the shelf."""
+        counts: dict[str, int] = {}
+        for book in self._books.values():
+            counts[book.author] = counts.get(book.author, 0) + 1
+        return counts
+    ```
+
+    - Iterates the existing in-memory book collection (`self._books`, already present in the accepted `store.py`).
+    - Builds a frequency map. Authors with zero books never appear because only existing books are iterated.
+    - Returns a plain `dict[str, int]`; the route serialises it directly.
+    - No new imports, no schema change, no mutation of existing state.
+
+    #### 2.2 `backend/routes.py` — Route Handler
+
+    Add one new endpoint handler:
+
+    ```python
+    @router.get("/stats")
+    async def get_stats():
+        """Return per-author book counts for the current shelf."""
+        store = _get_store()          # existing helper pattern in the file
+        authors = store.author_counts()
+        return {"authors": authors}
+    ```
+
+    - Follows the existing route-registration pattern in `routes.py` (router instance, dependency-injection style store access already used by sibling handlers).
+    - Handler body is well under the 30-line ceiling from CONTRIBUTING.md.
+    - Returns `200` with `{"authors": {...}}`. No query parameters, no auth, no filtering — criterion A1 specifies the full observable.
+    - If the shelf is empty the response is `{"authors": {}}` (empty object, no keys). This satisfies "no key exists for an author with zero books."
+
+    #### 2.3 `tests/test_criterion_A1.py` — New Test File
+
+    A single pytest file exercising `GET /stats` through `fastapi.testclient.TestClient`, following the product's existing test conventions (import from `backend.main`, use `TestClient(app)`, assert on JSON response).
+
+    Planned test cases:
+
+    | # | Scenario | Assertion |
+    |---|----------|-----------|
+    | A1-1 | Single book, single author | `authors == {"Alice": 1}` |
+    | A1-2 | Multiple books, multiple authors, overlapping | Correct per-author counts; no zero-count author key |
+    | A1-3 | Empty shelf (fresh client, no books added) | `authors == {}` — response is valid JSON with empty object |
+    | A1-4 | Author with books removed (if a delete endpoint exists in baseline) | Author key disappears once all their books are gone |
+    | A1-5 | Status code is 200 | `response.status_code == 200` |
+
+    Each test:
+    - Uses `TestClient(app)` — no running server, per blueprint convention.
+    - Fails on the response body / status code, not on an import.
+    - Is not already satisfied by framework default behaviour (a 404 for an unregistered path fails these tests, satisfying the "must not be met already" rule).
+    - Imports only packages declared in `backend/requirements.txt` (fastapi, httpx or starlette.testclient, pytest).
+
+    ### 3. Test Strategy
+
+    #### 3.1 New Tests (criterion A1)
+
+    `tests/test_criterion_A1.py` — the only new test file. It is discovered by `pytest` (named `test_*.py`, under `.`, tests `backend/**`).
+
+    #### 3.2 Must-Not-Break (existing criteria)
+
+    | ID | What it guards | Where it lives |
+    |----|---------------|----------------|
+    | T1 | Existing book CRUD behaviour | `tests/test_criterion_T1.py` |
+    | T2 | Existing book listing / filtering | `tests/test_criterion_T2.py` |
+    | T3 | Existing rating behaviour | `tests/test_criterion_T3.py` |
+    | C1 | Existing search / sort behaviour | `tests/test_criterion_C1.py` |
+    | C2 | Existing tag behaviour | `tests/test_criterion_C2.py` |
+
+    These files are **not** in the footprint and are not modified. They pass at baseline and must continue to pass. The new endpoint is purely additive (new function in store, new route in router); it does not alter any existing code path, so regression risk is minimal. The `must_not_break` list is verified by the unchanged test suite running in the same environment.
+
+    #### 3.3 Verification Commands (product's own)
+
+    ```bash
+    .venv/bin/python -c "from backend.main import app"   # boots
+    .venv/bin/python -m pytest -q -p no:cacheprovider    # backend_tests (includes A1 + all existing)
+    npm --prefix frontend test --silent                   # frontend_tests (unchanged; no frontend changes)
+    ```
+
+    ### 4. File Emission Plan
+
+    | File | Action | Rationale |
+    |------|--------|-----------|
+    | `backend/routes.py` | **Modify** (emit full file) | Add `/stats` handler |
+    | `backend/store.py` | **Modify** (emit full file) | Add `author_counts()` method |
+    | `tests/test_criterion_A1.py` | **Create** (new file) | Criterion A1 test |
+
+    All other files remain at their accepted content. No frontend changes. No manifest or config changes.
+
+    ### 5. Sufficiency Assessment
+
+    | Criterion | Rating | Notes |
+    |-----------|--------|-------|
+    | **Scope clarity** | ✓ Pass | One endpoint, three files, single criterion. Boundaries are explicit in the footprint. No ambiguity about what is in or out of scope. |
+    | **Technical feasibility** | ✓ Pass | A dictionary frequency-count over an existing in-memory collection. No external dependency, no schema migration, no concurrency concern. Trivially implementable within the existing patterns. |
+    | **Risk coverage** | ✓ Pass | No unknowns. The only risk class is regression of existing endpoints, mitigated by the additive nature of the change and the must-not-break test suite. No blocker or major unknowns. |
+    | **Test strategy alignment** | ✓ Pass | One criterion → one test file with five focused cases covering the observable. Must-not-break list matches the existing test files. Coverage matches the risk surface (new endpoint + no regression). |
+    | **Resource fit** | ✓ Pass | Total implementation surface: ~15 lines of production code, ~80 lines of test code. Comfortably within the 3-hour budget. No dependency on other squad members' parallel work. |
+
+    **Score: 5 / 5**
+
+    ### 6. Readiness Recommendation
+
+    **`go`**
+
+    The plan is fully specified, unambiguous, and within budget. No blocker unknowns exist. The change is additive, low-risk, and precisely bounded by the footprint. The squad can proceed directly to implementation: emit the two modified backend files and the new test file, run the product's own check suite, and confirm all criteria (A1 + T1/T2/T3/C1/C2) pass.
+
+    ### 7. Execution Sequence (for squad)
+
+    1. **dev** — Implement `store.author_counts()` in `backend/store.py` and the `/stats` handler in `backend/routes.py`. Emit both files in full.
+    2. **qa** — Author `tests/test_criterion_A1.py` with the five test cases listed above.
+    3. **lead** — Review emitted files for conformance to footprint, contributing rules, and criterion observability. Run the product's check suite. Confirm A1 passes and T1/T2/T3/C1/C2 still pass. Close cycle.
+- task_type: governance.define_done
+  occurrence: 1
+  call: 1
+  content: |
+    ```json:definition_of_done.json
+    {
+      "objective": "Produce a structured set of lead analysis deliverables from the provided (minimal) PRD input, formatted per SIP-0079 definition of done.",
+      "acceptance_criteria": [
+        "All six SIP-0079 JSON fields are present, correctly typed, and non-empty",
+        "objective is a single sentence of at most 30 words",
+        "acceptance_criteria contains at least 3 measurable criteria each verifiable by a binary check",
+        "non_goals contains at least 2 items explicitly excluded",
+        "time_budget_seconds is a positive integer",
+        "stop_conditions contains at least 2 concrete halting conditions",
+        "required_artifacts lists at least 1 filename with a valid extension",
+        "Output is parseable as strict JSON with no trailing commas or extra prose"
+      ],
+      "non_goals": [
+        "Implementation or code generation for any product feature",
+        "Stakeholder communication or meeting scheduling",
+        "Marketing copy or user-facing content creation",
+        "Integration with external ticketing or CI/CD systems"
+      ],
+      "time_budget_seconds": 900,
+      "stop_conditions": [
+        "PRD input is confirmed to contain zero actionable requirements after a second review pass",
+        "Two consecutive iterations produce identical JSON with no new information",
+        "Token budget exhausted before a valid JSON object can be serialized"
+      ],
+      "required_artifacts": [
+        "definition_of_done.json",
+        "lead_analysis_summary.md"
+      ]
+    }
+    ```
+- task_type: development.develop
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:backend/store.py
+    """In-memory state — scaffold-owned (frozen).
+
+    The manifest declares in-memory persistence, so this module owns it: one store
+    per root-persisted entity, keyed by the entity's id. Fill route bodies against
+    these names; do not define a second store elsewhere and do not edit this file.
+
+    Not stored on their own — shapes embedded in or projected from the rows
+    above, never rows themselves: Note. Build them from a
+    stored entity when a response needs them; do not keep a parallel store.
+    """
+
+    from __future__ import annotations
+
+    from backend.models import VALID_STATUSES, Book
+
+    book_store: dict[str, Book] = {}
+
+
+    def reset() -> None:
+        """Clear every store — for test isolation between cases."""
+        book_store.clear()
+
+
+    def list_books(search: str | None = None, *, status: str | None = None) -> list[Book]:
+        """Return books matching *search* and/or *status*, in shelf order.
+
+        Both filters are conjunctive (AND).  An empty-string or *None* value
+        disables that filter, so the full ordered shelf is returned.
+        """
+        results: list[Book] = []
+        for book in book_store.values():
+            if status is not None and status != "" and book.status != status:
+                continue
+            if search is not None and search != "":
+                needle = search.lower()
+                if needle not in book.title.lower() and needle not in book.author.lower():
+                    continue
+            results.append(book)
+        return results
+
+
+    def get_books(tag: str | None = None) -> list[Book]:
+        """Return all books, optionally filtered by *tag*.
+
+        When *tag* is *None* or an empty string the full unfiltered list is
+        returned, preserving existing GET /books behaviour.  When a non-empty
+        tag string is provided, only books whose ``tags`` array includes that
+        tag are returned.  An empty list is returned when no book carries the
+        tag.
+        """
+        if tag is None or tag == "":
+            return list(book_store.values())
+        return [book for book in book_store.values() if tag in book.tags]
+
+
+    def get_books_paginated(page: int, per_page: int) -> tuple[list[Book], int]:
+        """Return a single page of books and the total count.
+
+        *page* is 1-based.  The slice is computed as
+        ``[(page - 1) * per_page : page * per_page]`` over the full shelf.
+        A page beyond the list bounds yields an empty list (Python slicing
+        is safe past the end).
+        """
+        all_books: list[Book] = list(book_store.values())
+        start = (page - 1) * per_page
+        end = start + per_page
+        return all_books[start:end], len(all_books)
+
+
+    def add_tag(book_id: str, tag: str) -> Book | None:
+        """Add *tag* to the book identified by *book_id*.
+
+        The tag is appended to the book's ``tags`` array only if not already
+        present (idempotency guarantee).  Returns the updated book, or *None*
+        if no book with the given id exists in the store.
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+        if tag not in book.tags:
+            book.tags.append(tag)
+        return book
+
+
+    def update_book(
+        book_id: str,
+        *,
+        title: str | None = None,
+        author: str | None = None,
+        status: str | None = None,
+    ) -> Book | None:
+        """Update a book in place; return the book or *None* if not found.
+
+        When *status* is provided (non-empty) it is validated against
+        :data:`~backend.models.VALID_STATUSES` **before** any field is written.
+        On an invalid status no mutation occurs and the book is returned
+        unchanged (atomicity guarantee).
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+
+        # Validate status BEFORE any field is written.
+        if status is not None and status != "" and status not in VALID_STATUSES:
+            return book
+
+        if title is not None:
+            book.title = title
+        if author is not None:
+            book.author = author
+        if status is not None and status != "":
+            book.status = status
+
+        return book
+
+
+    def set_rating(book_id: str, rating: int) -> Book:
+        """Set the rating for the book identified by *book_id*.
+
+        Mutates the book in place with replacement semantics: a second call
+        overwrites the first rating value (no accumulation or history).
+
+        The caller is responsible for verifying that the book exists before
+        invoking this function; a *KeyError* is raised for an unknown id.
+        """
+        book = book_store[book_id]
+        book.rating = rating
+        return book
+
+
+    def get_status_counts() -> dict[str, int]:
+        """Return the count of books per canonical status.
+
+        Every status in :data:`~backend.models.VALID_STATUSES` appears as a key,
+        initialised to 0, so statuses with no books are still present.
+        """
+        counts: dict[str, int] = {s: 0 for s in VALID_STATUSES}
+        for book in book_store.values():
+            counts[book.status] += 1
+        return counts
+
+
+    def get_average_rating() -> float | None:
+        """Return the arithmetic mean of non-null ratings, or *None* if none exist."""
+        rated = [book.rating for book in book_store.values() if book.rating is not None]
+        if not rated:
+            return None
+        return sum(rated) / len(rated)
+
+
+    def get_related_books(book_id: str) -> list[Book] | None:
+        """Return books related to *book_id* by tag overlap.
+
+        Returns *None* if no book with the given id exists in the store.
+        Returns an empty list if the book has zero tags.
+        Otherwise returns a list of Book objects for every other book whose
+        tag set has non-empty intersection with the queried book's tag set.
+        The queried book is always excluded.  Order is store insertion order.
+        """
+        target = book_store.get(book_id)
+        if target is None:
+            return None
+        target_tags = set(target.tags)
+        if not target_tags:
+            return []
+        related: list[Book] = []
+        for book in book_store.values():
+            if book.id == book_id:
+                continue
+            if target_tags & set(book.tags):
+                related.append(book)
+        return related
+
+
+    def get_author_counts() -> dict[str, int]:
+        """Return the count of books per author.
+
+        Each author name maps to the number of books by that author currently
+        in the store.  Authors with zero books do not appear as keys.  An
+        empty shelf yields an empty dict.
+        """
+        counts: dict[str, int] = {}
+        for book in book_store.values():
+            counts[book.author] += 1
+        return counts
+    ```
+- task_type: development.develop
+  occurrence: 2
+  call: 1
+  content: |
+    ```python:backend/routes.py
+    """API route stubs — scaffold-owned signatures, fill-only bodies.
+
+    Every endpoint the interface manifest declares is wired here with its
+    correct path, method, and response model. Bodies raise 501 until filled;
+    the app imports and boots regardless.
+
+    The router takes NO prefix. The frontend calls /api/... and the proxy strips
+    that prefix before the request reaches this app, so these paths are already
+    the full backend paths. Adding prefix= to APIRouter puts every route behind a
+    second /api and the app answers 404 to its own contract (pf-41).
+
+    On failure raise ApiError(code, message) from .errors — codes: validation_error, book_not_found.
+    """
+
+    import math
+    from typing import Literal
+    from typing import Optional
+    from uuid import uuid4
+
+    from fastapi import APIRouter, HTTPException, Query
+    from slugify import slugify
+
+    from backend.models import VALID_STATUSES, Book, BookCreate, Note, NoteCreate, PatchBookBody
+    from backend.models import AddTagRequest
+    from backend.models import RatingRequest
+    from backend.models import Pagination
+    from backend.models import PaginatedBooksResponse
+    from backend.errors import ApiError
+    from backend.store import book_store, list_books, update_book, add_tag, get_books as store_get_books, set_rating
+    from backend.store import get_status_counts, get_average_rating
+    from backend.store import get_related_books
+    from backend.store import get_author_counts
+
+    SortField = Literal["title", "author", "rating"]
+
+    router = APIRouter()
+
+
+    @router.get("/books")
+    def get_books(
+        search: Optional[str] = Query(None),
+        status: str | None = Query(None),
+        tag: str | None = Query(None),
+        sort_by: Optional[SortField] = None,
+        page: Optional[int] = Query(None, ge=1),
+        per_page: Optional[int] = Query(None, ge=1, le=100),
+    ):
+        """list books — newest first."""
+        if status and status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}")
+        if tag:
+            results = store_get_books(tag=tag)
+            if search:
+                needle = search.lower()
+                results = [b for b in results if needle in b.title.lower() or needle in b.author.lower()]
+            if status:
+                results = [b for b in results if b.status == status]
+        else:
+            results = list_books(search=search, status=status or None)
+        if sort_by == "title":
+            results = sorted(results, key=lambda b: b.title.lower())
+        elif sort_by == "author":
+            results = sorted(results, key=lambda b: b.author.lower())
+        elif sort_by == "rating":
+            results = sorted(results, key=lambda b: b.rating or 0)
+        else:
+            results = list(reversed(results))
+        if page is None and per_page is None:
+            return results
+        p = page if page is not None else 1
+        pp = per_page if per_page is not None else 10
+        total = len(results)
+        start = (p - 1) * pp
+        end = start + pp
+        items = results[start:end]
+        total_pages = math.ceil(total / pp) if total > 0 else 0
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=Pagination(total=total, page=p, per_page=pp, total_pages=total_pages),
+        )
+
+
+    @router.post("/books", response_model=Book, status_code=201)
+    def post_books(payload: BookCreate):
+        """add a book."""
+        book = Book(
+            id=str(uuid4()),
+            title=payload.title,
+            author=payload.author,
+            added_by=payload.added_by,
+            slug=slugify(f"{payload.title} {payload.author}"),
+            notes=[],
+        )
+        book_store[book.id] = book
+        return book
+
+
+    @router.get("/books/{book_id}", response_model=Book)
+    def get_books_book_id(book_id: str):
+        """a book and its notes."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return book
+
+
+    @router.patch("/books/{book_id}", response_model=Book)
+    def patch_books_book_id(book_id: str, body: PatchBookBody):
+        """update a book's fields."""
+        if body.status and body.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body.status!r}")
+        result = update_book(
+            book_id,
+            title=body.title,
+            author=body.author,
+            status=body.status or None,
+        )
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.post("/books/{book_id}/notes", response_model=Book, status_code=200)
+    def post_books_book_id_notes(book_id: str, payload: NoteCreate):
+        """leave a note."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        if len(payload.text) > 500:
+            raise ApiError("validation_error", "Note text must not exceed 500 characters.")
+        note = Note(
+            id=str(uuid4()),
+            author=payload.author,
+            text=payload.text,
+        )
+        book.notes.append(note)
+        return book
+
+
+    @router.post("/books/{book_id}/tags", response_model=Book)
+    def post_books_book_id_tags(book_id: str, payload: AddTagRequest):
+        """add a tag to a book."""
+        result = add_tag(book_id, payload.tag)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.put("/books/{book_id}/rating", response_model=Book)
+    def put_books_book_id_rating(book_id: str, body: RatingRequest):
+        """set a book's rating."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return set_rating(book_id, body.rating)
+
+
+    @router.get("/books/{book_id}/related")
+    def get_books_book_id_related(book_id: str):
+        """Return books related to the given book by tag overlap."""
+        result = get_related_books(book_id)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.get("/stats")
+    def get_stats():
+        """Aggregated shelf statistics."""
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+
+
+    @router.get("/stats")
+    def get_stats_authors():
+        """Author book counts."""
+        return {"authors": get_author_counts()}
+    ```
+- task_type: qa.test
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:tests/test_criterion_A1.py
+    """Criterion A1: GET /stats — 'authors' key maps each author to their integer book count.
+    No zero-count authors; increment not overwrite; empty shelf yields {}; values are ints."""
+
+
+    def _post_book(client, title="T", author="A", added_by="U"):
+        """POST a book via the TestClient and assert 201; return the JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def test_zero_book_author_absent_from_authors(client):
+        """Seed books only by author B; assert author A (zero books) has no key.
+
+        Faults caught:
+          1. Store retains a stale key for an author with no remaining books.
+          2. Aggregation includes authors whose count is 0 instead of omitting them.
+        """
+        _post_book(client, title="B1", author="Author B", added_by="U")
+        _post_book(client, title="B2", author="Author B", added_by="U")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        body = res.json()
+        assert "authors" in body, f"Missing 'authors' key: {body}"
+        authors = body["authors"]
+
+        # B is present with correct count
+        assert "Author B" in authors, f"'Author B' missing from authors: {authors}"
+        assert authors["Author B"] == 2
+
+        # A must NOT appear — zero-book author leakage
+        assert "Author A" not in authors, (
+            f"Author with zero books leaked into response: {authors}"
+        )
+
+
+    def test_count_aggregation_increments_not_overwrites(client):
+        """Seed 3 books by same author, 1 by another → same-author count is 3, not 1.
+
+        Fault caught: loop uses dict[author] = 1 instead of dict[author] += 1,
+        so every author's count is always 1 regardless of actual book count.
+        """
+        for i in range(3):
+            _post_book(client, title=f"Book {i}", author="Heavy Author", added_by="U")
+        _post_book(client, title="Other", author="Light Author", added_by="U")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        authors = res.json()["authors"]
+
+        assert authors["Heavy Author"] == 3, (
+            f"Expected count 3, got {authors.get('Heavy Author')!r} — "
+            f"indicates overwrite (assignment) rather than increment"
+        )
+        assert authors["Light Author"] == 1
+
+
+    def test_empty_shelf_authors_is_empty_dict(client):
+        """No books on shelf → 200, 'authors' key present with value exactly {}.
+
+        Faults caught:
+          1. Iteration or index access over the empty collection raises (500).
+          2. Response omits the 'authors' key entirely.
+          3. Value is null (None), a list, or a non-empty dict.
+        """
+        res = client.get("/stats")
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        body = res.json()
+        assert "authors" in body, f"'authors' key missing on empty shelf: {list(body.keys())}"
+        assert body["authors"] == {}, (
+            f"Expected empty dict for authors on empty shelf, got {body['authors']!r}"
+        )
+
+
+    def test_authors_values_are_integers_not_strings_or_floats(client):
+        """'authors' is a dict at the top level; every value is an int.
+
+        Faults caught:
+          1. Handler serialises counts as strings (e.g. "3") or floats (e.g. 3.0).
+          2. Handler wraps the payload in an extra envelope or returns a list
+             instead of an object.
+          3. Top-level 'authors' key is missing or its value is not a dict.
+        """
+        _post_book(client, title="X", author="Int Author", added_by="U")
+        _post_book(client, title="Y", author="Int Author", added_by="U")
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        body = res.json()
+
+        # Top-level structure: 'authors' is present and is a dict
+        assert "authors" in body, f"Missing 'authors' key: {body}"
+        authors = body["authors"]
+        assert isinstance(authors, dict), (
+            f"'authors' must be a dict (object), got {type(authors).__name__}"
+        )
+
+        # At least one entry exists (we seeded books)
+        assert len(authors) > 0, "authors dict is empty despite seeded books"
+
+        # Every value is a true integer (not str, not float, not bool)
+        for name, count in authors.items():
+            assert isinstance(count, int), (
+                f"authors['{name}'] is {type(count).__name__} ({count!r}), expected int"
+            )
+            assert not isinstance(count, bool), f"authors['{name}'] is a bool"
+
+        # Exact integer equality
+        assert authors["Int Author"] == 2
+    ```
+- task_type: data.analyze_failure
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "classification": "alignment",
+      "analysis_summary": "All four tests in tests/test_criterion_A1.py fail on the same assertion: `assert \"authors\" in body` \u2014 the GET /stats endpoint returns `{'status_counts': {...}, 'average_rating': None}` with no `authors` key. The tests are correctly written per the PRD (they properly exercise the API via TestClient, seed their own state, and assert on the specific response body); the defect is in the implementation, which never implemented the `authors` aggregation in the /stats handler. This is not a test-quality failure but an implementation gap: the product does not match the PRD contract for the /stats endpoint.",
+      "contributing_factors": [
+        "GET /stats response body is `{'status_counts': {'wanted': 2, 'being read': 0, 'read': 0}, 'average_rating': None}` \u2014 the `authors` key required by criterion A1 is entirely absent from the implementation",
+        "All 4 failing tests (test_empty_shelf_authors_is_empty_dict, test_count_aggregation_increments_not_overwrites, test_zero_book_author_absent_from_authors, test_authors_values_are_integers_not_strings_or_floats) fail at the same first assertion `assert \"authors\" in body`, confirming a single missing feature rather than 4 independent test bugs",
+        "The implementation appears to have partially built /stats (status_counts and average_rating are present) but omitted the per-author book-count aggregation entirely"
+      ],
+      "implicated_files": [],
+      "dispute_rulings": []
+    }
+- task_type: governance.correction_decision
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The failure is a specific, localized implementation gap where the `/stats` endpoint handler is missing the `authors` aggregation logic. Since the surrounding features (`status_counts` and `average_rating`) are present and the tests are correctly written, a targeted patch to add the missing aggregation is the most efficient path to fix the issue without losing progress.",
+      "affected_task_types": [
+        "implementation"
+      ],
+      "structural_plan_change_candidate": "tighten_acceptance",
+      "structural_plan_change_rationale": "The acceptance criteria for the `/stats` endpoint task should be tightened to explicitly require the presence and correct structure of the `authors` key, ensuring that partial implementations of multi-field endpoints are caught earlier."
+    }
+- task_type: development.correction_repair
+  occurrence: 1
+  call: 1
+  content: |
+    ```edit:backend/routes.py
+    <<<<<<< SEARCH
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+    =======
+        return {"authors": get_author_counts()}
+    >>>>>>> REPLACE
+    ```
+- task_type: qa.test
+  occurrence: 1
+  call: 2
+  content: |
+    ```python:tests/test_criterion_A1.py
+    """Criterion A1: GET /stats — authors count aggregation.
+
+    Faults distinguished:
+      1. Zero-book author leakage (stale key or count-0 inclusion)
+      2. Count aggregation overwrite (dict[author] = 1 instead of += 1)
+      3. Empty-shelf edge case (iteration/index over empty collection)
+      4. Response structure (wrong type, string/float values)
+    """
+
+
+    def test_zero_book_author_absent_from_authors(client):
+        """Authors with zero books must not appear as keys in the authors object.
+
+        Seeds two books by 'Author B' only (store is reset per-test by conftest).
+        Asserts 'Author B' is present with count 2 and 'Author A' is absent.
+
+        Fails if the store retains a stale key or the aggregation includes
+        authors whose book count is 0.
+        """
+        client.post("/books", json={"title": "Book1", "author": "Author B", "added_by": "U"})
+        client.post("/books", json={"title": "Book2", "author": "Author B", "added_by": "U"})
+
+        res = client.get("/stats")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        authors = res.json()["authors"]
+
+        assert "Author B" in authors, f"Expected 'Author B' in authors, got {authors}"
+        assert authors["Author B"] == 2, f"Expected count 2 for Author B, got {authors['Author B']}"
+        assert "Author A" not in authors, (
+            f"Zero-book author 'Author A' leaked into authors dict: {authors}"
+        )
+
+
+    def test_count_aggregation_increments_not_overwrites(client):
+        """Three books by the same author yield count 3, not 1.
+
+        Seeds 3 books by 'Same Author' and 1 by 'Other Author'.
+        Fails if the aggregation loop uses dict[author] = 1 instead of += 1.
+        """
+        client.post("/books", json={"title": "T1", "author": "Same Author", "added_by": "U"})
+        client.post("/books", json={"title": "T2", "author": "Same Author", "added_by": "U"})
+        client.post("/books", json={"title": "T3", "author": "Same Author", "added_by": "U"})
+        client.post("/books", json={"title": "T4", "author": "Other Author", "added_by": "U"})
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        authors = res.json()["authors"]
+
+        assert authors["Same Author"] == 3, (
+            f"Expected 3 for 'Same Author' (3 books seeded), got {authors['Same Author']} — "
+            f"overwrite instead of increment?"
+        )
+        assert authors["Other Author"] == 1, f"Expected 1 for 'Other Author', got {authors['Other Author']}"
+
+
+    def test_empty_shelf_authors_is_empty_dict(client):
+        """Fresh shelf (no books seeded): GET /stats → authors is exactly {}.
+
+        Fails if iteration or index access over the empty collection raises,
+        or if the key is missing, the value is null/a list, or the response
+        is not a 200.
+        """
+        res = client.get("/stats")
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        body = res.json()
+
+        assert "authors" in body, f"'authors' key missing from GET /stats body: {list(body.keys())}"
+        assert isinstance(body["authors"], dict), (
+            f"authors must be a dict (object), got {type(body['authors']).__name__}: {body['authors']!r}"
+        )
+        assert body["authors"] == {}, (
+            f"Expected authors to be exactly {{}}, got {body['authors']!r}"
+        )
+
+
+    def test_authors_values_are_integers_not_strings_or_floats(client):
+        """Every value in the authors object is a true int, not str/float/bool.
+
+        Also asserts the top-level body is a dict with 'authors' mapping to a dict
+        (no extra envelope, no list). Fails if the handler serialises counts as
+        strings ("2") or floats (2.0).
+        """
+        client.post("/books", json={"title": "A1", "author": "AuthX", "added_by": "U"})
+        client.post("/books", json={"title": "A2", "author": "AuthX", "added_by": "U"})
+        client.post("/books", json={"title": "B1", "author": "AuthY", "added_by": "U"})
+
+        res = client.get("/stats")
+        assert res.status_code == 200
+        body = res.json()
+
+        assert isinstance(body, dict), f"Expected dict body, got {type(body).__name__}"
+        assert "authors" in body, f"'authors' key missing: {list(body.keys())}"
+        authors = body["authors"]
+        assert isinstance(authors, dict), f"authors must be a dict, got {type(authors).__name__}"
+
+        # Precondition: we seeded two distinct authors
+        assert len(authors) == 2, f"Expected exactly 2 authors, got {len(authors)}: {authors}"
+
+        for author, count in authors.items():
+            assert isinstance(count, int), (
+                f"authors['{author}'] is {type(count).__name__} ({count!r}), expected int"
+            )
+            assert not isinstance(count, bool), f"authors['{author}'] is a bool, not an int"
+    ```
+- task_type: data.analyze_failure
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "classification": "alignment",
+      "analysis_summary": "The `tests_pass` check failed with exit_code 1: all 4 tests in `tests/test_criterion_A1.py` fail because the product's GET /stats endpoint returns `{'status_counts': {...}, 'average_rating': None}` instead of the PRD-mandated `{'authors': {...}}` key. The tests are correctly written per the PRD acceptance criteria (asserting on an `authors` dict with integer counts), but the prior implementation task did not add the authors-aggregation logic to the /stats handler \u2014 the response body simply lacks the `authors` key entirely, causing every test to hit an `AssertionError: 'authors' key missing`. A prior repair attempt (correction 0) also failed, confirming this is a product-side gap, not a test-authoring bug.",
+      "contributing_factors": [
+        "Product /stats endpoint returns only `status_counts` and `average_rating`; the `authors` aggregation (the feature under test) was never implemented in the handler",
+        "All 4 tests fail on the same root symptom \u2014 `assert \"authors\" in body` \u2014 indicating a single missing feature rather than 4 independent test bugs",
+        "Prior repair (correction attempt 0) re-ran the same suite and also failed, ruling out a transient or flaky-test explanation",
+        "The `acceptance:function_defined` typed check was skipped (reason: unsupported_stack_or_syntax), so no static-structure validation was performed as a secondary signal"
+      ],
+      "implicated_files": [
+        "tests/test_criterion_A1.py"
+      ],
+      "dispute_rulings": []
+    }
+- task_type: governance.correction_decision
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The failure is a specific, non-recoverable-by-continuation bug: the /stats endpoint handler lacks the authors-aggregation logic mandated by the PRD. A patch is needed to insert the missing implementation code into the handler before re-running the tests.",
+      "affected_task_types": [
+        "data"
+      ],
+      "structural_plan_change_candidate": "add_task",
+      "structural_plan_change_rationale": "The original plan apparently skipped implementing the authors-aggregation feature in the /stats handler; a new task should be added to explicitly implement that aggregation logic to cover the gap."
+    }
