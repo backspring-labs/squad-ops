@@ -692,7 +692,16 @@ def development_profile_selection_origin(resolved_config: Mapping[str, Any] | No
     """
     config = resolved_config or {}
     selection = config.get("development_profile_selection")
-    if isinstance(selection, Mapping) and selection.get("origin"):
+    if isinstance(selection, Mapping):
+        # The selection is the record of this profile's pin, or it is evidence that the
+        # config was changed after the pin. Its origin is never borrowed for another profile.
+        if selection.get("name") != effective_development_profile(config) or not selection.get(
+            "origin"
+        ):
+            raise ValueError(
+                f"the cycle's recorded development_profile_selection is {dict(selection)!r}, "
+                f"and its config runs `{effective_development_profile(config)}`"
+            )
         return str(selection["origin"])
     if development_profile_for(str(config.get("build_profile") or "")):
         return ORIGIN_STACK

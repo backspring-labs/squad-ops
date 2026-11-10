@@ -1349,6 +1349,30 @@ class TestTheConsolesResolvedRequestCreatesTheCLIsCycle:
         assert cycle.resolved_config()["build_profile"] == "nextjs_ts"
 
 
+class TestCreateCycleRefusesAnUnknownDevelopmentProfile:
+    """Enters at the create route. Bug caught: a development profile nothing resolves being
+    accepted and recorded as if it were known, or surfacing as a server error, where the
+    operator needs the name and the list to choose from."""
+
+    def test_an_unknown_profile_is_a_named_refusal_and_nothing_is_stored(
+        self, client, mock_cycle_registry
+    ):
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={
+                "squad_profile_id": "full",
+                "execution_overrides": {"development_profile": "python_clii"},
+            },
+        )
+
+        assert resp.status_code == 422, resp.text
+        assert "`development_profile` is `python_clii`, which this deployment doesn't hold" in (
+            resp.text
+        )
+        assert "`python_cli`" in resp.text
+        mock_cycle_registry.create_cycle.assert_not_called()
+
+
 class TestCreateCycleSkillsetRecord:
     """SIP-0116 §10, phase 1: the record a cycle is created with.
 

@@ -89,6 +89,7 @@ from squadops.cycles.preflight import (
     bind_mode_authoring_decision,
     builder_build_profile_decision,
     combine,
+    development_profile_known_decision,
     fault_injection_decision,
     memory_declaration_decision,
     model_availability_decision,
@@ -232,6 +233,9 @@ async def _run_create_preflight(
         # emission outside the fill slots, surfacing as "the plan claims nothing" a full
         # framing workload later.
         stack_development_profile_decision(config),
+        # SIP-0116 §10: the profile a cycle runs under is recorded at creation, so a name this
+        # deployment doesn't hold is refused here rather than at the first task that reads it.
+        development_profile_known_decision(config),
         # #2437: a builder squad with a build step and no build_profile fails the moment
         # implementation starts (#392), after the whole framing workload. Fail in seconds.
         builder_build_profile_decision(profile, config, source_backed=source_backed),

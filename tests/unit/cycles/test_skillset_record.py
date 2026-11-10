@@ -97,6 +97,20 @@ def test_a_repository_backed_cycles_recorded_selection_gives_the_origin():
 
 
 @pytest.mark.parametrize(
+    "selection",
+    [{"name": "python_api", "origin": "derived"}, {"name": "node_vitest"}],
+    ids=["names another profile", "has no origin"],
+)
+def test_a_selection_that_is_not_this_profiles_pin_is_refused_rather_than_borrowed(selection):
+    """Bug caught: the record saying a profile was ``derived`` from the product's runners
+    because a selection for some other profile happened to be on the cycle."""
+    config = {"development_profile": "node_vitest", "development_profile_selection": selection}
+
+    with pytest.raises(ValueError, match="recorded development_profile_selection"):
+        build_skillset_record(PROFILE, "hash-1", config)
+
+
+@pytest.mark.parametrize(
     "change",
     [
         lambda r: r["squad"].__setitem__("roster_hash", "hash-2"),

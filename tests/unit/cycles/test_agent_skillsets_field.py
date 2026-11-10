@@ -256,3 +256,52 @@ def test_a_disabled_agent_keeps_its_skillsets_and_an_unknown_id_is_not_the_profi
     ]
 
     assert validate_agent_entries(agents) == []
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["skillsets: fixture-qa", "skillsets: [fixture-qa, '']", "skillsets: {fixture-qa: 1}"],
+    ids=["a bare id", "an empty id", "a mapping"],
+)
+async def test_a_skillsets_value_that_is_not_a_list_of_ids_is_refused_by_profile_and_agent(
+    tmp_path, written
+):
+    """Bug caught: a lenient read. ``tuple("fixture-qa")`` is ten one-letter skillsets, so the
+    squad loads, and is later refused at cycle creation for lacking a skillset its own profile
+    names in plain sight."""
+    path = tmp_path / "squad-profiles.yaml"
+    path.write_text(
+        "profiles:\n"
+        "  - profile_id: fixture\n"
+        "    name: Fixture\n"
+        "    agents:\n"
+        f"      - {{agent_id: eve, role: qa, model: m, serves_roles: [qa], {written}}}\n"
+    )
+
+    with pytest.raises(
+        ValueError, match="squad profile 'fixture': agent 'eve' declares `skillsets`"
+    ):
+        await ConfigSquadProfile(path).get_profile("fixture")
+
+
+def test_a_stored_row_with_a_malformed_skillsets_value_is_refused_not_reinterpreted():
+    adapter = PostgresSquadProfile.__new__(PostgresSquadProfile)
+    row = {
+        "profile_id": "fixture",
+        "name": "Fixture",
+        "description": "",
+        "version": 1,
+        "agents": [
+            {
+                "agent_id": "eve",
+                "role": "qa",
+                "model": "m",
+                "serves_roles": ["qa"],
+                "skillsets": "x",
+            }
+        ],
+        "created_at": _NOW,
+    }
+
+    with pytest.raises(ValueError, match="agent 'eve' declares `skillsets` as 'x'"):
+        adapter._row_to_profile(row)

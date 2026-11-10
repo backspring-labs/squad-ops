@@ -18,6 +18,7 @@ from squadops.cycles.models import (
     ProfileValidationError,
     SquadProfile,
 )
+from squadops.cycles.profile_utils import declared_skillsets
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 
 logger = logging.getLogger(__name__)
@@ -252,7 +253,7 @@ class PostgresSquadProfile(SquadProfilePort):
                 enabled=a.get("enabled", True),
                 config_overrides=a.get("config_overrides", {}),
                 serves_roles=_require_serves_roles(row["profile_id"], a),
-                skillsets=tuple(a.get("skillsets") or ()),
+                skillsets=declared_skillsets(row["profile_id"], a),
             )
             for a in agents_data
         )

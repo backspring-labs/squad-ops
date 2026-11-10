@@ -56,6 +56,10 @@ from squadops.llm.script import (
     ScriptLibrary,
     ScriptReference,
 )
+from squadops.stacks.development_profiles import (
+    DEFAULT_DEVELOPMENT_PROFILE,
+    DEVELOPMENT_PROFILES,
+)
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 
 if TYPE_CHECKING:
@@ -354,6 +358,37 @@ def stack_development_profile_decision(config: Mapping[str, Any]) -> PreflightDe
                     f"`development_profile: {required}` in the request profile or "
                     "`execution_overrides`, or omit it — a scaffoldable `build_profile` "
                     "derives it."
+                ),
+            ),
+        )
+    )
+
+
+def development_profile_known_decision(config: Mapping[str, Any]) -> PreflightDecision:
+    """Block a cycle whose development profile isn't one this deployment holds (SIP-0116 §10).
+
+    The profile a cycle runs under is recorded at creation, with its fingerprint and what its
+    work requires of the squad, so a name nothing resolves has no record to write. Before this
+    check the name was accepted and the cycle failed at its first develop or test task, after
+    framing; ``_pin_development_profile`` already left an unknown name "to the create
+    preflight", which had no such check. A contradiction between ``build_profile`` and
+    ``development_profile`` is ``stack_development_profile_decision``'s, and is skipped here.
+    """
+    declared = resolve_development_profile(config)
+    if declared is None:
+        return PreflightDecision()
+    name = declared or DEFAULT_DEVELOPMENT_PROFILE
+    if name in DEVELOPMENT_PROFILES:
+        return PreflightDecision()
+    known = ", ".join(f"`{n}`" for n in sorted(DEVELOPMENT_PROFILES))
+    return PreflightDecision(
+        blocking=(
+            Finding(
+                code="development_profile_unknown",
+                severity="block",
+                message=(
+                    f"`development_profile` is `{name}`, which this deployment doesn't hold. "
+                    f"Known profiles: {known}. Name one of them, or omit it."
                 ),
             ),
         )

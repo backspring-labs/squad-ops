@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from typing import Any
 
 from squadops.cycles.models import (
     ALLOWED_CONFIG_OVERRIDE_KEYS,
@@ -65,6 +67,29 @@ def validate_reasoning_override(overrides: dict) -> list[str]:
         f"config_overrides.reasoning must be one of {', '.join(sorted(REASONING_LEVELS))}; "
         f"got {level!r}"
     ]
+
+
+def declared_skillsets(profile_id: str, agent: Mapping[str, Any]) -> tuple[str, ...]:
+    """The skillsets a stored or configured agent entry declares (SIP-0116 §5.2), refused when
+    the value isn't a list of ids.
+
+    An absent key means the agent carries none, which is every entry written before skillsets
+    existed. Anything else that isn't a list of non-empty strings raises: read leniently, a
+    bare ``skillsets: roblox-studio-qa`` becomes one skillset per character, and the squad is
+    then refused for lacking a skillset its profile visibly names.
+    """
+    value = agent.get("skillsets")
+    if value is None:
+        return ()
+    if not isinstance(value, list | tuple) or any(
+        not isinstance(s, str) or not s.strip() for s in value
+    ):
+        raise ValueError(
+            f"squad profile {profile_id!r}: agent {agent.get('agent_id')!r} declares "
+            f"`skillsets` as {value!r}. It is a list of skillset ids, for example "
+            "`skillsets: [roblox-studio-qa]`."
+        )
+    return tuple(value)
 
 
 def _skillset_errors(declared: list | tuple | None) -> list[str]:
