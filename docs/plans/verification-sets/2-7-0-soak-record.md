@@ -139,18 +139,30 @@ framework's. Each one is named where it changed what was read.
   (`docker inspect` `StartedAt`), and no deploy record follows `dep_d2b4ca823f07`. So the reply router's stale drops and the agents'
   `task_reply_replayed` lines (§8) have nothing to show: the soak's window holds none.
 
-### 6.3a The restart diagnostic, `cmp_e27a006adea1`: TO BE FILLED
+### 6.3a The restart diagnostic, `cmp_e27a006adea1`: exercised, every prediction held
 
 A separate diagnostic, defined at `7813c29b` (`2-7-0-restart-diagnostic-campaign.yaml`), replays the soak's launches
 1–5 and injects the restart at increment 4's proposal, as §6.3 registers it. It isn't the soak. Its readings are §6.3's
 predictions, and it was running when this record was written.
 
-> **[TO BE FILLED by the supervisor]**
-> - the image ids and the deploy record, before and after;
-> - expected 1–5, each held or not, with rows and log lines;
-> - the stale drops and the `task_reply_replayed` lines;
-> - the falsifiers;
-> - how increment 4 ended, against the recording's.
+Read by the supervisor, 2026-11-10. Driver records: `var/verification_sets/2-7-0-restart-diagnostic/`.
+- **The landing:** increment 4's proposal run `run_b267b136d682` (`cyc_23f875e9b788`) was `running` when
+  `docker restart` of the runtime API and the six agents was issued at 16:09:59Z (11:09:59 ET). The seven image ids
+  were read before and after and are unchanged. The deploy record wasn't re-read.
+- **Expected 1, held:** `run_left_for_reattach run=run_b267b136d682 … left as it was, for the startup re-attach`
+  (16:09:48), then `campaign_cycle_reattached cycle=cyc_23f875e9b788 run=run_b267b136d682` (16:09:49).
+- **Expected 2, held:** the strategy agent answered the proposal once. One emission, and `produced valid output on
+  attempt 1` (16:11:43). No `ScriptEntryMissingError`.
+- **Expected 3, held:** exactly one stale drop, `reply_router_stale_reply_dropped
+  task=task-run_b267b136-000-strategy.propose_increment` (16:11:43,583).
+- **Expected 4, held:** `task_reply_replayed: … finished here for an earlier runtime boot; a restarted runtime asked
+  again, so it is answered` (16:11:43,586). No second scripted call.
+- **Expected 5, held:** the proposal run completed, and increment 4 ended as the recording's did. Its decision
+  sequence is `A r7 A r7 A r7 r12 r9`: increment 4 was rejected (row 12) and repaired, and the repair escalated
+  (row 9) at 17:11:33Z. That's the recording's sequence through the same point.
+- **Falsifiers:** none met. No run failed or was left running with no owner, increment 4 launched once, and there was
+  no missing-entry error on the proposal. The diagnostic was then closed at the owner's seat, since it ends at the
+  escalation.
 
 ## 6.4 Token expiries
 
@@ -173,13 +185,14 @@ predictions, and it was running when this record was written.
 false re-logins are why it fell after the end: from §6.1's re-login it would have fallen due at 13:43:14, during
 increment 7.
 
-### 6.4a The maximum lifetime, read on the restart diagnostic's calls: TO BE FILLED
+### 6.4a The maximum lifetime, read on the restart diagnostic's calls: exercised, as predicted
 
-> **[TO BE FILLED by the supervisor]**
-> - the first call past 16:19:19 (or the session's actual expiry), and its result;
-> - the non-interactive login;
-> - the next ruling;
-> - whether any refresh was accepted past the limit.
+- **The first supervisor call past the limit,** at 16:25:03Z (11:25:03 ET), 29,144 s after the 08:19:19 login, got
+  `Error: authentication failed — Missing or invalid Authorization header`. The API logged one `401` after 16:19.
+  No refresh was accepted past 28,800 s: every call before it, the last at 16:12, refreshed silently.
+- **The non-interactive login** succeeded at 16:25:04, and the supervisor's later calls succeeded.
+- **The next ruling:** none followed. The diagnostic's next decision was the escalation, read without a ruling. So
+  "the next ruling succeeds" is read as "the next authenticated calls succeed".
 
 **Each 401 and each login** (§8):
 

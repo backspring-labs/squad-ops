@@ -142,15 +142,18 @@ here; no goal, step value or scenario content is.
   Both are read on the restart diagnostic `cmp_e27a006adea1`, in the soak record's §6.3a and §6.4a.
 - **A divergence inside launch 8's run,** filed as #3020. The Campaign's row is the recording's.
 
-> **[TO BE FILLED by the supervisor, once §6.3a and §6.4a are read]** The diagnostic's verdict on the restart and the
-> maximum lifetime, in one line each.
+- **The restart (diagnostic `cmp_e27a006adea1`):** landed at increment 4's proposal as registered. Each of §6.3's
+  five expectations held: re-attach, one answer, one stale drop, the replayed reply, and increment 4 ending as
+  recorded. No falsifier was met (soak record §6.3a).
+- **The maximum lifetime:** the first call past 28,800 s got `401`, no refresh was accepted past it, and the
+  non-interactive login succeeded (soak record §6.4a).
 
 ## 6. The cut conditions (plan §4.6, and the claim's lines in §1)
 
 | Condition | Status | Evidence |
 |---|---|---|
 | The passing shakeout pair (§4.3) | **met** | §2: one pair on `dep_d2b4ca823f07`, with no seam finding |
-| The soak's record (§4.4), against the claim's fifth line: at least eight increments over at least nine hours, through a restart, token expiry past the session's maximum lifetime, an upstream push and a pause, with no model in the loop | **not met by the soak alone** | Met: eight increments, 10 h 52 min, the push, the pause and no model. Not met: the restart and the maximum lifetime, neither exercised in the soak. **It needs one of two things.** The restart diagnostic's readings could stand in for the two injections, which the pre-registration doesn't provide for (§6: "recorded *not exercised*"), so they'd need to be accepted as standing in. Or the claim's fifth line is narrowed here, as plan §1 provides. **[TO BE DECIDED, with §6.3a and §6.4a]** |
+| The soak's record (§4.4), against the claim's fifth line: at least eight increments over at least nine hours, through a restart, token expiry past the session's maximum lifetime, an upstream push and a pause, with no model in the loop | **not met by the soak alone** | Met: eight increments, 10 h 52 min, the push, the pause and no model. Not met: the restart and the maximum lifetime, neither exercised in the soak. **It needs one of two things.** The restart diagnostic's readings could stand in for the two injections, which the pre-registration doesn't provide for (§6: "recorded *not exercised*"), so they'd need to be accepted as standing in. Or the claim's fifth line is narrowed here, as plan §1 provides. **Decided by the supervisor under the owner's 2.7 grant (2026-11-10): the diagnostic stands in, disclosed.** Both injections missed the soak only through the supervisor's driver defects, not the framework. The diagnostic ran each one on the same pinned deploy and scripts, at its registered landing, with its registered predictions, and every prediction held (§5). The claim keeps its fifth line, and the release notes say the restart and the maximum lifetime were read on a separate diagnostic, not inside the soak |
 | Track E's readings (§4.5) | **met** | §3: IR-5, IR-6's increment half and IR-9's increment reading hold on `cyc_3654c547f70c`. The review-request push wasn't made for it, and its evidence stays BT-11's |
 | Each fix's live check on the pinned deploy | **met, as loaded checks** | `verify_loaded.py`: 256 loaded, 0 not. They read that the deployed modules carry each fix. They aren't a behavioural reading of each fix, which the fixes' wiring tests carry |
 | The vault integrity pass (#2931) | **met: 0 corrupt** | `scripts/dev/vault_integrity.py` over `data/artifacts`, at 2026-11-10 16:07:51 (`var/verification_sets/2-7-0-vault-integrity-20261110T160751Z.json`): 0 for each kind (unreadable metadata, missing content, mismatched content, content without metadata, stray temp files). It ran while the diagnostic was writing, so it's repeated at the tag |
@@ -169,9 +172,10 @@ here; no goal, step value or scenario content is.
       API logged no `401` outside §6.1 (soak record §6.4).
     - **The refresh token's idle limit, 1,800 s:** after 2,150 s with no call, the next call got `401` and the CLI didn't
       re-log in by itself. The non-interactive login, the resume and the ruling then succeeded (soak record §6.1).
-    - **The session's maximum lifetime, 28,800 s:** **[TO BE FILLED from soak record §6.4a]**.
+    - **The session's maximum lifetime, 28,800 s:** the first call past it (16:25:03, 29,144 s after login) got `401`,
+      no refresh was accepted past it, and the non-interactive login succeeded (soak record §6.4a).
 - **The stretch item #2826** wasn't taken, and stays open.
-- **Filed by this record:** #3020, launch 8's replay divergence (soak record §7.2). Not placed.
+- **Filed by this record:** #3020, launch 8's replay divergence (soak record §7.2). Placed in 2.7.1 and disclosed: a run's stored failure reason can name a rewind instead of the error that ended it.
 - **Also open, not placed in 2.7:** #2976 (#2402's follow-up, filed at adoption) and #3000 (#2949's remainder).
 
 ## 8. What the cut evidence doesn't cover
