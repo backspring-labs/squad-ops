@@ -21,6 +21,8 @@ Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the 2.6 line's
   skillset record (`squadops.skillset-record/v1`: the base set, the squad, the development profile and its
   requirements, with a digest), stored in `cycle_registry.skillset_record` (migration 2200) and returned by the
   cycle read route.
+  **One change in behaviour:** cycle create now refuses a `development_profile` this deployment doesn't hold,
+  naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 - **A scripted squad for machinery cycles** (#2495): the `machinery` squad profile's agents all name the model
   `scripted`, and every call they make is answered from a recorded script
   (`--set llm_script=<name>@<version>`, scripts in `src/squadops/llm/llm_scripts/`), with no model loaded. The

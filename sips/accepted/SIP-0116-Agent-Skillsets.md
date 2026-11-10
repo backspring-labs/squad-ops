@@ -753,6 +753,34 @@ that skillset as `luau-dev`. Those examples are illustrative (§4.1), and they r
 records: a fourth contract, `game.increment_design`, over `strategy.propose_increment`, and a strategy skillset
 (`roblox-increment-design`), since strategy writes each play scenario.
 
+### 17d. No silent reads (2026-11-10)
+
+**What prompted it.** The owner, on phases 1 and 2 as built: "I also want to be sure we avoid silent fallback that
+have been a killer on this project". The code of both phases was read again for anything that fills in, skips or
+reinterprets a value without saying so. Each place found now refuses with a named reason.
+
+**Phase 1 (#3011):**
+1. **An unknown development profile is refused at cycle creation.** This is a change in behaviour, and the one
+   exception to phase 1's "inert".
+   - **Before:** a cycle naming a profile the registry doesn't hold was accepted, and failed at its first develop
+     or test task, after framing. `_pin_development_profile` left an unknown name "to the create preflight", which
+     had no such check.
+   - **Now:** `development_profile_known_decision` refuses it with the name and the known profiles. The record
+     holds the profile's fingerprint and requirements, so an unresolvable name has no record to write.
+   - **Who is affected:** a cycle whose configuration misspells its profile, and one that named a profile no step
+     ever read (a selftest, a planning-only cycle). Both are refused in seconds with the list to choose from.
+2. **A `skillsets` value that isn't a list of ids is refused,** naming the profile and the agent, where a squad
+   profile is read from its file or its row. Read leniently, a bare `skillsets: roblox-studio-qa` becomes one
+   skillset per character.
+3. **A selection's origin is never borrowed.** The record takes "how it was selected" from the cycle's recorded
+   selection only when that selection names the profile in force. Otherwise building the record raises.
+
+**Left as a stated reading, on purpose:**
+- a cycle with no record at all was created before records existed, and reads as `base@1` with nothing offered;
+- an agent entry with no `skillsets` key carries none, and a profile with no `requires` requires nothing;
+- a deployment with no `skillsets/` directory holds an empty catalog. A profile that requires a skillset is then
+  refused at creation as naming one this deployment doesn't hold.
+
 ---
 
 ## Appendix A. A paper compatibility matrix
