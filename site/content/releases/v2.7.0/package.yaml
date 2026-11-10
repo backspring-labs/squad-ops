@@ -1,0 +1,556 @@
+version: 2.7.0
+tag: v2.7.0
+previous_tag: v2.6.1
+date: '2026-11-10'
+commit: be3d02133c60a422d8e1c01845307ece1420d3c1
+narrative: "Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the\
+  \ 2.6 line's debts closed. The cut's evidence is\n`docs/plans/verification-sets/2-7-0-cut-record.md`;\
+  \ the soak's record is `2-7-0-soak-record.md` beside it.\n\n### Added\n- **A scripted\
+  \ squad for machinery cycles** (#2495): the `machinery` squad profile's agents all\
+  \ name the model\n  `scripted`, and every call they make is answered from a recorded\
+  \ script\n  (`--set llm_script=<name>@<version>`, scripts in `src/squadops/llm/llm_scripts/`),\
+  \ with no model loaded. The\n  answers sit behind the existing LLM port, so dispatch,\
+  \ emission, correction and acceptance run their normal\n  paths, and every other\
+  \ profile keeps the engine on the same deploy. A missing answer fails the task naming\
+  \ its\n  key `(task_type, occurrence, call)`; it never falls back to a model. Cycle\
+  \ create refuses a scripted squad with\n  no script, an unpinned or stale version,\
+  \ or a mixed squad, and refuses a script named on a model squad. A\n  scripted cycle\
+  \ produces no Cross-Cycle Memory observation, and its calls are charted under the\
+  \ engine\n  `scripted`. `scripts/dev/record_llm_script.py` records a script from\
+  \ a run's stored emissions; an answer may\n  carry its recorded latency, which the\
+  \ provider waits out when the script sets `replay_latency`.\n- **A scripted Campaign\
+  \ answers each cycle from its own script** (refs #2892, SIP-0109 §24dt): a Campaign's\n\
+  \  `policy.llm_scripts` names one pinned script, `<name>@<version>`, per cycle it\
+  \ launches, in launch order, bound at\n  the launch from the control log's own count,\
+  \ so a restart doesn't reset it. A Campaign of several scripted\n  increments can\
+  \ now make a different change in each. A launch past the last script is refused,\n\
+  \  `LLM_SCRIPT_MISSING`, and the Campaign escalates; it's never answered from another\
+  \ script or by a model.\n  Creation refuses a script the deploy doesn't hold at\
+  \ that version. `record_llm_script.py` gains\n  `--latency-scale` and `--latency-cap`,\
+  \ written into the script's `recorded_from.latency` with the replayed total:\n \
+  \ a recorded gap includes any gate wait between two stored files, which can outlast\
+  \ the deploy's per-task\n  timeout. The soak's pre-registration is `docs/plans/verification-sets/2-7-0-soak-preregistration.md`.\n\
+  - **The draft's integration check** (#2862, SIP-0112 H.30): `POST /api/v1/projects/{id}/integration-check`\n\
+  \  (`campaigns:manage`), or `squadops projects check-integration <project> [--token-from-gh]`.\
+  \ Before the next\n  Campaign is drafted on a repository-backed Project, it syncs\
+  \ where a contribution is pending, reading each\n  review request's merge on the\
+  \ forge, re-validates where one merged, and answers what is still not in, each row\n\
+  \  with what it waits on. The forge is only read. One sync is recorded per upstream\
+  \ commit. With no token (the\n  request's, else the one the deploy holds for the\
+  \ Project) the merge is answered unread, `no_token`, never \"not\n  merged\". A\
+  \ patch export is read by ancestry with no forge token, and a fetch refused for\
+  \ its credentials is\n  `fetch_unauthorized`. Its re-validation is bounded: a READY\
+  \ Project, after its own sync, at that sync's commit. It\n  replaces the host-side\
+  \ merge sweep and its timer, which the owner ruled against on 2026-11-08 and which\
+  \ was never\n  installed.\n- **A validation is fenced on the baseline it read**\
+  \ (#2862, SIP-0112 H.30): one that another validation overtook\n  writes nothing,\
+  \ and `POST /api/v1/projects/{id}/validate` answers 409 `BASELINE_MOVED`, so a slow\
+  \ validation can\n  no longer move a newer adoption back.\n\n### Changed\n- **An\
+  \ outside operator's pull request is held to its branch's boundary by a policy the\
+  \ repository doesn't\n  hold** (#2975, PR #2991): `operator branch checks` runs\
+  \ on `pull_request_target` from the default branch,\n  never runs the pull request's\
+  \ code, and reads the policy from the `OPERATOR_BRANCH_POLICY` repository\n  variable,\
+  \ which only an administrator can change. It fails closed on a missing or malformed\
+  \ policy, an\n  undeclared role, an unresolved commit identity or a foreign author,\
+  \ and the check's own files are out of\n  bounds to every operator branch. It is\
+  \ now the required check, and the check it replaces is removed\n  with its script\
+  \ and its in-repository boundary file.\n\n### Fixed\n- **A product's change request\
+  \ can't reuse the anchor of a page an earlier increment added** (#2783, SIP-0109\
+  \ §24dq):\n  the PROMOTE row on a campaign branch records each page the increment\
+  \ added and acceptance held, with every test id\n  its page carried. The next launch\
+  \ pins that inventory beside the frozen criteria. The rails judge an accepted page\n\
+  \  as a pinned one and refuse an added page's anchor that one carries. The proposer\
+  \ is shown those pages and their ids.\n  Acceptance renders them in the expected\
+  \ set, so a candidate that drops one is rejected, and a page never built\n  that\
+  \ reuses one's anchor is blocked, never held. A product with no approved manifest\
+  \ is covered by the same\n  inventory. After its outside review (§24dr): an added\
+  \ page's anchor is also held unique against the candidate's\n  own rendered pages;\
+  \ each promotion records the inventory's pages again with the ids they carry now;\
+  \ a pinned\n  route's inventory ids stay taken at acceptance. A launch or promotion\
+  \ from before the inventory is refused rather\n  than read as empty: the proposal\
+  \ and acceptance refuse a block without one, and a Campaign whose log has such a\n\
+  \  promotion escalates before its next proposal, naming the row. Both the runtime-api\
+  \ and nat images have to answer\n  their loaded checks (`2783-runtime`, `2783-nat`)\
+  \ before the fix is relied on.\n- **A suite handed to the product's own runner is\
+  \ banked as handed off, not failed** (#2949): on a product\n  only its own runner\
+  \ runs (SIP-0112 H.26), every `qa.test` banked its emission `emission_status=failed`\n\
+  \  seconds before the runner passed the task. The router now takes the runner's\
+  \ reading before the bank, and an\n  emission whose hand-off the runner passed is\
+  \ banked `handed_off`. It stays out of every workspace, delivered\n  tree and deliverable,\
+  \ as a failed one does, and the scorecard's `failed_emissions` and the verification-set\n\
+  \  records no longer count it. A runner that fails the suite, a pass refused on\
+  \ the head, and a suite the image\n  ran and failed still bank `failed`. Stored\
+  \ rows read as they did. The Prefect task run, the agent's activity\n  and `task.failed`\
+  \ still read the hand-off as failed (#3000).\n- **A product's repaired suite is\
+  \ read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance\n\
+  \  found a repaired suite by the stack's collected-test vocabulary, and `nextjs_ts`'s\
+  \ is the scaffold's `__tests__/`\n  rule (#1534). A product made from that blueprint\
+  \ runs under it, so a repair placed where the product's vitest\n  collects it was\
+  \ never retested, and one placed by the scaffold's rule was. Now the dispatched\
+  \ task's runners (their\n  roots and file pattern) decide, and a sample application,\
+  \ or a product with no runner, keeps the stack's reading.\n- **A plan-less product\
+  \ cycle's test author is shown the product** (SIP-0112 H.29, #2827 item 2): the\
+  \ monolithic qa\n  prompt (`request.qa_test.test_validate`, version 6) shows the\
+  \ product's repository view, its map, conventions,\n  checks and runners, as a plan's\
+  \ task is shown it. The scaffold's harness paragraph is now a sample application's\n\
+  \  block only, and a sample application's prompt renders byte for byte as before.\
+  \ Where the view shows a stack's\n  conventions for a product, the profile's test\
+  \ supplement is left out in their favour, as the developer's is.\n- **The vault's\
+  \ metadata is readable again by its readers on the host** (a regression from PR\
+  \ #2968): the atomic\n  write kept `mkstemp`'s 0600, so every metadata file written\
+  \ after it deployed was unreadable to the release\n  capture, the verification-set\
+  \ driver and triage, which read the vault as another user. Files are 0644 again,\
+  \ as\n  `write_text` left them."
+pull_requests:
+- number: 3025
+  title: 'chore(release): 2.7.0 — the 2.6 line''s debts closed'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2827
+  merged_at: '2026-11-10'
+- number: 3021
+  title: 'docs(release): the 2.7.0 cut evidence — the shakeout pair, the soak''s record
+    and the cut record'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2892
+  merged_at: '2026-11-10'
+- number: 3016
+  title: 'docs(plans): the 2.7 plan records SIP-0117 and SIP-0118 accepted during
+    2.7, and the game-dev-roblox plan''s merge'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-10'
+- number: 2972
+  title: 'docs(plans): the game-dev-roblox plan, revision 4 — onto SIP-0116: the development
+    profile requires, the selected agents supply (the MacBook lane''s input to 2.8)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-10'
+- number: 2841
+  title: 'docs(sips): accept SIP-0118 Game Development Capability Packs and Squad
+    Composition — the game contracts defined once and the Roblox skillsets, on SIP-0116'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-10'
+- number: 2405
+  title: 'docs(sips): accept SIP-0117 Game Development Platform — Roblox as a development
+    profile, skillsets and a provider, on SIP-0116 (Godot, Roblox, Unity; remote tool
+    execution)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-10'
+- number: 3012
+  title: 'fix(scripts): a recorded proposal answers with what its proposer authored,
+    and every answer is checked against its handler'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-10'
+- number: 3007
+  title: 'feat(campaigns): the 2.7 soak''s scripts, its Campaign definition and its
+    filled pre-registration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-10'
+- number: 3008
+  title: 'docs(plans): the 2.7 plan records SIP-0116''s acceptance during 2.7'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-09'
+- number: 3006
+  title: 'docs(sips): accept SIP-0116 Agent Skillsets — a skillset coverage check
+    for the selected squad, split from Capability-Backed Agents for 2.x'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-09'
+- number: 3004
+  title: 'feat(campaigns): a scripted Campaign answers each cycle from its own script,
+    and the 2.7 soak''s pre-registration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-09'
+- number: 3002
+  title: 'feat(projects): the draft''s integration check syncs and re-validates where
+    a merge waits, in place of the merge sweep'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2862
+  merged_at: '2026-11-09'
+- number: 2998
+  title: 'fix(campaigns): the accepted-page inventory — a change request can''t reuse
+    the anchor of a page an earlier increment added'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2783
+  merged_at: '2026-11-08'
+- number: 3003
+  title: 'chore(ci): remove the branch check that operator branch checks replaced'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2975
+  merged_at: '2026-11-08'
+- number: 3001
+  title: 'fix(cycles): a suite handed to the product''s runner is banked handed off,
+    not failed'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2949
+  merged_at: '2026-11-08'
+- number: 2999
+  title: 'fix(projects): a product''s repaired suite is read by its own runners, and
+    a plan-less test author is shown the product (SIP-0112 H.29)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2996
+  title: 'fix(campaigns): a vitest product''s page criterion loads its view through
+    a page loader the framework places (#2799)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2799
+  merged_at: '2026-11-08'
+- number: 2995
+  title: 'feat(projects): the merge sweep — a merged contribution syncs its Project
+    and re-validates it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2862
+  merged_at: '2026-11-08'
+- number: 2994
+  title: 'feat(vault): a listing reads each run''s listing summary, not every metadata
+    file'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2973
+  merged_at: '2026-11-08'
+- number: 2993
+  title: 'docs(sips): R3''s re-proposal after a row-19 ending is dropped, since D1
+    left nothing ending at row 19'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2935
+  merged_at: '2026-11-08'
+- number: 2992
+  title: 'fix(execution): qa''s first emission that passes on the head is refused
+    to its author (D1, SIP-0109 §24do)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2933
+  merged_at: '2026-11-08'
+- number: 2991
+  title: 'feat(ci): operator branch checks, run from the default branch with an administrator-held
+    policy'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2990
+  title: 'fix(console): the Memory view says what was read and what makes a record
+    when its table is empty'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2974
+  merged_at: '2026-11-08'
+- number: 2989
+  title: 'fix(scripts): shared scripts run on bash 3.2 and BSD userland, and a guard
+    holds them to it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2402
+  merged_at: '2026-11-08'
+- number: 2988
+  title: 'docs(tests): the integration guide names what exists; the retired design''s
+    diagrams go'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2737
+  merged_at: '2026-11-08'
+- number: 2987
+  title: 'chore(memory): remove the embeddings port and its Ollama adapter, which
+    nothing calls'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2736
+  merged_at: '2026-11-08'
+- number: 2986
+  title: 'fix(projects): a vitest config whose effect its own text can''t show gets
+    no test-id reader'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2775
+  merged_at: '2026-11-08'
+- number: 2985
+  title: 'fix(qa): the qa role''s route rendering counts only the ids a page''s elements
+    carry'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2776
+  merged_at: '2026-11-08'
+- number: 2984
+  title: 'feat(llm): a scripted squad for machinery cycles — every task answered from
+    a recorded script, no model'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2495
+  merged_at: '2026-11-08'
+- number: 2983
+  title: 'fix(comms): a reply resolves a waiter only for the send it was registered
+    for'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2932
+  merged_at: '2026-11-08'
+- number: 2982
+  title: 'fix(execution): a cycle whose execution raises outside a run ends run_failed'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2931
+  merged_at: '2026-11-08'
+- number: 2981
+  title: 'fix(vault): an artifact exists only once its content and metadata are durable,
+    and a corrupt record is named'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2980
+  title: 'docs(ops): operator keys on TensorFold — added, rotated and removed by hand,
+    kept by rotation'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2286
+  merged_at: '2026-11-08'
+- number: 2979
+  title: 'fix(scenarios): a diagnostic''s evaluation is never stored as the cycle''s'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2765
+  merged_at: '2026-11-08'
+- number: 2978
+  title: 'fix(sandbox): a start that never became ready says what its readiness URL
+    last answered'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2798
+  merged_at: '2026-11-08'
+- number: 2977
+  title: 'docs(plans): adopt the 2.7.0 plan — ledgers re-placed, the portfolio, the
+    ROADMAP row'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 949
+  - 2230
+  - 2893
+  - 2938
+  - 2944
+  merged_at: '2026-11-08'
+- number: 2971
+  title: 'docs(plans): the 2.7.0 plan — the 2.6 line''s debts, closed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2969
+  title: 'fix(vault): metadata stays readable by the vault''s other readers'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+- number: 2970
+  title: 'docs(release): the v2.6.1 package — the cut''s evidence, screenshots, the
+    records on the Release'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-08'
+sip_moves:
+- sip: SIP-0116-Agent-Skillsets
+  from: null
+  to: accepted
+- sip: SIP-0117-Game-Development-Platform
+  from: null
+  to: accepted
+- sip: SIP-0118-Game-Development-Capability
+  from: null
+  to: accepted
+sip_amendments:
+- sip: SIP-0088-Agent-Runtime-Modes
+  status: accepted
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  status: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  status: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  status: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  status: accepted
+- sip: SIP-0101-Cycle-Replay-Harness
+  status: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+- sip: SIP-0104-Deterministic-Verification-Scaffolding-with
+  status: implemented
+- sip: SIP-0105-Stack-Blueprint-Contract
+  status: accepted
+- sip: SIP-0107-Scoped-Code-Revision
+  status: implemented
+- sip: SIP-0109-Campaign-Orchestration
+  status: accepted
+- sip: SIP-0110-Cross-Cycle-Memory
+  status: accepted
+- sip: SIP-0111-TensorFold-Provider-Adapter
+  status: accepted
+- sip: SIP-0112-Project-Lifecycle-Management
+  status: accepted
+- sip: SIP-0113-Outcome-Evaluation
+  status: accepted
+- sip: SIP-0114-Cycle-Request-Profile-Naming
+  status: implemented
+- sip: SIP-0115-Project-Goals-Backlog
+  status: accepted
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  status: proposed
+- sip: SIP-Capability-Backed-Agents
+  status: proposed
+- sip: SIP-Memory-Entry-Points
+  status: deprecated
+cycles:
+- cycle_id: cyc_fa03dc263093
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_f058965a33b0
+  role: shakeout
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-ordered
+  - vc-probe-api-runs-rejects-blank
+  failed:
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_3654c547f70c
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:import_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - tests_pass
+  failed: []
+  required_unmet: []
+  unverified:
+  - acceptance:endpoint_defined
+  - acceptance:function_defined
+  run_count: 3
+screenshots:
+- prefect-flow-run-shakeout-fastapi-react-accepted-with-no-correction-round.png
+- shakeout-a-run-s-detail.png
+- shakeout-the-create-run-form.png
+- shakeout-the-run-list.png
+showcase:
+  cycle_id: cyc_fa03dc263093
+  reason: the FastAPI + React shakeout on the final deploy, accepted 21 of 21 with
+    no correction round; 2.7 is a stabilization release with no feature to show, so
+    the pictures are of the sample application it built
+  role: shakeout
