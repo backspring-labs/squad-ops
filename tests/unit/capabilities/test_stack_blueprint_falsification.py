@@ -201,7 +201,24 @@ _RUNTIME_ONLY = "RUNTIME_ONLY"  # runtime-only reader, nothing in this file exer
 _DECORATIVE_FOUND: dict[tuple[str, str], str] = {}
 
 #: A real reader, and no declaration anywhere supplies data. See the module docstring.
-_UNEVIDENCED: dict[tuple[str, str], str] = {}
+#:
+#: SIP-0116 phase 1 (#3011) adds two, knowingly: the accepted SIP lands a development profile's
+#: requirements as inert declarations first, and switches on the first profile that declares
+#: any (``game_dev_roblox``) only after its phases 2-6. Until then both are read by the cycle's
+#: skillset record and populated by no stack, which is this list's case exactly. The exception
+#: is recorded in the SIP's §17a point 6 for the owner's ruling, and
+#: ``test_an_unevidenced_field_is_still_populated_by_no_stack`` ends it the day a stack
+#: populates one: the entry then moves to ``_DECLARED_OPTIONAL`` with that stack's reason.
+_UNEVIDENCED: dict[tuple[str, str], str] = {
+    ("DevelopmentProfile", "platform"): (
+        "SIP-0116 §5.1: the platform a profile's work targets; none until a stack with "
+        "requirements is switched on (its §14)"
+    ),
+    ("DevelopmentProfile", "requires"): (
+        "SIP-0116 §5.1: the skillsets a profile's work requires; empty on every stack until "
+        "the first one with requirements is switched on (its §14)"
+    ),
+}
 
 
 def _corrupt(value):
@@ -487,6 +504,20 @@ def test_check_stack_is_falsified_at_the_acceptance_layer():
                 f"as unverified, and crediting it would be the false-green class"
             )
             assert skipped.reason == "unsupported_stack_or_syntax"
+
+
+def test_an_unevidenced_field_is_still_populated_by_no_stack():
+    """A recorded exception ends when its reason does. Bug caught: a field admitted as
+    unevidenced "until a stack declares it" staying on this list after one does, where the
+    gate no longer asks why the other stacks leave it unset."""
+    for (registry, field), why in _UNEVIDENCED.items():
+        mapping, resolve = _REGISTRIES[registry]
+        populated = [s for s in _STACKS if getattr(mapping[resolve(scaffold._STACKS[s])], field)]
+        assert not populated, (
+            f"{registry}.{field} is now populated on {populated} — it is no longer "
+            f"unevidenced. Move it to _DECLARED_OPTIONAL with the reason the other stacks "
+            f"leave it unset. Recorded reason was: {why}"
+        )
 
 
 def test_the_decorative_fields_are_still_unread():

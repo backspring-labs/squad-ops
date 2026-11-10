@@ -680,7 +680,7 @@ revises a skill leaves the Campaign on its kept copy; moving to the revision is 
 
 ### 17a. Phase 1 as built (2026-11-09)
 
-Building phase 1 (#3011) read the accepted text against the code. Five points narrow or correct it. **Raised by the
+Building phase 1 (#3011) read the accepted text against the code. Six points narrow or correct it. **Raised by the
 implementer in phase 1's PR, for the owner's ruling at its review:** none is ruled yet, and the PR merges nothing
 before 2.8.
 
@@ -710,6 +710,21 @@ before 2.8.
    repository-backed cycle records a selection. The record's "how it was selected" reads that selection's origin
    where one exists (`operator`, `blueprint`, `derived`), and otherwise `stack` (the scaffold stack requires the
    profile), `operator` (the configuration names it) or `default`.
+
+6. **Until a stack declares requirements, `platform` and `requires` are recorded exceptions to the stack
+   contract's admission rule.** SIP-0105's rule, enforced by `test_stack_blueprint_falsification.py`, admits a
+   stack field once two stacks demonstrate it, and takes a one-stack field only as a declared optional with its
+   reason. A field no stack populates is *unevidenced*, and the rule says it shouldn't be a field. Phase 1 adds
+   both fields empty on every stack, by design (§14: declarations first, activation after phases 2–6).
+   - **What the PR does:** it records both in the guard's `_UNEVIDENCED` list with this reason, and adds a test
+     that fails the day a stack populates either, so the exception can't outlive its reason. When
+     `game_dev_roblox` is registered they become declared optionals, with the reason the other stacks leave them
+     unset.
+   - **The alternative, for the owner:** hold the two fields back until the PR that registers the first profile
+     declaring them. Phase 2's coverage check reads `requires`, so they would still precede that profile by
+     several phases, and the exception would only start later.
+   - This is the one place phase 1 is in tension with a standing rule, and the intake check's "its governance
+     applies to the new fields" did not foresee it.
 
 **Corrections to anchors and citations,** none of which changes the design:
 - five cited lines sit one line above their target (`cycles/agent_config.py:101`, `stacks/scaffold.py:2350` and
