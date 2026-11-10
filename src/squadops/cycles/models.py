@@ -685,6 +685,11 @@ class AgentProfileEntry:
     #: profile refuses an enabled agent without one; the default exists so a value can be
     #: constructed and rejected, never so one can be interpreted.
     serves_roles: tuple[str, ...] = ()
+    #: The ids of the skillsets this agent carries (SIP-0116 §5.2). Ids, never versions: an
+    #: agent carries the version the deployment holds, and a requirement's constraint decides
+    #: whether that version is compatible. Empty means the agent carries none, which is every
+    #: agent before a stack declares requirements.
+    skillsets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -69,6 +69,7 @@ class ConfigSquadProfile(SquadProfilePort):
                     enabled=a.get("enabled", True),
                     config_overrides=a.get("config_overrides", {}),
                     serves_roles=_require_serves_roles(entry["profile_id"], a),
+                    skillsets=tuple(a.get("skillsets") or ()),
                 )
                 for a in entry.get("agents", [])
             )
