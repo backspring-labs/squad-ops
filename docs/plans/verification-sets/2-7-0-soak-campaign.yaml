@@ -35,18 +35,18 @@ policy:
   stack: null
   unattended_resume: []
   llm_scripts:
-    - shelfnote-soak-c01@bcba108b2107
-    - shelfnote-soak-c02@ff20fa02fe48
-    - shelfnote-soak-c03@9ceeab42ae13
-    - shelfnote-soak-c04@162dfa9c1cbe
-    - shelfnote-soak-c05@5286d0d096f9
-    - shelfnote-soak-c06@93aca6b9fa88
-    - shelfnote-soak-c07@9622d0aba086
-    - shelfnote-soak-c08@cc3bfbe7ebab
-    - shelfnote-soak-c09@d2712c4f6b1e
-    - shelfnote-soak-c10@8c03cff56f52
-    - shelfnote-soak-c11@48baf5563971
-    - shelfnote-soak-c12@9f1cfa9a863a
-    - shelfnote-soak-c13@1f90a3cd6cf1
-    - shelfnote-soak-c14@c136e3824e4b
-    - shelfnote-soak-c15@2cd0d8c2dd72
+    - shelfnote-soak-c01@e9a159c699e6
+    - shelfnote-soak-c02@5ed2831c5082
+    - shelfnote-soak-c03@4ab10a2e2d50
+    - shelfnote-soak-c04@2d35a9154c75
+    - shelfnote-soak-c05@e516bb753704
+    - shelfnote-soak-c06@9331e1c72e11
+    - shelfnote-soak-c07@1589a3f59980
+    - shelfnote-soak-c08@4362a231ae21
+    - shelfnote-soak-c09@88fad7abeb9b
+    - shelfnote-soak-c10@26e2c5213ac5
+    - shelfnote-soak-c11@63abed2ed581
+    - shelfnote-soak-c12@cd9d8ea1f3c9
+    - shelfnote-soak-c13@2b5251d36e04
+    - shelfnote-soak-c14@c62023e3dafe
+    - shelfnote-soak-c15@e2ddcd4ff645

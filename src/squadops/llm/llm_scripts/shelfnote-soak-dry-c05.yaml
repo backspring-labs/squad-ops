@@ -7,6 +7,8 @@ replay_latency: false
 recorded_from:
   project_id: prj-shelfnote
   cycle_id: cyc_d5ce68001c7a
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
 answers:
 - task_type: governance.define_done
   occurrence: 1

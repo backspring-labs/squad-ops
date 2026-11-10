@@ -6,15 +6,30 @@ replay_latency: false
 recorded_from:
   project_id: prj-shelfnote
   cycle_id: cyc_4875f91fd6d4
+  change_requests:
+    strategy.propose_increment occurrence 1 call 1:
+      proposal_id: prop_95ba337d5303
+      version: 1
+      baseline_tree: e6f85d3179a5aa1d654163e31994b80ca76daddb21bceadf7537b7f439c0ad12
+      basis: campaign_branch
+      criterion_files:
+      - criterion_id: A1
+        path: tests/test_criterion_A1.py
+      goals_revision: 3
+      content_hash: 2f8c34dc092221147de94507aacdd70e9db3d84da45673af28061787996b907a
+      footprint:
+      - backend/routes.py
+      - backend/store.py
+      - tests/test_criterion_A1.py
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
+  - qa.test occurrence 1 call 2
 answers:
 - task_type: strategy.propose_increment
   occurrence: 1
   call: 1
   content: |
     ```yaml:change_request.yaml
-    proposal_id: prop_95ba337d5303
-    version: 1
-    baseline_tree: e6f85d3179a5aa1d654163e31994b80ca76daddb21bceadf7537b7f439c0ad12
     kind: feature
     prd_delta: []
     manifest_delta: []
@@ -38,17 +53,10 @@ answers:
     - C2
     retires: []
     replaces_verifiers: []
-    basis: campaign_branch
     footprint:
     - backend/routes.py
     - backend/store.py
-    - tests/test_criterion_A1.py
-    criterion_files:
-    - criterion_id: A1
-      path: tests/test_criterion_A1.py
     backlog_item: SN-9
-    goals_revision: 3
-    content_hash: 2f8c34dc092221147de94507aacdd70e9db3d84da45673af28061787996b907a
     ```
 - task_type: development.design_plan
   occurrence: 1

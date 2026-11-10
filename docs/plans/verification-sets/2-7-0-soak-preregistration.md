@@ -104,21 +104,21 @@ No cycle was launched for a fault outside the squad's answers, so §3 step 2's r
 
 | launch | kind | item | recorded from | its verdict (row, action) | soak script | dry-run script |
 |---|---|---|---|---|---|---|
-| 1 | increment 1 | SN-6 | `cyc_dbb56e0feb6f` | accepted (7, propose) | `shelfnote-soak-c01@bcba108b2107` | `shelfnote-soak-dry-c01@9920157c798f` |
-| 2 | increment 2 | SN-7 | `cyc_39f69c62f20b` | accepted (7, propose) | `shelfnote-soak-c02@ff20fa02fe48` | `shelfnote-soak-dry-c02@d9634201d879` |
-| 3 | increment 3 | SN-8 | `cyc_1e784bf38f3c` | accepted (7, propose) | `shelfnote-soak-c03@9ceeab42ae13` | `shelfnote-soak-dry-c03@a175ed39d38d` |
-| 4 | increment 4 | SN-9 | `cyc_4875f91fd6d4` | rejected (12, repair) | `shelfnote-soak-c04@162dfa9c1cbe` | `shelfnote-soak-dry-c04@80f938625f7d` |
-| 5 | repair of 4 | SN-9 | `cyc_d5ce68001c7a` | blocked_unverified (9, escalate); abandoned at the owner's seat | `shelfnote-soak-c05@5286d0d096f9` | `shelfnote-soak-dry-c05@ea1f50684e8d` |
-| 6 | increment 5 | SN-10 | `cyc_b40a358f4eba` | accepted (7, propose) | `shelfnote-soak-c06@93aca6b9fa88` | `shelfnote-soak-dry-c06@dd173c6fa31c` |
-| 7 | increment 6 | SN-11 | `cyc_5c03ac78e402` | rejected (12, repair) | `shelfnote-soak-c07@9622d0aba086` | `shelfnote-soak-dry-c07@cb6ca6f7c1c8` |
-| 8 | repair of 6 | SN-11 | `cyc_eda5f15c88c9` | rejected (13, abandon_and_propose) | `shelfnote-soak-c08@cc3bfbe7ebab` | `shelfnote-soak-dry-c08@e5a178bcbf5d` |
-| 9 | increment 7 | SN-12 | `cyc_e8cc2ffc74c0` | accepted (7, propose) | `shelfnote-soak-c09@d2712c4f6b1e` | `shelfnote-soak-dry-c09@1b18e115673a` |
-| 10 | increment 8 | SN-13 | `cyc_e29f148cda8b` | rejected (12, repair) | `shelfnote-soak-c10@8c03cff56f52` | `shelfnote-soak-dry-c10@63fe0ae9e02a` |
-| 11 | repair of 8 | SN-13 | `cyc_80565095ab2b` | accepted (7, propose) | `shelfnote-soak-c11@48baf5563971` | `shelfnote-soak-dry-c11@a3d42ad667f8` |
-| 12 | increment 9 | SN-14 | `cyc_64b1209d4b8b` | rejected (12, repair) | `shelfnote-soak-c12@9f1cfa9a863a` | `shelfnote-soak-dry-c12@9267e38308ef` |
-| 13 | repair of 9 | SN-14 | `cyc_ed47b5ec78e5` | rejected (13, abandon_and_propose) | `shelfnote-soak-c13@1f90a3cd6cf1` | `shelfnote-soak-dry-c13@d3008877f281` |
-| 14 | increment 10 | SN-15 | `cyc_c4c02cd03e4f` | blocked_unverified (8, repair) | `shelfnote-soak-c14@c136e3824e4b` | `shelfnote-soak-dry-c14@f90108885eef` |
-| 15 | repair of 10 | SN-15 | `cyc_b0e5258168a7` | rejected (13, abandon_and_propose); nothing pending, escalated | `shelfnote-soak-c15@2cd0d8c2dd72` | `shelfnote-soak-dry-c15@c7ca8ff5ba5d` |
+| 1 | increment 1 | SN-6 | `cyc_dbb56e0feb6f` | accepted (7, propose) | `shelfnote-soak-c01@e9a159c699e6` | `shelfnote-soak-dry-c01@a8e6062753af` |
+| 2 | increment 2 | SN-7 | `cyc_39f69c62f20b` | accepted (7, propose) | `shelfnote-soak-c02@5ed2831c5082` | `shelfnote-soak-dry-c02@b12415e22cd4` |
+| 3 | increment 3 | SN-8 | `cyc_1e784bf38f3c` | accepted (7, propose) | `shelfnote-soak-c03@4ab10a2e2d50` | `shelfnote-soak-dry-c03@e09ae0c2095d` |
+| 4 | increment 4 | SN-9 | `cyc_4875f91fd6d4` | rejected (12, repair) | `shelfnote-soak-c04@2d35a9154c75` | `shelfnote-soak-dry-c04@2f20558788a6` |
+| 5 | repair of 4 | SN-9 | `cyc_d5ce68001c7a` | blocked_unverified (9, escalate); abandoned at the owner's seat | `shelfnote-soak-c05@e516bb753704` | `shelfnote-soak-dry-c05@b1204429a807` |
+| 6 | increment 5 | SN-10 | `cyc_b40a358f4eba` | accepted (7, propose) | `shelfnote-soak-c06@9331e1c72e11` | `shelfnote-soak-dry-c06@dead505edd8c` |
+| 7 | increment 6 | SN-11 | `cyc_5c03ac78e402` | rejected (12, repair) | `shelfnote-soak-c07@1589a3f59980` | `shelfnote-soak-dry-c07@aa9540edbc7f` |
+| 8 | repair of 6 | SN-11 | `cyc_eda5f15c88c9` | rejected (13, abandon_and_propose) | `shelfnote-soak-c08@4362a231ae21` | `shelfnote-soak-dry-c08@ada038395860` |
+| 9 | increment 7 | SN-12 | `cyc_e8cc2ffc74c0` | accepted (7, propose) | `shelfnote-soak-c09@88fad7abeb9b` | `shelfnote-soak-dry-c09@346839ff4ba8` |
+| 10 | increment 8 | SN-13 | `cyc_e29f148cda8b` | rejected (12, repair) | `shelfnote-soak-c10@26e2c5213ac5` | `shelfnote-soak-dry-c10@bc5e8796401a` |
+| 11 | repair of 8 | SN-13 | `cyc_80565095ab2b` | accepted (7, propose) | `shelfnote-soak-c11@63abed2ed581` | `shelfnote-soak-dry-c11@e1003b66e552` |
+| 12 | increment 9 | SN-14 | `cyc_64b1209d4b8b` | rejected (12, repair) | `shelfnote-soak-c12@cd9d8ea1f3c9` | `shelfnote-soak-dry-c12@e9251a48ecaa` |
+| 13 | repair of 9 | SN-14 | `cyc_ed47b5ec78e5` | rejected (13, abandon_and_propose) | `shelfnote-soak-c13@2b5251d36e04` | `shelfnote-soak-dry-c13@fb46af8d2077` |
+| 14 | increment 10 | SN-15 | `cyc_c4c02cd03e4f` | blocked_unverified (8, repair) | `shelfnote-soak-c14@c62023e3dafe` | `shelfnote-soak-dry-c14@70a28d146442` |
+| 15 | repair of 10 | SN-15 | `cyc_b0e5258168a7` | rejected (13, abandon_and_propose); nothing pending, escalated | `shelfnote-soak-c15@e2ddcd4ff645` | `shelfnote-soak-dry-c15@7b5bf7c3181c` |
 
 The soak's Campaign completes at launch 11 (§4), so launches 12 to 15 are recorded for completeness and are named in
 its `llm_scripts`, but aren't expected to run.
@@ -144,6 +144,42 @@ not have replayed the recording:
   and checked by applying it with the handler's own parse and apply. The 15 cycles hold 16 repair answers. Fifteen
   revise files, by 16 edits in all, and each edit was rebuilt and checked. The sixteenth, launch 11's correction
   repair, was prose with no file, and it is kept as recorded.
+
+**The first dry run, and the second fix (2026-11-09).** The first dry run, on the final deploy `dep_d67c384673bd`
+(main `1158ea13`), stopped at its first two launches. Each proposal run failed with no correction:
+`script shelfnote-soak-dry-c01@9920157c798f has no answer for strategy.propose_increment occurrence 1 call 3`. The
+recorder had replayed the stored `change_request.yaml`, which carries the fields the framework derives. The proposal
+handler refuses a document that authors them (`authored_derived_field`), and asked again twice, which the script
+didn't hold. The recorder now answers a proposal with what its proposer authored:
+- **What is cut:** the derived fields and the framework's placed criterion files in the footprint, as
+  `stored_proposal` (`src/squadops/campaigns/change_request.py`) says, the inverse `load_stored_change_request` also
+  reads. The derived fields' lines are cut from the stored text, and every other line is kept.
+- **What is recorded:** the derived fields themselves, under `recorded_from.change_requests`. The stored document
+  can then be rebuilt from the answer, and its hash checked against the recording's.
+
+**Every answer was then checked offline, before the scripts were regenerated.** `scripts/dev/llm_script_check.py`
+runs each answer through its handler's own parse and validation:
+- **The proposal:** `parse_change_request` on the run's arguments, then `load_stored_change_request` on the rebuilt
+  document, which holds only if the hash is the recording's.
+- **The plan steps:** their `from_yaml` parse, the proposer's role, and the brief id the brief step's answer wrote.
+- **The JSON steps:** the definition of done, the failure analysis with its schema, and the correction decision with a
+  path the handler keeps.
+- **The review:** frontmatter with a readiness and a score the handler keeps.
+- **The build and test steps:** fenced files.
+- **The repairs:** their edits.
+
+Every packaged script passes it, and `tests/unit/scripts/test_llm_script_check.py` runs it over the library in CI.
+Against the vault, each answer was also read back through its handler's parse and compared with what the recording
+stored. All 217 asked-for answers came back as stored, the proposals by hash. Beyond the derived fields, the check
+found no other answer a handler would refuse. The two that are refused, launch 11's prose `qa.test` answer and its
+prose correction repair, were refused or empty in the recording too, and the replay takes the same path. What it
+can't check is anything read from the run's tree or inputs:
+- the proposal's rails against the product (on an identical request, and an identical tree, they rule the same);
+- a suite's result, and a typed check;
+- an edit's anchor in the deploy's base;
+- the expected files a qa task is given.
+
+The dry run reads those.
 
 **The hand-written fills.** No answer was written by hand: every call has its recorded answer. One latency was:
 - `shelfnote-soak-c04`, `strategy.propose_increment` occurrence 1 call 1: `latency_seconds: 108.6`. A cycle's first
@@ -450,7 +486,7 @@ Each value is written here, in a commit, before the Campaign is created.
   - `k = 3`. Over launches 1 to 11, the summed latency is 34,968 s, or 35,077 s with the hand fill. The longest
     dispatch waits 1,500 s (one answer held at the cap), and the longest run 4,000 s (§5);
   - the soak and dry-run scripts' names and versions are in §3a's table, 30 scripts in all. The library digest, over
-    those 30 and nothing else, is `b4f843e2e640`. The deploy record's `scripted` model digest must read that, or name
+    those 30 and nothing else, is `4721341de0a2`. The deploy record's `scripted` model digest must read that, or name
     the scripts added since;
   - the hand-written answers: none. One latency was hand-filled, `shelfnote-soak-c04`'s proposal at 108.6 s (§3a).
 - **The dry run on the final deploy:** its Campaign id, and that it reproduced the recording's order. **PLACEHOLDER**

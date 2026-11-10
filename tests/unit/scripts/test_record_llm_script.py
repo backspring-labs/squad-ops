@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
@@ -115,6 +116,7 @@ async def test_a_run_is_recorded_as_one_answer_per_attempt_keyed_as_the_provider
         "project_id": "shelf",
         "cycle_id": "cyc_1",
         "run_id": "run_1",
+        "failed_in_recording": ["development.develop occurrence 1 call 1"],
         "latency": {"scale": 1.0, "cap_seconds": None, "capped": 0, "total_seconds": 44.0},
     }
     # The latency is the gap from the previous attempt's last file: 10-0, 20-11, 30-20, 45-30.
@@ -331,6 +333,87 @@ def test_the_edit_answered_steps_are_the_repair_handlers_that_refuse_a_whole_fil
     }
 
     assert refusing == recorder._ANCHORED_EDIT_STEPS
+
+
+def _stored_change_request() -> str:
+    """A proposal's ``change_request.yaml`` as the proposal handler stores it on a campaign
+    branch: the authored fields, the derived ones, and the placed criterion file appended to the
+    footprint."""
+    import dataclasses
+
+    from squadops.campaigns.change_request import (
+        IncrementBasis,
+        PlacedCriterionFile,
+        content_hash,
+        parse_change_request,
+        stored_change_request,
+    )
+
+    request = parse_change_request(
+        yaml.safe_load(AUTHORED_CHANGE),
+        proposal_id="prop_1",
+        version=1,
+        baseline_tree="tree_1",
+        basis=IncrementBasis.CAMPAIGN_BRANCH,
+    )
+    request = dataclasses.replace(
+        request,
+        footprint=(*request.footprint, "tests/test_criterion_T1.py"),
+        criterion_files=(PlacedCriterionFile("T1", "tests/test_criterion_T1.py", ""),),
+        goals_revision=3,
+    )
+    return stored_change_request(dataclasses.replace(request, content_hash=content_hash(request)))
+
+
+AUTHORED_CHANGE = """kind: feature
+criteria:
+- id: T1
+  statement: GET /books/count gives the shelf's size
+  surface_kind: endpoint
+  surface: GET /books/count
+  observable: a shelf of 3 books answers 3
+  paths:
+  - backend/routes.py
+must_not_break: []
+footprint:
+- backend/routes.py
+backlog_item: SN-1
+"""
+
+
+async def test_a_proposal_is_answered_with_what_it_authored_not_what_the_framework_derived(
+    recorder, tmp_path
+):
+    """#2892, the soak's first dry run: the stored change request carries the fields the
+    framework derives, and the proposal handler refuses a document that authors them
+    (``authored_derived_field``), so every replayed proposal was refused three times and the
+    Campaign stopped at its first launch. Bugs caught: a derived field left in the answer; the
+    framework's placed criterion file left in the authored footprint; and the derived fields not
+    recorded, so the replayed answer can't be shown to be the one that was ruled on."""
+    from squadops.campaigns.change_request import load_stored_change_request
+
+    stored = _stored_change_request()
+    vault = FilesystemArtifactVault(tmp_path / "vault")
+    proposal = {"producing_task_type": "strategy.propose_increment", "task_id": "t-prop"}
+    await _store(vault, 1, "change_request.yaml", stored, 0, "change_request", **proposal)
+    out = tmp_path / "scripts"
+
+    assert await _run(recorder, tmp_path / "vault", out) == 0
+    script = ScriptLibrary(out).get("shelf-dev")
+    key = AnswerKey("strategy.propose_increment", 1, 1)
+    files = {f["filename"]: f["content"] for f in extract_fenced_files(script.answers[key].content)}
+    derived = script.recorded_from["change_requests"][str(key)]
+
+    assert yaml.safe_load(files["change_request.yaml"]) == {
+        **yaml.safe_load(AUTHORED_CHANGE),
+        "prd_delta": [],
+        "manifest_delta": [],
+        "retires": [],
+        "replaces_verifiers": [],
+    }
+    authored = yaml.safe_load(files["change_request.yaml"])
+    rebuilt = load_stored_change_request(yaml.safe_dump({**authored, **derived}))
+    assert rebuilt.content_hash == yaml.safe_load(stored)["content_hash"]
 
 
 async def _run(recorder, vault_dir: Path, out: Path, *extra: str) -> int:
