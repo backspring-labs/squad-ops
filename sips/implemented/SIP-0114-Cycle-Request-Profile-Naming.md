@@ -22,7 +22,7 @@ updated_at: '2026-10-23T18:44:13.174273Z'
 **Revision:** 4 (2026-10-19; revision 3 was 2026-10-18, revision 2 2026-10-13, revision 1 2026-07-01)
 **Tracking:** #316 (holds the deferred #279 fold)
 
-## Delivery ledger (current as of 2026-10-19)
+## Delivery ledger (current as of 2026-11-10)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. Accepted 2026-10-19, after the MacBook
 lane's review (revision 4, PR #2494), by the owner's approval of that day.
@@ -220,7 +220,7 @@ The cycle-create resolver adds the stack's defaults to `applied_defaults`, so `v
 3. **Old profiles stay, frozen, under their old names,** so every pinned config resolves to what it ran. Q13 already rules this for campaign definitions.
 4. **The campaign profiles stay outside the operator's set.**
 
-### Delivery ledger (current as of 2026-10-19)
+### Delivery ledger (current as of 2026-11-10)
 
 | part | status | where |
 |---|---|---|
