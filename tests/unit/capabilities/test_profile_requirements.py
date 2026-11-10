@@ -93,7 +93,9 @@ def test_a_well_formed_requirement_has_no_errors():
         "dev", (SkillsetRequirement("fixture-dev"), SkillsetRequirement("fixture-dev-b", "1"))
     )
 
-    assert requirement_errors(PLATFORM, (QA, alternatives)) == []
+    second_for_qa = ResponsibilityRequirement("qa", (SkillsetRequirement("fixture-capture"),))
+
+    assert requirement_errors(PLATFORM, (QA, alternatives, second_for_qa)) == []
     assert requirement_errors(None, ()) == []
 
 
@@ -102,7 +104,7 @@ def test_a_well_formed_requirement_has_no_errors():
     [
         (None, (QA,), ["requires: a profile that requires skillsets declares its platform"]),
         (PlatformTarget("fixture", " "), (), ["platform: both id and variant are required"]),
-        (PLATFORM, (QA, QA), ["requires[qa]: declared more than once"]),
+        (PLATFORM, (QA, QA), ["requires[qa]: fixture-qa is required more than once"]),
         (PLATFORM, (ResponsibilityRequirement("qa", ()),), ["requires[qa]: names no skillset"]),
         (
             PLATFORM,

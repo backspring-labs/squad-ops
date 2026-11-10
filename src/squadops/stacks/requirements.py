@@ -50,8 +50,9 @@ class SkillsetRequirement:
 
 @dataclass(frozen=True)
 class ResponsibilityRequirement:
-    """What one responsibility requires: any one of ``any_of``. A plain requirement is a single
-    alternative. An alternative is declared here and never inferred (§5.1)."""
+    """One thing a responsibility requires: any one of ``any_of``. A plain requirement is a
+    single alternative, and an alternative is declared here, never inferred (§5.1). A
+    responsibility that requires several skillsets has an entry for each."""
 
     role: str
     any_of: tuple[SkillsetRequirement, ...]
@@ -80,26 +81,27 @@ def requirement_errors(
     platform: PlatformTarget | None, requires: tuple[ResponsibilityRequirement, ...]
 ) -> list[str]:
     """Everything wrong with a profile's ``platform`` and ``requires`` as written, each named
-    by its responsibility and skillset. Shape only: ids present, constraints well formed, one
-    entry per responsibility, and a platform wherever anything is required, since a skillset
-    applies to a platform and a requirement with none can't be checked against it."""
+    by its responsibility and skillset. Shape only: ids present, constraints well formed, no
+    skillset required twice of one responsibility, and a platform wherever anything is
+    required, since a skillset applies to a platform and a requirement with none can't be
+    checked against it."""
     errors: list[str] = []
     if platform is not None and not (platform.id.strip() and platform.variant.strip()):
         errors.append("platform: both id and variant are required")
     if requires and platform is None:
         errors.append("requires: a profile that requires skillsets declares its platform")
-    seen_roles: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     for entry in requires:
         where = f"requires[{entry.role or '?'}]"
         if not entry.role.strip():
             errors.append(f"{where}: the responsibility's role is required")
-        elif entry.role in seen_roles:
-            errors.append(f"{where}: declared more than once")
-        seen_roles.add(entry.role)
         if not entry.any_of:
             errors.append(f"{where}: names no skillset")
         for requirement in entry.any_of:
             errors.extend(f"{where}: {e}" for e in _one_requirement_errors(requirement))
+            if requirement.skillset and (entry.role, requirement.skillset) in seen:
+                errors.append(f"{where}: {requirement.skillset} is required more than once")
+            seen.add((entry.role, requirement.skillset))
     return errors
 
 
