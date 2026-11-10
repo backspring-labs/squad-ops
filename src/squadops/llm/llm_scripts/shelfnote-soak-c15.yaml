@@ -7,6 +7,10 @@ replay_latency: true
 recorded_from:
   project_id: prj-shelfnote
   cycle_id: cyc_b0e5258168a7
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
+  - qa.test occurrence 1 call 2
+  - qa.test occurrence 1 call 3
   latency:
     scale: 3.0
     cap_seconds: 1500.0

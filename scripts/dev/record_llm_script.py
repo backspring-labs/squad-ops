@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import difflib
+import re
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -60,6 +61,9 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 
+from llm_script_check import CHANGE_REQUESTS_KEY, FAILED_KEY, script_problems  # noqa: E402
+
+from squadops.campaigns.change_request import stored_proposal  # noqa: E402
 from squadops.capabilities.anchored_edits import (  # noqa: E402
     DIVIDER_MARKER,
     EDIT_FENCE_LANGUAGE,
@@ -68,9 +72,13 @@ from squadops.capabilities.anchored_edits import (  # noqa: E402
     apply_anchored_edits,
     parse_anchored_edits,
 )
+from squadops.capabilities.handlers.planning.proposal import (  # noqa: E402
+    CHANGE_REQUEST_ARTIFACT_TYPE,
+)
 from squadops.execution.correction_ids import is_retest_task_id  # noqa: E402
 from squadops.llm.script import (  # noqa: E402
     PACKAGED_SCRIPTS_DIR,
+    AnswerKey,
     LLMScriptError,
     parse_script,
     script_version,
@@ -218,6 +226,51 @@ def _applies(block: str, path: str, base: str, revised: str, attempt: _Attempt) 
     )
 
 
+_TOP_LEVEL_KEY = re.compile(r"^([A-Za-z_][\w-]*):")
+
+
+def _authored_change_request(document: str) -> tuple[str, dict[str, Any]]:
+    """A stored change request as its proposer authored it, and the fields the framework derived.
+
+    The stored document carries the derived fields (``stored_change_request``), and the handler
+    refuses a document that authors them (``parse_change_request``). Which ones, and how the
+    footprint on a campaign branch was extended, is ``stored_proposal``'s. Their lines are cut
+    from the stored text and every other line is kept as it is, and the result must load as the
+    authored mapping.
+
+    Raises:
+        ValueError: the cut text doesn't load as the authored fields.
+    """
+    proposal = stored_proposal(document)
+    data = yaml.safe_load(document)
+    # In the document's order, so a re-record writes the same bytes.
+    derived = {k: v for k, v in data.items() if k not in proposal.authored}
+    cut = set(derived)
+    placed = {f.path for f in proposal.criterion_files}
+    trimmed = (
+        "footprint" in proposal.authored and data["footprint"] != proposal.authored["footprint"]
+    )
+    if trimmed:
+        # On a campaign branch the stored footprint is the authored globs and the placed files.
+        derived["footprint"] = data["footprint"]
+    kept: list[str] = []
+    key = None
+    for line in document.splitlines(keepends=True):
+        top = _TOP_LEVEL_KEY.match(line)
+        if top:
+            key = top.group(1)
+        if key in cut:
+            continue
+        if trimmed and key == "footprint" and not top and line.startswith("- "):
+            if yaml.safe_load(line[2:]) in placed:
+                continue
+        kept.append(line)
+    text = "".join(kept)
+    if yaml.safe_load(text) != proposal.authored:
+        raise ValueError("the change request's derived fields could not be cut from its text")
+    return text, derived
+
+
 def _answer_content(attempt: _Attempt, bases: dict[str, list[StoredFile]], notes: list[str]) -> str:
     """The answer an attempt's files were parsed from, rebuilt. A step that may only edit an
     existing file answers with an edit of each file it revised (``_ANCHORED_EDIT_STEPS``)."""
@@ -353,23 +406,38 @@ def build_script(
     calls: dict[str, int] = {}
     answers: list[dict[str, Any]] = []
     unrebuilt: list[str] = []
+    change_requests: dict[str, dict[str, Any]] = {}
+    failed: list[str] = []
     previous_last = None
     for attempt in ordered:
         if attempt.task_id not in occurrence_of:
             per_type[attempt.task_type] = per_type.get(attempt.task_type, 0) + 1
             occurrence_of[attempt.task_id] = per_type[attempt.task_type]
         calls[attempt.task_id] = calls.get(attempt.task_id, 0) + 1
+        key = AnswerKey(attempt.task_type, occurrence_of[attempt.task_id], calls[attempt.task_id])
+        content = _answer_content(attempt, bases, unrebuilt)
+        proposed = [f for f in attempt.files if f.ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE]
+        if proposed:
+            authored, derived = _authored_change_request(proposed[0].content.decode("utf-8"))
+            content = _whole_block(StoredFile(proposed[0].ref, authored.encode())) + "\n"
+            change_requests[str(key)] = derived
+        if any((f.ref.metadata or {}).get("emission_status") == "failed" for f in attempt.files):
+            failed.append(str(key))
         answer: dict[str, Any] = {
             "task_type": attempt.task_type,
-            "occurrence": occurrence_of[attempt.task_id],
-            "call": calls[attempt.task_id],
-            "content": _answer_content(attempt, bases, unrebuilt),
+            "occurrence": key.occurrence,
+            "call": key.call,
+            "content": content,
         }
         if replayed is not None and previous_last is not None:
             answer["latency_seconds"] = replayed.of_gap(attempt.first - previous_last)
         previous_last = attempt.last
         answers.append(answer)
 
+    if change_requests:
+        recorded_from = {**recorded_from, CHANGE_REQUESTS_KEY: change_requests}
+    if failed:
+        recorded_from = {**recorded_from, FAILED_KEY: failed}
     if replayed is not None:
         recorded_from = {**recorded_from, "latency": replayed.record()}
     doc = {
@@ -380,7 +448,8 @@ def build_script(
         "answers": answers,
     }
     raw = yaml.dump(doc, Dumper=_LiteralDumper, sort_keys=False, allow_unicode=True).encode()
-    parse_script(raw, name=name)  # the recording is refused here rather than at its first call
+    # The recording is refused here rather than at its first call.
+    refused = script_problems(parse_script(raw, name=name))
     notes = [
         f"{len(answers)} answers over {len(occurrence_of)} tasks; {skipped} stored files no "
         "model call wrote were left out",
@@ -388,6 +457,7 @@ def build_script(
         "each attempt is recorded as one call: run the script and add any key it names",
     ]
     notes.extend(unrebuilt)
+    notes.extend(f"its handler would refuse {problem}" for problem in refused)
     if replayed is not None:
         notes.append(
             "latency is the gap between stored files, orchestration and gate waits included; the "
