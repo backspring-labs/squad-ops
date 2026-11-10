@@ -4,6 +4,10 @@
 (§3a): go, narrow or stop. **It holds no game source.** The game's repository is private, so findings describe
 patterns and outcomes, and the raw model outputs of S6 stay out of this repository.
 
+**Vocabulary (2026-11-09).** This record is as written on 2026-11-08. The plan's revision 4 stands on SIP-0116, so
+where it says *specialty*, read the `game_dev_roblox` development profile, the Roblox skillsets and the `roblox-studio`
+provider, and where it says *playbook*, read a skill.
+
 | spike | status |
 |---|---|
 | S1. the Studio transaction | **done:** play, input and read-back proven on a local copy of the game; both checks are cheap enough to run in full; reconnecting after a Studio restart needs a person (findings below) |

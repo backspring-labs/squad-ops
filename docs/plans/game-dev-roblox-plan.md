@@ -1,27 +1,15 @@
 # game-dev-roblox plan — a squad that develops and tests a Roblox game
 
-**Status: ADOPTED, revision 3 (2026-11-08), unplaced.** The MacBook lane's input to the 2.8 plan.
+**Status: ADOPTED, revision 4 (2026-11-09), unplaced.** The MacBook lane's input to the 2.8 plan.
 - **Phase 0 is done, and the gate is go** (§3a; the record is `game-dev-roblox-spikes.md` in `docs/plans/`).
 - **The owner accepted D1–D10 on 2026-11-08** ("accept D1-D10, write revision 3"), so phases 1–3 are adopted (§7).
+  Revision 4 reads D7 and D8 against SIP-0116 and changes no decision.
+- **It stands on SIP-0116, Agent Skillsets,** accepted 2026-11-09: the development profile requires, the selected
+  agents supply, and the provider executes (§2). Revision 3's *specialty* and *playbooks* are gone from this plan.
 - **Placement is still the 2.8 plan's.** Nothing here places an issue or a release slot.
-- **Adopting the plan doesn't accept either game SIP.** Acceptance follows revision 3 of both SIPs (phase 1) and a
-  renewed review (§8).
-- **Phase 2 waits for Agent Skillsets (2026-11-09).** The owner asked whether the word *specialty* could change, and
-  checking it showed revision 3 had rebuilt Capability-Backed Agents §27 beside the existing stack and development
-  profile seams. The owner pulled §21 and §27 forward into a 2.x SIP, Agent Skillsets (PR #3006):
-  "agree, pull it forward and draft the assembly SIP. but make sure I can run an outside review before you start
-  building". Agents carry *skillsets*, specs a capability pack can later carry; a squad profile stays an assembly of
-  agents; and *playbook* is kept for what a squad follows. So:
-  - **no building starts** until the owner accepts Agent Skillsets. Its outside review is done, and the owner ruled
-    the review's answers the same day (its revision 2);
-  - **revision 4 of this plan and of both game SIPs follows.** It replaces the *specialty* with **development profile
-    requires; selected agents supply:** the `game_dev_roblox` development profile requires skillsets, the selected
-    squad's agents supply them, and cycle preflight checks the agents the work routes to. It presents Roblox as the
-    first specialization of the generic game-development contracts, names the required skillsets, the supplying
-    agents and the Studio provider, and renames this plan's *playbooks* to skills. The adopted Roblox execution and
-    isolation decisions stay as they are. Phase 2a becomes Agent Skillsets' phases 1 and 2, and the Roblox work is switched
-    on only after its phases 2–6;
-  - until then, §2's *specialty* and *playbooks* read as superseded wherever Agent Skillsets differs.
+- **Adopting the plan doesn't accept either game SIP.** Their revision 4 is written (PRs #2405 and #2841), and
+  acceptance follows the owner's renewed review (§8).
+- **Building starts with SIP-0116's phases 1 and 2,** in a MacBook worktree (D6). Nothing merges before 2.8 opens.
 
 ## Revision log
 
@@ -60,10 +48,30 @@
     property-driven:** the planner's fixed set of task types is the seam both this specialty and a designer need
     (§2.4).
   - **The playbooks take S6's findings** (§2.8). The game's title screen is part of every scenario's setup (§2.7).
+- **Revision 4** (2026-11-09): onto SIP-0116, Agent Skillsets, accepted the same day.
+  - **Why:** the owner asked whether the word *specialty* could change. Checking it showed revision 3 had rebuilt
+    Capability-Backed Agents §27 beside the stack and development-profile seams. The owner pulled that SIP's §21 and
+    §27 forward into SIP-0116, and directed the game work onto it.
+  - **The specialty is replaced by declarations in seams that own them** (§2): the `game_dev_roblox` development
+    profile requires skillsets, the selected squad's agents supply them, and the `roblox-studio` provider executes.
+    The squad profile's `specialties` field and the specialty digest are withdrawn for SIP-0116's record (§2.3).
+  - **Roblox is the first specialization of four engine-neutral game contracts** (§2, #2841 R4.2).
+    `game.increment_design` is the fourth: strategy writes each play scenario, so strategy carries a skillset too.
+  - **A plan names a contract and a mode, never an operation id** (§2.4). The provider's operations lose their
+    `game-dev-roblox.` prefix (§2.6).
+  - **Playbooks become skills,** inside the skillsets (§2.8). *Playbook* is kept for what a squad follows.
+  - **The builder has no step in the first milestone** (§2.8): `builder.assemble` isn't offered on a
+    repository-backed increment, so the source manifest is computed at staging.
+  - **The phases are re-cut** (§3): SIP-0116's six phases join the order, and the Roblox profile's requirements are
+    switched on only after its phases 2–6.
+  - **Unchanged:** the claim (§1), the worker protocol (§2.5), the Studio transaction (§2.6), the assertion protocol
+    (§2.7), the product (§2.10), and every adopted execution and isolation decision.
 
 **What it builds on.**
-- The two proposed game SIPs: *Game Development Platform Capability* (PR #2405) and *Game Development Capability
-  Packs and Squad Composition* (PR #2841, stacked on it).
+- SIP-0116, Agent Skillsets (accepted 2026-11-09): the skillset spec, capability contracts, verification modes,
+  coverage at preflight, the record and the Campaign's pin. Its phases are part of this plan's order (§3).
+- The two proposed game SIPs, each at revision 4: *Game Development Platform Capability* (PR #2405) and *Game
+  Development Capability Packs and Squad Composition* (PR #2841, stacked on it).
 - The 2.6 Roblox spike (`docs/plans/roblox-spike-2-6.md`, #2895): pure-Luau logic tests run headless on the Spark
   under Lune, and anything that touches the engine needs Studio. Its gaps are #2906.
 - Prior art on the MacBook: a working client for Roblox Studio's built-in MCP server, in the target game's
@@ -99,130 +107,128 @@ unattended play session, so the claim stands as written (the gate, §3a).
 **What the evidence won't show:** how the game feels, what it looks like, more than one player, and parts, models or
 UI built in Studio. Those don't sync to files (§2.10).
 
-## 2. The approach: one specialty built for real, its boundary shaped like a plugin
+## 2. The approach: Roblox as the first specialization of the game contracts
 
-**The plugin machinery waits for a second specialty.** That means discovery, installation, external packaging,
-manifest validation, a versioned interface and the plugin lifecycle. A designer (Capability-Backed Agents §13, the
-Iris and Glyph roles) or `game-dev-unity` is the second use that pays for it. Until then, `game-dev-roblox` plugs into
-seams the framework already has, and keeps the runtime guarantees a plugin would have (§2.3).
+**The rule: the development profile requires, the selected agents supply, and the provider executes.** SIP-0116
+gives every stack this shape, and Roblox is the first to use it.
+
+| what | for Roblox | defined in |
+|---|---|---|
+| the game contracts: engine-neutral kinds of work, each with its evidence and its verification modes | `game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification` | #2841 R4.2 |
+| what the work requires | the `game_dev_roblox` development profile: platform `roblox`, variant `studio-place`, and the skillsets each responsibility requires | #2841 R4.1 |
+| what specializes the contracts for Roblox | three skillsets: `roblox-increment-design` (strategy), `luau-dev` (dev) and `roblox-studio-qa` (QA) | #2841 R4.3 |
+| who supplies them | the `game-dev-roblox` squad profile, whose agents declare the skillsets they carry (§2.8) | SIP-0116 §5.2 |
+| what executes | the `roblox-studio` provider on a worker, and `lune` in the QA container | #2405 R4.2; §2.5, §2.6 |
+
+- **Selecting the stack equips no one.** The operator selects the squad. Cycle preflight checks the agent each
+  responsibility routes to, and refuses with the squad, the skillset and the responsibility named (§2.3).
+- **A new platform adds skillsets, a development profile and a provider.** It adds no core task type.
+- **Packaging waits for 3.x.** A capability pack (Capability-Backed Agents) will carry the skillset directories
+  unchanged and add discovery, installation and the provider's packaging (SIP-0116 §4.3).
 
 | need | existing seam it uses |
 |---|---|
 | route a step to a role | the handler registry (by task type and role) and the squad profile's `serves_roles` |
-| a roster and its models | a squad profile (`config/squad-profiles.yaml`) |
-| prompt text | PromptService fragments, under a directory of the specialty's name |
-| playbooks | skill files inside the specialty package |
-| treat game steps differently | `TaskType` properties and lookup tables; never a check on the engine's name |
+| a roster, its models and what each agent carries | a squad profile (`config/squad-profiles.yaml`), with each agent's `skillsets` |
+| what the work requires | the development profile (SIP-0072), with `platform` and `requires` |
+| prompt text | skills, in skillset directories under the prompts seam, and the development profile's own text fields |
+| treat game steps differently | `TaskType` properties, the contracts and the cycle's skillset record; never a check on the engine's name |
 | evidence | SIP-0096's executed-passed, executed-failed and not executed |
 | I/O | a port, an adapter behind it, and a composition root that binds it (`docs/architecture/composition-roots.md`) |
 
 ### 2.1 Naming: the engine is a suffix, so siblings sort together
 
-Every engine-specific identifier is `game-dev-<engine>`, with underscores where Python requires them. Shared
-execution infrastructure keeps generic names.
+D8's `game-dev-<engine>` form names the profile, the squad, the adapter and the working documents. Shared execution
+infrastructure and the game contracts keep generic names. Skillset ids follow SIP-0116's form until Q68 is ruled.
 
-| item | `game-dev-roblox` | a later sibling |
+| item | Roblox | a later sibling |
 |---|---|---|
-| specialty id (declarations, profiles, evidence) | `game-dev-roblox` | `game-dev-unity` |
-| core package (declarations, decisions, pure readers) | `src/squadops/specialties/game_dev_roblox/` | `.../specialties/game_dev_unity/` |
-| adapter (MCP, filesystem and network I/O) | `adapters/remote_execution/game_dev_roblox_studio/` | `adapters/remote_execution/game_dev_unity_editor/` |
-| prompt fragments | `src/squadops/prompts/fragments/game-dev-roblox/` | `.../fragments/game-dev-unity/` |
-| playbooks | `src/squadops/specialties/game_dev_roblox/skills/` | the same, in its own package |
-| operation ids | `game-dev-roblox.play_scenario` (§2.6) | `game-dev-unity.run_editmode_tests` |
+| development profile | `game_dev_roblox` | `game_dev_unity` |
 | squad profiles | `game-dev-roblox` (Spark), `game-dev-roblox-lite-14b` (MacBook machinery check) | `game-dev-unity` |
+| skillsets, under `src/squadops/prompts/skillsets/` (Q68) | `roblox-increment-design`, `luau-dev`, `roblox-studio-qa` | `unity-csharp-dev`, `unity-test-qa` |
+| skills | inside each skillset's `skills/`; shared ones under `_shared/` (`shared/luau-conventions`) | the same |
+| providers | `roblox-studio`, `lune` | a Unity editor provider |
+| adapter (MCP, filesystem and network I/O) | `adapters/remote_execution/game_dev_roblox_studio/` | `adapters/remote_execution/game_dev_unity_editor/` |
+| operations, each qualified by its provider | `play_scenario` of `roblox-studio` (§2.6) | `run_editmode_tests` of the Unity provider |
 | plans and records, in `docs/plans/` | `game-dev-roblox-plan.md`, `game-dev-roblox-spikes.md` | `game-dev-unity-plan.md` |
 | branches | `feature/game-dev-roblox-<part>`, `docs/game-dev-roblox-<part>` | `feature/game-dev-unity-<part>` |
 | issue label | `game-dev-roblox` | `game-dev-unity` |
-| shared infrastructure | `ports/remote_execution/`, the worker registry, `/api/v1/workers`, the task type `qa.run_remote_operation` (§2.4) | shared |
+| shared, engine-neutral | the `game.*` contracts in `squadops.capabilities`, `ports/remote_execution/`, the worker registry, `/api/v1/workers`, the task type `qa.run_remote_operation` (§2.4) | shared |
 
-**Content shared across engines** gets a name of its own (`game-dev-common`) only when a second engine needs it. The
-test product follows the `z_` rule: `z_tower-ascension`. A designer would take its own prefix (`design-<kind>`).
+The test product follows the `z_` rule: `z_tower-ascension`. A designer would take its own prefix (`design-<kind>`).
 `roblox-spike-2-6.md` keeps its name, because other records cite it.
 
-### 2.2 Guardrails, so the specialty can leave as a plugin later
+### 2.2 Guardrails, so a platform stays declarations and a provider
 
-1. **An isolation test** (`tests/unit/architecture/test_specialty_isolation.py`) covering every place the specialty
-   lives:
-   - the core package;
-   - the adapter directory;
-   - the fragment directory;
-   - the worker root's configuration section.
-
-   **Inbound:** only the bootstrap's specialty table and the worker composition root reach them. **Outbound:**
-   the core package imports core only from an allowed list, and the adapter imports only its port and that list.
-   **The allowed list is the plugin interface's first draft,** written from what the specialty actually uses. The
-   extraction boundary is those four places, and the test names them.
+1. **An isolation test** in `tests/unit/architecture/`:
+   - a platform's or provider's name appears only in the skillset directories, the development profile's entry, the
+     squad profiles, the adapter directory and the worker root's configuration section;
+   - the adapter imports only its port and an allowed list. **That list is the first draft of the interface a
+     capability pack's provider will be written against,** written from what the adapter actually uses.
 2. **No engine names in core.** Orchestration consults `TaskType` properties and tables (CLAUDE.md's task-type rules
-   3 and 4), and engine specifics stay behind operation ids (§2.4).
-3. **The designer test, on paper** (S5, partial pass): the specialty declaration and a squad profile describe the
-   Iris design role's identity, handlers, resources, permissions and agent binding with no core change. **Its own
-   kinds of authored work are the exception.** So the rule is:
-   - a specialty adds operations, handlers, fragments, playbooks and resources without a core change;
-   - a specialty that adds a new kind of authored work adds its task types to the central enum, in its own domain
-     (`design.`), under #559's rules.
+   3 and 4). The contracts are engine-neutral, and engine specifics stay behind the provider's operations (§2.4).
+3. **The designer test, on paper** (S5, partial pass): a squad profile and declarations describe the Iris design
+   role's identity, handlers, resources, permissions and agent binding with no core change. **Its own kinds of
+   authored work are the exception.** So the rule is:
+   - a platform adds skillsets, a development profile and a provider without a core task type;
+   - a new kind of authored work adds its task types to the central enum, in its own domain (`design.`), each by its
+     own proposal (SIP-0116 §6.3), with contracts over them.
 
-   `game-dev-roblox` is unaffected, because its new work is tool-backed and rides an operation id (§2.4).
+   Roblox is unaffected, because its new work is tool-backed and runs as `qa.run_remote_operation` (§2.4).
 
-**Where the line falls:** a *language* is core, and an *engine* is a specialty. The Luau runner (#2906) is a language
-in the derived profile, like Python or JavaScript. Studio, play sessions and the place are `game-dev-roblox`.
+**Where the line falls:** a *language* is core, and an *engine* is a provider and its skillsets. The Luau runner
+(#2906) is a language in the derived profile, like Python or JavaScript. Studio, play sessions and the place are the
+`roblox-studio` provider's.
 
-**When the plugin machinery gets built,** recorded in the SIPs as the trigger:
-- a second specialty duplicates the bootstrap wiring;
-- or a specialty must ship on its own cadence;
-- or someone outside the team writes one;
-- **or a second specialty needs task types of its own** (S5). Then the host-owned lookup (properties, plan
-  validation, routing, expected artifacts, correction mappings; §2.4) is the first piece of plugin machinery to
-  build.
+### 2.3 Runtime guarantees: SIP-0116's checks and record
 
-### 2.3 Runtime guarantees kept without plugin packaging
+- **Checked at creation** (SIP-0116 §9), before framing or any model work. Each outcome is its own refusal:
 
-- **Resolved once, pinned for the Campaign.**
-  - At Campaign creation, the squad profile's `specialties` field is resolved to the specialty's declaration, its
-    operations and their handlers, result readers, playbooks and permissions.
-  - The resolution's digest goes where a cycle's squad is already pinned: the profile snapshot
-    (`compute_profile_snapshot_hash` in `cycles/lifecycle.py`, stamped as each cycle's `squad_profile_snapshot_ref`).
-    That hash covers every field that decides how a cycle executes, so the profile's `specialties` field and the
-    specialty's digest enter it.
-  - A Campaign's bound snapshot is the precedent for a recorded re-binding: SIP-0110 Appendix A §3.7, the `rebind`
-    event in `campaigns/models.py`.
-  - The Spark session doesn't expect 2.7 to change either (2026-11-08).
-- **Detection, since in-tree code can't be replayed.** A redeploy can't keep an old version of in-tree code running.
-  So every cycle re-resolves and compares digests. A different digest stops the Campaign with a named reason. It
-  never runs on a changed specialty under the old snapshot.
-- **Preflight at creation:**
-  - the specialty resolves;
-  - its operations name a registered worker that declares them;
-  - the product meets its eligibility rules (§2.10).
-- **Preflight at the plan gate:** every task and operation in the plan is one the resolved specialty serves.
-  Otherwise the plan is refused before dispatch.
+  | outcome | for Roblox |
+  |---|---|
+  | coverage | the selected squad's routed QA, dev or strategy agent lacks its required skillset |
+  | declaration | a requirement names a mode its skillset doesn't declare, such as `multiplayer` |
+  | authorization | a tool request fails the provider's rules. The product's eligibility rules (§2.10) are among them |
+  | availability | no online worker serves `roblox-studio`. The squad still carries the skillset |
 
-### 2.4 Task types: one engine-neutral type, operations by id
+- **Checked at the plan gate:** every task is a base-set type, or a contract and mode the cycle's requirements name,
+  supplied by the task's routed agent. Otherwise the plan is refused before dispatch.
+- **Recorded and held** (SIP-0116 §10): each cycle's skillset record holds the requirements, the agents that
+  satisfied them and the digests of the skills they loaded. Skill content is kept with the cycle, so a repair, a
+  retry and a resume load the same text after a redeploy.
+- **Pinned for the Campaign.** A change to the equipment assigned to its work stops the next launch with the changed
+  parts named, and it continues only through the owner's recorded transition. SIP-0110's `rebind` is the precedent.
+- **Provider code can't be kept with a cycle.** The worker registers its provider version, its Studio version and the
+  digest of its tool schemas, and each operation's evidence records them. An operation reads `not_executed` when they
+  differ from what it was proved on (§6).
+- **The profile is selected explicitly** (Q58). A Luau runner in the product's derived profile never selects
+  `game_dev_roblox` and never implies Studio.
 
-- **The type:** a new member of the central enum, `qa.run_remote_operation`, carrying an operation id
-  (`game-dev-roblox.play_scenario`) as its argument.
+### 2.4 Task types: one engine-neutral type, hosting contracts
+
+- **The type:** a new member of the central enum, `qa.run_remote_operation` (#2405 R4.4). It carries a contract and a
+  mode: `game.scenario_verification` in `play`.
   - The enum stays the single home of task types, and its properties, routing and correction tables work unchanged.
   - Strings stay on the wire.
-  - Writing and repairing code reuse `development.develop` and `development.repair`, with the specialty's context.
-- **The operation id is resolved through the specialty table:** argument schema, provider, required worker
-  capability, result reader. **Refusals:** an unknown id is refused at the plan gate, and a duplicate registration is
-  refused at bootstrap.
-- **Planning becomes property-driven** (read in the code for revision 3).
+  - Writing and repairing code reuse `development.develop` and the existing repair types. A repair loads the dev
+    skillset's skills by lineage (SIP-0116 §7.1).
+- **A plan never names an operation id.** The handler reads the cycle's skillset record for the supplying skillset
+  and resolves its tool request in the provider's operation table: argument schema, required worker capability and
+  result reader. A duplicate operation registration is refused at bootstrap.
+- **Planning becomes property-driven,** in SIP-0116's phase 2.
   - **Today:** the plan-authoring prompt offers, and the plan parser accepts, a fixed set of three task types
     (`_KNOWN_BUILD_TASK_TYPES` in `cycles/implementation_plan.py`: develop, `qa.test` and `builder.assemble`). Any
     other type is refused when the plan is parsed.
-  - **So `qa.run_remote_operation` can't reach a plan as things stand,** and neither could a designer's `design.`
-    types.
-  - **The change** (phase 2a): a `TaskType` property marks the types a planner may offer, and the set is derived from
-    it (CLAUDE.md's task-type rule 3). The resolved specialty adds which operation ids may be planned, and the plan
-    gate's preflight (§2.3) checks them. Both the prompt's list and the parser's check read that one source, so they
-    can't disagree (the #426 shape, where the offer and the guard drifted apart).
+  - **The change:** `TaskType` gains `plannable`, and the base set is explicit and versioned (`base@1`: today's
+    three). The offered set is the base set plus the contracts a cycle's requirements name. Both the prompt's list
+    and the parser's check read that one source, so they can't disagree (the #426 shape, where the offer and the
+    guard drifted apart).
+  - **`qa.run_remote_operation` is plannable and outside the base set.** A cycle on any existing stack is offered
+    exactly today's types.
   - **Its scope (agreed 2026-11-08):** the property goes on today's three types and on `qa.run_remote_operation`,
     and on nothing else in this plan. Every further plannable type is its own proposal (§4).
-- **Proved with a fixture first** (phase 2a), with no Studio. The fixture exercises properties, plan validation,
-  routing, the expected artifacts and the correction mapping.
-- **If the fixture shows a role needs its own extensible task types,** that becomes one host-owned lookup covering
-  properties, plan validation, routing, expected artifacts and correction mappings. Unknown and duplicate
-  registrations are refused. That's a design change to the SIPs, outside this plan.
+- **Proved with a fixture provider first** (phase 2a), with no Studio. The fixture exercises properties, plan
+  validation, routing, the expected artifacts and the correction mapping.
 
 ### 2.5 Remote execution: the worker and its protocol
 
@@ -271,7 +277,7 @@ so no port opens on the MacBook.
     there);
   - a fixture adapter proves the protocol with no Studio.
 
-### 2.6 The Studio transaction (`game-dev-roblox-studio`)
+### 2.6 The Studio transaction (the `roblox-studio` provider)
 
 **The lease covers the whole transaction:** stage → sync → verify the tested state → play → collect → stop and
 reset. Nothing else uses that Studio until the transaction ends or is reconciled.
@@ -330,10 +336,15 @@ reset. Nothing else uses that Studio until the transaction ends or is reconciled
 
 | operation | what it does | Studio tools behind it |
 |---|---|---|
-| `game-dev-roblox.sync_source` | write a source manifest into Studio and confirm it by read-back | the harness's sync program, then read-back |
-| `game-dev-roblox.play_scenario` | the whole transaction for one frozen scenario | play controls, input, the harness |
-| `game-dev-roblox.read_console` | collect the session's console | console output |
-| `game-dev-roblox.capture` | a viewport capture as supplementary evidence | capture |
+| `sync_source` | write a source manifest into Studio and confirm it by read-back | the harness's sync program, then read-back |
+| `play_scenario` | the whole transaction for one frozen scenario | play controls, input, the harness |
+| `read_console` | collect the session's console | console output |
+| `capture` | a viewport capture as supplementary evidence | capture |
+
+- **Each is an operation of the `roblox-studio` provider.** `play_scenario` implements `game.scenario_verification`
+  in `play` mode and is the one a plan reaches, through its contract. It uses the other three inside its
+  transaction, and none of them is planned by itself in the first milestone.
+- **The source manifest is computed at staging** from the candidate tree: each script's path, digest and class.
 
 - **Validation:** each operation validates its target, its arguments, its artifact references and its paths, and
   confirms the expected Studio before it runs.
@@ -394,28 +405,33 @@ in this plan depends on capture.
 ### 2.8 The squad
 
 - **Profiles:**
-  - `game-dev-roblox`: the Spark's roster and models, with `specialties: [game-dev-roblox]`. The field is new and is
-    part of the resolution in §2.3;
+  - `game-dev-roblox`: the Spark's roster and models. Three agents declare skillsets: Nat carries
+    `roblox-increment-design`, Neo `luau-dev` and Eve `roblox-studio-qa`. The others declare none;
   - `game-dev-roblox-lite-14b`: the same on the MacBook. It checks machinery only.
-- **The roles** keep their identities (#2841 §5):
-  - strategy: change requests with frozen scenarios;
-  - dev: Luau inside the footprint;
-  - QA: logic tests, `qa.run_remote_operation`, and a statement of what wasn't executed;
-  - builder: the source manifest;
+- **The roles** keep their identities (#2841 §5), each with its contract (#2841 R4.2):
+  - strategy: change requests with frozen scenarios (`game.increment_design`);
+  - dev: Luau inside the footprint (`game.gameplay_implementation`);
+  - QA: logic tests (`game.unit_tests`, `headless`), `qa.run_remote_operation` (`game.scenario_verification`,
+    `play`), and a statement of what wasn't executed;
+  - builder: no step in the first milestone. `builder.assemble` isn't offered on a repository-backed increment
+    (SIP-0116 §16), and the source manifest is computed at staging (§2.6);
   - data: measurements from executed runs;
   - lead: recommendations only.
-- **Playbooks** follow #2841's Q47 ruling: a frontier model drafts, the owner approves, and each is replay-tested on
-  the intended runtime models, including on a missing prerequisite, where it must stop with a named reason.
+- **Skills** follow #2841's Q47 ruling, which SIP-0116 §7 makes the rule for every skill: a frontier model drafts,
+  the owner approves, and each is replay-tested on the intended runtime models, including on a missing prerequisite,
+  where it must stop with a named reason.
 - **What S6 puts in them** (six samples from the Spark's 27b model; correct Luau and Roblox API use in all six):
-  - **the specialty ships the test loader** for instance-tree requires (S2's design, run under Lune) and a convention
-    for where tests live. Both of S6's test files ran nowhere as delivered: one was a Studio script outside the synced
-    folders, and the other wrote the loader in Lua 5.x;
+  - **`luau-test-loader` carries the test loader** for instance-tree requires (S2's design, run under Lune) and a
+    convention for where tests live. Both of S6's test files ran nowhere as delivered: one was a Studio script
+    outside the synced folders, and the other wrote the loader in Lua 5.x;
+  - **`play-scenario-authoring` asks for effects on saved state at deploy.** Neither sample of the server task named
+    that a new kind reshuffles the period's seeded set, which saved progress then restores by index.
+- **What S6 puts outside the skills:**
   - **each task's context includes the module that owns its concept.** S6's one logic error, the same in both samples
-    of one task, came from a missing helper module, not from reasoning;
+    of one task, came from a missing helper module, not from reasoning. That's context selection, measured at the
+    full-path gate (§3);
   - **the emission parser tolerates the two broken formats** S6 saw on a three-file change: no fences, and the path
-    line outside its fence;
-  - **change requests ask for effects on saved state at deploy.** Neither sample of the server task named that a new
-    kind reshuffles the period's seeded set, which saved progress then restores by index.
+    line outside its fence. That's a core change, in phase 2f.
 
 ### 2.9 The headless half
 
@@ -465,19 +481,22 @@ They're core, built on this plan's feature branch for 2.8.
 | phase | what | size | where | exit |
 |---|---|---|---|---|
 | **0. spikes** | **done 2026-11-08:** S1, S2, S4–S6; nothing merged | S each | MacBook, except S6 | the spike record, `game-dev-roblox-spikes.md` beside this plan, ended at the gate: go (§3a) |
-| **1. revision 3 of both SIPs** | §2's design, the spike answers and the reconciliation of prior rulings (§8) | M (prose) | MacBook | the owner's renewed review |
-| **2a. the fixture path** | the specialty table and declaration, `qa.run_remote_operation` and operation ids, **the plannable property and the derived planner set (§2.4)**, the digest pin and both preflights, the isolation test, the profile field, a fixture specialty | M | MacBook | the fixture proves properties, plan validation, routing, expected artifacts and the correction mapping; a plan naming an operation the specialty doesn't serve is refused |
-| **2b. remote execution** | the port, the registry and its migration, `/api/v1/workers`, the claim/lease/fence protocol, the worker root, the fixture adapter | M–L | MacBook (code); Spark (migration deploy, 2.8 only) | the fixture operation runs end to end; a cancelled, expired or late attempt is refused or reconciled as §2.5 says |
+| **1. the SIPs' revisions** | **done:** revision 3 of both (2026-11-08: the spike answers and the reconciliation of prior rulings, §8), then revision 4 (2026-11-09: onto SIP-0116) | M (prose) | MacBook | the owner's renewed review |
+| **SIP-0116, phases 1–2** | its declarations and record, inert, then coverage: the preflight outcomes, the plan gate's check, `plannable` and the offered set | M | MacBook | SIP-0116 §14's proofs: every existing cycle's prompts, plans and roster hashes unchanged; a cycle whose routed agent lacks a required skillset refused by name |
+| **2a. the fixture path** | `qa.run_remote_operation` (#2405 R4.4), the four game contracts (#2841 R4.2), the isolation test, and a fixture skillset and provider, in tests only | M | MacBook | the fixture proves properties, plan validation, routing, expected artifacts and the correction mapping; a plan naming a contract or mode the requirements don't name is refused |
+| **2b. remote execution** | the port, the registry and its migration, `/api/v1/workers`, the claim/lease/fence protocol, the worker root, the fixture adapter. SIP-0116's phase 4 (tool requests, and the authorization and availability outcomes) builds with it | M–L | MacBook (code); Spark (migration deploy, 2.8 only) | the fixture operation runs end to end; a cancelled, expired or late attempt is refused or reconciled as §2.5 says |
 | **2c. the Luau runner** | #2906 | M | MacBook, on the feature branch | a `*.spec.luau` failure is read per test |
-| **2d. the Studio adapter** | §2.6's transaction: identity by PlaceId and digest, the adapter's own sync, paged read-back, the full baseline before and after play, reset from the baseline file (including reopening Studio on it), deadlines, the deny list, returned edits as revisions, the four typed operations | L | MacBook | each operation proved on the worker, including after a Studio restart with no person involved. A mode not proved reads not executed (#2405 §R2.4) |
+| **2d. the Studio adapter** | §2.6's transaction: identity by PlaceId and digest, the adapter's own sync, paged read-back, the full baseline before and after play, reset from the baseline file (including reopening Studio on it), deadlines, the deny list, returned edits as revisions, the provider's four operations | L | MacBook | each operation proved on the worker, including after a Studio restart with no person involved. A mode not proved reads not executed (#2405 §R2.4) |
 | **2e. the assertion harness and reader** | §2.7 | M | MacBook | every outcome in §2.7 produced on purpose and read correctly |
-| **2f. the squad** | the profiles, fragments and playbooks (with S6's items, §2.8), the test loader, the tolerant emission parser, and the replay tests | M | MacBook | the playbooks pass replay on the Spark's models |
+| **SIP-0116, phases 3, 5 and 6** | skills loading with repair lineage and the kept copy; the Campaign's pin; lessons | M–L | MacBook | SIP-0116 §14's proofs |
+| **2f. the squad** | the `game_dev_roblox` development profile, the three skillsets and their skills (with S6's items, §2.8), the squad profiles, the tolerant emission parser, and the replay tests. **The profile's requirements are switched on only after SIP-0116's phases 2–6** | M | MacBook | the skills pass replay on the Spark's models |
 | **2g. the product** | §2.10's copy and sweep (done in phase 0), the place file and its baseline (done), eligibility, registration and the goal set | S | MacBook | a Campaign on it passes preflight |
-| **3. the demonstration** | **full-path gate first:** representative tasks through the real prompt budget, scoped context, playbook loading and reader, with context selection measured. Then a machinery rehearsal on `game-dev-roblox-lite-14b`, the pre-registered repair diagnostic, and the counted two-increment run on the Spark, handed over as a run plan | M | MacBook, then Spark | §1 read live |
+| **3. the demonstration** | **full-path gate first:** representative tasks through the real prompt budget, scoped context, skill loading and reader, with context selection measured. Then a machinery rehearsal on `game-dev-roblox-lite-14b`, the pre-registered repair diagnostic, and the counted two-increment run on the Spark, handed over as a run plan | M | MacBook, then Spark | §1 read live |
 
-**Phase 2 is gated by 2a.** The fixture path comes first, then Studio execution (2b, 2d, 2e), then squad-driven
-development (2f, 3). Discovery, installation, external packaging and plugin lifecycle machinery stay deferred
-throughout.
+**Phase 2 is gated by SIP-0116's phases 1 and 2, then by 2a.** The fixture path comes next, then Studio execution
+(2b, 2d, 2e), then squad-driven development (2f, 3). SIP-0116's phases 3, 5 and 6 wait for 2.7's prompt, vault and
+Campaign issues to merge (#2933 and #2935, #2931 and #2973, #2783), since they change the same files (§5). Pack
+discovery, installation and packaging stay in 3.x throughout.
 
 ### Phase 0: the spikes (done)
 
@@ -489,7 +508,7 @@ All five ran on 2026-11-08. The record is `game-dev-roblox-spikes.md` in `docs/p
 | **S2. Rojo and Script Sync** | one sync rule gives `.local.luau` the `LocalScript` class Studio assigns; the game's instance-tree requires need a loader to run under Lune |
 | **S4. the network path** | the MacBook reaches the Spark's runtime API outward over Tailscale, with no port opened on the MacBook |
 | **S5. the designer test** | a partial pass; new kinds of authored work need central task types (§2.2) |
-| **S6. a first Luau probe** | correct Luau and Roblox API use in six of six samples; the weak spots are things the specialty supplies (§2.8). A first probe, not a rate |
+| **S6. a first Luau probe** | correct Luau and Roblox API use in six of six samples; the weak spots are things the skillsets and context selection supply (§2.8). A first probe, not a rate |
 
 (S3, revision 1's Open Cloud spike, left the plan: §4.)
 
@@ -506,16 +525,16 @@ day. The criteria the record was read against:
 
 ## 4. Not in this plan
 
-- the plugin machinery (§2.2's trigger), `game-dev-unity` and `game-dev-godot`;
-- `game-dev-common` content;
+- pack discovery, loading and packaging (Capability-Backed Agents, 3.x), and any Unity or Godot work;
+- game contracts beyond the four (a build contract, capture, a `multiplayer` specialization), each with its consumer;
 - **Open Cloud Luau execution:** later research. If taken up, it needs its own spike, scoped credentials and an
   explicit owner authorization to publish to the isolated test place only. A successful API call doesn't add a
   driver;
 - publishing to Roblox, and any write to the real Tower Ascension repository or game;
 - multiplayer play, judging feel or visuals, and changes to parts, models or UI built in Studio;
 - console views for the worker;
-- **more plannable task types than `qa.run_remote_operation`.** Phase 2a builds the property that makes a type
-  plannable (§2.4) and sets it on the four that need it. Each further type is its own proposal, with its handler,
+- **more plannable task types than `qa.run_remote_operation`.** SIP-0116's phase 2 builds the property that makes a
+  type plannable (§2.4), and it's set on the four that need it. Each further type is its own proposal, with its handler,
   expected artifacts, footprint rules, correction mapping and every verifier seam that judges it, because a planned
   type changes planning for every product. A designer's `design.` types are the expected next case;
 - Script Sync in the worker's Studio (D10).
@@ -536,7 +555,7 @@ handed over as a run plan.
 - the copy's place file and its baseline file.
 
 So local rehearsals run only while the MacBook stack isn't producing evidence for anything else. Compose runs from
-the main checkout with `--no-deps`; running `up` from a worktree took Postgres down on 2026-10-18. Specialty
+the main checkout with `--no-deps`; running `up` from a worktree took Postgres down on 2026-10-18. The Roblox
 profiles and worker registrations exist only in that local stack until 2.8.
 
 **Settled with the Spark session (2026-11-08),** answering this plan's note. The 2.7 plan is #2971.
@@ -554,14 +573,16 @@ profiles and worker registrations exist only in that local stack until 2.8.
   | `squadops.embeddings`, removed | #2736 |
 
 - **Expected unchanged:** `orchestration/handler_registry.py`, `bootstrap/handlers.py`, `tasks/task_types.py`,
-  `sandbox/findings` and the profile snapshot hash.
+  `sandbox/findings` and the profile snapshot hash. SIP-0116 changes `tasks/task_types.py` and adds its record
+  beside that hash, which is why it builds for 2.8 and merges nothing during 2.7.
 - **A wire-contract change to build on:** the task envelope and the reply payload gain a dispatch identity (#2932).
   `qa.run_remote_operation` carries it.
 - **Shared contracts:** #2932 and #2931, as §2.5 uses them.
 - **S6 ran** in 2.7's early build window, before the pinned deploy, from a run plan, on TensorFold with the deployed
   options. Its outputs came back by message, and the Spark's copies were deleted afterwards.
 - **The 2.7 plan's §5a** records Q45 and Q46 as ruled on 2026-10-31, the open question as whether revision 3
-  replaces their foundation (§8), and this plan as a 2.8 input, unplaced.
+  replaces their foundation (§8), and this plan as a 2.8 input, unplaced. It also records SIP-0116's acceptance
+  during 2.7 (#3008): a design commitment, with no code in 2.7.
 - **2.8:** recorded as the MacBook lane's input to the 2.8 plan's draft: the demonstration's gate and counted run,
   and the worker registry's migration deploy when 2.8 opens. The slot is the owner's ruling.
 
@@ -574,9 +595,9 @@ profiles and worker registrations exist only in that local stack until 2.8.
 | Studio restarts | a link or an id the worker relied on is gone | the adapter owns sync (D10) and confirms Studio by PlaceId and digest; phase 2d's exit includes a restart |
 | Studio is the owner's interactive app | the worker is unavailable while the owner uses it or the MacBook sleeps | outward connection, leases, `blocked_unverified`; runs scheduled for free time |
 | an interrupted play session survives | the next attempt tests a dirty state | reconcile-and-reset at every claim after an expiry or cancel (§2.5) |
-| the Spark's models write weak Luau | increments fail framing or the scenario | S6, then the playbooks, then the full-path gate; the claim is two increments, not a rate |
+| the Spark's models write weak Luau | increments fail framing or the scenario | S6, then the skills, then the full-path gate; the claim is two increments, not a rate |
 | the code is mostly engine-coupled | few headless tests | increments chosen so their criteria are observable through harness assertions |
-| a long branch during 2.7 | rebase cost | the isolation boundary keeps the change to four named places, one table and one port |
+| a long branch during 2.7 | rebase cost | SIP-0116's phase 1 is inert and its files are named; the Roblox work adds skillset directories, one adapter and one port |
 | the copy keeps a production integration | a merge on the copy reaches real players | the sweep in §2.10, recorded in the spike record, done |
 | the live game moves ahead of the copy | the squad builds on stale source | the copy is compared with the game at each refresh, and the difference recorded (§2.10) |
 
@@ -593,8 +614,8 @@ the same day ("agree, finish revision 3": §2.4, §4).
 | D4 | Open Cloud | **out of this plan** (§4). A later, separate authorization if wanted, with an explicit test-place publishing exception and scoped credentials |
 | D5 | Studio authority | **typed, deny-by-default operations,** with target, argument, artifact, path and execution-context validation, and `execute_luau` only through the harness (§2.6) |
 | D6 | parallel development | **the MacBook worktree and local rehearsals approved.** Merges, migrations, profile activation, worker registration and deployment stay out of 2.7's runtime; no dark merge |
-| D7 | task types | **one engine-neutral task type with operation ids** (§2.4), proved with a fixture first, and **planning made property-driven** so the type can reach a plan. An extensible host-owned lookup only if the fixture shows it's needed, as a design change |
-| D8 | naming (§2.1) | **`game-dev-<engine>` for specialty identifiers,** generic names for shared execution infrastructure |
+| D7 | task types | **one engine-neutral task type with operation ids** (§2.4), proved with a fixture first, and **planning made property-driven** so the type can reach a plan. An extensible host-owned lookup only if the fixture shows it's needed, as a design change. **Read in revision 4:** the operation ids are the provider's, a plan names a contract and mode, and the property is SIP-0116's `plannable` (§2.4) |
+| D8 | naming (§2.1) | **`game-dev-<engine>` for specialty identifiers,** generic names for shared execution infrastructure. **Read in revision 4:** it names the development profile, the squad profiles, the adapter and the working documents. Whether skillset ids take the form too is Q68, open (#2405 R4.8) |
 | D9 | the SIPs | **keep the two-document split;** revise their normative sections and ledgers after the spikes, reconcile the prior rulings (§8), and accept after renewed review |
 | D10 | the worker's sync path | **the adapter owns sync:** it writes the manifest's scripts into Studio through its fixed harness and confirms them by read-back. No Script Sync link in the worker's Studio, since links on a local place are lost on every restart. Script Sync stays the game owners' workflow (§2.6) |
 
@@ -614,5 +635,18 @@ Revision 3 of both SIPs states, for each:
 | #2841 §7: the demonstration | revision 0 | **revised:** the counted claim and the repair diagnostic split (§1) |
 | both delivery ledgers | 2026-10-31 | **re-cut** to phases 2a–2g and 3. Rows stay unplaced until the 2.8 plan places them with issues |
 
-**Runtime guarantees retained:** the digest pin, both preflights, SIP-0096's verdict vocabulary, the worker's
-authority limits and the revision boundary.
+**Revision 4 of both SIPs states, on SIP-0116:**
+
+| commitment | recorded | what revision 4 does |
+|---|---|---|
+| **Q45** | ruled 2026-10-31; replaced in revision 3 | **answered by the split:** SIP-0116 is the part of Capability-Backed Agents that precedes 3.x |
+| **Q46**: Switchboard as the loader | ruled 2026-10-31 | **stays deferred,** with Capability-Backed Agents' packaging, in 3.x. SIP-0116 builds no loader |
+| **Q51**: an amendment or a note in Capability-Backed Agents | ruled 2026-11-09 | **the amendment:** its §28, written on SIP-0116's PR (#3006) |
+| revision 3's `specialties` field and specialty digest | revision 3 | **withdrawn.** Requirements sit on the development profile, supply on the agents, and the binding in SIP-0116's record (§2.3) |
+| revision 3's trigger for plugin machinery | revision 3 | **retired with the specialty.** Packaging is 3.x's |
+| revision 3's operation ids in a plan | revision 3 | **replaced:** a plan names a contract and mode (§2.4) |
+| #2841 R3.4: the builder's source manifest | revision 3 | **computed at staging** (§2.8) |
+| both delivery ledgers | 2026-11-08 | **re-cut** around SIP-0116's phases (§3). Rows stay unplaced until the 2.8 plan places them with issues |
+
+**Runtime guarantees retained:** SIP-0116's checks at creation and at the plan gate, its record and the Campaign's
+pin, SIP-0096's verdict vocabulary, the worker's authority limits and the revision boundary.
