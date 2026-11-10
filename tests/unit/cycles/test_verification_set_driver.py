@@ -91,11 +91,15 @@ def _committed_counting_sets() -> set[str]:
     `*-ab-*` is an A/B arm, which carries no pin fields at all, and `*-regression-*` is an
     uncounted roll on a new deploy read against an earlier line's baseline (the 2.0 validation
     plan, rev 2), which carries that baseline's configuration pins and no deploy pins.
+    `*-shakeout-*` is a line's shakeout pair (2.7 plan §4.3): plumbing on the final deploy, never
+    counted, so it carries no counting pins either.
     """
     return {
         path.name
         for path in _set_files()
-        if not any(kind in path.name for kind in ("-diagnostic-", "-ab-", "-regression-"))
+        if not any(
+            kind in path.name for kind in ("-diagnostic-", "-ab-", "-regression-", "-shakeout-")
+        )
     }
 
 
