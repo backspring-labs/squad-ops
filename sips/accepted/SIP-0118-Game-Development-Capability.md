@@ -1,18 +1,19 @@
 ---
 sip_uid: '17934561107767162'
 title: Game Development Capability Packs and Squad Composition
-status: proposed
+status: accepted
 author: Jason Ladd
 created_at: '2026-10-31T00:00:00Z'
+sip_number: 118
+updated_at: '2026-11-10T13:53:05.385598Z'
 ---
+# SIP-0118: Game Development Capability Packs and Squad Composition
 
-# SIP: Game Development Capability Packs and Squad Composition
-
-**Status:** Proposed (2026-10-31), for design review. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs). **Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. The composition is the `game_dev_roblox` development profile's requirements and the skillsets the selected squad's agents carry, compared at cycle preflight. This revision defines the engine-neutral game contracts once and the Roblox skillsets that specialize them (§R4, which governs where §R3 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.2, R4.6). Acceptance waits for the owner's renewed review (D9)
+**Status:** **Accepted (2026-11-10):** the owner, "accept 2405 then 2841", after the renewed review D9 called for; the companion was accepted first, as SIP-0117. Proposed 2026-10-31. **Building:** its phases may be built in a MacBook worktree during 2.7 (D6); nothing merges until 2.8 opens and its plan places them. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs). **Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. The composition is the `game_dev_roblox` development profile's requirements and the skillsets the selected squad's agents carry, compared at cycle preflight. This revision defines the engine-neutral game contracts once and the Roblox skillsets that specialize them (§R4, which governs where §R3 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.2, R4.6)
 **Authors:** Jason Ladd (the owner's outside review, 2026-10-31); drafted by the Spark lane's supervisor
 **Created:** 2026-10-31
-**Targets:** unplaced. Acceptance and release placement are the owner's.
-**Companion:** Game Development Platform Capability (`SIP-Game-Development-Platform.md`, PR #2405), revision 4:
+**Targets:** unplaced. Release placement is the owner's, through the 2.8 plan.
+**Companion:** SIP-0117, Game Development Platform Capability (`sips/accepted/SIP-0117-Game-Development-Platform.md`), accepted 2026-11-10 at revision 4:
 how an engine is integrated. This SIP is how a squad uses it.
 **Builds on:** SIP-0116 (Agent Skillsets, accepted 2026-11-09: the part of Capability-Backed Agents' §21 and §27 taken
 into 2.x); Capability-Backed Agents (proposed, deferred to 3.x) for packaging;
@@ -72,7 +73,7 @@ Agent Skillsets, accepted 2026-11-09.
 - **One question, shared with the companion (Q68), ruled 2026-11-09:** skillset ids keep SIP-0116's platform-first
   form, and the Roblox dev skillset is `roblox-luau-dev`.
 
-## Delivery ledger (current as of 2026-11-09)
+## Delivery ledger (current as of 2026-11-10)
 
 The rows follow the adopted plan's phases, as revision 4 orders them (R4.5). The 2.8 plan places them, so none is
 placed yet. SIP-0116's phases are in its own ledger.
@@ -262,7 +263,7 @@ The ledger is re-cut to match. **§8's two definitions of done stand.**
 | **Q47** (frontier-drafted, owner-approved, replay-tested skills) | **stands,** and is now the rule for every skill (SIP-0116 §7) |
 | **Q48** (an optional designer, a separate roster identity) | **stands** (R4.4) |
 | **Q51** (an amendment or a note in Capability-Backed Agents) | **ruled 2026-11-09: the amendment,** its §28, written on SIP-0116's PR |
-| **D1, D6, D9** | **stand.** D6: SIP-0116's phases and this work build in the MacBook worktree during 2.7, and nothing merges before 2.8 opens |
+| **D1, D6, D9** | **stand.** D9: accepted 2026-11-10, after the companion. D6: SIP-0116's phases and this work build in the MacBook worktree during 2.7, and nothing merges before 2.8 opens |
 | **D7, D8** | **stand,** read as the companion's R4.4 and R4.8 say |
 | **Q68** (skillset ids under D8) | **ruled 2026-11-09:** SIP-0116's platform-first form, with `roblox-luau-dev` |
 

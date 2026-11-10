@@ -1,4 +1,4 @@
-last_assigned: 117
+last_assigned: 118
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -1054,6 +1054,15 @@ sips:
   approver: jladd
   created_at: '2026-10-16T00:00:00Z'
   updated_at: '2026-11-10T13:51:38.937521Z'
+- sip_uid: '17934561107767162'
+  sip_number: 118
+  title: Game Development Capability Packs and Squad Composition
+  path: sips/accepted/SIP-0118-Game-Development-Capability.md
+  status: accepted
+  author: Jason Ladd
+  approver: jladd
+  created_at: '2026-10-31T00:00:00Z'
+  updated_at: '2026-11-10T13:53:05.424748Z'
 - sip_uid: '17883224960370906'
   sip_number: null
   title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
@@ -1200,15 +1209,6 @@ sips:
   approver: null
   created_at: '2026-07-11T00:00:00Z'
   updated_at: '2026-10-05T00:09:40.210288Z'
-- sip_uid: '17934561107767162'
-  sip_number: null
-  title: Game Development Capability Packs and Squad Composition
-  path: sips/proposed/SIP-Game-Capability-Packs.md
-  status: proposed
-  author: Jason Ladd
-  approver: null
-  created_at: '2026-10-31T00:00:00Z'
-  updated_at: null
 - sip_uid: '17883224960416254'
   sip_number: null
   title: Test-First Verification
