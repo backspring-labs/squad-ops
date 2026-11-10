@@ -8,7 +8,7 @@ created_at: '2026-10-31T00:00:00Z'
 
 # SIP: Game Development Capability Packs and Squad Composition
 
-**Status:** Proposed (2026-10-31), for design review. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs). **Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. The composition is the `game_dev_roblox` development profile's requirements and the skillsets the selected squad's agents carry, compared at cycle preflight. This revision defines the engine-neutral game contracts once and the Roblox skillsets that specialize them (§R4, which governs where §R3 or the body differs). Acceptance waits for the owner's renewed review (D9)
+**Status:** Proposed (2026-10-31), for design review. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs). **Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. The composition is the `game_dev_roblox` development profile's requirements and the skillsets the selected squad's agents carry, compared at cycle preflight. This revision defines the engine-neutral game contracts once and the Roblox skillsets that specialize them (§R4, which governs where §R3 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.2, R4.6). Acceptance waits for the owner's renewed review (D9)
 **Authors:** Jason Ladd (the owner's outside review, 2026-10-31); drafted by the Spark lane's supervisor
 **Created:** 2026-10-31
 **Targets:** unplaced. Acceptance and release placement are the owner's.
@@ -69,7 +69,8 @@ Agent Skillsets, accepted 2026-11-09.
   - SIP-0110: project instructions outrank skills, and a skill is never a project instruction (the boundary above);
   - SIP-0072 and SIP-0075: the profile's `requires` and the agents' `skillsets`;
   - SIP-0096: each contract's evidence is its three families.
-- **One question, shared with the companion (Q68):** skillset ids under D8.
+- **One question, shared with the companion (Q68), ruled 2026-11-09:** skillset ids keep SIP-0116's platform-first
+  form, and the Roblox dev skillset is `roblox-luau-dev`.
 
 ## Delivery ledger (current as of 2026-11-09)
 
@@ -129,7 +130,7 @@ requires:
       needs:
         - {contract: game.increment_design}
   dev:
-    - skillset: luau-dev
+    - skillset: roblox-luau-dev
       needs:
         - {contract: game.gameplay_implementation}
   qa:
@@ -141,7 +142,7 @@ requires:
 
 # the game-dev-roblox squad profile: who supplies it (the other agents declare none)
 - { agent_id: nat, role: strat, serves_roles: [strat], skillsets: [roblox-increment-design] }
-- { agent_id: neo, role: dev,   serves_roles: [dev],   skillsets: [luau-dev] }
+- { agent_id: neo, role: dev,   serves_roles: [dev],   skillsets: [roblox-luau-dev] }
 - { agent_id: eve, role: qa,    serves_roles: [qa],    skillsets: [roblox-studio-qa] }
 ```
 
@@ -172,7 +173,8 @@ platform adds no core task type.
 | `game.unit_tests` | `qa.test` | a suite for the game's logic | one executed-passed, executed-failed or not-executed result per test, read per test id from the runner's own output. A run that collected nothing reads not executed | `headless`, `editor`, `play` |
 | `game.scenario_verification` | `qa.run_remote_operation` | one frozen player scenario, run against the candidate | one record per declared assertion (the companion's R3.7). `passed` and `failed` are executed; `missing`, `setup_failed`, `unsupported_input` and `wrong_context` are not executed. Each run names the source revision and the scenario's digest | `play`, `multiplayer` |
 
-- **Four contracts, because the first consumer needs four.** SIP-0116's worked example (its §16) shows the dev and QA
+- **Four contracts, because the first consumer needs four** (ruled by the owner on 2026-11-09, "approve as
+  recommended"). SIP-0116's worked example (its §16) shows the dev and QA
   requirements and is marked illustrative. `game.increment_design` is added here: the accepted claim (D1) has
   strategy write each play scenario, and a scenario the harness can't read fails every run as `setup_failed`.
 - **§5's role table stands as the generic responsibilities,** with each role's contract:
@@ -185,7 +187,7 @@ platform adds no core task type.
   | builder | none (below) |
   | data, lead | none: their steps are the base set's, unchanged |
 
-- **The builder has no step in the first milestone.** `builder.assemble` isn't offered on a repository-backed
+- **The builder has no step in the first milestone** (ruled the same day). `builder.assemble` isn't offered on a repository-backed
   increment (SIP-0116 §16, today's rule in `_plan_authoring_service.py`). So R3.4's source manifest is derived by
   the operation's staging step from the candidate tree: the path, digest and script class of each script, by the
   repository's own mapping (the companion's R3.6). It's computed, never authored.
@@ -203,7 +205,7 @@ Platform `roblox`, variant `studio-place`: a local place file opened in Roblox S
 | skillset | role | specializes | skills | prerequisites and tools |
 |---|---|---|---|---|
 | `roblox-increment-design` | strat | `game.increment_design` | `play-scenario-authoring`: the scenario form the harness reads (setup that passes the title screen, input by instance path, each assertion's id and its server or client context), and asking for a change's effect on saved state | none |
-| `luau-dev` | dev | `game.gameplay_implementation` | `luau-gameplay`: the client and server split, replication, and the repository's script layout; `shared/luau-conventions` | none |
+| `roblox-luau-dev` | dev | `game.gameplay_implementation` | `luau-gameplay`: the client and server split, replication, and the repository's script layout; `shared/luau-conventions` | none |
 | `roblox-studio-qa` | qa | `game.unit_tests` in `headless`; `game.scenario_verification` in `play` | `luau-test-loader`: the loader for instance-tree requires, as a resource, and where tests live; `studio-play-scenario`: reading assertion records and stating what wasn't executed; `shared/luau-conventions` | prerequisites: `lune`, `roblox-studio`. Tool: `play_scenario`, of `roblox-studio`, at the `worker` location |
 
 - **The skills follow Q47,** which SIP-0116 §7 makes the rule for every skill: a frontier model drafts, the owner
@@ -217,9 +219,9 @@ Platform `roblox`, variant `studio-place`: a local place file opened in Roblox S
     gate (R3.5). It's SIP-0112's, and no skill supplies it;
   - the emission parser's tolerance for a missing fence is a core change, in phase 2f.
 - **Skills cross the correction path by lineage** (SIP-0116 §7.1): a dev repair of a failed scenario loads
-  `luau-dev`'s skills, and a re-run of the operation loads none.
-- **Naming:** the skillset ids are SIP-0116's, and whether they take D8's `game-dev-<engine>` form is Q68 (the
-  companion's R4.8).
+  `roblox-luau-dev`'s skills, and a re-run of the operation loads none.
+- **Naming (Q68, ruled 2026-11-09):** the ids keep SIP-0116's platform-first form, so every Roblox skillset sorts
+  together. SIP-0116's examples write the dev skillset's id without the prefix (the companion's R4.8).
 
 ### R4.4 A designer, and the plugin trigger
 
@@ -261,7 +263,8 @@ The ledger is re-cut to match. **§8's two definitions of done stand.**
 | **Q48** (an optional designer, a separate roster identity) | **stands** (R4.4) |
 | **Q51** (an amendment or a note in Capability-Backed Agents) | **ruled 2026-11-09: the amendment,** its §28, written on SIP-0116's PR |
 | **D1, D6, D9** | **stand.** D6: SIP-0116's phases and this work build in the MacBook worktree during 2.7, and nothing merges before 2.8 opens |
-| **D7, D8** | **stand,** read as the companion's R4.4 and R4.8 say. Q68 is open |
+| **D7, D8** | **stand,** read as the companion's R4.4 and R4.8 say |
+| **Q68** (skillset ids under D8) | **ruled 2026-11-09:** SIP-0116's platform-first form, with `roblox-luau-dev` |
 
 ---
 
