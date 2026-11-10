@@ -9,6 +9,10 @@
 - **Placement is still the 2.8 plan's.** Nothing here places an issue or a release slot.
 - **Adopting the plan doesn't accept either game SIP.** Their revision 4 is written (PRs #2405 and #2841), and
   acceptance follows the owner's renewed review (§8).
+- **Revision 4's design calls and Q68 are ruled** (the owner, 2026-11-09: "approve as recommended"): the fourth
+  contract and its strategy skillset, the builder with no step in the first milestone, eligibility as the provider's
+  compatibility checks, a first skillset declaring `headless` and `play` only, and `roblox-luau-dev` as the dev
+  skillset's id.
 - **Building starts with SIP-0116's phases 1 and 2,** in a MacBook worktree (D6). Nothing merges before 2.8 opens.
 
 ## Revision log
@@ -116,7 +120,7 @@ gives every stack this shape, and Roblox is the first to use it.
 |---|---|---|
 | the game contracts: engine-neutral kinds of work, each with its evidence and its verification modes | `game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification` | #2841 R4.2 |
 | what the work requires | the `game_dev_roblox` development profile: platform `roblox`, variant `studio-place`, and the skillsets each responsibility requires | #2841 R4.1 |
-| what specializes the contracts for Roblox | three skillsets: `roblox-increment-design` (strategy), `luau-dev` (dev) and `roblox-studio-qa` (QA) | #2841 R4.3 |
+| what specializes the contracts for Roblox | three skillsets: `roblox-increment-design` (strategy), `roblox-luau-dev` (dev) and `roblox-studio-qa` (QA) | #2841 R4.3 |
 | who supplies them | the `game-dev-roblox` squad profile, whose agents declare the skillsets they carry (§2.8) | SIP-0116 §5.2 |
 | what executes | the `roblox-studio` provider on a worker, and `lune` in the QA container | #2405 R4.2; §2.5, §2.6 |
 
@@ -139,13 +143,14 @@ gives every stack this shape, and Roblox is the first to use it.
 ### 2.1 Naming: the engine is a suffix, so siblings sort together
 
 D8's `game-dev-<engine>` form names the profile, the squad, the adapter and the working documents. Shared execution
-infrastructure and the game contracts keep generic names. Skillset ids follow SIP-0116's form until Q68 is ruled.
+infrastructure and the game contracts keep generic names. Skillset ids keep SIP-0116's platform-first form (Q68, ruled 2026-11-09), so an
+engine's skillsets sort together too.
 
 | item | Roblox | a later sibling |
 |---|---|---|
 | development profile | `game_dev_roblox` | `game_dev_unity` |
 | squad profiles | `game-dev-roblox` (Spark), `game-dev-roblox-lite-14b` (MacBook machinery check) | `game-dev-unity` |
-| skillsets, under `src/squadops/prompts/skillsets/` (Q68) | `roblox-increment-design`, `luau-dev`, `roblox-studio-qa` | `unity-csharp-dev`, `unity-test-qa` |
+| skillsets, under `src/squadops/prompts/skillsets/` | `roblox-increment-design`, `roblox-luau-dev`, `roblox-studio-qa` | `unity-csharp-dev`, `unity-test-qa` |
 | skills | inside each skillset's `skills/`; shared ones under `_shared/` (`shared/luau-conventions`) | the same |
 | providers | `roblox-studio`, `lune` | a Unity editor provider |
 | adapter (MCP, filesystem and network I/O) | `adapters/remote_execution/game_dev_roblox_studio/` | `adapters/remote_execution/game_dev_unity_editor/` |
@@ -406,7 +411,7 @@ in this plan depends on capture.
 
 - **Profiles:**
   - `game-dev-roblox`: the Spark's roster and models. Three agents declare skillsets: Nat carries
-    `roblox-increment-design`, Neo `luau-dev` and Eve `roblox-studio-qa`. The others declare none;
+    `roblox-increment-design`, Neo `roblox-luau-dev` and Eve `roblox-studio-qa`. The others declare none;
   - `game-dev-roblox-lite-14b`: the same on the MacBook. It checks machinery only.
 - **The roles** keep their identities (#2841 §5), each with its contract (#2841 R4.2):
   - strategy: change requests with frozen scenarios (`game.increment_design`);
@@ -615,7 +620,7 @@ the same day ("agree, finish revision 3": §2.4, §4).
 | D5 | Studio authority | **typed, deny-by-default operations,** with target, argument, artifact, path and execution-context validation, and `execute_luau` only through the harness (§2.6) |
 | D6 | parallel development | **the MacBook worktree and local rehearsals approved.** Merges, migrations, profile activation, worker registration and deployment stay out of 2.7's runtime; no dark merge |
 | D7 | task types | **one engine-neutral task type with operation ids** (§2.4), proved with a fixture first, and **planning made property-driven** so the type can reach a plan. An extensible host-owned lookup only if the fixture shows it's needed, as a design change. **Read in revision 4:** the operation ids are the provider's, a plan names a contract and mode, and the property is SIP-0116's `plannable` (§2.4) |
-| D8 | naming (§2.1) | **`game-dev-<engine>` for specialty identifiers,** generic names for shared execution infrastructure. **Read in revision 4:** it names the development profile, the squad profiles, the adapter and the working documents. Whether skillset ids take the form too is Q68, open (#2405 R4.8) |
+| D8 | naming (§2.1) | **`game-dev-<engine>` for specialty identifiers,** generic names for shared execution infrastructure. **Read in revision 4:** it names the development profile, the squad profiles, the adapter and the working documents. Skillset ids keep SIP-0116's platform-first form, with `roblox-luau-dev` (Q68, ruled 2026-11-09; #2405 R4.8) |
 | D9 | the SIPs | **keep the two-document split;** revise their normative sections and ledgers after the spikes, reconcile the prior rulings (§8), and accept after renewed review |
 | D10 | the worker's sync path | **the adapter owns sync:** it writes the manifest's scripts into Studio through its fixed harness and confirms them by read-back. No Script Sync link in the worker's Studio, since links on a local place are lost on every restart. Script Sync stays the game owners' workflow (§2.6) |
 
