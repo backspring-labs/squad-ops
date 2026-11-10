@@ -499,10 +499,28 @@ def _plain(value: Any) -> Any:
     return value
 
 
-def load_stored_change_request(document: str) -> ChangeRequest:
-    """A change request as the proposal run stored it (``change_request.yaml``): the authored
-    content, parsed by the one parse, with the framework's derived fields restored. The stored
-    hash must be the content's, so a document altered after it was ruled on is refused."""
+@dataclass(frozen=True)
+class StoredProposal:
+    """What a stored change request's proposer authored, and what its parse was given: the
+    document's fields without the ones the framework derives, and the proposal's identity."""
+
+    authored: dict
+    proposal_id: str
+    version: int
+    baseline_tree: str
+    basis: IncrementBasis
+    criterion_files: tuple[PlacedCriterionFile, ...]
+
+
+def stored_proposal(document: str) -> StoredProposal:
+    """The authored side of a stored change request (``change_request.yaml``). The one inverse of
+    :func:`stored_change_request`, which :func:`load_stored_change_request` and a recorded script
+    (#2892) both read: the stored footprint on a campaign branch is the authored globs with the
+    placed criterion files appended, and every other derived field is the framework's.
+
+    Raises:
+        ChangeRequestError: the document is not a stored change request.
+    """
     data = yaml.safe_load(document)
     if not isinstance(data, dict):
         raise ChangeRequestError("a stored change request is a mapping")
@@ -522,11 +540,31 @@ def load_stored_change_request(document: str) -> ChangeRequest:
             # The stored footprint is the authored globs with the placed files appended.
             stored = {f.path for f in placed}
             authored["footprint"] = [p for p in data.get("footprint") or () if p not in stored]
-        request = parse_change_request(
-            authored,
+        return StoredProposal(
+            authored=authored,
             proposal_id=str(data["proposal_id"]),
             version=int(data["version"]),
             baseline_tree=str(data["baseline_tree"]),
+            basis=basis,
+            criterion_files=placed,
+        )
+    except (KeyError, TypeError) as e:
+        raise ChangeRequestError(f"the stored change request has no {e}") from e
+
+
+def load_stored_change_request(document: str) -> ChangeRequest:
+    """A change request as the proposal run stored it (``change_request.yaml``): the authored
+    content, parsed by the one parse, with the framework's derived fields restored. The stored
+    hash must be the content's, so a document altered after it was ruled on is refused."""
+    proposal = stored_proposal(document)
+    data = yaml.safe_load(document)
+    basis, placed = proposal.basis, proposal.criterion_files
+    try:
+        request = parse_change_request(
+            proposal.authored,
+            proposal_id=proposal.proposal_id,
+            version=proposal.version,
+            baseline_tree=proposal.baseline_tree,
             basis=basis,
         )
     except (KeyError, TypeError) as e:

@@ -1,0 +1,1613 @@
+script: shelfnote-soak-c06
+description: 'The 2.7 soak (#2892), launch 6 of 15: increment 5 (SN-10), accepted.
+  Recorded from cyc_b40a358f4eba of Campaign cmp_f14bab82c35f on deploy dep_16a1cb4f54c8.
+  Its latency is the recorded gap times 3, held at 1,500 s.'
+replay_latency: true
+recorded_from:
+  project_id: prj-shelfnote
+  cycle_id: cyc_b40a358f4eba
+  change_requests:
+    strategy.propose_increment occurrence 1 call 1:
+      proposal_id: prop_39de98fc9676
+      version: 1
+      baseline_tree: e6f85d3179a5aa1d654163e31994b80ca76daddb21bceadf7537b7f439c0ad12
+      basis: campaign_branch
+      criterion_files:
+      - criterion_id: X1
+        path: tests/test_criterion_X1.py
+      goals_revision: 3
+      content_hash: b0cccbd34bdcb6302ea4e0311880367abd4ca15424b78901903c724bc232c22a
+      footprint:
+      - backend/routes.py
+      - tests/test_criterion_X1.py
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
+  latency:
+    scale: 3.0
+    cap_seconds: 1500.0
+    capped: 0
+    total_seconds: 2426.344
+answers:
+- task_type: strategy.propose_increment
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:change_request.yaml
+    kind: feature
+    prd_delta: []
+    manifest_delta: []
+    criteria:
+    - id: X1
+      statement: GET /export returns the shelf as a CSV file with a header row and one
+        row per book
+      surface_kind: endpoint
+      surface: GET /export
+      observable: the response status is 200 and Content-Type is text/csv; the body's
+        first line is a comma-separated header containing the fields title, status, tags,
+        rating; each subsequent line is one book's values in that field order, with one
+        line per book on the shelf
+    must_not_break:
+    - T1
+    - T2
+    - T3
+    - C1
+    - C2
+    retires: []
+    replaces_verifiers: []
+    footprint:
+    - backend/routes.py
+    backlog_item: SN-10
+    ```
+- task_type: development.design_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    # Technical Design: GET /export CSV Endpoint
+
+    ## 1. Architecture Overview
+
+    This change adds a single read-only endpoint, `GET /export`, to the existing FastAPI backend. It serialises the current shelf state into a CSV document and returns it as a `Response` with `Content-Type: text/csv`.
+
+    **Component interaction:**
+
+    ```
+    Client ──► FastAPI Router (routes.py)
+                    │
+                    ├── store.get_all_books()   (existing, unchanged)
+                    │
+                    ├── csv.writer (stdlib)     (no new dependency)
+                    │
+                    └── Response(media_type="text/csv")  (FastAPI starlette)
+    ```
+
+    No new components, no new dependencies, no changes to `models.py`, `store.py`, `main.py`, or any frontend file. The only files touched are `backend/routes.py` (additive route handler) and the new `tests/test_criterion_X1.py`.
+
+    ## 2. Interface Definition
+
+    ### Endpoint Contract
+
+    | Aspect | Value |
+    |--------|-------|
+    | Method | `GET` |
+    | Path | `/export` |
+    | Auth | None (matches existing public book endpoints) |
+    | Request body | None |
+    | Response status | `200` |
+    | Response Content-Type | `text/csv` |
+    | Response body | RFC-4180 CSV; first line is the header row; remaining lines are one per book |
+
+    ### CSV Schema
+
+    | Column index | Header | Source field | Serialisation |
+    |---|---|---|---|
+    | 0 | `title` | `book.title` (str) | raw |
+    | 1 | `status` | `book.status` (str) | raw |
+    | 2 | `tags` | `book.tags` (list[str]) | semicolon-joined, e.g. `fiction;sci-fi`; empty string if no tags |
+    | 3 | `rating` | `book.rating` (int \| None) | `str(rating)` or empty string if `None` |
+
+    **Rationale for semicolon-join on tags:** The CSV delimiter is a comma. Using a comma inside the tags field would force the `csv` module to quote the field, producing `"fiction,sci-fi"`. Semicolon-join keeps every row to exactly four unquoted fields, making the output trivially parseable by any spreadsheet or line-splitting tool. This is the conventional choice for list-valued fields in CSV exports (cf. TSV-like convention).
+
+    ### Route Handler (≤ 30 lines per CONTRIBUTING.md)
+
+    ```python
+    import csv
+    import io
+
+    # … existing imports and routes …
+
+    @app.get("/export")
+    def export_shelf():
+        """Return the full shelf as a CSV file."""
+        books = store.get_all_books()
+        buf = io.StringIO()
+        writer = csv.writer(buf, lineterminator="\n")
+        writer.writerow(["title", "status", "tags", "rating"])
+        for book in books:
+            writer.writerow([
+                book.title,
+                book.status,
+                ";".join(book.tags),
+                str(book.rating) if book.rating is not None else "",
+            ])
+        return Response(content=buf.getvalue(), media_type="text/csv")
+    ```
+
+    That is 12 lines of handler body (excluding the blank separator). Well under the 30-line cap.
+
+    ### Test File Contract (`tests/test_criterion_X1.py`)
+
+    The test file exercises the endpoint through `TestClient` (matching the product's existing backend test convention). It must:
+
+    1. Seed the shelf with a known set of books (≥ 2, covering: multiple tags, a single tag, no tags, a `None` rating).
+    2. Issue `GET /export`.
+    3. Assert `response.status_code == 200`.
+    4. Assert `"text/csv" in response.headers["content-type"]`.
+    5. Parse the body with `csv.reader(io.StringIO(response.text))`.
+    6. Assert the first row equals `["title", "status", "tags", "rating"]`.
+    7. Assert the number of remaining rows equals the number of seeded books.
+    8. For each seeded book, assert a row exists whose fields match in order.
+
+    The test **fails on response content**, not on an import of the new route. An unknown path returning 404 does not satisfy this criterion.
+
+    ## 3. Implementation Sequencing
+
+    | Phase | Task | Depends on | Est. time |
+    |-------|------|-----------|-----------|
+    | 1 | Add `import csv`, `import io` to `backend/routes.py` header; add `from fastapi import Response` if not already imported | — | 2 min |
+    | 2 | Append the `export_shelf` handler to `backend/routes.py` | 1 | 5 min |
+    | 3 | Write `tests/test_criterion_X1.py` | 2 (to know the exact path) | 10 min |
+    | 4 | Run full backend test suite (`pytest -q`) to verify X1 passes and T1/T2/T3/C1/C2 still pass | 3 | 3 min |
+    | 5 | Confirm `boots` check passes (import `app`) | 2 | 1 min |
+
+    Total estimated effort: **~21 minutes** of implementation. Well within the 3-hour budget, leaving ample room for iteration if a `must_not_break` test surfaces a regression.
+
+    ## 4. Proto Validation Plan
+
+    Because the change is a small, single-handler addition to an existing, well-understood codebase, the feasibility risk is minimal. One lightweight prototype is warranted to confirm the only non-trivial assumption:
+
+    **Proto P1 — Store access pattern**
+
+    - **Goal:** Confirm that `store` (as used in `routes.py`) exposes a method or property that returns *all* books without a filter, and that the return type is iterable with `.title`, `.status`, `.tags`, `.rating` attributes.
+    - **Method:** Read `backend/store.py` and `backend/routes.py` at the baseline commit. If the existing `GET /books` (or `GET /books/search`) handler already iterates all books, the pattern is confirmed. If the store only supports filtered queries, verify that an empty-filter call returns the full shelf.
+    - **Disposal:** If the pattern differs (e.g., the store returns a `List[Book]` via `store.list_books()` rather than `store.get_all_books()`), adjust the handler's one call accordingly. No structural change needed.
+
+    No other proto is required. CSV serialisation via the stdlib `csv` module is a solved, documented pattern.
+
+    ## 5. Unknown Classification
+
+    | # | Unknown | Classification | Resolution / Mitigation |
+    |---|---------|---------------|------------------------|
+    | U1 | Exact method name on `store` to retrieve all books | **resolved** | Inferred from the existing list endpoint in `routes.py`; confirmed during Proto P1. If the name differs, it is a one-line fix. |
+    | U2 | Whether `book.rating` can be `None` | **resolved** | The criterion names `rating` as a field. The handler guards with `str(book.rating) if book.rating is not None else ""`. Either way the criterion is met (a value is present in the column). |
+    | U3 | How to serialise a multi-element `tags` list into one CSV field | **resolved** | Semicolon-join. Chosen as the conventional, unambiguous choice. The criterion requires the field to be named `tags` and present in order; it does not mandate an internal delimiter. |
+    | U4 | Whether an empty shelf (zero books) should still return 200 with only the header row | **resolved** | Yes. A CSV with only a header is valid; the criterion says "one row per book on the shelf" — if there are zero books, there are zero data rows. Status remains 200. |
+    | U5 | Line terminator: `\n` vs `\r\n` | **resolved** | Use `\n` (Linux-native, matches test assertions reading the body as text). The `csv.writer` `lineterminator` parameter is set explicitly. |
+    | U6 | Whether the `Response` import is already in `routes.py` | **acceptable_risk** | `fastapi` is a declared dependency. If `Response` is not yet imported, add it. One-line change. Mitigation: the import is part of Phase 1. |
+    | U7 | Whether `TestClient` fixtures in `conftest.py` auto-seed or the test must seed explicitly | **resolved** | The test seeds explicitly via the existing `POST /books` endpoint through the same `TestClient`, guaranteeing a deterministic state regardless of fixture defaults. This also satisfies the CONTRIBUTING rule that tests fail on *response content*, not on fixture imports. |
+
+    **No `blocker` or `requires_human_decision` unknowns.** All unknowns are resolved or carry trivial, low-cost mitigations.
+
+    ## 6. Must-Not-Break Verification Strategy
+
+    The existing criteria T1, T2, T3, C1, C2 correspond to test files that already exist under `tests/`. The change is purely additive (a new route + a new test file), so the existing handlers in `routes.py` are untouched. The verification is:
+
+    1. Run `pytest -q` after the change. All pre-existing test files must pass.
+    2. The new test file `test_criterion_X1.py` is discovered by pytest's default pattern (`test_*.py` under the repo root) and runs alongside the others.
+    3. The `boots` check (`python -c "from backend.main import app"`) confirms no import-time breakage.
+    4. Frontend tests are unaffected (no frontend files in the footprint).
+
+    ## 7. Files Emitted
+
+    | Path | Action |
+    |------|--------|
+    | `backend/routes.py` | **Replaced** — existing content + `import csv`, `import io`, (and `Response` if absent) in the import block, plus the `export_shelf` handler appended. All existing routes unchanged. |
+    | `tests/test_criterion_X1.py` | **New** — criterion test as described in §2. |
+
+    No other file is modified or created. The footprint is exactly two files, matching the change request.
+
+    ## 8. Deferrals
+
+    None. The entire scope fits comfortably within the 3-hour budget. No work is deferred.
+  latency_seconds: 420.183
+- task_type: qa.define_test_strategy
+  occurrence: 1
+  call: 1
+  content: |-
+    # QA Test Strategy: GET /export CSV Endpoint
+
+    ## Acceptance Checklist
+
+    Derived from criterion X1 and the change request's `must_not_break` set. Each item is a concrete pass/fail check to be verified during implementation review and test execution.
+
+    ### X1 — GET /export returns shelf as CSV
+
+    - [ ] `GET /export` returns HTTP status **200**
+    - [ ] Response header `Content-Type` is **`text/csv`** (charset suffix permitted, e.g. `text/csv; charset=utf-8`)
+    - [ ] Response body's **first line** is a comma-separated header containing exactly the fields `title`, `status`, `tags`, `rating` in that order
+    - [ ] Each subsequent line represents **exactly one book** currently on the shelf
+    - [ ] The number of data rows equals the number of books on the shelf at the time of the request
+    - [ ] Each data row has **four fields** corresponding to the header order
+    - [ ] The CSV body is parseable by a standard CSV reader (no unescaped delimiters within fields, no unescaped quotes, no bare newlines inside fields)
+    - [ ] An **empty shelf** (zero books) returns 200 with only the header row and no data rows
+    - [ ] Books with **no tags** produce a well-formed row (empty or placeholder value in the `tags` column; no trailing comma mismatch)
+    - [ ] Books whose `title` or `tags` contain **commas, double-quotes, or newlines** produce correctly-escaped CSV fields
+
+    ### Must-Not-Break — Existing Criteria Still Pass
+
+    - [ ] **T1** — existing criterion test passes unchanged
+    - [ ] **T2** — existing criterion test passes unchanged
+    - [ ] **T3** — existing criterion test passes unchanged
+    - [ ] **C1** — existing criterion test passes unchanged
+    - [ ] **C2** — existing criterion test passes unchanged
+    - [ ] `boots` check (`.venv/bin/python -c "from backend.main import app"`) succeeds
+    - [ ] Full `backend_tests` suite passes with zero regressions
+
+    ### Structural / Contribution Compliance
+
+    - [ ] `GET /export` handler in `backend/routes.py` is **under 30 lines** (CONTRIBUTING.md rule)
+    - [ ] New test file is `tests/test_criterion_X1.py` (matches footprint and criterion_files)
+    - [ ] Test uses the product's established test-client pattern (FastAPI `TestClient` or `httpx.AsyncClient`), not a live server
+    - [ ] Test imports only packages declared in the product's manifests
+    - [ ] No files outside the footprint (`backend/routes.py`, `tests/test_criterion_X1.py`) are modified
+
+    ---
+
+    ## Test Strategy Note
+
+    ### Scope Decisions
+
+    | Layer | In scope? | Rationale |
+    |-------|-----------|-----------|
+    | **Unit** (isolated function tests) | No | The change is a single HTTP endpoint; there is no internal helper function whose logic warrants isolated unit testing. The CSV serialisation is the behaviour under test and is exercised through the endpoint. |
+    | **Integration** (endpoint via TestClient) | **Yes — primary** | The criterion is defined on an HTTP surface (`GET /export`). The test drives the running application through FastAPI's `TestClient`, populates the shelf via existing store/API, calls `/export`, and asserts on status, headers, and body content. This is the product's established pattern for endpoint criteria. |
+    | **Contract** (external consumer schema) | No | No external consumer contract is defined in the PRD delta. The CSV format is specified by the criterion itself; there is no published schema to verify against. |
+    | **E2E / Frontend** | No | The footprint touches no frontend file. The criterion's surface is a backend endpoint. No UI change means no vitest scope. |
+
+    ### Test File: `tests/test_criterion_X1.py`
+
+    The test file will contain the following test functions (grouped for clarity; final naming is the implementer's choice):
+
+    1. **`test_export_returns_200_and_csv_content_type`** — Populates the shelf with a known set of books, calls `GET /export`, asserts status 200 and `Content-Type: text/csv`.
+    2. **`test_export_header_row`** — Asserts the first line is `title,status,tags,rating` (or the equivalent with proper quoting if any field name needed it — it doesn't).
+    3. **`test_export_one_row_per_book`** — Populates N books, asserts the body has exactly N+1 lines (header + N data rows), and each data row has 4 comma-separated fields.
+    4. **`test_export_field_order_and_values`** — Populates a book with known title, status, tags, and rating; asserts the corresponding row's fields match in order.
+    5. **`test_export_empty_shelf`** — With no books, asserts 200, header-only body (1 line).
+    6. **`test_export_special_characters_in_title`** — Adds a book whose title contains commas and/or quotes; asserts the row is still parseable by `csv.reader` and the round-tripped value matches.
+    7. **`test_export_book_with_no_tags`** — Adds a book with an empty tags list; asserts the row is well-formed (4 fields, no spurious empty columns).
+
+    > **Note on tags serialisation:** The criterion specifies the column name `tags` but does not prescribe how a list of tags maps to a single CSV field (e.g. semicolon-delimited, JSON array string, etc.). The implementation must pick one consistent scheme. The test in item 7 above will lock in whatever scheme the implementation uses by asserting structural validity (4 fields, parseable). If the implementer's scheme is, say, `tag1;tag2`, the test asserts that. This is an implementation detail, not a criterion violation, so the test asserts *consistency and parseability* rather than a specific delimiter unless the dev design pins one.
+
+    ### Regression Protection
+
+    The `must_not_break` set (T1, T2, T3, C1, C2) is enforced by the product's own `backend_tests` check running the full pytest suite. No separate regression test file is needed or permitted (footprint constraint). The implementation must not alter any existing endpoint's behaviour.
+
+    ### What Is NOT Tested Here
+
+    - Frontend rendering of an export button or download action — no frontend change in this cycle.
+    - Large-shelf performance (thousands of books) — out of scope for a feature-add; would be a separate performance criterion.
+    - Concurrent export while another request mutates the shelf — the endpoint is a simple read; the existing store's thread-safety model is already covered by existing tests.
+
+    ---
+
+    ## Defect Severity Rubric
+
+    | Severity | Label | Definition | Examples in this change |
+    |----------|-------|------------|-------------------------|
+    | **Blocker** | `S0` | Endpoint does not exist, returns 5xx, or the application fails to boot. Must-not-break criteria fail. | `GET /export` returns 500; importing `backend.routes` raises; T1–C2 tests regress. |
+    | **Critical** | `S1` | Criterion X1 is not met: wrong status code, wrong Content-Type, missing/mis-ordered header fields, wrong number of rows. | Returns 200 but Content-Type is `text/plain`; header is `title,status,rating,tags` (wrong order); 3 books on shelf but only 2 data rows. |
+    | **Major** | `S2` | CSV is structurally invalid or data is corrupted: unescaped delimiters, lost fields, wrong values in a field. | A title containing a comma splits the row into 5 fields; a book's rating appears in the status column. |
+    | **Minor** | `S3` | Cosmetic or edge-case formatting issue that does not break parseability or data integrity. | Trailing newline at end of CSV body (acceptable in most parsers); tags column uses a delimiter different from what the test expects but is still consistent and parseable. |
+    | **Trivial** | `S4` | Style, naming, or documentation nit. No functional impact. | Handler is 31 lines (one over the 30-line limit) but logic is correct; test variable naming is unclear. |
+
+    **Gate rule:** Any S0 or S1 defect blocks acceptance. S2 defects block acceptance unless they are proven unreachable in the deployed product's data model (e.g. the store schema forbids commas in titles — verify before dismissing). S3 and S4 are recorded and may be deferred.
+
+    ---
+
+    ## Risk-Based Test Priorities
+
+    Ranked by likelihood of defect × impact if missed:
+
+    | Priority | Area | Risk Rationale | Coverage Emphasis |
+    |----------|------|----------------|-------------------|
+    | **P1** | **CSV structural correctness** (header fields, field order, row count) | The criterion is explicit about these. A mis-ordered header or off-by-one row count is an S1 defect. Easy to get wrong if the implementer builds the row in a different order than the header. | Test items 2, 3 above. Use `csv.reader` to parse the body and assert column count and values programmatically rather than string-matching. |
+    | **P2** | **Content-Type and status code** | FastAPI's default `Response` sets `application/json`. If the implementer forgets to set `media_type="text/csv"` or uses a `FileResponse` with the wrong MIME, the criterion fails. | Test item 1. Assert the exact header value. |
+    | **P3** | **Special characters in title/tags** | Python's `csv.writer` handles quoting, but a manual string-join approach (f-strings, `",".join`) will break on commas. This is the most likely source of S2 defects. | Test item 6. Use `csv.reader` round-trip: write via endpoint, read back, compare to source data. |
+    | **P4** | **Empty shelf** | Edge case; easy to forget. Returning 200 with just a header is correct; returning 404 or an empty body is not. | Test item 5. |
+    | **P5** | **Book with no tags / no rating** | Depends on how the store represents "absent" values (empty list vs None vs missing key). If the implementer does `book["tags"][0]` instead of handling an empty list, this 500s. | Test item 7. |
+    | **P6** | **Regression on existing endpoints** | Low risk (additive change, no shared-state mutation), but a misplaced route decorator or import could shadow an existing path. | Covered by the full `backend_tests` run; no separate test needed within footprint. |
+    | **P7** | **Handler length (< 30 lines)** | CONTRIBUTING.md rule. Low functional risk but a process gate. | Visual / linter check at review time. |
+
+    ---
+
+    ## Initialisation Status
+
+    | Check | Result |
+    |-------|--------|
+    | Role configuration loaded | ✅ QA Agent, Stage A (planning) |
+    | Change request parsed | ✅ `prop_39de98fc9676`, 1 criterion (X1), 5 must-not-break (T1–T3, C1–C2) |
+    | Footprint identified | ✅ `backend/routes.py`, `tests/test_criterion_X1.py` |
+    | Product conventions confirmed | ✅ pytest + TestClient, vitest, FastAPI + React/Vite |
+    | Prior test files reviewed (names) | ✅ 5 criterion files (T1–T3, C1–C2) + feature tests present |
+    | Reviewer notes processed | ✅ "unattended recording: approved as it stands" — no additional behavioural constraints beyond the criterion |
+    | Pending tasks from prior cycles | None identified |
+
+    **Ready for implementation workload.** The test strategy above defines *what* to test and *how*; test code is produced in the implementation cycle, not here.
+  latency_seconds: 235.235
+- task_type: governance.prepare_plan_authoring_brief
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_authoring_brief.yaml
+    version: 1
+    brief_id: brief-prop_39de98fc9676-001
+    objective_summary: |
+      Add a single read-only GET /export endpoint to the existing Shelfnote FastAPI
+      backend that serialises the current book shelf as a CSV file (Content-Type
+      text/csv) with a four-column header row (title, status, tags, rating) and one
+      data row per book. The handler is appended to the existing router in
+      backend/routes.py using only the Python stdlib (csv, io) and FastAPI's
+      Response class. A new criterion test file, tests/test_criterion_X1.py,
+      exercises the endpoint through the product's established TestClient pattern
+      and asserts on response content. No other file — no model, store, main,
+      error module, or any frontend file — is touched. The five must-not-break
+      criteria (T1, T2, T3, C1, C2) must continue to pass.
+    accepted_stack:
+      backend: "FastAPI + Python 3 (stdlib csv, io; no new pip dependencies)"
+      frontend: "React + Vite (unchanged this cycle)"
+      backend_testing: "pytest + FastAPI TestClient (no live server)"
+      frontend_testing: "vitest + Testing Library (unchanged this cycle)"
+      persistence: "existing backend/store.py (unchanged)"
+    must_cover_requirements:
+      - "GET /export returns the full shelf as a CSV file with Content-Type text/csv; the body's first line is the header row containing the four fields title, status, tags, rating in that order, and each subsequent line is one book's values in that field order, with one line per book on the shelf"
+      - "The tags list is serialised into a single CSV field using semicolon-join (e.g. fiction;sci-fi); an empty tags list produces an empty field"
+      - "A None rating is serialised as an empty string in the rating column; a present integer rating is serialised via str()"
+      - "An empty shelf (zero books) returns a valid CSV document containing only the header row"
+      - "The export_shelf handler in backend/routes.py is under thirty lines (CONTRIBUTING.md rule)"
+      - "The test file is tests/test_criterion_X1.py and exercises the endpoint through TestClient, asserting on response content (headers, body structure, field values), not on imports of the new route"
+      - "CSV fields containing commas, double-quotes, or newlines are correctly escaped so the body round-trips through csv.reader"
+      - "Must-not-break: criteria T1, T2, T3, C1, C2 and the boots check all continue to pass"
+      - "The footprint is exactly two files: backend/routes.py (modified) and tests/test_criterion_X1.py (new); no other file is created or modified"
+    scope_cuts:
+      - "No frontend changes: no export button, download link, or any React component modification"
+      - "No changes to backend/models.py, backend/store.py, backend/main.py, backend/errors.py, or any other backend module"
+      - "No new pip or npm dependencies"
+      - "No export format options (JSON, TSV, etc.) — CSV only"
+      - "No pagination, filtering, or column-selection on the export"
+      - "No large-shelf performance testing or concurrency testing of the export endpoint"
+      - "No changes to CORS, auth, or error-handling configuration"
+    risk_areas:
+      - "CSV special-character handling: titles or tags containing commas, quotes, or newlines must not corrupt row structure"
+      - "Route path collision: /export must not shadow or be shadowed by any existing route in backend/routes.py"
+      - "Handler line count: the new handler plus any added imports must keep the handler body under thirty lines"
+      - "Additive-change safety: the modification to backend/routes.py is a whole-file replacement; an accidental edit to an existing handler or import would break must-not-break criteria"
+      - "Test discovery: the test file must be discoverable by the product's pytest runner (test_*.py under the repo root) and must import only packages declared in the product's manifests"
+    source_artifact_refs:
+      - "change_request.yaml"
+      - "technical_design.md"
+      - "test_strategy.md"
+      - "ruling_notes.md"
+    major_components:
+      - "export_shelf route handler (additive) in backend/routes.py"
+      - "test_criterion_X1 test suite in tests/test_criterion_X1.py"
+    dependency_assumptions:
+      - "The existing backend/store.py module exposes a method (likely get_all_books or similar) that returns all books as an iterable of objects with .title, .status, .tags, .rating attributes"
+      - "FastAPI's Response class (from fastapi or starlette.responses) is available without a new dependency"
+      - "The product's root-level conftest.py provides a TestClient fixture that the test file can use to seed books and call endpoints"
+      - "The product's pytest runner discovers test_*.py files under the repo root"
+    time_budget_guidance:
+      backend_api: 20
+      tests: 50
+      verification_and_regression: 30
+    task_granularity_guidance: >-
+      Two producing tasks: one adds the handler to backend/routes.py, the other
+      writes tests/test_criterion_X1.py. Each targets a single file and aims for
+      a 5–15 minute LLM generation. A third task verifies the full suite passes.
+    artifact_naming_conventions:
+      - "The handler function is named export_shelf in backend/routes.py"
+      - "The test file is tests/test_criterion_X1.py, matching the change request's criterion_files declaration"
+      - "Test functions follow the product's existing pattern: test_<descriptive_snake_case>"
+      - "All new imports (csv, io, Response) go in the existing import block at the top of backend/routes.py"
+    open_questions:
+      - >-
+        The product's backend tests live at tests/ (repo root), and its conftest.py
+        is also at root. The plan-shape rule qa-tests-live-in-the-stacks-namespace
+        names backend/tests/ as the FastAPI+React stack's qa test namespace and
+        calls out root-level tests/ as "owned by nobody." However, the change
+        request's footprint mandates tests/test_criterion_X1.py, and every
+        existing test in the product lives at tests/. Should the plan treat
+        tests/ as the effective qa namespace for this product (because the
+        product's own layout and runner define it), or is this a conflict that
+        blocks the qa.test task at gate?
+    ```
+  latency_seconds: 305.084
+- task_type: development.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-ede7c2b4
+    source_brief_id: brief-prop_39de98fc9676-001
+    proposing_role: development
+    scope_statement: |
+      Adds the export_shelf route handler to backend/routes.py, implementing GET /export
+      as a read-only CSV serialisation of the full book shelf. The handler uses stdlib csv
+      and io with FastAPI's Response class; no new dependencies are introduced. All
+      pre-existing routes, imports, and helper functions in backend/routes.py are
+      preserved verbatim. This is the sole dev-domain producing task for this increment.
+    tasks:
+      - task_type: development.develop
+        role: dev
+        focus: "export_shelf handler in backend/routes.py"
+        description: |
+          Emit backend/routes.py in full (whole-file replacement). Add import csv and
+          import io to the existing import block at the top of the file. Add
+          from fastapi import Response if not already present in the import block.
+          Append a function named export_shelf at the end of the file, decorated with
+          the router's GET decorator for path /export. The handler retrieves all books
+          from the store, writes a four-column CSV header row (title, status, tags,
+          rating) to an io.StringIO buffer via csv.writer, then writes one data row per
+          book: title and status as raw strings, the tags list semicolon-joined into a
+          single field (empty string when the list is empty), and the rating as
+          str(rating) when present or an empty string when None. Returns a Response
+          carrying the buffer's content with media_type "text/csv". The handler body
+          (excluding the decorator line and docstring) stays under thirty lines per
+          CONTRIBUTING.md. All pre-existing routes, imports, and helper functions in
+          routes.py are preserved unchanged.
+        expected_artifacts:
+          - "backend/routes.py"
+        acceptance_criteria:
+          - check: endpoint_defined
+            file: 'backend/routes.py'
+            methods_paths: ['GET /export']
+            severity: error
+          - check: import_present
+            file: 'backend/routes.py'
+            module: 'csv'
+            severity: error
+          - check: import_present
+            file: 'backend/routes.py'
+            module: 'io'
+            severity: error
+          - check: import_present
+            file: 'backend/routes.py'
+            module: 'fastapi'
+            symbol: 'Response'
+            severity: error
+          - check: function_defined
+            file: 'backend/routes.py'
+            name_prefix: 'export_shelf'
+            min_count: 1
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/routes.py']
+            severity: error
+          - check: module_imports
+            file: 'backend/routes.py'
+            severity: error
+          - "Handler body (excluding decorator and docstring) is under thirty lines per CONTRIBUTING.md"
+          - "Tags list is serialised into a single CSV field using semicolon-join (e.g. fiction;sci-fi); an empty tags list produces an empty field"
+          - "A None rating serialises as an empty string in the rating column; a present integer rating is serialised via str()"
+          - "An empty shelf (zero books) produces a valid CSV document containing only the header row"
+          - "CSV fields containing commas, double-quotes, or newlines are correctly escaped by the csv module so the body round-trips through csv.reader"
+          - "No existing route, import, or function in backend/routes.py is modified, removed, or reordered; the change is purely additive (new imports appended to the import block, new handler appended after existing routes)"
+        depends_on_focus: []
+    brief_conflicts: []
+    source_artifact_refs:
+      - "technical_design.md"
+      - "change_request.yaml"
+    assumptions:
+      - "The existing store module exposes a method returning all books as an iterable of objects with .title, .status, .tags, .rating attributes (confirmed during Proto P1 per technical_design.md §4)"
+      - "The FastAPI router object already instantiated in backend/routes.py is available for the new route decorator"
+      - "The product's root-level conftest.py provides a TestClient fixture that the QA test file can use to seed books and call endpoints"
+    risks:
+      - "Whole-file replacement of backend/routes.py: an accidental alteration to an existing handler or import would break must-not-break criteria T1, T2, T3, C1, C2"
+      - "If the store's all-books retrieval method differs from the name assumed (e.g. list_books vs get_all_books), the handler's single call requires a one-line fix with no structural change"
+    gaps_not_covered: []
+    confidence: high
+    ```
+  latency_seconds: 216.934
+- task_type: qa.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-3b35c066
+    source_brief_id: brief-prop_39de98fc9676-001
+    proposing_role: qa
+    scope_statement: |
+      Proposes the single qa.test task that authors tests/test_criterion_X1.py,
+      the criterion test suite for the GET /export CSV endpoint. The suite
+      exercises the endpoint through the product's TestClient fixture and
+      asserts on response content: Content-Type, header row fields and order,
+      one data row per book, tags semicolon-join, empty-tags and None-rating
+      serialisation, empty-shelf header-only output, and CSV special-character
+      escaping round-trip. These tests verify every behavioural must-cover
+      requirement from the brief that the dev task's structural criteria cannot
+      confirm (the dev task verifies the handler exists and compiles; this suite
+      verifies the endpoint actually produces correct CSV). Must-not-break
+      criteria (T1, T2, T3, C1, C2, boots) are enforced by the product's own
+      test runner re-executing the frozen criterion files on the candidate
+      build; no separate qa task is needed for regression.
+    tasks:
+      - task_type: qa.test
+        role: qa
+        focus: "test_criterion_X1 export CSV endpoint suite"
+        description: |
+          Author tests/test_criterion_X1.py exercising GET /export through
+          the product's TestClient fixture (provided by the root-level
+          conftest.py). The suite distinguishes these faults from correct
+          behaviour:
+
+          - Wrong Content-Type: response carries application/json (FastAPI's
+            default) instead of text/csv. Caught by asserting the header.
+          - Wrong or missing header row: first line lacks one of the four
+            fields (title, status, tags, rating) or lists them in a different
+            order. Caught by parsing the body with csv.reader and comparing
+            the first row to the expected list.
+          - Wrong row count: N seeded books produce N±1 data rows (off-by-one
+            in the loop, or an extra blank row). Caught by asserting
+            len(rows) == seeded_count + 1.
+          - Tags not semicolon-joined: a book tagged ["fiction","sci-fi"]
+            produces "fiction,sci-fi" (CSV-split) or a JSON array instead of
+            "fiction;sci-fi". Caught by asserting the round-tripped field
+            equals the expected semicolon-joined string.
+          - Empty tags list not producing an empty field: a book with
+            tags=[] yields a missing or placeholder value instead of "".
+            Caught by asserting the field is an empty string.
+          - None rating not serialised as empty string: book.rating=None
+            yields the literal string "None" instead of "". Caught by
+            asserting the field is "".
+          - Integer rating not serialised via str(): book.rating=4 yields
+            "4.0" (float) or the integer object instead of "4". Caught by
+            asserting the field equals "4".
+          - Empty shelf not returning header-only CSV: zero books yields a
+            500, an empty body, or a missing header row instead of a single
+            header line. Caught by asserting row count is 1 and the sole
+            row equals the header.
+          - Special characters corrupting row structure: a title containing
+            a comma, a double-quote, or a newline splits the row into extra
+            fields or shifts subsequent columns. Caught by seeding such a
+            book, parsing the body with csv.reader, and asserting the
+            round-tripped title matches the original string exactly.
+
+          Each test seeds its own known books via the existing POST /books
+          endpoint through the same TestClient, then issues GET /export and
+          asserts on the response. No test asserts on an import of the new
+          route; an unknown path's 404 does not satisfy any assertion here.
+        expected_artifacts:
+          - "tests/test_criterion_X1.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: 'tests/test_criterion_X1.py'
+            name_prefix: 'test_'
+            min_count: 5
+            severity: error
+          - check: import_present
+            file: 'tests/test_criterion_X1.py'
+            module: 'csv'
+            severity: error
+          - check: import_present
+            file: 'tests/test_criterion_X1.py'
+            module: 'io'
+            severity: error
+          - "Every test function exercises the endpoint through the TestClient fixture from conftest.py, seeds books via the API, and asserts on response content (status, headers, body parsed via csv.reader). No test asserts on an import of the new route or on the existence of the handler function."
+          - "Covers: Content-Type is text/csv; header row equals [title, status, tags, rating]; one data row per seeded book with four fields in order; tags list semicolon-joined (fiction;sci-fi) with empty list producing empty field; None rating produces empty string; integer rating produces str(rating); empty shelf returns header-only single-row CSV; a title containing a comma, a double-quote, and a newline round-trips through csv.reader to the original string."
+          - "No test asserts behaviour outside criterion X1's observable contract. Must-not-break criteria T1, T2, T3, C1, C2 are enforced by the product's own test runner re-executing their frozen test files; this suite does not duplicate those assertions."
+        depends_on_focus:
+          - "dev:export_shelf handler in backend/routes.py"
+    brief_conflicts:
+      - field: "open_questions[0] — qa-tests-live-in-the-stacks-namespace vs tests/ (root)"
+        concern: >-
+          The plan-shape rule names backend/tests/ as the FastAPI+React stack's
+          qa test namespace. This product's actual layout places all tests at
+          tests/ (repo root), its conftest.py is at root, and its pytest runner
+          (pytest -q -p no:cacheprovider, run from repo root) discovers
+          test_*.py under . — which includes tests/. Every existing criterion
+          file (T1–T3, C1–C2) and feature test lives at tests/. The brief's
+          own must_cover_requirements and the increment's mandated file list
+          both specify tests/test_criterion_X1.py. I interpret the product's
+          own runner configuration and layout as defining the effective qa
+          namespace for this product, overriding the stack's abstract default.
+          No action needed from the merger; flagging for the record.
+        severity: info
+    source_artifact_refs:
+      - "test_strategy.md"
+      - "technical_design.md"
+      - "change_request.yaml"
+    assumptions:
+      - "The root-level conftest.py provides a TestClient fixture (or a fixture that yields a TestClient) that the test file can use to issue HTTP requests and seed books via POST /books"
+      - "The product's pytest runner (pytest -q -p no:cacheprovider, cwd=repo root) discovers tests/test_criterion_X1.py by the test_*.py pattern under ./"
+      - "The existing POST /books endpoint accepts JSON with title, status, tags, and rating fields and persists via the store, making those values visible to GET /export"
+    risks:
+      - "If the conftest.py fixture auto-seeds books before each test, the test must clear or account for pre-existing data; the test strategy notes explicit seeding via POST /books to guarantee deterministic state"
+      - "If the store's in-memory state is shared across tests in the same session, tests in this file must not depend on execution order or must reset state via an available mechanism (e.g., a fresh TestClient per test)"
+    gaps_not_covered:
+      - "Handler line-count verification (< 30 lines) is a structural/code-review criterion, not a behavioural one; it is covered by the dev task's prose acceptance criterion and by CONTRIBUTING.md compliance at review time. A behavioural test cannot observe line count."
+      - "Route path collision (risk area 2) is verified indirectly: if /export shadowed an existing route, the frozen must-not-break tests (T1, T2, T3, C1, C2) would fail when the full suite runs. No separate test is needed within the footprint."
+      - "Footprint compliance (exactly two files) is verified by the framework's additive_containment check, not by a test."
+    confidence: high
+    ```
+  latency_seconds: 341.17
+- task_type: strategy.propose_plan_guidance
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_guidance.yaml
+    version: 1
+    guidance_id: guid-9263d43b
+    source_brief_id: brief-prop_39de98fc9676-001
+    proposing_role: strategy
+    priority_guidance:
+      - area: tests
+        priority: high
+        rationale: |
+          The test file is the larger deliverable (brief allocates 50 % of the
+          time budget to tests) and the criterion gate keys on it. It must
+          exercise every must-cover requirement through TestClient — headers,
+          body structure, field order, semicolon-join, None-rating, empty-shelf
+          header-only case, and CSV round-trip through csv.reader. Under-
+          specifying coverage here is the most likely path to a criterion
+          failing at gate while the handler itself is correct.
+      - area: backend_api
+        priority: medium
+        rationale: |
+          The handler is small (< 30 lines, stdlib csv/io only) but it is the
+          integration anchor: the test file, the must-not-break criteria, and
+          the CSV serialisation contract all depend on it being correct on
+          first emission. Getting the route path, Content-Type header, column
+          order, and the semicolon-join / None-rating logic right in one pass
+          avoids a repair cycle that would also force the test file to be
+          re-emitted.
+    ordering_guidance:
+      - before: "dev:export_shelf_handler"
+        after: "qa:export_shelf_tests"
+        rationale: |
+          The test file calls the handler through TestClient and asserts on its
+          response. The handler must exist and be correct before the test suite
+          can be authored and validated. Emitting the test first risks the
+          author writing assertions against an assumed signature or field order
+          that differs from what dev actually produces, forcing a repair on
+          both tasks.
+    risk_guidance:
+      - target: "dev:export_shelf_handler"
+        risk: |
+          Whole-file replacement of backend/routes.py is the single largest
+          regression surface in this change. The dev proposer should treat the
+          emission as an additive diff: preserve every existing route, import,
+          and handler verbatim and add only the new import line(s) and the
+          export_shelf function. A single dropped line or mis-indented block in
+          an existing handler breaks T1–T3 or C1–C2, and the must-not-break
+          criteria are load-bearing — there is no repair that can fix a
+          criterion test once the underlying handler is altered.
+      - target: "qa:export_shelf_tests"
+        risk: |
+          CSV special-character escaping is the functional risk the brief
+          flags. The test suite must include at least one seeded book whose
+          title contains a comma and one whose tag contains a double-quote, and
+          assert the response body round-trips through csv.reader without row
+          corruption. Without this the criterion is unverified and a real-world
+          shelf with such data would silently produce malformed CSV.
+      - target: "qa:export_shelf_tests"
+        risk: |
+          Test-namespace tension: the product's actual layout places every
+          pytest file at root-level tests/ and the brief mandates
+          tests/test_criterion_X1.py, but the plan-shape rule for the
+          FastAPI + React stack names backend/tests/ as the qa namespace. This
+          is the brief's own open question and must be resolved through the
+          brief's escalation path before the qa.test task is gated. The merger
+          should surface this in operator_notes so the gate operator can
+          adjudicate without the qa task being silently rejected.
+    time_budget_guidance:
+      - area: backend_api
+        budget_pct: 20
+      - area: tests
+        budget_pct: 50
+      - area: verification_and_regression
+        budget_pct: 30
+    scope_cut_guidance:
+      - "No modification to any existing test file (tests/test_criterion_T1.py through tests/test_tags_t2.py, tests/test_books_api.py, tests/test_ratings_*.py, etc.)"
+      - "No modification to conftest.py — the new test file must work with the existing TestClient fixture as-is; if it cannot, that is a brief-level issue, not a scope the proposers may widen"
+    must_not_skip:
+      - "Must-not-break: criteria T1, T2, T3, C1, C2 and the boots check all continue to pass"
+      - "CSV fields containing commas, double-quotes, or newlines are correctly escaped so the body round-trips through csv.reader"
+      - "The export_shelf handler in backend/routes.py is under thirty lines (CONTRIBUTING.md rule)"
+      - "The export endpoint returns Content-Type text/csv with the four-column header row title, status, tags, rating in that order"
+    defer_if_time_constrained:
+      - "The verification-and-regression pass can be scoped to the five must-not-break criterion files plus the new test file only, omitting a broader re-run of the full test suite if time pressure forces a cut; the must-not-break criteria are the gate, and the new test file is the only new coverage"
+    confidence: high
+    ```
+  latency_seconds: 225.533
+- task_type: governance.merge_plan
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:implementation_plan.yaml
+    version: 1
+    project_id: prj-shelfnote
+    cycle_id: cyc_b40a358f4eba
+    prd_hash: 3f45791f888e138c3e9bdeff5ec749c7f082e496e7f21d7f94aaa8711b9b8479
+    tasks:
+    - task_index: 0
+      task_type: development.develop
+      role: dev
+      focus: export_shelf handler in backend/routes.py
+      description: 'Emit backend/routes.py in full (whole-file replacement). Add import
+        csv and
+
+        import io to the existing import block at the top of the file. Add
+
+        from fastapi import Response if not already present in the import block.
+
+        Append a function named export_shelf at the end of the file, decorated with
+
+        the router''s GET decorator for path /export. The handler retrieves all books
+
+        from the store, writes a four-column CSV header row (title, status, tags,
+
+        rating) to an io.StringIO buffer via csv.writer, then writes one data row per
+
+        book: title and status as raw strings, the tags list semicolon-joined into a
+
+        single field (empty string when the list is empty), and the rating as
+
+        str(rating) when present or an empty string when None. Returns a Response
+
+        carrying the buffer''s content with media_type "text/csv". The handler body
+
+        (excluding the decorator line and docstring) stays under thirty lines per
+
+        CONTRIBUTING.md. All pre-existing routes, imports, and helper functions in
+
+        routes.py are preserved unchanged.'
+      expected_artifacts:
+      - backend/routes.py
+      acceptance_criteria:
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths:
+        - GET /export
+      - check: import_present
+        file: backend/routes.py
+        module: csv
+      - check: import_present
+        file: backend/routes.py
+        module: io
+      - check: import_present
+        file: backend/routes.py
+        module: fastapi
+        symbol: Response
+      - check: function_defined
+        file: backend/routes.py
+        name_prefix: export_shelf
+        min_count: 1
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/routes.py
+      - check: module_imports
+        file: backend/routes.py
+      - Handler body (excluding decorator and docstring) is under thirty lines per CONTRIBUTING.md
+      - Tags list is serialised into a single CSV field using semicolon-join (e.g. fiction;sci-fi);
+        an empty tags list produces an empty field
+      - A None rating serialises as an empty string in the rating column; a present integer
+        rating is serialised via str()
+      - An empty shelf (zero books) produces a valid CSV document containing only the
+        header row
+      - CSV fields containing commas, double-quotes, or newlines are correctly escaped
+        by the csv module so the body round-trips through csv.reader
+      - No existing route, import, or function in backend/routes.py is modified, removed,
+        or reordered; the change is purely additive (new imports appended to the import
+        block, new handler appended after existing routes)
+      depends_on: []
+    - task_index: 1
+      task_type: qa.test
+      role: qa
+      focus: test_criterion_X1 export CSV endpoint suite
+      description: "Author tests/test_criterion_X1.py exercising GET /export through\n\
+        the product's TestClient fixture (provided by the root-level\nconftest.py). The\
+        \ suite distinguishes these faults from correct\nbehaviour:\n\n- Wrong Content-Type:\
+        \ response carries application/json (FastAPI's\n  default) instead of text/csv.\
+        \ Caught by asserting the header.\n- Wrong or missing header row: first line lacks\
+        \ one of the four\n  fields (title, status, tags, rating) or lists them in a different\n\
+        \  order. Caught by parsing the body with csv.reader and comparing\n  the first\
+        \ row to the expected list.\n- Wrong row count: N seeded books produce N±1 data\
+        \ rows (off-by-one\n  in the loop, or an extra blank row). Caught by asserting\n\
+        \  len(rows) == seeded_count + 1.\n- Tags not semicolon-joined: a book tagged\
+        \ [\"fiction\",\"sci-fi\"]\n  produces \"fiction,sci-fi\" (CSV-split) or a JSON\
+        \ array instead of\n  \"fiction;sci-fi\". Caught by asserting the round-tripped\
+        \ field\n  equals the expected semicolon-joined string.\n- Empty tags list not\
+        \ producing an empty field: a book with\n  tags=[] yields a missing or placeholder\
+        \ value instead of \"\".\n  Caught by asserting the field is an empty string.\n\
+        - None rating not serialised as empty string: book.rating=None\n  yields the literal\
+        \ string \"None\" instead of \"\". Caught by\n  asserting the field is \"\".\n\
+        - Integer rating not serialised via str(): book.rating=4 yields\n  \"4.0\" (float)\
+        \ or the integer object instead of \"4\". Caught by\n  asserting the field equals\
+        \ \"4\".\n- Empty shelf not returning header-only CSV: zero books yields a\n \
+        \ 500, an empty body, or a missing header row instead of a single\n  header line.\
+        \ Caught by asserting row count is 1 and the sole\n  row equals the header.\n\
+        - Special characters corrupting row structure: a title containing\n  a comma,\
+        \ a double-quote, or a newline splits the row into extra\n  fields or shifts subsequent\
+        \ columns. Caught by seeding such a\n  book, parsing the body with csv.reader,\
+        \ and asserting the\n  round-tripped title matches the original string exactly.\n\
+        \nEach test seeds its own known books via the existing POST /books\nendpoint through\
+        \ the same TestClient, then issues GET /export and\nasserts on the response. No\
+        \ test asserts on an import of the new\nroute; an unknown path's 404 does not\
+        \ satisfy any assertion here."
+      expected_artifacts:
+      - tests/test_criterion_X1.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_X1.py
+        name_prefix: test_
+        min_count: 5
+      - check: import_present
+        file: tests/test_criterion_X1.py
+        module: csv
+      - check: import_present
+        file: tests/test_criterion_X1.py
+        module: io
+      - Every test function exercises the endpoint through the TestClient fixture from
+        conftest.py, seeds books via the API, and asserts on response content (status,
+        headers, body parsed via csv.reader). No test asserts on an import of the new
+        route or on the existence of the handler function.
+      - 'Covers: Content-Type is text/csv; header row equals [title, status, tags, rating];
+        one data row per seeded book with four fields in order; tags list semicolon-joined
+        (fiction;sci-fi) with empty list producing empty field; None rating produces empty
+        string; integer rating produces str(rating); empty shelf returns header-only single-row
+        CSV; a title containing a comma, a double-quote, and a newline round-trips through
+        csv.reader to the original string.'
+      - No test asserts behaviour outside criterion X1's observable contract. Must-not-break
+        criteria T1, T2, T3, C1, C2 are enforced by the product's own test runner re-executing
+        their frozen test files; this suite does not duplicate those assertions.
+      depends_on:
+      - 0
+    summary:
+      total_dev_tasks: 1
+      total_qa_tasks: 1
+      total_tasks: 2
+      estimated_layers: []
+    ```
+
+    ```yaml:merge_decisions.yaml
+    version: 1
+    target_plan_id: plan-cyc_b40a358f4eba
+    brief_id: brief-prop_39de98fc9676-001
+    proposal_ids:
+    - prop-ede7c2b4
+    - prop-3b35c066
+    guidance_ids:
+    - guid-9263d43b
+    authoring_mode: multi_role
+    sole_author_reason: null
+    proposal_completeness: complete
+    missing_proposals: []
+    canonical_tasks:
+    - task_index: 0
+      source_proposal_task_keys:
+      - dev:export_shelf handler in backend/routes.py
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 1
+      source_proposal_task_keys:
+      - qa:test_criterion_x1 export csv endpoint suite
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    brief_conflicts_disposition: []
+    operator_notes: ''
+    ```
+  latency_seconds: 0.5
+- task_type: governance.review_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    ---
+    readiness: go
+    sufficiency_score: 4
+    blocker_unknowns: 0
+    ---
+
+    ## Consolidated Plan
+
+    ### 1. Change Summary
+
+    Add a single `GET /export` endpoint to Shelfnote that serializes the current shelf as a CSV document. The endpoint returns HTTP 200 with `Content-Type: text/csv`. The body is a CSV with a header row (`title,status,tags,rating`) and one data row per book on the shelf, in the order the store returns them.
+
+    This is an **increment** to an accepted application. No existing endpoint, model, or frontend component changes. The only files modified are:
+
+    | File | Action |
+    |---|---|
+    | `backend/routes.py` | Add one route handler (~20 lines) |
+    | `tests/test_criterion_X1.py` | New test file for criterion X1 |
+
+    All other files remain at their accepted state (commit `995eebf9…`).
+
+    ### 2. Technical Design
+
+    #### 2.1 Route Handler — `backend/routes.py`
+
+    Append a new handler to the existing `APIRouter` (the router already defined in `routes.py`). The handler:
+
+    1. Calls the existing store to fetch all books (the same call `GET /books` uses to list the shelf). No new store method is needed; the store already exposes the full list.
+    2. Builds a CSV string in memory:
+       - **Header line**: `title,status,tags,rating`
+       - **Data rows**: one per book. Field values:
+         - `title` — the book's title string.
+         - `status` — the book's reading-status string (e.g. `"unstarted"`, `"reading"`, `"finished"`).
+         - `tags` — the book's tag list joined by a semicolon (`;`) to avoid collision with the CSV delimiter. An empty tag list yields an empty string.
+         - `rating` — the book's rating as an integer (or empty string if unrated, depending on the existing model's default).
+       - Each row is written with Python's `csv.writer` targeting a `io.StringIO` buffer, which handles quoting/escaping of titles that contain commas or quotes.
+    3. Returns `fastapi.responses.Response(content=csv_text, media_type="text/csv", status_code=200)`.
+
+    The handler is expected to be **≤ 25 lines**, satisfying the CONTRIBUTING.md 30-line cap.
+
+    No new imports beyond `csv`, `io`, and the existing `fastapi` / store references already present in `routes.py`.
+
+    #### 2.2 Edge Cases
+
+    | Case | Behaviour |
+    |---|---|
+    | Shelf is empty (0 books) | Response is 200, `text/csv`, body is the header row only. |
+    | Title contains a comma or double-quote | `csv.writer` emits the field wrapped in double-quotes with internal quotes doubled. |
+    | Tag list is empty | The `tags` column is an empty string (no trailing semicolons). |
+    | Rating is `None` / unset | The `rating` column is an empty string. |
+
+    These behaviours are implied by the criterion (header always present, one row per book) and by standard CSV semantics. No additional criteria are needed because the criterion's `observable` clause fully specifies the happy-path shape.
+
+    #### 2.3 What Does **Not** Change
+
+    - `backend/models.py`, `backend/store.py`, `backend/main.py`, `backend/errors.py` — untouched.
+    - All frontend files — untouched.
+    - All existing test files — untouched.
+    - `conftest.py`, `Dockerfile`, `nginx.conf`, `start.sh` — untouched.
+
+    ### 3. Test Strategy
+
+    #### 3.1 New Test File — `tests/test_criterion_X1.py`
+
+    Follows the product's existing test conventions (pytest, `TestClient` via `httpx` or `starlette`, seed-then-assert pattern visible in `test_books_api.py` and the `test_criterion_T*.py` files).
+
+    **Test cases (single file, multiple test functions):**
+
+    | Test | What it proves | Maps to |
+    |---|---|---|
+    | `test_export_returns_200_csv` | `GET /export` → status 200, `Content-Type` header starts with `text/csv` | X1 observable (status & content-type) |
+    | `test_export_header_row` | First line of body is exactly `title,status,tags,rating` | X1 observable (header fields) |
+    | `test_export_one_row_per_book` | Seed *n* books via `POST /books`, then `GET /export`; body has exactly *n*+1 lines (header + *n* data rows) | X1 observable (one row per book) |
+    | `test_export_field_order_and_values` | Seed a book with known title, status, tags, rating; verify the corresponding data row has those values in the correct column positions | X1 observable (field order, values) |
+    | `test_export_empty_shelf` | With no books, body is just the header row | X1 (implicit: zero books → zero data rows) |
+
+    Each test uses the existing `conftest.py` fixture (the `client` / `app` fixture that creates a `TestClient` over the FastAPI app with a fresh in-memory store). No new fixtures, no new imports beyond what `conftest.py` and `backend.main` already provide.
+
+    Per CONTRIBUTING.md: tests exercise the running app's API through the test client, assert on response content (status, headers, body), and do **not** import from the new code.
+
+    #### 3.2 Must-Not-Break Verification
+
+    The existing tests `T1`, `T2`, `T3`, `C1`, `C2` are not modified. They are re-run as part of the standard `backend_tests` check (`pytest -q -p no:cacheprovider`). Because `routes.py` only gains a new handler and does not alter any existing route, model, or store function, these tests are expected to pass unchanged.
+
+    #### 3.3 Verification Commands
+
+    | Check | Command | Expected |
+    |---|---|---|
+    | Boots | `.venv/bin/python -c "from backend.main import app"` | exit 0 |
+    | Backend tests | `.venv/bin/python -m pytest -q -p no:cacheprovider` | all pass, including new `test_criterion_X1.py` and all must-not-break tests |
+    | Frontend tests | `npm --prefix frontend test --silent` | all pass (unchanged) |
+
+    ### 4. Sufficiency Assessment
+
+    | Criterion | Rating | Notes |
+    |---|---|---|
+    | **Scope clarity** | ✅ Strong | Footprint is exactly 2 files. Endpoint, response shape, and field order are fully specified by the criterion. Must-not-break list is explicit. No ambiguity about in-scope vs. out-of-scope. |
+    | **Technical feasibility** | ✅ Strong | Purely additive. Uses existing store, existing router, Python stdlib `csv` module. No new dependencies, no schema changes. Implementable in well under an hour. |
+    | **Risk coverage** | ✅ Adequate | The only non-trivial risk is CSV field escaping (titles with commas/quotes), mitigated by using `csv.writer` rather than manual string concatenation. Empty-shelf and empty-tags edge cases are identified and specified. No unknowns classified as blocker. |
+    | **Test strategy alignment** | ✅ Adequate | Five test functions cover status code, content type, header content, row count, field values/order, and the empty-shelf boundary. Must-not-break tests are re-run automatically by the standard pytest invocation. Coverage matches the risk surface. |
+    | **Resource fit** | ✅ Strong | Two files, one ~20-line handler, one test file with ~5 short test functions. No new dependencies. Well within the 3-hour budget with ample margin for review and iteration. |
+
+    **Sufficiency score: 4 / 5.** The plan is complete and unambiguous for every aspect the criterion requires. The one point withheld is a minor gap in explicitly specifying the tag-serialization delimiter (`;` chosen here) and the unrated-`rating` representation — both are implementation details the developer can settle without architectural risk, but a fifth-level plan would pin them in the criterion's observable language.
+
+    ### 5. Blocker Unknowns
+
+    **None.** No unknowns are classified as blocker. All required data (books, their fields) is available in the existing store. The endpoint is self-contained. The test file follows an established pattern in the repository.
+
+    ### 6. Readiness Recommendation
+
+    **`go`**
+
+    The change is small, fully specified, and additive. The footprint is tight (2 files), the design is implementable with no new dependencies or schema changes, the test plan covers every observable in criterion X1 plus the must-not-break regression net, and the 3-hour budget has large headroom. There are no blockers, no architectural ambiguities, and no reviewer notes that impose additional constraints beyond what the criterion already states. The squad can proceed to implementation.
+  latency_seconds: 192.657
+- task_type: governance.define_done
+  occurrence: 1
+  call: 1
+  content: |
+    ```json:definition_of_done.json
+    {
+      "objective": "Produce a comprehensive lead analysis covering opportunity sizing, qualification criteria, prioritization framework, and concrete deliverables for the product team.",
+      "acceptance_criteria": [
+        "Analysis identifies at least 3 distinct lead segments with estimated volume and conversion potential",
+        "Qualification criteria (BANT or equivalent) are defined with explicit scoring thresholds",
+        "Prioritization framework is documented with a clear decision matrix or rubric",
+        "At least 3 concrete deliverables are specified with owners, deadlines, and success metrics",
+        "Risks and dependencies are enumerated with mitigation strategies",
+        "Recommendations section contains at least 5 actionable next steps ranked by impact-to-effort ratio"
+      ],
+      "non_goals": [
+        "Implementation of any code, tooling, or automation",
+        "Final budget approval or procurement decisions",
+        "Detailed technical architecture or system design",
+        "Competitor teardown beyond a brief market-context note",
+        "Legal or compliance review"
+      ],
+      "time_budget_seconds": 3600,
+      "stop_conditions": [
+        "All acceptance criteria listed in this DoD are met",
+        "More than two iterations of the analysis have been produced without new information from stakeholders",
+        "A hard deadline or calendar constraint is reached",
+        "A critical blocking dependency (e.g., missing data source access) is identified and reported"
+      ],
+      "required_artifacts": [
+        "lead-analysis.md",
+        "prioritization-matrix.json",
+        "deliverables-checklist.md"
+      ]
+    }
+    ```
+  latency_seconds: 54.603
+- task_type: development.develop
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:backend/routes.py
+    """API route stubs — scaffold-owned signatures, fill-only bodies.
+
+    Every endpoint the interface manifest declares is wired here with its
+    correct path, method, and response model. Bodies raise 501 until filled;
+    the app imports and boots regardless.
+
+    The router takes NO prefix. The frontend calls /api/... and the proxy strips
+    that prefix before the request reaches this app, so these paths are already
+    the full backend paths. Adding prefix= to APIRouter puts every route behind a
+    second /api and the app answers 404 to its own contract (pf-41).
+
+    On failure raise ApiError(code, message) from .errors — codes: validation_error, book_not_found.
+    """
+
+    import csv
+    import io
+    import math
+    from typing import Literal
+    from typing import Optional
+    from uuid import uuid4
+
+    from fastapi import APIRouter, HTTPException, Query
+    from fastapi import Response
+    from slugify import slugify
+
+    from backend.models import VALID_STATUSES, Book, BookCreate, Note, NoteCreate, PatchBookBody
+    from backend.models import AddTagRequest
+    from backend.models import RatingRequest
+    from backend.models import Pagination
+    from backend.models import PaginatedBooksResponse
+    from backend.errors import ApiError
+    from backend.store import book_store, list_books, update_book, add_tag, get_books as store_get_books, set_rating
+    from backend.store import get_status_counts, get_average_rating
+    from backend.store import get_related_books
+
+    SortField = Literal["title", "author", "rating"]
+
+    router = APIRouter()
+
+
+    @router.get("/books")
+    def get_books(
+        search: Optional[str] = Query(None),
+        status: str | None = Query(None),
+        tag: str | None = Query(None),
+        sort_by: Optional[SortField] = None,
+        page: Optional[int] = Query(None, ge=1),
+        per_page: Optional[int] = Query(None, ge=1, le=100),
+    ):
+        """list books — newest first."""
+        if status and status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}")
+        if tag:
+            results = store_get_books(tag=tag)
+            if search:
+                needle = search.lower()
+                results = [b for b in results if needle in b.title.lower() or needle in b.author.lower()]
+            if status:
+                results = [b for b in results if b.status == status]
+        else:
+            results = list_books(search=search, status=status or None)
+        if sort_by == "title":
+            results = sorted(results, key=lambda b: b.title.lower())
+        elif sort_by == "author":
+            results = sorted(results, key=lambda b: b.author.lower())
+        elif sort_by == "rating":
+            results = sorted(results, key=lambda b: b.rating or 0)
+        else:
+            results = list(reversed(results))
+        if page is None and per_page is None:
+            return results
+        p = page if page is not None else 1
+        pp = per_page if per_page is not None else 10
+        total = len(results)
+        start = (p - 1) * pp
+        end = start + pp
+        items = results[start:end]
+        total_pages = math.ceil(total / pp) if total > 0 else 0
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=Pagination(total=total, page=p, per_page=pp, total_pages=total_pages),
+        )
+
+
+    @router.post("/books", response_model=Book, status_code=201)
+    def post_books(payload: BookCreate):
+        """add a book."""
+        book = Book(
+            id=str(uuid4()),
+            title=payload.title,
+            author=payload.author,
+            added_by=payload.added_by,
+            slug=slugify(f"{payload.title} {payload.author}"),
+            notes=[],
+        )
+        book_store[book.id] = book
+        return book
+
+
+    @router.get("/books/{book_id}", response_model=Book)
+    def get_books_book_id(book_id: str):
+        """a book and its notes."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return book
+
+
+    @router.patch("/books/{book_id}", response_model=Book)
+    def patch_books_book_id(book_id: str, body: PatchBookBody):
+        """update a book's fields."""
+        if body.status and body.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body.status!r}")
+        result = update_book(
+            book_id,
+            title=body.title,
+            author=body.author,
+            status=body.status or None,
+        )
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.post("/books/{book_id}/notes", response_model=Book, status_code=200)
+    def post_books_book_id_notes(book_id: str, payload: NoteCreate):
+        """leave a note."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        if len(payload.text) > 500:
+            raise ApiError("validation_error", "Note text must not exceed 500 characters.")
+        note = Note(
+            id=str(uuid4()),
+            author=payload.author,
+            text=payload.text,
+        )
+        book.notes.append(note)
+        return book
+
+
+    @router.post("/books/{book_id}/tags", response_model=Book)
+    def post_books_book_id_tags(book_id: str, payload: AddTagRequest):
+        """add a tag to a book."""
+        result = add_tag(book_id, payload.tag)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.put("/books/{book_id}/rating", response_model=Book)
+    def put_books_book_id_rating(book_id: str, body: RatingRequest):
+        """set a book's rating."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return set_rating(book_id, body.rating)
+
+
+    @router.get("/books/{book_id}/related")
+    def get_books_book_id_related(book_id: str):
+        """Return books related to the given book by tag overlap."""
+        result = get_related_books(book_id)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.get("/stats")
+    def get_stats():
+        """Aggregated shelf statistics."""
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+
+
+    @router.get("/export")
+    def export_shelf():
+        """Export all books as a CSV document."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["title", "status", "tags", "rating"])
+        for book in list_books():
+            tags_field = ";".join(book.tags) if book.tags else ""
+            rating_field = str(book.rating) if book.rating is not None else ""
+            writer.writerow([book.title, book.status, tags_field, rating_field])
+        return Response(content=buf.getvalue(), media_type="text/csv")
+    ```
+  latency_seconds: 171.638
+- task_type: qa.test
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:tests/test_criterion_X1.py
+    """Criterion X1: GET /export — CSV export of the shelf with header row and one row per book.
+
+    Faults distinguished from correct behaviour:
+    - Wrong Content-Type (application/json instead of text/csv)
+    - Wrong or missing header row (missing field, wrong order)
+    - Wrong row count (off-by-one, extra blank row)
+    - Tags not semicolon-joined (CSV-split or JSON array instead of "a;b")
+    - Empty tags list not producing empty field
+    - None rating serialised as "None" instead of ""
+    - Integer rating serialised as "4.0" (float) instead of "4"
+    - Empty shelf returning 500, empty body, or missing header
+    - Special characters (comma, quote, newline) corrupting row structure
+    """
+
+    import csv
+    import io
+
+
+    def _parse_csv(text):
+        """Parse a CSV body into a list of rows (lists of strings)."""
+        return list(csv.reader(io.StringIO(text)))
+
+
+    def test_content_type_is_text_csv(client):
+        """GET /export carries Content-Type text/csv, not application/json.
+
+        Fault caught: FastAPI's default JSON response type leaks through because
+        the handler returns a plain string or dict instead of a StreamingResponse
+        with media_type='text/csv'.
+        """
+        client.post("/books", json={"title": "Dune", "author": "Herbert", "added_by": "A"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        assert "text/csv" in res.headers["content-type"], (
+            f"Expected text/csv in Content-Type, got {res.headers['content-type']!r}"
+        )
+
+
+    def test_header_row_lists_four_fields_in_order(client):
+        """First line of the CSV is the header: title,status,tags,rating.
+
+        Faults caught: header omits a field, lists them in a different order,
+        or uses different names (e.g. 'name' instead of 'title').
+        """
+        client.post("/books", json={"title": "Dune", "author": "Herbert", "added_by": "A"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) >= 1, "CSV body is empty"
+        assert rows[0] == ["title", "status", "tags", "rating"], (
+            f"Header row {rows[0]!r} != expected ['title', 'status', 'tags', 'rating']"
+        )
+
+
+    def test_one_data_row_per_seeded_book(client):
+        """N seeded books produce exactly N data rows after the header.
+
+        Faults caught: off-by-one in the loop (N+1 or N-1 rows), or an extra
+        trailing blank line that csv.reader parses as an empty row.
+        """
+        for i in range(4):
+            client.post("/books", json={"title": f"Book {i}", "author": "A", "added_by": "U"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        # 1 header + 4 data rows = 5 total
+        assert len(rows) == 5, f"Expected 5 rows (1 header + 4 data), got {len(rows)}: {rows}"
+
+
+    def test_tags_semicolon_joined_and_empty_tags_produce_empty_field(client):
+        """Tags ["fiction","sci-fi"] round-trip as "fiction;sci-fi"; tags=[] → "".
+
+        Faults caught:
+          - comma-joined ("fiction,sci-fi") splits the CSV row into extra columns
+          - JSON-serialised (["fiction","sci-fi"]) is not a plain string
+          - empty list yields a placeholder like "[]" or "none" instead of ""
+        """
+        b1 = client.post("/books", json={"title": "Tagged", "author": "A", "added_by": "U"}).json()
+        client.post(f"/books/{b1['id']}/tags", json={"tag": "fiction"})
+        client.post(f"/books/{b1['id']}/tags", json={"tag": "sci-fi"})
+
+        b2 = client.post("/books", json={"title": "Untagged", "author": "B", "added_by": "U"}).json()
+
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        # rows[0] is header; find the two data rows by title
+        data = {r[0]: r for r in rows[1:]}
+        assert "Tagged" in data, f"'Tagged' missing from CSV rows: {list(data.keys())}"
+        assert "Untagged" in data, f"'Untagged' missing from CSV rows: {list(data.keys())}"
+
+        tagged_row = data["Tagged"]
+        assert tagged_row[2] == "fiction;sci-fi", (
+            f"Tags field is {tagged_row[2]!r}, expected 'fiction;sci-fi'"
+        )
+
+        untagged_row = data["Untagged"]
+        assert untagged_row[2] == "", (
+            f"Empty tags field is {untagged_row[2]!r}, expected ''"
+        )
+
+
+    def test_none_rating_produces_empty_string(client):
+        """A book with rating=None exports the rating field as '' (empty string).
+
+        Fault caught: str(None) → "None" appears in the CSV cell.
+        """
+        client.post("/books", json={"title": "Unrated", "author": "A", "added_by": "U"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}"
+        data_row = rows[1]
+        assert data_row[3] == "", (
+            f"None rating exported as {data_row[3]!r}, expected ''"
+        )
+
+
+    def test_integer_rating_serialised_as_decimal_string(client):
+        """A book with rating=4 exports the rating field as '4', not '4.0'.
+
+        Fault caught: float(rating) or json.dumps(4) produces '4.0' or a non-string.
+        """
+        b = client.post("/books", json={"title": "Rated", "author": "A", "added_by": "U"}).json()
+        client.put(f"/books/{b['id']}/rating", json={"rating": 4})
+
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) == 2
+        data_row = rows[1]
+        assert data_row[3] == "4", (
+            f"Integer rating 4 exported as {data_row[3]!r}, expected '4'"
+        )
+
+
+    def test_empty_shelf_returns_header_only_single_row(client):
+        """Zero books → 200, body is exactly one line: the header row.
+
+        Faults caught: 500 on empty shelf, empty body, or missing header row.
+        """
+        res = client.get("/export")
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        rows = _parse_csv(res.text)
+        assert len(rows) == 1, f"Expected 1 row (header only), got {len(rows)}: {rows}"
+        assert rows[0] == ["title", "status", "tags", "rating"], (
+            f"Sole row is {rows[0]!r}, expected the header"
+        )
+
+
+    def test_special_characters_in_title_round_trip(client):
+        """A title containing a comma, a double-quote, and a newline round-trips
+        through csv.reader to the original string exactly.
+
+        Faults caught: raw f-string interpolation without quoting splits the row;
+        csv.writer is not used so special characters corrupt column alignment.
+        """
+        nasty = 'He said, "hi"\nsecond line'
+        client.post("/books", json={"title": nasty, "author": "Q", "added_by": "U"})
+
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}: {rows}"
+        data_row = rows[1]
+        assert len(data_row) == 4, (
+            f"Data row has {len(data_row)} fields, expected 4: {data_row}"
+        )
+        assert data_row[0] == nasty, (
+            f"Title round-trip failed: {data_row[0]!r} != {nasty!r}"
+        )
+    ```
+  latency_seconds: 262.26
+- task_type: qa.test
+  occurrence: 1
+  call: 2
+  content: |
+    ```python:tests/test_criterion_X1.py
+    """Criterion X1: GET /export — CSV export of the shelf with header row and one row per book.
+
+    Faults distinguished from correct behaviour:
+    - Wrong Content-Type (application/json instead of text/csv)
+    - Wrong or missing header row (missing field, wrong order)
+    - Wrong row count (off-by-one, extra blank row)
+    - Tags not semicolon-joined (CSV-split or JSON array instead of "a;b")
+    - Empty tags list not producing empty field
+    - None rating serialised as "None" instead of ""
+    - Integer rating serialised as "4.0" (float) instead of "4"
+    - Empty shelf returning 500, empty body, or missing header
+    - Special characters (comma, quote, newline) corrupting row structure
+    """
+
+    import csv
+    import io
+
+
+    def _parse_csv(text):
+        """Parse a CSV body into a list of rows (lists of strings)."""
+        return list(csv.reader(io.StringIO(text)))
+
+
+    def test_content_type_is_text_csv(client):
+        """GET /export carries Content-Type text/csv, not application/json.
+
+        Fault caught: FastAPI's default JSON response type leaks through because
+        the handler returns a plain string or dict instead of a StreamingResponse
+        with media_type='text/csv'.
+        """
+        client.post("/books", json={"title": "Dune", "author": "Herbert", "added_by": "A"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        assert "text/csv" in res.headers["content-type"], (
+            f"Expected text/csv in Content-Type, got {res.headers['content-type']!r}"
+        )
+
+
+    def test_header_row_lists_four_fields_in_order(client):
+        """First line of the CSV is the header: title,status,tags,rating.
+
+        Faults caught: header omits a field, lists them in a different order,
+        or uses different names (e.g. 'name' instead of 'title').
+        """
+        client.post("/books", json={"title": "Dune", "author": "Herbert", "added_by": "A"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) >= 1, "CSV body is empty"
+        assert rows[0] == ["title", "status", "tags", "rating"], (
+            f"Header row {rows[0]!r} != expected ['title', 'status', 'tags', 'rating']"
+        )
+
+
+    def test_one_data_row_per_seeded_book(client):
+        """N seeded books produce exactly N data rows after the header.
+
+        Faults caught: off-by-one in the loop (N+1 or N-1 rows), or an extra
+        trailing blank line that csv.reader parses as an empty row.
+        """
+        for i in range(4):
+            client.post("/books", json={"title": f"Book {i}", "author": "A", "added_by": "U"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        # 1 header + 4 data rows = 5 total
+        assert len(rows) == 5, f"Expected 5 rows (1 header + 4 data), got {len(rows)}: {rows}"
+
+
+    def test_tags_semicolon_joined_and_empty_tags_produce_empty_field(client):
+        """Tags ["fiction","sci-fi"] round-trip as "fiction;sci-fi"; tags=[] → "".
+
+        Faults caught:
+          - comma-joined ("fiction,sci-fi") splits the CSV row into extra columns
+          - JSON-serialised (["fiction","sci-fi"]) is not a plain string
+          - empty list yields a placeholder like "[]" or "none" instead of ""
+        """
+        b1 = client.post("/books", json={"title": "Tagged", "author": "A", "added_by": "U"}).json()
+        client.post(f"/books/{b1['id']}/tags", json={"tag": "fiction"})
+        client.post(f"/books/{b1['id']}/tags", json={"tag": "sci-fi"})
+
+        b2 = client.post("/books", json={"title": "Untagged", "author": "B", "added_by": "U"}).json()
+
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        # rows[0] is header; find the two data rows by title
+        data = {r[0]: r for r in rows[1:]}
+        assert "Tagged" in data, f"'Tagged' missing from CSV rows: {list(data.keys())}"
+        assert "Untagged" in data, f"'Untagged' missing from CSV rows: {list(data.keys())}"
+
+        tagged_row = data["Tagged"]
+        assert tagged_row[2] == "fiction;sci-fi", (
+            f"Tags field is {tagged_row[2]!r}, expected 'fiction;sci-fi'"
+        )
+
+        untagged_row = data["Untagged"]
+        assert untagged_row[2] == "", (
+            f"Empty tags field is {untagged_row[2]!r}, expected ''"
+        )
+
+
+    def test_none_rating_produces_empty_string(client):
+        """A book with rating=None exports the rating field as '' (empty string).
+
+        Fault caught: str(None) → "None" appears in the CSV cell.
+        """
+        client.post("/books", json={"title": "Unrated", "author": "A", "added_by": "U"})
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}"
+        data_row = rows[1]
+        assert data_row[3] == "", (
+            f"None rating exported as {data_row[3]!r}, expected ''"
+        )
+
+
+    def test_integer_rating_serialised_as_decimal_string(client):
+        """A book with rating=4 exports the rating field as '4', not '4.0'.
+
+        Fault caught: float(rating) or json.dumps(4) produces '4.0' or a non-string.
+        """
+        b = client.post("/books", json={"title": "Rated", "author": "A", "added_by": "U"}).json()
+        client.put(f"/books/{b['id']}/rating", json={"rating": 4})
+
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) == 2
+        data_row = rows[1]
+        assert data_row[3] == "4", (
+            f"Integer rating 4 exported as {data_row[3]!r}, expected '4'"
+        )
+
+
+    def test_empty_shelf_returns_header_only_single_row(client):
+        """Zero books → 200, body is exactly one line: the header row.
+
+        Faults caught: 500 on empty shelf, empty body, or missing header row.
+        """
+        res = client.get("/export")
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        rows = _parse_csv(res.text)
+        assert len(rows) == 1, f"Expected 1 row (header only), got {len(rows)}: {rows}"
+        assert rows[0] == ["title", "status", "tags", "rating"], (
+            f"Sole row is {rows[0]!r}, expected the header"
+        )
+
+
+    def test_special_characters_in_title_round_trip(client):
+        """A title containing a comma, a double-quote, and a newline round-trips
+        through csv.reader to the original string exactly.
+
+        Faults caught: raw f-string interpolation without quoting splits the row;
+        csv.writer is not used so special characters corrupt column alignment.
+        """
+        nasty = 'He said, "hi"\nsecond line'
+        client.post("/books", json={"title": nasty, "author": "Q", "added_by": "U"})
+
+        res = client.get("/export")
+        assert res.status_code == 200
+        rows = _parse_csv(res.text)
+        assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}: {rows}"
+        data_row = rows[1]
+        assert len(data_row) == 4, (
+            f"Data row has {len(data_row)} fields, expected 4: {data_row}"
+        )
+        assert data_row[0] == nasty, (
+            f"Title round-trip failed: {data_row[0]!r} != {nasty!r}"
+        )
+    ```
+  latency_seconds: 0.547

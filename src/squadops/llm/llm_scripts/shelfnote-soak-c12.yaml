@@ -1,0 +1,1956 @@
+script: shelfnote-soak-c12
+description: 'The 2.7 soak (#2892), launch 12 of 15: increment 9 (SN-14), failed,
+  so launch 13 repairs it. Recorded from cyc_64b1209d4b8b of Campaign cmp_f14bab82c35f
+  on deploy dep_16a1cb4f54c8. Its latency is the recorded gap times 3, held at 1,500
+  s.'
+replay_latency: true
+recorded_from:
+  project_id: prj-shelfnote
+  cycle_id: cyc_64b1209d4b8b
+  change_requests:
+    strategy.propose_increment occurrence 1 call 1:
+      proposal_id: prop_9265d3e5825a
+      version: 1
+      baseline_tree: e5cac817c5a99df883ae54adf873cfa7c3000b8d704806a226e32c44c0e48485
+      basis: campaign_branch
+      criterion_files:
+      - criterion_id: D1
+        path: tests/test_criterion_D1.py
+      goals_revision: 3
+      content_hash: 9dd0b716bc0bc2f6f8e6fa05a9724e0d948cba93e83386c85ac95ef594e14a06
+      footprint:
+      - backend/routes.py
+      - backend/store.py
+      - tests/test_criterion_D1.py
+  failed_in_recording:
+  - qa.test occurrence 1 call 1
+  - qa.test occurrence 1 call 2
+  latency:
+    scale: 3.0
+    cap_seconds: 1500.0
+    capped: 0
+    total_seconds: 2787.895
+answers:
+- task_type: strategy.propose_increment
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:change_request.yaml
+    kind: feature
+    prd_delta: []
+    manifest_delta: []
+    criteria:
+    - id: D1
+      statement: 'GET /books/duplicates returns a JSON array containing every book whose
+        title (case-insensitive) matches at least one other book on the shelf. Each entry
+        includes at least the book''s id and title. Books whose title is unique on the
+        shelf are absent. When no book has a matching title the array is empty.
+
+        '
+      surface_kind: endpoint
+      surface: GET /books/duplicates
+      observable: 'After seeding the shelf with two books titled "Dune" (ids 1, 2) and
+        one book titled "Neuromancer" (id 3), GET /books/duplicates returns a 200 with
+        a JSON array of exactly two objects; each object carries "id" in {1, 2} and "title"
+        "Dune"; no object carries id 3. Seeding only books with unique titles makes the
+        same call return a 200 with an empty JSON array.
+
+        '
+      paths:
+      - backend/routes.py
+      - backend/store.py
+    must_not_break:
+    - T1
+    - T2
+    - T3
+    - C1
+    - C2
+    - X1
+    - N1
+    - RD1
+    - RD2
+    retires: []
+    replaces_verifiers: []
+    footprint:
+    - backend/routes.py
+    - backend/store.py
+    backlog_item: SN-14
+    ```
+- task_type: development.design_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    # Technical Design — `GET /books/duplicates` (SN-14)
+
+    ## 1. Architecture Overview
+
+    This increment adds a single read-only endpoint to the existing Shelfnote backend. No new files are created outside the footprint; two existing files gain one function each, and one new test file is added.
+
+    ```
+    ┌─────────────────────────────────────────────────────────┐
+    │  GET /books/duplicates                                  │
+    │  (backend/routes.py :: get_books_duplicates)           │
+    │                                                         │
+    │  ┌─────────────────────────────────────────────────┐    │
+    │  │  store.find_duplicate_books()                   │    │
+    │  │  (backend/store.py)                             │    │
+    │  │                                                 │    │
+    │  │  1. Retrieve all books (existing in-memory     │    │
+    │  │     list already maintained by BookStore)      │    │
+    │  │  2. Group by title.lower()                      │    │
+    │  │  3. Return entries where group length > 1      │    │
+    │  └─────────────────────────────────────────────────┘    │
+    │                                                         │
+    │  Response: 200 + JSON array of {id, title}             │
+    └─────────────────────────────────────────────────────────┘
+    ```
+
+    No new models, no new dependencies, no changes to `main.py`, `models.py`, or `errors.py`. The endpoint is a pure read over the store's existing book collection.
+
+    ## 2. Interface Definitions
+
+    ### 2.1 Store Method — `BookStore.find_duplicate_books()`
+
+    ```python
+    def find_duplicate_books(self) -> list[dict]:
+        """Return books whose title (case-insensitive) matches ≥1 other book.
+
+        Returns a list of dicts, each containing at least:
+          - "id": int
+          - "title": str
+
+        Books with a unique title are excluded. If no duplicates exist,
+        returns an empty list.
+        """
+    ```
+
+    **Contract:**
+    - Input: none (operates on the store's current book collection).
+    - Output: `list[dict]` — each dict has `"id"` (int) and `"title"` (str). Order is deterministic (ascending by id) to simplify test assertions.
+    - Complexity: O(n) for n books (single pass to build a case-folded title → list-of-books map, then filter).
+
+    ### 2.2 Route Handler — `get_books_duplicates()`
+
+    ```python
+    @router.get("/books/duplicates")
+    async def get_books_duplicates(store: BookStore = Depends(get_store)):
+        """Return all books that share a title (case-insensitive) with another book."""
+        duplicates = store.find_duplicate_books()
+        return duplicates
+    ```
+
+    **Contract:**
+    - Method: `GET`
+    - Path: `/books/duplicates`
+    - Parameters: none
+    - Response 200: `JSON array` — `[{ "id": 1, "title": "Dune" }, { "id": 2, "title": "Dune" }]`
+    - No other status codes are produced by this handler (it never raises a domain error; the store read is infallible in this in-memory design). The only non-200 response is a framework-level 500 if the process crashes, which is not a "status code the handler answers."
+    - Handler line count: well under the 30-line cap from CONTRIBUTING.md.
+
+    ### 2.3 Response Shape
+
+    Each element of the returned array:
+
+    | Field   | Type  | Notes                              |
+    |---------|-------|------------------------------------|
+    | `id`    | int   | The book's unique identifier       |
+    | `title` | str   | The book's title as stored         |
+
+    The spec says "at least" these fields; we return exactly these two to keep the response minimal.
+
+    ## 3. Implementation Sequencing
+
+    | Phase | Task | File(s) touched | Depends on |
+    |-------|------|-----------------|------------|
+    | 1 | Add `find_duplicate_books()` to `BookStore` | `backend/store.py` | None |
+    | 2 | Add `GET /books/duplicates` handler | `backend/routes.py` | Phase 1 |
+    | 3 | Write `tests/test_criterion_D1.py` | `tests/test_criterion_D1.py` | Phase 2 |
+    | 4 | Run full backend test suite; verify must-not-break criteria (T1–T3, C1, C2, X1, N1, RD1, RD2) all still pass | (read-only) | Phase 3 |
+
+    **Total estimated execution time:** ~45 minutes (trivial logic, one test file).
+
+    ## 4. Proto Validation Plan
+
+    No prototype is required. The reasons:
+
+    - **Case-insensitive grouping** is a textbook `dict[str, list]` accumulation over a known list. There is no I/O, no external library, no concurrency concern.
+    - **FastAPI routing** for a parameterless `GET` is the most common pattern in the codebase (mirroring the existing `/books` list endpoint).
+    - **In-memory store access** follows the same pattern as every other read method already in `store.py`.
+
+    The feasibility risk is effectively zero; a prototype would add no information. Classification: `resolved` by inspection.
+
+    ## 5. Unknown Classification
+
+    | # | Unknown | Classification | Rationale |
+    |---|---------|----------------|-----------|
+    | U1 | Does the existing `BookStore` keep all books in a single in-memory list (so a full scan is O(n) and trivial)? | `resolved` | File size (6.5 KB) and the blueprint pattern confirm an in-memory list. Even if it used a dict keyed by id, iterating `.values()` gives the same O(n) scan. |
+    | U2 | What is the exact name/signature of the store's book-collection accessor (e.g., `self._books` vs. `self.books` vs. a `list_books()` method)? | `resolved` | The existing `store.py` at 6.5 KB follows the blueprint's `BookStore` class; the list is an instance attribute. The new method is added *to* that class and accesses the same attribute the existing CRUD methods use. |
+    | U3 | Does the test fixture in `conftest.py` provide a `TestClient`-based fixture that resets the store between tests? | `resolved` | `conftest.py` is 1102 bytes and follows the blueprint convention: a `client` fixture with `TestClient(app)` plus a store-reset. The new test file will use the same fixture pattern as the existing `test_criterion_*.py` files. |
+    | U4 | Is there any validation/authorization middleware that would intercept `/books/duplicates`? | `resolved` | `main.py` is 889 bytes — it sets up CORS and mounts the router. No auth layer exists. The router is a plain `APIRouter`. |
+    | U5 | Could the endpoint name collide with an existing route? | `resolved` | The existing routes are `/books`, `/books/{id}`, `/books/{id}/ratings`, `/books/{id}/reading-status`, `/search`, and tag-related paths. `/books/duplicates` is not among them. |
+
+    **No blockers.** No unknown requires a prototype, a human decision, or deferral.
+
+    ## 6. Test Plan — `tests/test_criterion_D1.py`
+
+    Per CONTRIBUTING.md:
+    - Exercises the API through `TestClient`.
+    - Fails on response content, not on imports.
+    - Tests each status code the endpoint can answer (only 200 in this case; 404 for unknown paths is framework default and is a must-not-break, not a new test).
+
+    ### Test cases
+
+    | Test | Setup | Assertion |
+    |------|-------|-----------|
+    | `test_duplicates_returns_matching_books` | Seed: id=1 "Dune", id=2 "Dune", id=3 "Neuromancer" | 200; array length 2; both have title "Dune"; ids are {1,2}; id 3 absent |
+    | `test_duplicates_case_insensitive` | Seed: id=1 "dune", id=2 "Dune", id=3 "DUNE" | 200; array length 3; all titles match case-insensitively |
+    | `test_duplicates_empty_when_no_matches` | Seed: id=1 "Alpha", id=2 "Beta" | 200; array is `[]` |
+    | `test_duplicates_empty_shelf` | No books seeded | 200; array is `[]` |
+
+    Each test uses the same `client` fixture from `conftest.py` and seeds the store via the existing `POST /books` endpoint or direct store manipulation (whichever the existing test files use — the convention in `test_criterion_*.py` is the direct store approach for setup, then the client for the call under test).
+
+    ## 7. Risk & Mitigation
+
+    | Risk | Likelihood | Mitigation |
+    |------|-----------|------------|
+    | New route interferes with existing route matching (e.g., `/books/duplicates` captured by a `/books/{id}` pattern) | Low — FastAPI matches literal segments before path parameters, and "duplicates" is a string that won't parse as the existing id parameter (int) if the existing route uses `int` type | Verify by running the full backend suite (Phase 4). If the existing `/books/{id}` uses `str` type, confirm order in the router (literal before parameter). |
+    | Case-insensitivity edge case: Unicode (e.g., "Straße" vs. "STRASSE") | Negligible — the shelf is a local reading list; the spec says "case-insensitive" which `str.lower()` satisfies for ASCII and common Latin scripts | Use `str.lower()` per the spec; no ICU/normalization needed. |
+
+    ## 8. Explicitly Out of Scope
+
+    - No frontend changes (the change request's footprint and criteria are backend-only).
+    - No modification to `models.py`, `errors.py`, `main.py`, or any file outside the three-file footprint.
+    - No pagination, filtering, or additional query parameters on `/books/duplicates` — the spec defines a single unparameterized GET.
+    - No changes to existing endpoints or their tests.
+
+    ---
+
+    *Ready for implementation. The plan is fully contained within the 3-hour budget with significant margin.*
+  latency_seconds: 437.619
+- task_type: qa.define_test_strategy
+  occurrence: 1
+  call: 1
+  content: |-
+    # QA Test Strategy — `GET /books/duplicates` (SN-14)
+
+    ## 1. Acceptance Checklist
+
+    Concrete pass/fail criteria derived from criterion D1 and the `must_not_break` set. Use directly during implementation review.
+
+    ### D1 — New endpoint: `GET /books/duplicates`
+
+    - [ ] **D1.1 Status code**: `GET /books/duplicates` on a seeded shelf returns HTTP `200`.
+    - [ ] **D1.2 Content-Type**: Response `Content-Type` is `application/json`.
+    - [ ] **D1.3 Shape — non-empty**: With two books titled `"Dune"` (ids 1, 2) and one titled `"Neuromancer"` (id 3), the response body is a JSON **array** of exactly **2** objects.
+    - [ ] **D1.4 Shape — correct members**: Each of the 2 objects carries `"id"` ∈ {1, 2} and `"title"` == `"Dune"` (exact string as stored).
+    - [ ] **D1.5 Shape — exclusion**: No object in the array carries `id` 3 (the unique-title book is absent).
+    - [ ] **D1.6 Shape — empty shelf / all unique**: Seeding only books with mutually unique titles (or seeding nothing at all) causes the same call to return HTTP `200` with an **empty** JSON array (`[]`).
+    - [ ] **D1.7 Case-insensitivity**: Seeding books titled `"Dune"`, `"dune"`, and `"DUNE"` (three books) causes the response to contain **all three** objects (each title variant matches the others case-insensitively).
+    - [ ] **D1.8 Multi-duplicate group**: Seeding 3+ books sharing one title and 1 book with a different unique title returns only the 3+ sharing the title; the unique one is absent.
+    - [ ] **D1.9 Minimum fields**: Every object in the returned array has at least keys `id` and `title`. (Additional fields are permissible but not required by the criterion.)
+    - [ ] **D1.10 Idempotency / read-only**: Two successive calls to `GET /books/duplicates` with no intervening write return identical arrays (the endpoint must not mutate shelf state).
+
+    ### Must-Not-Break (regression gate)
+
+    - [ ] **MNB.1** All tests tagged/associated with criterion **T1** pass unchanged.
+    - [ ] **MNB.2** All tests tagged/associated with criterion **T2** pass unchanged.
+    - [ ] **MNB.3** All tests tagged/associated with criterion **T3** pass unchanged.
+    - [ ] **MNB.4** All tests tagged/associated with criterion **C1** pass unchanged.
+    - [ ] **MNB.5** All tests tagged/associated with criterion **C2** pass unchanged.
+    - [ ] **MNB.6** All tests tagged/associated with criterion **X1** pass unchanged.
+    - [ ] **MNB.7** All tests tagged/associated with criterion **N1** pass unchanged.
+    - [ ] **MNB.8** All tests tagged/associated with criterion **RD1** pass unchanged.
+    - [ ] **MNB.9** All tests tagged/associated with criterion **RD2** pass unchanged.
+    - [ ] **MNB.10** The full `pytest` suite (`backend_tests` check) exits 0 with no new failures.
+    - [ ] **MNB.11** The `boots` check (import of `backend.main.app`) succeeds.
+
+    ### Contributor Conformance (CONTRIBUTING.md)
+
+    - [ ] **CONTRIB.1** The new route handler in `backend/routes.py` is ≤ 30 lines.
+    - [ ] **CONTRIB.2** The new test file exercises the API through `TestClient` / `httpx.AsyncClient`; it asserts on response content, not on import side-effects.
+    - [ ] **CONTRIB.3** The new test file covers every distinct status code the endpoint can answer (here: `200`; no other status is specified, but a malformed/unknown-path 404 is the framework default and is *not* the target — the test must not merely assert a 404 on a wrong path).
+    - [ ] **CONTRIB.4** The new test file is named `test_criterion_D1.py` and resides under `tests/` so that `pytest` discovers it.
+
+    ---
+
+    ## 2. Test Strategy Note
+
+    ### Scope of verification
+
+    This is a **backend-only, single-endpoint** increment. No frontend changes, no schema migrations, no new dependencies. Verification is therefore:
+
+    | Layer | In scope? | Rationale |
+    |-------|-----------|-----------|
+    | Unit (store logic) | **Yes** — lightweight | The duplicate-finding logic in `store.py` is the primary fault locus. A focused unit test on the store method (if one is extracted) or on the query it runs guards against subtle case-folding bugs. |
+    | Integration (TestClient) | **Yes — primary** | Per CONTRIBUTING.md, the criterion test *must* exercise the running app's API through the test client. This is where D1.1–D1.10 are asserted. |
+    | Contract / schema | **Embedded** in integration | Asserting the JSON shape (array of objects, required keys) is part of the integration test; no separate contract-test file is warranted for one endpoint. |
+    | E2E (browser) | **No** | No frontend surface changes. |
+    | Load / performance | **No** | Out of budget and out of footprint. |
+
+    ### Test-file placement and naming
+
+    - **`tests/test_criterion_D1.py`** — the single new test file. Discovered by `pytest` (named `test_*.py` under `.`). Uses `TestClient` from `fastapi.testclient` (already a dependency via `httpx` in `requirements.txt`).
+    - No frontend test file is added (no `frontend/**` changes).
+    - No new test helper or fixture file is added; existing `conftest.py` fixtures (seed helpers, client factory) are reused.
+
+    ### Seed strategy for the criterion test
+
+    The test seeds a known shelf state before each scenario (via the store or via `POST /books` through the client) and tears down between tests. Scenarios:
+
+    1. **Two "Dune" + one "Neuromancer"** → expect 2 entries (D1.3–D1.5).
+    2. **All unique titles** → expect `[]` (D1.6).
+    3. **Empty shelf** → expect `[]` (D1.6).
+    4. **Mixed-case duplicates** ("Dune", "dune", "DUNE") → expect 3 entries (D1.7).
+    5. **Two duplicate groups** (two "Dune" + two "Neuromancer") → expect 4 entries, no others (D1.8 variant).
+    6. **Idempotency**: call twice, compare (D1.10).
+
+    ### What the tests do NOT assert (by design)
+
+    - Ordering of the returned array (criterion does not mandate order; any order that includes the correct set is acceptable).
+    - Fields beyond `id` and `title` (criterion says "at least"; extra fields are allowed).
+    - Behaviour of other endpoints (covered by `must_not_break` regression run, not by D1's test file).
+
+    ---
+
+    ## 3. Defect Severity Rubric
+
+    | Severity | Definition | Examples (for this increment) |
+    |----------|-----------|-------------------------------|
+    | **S1 — Blocker** | Criterion D1 is **not met**: the endpoint is missing, returns a non-200, returns the wrong set of books (missing a duplicate or including a unique title), or the JSON shape is wrong (e.g., object instead of array). | 404 on `GET /books/duplicates`; returns book id 3 (unique); returns a dict instead of a list. |
+    | **S2 — Major** | A must-not-break criterion (T1–RD2) now **fails** due to the change; or the case-insensitivity logic is wrong (e.g., `"Dune"` ≠ `"dune"` treated as non-matches). | T3 test fails after change; "Dune" and "dune" not grouped. |
+    | **S3 — Minor** | A non-blocking conformance issue: handler exceeds 30 lines; response includes an extra unintended top-level key; test file uses a non-standard import. | Handler is 32 lines; response is `{"duplicates": [...]}` instead of bare `[...]`. |
+    | **S4 — Trivial** | Style / cosmetic: inconsistent naming, missing docstring, unused import introduced. | `# TODO: clean up` left in code; unused `import json`. |
+
+    **Gate rule**: The plan is **not approved** while any S1 or S2 defect is open. S3 may be deferred with a ticket; S4 is advisory.
+
+    ---
+
+    ## 4. Risk-Based Test Priorities
+
+    Ranked by likelihood of fault × impact if missed:
+
+    | Priority | Area | Why it is high-risk | Coverage action |
+    |----------|------|---------------------|-----------------|
+    | **P1** | Case-insensitive title comparison | Most probable logic bug (e.g., using `==` instead of `.lower() ==` or `.casefold()`). A subtle locale or Unicode edge could silently pass the happy path. | Explicit mixed-case test (D1.7); if possible, a title with a Unicode ligature or non-ASCII char. |
+    | **P2** | "At least one **other**" semantics | Easy to implement as "has a title that appears ≥ 1" (includes the book itself), causing a single book with a unique title to appear if the query counts itself. | Test with exactly one book per title (D1.6); test with exactly two books sharing a title (D1.3). |
+    | **P3** | Regression on existing store queries | The change touches `store.py`; an accidental refactor of the shared `get_all_books` or similar helper could break T/C/X/RD/N criteria. | Full `pytest` run as gate (MNB.10); code-review the diff in `store.py` for scope creep beyond the duplicate query. |
+    | **P4** | Response shape / content-type | Returning a JSON object wrapper (`{"results": [...]}`) instead of a bare array would break any consumer expecting a top-level array. | Assert `isinstance(data, list)` in the integration test; assert `Content-Type` header (D1.2). |
+    | **P5** | Empty / null edge cases | Seeding zero books, or a shelf where every book is unique, could hit an unhandled exception (e.g., `ValueError` on empty set) instead of returning `[]`. | Dedicated empty-shelf and all-unique tests (D1.6). |
+    | **P6** | Read-only guarantee | If the implementation accidentally calls a mutating method (e.g., `save`, `commit`) as a side effect, shelf state could be corrupted. | Idempotency check (D1.10); inspect the store method for write operations. |
+
+    ---
+
+    ## 5. Verification Commands (for the implementation review)
+
+    These are the product's own checks; the QA reviewer runs them, not a separate harness:
+
+    ```bash
+    # Boot check
+    .venv/bin/python -c "from backend.main import app"
+
+    # Full backend test suite (includes new test_criterion_D1.py + all existing)
+    .venv/bin/python -m pytest -q -p no:cacheprovider
+
+    # Frontend tests (unchanged, but run to confirm no accidental breakage)
+    npm --prefix frontend test --silent
+    ```
+
+    A **pass** requires:
+    - `boots` exit 0
+    - `backend_tests` exit 0, **all** tests green (existing + new)
+    - `frontend_tests` exit 0
+    - No file outside the footprint (`backend/routes.py`, `backend/store.py`, `tests/test_criterion_D1.py`) has been modified
+
+    ---
+
+    ## 6. Out-of-Budget / Deferred Items
+
+    | Item | Reason deferred |
+    |------|-----------------|
+    | Fuzz / property-based testing of the duplicate query (e.g., Hypothesis) | No `hypothesis` in `requirements.txt`; adding a dependency is outside the footprint. Revisit if this endpoint gains traffic. |
+    | Performance test (e.g., 10 k books, measure query time) | Out of 3-hour budget; no performance SLO in the criterion. |
+    | Frontend test for a "Show duplicates" button | No frontend change in this increment; no `prd_delta` or `manifest_delta` entry. |
+
+    ---
+
+    *End of test strategy. No test files are authored at this stage; the above defines what will be tested, how, and at what priority when implementation begins.*
+  latency_seconds: 227.383
+- task_type: governance.prepare_plan_authoring_brief
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_authoring_brief.yaml
+    version: 1
+    brief_id: brief-sn14-d1-001
+    objective_summary: |
+      Add a single read-only endpoint (GET /books/duplicates) to Shelfnote's existing
+      books API. The endpoint returns a bare JSON array of every book whose title,
+      compared case-insensitively, matches the title of at least one other book on
+      the shelf. Each array element carries at least the book's id and title. Books
+      whose title is unique are absent from the array. When no duplicates exist the
+      array is empty. No other endpoints, models, dependencies, or frontend surfaces
+      change. The existing application's nine accepted criteria (T1, T2, T3, C1, C2,
+      X1, N1, RD1, RD2) must continue to pass unmodified.
+    accepted_stack:
+      backend: "FastAPI + in-memory BookStore (Python 3, no new packages)"
+      frontend: "React + Vite (untouched this cycle)"
+      backend_test: "pytest + fastapi.testclient.TestClient"
+      frontend_test: "vitest (untouched this cycle)"
+    must_cover_requirements:
+      - "GET /books/duplicates returns a bare JSON array (not a wrapping object); each element has at least keys 'id' (int) and 'title' (str)."
+      - "Duplicate detection is case-insensitive: titles 'Dune', 'dune', 'DUNE' are all considered the same title."
+      - "A book is included only if at least one OTHER book shares its title; a single book with a unique title is never in the result."
+      - "When the shelf is empty or every book's title is unique, the array is empty."
+      - "The endpoint is parameterless (no query params, no path params) and is a pure read; it must not mutate shelf state."
+      - "The route handler in backend/routes.py is at most 30 lines (CONTRIBUTING.md)."
+      - "The new test file exercises the API through TestClient and asserts on response content, not on import side-effects."
+      - "All nine must-not-break criteria (T1, T2, T3, C1, C2, X1, N1, RD1, RD2) pass after the change with no test modification."
+      - "Only the three footprint files change: backend/store.py, backend/routes.py, tests/test_criterion_D1.py."
+    scope_cuts:
+      - "Frontend changes (no new view, no API-client change): deferred; no prd_delta or manifest_delta entry."
+      - "Pagination, sorting, or filtering parameters on /books/duplicates: not in the criterion."
+      - "Additional response fields beyond id and title: criterion says 'at least'; returning exactly id and title is sufficient."
+      - "Performance / load testing of the duplicate query: out of 3-hour budget, no SLO in the criterion."
+      - "Property-based or fuzz testing (Hypothesis): dependency not in requirements.txt; adding one is outside the footprint."
+      - "Unicode/locale-aware case folding beyond str.lower(): the criterion specifies case-insensitive matching; str.lower() satisfies this for the product's use-case."
+    risk_areas:
+      - "Route ordering: /books/duplicates must not be captured by an existing /books/{id} parameterized route. FastAPI resolves literal segments before parameterized ones, but if the existing route uses a string-typed {id}, ordering in the router matters."
+      - "Case-insensitive comparison correctness: using str equality instead of .lower() comparison silently fails mixed-case titles."
+      - "'At least one OTHER' semantics: the implementation must count other books, not the book itself. A single book whose title appears exactly once must not appear in the result."
+      - "Regression on shared store code: the new method is added to the existing BookStore class; an accidental refactor of an existing helper (list_books, get_by_id, etc.) breaks the nine must-not-break criteria."
+      - "Response shape: returning a JSON object wrapper (e.g., {\"duplicates\": [...]}) instead of a bare array breaks the criterion's observable contract."
+    source_artifact_refs:
+      - "change_request.yaml"
+      - "ruling_notes.md"
+      - "CONTRIBUTING.md"
+    major_components:
+      - "BookStore.find_duplicate_books() — store-layer query (backend/store.py)"
+      - "get_books_duplicates() — route handler (backend/routes.py)"
+      - "Criterion D1 test suite (tests/test_criterion_D1.py)"
+    dependency_assumptions:
+      - "The in-memory BookStore already maintains the full book collection; no database migration or schema change is needed."
+      - "No new Python package is introduced; TestClient and httpx are already in requirements.txt."
+      - "The existing conftest.py provides a client fixture and store-reset mechanism usable by the new test file."
+    time_budget_guidance:
+      backend_store_method: 15
+      backend_route_handler: 10
+      test_authoring: 35
+      verification_and_regression: 20
+      buffer: 20
+    task_granularity_guidance: "Small increment: aim for 2–3 focused tasks (store method, route handler, criterion test), each completable in under 10 minutes of generation."
+    artifact_naming_conventions:
+      - "The criterion test file is exactly tests/test_criterion_D1.py (root-level tests/ directory, matching the product's existing convention)."
+      - "The store method is added to the existing BookStore class in backend/store.py; no new module."
+      - "The route handler is added to the existing APIRouter in backend/routes.py; no new module."
+    open_questions: []
+    ```
+  latency_seconds: 208.003
+- task_type: development.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-a65be116
+    source_brief_id: brief-sn14-d1-001
+    proposing_role: development
+    scope_statement: |
+      Proposes two development tasks for the GET /books/duplicates increment:
+      (1) a store-layer method BookStore.find_duplicate_books() added to
+      backend/store.py, and (2) the parameterless GET /books/duplicates route
+      handler added to backend/routes.py. The criterion-D1 test file
+      (tests/test_criterion_D1.py) is QA's; no frozen test files, frontend
+      files, or packaging artefacts are touched.
+    tasks:
+      - task_type: development.develop
+        role: dev
+        focus: "Store duplicate-query method"
+        description: |
+          Add a find_duplicate_books() method to the existing BookStore class in
+          backend/store.py. The method performs a single O(n) pass over the
+          store's in-memory book collection, grouping books by title.lower().
+          It returns a list of dicts (each carrying at least "id" as int and
+          "title" as str) for every book whose case-folded title group has
+          length greater than one — i.e. at least one OTHER book shares the
+          title. Books with a unique title are excluded. If the shelf is empty
+          or every title is unique, the list is empty. Results are ordered
+          deterministically by ascending id. No existing BookStore method is
+          modified; the new method is appended to the class body.
+        expected_artifacts:
+          - "backend/store.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: backend/store.py
+            name_prefix: find_duplicate_books
+            min_count: 1
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/store.py']
+            severity: error
+          - "Groups books by title.lower(); a book is included only if its group size exceeds one (at least one OTHER book shares the title)."
+          - "Returns list[dict]; each dict has keys 'id' (int) and 'title' (str). No wrapper object."
+          - "Empty list is returned when the shelf is empty or no title is shared."
+          - "Result order is deterministic: ascending by book id."
+          - "No existing BookStore method (list_books, get_by_id, add, remove, etc.) is modified or removed."
+        depends_on_focus: []
+
+      - task_type: development.develop
+        role: dev
+        focus: "Duplicate-books endpoint handler"
+        description: |
+          Add a get_books_duplicates() handler to the existing APIRouter in
+          backend/routes.py, mapped to GET /books/duplicates. The handler is
+          parameterless (no query or path parameters), calls
+          store.find_duplicate_books(), and returns the resulting list directly
+          so FastAPI serialises it as a bare JSON array. The route must be
+          registered before any parameterised /books/{id} route so the literal
+          segment "duplicates" is not captured by a string-typed path parameter.
+          The handler body stays within the 30-line cap from CONTRIBUTING.md.
+          No new imports, middleware, or response-model class is introduced.
+        expected_artifacts:
+          - "backend/routes.py"
+        acceptance_criteria:
+          - check: endpoint_defined
+            file: backend/routes.py
+            methods_paths: ['GET /books/duplicates']
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'backend/routes.py']
+            severity: error
+          - "Handler is parameterless: no query parameters, no path parameters beyond the literal /books/duplicates segment."
+          - "Response body is a bare JSON array (list), not a wrapping object like {\"duplicates\": [...]}. Each element carries at least 'id' (int) and 'title' (str)."
+          - "The handler is a pure read: it does not add, remove, or modify any book in the store."
+          - "Route is registered in the router before any /books/{id} parameterised route, preventing the literal segment from being swallowed by a path parameter."
+          - "Handler source (including decorator) is at most 30 lines."
+        depends_on_focus:
+          - "dev:Store duplicate-query method"
+    brief_conflicts: []
+    assumptions:
+      - "The existing BookStore class exposes its book collection as an iterable (list or dict.values()) that the new method can scan in O(n)."
+      - "The existing /books/{id} route uses an int-typed path parameter, so the literal string 'duplicates' would not match; ordering is still a safety measure per the risk_areas note."
+      - "conftest.py and the existing test infrastructure are untouched and continue to work as before."
+    risks:
+      - "If the existing /books/{id} route declares {id} as str (not int), the literal /books/duplicates could be captured before the new route is reached. Mitigated by explicit ordering."
+    gaps_not_covered:
+      - "tests/test_criterion_D1.py is QA's artefact and is not in this proposal."
+    confidence: high
+    ```
+  latency_seconds: 143.539
+- task_type: qa.propose_plan_tasks
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:proposed_plan_tasks.yaml
+    version: 1
+    proposal_id: prop-e3edbcc7
+    source_brief_id: brief-sn14-d1-001
+    proposing_role: qa
+    scope_statement: |
+      Proposes one QA task: authoring tests/test_criterion_D1.py, the criterion-D1
+      test suite that exercises GET /books/duplicates through TestClient. The suite
+      distinguishes case-sensitive comparison, self-counting, wrong response shape,
+      route shadowing, and mutation side-effects from correct behaviour. Regression
+      on the nine frozen criteria is verified by the framework's tests_pass check
+      running the full pytest suite; no separate QA task is needed for that gate.
+    tasks:
+      - task_type: qa.test
+        role: qa
+        focus: "Criterion D1 duplicate-books test suite"
+        description: |
+          Distinguish the faults the D1 criterion could be built with:
+          (1) Case-sensitive comparison — mixed-case titles "Dune", "dune", "DUNE"
+              are not grouped together because the implementation uses == instead
+              of .lower() ==;
+          (2) Self-counting — a book whose title appears exactly once is included
+              in the result because the implementation counts the book itself as
+              "at least one other";
+          (3) Wrong response shape — the endpoint returns a wrapping object
+              {"duplicates": [...]} instead of a bare JSON array;
+          (4) Route shadowing — GET /books/duplicates is captured by the existing
+              /books/{id} parameterized route, returning a single-book lookup or
+              404 instead of the duplicate list;
+          (5) Mutation side-effect — two successive GET calls return different
+              results because the handler accidentally mutates shelf state.
+          Each test seeds a known shelf via the store (direct attribute access or
+          POST /books through the client), then calls GET /books/duplicates through
+          the TestClient fixture from conftest.py and asserts on the response body.
+          The empty-shelf and all-unique-titles scenarios verify the "no duplicates
+          yields empty array" contract. The idempotency test calls the endpoint
+          twice with no intervening write and asserts identical arrays.
+        expected_artifacts:
+          - "tests/test_criterion_D1.py"
+        acceptance_criteria:
+          - check: function_defined
+            file: tests/test_criterion_D1.py
+            name_prefix: "test_"
+            min_count: 4
+            severity: error
+          - check: command_exit_zero
+            argv: ['python', '-m', 'py_compile', 'tests/test_criterion_D1.py']
+            severity: error
+          - "Each test seeds the shelf then calls GET /books/duplicates through the TestClient fixture from conftest.py, asserting on the JSON response body."
+          - "At least one test asserts the parsed response body is a list (bare JSON array), not a dict."
+          - "At least one test seeds books with titles differing only in case (e.g. 'Dune', 'dune', 'DUNE') and asserts all three appear in the result array."
+          - "At least one test seeds a shelf where every book has a unique title and asserts the result is an empty list."
+          - "At least one test seeds an empty shelf (no books at all) and asserts the result is an empty list."
+          - "At least one test calls the endpoint twice with no intervening write and asserts both response bodies are identical."
+          - "Every element in a non-empty result array carries at least the keys 'id' (int) and 'title' (str)."
+          - "No test asserts on import side-effects or module-availability; all assertions target the HTTP response (status, Content-Type, or JSON body)."
+        depends_on_focus:
+          - "dev:Store duplicate-query method"
+          - "dev:Duplicate-books endpoint handler"
+    brief_conflicts: []
+    assumptions:
+      - "conftest.py at the repository root provides a 'client' fixture (TestClient-based) and a store-reset mechanism between tests, as stated in the brief's dependency_assumptions."
+      - "The existing /books/{id} route uses an int-typed path parameter, so the literal string 'duplicates' would not match; the route-shadowing scenario is a safety check against a str-typed parameter."
+    risks:
+      - "If the existing /books/{id} route declares {id} as str rather than int, the literal 'duplicates' could match the parameterized route before reaching the new literal route. The test that calls GET /books/duplicates and expects a bare array would fail (returning a single book or 404), correctly flagging the ordering defect."
+    gaps_not_covered:
+      - "Regression on the nine frozen criteria (T1, T2, T3, C1, C2, X1, N1, RD1, RD2) is verified by the framework's tests_pass check, which runs the full pytest suite including all frozen test_criterion_*.py files. No separate QA task is needed."
+      - "The 30-line handler cap is verified by the development task's acceptance criteria; the three-file footprint constraint is verified by the framework's additive_containment check."
+    confidence: high
+    ```
+  latency_seconds: 287.921
+- task_type: strategy.propose_plan_guidance
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:plan_guidance.yaml
+    version: 1
+    guidance_id: guid-ed6153ca
+    source_brief_id: brief-sn14-d1-001
+    proposing_role: strategy
+    priority_guidance:
+      - area: store_method
+        priority: high
+        rationale: |
+          The "at least one OTHER book" deduplication logic is the single most
+          error-prone unit in this increment. A one-line off-by-one (comparing a
+          book to itself) silently produces wrong results on every edge case.
+          Give the store-layer task the highest generation-quality attention.
+      - area: route_handler
+        priority: high
+        rationale: |
+          Two independent failure modes live here: (a) route ordering — the
+          literal /books/duplicates must be registered before any parameterized
+          /books/{id} route or FastAPI will swallow the request; (b) response
+          shape — the handler must return a bare JSON array, not a wrapping
+          object. Both are one-line mistakes that break the criterion's
+          observable contract.
+      - area: criterion_test
+        priority: medium
+        rationale: |
+          The test file verifies behaviour but does not carry novel logic.
+          The brief already allocates 35% of budget here, which is generous
+          for a single-file suite against a 30-line endpoint. The risk is
+          over-engineering the test (parametrize storms, fixture gymnastics)
+          rather than under-testing.
+      - area: regression_verification
+        priority: high
+        rationale: |
+          Nine existing criteria (T1, T2, T3, C1, C2, X1, N1, RD1, RD2) must
+          pass unmodified. The new method is added to the shared BookStore
+          class; any accidental signature change, import, or helper refactor
+          in store.py or routes.py cascades across all nine suites. Treat
+          regression as a gate, not an afterthought.
+    ordering_guidance:
+      - before: "dev:store_method"
+        after: "dev:route_handler"
+        rationale: |
+          The route handler calls BookStore.find_duplicate_books(). The store
+          method must exist and be callable before the route can reference it.
+          Reversing the order produces an import or attribute error at test
+          time.
+      - before: "dev:route_handler"
+        after: "qa:criterion_test"
+        rationale: |
+          The criterion test exercises GET /books/duplicates through
+          TestClient. The route must be registered on the router before the
+          test can hit the endpoint. Without the route, every assertion in
+          the test file fails on a 404.
+    risk_guidance:
+      - target: "dev:route_handler"
+        risk: |
+          Route ordering: if the existing router already has a /books/{id}
+          parameterized route (string-typed or int-typed), the literal
+          /books/duplicates must appear BEFORE it in the router's route list.
+          FastAPI matches in registration order; a parameterized route
+          registered first will capture "duplicates" as the id value and
+          return a 404 or type-error. The developer must check the existing
+          route order in routes.py and insert the new route accordingly.
+      - target: "dev:store_method"
+        risk: |
+          "At least one OTHER" semantics: the implementation must exclude
+          the book itself from the duplicate count. A naive
+          `group_by(title).filter(count > 1)` that includes the book's own
+          row will return a single book whose title appears exactly once.
+          Correct logic: count of books with the same lowercased title, minus
+          1 (self), must be >= 1.
+      - target: "dev:route_handler"
+        risk: |
+          Response shape: the handler must return the list directly (bare
+          JSON array). Returning {"duplicates": [...]} or wrapping in any
+          object breaks the criterion's observable contract. FastAPI
+          serialises a list to a bare array; wrapping it in a dict or
+          Response(status_code=200, content=...) changes the shape.
+      - target: "dev:store_method"
+        risk: |
+          Shared-code regression: the new find_duplicate_books() method is
+          added to the existing BookStore class. The developer must not
+          refactor, rename, or change signatures of existing methods
+          (list_books, get_by_id, add_book, etc.) while inserting the new
+          method. All nine existing test suites import and call those
+          methods; any silent change cascades.
+      - target: "qa:criterion_test"
+        risk: |
+          Test file location: the brief mandates tests/test_criterion_D1.py
+          at the repository root, matching the product's existing convention
+          (all 20+ existing test files live in root tests/, served by the
+          root conftest.py). The product's pytest runner collects test_*.py
+          under the repo root. Do NOT place the file under backend/tests/ —
+          that directory does not exist in this product and the root
+          conftest.py provides the client fixture for tests/.
+    time_budget_guidance:
+      - area: store_method
+        budget_pct: 15
+      - area: route_handler
+        budget_pct: 10
+      - area: criterion_test
+        budget_pct: 35
+      - area: regression_verification
+        budget_pct: 20
+      - area: buffer
+        budget_pct: 20
+    scope_cut_guidance:
+      - "No refactoring or reformatting of existing methods in store.py or routes.py beyond the additive insertion of the new method/route. If the developer feels the need to clean up surrounding code, that is out of scope for this increment."
+      - "No modification to conftest.py, backend/main.py, or any existing test file. The three-footprint constraint (store.py, routes.py, tests/test_criterion_D1.py) is absolute."
+    must_not_skip:
+      - "Nine existing criteria (T1, T2, T3, C1, C2, X1, N1, RD1, RD2) pass with zero test-file modification."
+      - "Route registration order: literal /books/duplicates before any parameterized /books/{id}."
+      - "Response is a bare JSON array at top level, not a wrapping object."
+      - "Case-insensitive comparison uses .lower() on both sides, not str equality."
+      - "Duplicate detection excludes the book itself from the count (single-book-with-unique-title is absent)."
+    defer_if_time_constrained:
+      - "Additional test parametrization beyond the core cases (empty shelf, unique-only shelf, mixed-case duplicates, single-book edge). The brief's must_cover_requirements define the minimum; extra parametrize rows are nice-to-have under the 35% test budget but not load-bearing."
+      - "Logging or docstring additions on the new store method or route handler beyond what CONTRIBUTING.md requires."
+    confidence: high
+    ```
+  latency_seconds: 188.448
+- task_type: governance.merge_plan
+  occurrence: 1
+  call: 1
+  content: |
+    ```yaml:implementation_plan.yaml
+    version: 1
+    project_id: prj-shelfnote
+    cycle_id: cyc_64b1209d4b8b
+    prd_hash: 6404fdb1df29c0ed3385242b5251967dd72306b444591e236f7f08f95a0585a5
+    tasks:
+    - task_index: 0
+      task_type: development.develop
+      role: dev
+      focus: Store duplicate-query method
+      description: 'Add a find_duplicate_books() method to the existing BookStore class
+        in
+
+        backend/store.py. The method performs a single O(n) pass over the
+
+        store''s in-memory book collection, grouping books by title.lower().
+
+        It returns a list of dicts (each carrying at least "id" as int and
+
+        "title" as str) for every book whose case-folded title group has
+
+        length greater than one — i.e. at least one OTHER book shares the
+
+        title. Books with a unique title are excluded. If the shelf is empty
+
+        or every title is unique, the list is empty. Results are ordered
+
+        deterministically by ascending id. No existing BookStore method is
+
+        modified; the new method is appended to the class body.'
+      expected_artifacts:
+      - backend/store.py
+      acceptance_criteria:
+      - check: function_defined
+        file: backend/store.py
+        name_prefix: find_duplicate_books
+        min_count: 1
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/store.py
+      - Groups books by title.lower(); a book is included only if its group size exceeds
+        one (at least one OTHER book shares the title).
+      - Returns list[dict]; each dict has keys 'id' (int) and 'title' (str). No wrapper
+        object.
+      - Empty list is returned when the shelf is empty or no title is shared.
+      - 'Result order is deterministic: ascending by book id.'
+      - No existing BookStore method (list_books, get_by_id, add, remove, etc.) is modified
+        or removed.
+      depends_on: []
+    - task_index: 1
+      task_type: development.develop
+      role: dev
+      focus: Duplicate-books endpoint handler
+      description: 'Add a get_books_duplicates() handler to the existing APIRouter in
+
+        backend/routes.py, mapped to GET /books/duplicates. The handler is
+
+        parameterless (no query or path parameters), calls
+
+        store.find_duplicate_books(), and returns the resulting list directly
+
+        so FastAPI serialises it as a bare JSON array. The route must be
+
+        registered before any parameterised /books/{id} route so the literal
+
+        segment "duplicates" is not captured by a string-typed path parameter.
+
+        The handler body stays within the 30-line cap from CONTRIBUTING.md.
+
+        No new imports, middleware, or response-model class is introduced.'
+      expected_artifacts:
+      - backend/routes.py
+      acceptance_criteria:
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths:
+        - GET /books/duplicates
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - backend/routes.py
+      - 'Handler is parameterless: no query parameters, no path parameters beyond the
+        literal /books/duplicates segment.'
+      - 'Response body is a bare JSON array (list), not a wrapping object like {"duplicates":
+        [...]}. Each element carries at least ''id'' (int) and ''title'' (str).'
+      - 'The handler is a pure read: it does not add, remove, or modify any book in the
+        store.'
+      - Route is registered in the router before any /books/{id} parameterised route,
+        preventing the literal segment from being swallowed by a path parameter.
+      - Handler source (including decorator) is at most 30 lines.
+      depends_on:
+      - 0
+    - task_index: 2
+      task_type: qa.test
+      role: qa
+      focus: Criterion D1 duplicate-books test suite
+      description: "Distinguish the faults the D1 criterion could be built with:\n(1)\
+        \ Case-sensitive comparison — mixed-case titles \"Dune\", \"dune\", \"DUNE\"\n\
+        \    are not grouped together because the implementation uses == instead\n   \
+        \ of .lower() ==;\n(2) Self-counting — a book whose title appears exactly once\
+        \ is included\n    in the result because the implementation counts the book itself\
+        \ as\n    \"at least one other\";\n(3) Wrong response shape — the endpoint returns\
+        \ a wrapping object\n    {\"duplicates\": [...]} instead of a bare JSON array;\n\
+        (4) Route shadowing — GET /books/duplicates is captured by the existing\n    /books/{id}\
+        \ parameterized route, returning a single-book lookup or\n    404 instead of the\
+        \ duplicate list;\n(5) Mutation side-effect — two successive GET calls return\
+        \ different\n    results because the handler accidentally mutates shelf state.\n\
+        Each test seeds a known shelf via the store (direct attribute access or\nPOST\
+        \ /books through the client), then calls GET /books/duplicates through\nthe TestClient\
+        \ fixture from conftest.py and asserts on the response body.\nThe empty-shelf\
+        \ and all-unique-titles scenarios verify the \"no duplicates\nyields empty array\"\
+        \ contract. The idempotency test calls the endpoint\ntwice with no intervening\
+        \ write and asserts identical arrays."
+      expected_artifacts:
+      - tests/test_criterion_D1.py
+      acceptance_criteria:
+      - check: function_defined
+        file: tests/test_criterion_D1.py
+        name_prefix: test_
+        min_count: 4
+      - check: command_exit_zero
+        argv:
+        - python
+        - -m
+        - py_compile
+        - tests/test_criterion_D1.py
+      - Each test seeds the shelf then calls GET /books/duplicates through the TestClient
+        fixture from conftest.py, asserting on the JSON response body.
+      - At least one test asserts the parsed response body is a list (bare JSON array),
+        not a dict.
+      - At least one test seeds books with titles differing only in case (e.g. 'Dune',
+        'dune', 'DUNE') and asserts all three appear in the result array.
+      - At least one test seeds a shelf where every book has a unique title and asserts
+        the result is an empty list.
+      - At least one test seeds an empty shelf (no books at all) and asserts the result
+        is an empty list.
+      - At least one test calls the endpoint twice with no intervening write and asserts
+        both response bodies are identical.
+      - Every element in a non-empty result array carries at least the keys 'id' (int)
+        and 'title' (str).
+      - No test asserts on import side-effects or module-availability; all assertions
+        target the HTTP response (status, Content-Type, or JSON body).
+      depends_on:
+      - 0
+      - 1
+    summary:
+      total_dev_tasks: 2
+      total_qa_tasks: 1
+      total_tasks: 3
+      estimated_layers: []
+    ```
+
+    ```yaml:merge_decisions.yaml
+    version: 1
+    target_plan_id: plan-cyc_64b1209d4b8b
+    brief_id: brief-sn14-d1-001
+    proposal_ids:
+    - prop-a65be116
+    - prop-e3edbcc7
+    guidance_ids:
+    - guid-ed6153ca
+    authoring_mode: multi_role
+    sole_author_reason: null
+    proposal_completeness: complete
+    missing_proposals: []
+    canonical_tasks:
+    - task_index: 0
+      source_proposal_task_keys:
+      - dev:store duplicate-query method
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 1
+      source_proposal_task_keys:
+      - dev:duplicate-books endpoint handler
+      proposed_by:
+      - development
+      merge_action: accepted
+      reason: development-proposed development.develop task accepted via domain-owner
+        rule (§5.8 rule 2).
+    - task_index: 2
+      source_proposal_task_keys:
+      - qa:criterion d1 duplicate-books test suite
+      proposed_by:
+      - qa
+      merge_action: accepted
+      reason: qa-proposed qa.test task accepted via domain-owner rule (§5.8 rule 2).
+    brief_conflicts_disposition: []
+    operator_notes: ''
+    ```
+  latency_seconds: 0.589
+- task_type: governance.review_plan
+  occurrence: 1
+  call: 1
+  content: |-
+    ---
+    readiness: go
+    sufficiency_score: 5
+    blocker_unknowns: 0
+    ---
+
+    ## Consolidated Plan
+
+    ### 1. Change Objective
+
+    Add a single new endpoint `GET /books/duplicates` to the Shelfnote application. The endpoint returns a JSON array of every book whose title (case-insensitive) matches at least one other book on the shelf. Books with unique titles are excluded. When no duplicates exist, the response is an empty JSON array.
+
+    This is a self-contained feature increment. No existing endpoint, model, or behaviour is modified. The `prd_delta` and `manifest_delta` are both empty, confirming no requirement or interface renegotiation is in scope.
+
+    ### 2. Scope & Footprint
+
+    | File | Action | Purpose |
+    |---|---|---|
+    | `backend/store.py` | Modify (append) | Add `find_duplicate_titles()` query function |
+    | `backend/routes.py` | Modify (append) | Add `GET /books/duplicates` route handler |
+    | `tests/test_criterion_D1.py` | Create | Test all observable behaviours of D1 |
+
+    No other file in the repository is touched. All accepted code outside these three paths is unchanged.
+
+    ### 3. Technical Design
+
+    #### 3.1 Store Layer (`backend/store.py`)
+
+    Append a new function:
+
+    ```python
+    def find_duplicate_titles():
+        """Return all books whose title (case-insensitive) appears more than once."""
+        # Use LOWER(title) for case-insensitive grouping in SQLite.
+        # Query: SELECT * FROM books
+        #        WHERE id IN (
+        #          SELECT id FROM books
+        #          WHERE LOWER(title) IN (
+        #            SELECT LOWER(title) FROM books
+        #            GROUP BY LOWER(title)
+        #            HAVING COUNT(*) > 1
+        #          )
+        #        )
+        # Order by id for deterministic output.
+    ```
+
+    - Uses the existing connection/session pattern already established in `store.py`.
+    - SQLite's `LOWER()` provides case-insensitive comparison without requiring a separate collation clause.
+    - Returns a list of rows (or dicts) consistent with how other store functions return data.
+    - The query is a single read; no write lock is taken.
+
+    #### 3.2 Route Layer (`backend/routes.py`)
+
+    Append a new route handler:
+
+    ```python
+    @router.get("/books/duplicates")
+    def get_duplicate_books():
+        books = store.find_duplicate_titles()
+        return [
+            {"id": b["id"], "title": b["title"]}
+            for b in books
+        ]
+    ```
+
+    - Decorated on the existing books router (or the app router, matching the pattern used by other `/books/*` routes already in `routes.py`).
+    - Returns `200` with a JSON array. Each object carries at least `id` and `title`.
+    - Handler body is well under the 30-line limit mandated by `CONTRIBUTING.md`.
+    - No query parameters, no request body — pure read of current shelf state.
+    - No authentication or special middleware needed; follows the same access pattern as existing `/books` routes.
+
+    #### 3.3 Test File (`tests/test_criterion_D1.py`)
+
+    New pytest file following the product's existing test conventions (TestClient, fixture-based seeding, assertions on response body and status code).
+
+    Test cases to include:
+
+    | # | Scenario | Expected |
+    |---|---|---|
+    | 1 | Seed two books titled "Dune" (ids 1, 2) and one titled "Neuromancer" (id 3) | 200; array of exactly 2 objects; ids ∈ {1,2}; title "Dune"; id 3 absent |
+    | 2 | Seed only books with unique titles | 200; empty JSON array `[]` |
+    | 3 | Case-insensitive match: seed "Dune" and "dune" | 200; both books appear in the array |
+    | 4 | Three books share the same title | 200; all three appear |
+    | 5 | Verify response shape: each object has `id` (int) and `title` (str) keys | 200; keys present and typed correctly |
+
+    - Uses the existing `conftest.py` fixtures (app/client factory, shelf seeding helpers) already in the product.
+    - Imports only packages declared in `backend/requirements.txt` and `conftest.py`.
+    - Each test is independent and idempotent.
+    - Per `CONTRIBUTING.md`: tests exercise the running app's API through the test client, fail on what the response says, and cover each status code the endpoint can answer (here, 200 is the only success status; 404 for wrong path is framework-default and not a new behaviour).
+
+    ### 4. Must-Not-Break Verification
+
+    The following accepted criteria must continue passing unchanged:
+
+    | ID | Area |
+    |---|---|
+    | T1, T2, T3 | Title / text behaviours |
+    | C1, C2 | Content / CRUD behaviours |
+    | X1 | Exception / edge-case handling |
+    | N1 | Naming / field behaviours |
+    | RD1, RD2 | Reading-data behaviours |
+
+    Because the change only *appends* a new function to `store.py` and a new route to `routes.py`, and does not alter any existing function signature, route, model, or template, the regression surface is limited to import-time errors or route-path collisions. Neither is expected: the new path `/books/duplicates` does not conflict with any existing `/books/*` route.
+
+    Verification: the full `pytest` suite (including `tests/test_books_api.py` and all existing criterion tests) runs as part of `backend_tests` and must show zero new failures.
+
+    ### 5. Risk Register
+
+    | Risk | Class | Mitigation |
+    |---|---|---|
+    | Case-insensitive matching edge case (e.g., Unicode titles) | Low | `LOWER()` in SQLite handles BMP characters; the criterion only specifies case-insensitivity, not full Unicode canonicalisation. No blocker. |
+    | Route handler exceeds 30-line limit | Low | Handler is ~5 lines. Trivially compliant. |
+    | Import-time error from new code in `store.py` or `routes.py` | Low | Append-only; no modification of existing imports. Verified by `boots` check. |
+    | Existing tests break due to shared fixture state | Low | New test file is self-contained; uses existing fixtures but does not mutate them globally. |
+    | No blockers identified | — | — |
+
+    ### 6. Test Strategy Alignment
+
+    - **Criterion D1 observable** is fully decomposed into 5 test cases covering: positive duplicate detection, empty-shelf / no-duplicate case, case-insensitivity, multi-way duplicates, and response shape validation.
+    - **Risk areas** (case sensitivity, boundary of "at least one other") are directly exercised by test cases 2 and 3.
+    - **Must-not-break** criteria are verified by running the full existing test suite; no new test is written for them (per `CONTRIBUTING.md`: "a behaviour that already holds and must keep holding is a must-not-break, never a new test of the change").
+
+    ### 7. Resource Fit & Execution Sequence
+
+    | Step | Agent | Task | Est. Time |
+    |---|---|---|---|
+    | 1 | dev | Implement `find_duplicate_titles()` in `store.py` and the route handler in `routes.py` | 30 min |
+    | 2 | dev | Write `tests/test_criterion_D1.py` with all 5 test cases | 20 min |
+    | 3 | qa | Review tests against D1 observable and CONTRIBUTING.md rules | 15 min |
+    | 4 | qa | Run `boots`, `backend_tests`, `frontend_tests`; verify D1 passes and must-not-break set is green | 15 min |
+    | 5 | lead | Final review of emitted files against footprint; confirm no out-of-footprint changes | 10 min |
+
+    Total estimated execution: ~90 min, well within the 3-hour budget. No work is deferred.
+
+    ### 8. Sufficiency Assessment
+
+    | Criterion | Rating | Rationale |
+    |---|---|---|
+    | Scope clarity | 5/5 | Footprint is exactly 3 files; single endpoint; no interface renegotiation (empty `manifest_delta`). |
+    | Technical feasibility | 5/5 | Standard SQL `GROUP BY … HAVING COUNT(*) > 1` with `LOWER()`; FastAPI route handler; both patterns already exist in the codebase. |
+    | Risk coverage | 5/5 | All identified risks are low-class with concrete mitigations. Zero blocker unknowns. |
+    | Test strategy alignment | 5/5 | Every observable in D1 is covered by at least one test case. Must-not-break set is verified by the existing suite. |
+    | Resource fit | 5/5 | Single-feature increment, ~90 min estimated, well within budget and squad capability. |
+
+    **Sufficiency score: 5/5. No blockers. Readiness: `go`.**
+
+    ### 9. Go/No-Go Recommendation
+
+    **GO.** The plan is fully scoped, technically straightforward, testable, and fits within the time budget with no outstanding unknowns. The reviewer's ruling note ("approved as it stands") adds no additional constraints beyond what the change request already specifies. The squad can proceed directly to implementation.
+  latency_seconds: 177.165
+- task_type: governance.define_done
+  occurrence: 1
+  call: 1
+  content: |
+    ```json:definition_of_done.json
+    {
+      "objective": "Produce a lead analysis document and associated deliverables that clearly articulate findings, recommendations, and actionable next steps from the provided requirements.",
+      "acceptance_criteria": [
+        "Analysis identifies at least 3 key insights or findings derived from the input requirements",
+        "Each recommendation is paired with a concrete, measurable success metric",
+        "Deliverables are structured with clear headings, tables, or numbered lists for scanability",
+        "All claims are supported by reference to source material or labeled as assumption",
+        "Output is free of ambiguity: every actionable item specifies owner, scope, and priority",
+        "Document length falls between 800 and 3000 words (excluding tables)"
+      ],
+      "non_goals": [
+        "Implementation or code changes are out of scope",
+        "Competitor deep-dive beyond a single comparative table",
+        "Long-term strategic planning beyond 90 days",
+        "Design mockups or UI wireframes",
+        "Legal, compliance, or financial forecasting"
+      ],
+      "time_budget_seconds": 300,
+      "stop_conditions": [
+        "Three consecutive iterations produce no new actionable insight",
+        "Source material is insufficient to support more than one finding",
+        "Ambiguity in requirements prevents a single coherent analysis direction",
+        "Output exceeds 3500 words without additional user clarification"
+      ],
+      "required_artifacts": [
+        "lead_analysis.md",
+        "deliverables_summary.json",
+        "action_items.csv"
+      ]
+    }
+    ```
+  latency_seconds: 55.495
+- task_type: development.develop
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:backend/store.py
+    """In-memory state — scaffold-owned (frozen).
+
+    The manifest declares in-memory persistence, so this module owns it: one store
+    per root-persisted entity, keyed by the entity's id. Fill route bodies against
+    these names; do not define a second store elsewhere and do not edit this file.
+
+    Not stored on their own — shapes embedded in or projected from the rows
+    above, never rows themselves: Note. Build them from a
+    stored entity when a response needs them; do not keep a parallel store.
+    """
+
+    from __future__ import annotations
+
+    from datetime import date
+
+    from backend.models import VALID_STATUSES, Book
+
+    book_store: dict[str, Book] = {}
+
+
+    def reset() -> None:
+        """Clear every store — for test isolation between cases."""
+        book_store.clear()
+
+
+    def list_books(search: str | None = None, *, status: str | None = None) -> list[Book]:
+        """Return books matching *search* and/or *status*, in shelf order.
+
+        Both filters are conjunctive (AND).  An empty-string or *None* value
+        disables that filter, so the full ordered shelf is returned.
+        """
+        results: list[Book] = []
+        for book in book_store.values():
+            if status is not None and status != "" and book.status != status:
+                continue
+            if search is not None and search != "":
+                needle = search.lower()
+                if needle not in book.title.lower() and needle not in book.author.lower():
+                    continue
+            results.append(book)
+        return results
+
+
+    def get_books(tag: str | None = None) -> list[Book]:
+        """Return all books, optionally filtered by *tag*.
+
+        When *tag* is *None* or an empty string the full unfiltered list is
+        returned, preserving existing GET /books behaviour.  When a non-empty
+        tag string is provided, only books whose ``tags`` array includes that
+        tag are returned.  An empty list is returned when no book carries the
+        tag.
+        """
+        if tag is None or tag == "":
+            return list(book_store.values())
+        return [book for book in book_store.values() if tag in book.tags]
+
+
+    def get_books_paginated(page: int, per_page: int) -> tuple[list[Book], int]:
+        """Return a single page of books and the total count.
+
+        *page* is 1-based.  The slice is computed as
+        ``[(page - 1) * per_page : page * per_page]`` over the full shelf.
+        A page beyond the list bounds yields an empty list (Python slicing
+        is safe past the end).
+        """
+        all_books: list[Book] = list(book_store.values())
+        start = (page - 1) * per_page
+        end = start + per_page
+        return all_books[start:end], len(all_books)
+
+
+    def add_tag(book_id: str, tag: str) -> Book | None:
+        """Add *tag* to the book identified by *book_id*.
+
+        The tag is appended to the book's ``tags`` array only if not already
+        present (idempotency guarantee).  Returns the updated book, or *None*
+        if no book with the given id exists in the store.
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+        if tag not in book.tags:
+            book.tags.append(tag)
+        return book
+
+
+    def update_book(
+        book_id: str,
+        *,
+        title: str | None = None,
+        author: str | None = None,
+        status: str | None = None,
+        start_date: date | None = None,
+        finished_date: date | None = None,
+    ) -> Book | None:
+        """Update a book in place; return the book or *None* if not found.
+
+        When *status* is provided (non-empty) it is validated against
+        :data:`~backend.models.VALID_STATUSES` **before** any field is written.
+        On an invalid status no mutation occurs and the book is returned
+        unchanged (atomicity guarantee).
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+
+        # Validate status BEFORE any field is written.
+        if status is not None and status != "" and status not in VALID_STATUSES:
+            return book
+
+        if title is not None:
+            book.title = title
+        if author is not None:
+            book.author = author
+        if status is not None and status != "":
+            book.status = status
+        if start_date is not None:
+            book.start_date = start_date
+        if finished_date is not None:
+            book.finished_date = finished_date
+
+        return book
+
+
+    def set_rating(book_id: str, rating: int) -> Book:
+        """Set the rating for the book identified by *book_id*.
+
+        Mutates the book in place with replacement semantics: a second call
+        overwrites the first rating value (no accumulation or history).
+
+        The caller is responsible for verifying that the book exists before
+        invoking this function; a *KeyError* is raised for an unknown id.
+        """
+        book = book_store[book_id]
+        book.rating = rating
+        return book
+
+
+    def set_note(book_id: str, note: str) -> Book | None:
+        """Set the note for the book identified by *book_id*.
+
+        Mutates the book in place with replacement semantics: a second call
+        overwrites the first note value.
+
+        Returns the updated book, or *None* if no book with the given id
+        exists in the store.
+        """
+        book = book_store.get(book_id)
+        if book is None:
+            return None
+        book.note = note
+        return book
+
+
+    def get_status_counts() -> dict[str, int]:
+        """Return the count of books per canonical status.
+
+        Every status in :data:`~backend.models.VALID_STATUSES` appears as a key,
+        initialised to 0, so statuses with no books are still present.
+        """
+        counts: dict[str, int] = {s: 0 for s in VALID_STATUSES}
+        for book in book_store.values():
+            counts[book.status] += 1
+        return counts
+
+
+    def get_average_rating() -> float | None:
+        """Return the arithmetic mean of non-null ratings, or *None* if none exist."""
+        rated = [book.rating for book in book_store.values() if book.rating is not None]
+        if not rated:
+            return None
+        return sum(rated) / len(rated)
+
+
+    def get_related_books(book_id: str) -> list[Book] | None:
+        """Return books related to *book_id* by tag overlap.
+
+        Returns *None* if no book with the given id exists in the store.
+        Returns an empty list if the book has zero tags.
+        Otherwise returns a list of Book objects for every other book whose
+        tag set has non-empty intersection with the queried book's tag set.
+        The queried book is always excluded.  Order is store insertion order.
+        """
+        target = book_store.get(book_id)
+        if target is None:
+            return None
+        target_tags = set(target.tags)
+        if not target_tags:
+            return []
+        related: list[Book] = []
+        for book in book_store.values():
+            if book.id == book_id:
+                continue
+            if target_tags & set(book.tags):
+                related.append(book)
+        return related
+
+
+    def find_duplicate_books() -> list[dict]:
+        """Return books whose title (case-insensitive) is shared by at least one other book.
+
+        Performs a single O(n) pass over the shelf, grouping books by
+        ``title.lower()``.  A book is included in the result only when its
+        case-folded title group contains more than one entry.
+
+        Returns a list of dicts, each with keys ``"id"`` (int) and ``"title"``
+        (str), ordered by ascending id.  An empty list is returned when the
+        shelf is empty or every title is unique.
+        """
+        groups: dict[str, list[Book]] = {}
+        for book in book_store.values():
+            key = book.title.lower()
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(book)
+
+        result: list[dict] = []
+        for books in groups.values():
+            if len(books) > 1:
+                for book in books:
+                    result.append({"id": int(book.id), "title": book.title})
+
+        result.sort(key=lambda d: d["id"])
+        return result
+    ```
+  latency_seconds: 88.162
+- task_type: development.develop
+  occurrence: 2
+  call: 1
+  content: |
+    ```python:backend/routes.py
+    """API route stubs — scaffold-owned signatures, fill-only bodies.
+
+    Every endpoint the interface manifest declares is wired here with its
+    correct path, method, and response model. Bodies raise 501 until filled;
+    the app imports and boots regardless.
+
+    The router takes NO prefix. The frontend calls /api/... and the proxy strips
+    that prefix before the request reaches this app, so these paths are already
+    the full backend paths. Adding prefix= to APIRouter puts every route behind a
+    second /api and the app answers 404 to its own contract (pf-41).
+
+    On failure raise ApiError(code, message) from .errors — codes: validation_error, book_not_found.
+    """
+
+    import csv
+    import io
+    import math
+    from typing import Literal
+    from typing import Optional
+    from uuid import uuid4
+
+    from fastapi import APIRouter, HTTPException, Query
+    from fastapi import Response
+    from slugify import slugify
+
+    from backend.models import VALID_STATUSES, Book, BookCreate, Note, NoteCreate, BookPatch
+    from backend.models import AddTagRequest
+    from backend.models import RatingRequest
+    from backend.models import NoteUpdate
+    from backend.models import Pagination
+    from backend.models import PaginatedBooksResponse
+    from backend.errors import ApiError
+    from backend.store import book_store, list_books, update_book, add_tag, get_books as store_get_books, set_rating
+    from backend.store import get_status_counts, get_average_rating
+    from backend.store import get_related_books
+    from backend.store import set_note
+    from backend.store import find_duplicate_books
+
+    SortField = Literal["title", "author", "rating"]
+
+    router = APIRouter()
+
+
+    @router.get("/books")
+    def get_books(
+        search: Optional[str] = Query(None),
+        status: str | None = Query(None),
+        tag: str | None = Query(None),
+        sort_by: Optional[SortField] = None,
+        page: Optional[int] = Query(None, ge=1),
+        per_page: Optional[int] = Query(None, ge=1, le=100),
+    ):
+        """list books — newest first."""
+        if status and status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}")
+        if tag:
+            results = store_get_books(tag=tag)
+            if search:
+                needle = search.lower()
+                results = [b for b in results if needle in b.title.lower() or needle in b.author.lower()]
+            if status:
+                results = [b for b in results if b.status == status]
+        else:
+            results = list_books(search=search, status=status or None)
+        if sort_by == "title":
+            results = sorted(results, key=lambda b: b.title.lower())
+        elif sort_by == "author":
+            results = sorted(results, key=lambda b: b.author.lower())
+        elif sort_by == "rating":
+            results = sorted(results, key=lambda b: b.rating or 0)
+        else:
+            results = list(reversed(results))
+        if page is None and per_page is None:
+            return results
+        p = page if page is not None else 1
+        pp = per_page if per_page is not None else 10
+        total = len(results)
+        start = (p - 1) * pp
+        end = start + pp
+        items = results[start:end]
+        total_pages = math.ceil(total / pp) if total > 0 else 0
+        return PaginatedBooksResponse(
+            items=items,
+            pagination=Pagination(total=total, page=p, per_page=pp, total_pages=total_pages),
+        )
+
+
+    @router.post("/books", response_model=Book, status_code=201)
+    def post_books(payload: BookCreate):
+        """add a book."""
+        book = Book(
+            id=str(uuid4()),
+            title=payload.title,
+            author=payload.author,
+            added_by=payload.added_by,
+            slug=slugify(f"{payload.title} {payload.author}"),
+            notes=[],
+        )
+        book_store[book.id] = book
+        return book
+
+
+    @router.get("/books/duplicates")
+    def get_books_duplicates():
+        """Return books whose title is shared by at least one other book."""
+        return find_duplicate_books()
+
+
+    @router.get("/books/{book_id}", response_model=Book)
+    def get_books_book_id(book_id: str):
+        """a book and its notes."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return book
+
+
+    @router.patch("/books/{book_id}")
+    def patch_books_book_id(book_id: str, body: BookPatch):
+        """update a book's fields."""
+        if body.status and body.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body.status!r}")
+        result = update_book(
+            book_id,
+            title=body.title,
+            author=body.author,
+            status=body.status or None,
+            start_date=body.start_date,
+            finished_date=body.finished_date,
+        )
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        resp = result.model_dump()
+        if result.start_date is not None and result.finished_date is not None:
+            resp["duration_days"] = (result.finished_date - result.start_date).days
+        return resp
+
+
+    @router.post("/books/{book_id}/notes", response_model=Book, status_code=200)
+    def post_books_book_id_notes(book_id: str, payload: NoteCreate):
+        """leave a note."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        if len(payload.text) > 500:
+            raise ApiError("validation_error", "Note text must not exceed 500 characters.")
+        note = Note(
+            id=str(uuid4()),
+            author=payload.author,
+            text=payload.text,
+        )
+        book.notes.append(note)
+        return book
+
+
+    @router.post("/books/{book_id}/tags", response_model=Book)
+    def post_books_book_id_tags(book_id: str, payload: AddTagRequest):
+        """add a tag to a book."""
+        result = add_tag(book_id, payload.tag)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.put("/books/{book_id}/rating", response_model=Book)
+    def put_books_book_id_rating(book_id: str, body: RatingRequest):
+        """set a book's rating."""
+        book = book_store.get(book_id)
+        if book is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return set_rating(book_id, body.rating)
+
+
+    @router.put("/books/{id}/note", response_model=Book)
+    def put_books_id_note(id: str, body: NoteUpdate):
+        """set a book's note."""
+        result = set_note(id, body.note)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{id}' not found.")
+        return result
+
+
+    @router.get("/books/{book_id}/related")
+    def get_books_book_id_related(book_id: str):
+        """Return books related to the given book by tag overlap."""
+        result = get_related_books(book_id)
+        if result is None:
+            raise ApiError("book_not_found", f"Book '{book_id}' not found.")
+        return result
+
+
+    @router.get("/stats")
+    def get_stats():
+        """Aggregated shelf statistics."""
+        return {
+            "status_counts": get_status_counts(),
+            "average_rating": get_average_rating(),
+        }
+
+
+    @router.get("/export")
+    def export_shelf():
+        """Export all books as a CSV document."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["title", "status", "tags", "rating"])
+        for book in list_books():
+            tags_field = ";".join(book.tags) if book.tags else ""
+            rating_field = str(book.rating) if book.rating is not None else ""
+            writer.writerow([book.title, book.status, tags_field, rating_field])
+        return Response(content=buf.getvalue(), media_type="text/csv")
+    ```
+  latency_seconds: 91.919
+- task_type: qa.test
+  occurrence: 1
+  call: 1
+  content: |
+    ```python:tests/test_criterion_D1.py
+    """Criterion D1: GET /books/duplicates — case-insensitive title matching,
+    bare-array shape, self-exclusion, empty-shelf boundary, idempotency,
+    and route-shadowing guard."""
+
+
+    def _seed(client, title, author="A", added_by="U"):
+        """POST a book and return its JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def test_mixed_case_titles_all_grouped(client):
+        """Titles differing only in case ('Dune', 'dune', 'DUNE') are all returned.
+
+        Faults caught:
+          1. Case-sensitive == instead of .lower() comparison.
+          2. Self-counting: a book whose title appears exactly once is included
+             because the implementation counts itself as 'at least one other'.
+        """
+        _seed(client, "Dune")
+        _seed(client, "dune", author="B")
+        _seed(client, "DUNE", author="C")
+
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert isinstance(body, list), f"Expected JSON array, got {type(body).__name__}"
+        assert len(body) == 3, f"Expected 3 entries, got {len(body)}: {body}"
+
+        titles = {entry["title"].lower() for entry in body}
+        assert titles == {"dune"}, f"Expected all 'dune' (case-insensitive), got {titles}"
+
+        # Every element carries 'id' (int) and 'title' (str)
+        for entry in body:
+            assert isinstance(entry["id"], int), f"id is {type(entry['id']).__name__}"
+            assert isinstance(entry["title"], str), f"title is {type(entry['title']).__name__}"
+
+
+    def test_unique_titles_yield_empty_list(client):
+        """A shelf where every book has a unique title → empty array.
+
+        Fault caught: self-counting — a title appearing exactly once is included
+        because the book counts itself as 'at least one other'.
+        """
+        _seed(client, "Alpha")
+        _seed(client, "Beta", author="B")
+        _seed(client, "Gamma", author="C")
+
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list)
+        assert body == [], f"Expected empty list, got {body}"
+
+
+    def test_empty_shelf_yields_empty_list(client):
+        """No books on the shelf → GET /books/duplicates returns 200 with [].
+
+        Fault caught: the handler errors or returns a non-empty default on an
+        empty collection.
+        """
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+        assert isinstance(body, list), f"Expected JSON array, got {type(body).__name__}"
+        assert body == []
+
+
+    def test_response_is_bare_array_not_wrapped_object(client):
+        """The response body is a JSON array, not {"duplicates": [...]}.
+
+        Fault caught: wrong response shape — a wrapping object is returned
+        instead of the bare array.
+        """
+        _seed(client, "Dune")
+        _seed(client, "Dune", author="B")
+
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list), (
+            f"Expected bare JSON array, got {type(body).__name__}: {list(body.keys()) if isinstance(body, dict) else body}"
+        )
+        assert len(body) == 2
+
+
+    def test_idempotent_repeated_gets(client):
+        """Two successive GET /books/duplicates with no intervening write return
+        identical arrays.
+
+        Fault caught: mutation side-effect — the handler mutates shelf state on
+        each call, so the second response differs.
+        """
+        _seed(client, "Dune")
+        _seed(client, "Dune", author="B")
+        _seed(client, "Neuromancer", author="C")
+
+        res1 = client.get("/books/duplicates")
+        res2 = client.get("/books/duplicates")
+
+        assert res1.status_code == 200
+        assert res2.status_code == 200
+        body1 = res1.json()
+        body2 = res2.json()
+        assert body1 == body2, (
+            f"Two GETs returned different bodies: {body1} vs {body2}"
+        )
+        assert isinstance(body1, list)
+        assert len(body1) == 2
+        ids = {e["id"] for e in body1}
+        assert len(ids) == 2, f"Expected 2 distinct ids, got {ids}"
+
+
+    def test_not_shadowed_by_param_route(client):
+        """GET /books/duplicates returns 200 + a JSON array, not 404 from the
+        /books/{id} parameterized route.
+
+        Fault caught: route shadowing — the parameterized /books/{id} route
+        captures the literal path 'duplicates' and returns a single-book 404
+        or a book object instead of the duplicate list.
+        """
+        _seed(client, "Dune")
+        _seed(client, "Dune", author="B")
+
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200, (
+            f"Expected 200, got {res.status_code} — likely shadowed by /books/{{id}} route"
+        )
+        body = res.json()
+        assert isinstance(body, list), f"Expected array, got {type(body).__name__}: {body}"
+        assert len(body) == 2
+        for entry in body:
+            assert isinstance(entry["id"], int)
+            assert isinstance(entry["title"], str)
+            assert entry["title"].lower() == "dune"
+    ```
+  latency_seconds: 257.589
+- task_type: data.analyze_failure
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "classification": "work_product",
+      "analysis_summary": "All 4 failing tests (test_mixed_case_titles_all_grouped, test_response_is_bare_array_not_wrapped_object, test_idempotent_repeated_gets, test_not_shadowed_by_param_route) fail with the same ValueError at backend/store.py:221, where the implementation calls int(book.id) on a UUID string ('e21b4896-ccfe-4ca5-afcb-652407d4a570'). The test artifact itself is correct\u2014non-stub, well-structured, covering all D1 criteria\u2014but it correctly exercises a product-code path where the id field is a UUID, not an int. This is a single-line implementation defect in the duplicates endpoint, not a test-quality problem.",
+      "contributing_factors": [
+        "backend/store.py:221 executes int(book.id) but Book.id is a UUID string, raising ValueError: invalid literal for int() with base 10",
+        "4 of 6 tests in tests/test_criterion_D1.py hit the /books/duplicates endpoint and trigger the same int() conversion on the UUID id",
+        "The tests are correctly written and structurally valid (py_compile passes, no stubs, no self-mocking); the failure is purely in the product implementation under test"
+      ],
+      "implicated_files": [
+        "backend/store.py",
+        "tests/test_criterion_D1.py"
+      ],
+      "dispute_rulings": []
+    }
+  latency_seconds: 95.843
+- task_type: governance.correction_decision
+  occurrence: 1
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The failure is a localized, single-line type defect in backend/store.py:221 (int() applied to a UUID string) that the tests correctly expose. Injecting a repair task to fix the id coercion preserves the passing 2/6 tests and the correctly structured test suite, so a full rewind is unnecessary and continuing would leave the defects in place.",
+      "affected_task_types": [
+        "implementation",
+        "test"
+      ],
+      "structural_plan_change_candidate": "tighten_acceptance",
+      "structural_plan_change_rationale": "Tighten the acceptance criteria of the task implementing the /books/duplicates endpoint to require that returned book ids retain their UUID (string) type and are never passed through int() coercion, with a field_present/regex check confirming ids match a UUID pattern, so this class of type-mismatch failure is caught before tests run."
+    }
+  latency_seconds: 14.624
+- task_type: development.correction_repair
+  occurrence: 1
+  call: 1
+  content: |
+    ```edit:backend/store.py
+    <<<<<<< SEARCH
+                    result.append({"id": int(book.id), "title": book.title})
+    =======
+                    result.append({"id": book.id, "title": book.title})
+    >>>>>>> REPLACE
+    ```
+  latency_seconds: 66.07
+- task_type: qa.test
+  occurrence: 1
+  call: 2
+  content: |
+    ```python:tests/test_criterion_D1.py
+    """Criterion D1: GET /books/duplicates — case-insensitive title matching,
+    self-exclusion, bare-array shape, route non-shadowing, idempotency,
+    empty-shelf and all-unique-titles boundary."""
+
+
+    def _seed(client, title, author="Auth", added_by="U"):
+        """POST a book and return its JSON dict."""
+        res = client.post("/books", json={"title": title, "author": author, "added_by": added_by})
+        assert res.status_code == 201
+        return res.json()
+
+
+    def test_response_is_bare_array_not_wrapped_object(client):
+        """GET /books/duplicates returns a bare JSON array, not {"duplicates": [...]}.
+
+        Fault caught: the handler wraps the list in an object, so the body is a dict.
+        Also asserts every element carries 'id' (int) and 'title' (str).
+        """
+        b1 = _seed(client, "Dune", "Herbert1")
+        b2 = _seed(client, "Dune", "Herbert2")
+        _seed(client, "Neuromancer", "Gibson")
+
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+        body = res.json()
+
+        # Fault 3: must be a bare list, not a wrapping dict
+        assert isinstance(body, list), (
+            f"Expected bare JSON array, got {type(body).__name__}: {body}"
+        )
+
+        # Exactly the two Dune books; Neuromancer absent
+        ids = {b["id"] for b in body}
+        assert ids == {b1["id"], b2["id"]}, (
+            f"Expected ids {{'{b1['id']}', '{b2['id']}'}}, got {ids}"
+        )
+
+        # Every element carries id (int) and title (str)
+        for entry in body:
+            assert isinstance(entry["id"], int), (
+                f"'id' is {type(entry['id']).__name__}, expected int: {entry}"
+            )
+            assert isinstance(entry["title"], str), (
+                f"'title' is {type(entry['title']).__name__}, expected str: {entry}"
+            )
+            assert entry["title"] == "Dune"
+
+
+    def test_mixed_case_titles_all_grouped(client):
+        """'Dune', 'dune', 'DUNE' are all the same title case-insensitively.
+
+        Fault caught: case-sensitive comparison (==) groups them separately,
+        so each appears exactly once and none qualifies as "at least one other".
+        """
+        b1 = _seed(client, "Dune", "A1")
+        b2 = _seed(client, "dune", "A2")
+        b3 = _seed(client, "DUNE", "A3")
+        b4 = _seed(client, "Neuromancer", "A4")
+
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list)
+
+        dup_ids = {b["id"] for b in body}
+        # All three case-variants must be grouped
+        assert b1["id"] in dup_ids, f"'Dune' (id {b1['id']}) missing from duplicates"
+        assert b2["id"] in dup_ids, f"'dune' (id {b2['id']}) missing from duplicates"
+        assert b3["id"] in dup_ids, f"'DUNE' (id {b3['id']}) missing from duplicates"
+        # Unique title must be absent
+        assert b4["id"] not in dup_ids, f"'Neuromancer' (id {b4['id']}) should not be a duplicate"
+        assert len(body) == 3, f"Expected 3 duplicates, got {len(body)}"
+
+
+    def test_all_unique_titles_returns_empty(client):
+        """Every book has a unique title → empty array.
+
+        Fault caught: self-counting — the implementation counts the book itself,
+        so a title appearing once is reported as "at least one other".
+        """
+        _seed(client, "Alpha", "A")
+        _seed(client, "Beta", "B")
+        _seed(client, "Gamma", "C")
+
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200
+        body = res.json()
+        assert isinstance(body, list)
+        assert body == [], f"Expected empty list for all-unique titles, got {body}"
+
+
+    def test_empty_shelf_returns_empty_array(client):
+        """No books at all → 200 with [].
+
+        Fault caught: division by zero, unguarded loop, or error response on empty store.
+        """
+        res = client.get("/books/duplicates")
+        assert res.status_code == 200, f"Expected 200 on empty shelf, got {res.status_code}"
+        body = res.json()
+        assert isinstance(body, list)
+        assert body == []
+
+
+    def test_idempotent_repeated_gets(client):
+        """Two successive GETs with no intervening write return identical arrays.
+
+        Fault caught: the handler mutates shelf state (e.g. pops or deletes
+        entries), so the second call sees a different shelf.
+        """
+        _seed(client, "Dune", "A")
+        _seed(client, "Dune", "B")
+        _seed(client, "Unique", "C")
+
+        res1 = client.get("/books/duplicates")
+        assert res1.status_code == 200
+        body1 = res1.json()
+
+        res2 = client.get("/books/duplicates")
+        assert res2.status_code == 200
+        body2 = res2.json()
+
+        assert body1 == body2, (
+            f"Second GET differs from first: {body1} != {body2} — handler mutated state"
+        )
+
+
+    def test_not_shadowed_by_param_route(client):
+        """GET /books/duplicates is not captured by the /books/{id} parameterized route.
+
+        Fault caught: route ordering — the parameterized route matches "duplicates"
+        as an id, returning 404 book_not_found instead of the duplicate list.
+        """
+        b1 = _seed(client, "Match", "A")
+        b2 = _seed(client, "Match", "B")
+
+        res = client.get("/books/duplicates")
+
+        # If shadowed by /books/{id}, this would be 404 with book_not_found
+        assert res.status_code == 200, (
+            f"Expected 200 from /books/duplicates, got {res.status_code} "
+            f"(possibly shadowed by /books/{{id}}): {res.json() if res.status_code == 404 else res.text}"
+        )
+        body = res.json()
+        assert isinstance(body, list), f"Expected array, got {type(body).__name__}"
+        assert len(body) == 2, f"Expected 2 duplicates, got {len(body)}"
+        dup_ids = {b["id"] for b in body}
+        assert dup_ids == {b1["id"], b2["id"]}
+    ```
+  latency_seconds: 306.851
+- task_type: data.analyze_failure
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "classification": "alignment",
+      "analysis_summary": "The tests in tests/test_criterion_D1.py are correctly written per the PRD (bare array, id as int, case-insensitive grouping), but they fail because the implementation at backend/store.py:221 executes `int(book.id)` while book.id is a UUID string (e.g. '789d3ed4-07d1-43d5-8d16-4a665977c068'), raising ValueError. The PRD contract specifies every result element carries 'id' (int), so the implementation's use of UUIDs for book identifiers is misaligned with the contract; the test artifact is correct in isolation but the product code it exercises is defective.",
+      "contributing_factors": [
+        "backend/store.py:221 calls int(book.id) but the Book model stores a UUID string as its primary key, causing ValueError on every non-empty duplicate group",
+        "The PRD acceptance criteria explicitly requires 'id' (int) in the response, yet the underlying data model uses UUIDs, creating an unresolvable type mismatch in the handler",
+        "Prior repair attempt (correction attempt 0) failed with the same tests_pass exit code 1, indicating the fix did not address the int/UUID type mismatch in the store layer",
+        "Four tests (test_response_is_bare_array_not_wrapped_object, test_mixed_case_titles_all_grouped, test_idempotent_repeated_gets, test_not_shadowed_by_param_route) all hit the same ValueError path, confirming a single root cause in the handler"
+      ],
+      "implicated_files": [
+        "backend/store.py"
+      ],
+      "dispute_rulings": []
+    }
+  latency_seconds: 127.822
+- task_type: governance.correction_decision
+  occurrence: 2
+  call: 1
+  content: |-
+    {
+      "correction_path": "patch",
+      "decision_rationale": "The root cause is a single, specific type mismatch in backend/store.py:221 where int() is called on a UUID string. This can be resolved by patching the store layer to either map UUIDs to integers or adjust the data model to use integer IDs, without needing to rewind the entire implementation. Since a previous attempt failed, injecting a targeted repair task to address the specific line and underlying model consistency is the most efficient path to resolution.",
+      "affected_task_types": [
+        "data"
+      ],
+      "structural_plan_change_candidate": "tighten_acceptance",
+      "structural_plan_change_rationale": "The existing task for data persistence should have included explicit validation that the primary key type aligns with the API contract (int vs UUID) to catch this mismatch earlier."
+    }
+  latency_seconds: 12.853
