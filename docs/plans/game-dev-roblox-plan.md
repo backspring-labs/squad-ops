@@ -7,8 +7,9 @@
 - **It stands on SIP-0116, Agent Skillsets,** accepted 2026-11-09: the development profile requires, the selected
   agents supply, and the provider executes (§2). Revision 3's *specialty* and *playbooks* are gone from this plan.
 - **Placement is still the 2.8 plan's.** Nothing here places an issue or a release slot.
-- **Adopting the plan doesn't accept either game SIP.** Their revision 4 is written (PRs #2405 and #2841), and
-  acceptance follows the owner's renewed review (§8).
+- **Both game SIPs are accepted** (the owner, 2026-11-10: "accept 2405 then 2841"), at revision 4, after the
+  renewed review D9 called for: SIP-0117, Game Development Platform (PR #2405), and SIP-0118, Game Development
+  Capability Packs and Squad Composition (PR #2841). This plan cites them by those PR numbers.
 - **Revision 4's design calls and Q68 are ruled** (the owner, 2026-11-09: "approve as recommended"): the fourth
   contract and its strategy skillset, the builder with no step in the first milestone, eligibility as the provider's
   compatibility checks, a first skillset declaring `headless` and `play` only, and `roblox-luau-dev` as the dev
@@ -74,8 +75,8 @@
 **What it builds on.**
 - SIP-0116, Agent Skillsets (accepted 2026-11-09): the skillset spec, capability contracts, verification modes,
   coverage at preflight, the record and the Campaign's pin. Its phases are part of this plan's order (§3).
-- The two proposed game SIPs, each at revision 4: *Game Development Platform Capability* (PR #2405) and *Game
-  Development Capability Packs and Squad Composition* (PR #2841, stacked on it).
+- The two game SIPs, accepted 2026-11-10 at revision 4: SIP-0117, *Game Development Platform Capability* (PR #2405),
+  and SIP-0118, *Game Development Capability Packs and Squad Composition* (PR #2841).
 - The 2.6 Roblox spike (`docs/plans/roblox-spike-2-6.md`, #2895): pure-Luau logic tests run headless on the Spark
   under Lune, and anything that touches the engine needs Studio. Its gaps are #2906.
 - Prior art on the MacBook: a working client for Roblox Studio's built-in MCP server, in the target game's
@@ -486,7 +487,7 @@ They're core, built on this plan's feature branch for 2.8.
 | phase | what | size | where | exit |
 |---|---|---|---|---|
 | **0. spikes** | **done 2026-11-08:** S1, S2, S4–S6; nothing merged | S each | MacBook, except S6 | the spike record, `game-dev-roblox-spikes.md` beside this plan, ended at the gate: go (§3a) |
-| **1. the SIPs' revisions** | **done:** revision 3 of both (2026-11-08: the spike answers and the reconciliation of prior rulings, §8), then revision 4 (2026-11-09: onto SIP-0116) | M (prose) | MacBook | the owner's renewed review |
+| **1. the SIPs' revisions** | **done:** revision 3 of both (2026-11-08: the spike answers and the reconciliation of prior rulings, §8), then revision 4 (2026-11-09: onto SIP-0116). **Both accepted 2026-11-10,** as SIP-0117 and SIP-0118 | M (prose) | MacBook | the owner's renewed review: done |
 | **SIP-0116, phases 1–2** | its declarations and record, inert, then coverage: the preflight outcomes, the plan gate's check, `plannable` and the offered set | M | MacBook | SIP-0116 §14's proofs: every existing cycle's prompts, plans and roster hashes unchanged; a cycle whose routed agent lacks a required skillset refused by name |
 | **2a. the fixture path** | `qa.run_remote_operation` (#2405 R4.4), the four game contracts (#2841 R4.2), the isolation test, and a fixture skillset and provider, in tests only | M | MacBook | the fixture proves properties, plan validation, routing, expected artifacts and the correction mapping; a plan naming a contract or mode the requirements don't name is refused |
 | **2b. remote execution** | the port, the registry and its migration, `/api/v1/workers`, the claim/lease/fence protocol, the worker root, the fixture adapter. SIP-0116's phase 4 (tool requests, and the authorization and availability outcomes) builds with it | M–L | MacBook (code); Spark (migration deploy, 2.8 only) | the fixture operation runs end to end; a cancelled, expired or late attempt is refused or reconciled as §2.5 says |
@@ -621,7 +622,7 @@ the same day ("agree, finish revision 3": §2.4, §4).
 | D6 | parallel development | **the MacBook worktree and local rehearsals approved.** Merges, migrations, profile activation, worker registration and deployment stay out of 2.7's runtime; no dark merge |
 | D7 | task types | **one engine-neutral task type with operation ids** (§2.4), proved with a fixture first, and **planning made property-driven** so the type can reach a plan. An extensible host-owned lookup only if the fixture shows it's needed, as a design change. **Read in revision 4:** the operation ids are the provider's, a plan names a contract and mode, and the property is SIP-0116's `plannable` (§2.4) |
 | D8 | naming (§2.1) | **`game-dev-<engine>` for specialty identifiers,** generic names for shared execution infrastructure. **Read in revision 4:** it names the development profile, the squad profiles, the adapter and the working documents. Skillset ids keep SIP-0116's platform-first form, with `roblox-luau-dev` (Q68, ruled 2026-11-09; #2405 R4.8) |
-| D9 | the SIPs | **keep the two-document split;** revise their normative sections and ledgers after the spikes, reconcile the prior rulings (§8), and accept after renewed review |
+| D9 | the SIPs | **keep the two-document split;** revise their normative sections and ledgers after the spikes, reconcile the prior rulings (§8), and accept after renewed review. **Accepted 2026-11-10:** SIP-0117 and SIP-0118 |
 | D10 | the worker's sync path | **the adapter owns sync:** it writes the manifest's scripts into Studio through its fixed harness and confirms them by read-back. No Script Sync link in the worker's Studio, since links on a local place are lost on every restart. Script Sync stays the game owners' workflow (§2.6) |
 
 ## 8. Reconciling the recorded commitments
