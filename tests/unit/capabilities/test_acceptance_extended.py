@@ -12,6 +12,7 @@ Tests:
 
 import asyncio
 import json
+import sys
 import time
 
 import pytest
@@ -404,11 +405,15 @@ class TestCommandExitCode:
 
     async def test_timeout(self, engine, ctx):
         """command_exit_code FAIL on command timeout, a real one: the command is stopped, so the
-        check returns within the stop's bound rather than when ``sleep 999`` ends (#1983)."""
+        check returns within the stop's bound rather than when the 999-second sleep ends (#1983).
+
+        The command is named by its own path (#2976). The engine runs a check on a fixed PATH of
+        ``/usr/bin:/usr/local/bin``, and macOS keeps ``sleep`` in ``/bin``, so ``("sleep", "999")``
+        was "command not found" there and never reached the timeout this test is about."""
         check = AcceptanceCheck(
             check_type=CheckType.COMMAND_EXIT_CODE,
             target="",
-            command=("sleep", "999"),
+            command=(sys.executable, "-c", "import time; time.sleep(999)"),
         )
         started = time.monotonic()
         result = await engine.evaluate_async(check, ctx, max_check_seconds=0.1)

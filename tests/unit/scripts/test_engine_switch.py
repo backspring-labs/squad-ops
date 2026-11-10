@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from tests.unit.scripts import meminfo_reading
+
 ROOT = Path(__file__).resolve().parents[3]
 _spec = importlib.util.spec_from_file_location(
     "engine_switch", ROOT / "scripts/dev/ops/engine_switch.py"
@@ -61,6 +63,13 @@ def recorded(monkeypatch):
 
     monkeypatch.setattr(es, "record_deploy", fake)
     return asked
+
+
+@pytest.fixture(autouse=True)
+def _a_known_memory_reading(monkeypatch, tmp_path):
+    """Every record line carries the box's memory, read from ``/proc/meminfo``. No test reads the
+    real box's: macOS has none to read (#2976), and a Linux box's is whatever it happens to be."""
+    meminfo_reading.install(monkeypatch, es, tmp_path)
 
 
 class _Resp:
@@ -168,6 +177,31 @@ def test_the_release_is_not_confirmed_while_anything_holds_the_gpu(monkeypatch, 
     monkeypatch.setattr(es.time, "sleep", lambda s: None)
     with pytest.raises(es.SwitchFailed, match="GPU process"):
         es.wait_released(rec, "released_for_tensorfold", timeout=0)
+
+
+def test_a_memory_reading_is_the_kernels_kibibytes_in_gib(rec):
+    """Bug caught: the kernel's kibibytes read as bytes, so 100 GiB available reads as 0.1 and the
+    residency check that guards the switch compares against the wrong thousandth; or swap in use
+    taken as the swap that is free."""
+    assert es.mem_available() == 100 * GIB
+    assert es.memory() == {
+        "mem_available_gib": meminfo_reading.MEM_AVAILABLE_GIB,
+        "swap_used_gib": meminfo_reading.SWAP_USED_GIB,
+    }
+
+    rec.write("probe")
+
+    line = json.loads(rec.path.read_text())
+    assert (line["step"], line["mem_available_gib"], line["swap_used_gib"]) == ("probe", 100.0, 1.5)
+
+
+def test_a_reading_without_memavailable_fails_the_switch(monkeypatch, tmp_path):
+    """Bug caught: a kernel reading with no ``MemAvailable`` taken as zero, or as plenty. Residency
+    is then unknown, and the switch says so."""
+    meminfo_reading.install(monkeypatch, es, tmp_path, "MemTotal: 127535064 kB\n")
+
+    with pytest.raises(es.SwitchFailed, match="MemAvailable unreadable"):
+        es.mem_available()
 
 
 def test_a_failed_switch_restores_ollama_and_says_so(monkeypatch, tmp_path, recorded):

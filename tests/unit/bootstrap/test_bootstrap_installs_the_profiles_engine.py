@@ -36,10 +36,18 @@ RECIPE = "infra/tensorfold/recipes/qwen27b-nvfp4.yaml"
 def test_bootstrap_installs_and_switches_to_the_declared_engine(tmp_path, block, ran):
     venv = tmp_path / ".venv" / "bin"
     venv.mkdir(parents=True)
-    (venv / "python").symlink_to(sys.executable)
+    # The library runs ``.venv/bin/python``, which needs PyYAML. A launcher, since a symlink to
+    # a venv's interpreter starts the interpreter without the venv (its ``pyvenv.cfg`` is found
+    # beside the link), and PyYAML is then missing wherever the tests run from a venv (#2976).
+    python = venv / "python"
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
     profile = {"name": "p"} | ({"inference_engine": block} if block else {})
     (tmp_path / "profile.yaml").write_text(yaml.safe_dump(profile))
+    # bootstrap.sh's own shell options. Under them a lookup that crashes stops the bootstrap;
+    # without them it read as "ollama", and the two cases expecting no command passed on nothing.
     script = (
+        "set -euo pipefail\n"
         f"source {LIB}/tensorfold_setup.sh\n"
         "info() { :; }\n"
         'run_or_dry() { shift; echo "RAN $*"; }\n'
