@@ -5,6 +5,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-11-10
+
+Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the 2.6 line's debts closed. The cut's evidence is
+`docs/plans/verification-sets/2-7-0-cut-record.md`; the soak's record is `2-7-0-soak-record.md` beside it.
+
 ### Added
 - **A scripted squad for machinery cycles** (#2495): the `machinery` squad profile's agents all name the model
   `scripted`, and every call they make is answered from a recorded script

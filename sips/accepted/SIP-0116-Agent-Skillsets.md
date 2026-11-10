@@ -17,7 +17,7 @@ they can be rulings"); revision 3 applied the review's refinement on specializat
 be built in a MacBook worktree during 2.7, as the 2.7 plan's §5a records (the owner's D6 ruling on PR #2972,
 2026-11-08). Nothing merges until 2.8 opens and its plan places them.
 **Revision:** 3
-**Target:** unplaced. A 2.8 feature and the MacBook lane's input to the 2.8 plan. It creates no exception for 2.7.
+**Target:** unplaced. A 2.8 feature and the MacBook lane's input to the 2.8 plan. It creates no exception for the stabilization line before it.
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Split from:** Capability-Backed Agents (proposed, deferred to 3.x), as the first of the bounded SIPs its §17 plans.
 This SIP takes that SIP's four layers (its §21) and its assembly rules (its §27) into 2.x, restated against the
@@ -127,7 +127,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
   changes the first and the last, so it builds in 2.8 at the earliest.
 - **Questions:** Q52–Q67, ruled 2026-11-09 (§13 and the portfolio).
 
-## Delivery ledger (current as of 2026-11-09)
+## Delivery ledger (current as of 2026-11-10)
 
 | part | status | where |
 |---|---|---|

@@ -23,7 +23,24 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.6.1 (2026-11-07) — Current — what an operator meets first on 2.6.0, fixed small
+### v2.7.0 (2026-11-10) — Current — the 2.6 line's debts closed
+
+**v2.7.0, stabilization, feature-free by rule** (`docs/plans/2-7-0-plan.md`, adopted 2026-11-08; the cut record is
+`docs/plans/verification-sets/2-7-0-cut-record.md`):
+- **a verdict says what happened:** a first-emission pass on the head is refused to qa, not abandoned (D1); a page
+  criterion loads its view through the framework's page loader (#2799); a change request can't reuse an earlier
+  increment's page anchor (#2783); a suite handed to the product's runner is banked handed off (#2949);
+- **a run survives what happens to the box:** the vault's writes are crash-consistent (#2931), and a redelivered task
+  is answered once, its stale reply dropped (#2932);
+- **the overnight soak, a release gate:** a scripted squad answers every call from a recorded script (#2495); a
+  scripted Campaign on `z_shelfnote` ran 10 h 52 min and 8 increments through a pause, a token expiry, an upstream push
+  and a rebase. The restart and the session's maximum lifetime were read on a separate diagnostic, disclosed (#2892);
+- **a product increment end to end:** accepted and promoted on `z_continuum`, with IR-5, IR-6 and IR-9 read (#2827);
+- **the Project reads what merged** at the draft's integration check, with no timer (#2862).
+
+The shakeout took one pair. #3020, a replay's stored failure reason, is placed in 2.7.1.
+
+### v2.6.1 (2026-11-07) — what an operator meets first on 2.6.0, fixed small
 
 **v2.6.1, the 2.6 line's first patch** (`docs/plans/2-6-1-plan.md`, placed by the owner after the 2.6.0 cut):
 - **a rebuilt console plugin reaches the browser on a normal reload:** Continuum 1.0.3 versions each bundle's URL by
@@ -1118,7 +1135,7 @@ The following areas are identified for future work but do not block 1.0 readines
 | 2.5 | stabilization, **shipped 2026-10-30** (`docs/plans/2-5-0-cut-preregistration.md`), **2.5.1 shipped 2026-11-03** (the 2.6 plan's §0–§1a fixes); **the plan, adopted 2026-10-24** (D1–D11 ruled, D12 on 2026-10-28; one lane from 2026-10-28), is `docs/plans/2-5-0-plan.md`: a Campaign on a repository-backed Project (#2619), the yardstick re-cut once, and the hardening the 2.4 line found. **The claim narrowed by the owner on 2026-10-29:** not an accepted increment on a product whose in-cycle tests need its own dependencies (#2818) | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK), **shipped** (#2735) |
 | 2.6 | **Project Goals and Backlog** (SIP-0115, the headline), **shipped 2026-11-07** | **the plan, adopted 2026-11-03,** is `docs/plans/2-6-0-plan.md`. It asks whether a multi-hour Campaign can run on a product the owner wants built. The proving Project is **battle-trainer** (D2, the owner, 2026-11-03), a Node product tested with vitest. A Project's goals and ordered backlog become records the crew and the owner work through, off the terminal (slices 1–5). The floor is SIP-0109's and SIP-0112's completion: an increment accepted on a product (Track A), recovery past a failure (B), unattended hours (C). The claim is a ladder of three rungs (§4). The strategy role ordering its own features waits for a later line (D5). Test-First's greenfield gate (#1978) is not in 2.6. **The TensorFold 1.x upgrade (#2230) is deferred to 3.x consideration** (the owner, 2026-10-30) |
 | 2.6.1 | patch: what an operator meets first on 2.6.0, fixed small, **shipped 2026-11-07** (`docs/plans/2-6-1-plan.md`) | **placed by the owner after the 2.6.0 cut (2026-11-07):** console plugins cached by version (Continuum 1.0.3; #2958, #2959); the selected model engine comes back after a reboot (#2932, ask 1); a merged Caddyfile change takes effect on deploy (#2960); a criterion test that asserts nothing is shown against (#2933's prompt work); Home's "New Cycle" button works (#2909); the Signal view no longer stalls the runtime API (#2921, added by the owner). The owner moved #2949's remainder and D1 (a first-emission head pass refused to qa rather than abandoned at row 19) to 2.7 |
-| 2.7 | stabilization, feature-free by rule; **the plan, adopted 2026-11-08** (R1–R9 ruled by the owner), is `docs/plans/2-7-0-plan.md`: the 2.6 line's debts closed. A verdict says what happened (D1, #2933, and the page and criterion readers); a run survives a power loss, a reboot or a redelivered task (#2931, #2932); the overnight soak, scripted on `z_shelfnote`, is a release gate (#2495, #2892); an accepted product increment read end to end on `z_continuum` (#2827) | **one named exception (R2):** a merged contribution syncs its Project (#2862). **Moved to 2.8 (R1, R2):** #2287, #2421, #950, #2781, #2709's lifecycle operations and #2954, so SIP-0112 stays open. **Deferred (R5):** #2782, to the next evaluator cut. Expected: 25 of the 44 issues open at the plan, 20 by work and 5 administrative |
+| 2.7 | stabilization, feature-free by rule, **shipped 2026-11-10** (the cut record: `docs/plans/verification-sets/2-7-0-cut-record.md`); **the plan, adopted 2026-11-08** (R1–R9 ruled by the owner), is `docs/plans/2-7-0-plan.md`: the 2.6 line's debts closed. A verdict says what happened (D1, #2933, and the page and criterion readers); a run survives a power loss, a reboot or a redelivered task (#2931, #2932); the overnight soak, scripted on `z_shelfnote`, is a release gate (#2495, #2892); an accepted product increment read end to end on `z_continuum` (#2827) | **one named exception (R2):** a merged contribution syncs its Project (#2862). **Moved to 2.8 (R1, R2):** #2287, #2421, #950, #2781, #2709's lifecycle operations and #2954, so SIP-0112 stays open. **Deferred (R5):** #2782, to the next evaluator cut. Expected: 25 of the 44 issues open at the plan, 20 by work and 5 administrative |
 
 **3.x: agents running continuously in the world (duty mode).** Deferred here by ruling, and placed by 3.0's plan:
 - SIP-0088 Agent Runtime Modes (umbrella);
@@ -1166,10 +1183,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-11-07 (v2.6.1):*
+*As of 2026-11-10 (v2.7.0):*
 
-- **Framework version**: 2.6.1
-- **SIPs** (2026-11-07, after the 2.6.1 sweep, which like 2.6.0's promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.7.0
+- **SIPs** (2026-11-10, after the 2.7.0 sweep, which like 2.6.x's promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
