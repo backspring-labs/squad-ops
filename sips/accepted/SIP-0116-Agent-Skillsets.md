@@ -759,6 +759,9 @@ records: a fourth contract, `game.increment_design`, over `strategy.propose_incr
 have been a killer on this project". The code of both phases was read again for anything that fills in, skips or
 reinterprets a value without saying so. Each place found now refuses with a named reason.
 
+**Ruled by the owner on 2026-11-10:** "approve both SIP-0116 17c and 17d". That includes point 1's change in
+behaviour.
+
 **Phase 1 (#3011):**
 1. **An unknown development profile is refused at cycle creation.** This is a change in behaviour, and the one
    exception to phase 1's "inert".
