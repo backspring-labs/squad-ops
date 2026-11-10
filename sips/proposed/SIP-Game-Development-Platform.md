@@ -14,7 +14,7 @@ original_filename: "SIP-Game-Development-Platform.md"
 ## Engine integration plugins (Roblox, Godot, Unity) and Remote Tool Execution
 
 **Status:** Proposed (the owner's draft, filed 2026-10-17)  
-**Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. Roblox integration is a development profile that requires skillsets, agents that carry them, and a provider behind the remote-execution adapter (§R4, which governs where §R3, §R2 or the body differs). Acceptance waits for the owner's renewed review (D9).  
+**Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. Roblox integration is a development profile that requires skillsets, agents that carry them, and a provider behind the remote-execution adapter (§R4, which governs where §R3, §R2 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.8). Acceptance waits for the owner's renewed review (D9).  
 **Target Version:** TBD  
 **Author:** Framework Committee  
 **Roles Impacted:** Lead, Strategy, Dev, QA, Data  
@@ -150,7 +150,8 @@ in the portfolio's §4).
     - SIP-0112: how a profile with requirements is selected for a Campaign (Q58), settled by its amendment in the
       building PR;
     - SIP-0096: the contracts' evidence is its three families.
-  - **One question, for the owner (Q68):** whether skillset ids follow D8's `game-dev-<engine>` form (R4.8).
+  - **One question (Q68), ruled 2026-11-09:** skillset ids keep SIP-0116's platform-first form, and the Roblox dev
+    skillset is `roblox-luau-dev` (R4.8).
 - **Sources Appendix D cites:** the IDEA above, now `docs/ideas/IDEA_Cycle_Orchestrator_Pulses_and_Surges.md`
   (non-normative, Q33); the testing, task-logging and documentation-traceability protocols, kept as
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
@@ -212,7 +213,7 @@ Each of its parts is a declaration in a seam that owns it:
 
 | revision 3 | revision 4 | owned by |
 |---|---|---|
-| the specialty and the bootstrap's specialty table | four kinds of declared thing: the `game_dev_roblox` development profile, the skillsets `roblox-increment-design`, `luau-dev` and `roblox-studio-qa` (the companion's R4.3), the `roblox-studio` provider, and a squad profile whose agents carry the skillsets | SIP-0072 and SIP-0116 §5.1; SIP-0116 §4; this SIP (R4.2); SIP-0075 and SIP-0116 §5.2 |
+| the specialty and the bootstrap's specialty table | four kinds of declared thing: the `game_dev_roblox` development profile, the skillsets `roblox-increment-design`, `roblox-luau-dev` and `roblox-studio-qa` (the companion's R4.3), the `roblox-studio` provider, and a squad profile whose agents carry the skillsets | SIP-0072 and SIP-0116 §5.1; SIP-0116 §4; this SIP (R4.2); SIP-0075 and SIP-0116 §5.2 |
 | the squad profile's `specialties` field | each agent's `skillsets` field. Selecting the stack equips no one | SIP-0116 §5.2 |
 | the core package `src/squadops/specialties/game_dev_roblox/` | not built. The skillsets are directories under `src/squadops/prompts/skillsets/`, the game contracts are declarations in `squadops.capabilities`, and the development profile is data in `squadops.stacks` | SIP-0116 §4.2 and §6.1; the companion's R4.2 |
 | *playbooks* | skills: `SKILL.md` files inside the skillsets. *Playbook* is kept for what a squad follows | SIP-0116 §7 |
@@ -349,12 +350,21 @@ The plan's D1–D10 stand as the owner accepted them on 2026-11-08. Two are read
 | # | decision | in revision 4 |
 |---|---|---|
 | D7 | one engine-neutral task type with operation ids; planning property-driven | stands. The type is R4.4's. The operation ids are the provider's, and a plan names a contract and mode. The property is SIP-0116's `plannable` |
-| D8 | `game-dev-<engine>` naming for specialty identifiers | stands for the development profile (`game_dev_roblox`), the squad profiles, the adapter directory, the plans, the branches and the issue label. Skillset and provider ids are written in SIP-0116's form (`roblox-increment-design`, `luau-dev`, `roblox-studio-qa`; `roblox-studio`, `lune`), which is **Q68** |
+| D8 | `game-dev-<engine>` naming for specialty identifiers | stands for the development profile (`game_dev_roblox`), the squad profiles, the adapter directory, the plans, the branches and the issue label. Skillset and provider ids are in SIP-0116's platform-first form (`roblox-increment-design`, `roblox-luau-dev`, `roblox-studio-qa`; `roblox-studio`, `lune`), by **Q68** |
 
-**Q68, for the owner at the renewed review:** D8 named the *specialty's* identifiers so that an engine's siblings sort
-together. Skillset ids didn't exist then, and SIP-0116's examples put the platform first (`roblox-studio-qa`,
-`unity-test-qa`) except for `luau-dev`. **Recommended:** keep SIP-0116's ids, with `roblox-luau-dev` in place of
-`luau-dev` so that every Roblox skillset sorts together. This revision writes `luau-dev` until it's ruled.
+**Q68, ruled by the owner on 2026-11-09 ("approve as recommended"):** skillset ids keep SIP-0116's platform-first
+form, and the Roblox dev skillset is `roblox-luau-dev`, so that every Roblox skillset sorts together. D8 named the
+*specialty's* identifiers for that purpose, before skillset ids existed. SIP-0116's examples write the id as
+`luau-dev`; they're marked illustrative, and its §17b records the name.
+
+**Ruled the same day, with the same words,** revision 4's design calls:
+- the product's eligibility rules are the provider's compatibility checks, refused at creation as an authorization
+  outcome (R4.6);
+- the first Roblox skillset declares `headless` and `play` only (R4.5);
+- the companion's fourth contract, `game.increment_design`, with a strategy skillset, and its builder with no step in
+  the first milestone (its R4.2).
+
+**Still the owner's:** the renewed review and acceptance of this SIP, then the companion (D9).
 
 ---
 
