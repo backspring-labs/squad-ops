@@ -27,7 +27,7 @@ from typing import Any
 import yaml
 
 from squadops.capabilities.capability_contracts import (
-    CapabilityContract,
+    CapabilityContractDeclaration,
     VerificationMode,
     capability_contract,
 )
@@ -123,7 +123,7 @@ def skill_digest(directory: Path) -> str:
 
 
 def load_skillset(
-    directory: Path, *, contracts: Mapping[str, CapabilityContract] | None = None
+    directory: Path, *, contracts: Mapping[str, CapabilityContractDeclaration] | None = None
 ) -> Skillset:
     """Read and validate the skillset in ``directory``. Raises ``SkillsetError`` naming every
     defect. ``contracts`` are the declared capability contracts to check it against (the
@@ -219,7 +219,9 @@ def _platform(platform: Any, errors: list[str]) -> tuple[str, tuple[str, ...]]:
 
 
 def load_skillsets(
-    root: Path | None = None, *, contracts: Mapping[str, CapabilityContract] | None = None
+    root: Path | None = None,
+    *,
+    contracts: Mapping[str, CapabilityContractDeclaration] | None = None,
 ) -> dict[str, Skillset]:
     """Every skillset under ``root`` (the packaged directory when omitted), by id. A missing
     directory is an empty catalog. One invalid skillset raises: a catalog that silently drops
@@ -267,7 +269,7 @@ def _prerequisites(value: Any, errors: list[str]) -> tuple[str, ...]:
 
 
 def _capabilities(
-    value: Any, errors: list[str], contracts: Mapping[str, CapabilityContract] | None
+    value: Any, errors: list[str], contracts: Mapping[str, CapabilityContractDeclaration] | None
 ) -> tuple[SkillsetCapability, ...]:
     if not isinstance(value, list) or not value:
         errors.append("capabilities must list at least one contract the skillset specializes")
@@ -294,7 +296,7 @@ def _capabilities(
 
 
 def _modes(
-    value: Any, where: str, errors: list[str], contract: CapabilityContract | None
+    value: Any, where: str, errors: list[str], contract: CapabilityContractDeclaration | None
 ) -> tuple[VerificationMode, ...]:
     if contract is None:
         # A skillset specializes; it never defines (§4.1).

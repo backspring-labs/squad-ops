@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from squadops.capabilities.capability_contracts import (
-    CapabilityContract,
+    CapabilityContractDeclaration,
     VerificationMode,
     capability_contract,
     contract_errors,
@@ -26,13 +26,13 @@ from squadops.tasks.task_types import TaskType
 pytestmark = [pytest.mark.domain_capabilities]
 
 CONTRACTS = {
-    "fixture.scenario_verification": CapabilityContract(
+    "fixture.scenario_verification": CapabilityContractDeclaration(
         id="fixture.scenario_verification",
         task_type=TaskType.QA_VALIDATE,
         evidence="one executed-passed, executed-failed or not-executed result per assertion",
         modes=(VerificationMode.PLAY, VerificationMode.MULTIPLAYER),
     ),
-    "fixture.unit_tests": CapabilityContract(
+    "fixture.unit_tests": CapabilityContractDeclaration(
         id="fixture.unit_tests",
         task_type=TaskType.QA_TEST,
         evidence="one result per test",
@@ -241,7 +241,9 @@ def test_no_skillset_is_shipped_and_a_missing_directory_is_an_empty_catalog(tmp_
 def test_a_planned_task_type_resolves_as_its_own_contract_and_others_dont():
     develop = capability_contract("development.develop")
 
-    assert develop == CapabilityContract("development.develop", TaskType.DEVELOPMENT_DEVELOP, "")
+    assert develop == CapabilityContractDeclaration(
+        "development.develop", TaskType.DEVELOPMENT_DEVELOP, ""
+    )
     assert capability_contract("qa.validate") is None
     assert capability_contract("fixture.unit_tests") is None
     assert capability_contract("fixture.unit_tests", CONTRACTS).task_type is TaskType.QA_TEST
@@ -250,8 +252,8 @@ def test_a_planned_task_type_resolves_as_its_own_contract_and_others_dont():
 def test_declared_contracts_are_checked_for_ids_modes_and_evidence():
     declared = {
         "wrong.key": CONTRACTS["fixture.unit_tests"],
-        "qa.test": CapabilityContract("qa.test", TaskType.QA_TEST, "per test"),
-        "fixture.twice": CapabilityContract(
+        "qa.test": CapabilityContractDeclaration("qa.test", TaskType.QA_TEST, "per test"),
+        "fixture.twice": CapabilityContractDeclaration(
             "fixture.twice",
             TaskType.QA_TEST,
             " ",

@@ -721,7 +721,8 @@ before 2.8.
 - §6.1 and §12 cite Q23 for the `squadops.capabilities` package holding task contracts. Q23 rules that the package
   keeps its name and that packs never bind into the task-type registry. The contracts it holds today are SIP-0.8.6's
   `TaskContract` manifests, a different record, and the capability contracts sit beside them in
-  `capabilities/capability_contracts.py`;
+  `capabilities/capability_contracts.py`, as `CapabilityContractDeclaration`: the bare class name is a spelling
+  #922 retired for those manifests, and its guard still refuses it;
 - §5.3's "first enabled agent serving that role" has one enabled agent per role only for a profile written through
   the API (`validate_agent_entries`). A profile seeded from `config/squad-profiles.yaml` isn't run through that
   check. Phase 2's coverage check reads the routed agent either way.

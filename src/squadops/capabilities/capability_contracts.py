@@ -11,7 +11,8 @@ declaration. A domain declares a contract over a task type where its evidence di
 is declared yet: the game contracts are the first, and they arrive with their own proposal.
 
 These are the SIP-0116 contracts. The ``TaskContract`` manifests under ``manifests/contracts``
-are SIP-0.8.6's, a different record with a different loader.
+are SIP-0.8.6's, a different record with a different loader, and the name they had before
+#922 stays retired: the class here is a contract's *declaration*.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ class VerificationMode(StrEnum):
 
 
 @dataclass(frozen=True)
-class CapabilityContract:
+class CapabilityContractDeclaration:
     """One engine-neutral kind of work (§6.1)."""
 
     id: str
@@ -50,12 +51,12 @@ class CapabilityContract:
 
 
 #: The declared contracts, by id. Empty until the first domain declares one.
-CAPABILITY_CONTRACTS: Mapping[str, CapabilityContract] = MappingProxyType({})
+CAPABILITY_CONTRACTS: Mapping[str, CapabilityContractDeclaration] = MappingProxyType({})
 
 
 def capability_contract(
-    contract_id: str, declared: Mapping[str, CapabilityContract] | None = None
-) -> CapabilityContract | None:
+    contract_id: str, declared: Mapping[str, CapabilityContractDeclaration] | None = None
+) -> CapabilityContractDeclaration | None:
     """The contract ``contract_id`` names, or ``None``. A base-set plannable task type is its
     own contract (§6.1), so its value resolves without a declaration."""
     contracts = CAPABILITY_CONTRACTS if declared is None else declared
@@ -64,11 +65,11 @@ def capability_contract(
         return found
     for task_type in base_plannable_task_types():
         if task_type.value == contract_id:
-            return CapabilityContract(id=contract_id, task_type=task_type, evidence="")
+            return CapabilityContractDeclaration(id=contract_id, task_type=task_type, evidence="")
     return None
 
 
-def contract_errors(declared: Mapping[str, CapabilityContract]) -> list[str]:
+def contract_errors(declared: Mapping[str, CapabilityContractDeclaration]) -> list[str]:
     """Everything wrong with a set of declared contracts, each named by its id."""
     task_type_values = {t.value for t in TaskType}
     errors: list[str] = []
