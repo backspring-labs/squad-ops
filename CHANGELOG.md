@@ -16,6 +16,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   scripted cycle produces no Cross-Cycle Memory observation, and its calls are charted under the engine
   `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
   carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
+- **A scripted Campaign answers each cycle from its own script** (refs #2892, SIP-0109 §24dt): a Campaign's
+  `policy.llm_scripts` names one pinned script, `<name>@<version>`, per cycle it launches, in launch order, bound at
+  the launch from the control log's own count, so a restart doesn't reset it. A Campaign of several scripted
+  increments can now make a different change in each. A launch past the last script is refused,
+  `LLM_SCRIPT_MISSING`, and the Campaign escalates; it's never answered from another script or by a model.
+  Creation refuses a script the deploy doesn't hold at that version. `record_llm_script.py` gains
+  `--latency-scale` and `--latency-cap`, written into the script's `recorded_from.latency` with the replayed total:
+  a recorded gap includes any gate wait between two stored files, which can outlast the deploy's per-task
+  timeout. The soak's pre-registration is `docs/plans/verification-sets/2-7-0-soak-preregistration.md`.
 - **The draft's integration check** (#2862, SIP-0112 H.30): `POST /api/v1/projects/{id}/integration-check`
   (`campaigns:manage`), or `squadops projects check-integration <project> [--token-from-gh]`. Before the next
   Campaign is drafted on a repository-backed Project, it syncs where a contribution is pending, reading each

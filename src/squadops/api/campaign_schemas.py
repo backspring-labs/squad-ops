@@ -83,6 +83,10 @@ class CampaignPolicyDTO(BaseModel):
     #: resume on its own (``plan_gate``, ``in_cycle_failure``, ``launch_blocked``). Omitted or
     #: empty, nothing is delegated. An unknown class is refused at creation.
     unattended_resume: list[str] = []
+    #: §24dt (#2892): a scripted campaign's scripts, one ``<name>@<version>`` per cycle it
+    #: launches, in launch order. Each must be a script this deploy holds at that version, or the
+    #: creation is refused. Omitted or empty, the campaign names no script.
+    llm_scripts: list[str] = []
 
 
 class CampaignDefinitionDTO(BaseModel):

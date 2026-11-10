@@ -115,6 +115,7 @@ async def test_a_run_is_recorded_as_one_answer_per_attempt_keyed_as_the_provider
         "project_id": "shelf",
         "cycle_id": "cyc_1",
         "run_id": "run_1",
+        "latency": {"scale": 1.0, "cap_seconds": None, "capped": 0, "total_seconds": 44.0},
     }
     # The latency is the gap from the previous attempt's last file: 10-0, 20-11, 30-20, 45-30.
     assert [
@@ -128,6 +129,48 @@ async def test_a_run_is_recorded_as_one_answer_per_attempt_keyed_as_the_provider
         ]
     ] == [None, 10.0, 9.0, 10.0, 15.0]
     assert f"--set llm_script=shelf-dev@{script.version}" in capsys.readouterr().out
+
+
+async def test_a_scaled_replay_is_held_under_its_cap_and_says_so_in_the_script(
+    recorder, vault_dir, tmp_path
+):
+    """#2892: a recorded gap spans whatever happened between two stored files, a gate's wait
+    included, and a soak replays it scaled to last its nine hours. Bugs caught: one answer's
+    replayed wait running past the deploy's task timeout, which fails a task the recording
+    passed; or the scale left out of the script, so a scripted run's elapsed time reads as the
+    recording's own."""
+    out = tmp_path / "scripts"
+    code = await _run(recorder, vault_dir, out, "--latency-scale", "2", "--latency-cap", "25")
+
+    assert code == 0
+    script = ScriptLibrary(out).get("shelf-dev")
+    # 10, 9, 10 and 15 s gaps, doubled; the repair's 30 s held at 25.
+    assert sorted(a.latency_seconds or 0 for a in script.answers.values()) == [
+        0, 18.0, 20.0, 20.0, 25.0,
+    ]  # fmt: skip
+    assert script.recorded_from["latency"] == {
+        "scale": 2.0,
+        "cap_seconds": 25.0,
+        "capped": 1,
+        "total_seconds": 83.0,
+    }
+
+
+async def test_a_latency_shape_without_a_replayed_latency_is_refused(
+    recorder, vault_dir, tmp_path, capsys
+):
+    """The edge: a scale asked of a script that replays no latency. Bug caught: the flag silently
+    ignored, so a soak's scripts run in minutes when their recording said they were stretched."""
+    import asyncio
+
+    argv = [
+        "--vault", str(vault_dir), "--project", "shelf", "--cycle", "cyc_1", "--name", "shelf-dev",
+        "--description", "d", "--latency-scale", "2", "--out", str(tmp_path / "scripts"),
+    ]  # fmt: skip
+
+    assert await asyncio.to_thread(recorder.main, argv) == 2
+    assert "add --replay-latency" in capsys.readouterr().err
+    assert not (tmp_path / "scripts" / "shelf-dev.yaml").exists()
 
 
 async def test_a_recorded_files_answer_parses_back_to_the_files_it_was_rebuilt_from(
@@ -165,13 +208,13 @@ async def test_a_run_with_no_model_written_file_is_refused(recorder, tmp_path, c
     assert "no artifact here was written by a task's model call" in capsys.readouterr().err
 
 
-async def _run(recorder, vault_dir: Path, out: Path) -> int:
+async def _run(recorder, vault_dir: Path, out: Path, *extra: str) -> int:
     """``main`` runs its own event loop, as it does from a shell; a thread keeps it off the test's."""
     import asyncio
 
     argv = [
         "--vault", str(vault_dir), "--project", "shelf", "--cycle", "cyc_1", "--run", "run_1",
         "--name", "shelf-dev", "--description", "a dev retry and its repair",
-        "--replay-latency", "--out", str(out),
+        "--replay-latency", "--out", str(out), *extra,
     ]  # fmt: skip
     return await asyncio.to_thread(recorder.main, argv)

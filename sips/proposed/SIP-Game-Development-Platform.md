@@ -2,7 +2,7 @@
 sip_uid: '17922784453538440'
 sip_number: null
 title: "Game Development Platform Capability"
-revision: 3
+revision: 4
 status: "proposed"
 author: "Framework Committee"
 approver: null
@@ -14,12 +14,13 @@ original_filename: "SIP-Game-Development-Platform.md"
 ## Engine integration plugins (Roblox, Godot, Unity) and Remote Tool Execution
 
 **Status:** Proposed (the owner's draft, filed 2026-10-17)  
+**Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. Roblox integration is a development profile that requires skillsets, agents that carry them, and a provider behind the remote-execution adapter (§R4, which governs where §R3, §R2 or the body differs). Acceptance waits for the owner's renewed review (D9).  
 **Target Version:** TBD  
 **Author:** Framework Committee  
 **Roles Impacted:** Lead, Strategy, Dev, QA, Data  
 **Date:** 2026-10-16  
-**Document Revision:** 3 (2026-11-08) — the in-tree `game-dev-roblox` specialty, the spikes' evidence and the owner's decisions D1–D10 (§R3, which governs where §R2 or the body differs). Revision 2 (2026-10-31): the owner's outside review applied: engine integration as versioned plugins, Unity as a third provider, the remote-execution contract apart from game operations, per-adapter verification modes, editor changes through the revision boundary, greenfield blueprints apart from existing repositories, one delivery milestone per engine, and tailored squads (§R2, which governs where the body below differs). Revision 1: the owner's draft, filed as written  
-**Related SIPs:** SIP-0112 (Project Lifecycle Management, accepted 2026-10-17: its FR-17 is what this SIP builds on); SIP-0070 (Pulse Checks); SIP-0071 (Builder Role); SIP-0072 (stack development profiles); SIP-0086 (Build Convergence Loop); SIP-0096 (Verification Evidence Integrity); SIP-0103 (owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (Cycle Evaluation Scorecard); SIP-0113 (Outcome Evaluation, accepted 2026-10-17); Edge Deployment Profile (proposed, deferred to 3.x)  
+**Document Revision:** 4 (2026-11-09) — Roblox as skillsets, a provider and a development profile, on SIP-0116: operations implement engine-neutral capability contracts, each in a declared verification mode, and `qa.run_remote_operation` is proposed as the first new plannable type (§R4, which governs). Revision 3 (2026-11-08): the in-tree `game-dev-roblox` specialty, the spikes' evidence and the owner's decisions D1–D10 (§R3, which governs where §R2 or the body differs). Revision 2 (2026-10-31): the owner's outside review applied: engine integration as versioned plugins, Unity as a third provider, the remote-execution contract apart from game operations, per-adapter verification modes, editor changes through the revision boundary, greenfield blueprints apart from existing repositories, one delivery milestone per engine, and tailored squads (§R2, which governs where the body below differs). Revision 1: the owner's draft, filed as written  
+**Related SIPs:** SIP-0112 (Project Lifecycle Management, accepted 2026-10-17: its FR-17 is what this SIP builds on); SIP-0070 (Pulse Checks); SIP-0071 (Builder Role); SIP-0072 (stack development profiles); SIP-0086 (Build Convergence Loop); SIP-0096 (Verification Evidence Integrity); SIP-0103 (owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (Cycle Evaluation Scorecard); SIP-0113 (Outcome Evaluation, accepted 2026-10-17); SIP-0116 (Agent Skillsets, accepted 2026-11-09: this SIP is its first consumer); Edge Deployment Profile (proposed, deferred to 3.x)  
 **Companion:** Game Development Capability Packs and Squad Composition (`sips/proposed/SIP-Game-Capability-Packs.md`): what a game squad is composed of. This SIP is how engines are integrated; that one is how a squad uses them.  
 **Scope:** SquadOps framework capability; no new agent role required; tailored squad configurations of the existing roles are supported (§R2.9)
 
@@ -133,34 +134,227 @@ in the portfolio's §4).
     - the test universe is replaced by a local place file.
 
   Each is stated in §R3 with its evidence.
+- **Revision 4's intake (2026-11-09):** checked against `sips/PORTFOLIO.md` (clusters 18 and 19).
+  - **What this revision follows:** SIP-0116, Agent Skillsets, accepted 2026-11-09. Its intake recorded one conflict
+    with this SIP's revision 3, resolved by the owner's direction: revision 3 put a `specialties` field on the squad
+    profile and a specialty digest into the roster's hash. Revision 4 applies the resolution (R4.1).
+  - **The boundary with SIP-0116:**
+    - it owns the skillset spec, the capability-contract and verification-mode declarations, coverage at preflight
+      and at the plan gate, the record, and the Campaign's pin;
+    - this SIP owns the providers behind the remote-execution adapter, their operations and result readers, the
+      worker registry, and the `qa.run_remote_operation` task type;
+    - the companion owns the game contracts and the Roblox skillsets' content.
+  - **Overlaps, no conflict:**
+    - SIP-0072: the `game_dev_roblox` development profile is an ordinary profile with `platform` and `requires`;
+    - SIP-0075: the squad profiles carry each agent's `skillsets`;
+    - SIP-0112: how a profile with requirements is selected for a Campaign (Q58), settled by its amendment in the
+      building PR;
+    - SIP-0096: the contracts' evidence is its three families.
+  - **One question, for the owner (Q68):** whether skillset ids follow D8's `game-dev-<engine>` form (R4.8).
 - **Sources Appendix D cites:** the IDEA above, now `docs/ideas/IDEA_Cycle_Orchestrator_Pulses_and_Surges.md`
   (non-normative, Q33); the testing, task-logging and documentation-traceability protocols, kept as
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
   `docs/ideas/Doc traceability.txt`; the repository's SIP template, `sips/TEMPLATE.md`.
 
-## Delivery ledger (current as of 2026-11-08)
+## Delivery ledger (current as of 2026-11-09)
 
 One row per part that ships separately. Statuses: *shipped* (the release, the PR, and the issue it closed),
 *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once numbered), *unplaced* (said
 deliberately), *dropped* (by the numbered amendment that dropped it), or *deferred to N.x (ruled <date>)*. Updated in
 the PR that ships or re-places a part (`tests/unit/architecture/test_sip_ledgers.py` holds it). The rows follow the
-adopted plan's phases (R3.9). The 2.8 plan places them, so none is placed yet.
+adopted plan's phases, as revision 4 orders them (R4.7). The 2.8 plan places them, so none is placed yet. SIP-0116's
+phases are in its own ledger.
 
 | part | status | where |
 |---|---|---|
 | Slices A–E of revision 1 (§9.5) | **dropped** by Revision 2 (R2.10): restructured into milestones. None was placed | — |
 | M0 as revision 2 cut it, on the companion's plugin foundation | **dropped** by Revision 3 (R3.9): re-cut as phase 2b on the in-tree seam | — |
+| Phase 2a: `qa.run_remote_operation`, the first new plannable task type: its handler, expected artifacts, footprint rule, correction mapping and verifier seams, proved with a fixture provider (R4.4) | **unplaced**, deliberately: the 2.8 plan places it, after SIP-0116's phases 1 and 2 | — |
 | Phase 2b: remote execution: the port, the worker registry and its migration, `/api/v1/workers`, the claim, lease and fence protocol, the worker's composition root, a fixture adapter (R3.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2c: the Luau runner (#2906; core, R3.2) | **unplaced**, deliberately: the 2.8 plan places it | — |
-| Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the four typed operations (R3.6) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations (R3.6, R4.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2e: the assertion harness and reader (R3.7) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
 
-**What closes this SIP:** phases 2b–2e shipped (Roblox integration works), then G-1 and U-1 shipped or dropped by a
+**What closes this SIP:** phases 2a–2e shipped (Roblox integration works), then G-1 and U-1 shipped or dropped by a
 numbered amendment. B-1 is optional. "The squad can build and improve a playable game" is the companion's to close
 (R2.10).
+
+---
+
+# R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
+
+**What prompted it.** SIP-0116, Agent Skillsets, was accepted on 2026-11-09. The owner split it from Capability-Backed
+Agents after revision 3's *specialty* turned out to rebuild that SIP's assembly rules beside the stack and
+development-profile seams. SIP-0116 names this SIP as its first consumer and leaves three things to this revision:
+- the engine operations as a provider's implementations of engine-neutral capability contracts, each with a
+  verification mode (its §6.1 and §6.2);
+- the proposal for `qa.run_remote_operation` as a plannable task type (its §6.3);
+- the worker registry its `worker` tool location relies on (its §8).
+
+**Where §R3, §R2 or the body differs, this section governs.** They're kept as the record of what was proposed.
+
+**The rule: the development profile requires, the selected agents supply, and the provider executes.**
+
+**What stands from revision 3, unchanged:**
+- the remote-execution contract (R3.3);
+- Roblox as proven, and the Studio transaction (R3.6);
+- the assertion protocol (R3.7);
+- the product and publishing (R3.8);
+- the owner's decisions D2–D5, D9 and D10. D7 and D8 are read as R4.4 and R4.8 say.
+
+## R4.1 What takes the specialty's place
+
+Revision 3 gathered Roblox integration into one unit, the `game-dev-roblox` specialty. Revision 4 has no such unit.
+Each of its parts is a declaration in a seam that owns it:
+
+| revision 3 | revision 4 | owned by |
+|---|---|---|
+| the specialty and the bootstrap's specialty table | four kinds of declared thing: the `game_dev_roblox` development profile, the skillsets `roblox-increment-design`, `luau-dev` and `roblox-studio-qa` (the companion's R4.3), the `roblox-studio` provider, and a squad profile whose agents carry the skillsets | SIP-0072 and SIP-0116 §5.1; SIP-0116 §4; this SIP (R4.2); SIP-0075 and SIP-0116 §5.2 |
+| the squad profile's `specialties` field | each agent's `skillsets` field. Selecting the stack equips no one | SIP-0116 §5.2 |
+| the core package `src/squadops/specialties/game_dev_roblox/` | not built. The skillsets are directories under `src/squadops/prompts/skillsets/`, the game contracts are declarations in `squadops.capabilities`, and the development profile is data in `squadops.stacks` | SIP-0116 §4.2 and §6.1; the companion's R4.2 |
+| *playbooks* | skills: `SKILL.md` files inside the skillsets. *Playbook* is kept for what a squad follows | SIP-0116 §7 |
+| fragments under `prompts/fragments/game-dev-roblox/` | the skills, and the development profile's own text fields | SIP-0116 §7 (Q54) |
+| an operation id named in a plan (`game-dev-roblox.play_scenario`) | a plan names a contract and a mode. The provider maps them to its operation (R4.3) | SIP-0116 §6.1 |
+| the specialty's digest in the profile snapshot hash, re-resolved by every cycle | the skillset record beside the roster hash, the kept copy of skill content, and the Campaign's pin with its recorded transition | SIP-0116 §10 |
+| preflight against the resolved specialty | the coverage, declaration, authorization and availability outcomes at creation, and the plan gate's check on the routed agent | SIP-0116 §9 |
+| the trigger for plugin machinery (R3.1) | a capability pack, in 3.x, carries the skillset directories unchanged and adds the provider's packaging | SIP-0116 §4.3 and §11 |
+
+## R4.2 The provider, which is what this SIP owns
+
+- **`roblox-studio` is the execution provider.** Its adapter is `adapters/remote_execution/game_dev_roblox_studio/`,
+  behind `ports/remote_execution/`. It owns the Studio transaction, the harness, its operations and their result
+  readers, the deny list and its compatibility checks (R3.6). It runs on a registered worker.
+- **`lune` is the headless provider:** the Luau runner in the QA container (#2906). A language is core, as R3.2 says.
+- **A skillset names providers; it holds none.** `roblox-studio-qa` lists both under `prerequisites` and requests
+  `roblox-studio`'s operation under `tools`, at the `worker` location. The worker registry of R3.3 says which worker
+  serves a provider.
+- **R2.1's table stands,** with "a provider and the skillsets that use it" in place of "an engine integration
+  plugin". Core runs operations, and a provider declares them and reads their results.
+- **No engine name in core** (R3.2 stands). The game contracts are engine-neutral, and orchestration reads `TaskType`
+  properties and the cycle's skillset record.
+
+## R4.3 Operations implement contracts
+
+The companion defines the game contracts once (its R4.2). Roblox's providers implement them:
+
+| contract | task type | mode | provider and operation | basis |
+|---|---|---|---|---|
+| `game.increment_design` | `strategy.propose_increment` | none | none: an authored change request, whose play scenarios the harness reads | R3.7 |
+| `game.gameplay_implementation` | `development.develop` | none | none: authored source | S6 |
+| `game.unit_tests` | `qa.test` | `headless` | `lune`: the `luau` runner kind, with the skillset's test loader | S2: the game's modules need the loader; phase 2c |
+| `game.scenario_verification` | `qa.run_remote_operation` | `play` | `roblox-studio`: `play_scenario` | S1: play, input and read-back proven |
+
+- **A plan never names an operation id.** It names the contract and the mode. The handler reads the cycle's skillset
+  record for the supplying skillset, takes that skillset's tool request, and resolves it in the provider's operation
+  table: the argument schema, the required worker capability and the result reader.
+- **Refusals:** a contract or mode the cycle's requirements don't name is refused at the plan gate (SIP-0116 §9). A
+  duplicate operation registration is refused at bootstrap.
+- **An operation is qualified by its provider,** so R3.6's ids drop the `game-dev-roblox.` prefix: `play_scenario`,
+  `sync_source`, `read_console` and `capture`, of `roblox-studio`.
+- **Three of the four run inside the transaction.** `play_scenario` is the whole transaction for one frozen scenario.
+  It uses `sync_source` before play, `read_console` to collect the session's records, and `capture` for
+  supplementary evidence. None of those three is planned by itself in the first milestone.
+
+## R4.4 `qa.run_remote_operation`, the first new plannable type
+
+SIP-0116 §6.3 makes each new plannable type its own proposal and names this one as the first. The proposal:
+
+| part | what it is |
+|---|---|
+| the type | a member of the central enum, served by the `qa` role. It carries a contract, a mode and its frozen inputs by artifact reference |
+| planning | `plannable`, and outside `base@1`. It's offered only where a cycle's requirements name a contract over it and the routed QA agent supplies that contract. A cycle on any existing stack is offered today's types |
+| the handler | engine-neutral. It requests the tool, stages inputs from the vault, waits for the fenced result and passes it to the provider's reader |
+| expected artifacts | the assertion records of R3.7, and the evidence bundle: the console, the source manifest, the baseline digests, and the provider, worker and tool versions |
+| footprint | it authors no source. An edit made in the editor returns as a new revision through `apply_workspace_patch` (R3.6) |
+| correction mapping | an executed failure in the application routes to the dev repair, which loads the dev skillset's skills by lineage (SIP-0116 §7.1). `not_executed` and `interrupted` route to no repair, and the run reads `blocked_unverified`. A re-run after a repair is an operation and loads no skills |
+| verifier seams | the PR that builds it carries the table CLAUDE.md's "Typed checks" asks for: each seam that evaluates the task's criteria, the tree it sees, and its outcome when the worker's evidence is absent |
+| the wire | it carries 2.7's dispatch identity (#2932) |
+
+- **D7 stands, read this way:** the operation ids are the provider's, and "planning made property-driven" is
+  SIP-0116's `plannable` property and offered set, built in its phase 2. `_KNOWN_BUILD_TASK_TYPES` becomes derived
+  from the base set there.
+- **It's proved with a fixture provider first,** with no Studio and no worker (phase 2a).
+
+## R4.5 Verification modes
+
+R2.4's modes take SIP-0116 §6.2's names, a closed list: `build` (R2.4's static / build), `headless` (new, Q67),
+`editor`, `play` (runtime / play), `multiplayer` and `capture` (graphical capture). **Supporting one mode implies no
+other.** R2.4's rule stands: a check that didn't run reads not executed.
+
+| mode | Roblox, on the evidence | declared by `roblox-studio-qa` in the first milestone |
+|---|---|---|
+| `build` | S2 built a place with Rojo, and all 137 files mapped. No check reads a build result, and no build runs on the worker | no |
+| `headless` | Lune runs pure-Luau tests (the 2.6 spike). The game's instance-tree requires need the loader (S2) | **yes,** for `game.unit_tests` |
+| `editor` | proven in S1: `execute_luau` in the edit place reads and writes scripts and instances. The transaction uses it for sync and read-back | no: no contract in the first milestone runs in it |
+| `play` | proven in S1, unattended, with input | **yes,** for `game.scenario_verification` |
+| `multiplayer` | not proven | no |
+| `capture` | works in S1, as supplementary evidence | no: no criterion depends on it |
+
+- **A profile can require only a mode a skillset declares.** So a requirement for an undeclared mode is refused at
+  creation as a declaration outcome, and nothing unproven reads as passing.
+- **SIP-0116's Appendix A lists what the platform can support** (`headless`, `editor`, `play`, `capture`). This table
+  is what the first skillset declares. A later contract that needs `editor` or `capture` adds the mode with its
+  proof. Appendix A's "a Rojo build isn't proven" reads as this table's `build` row: S2 built a place, and `build`
+  as a verification mode is unproven.
+- **R2.4's Godot and Unity columns** stand as claims to prove, under the new names. Unity's EditMode tests are
+  `editor`, and its PlayMode and built-player tests are `play` (R2.5 keeps the three apart as separate operations).
+
+## R4.6 The guarantees, and what holds the boundary
+
+R3.4's guarantees are kept, and SIP-0116 now supplies them:
+- **Checked at creation and at the plan gate** (its §9), on the agent each responsibility routes to.
+- **Recorded and held** (its §10): the skillset record, the kept copy of skill content, and the Campaign's pin. A
+  change to the equipment assigned to a Campaign's work stops its next launch with the changed parts named.
+- **Provider and reader code can't be kept with a cycle.** So the worker registers its provider version, its Studio
+  version and the digest of its tool schemas, and each operation's evidence records them. An operation is pinned to
+  what it was proved on and reads `not_executed` on a mismatch. A resume after a redeploy names the change of deploy
+  in the record (SIP-0116 §10).
+- **The product's eligibility rules (R3.8) are the provider's compatibility checks.** SIP-0116 §8 checks each tool
+  request against them at creation. A product that fails one is refused as an authorization outcome, naming the tool
+  and the rule.
+- **The development profile is selected explicitly** (Q58). A Luau runner in the product's derived profile never
+  selects `game_dev_roblox` and never implies Studio. Which field carries the selection for a Campaign is settled
+  with SIP-0112, by its amendment in the PR that builds it.
+
+**The isolation test** (R3.1's, re-cut) holds the boundary:
+- a platform's or provider's name appears only in the skillset directories, the development profile's entry, the
+  squad profiles, the adapter directory and the worker root's configuration section;
+- the adapter imports only its port and an allowed list. That list is the first draft of the interface a capability
+  pack's provider will be written against.
+
+## R4.7 Delivery
+
+**The dependency order** replaces R3.9's:
+1. SIP-0116's phases 1 and 2: the declarations, the record and coverage (its ledger);
+2. phase 2a: `qa.run_remote_operation` (R4.4) and the companion's game contracts, proved with a fixture provider;
+3. phase 2b: remote execution. SIP-0116's phase 4 (tools) builds with its worker registry;
+4. phases 2c–2e: the Luau runner, the Studio adapter and the assertion harness;
+5. SIP-0116's phases 3, 5 and 6: skills, the Campaign's pin and lessons;
+6. phase 2f: the companion's squad. The `game_dev_roblox` profile's requirements are switched on only after
+   SIP-0116's phases 2–6 have shipped;
+7. phase 3: the demonstration.
+
+The ledger is re-cut to match. Godot, Unity and GameBench-01 are unchanged, each after Roblox.
+
+**R2.10's two definitions of done stand:** "engine integration works" is this SIP's, for phases 2a–2e, and "the squad
+can build and improve a playable game" is the companion's.
+
+## R4.8 Decisions and questions
+
+The plan's D1–D10 stand as the owner accepted them on 2026-11-08. Two are read against SIP-0116:
+
+| # | decision | in revision 4 |
+|---|---|---|
+| D7 | one engine-neutral task type with operation ids; planning property-driven | stands. The type is R4.4's. The operation ids are the provider's, and a plan names a contract and mode. The property is SIP-0116's `plannable` |
+| D8 | `game-dev-<engine>` naming for specialty identifiers | stands for the development profile (`game_dev_roblox`), the squad profiles, the adapter directory, the plans, the branches and the issue label. Skillset and provider ids are written in SIP-0116's form (`roblox-increment-design`, `luau-dev`, `roblox-studio-qa`; `roblox-studio`, `lune`), which is **Q68** |
+
+**Q68, for the owner at the renewed review:** D8 named the *specialty's* identifiers so that an engine's siblings sort
+together. Skillset ids didn't exist then, and SIP-0116's examples put the platform first (`roblox-studio-qa`,
+`unity-test-qa`) except for `luau-dev`. **Recommended:** keep SIP-0116's ids, with `roblox-luau-dev` in place of
+`luau-dev` so that every Roblox skillset sorts together. This revision writes `luau-dev` until it's ruled.
 
 ---
 
@@ -170,8 +364,8 @@ numbered amendment. B-1 is optional. "The squad can build and improve a playable
 and without closing the door on other specialists such as a designer. The game-dev-roblox plan
 (`docs/plans/game-dev-roblox-plan.md`, PR #2972) is that design. Its spikes ran on 2026-11-08 against a private copy
 of Tower Ascension, its gate came out go, and **the owner accepted its decisions D1–D10 the same day** ("accept
-D1-D10, write revision 3"). **Where §R2 or the body differs, this section governs.** §R2 and the body are kept as
-the record of what was proposed.
+D1-D10, write revision 3"). **Where §R2 or the body differs, this section governs, and §R4 governs all three.** §R2
+and the body are kept as the record of what was proposed. Its *specialty* and *playbooks* are superseded by §R4.
 
 **The boundary with the companion is unchanged:** this SIP is how an engine is integrated, and the companion is how
 a squad uses it. What changes is the mechanism both register through.
