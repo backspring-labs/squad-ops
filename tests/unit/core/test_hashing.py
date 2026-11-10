@@ -81,3 +81,26 @@ def test_text_is_hashed_as_utf8_not_as_a_single_byte_encoding():
     assert text_sha256("é") == "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
     assert text_sha256("é") != "de2e331d891ae267a7009cb45b4e8830f170e0c937288ea2731a1941c7a53b0d"
     assert text_sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def test_canonical_json_sorts_keys_drops_whitespace_and_keeps_text_as_written():
+    """SIP-0116 §10's hashing rule. Bug caught: a record hashed with escaped text or key
+    order as written, so the same record digests differently across writers."""
+    from squadops.core.hashing import canonical_json, canonical_sha256
+
+    value = {"b": [1, {"z": None, "a": "é"}], "a": True}
+
+    assert canonical_json(value) == '{"a":true,"b":[1,{"a":"é","z":null}]}'
+    assert canonical_sha256(value) == text_sha256('{"a":true,"b":[1,{"a":"é","z":null}]}')
+    assert canonical_sha256({"a": True, "b": [1, {"a": "é", "z": None}]}) == canonical_sha256(value)
+
+
+def test_canonical_json_refuses_a_value_json_cannot_hold():
+    import datetime
+
+    import pytest
+
+    from squadops.core.hashing import canonical_json
+
+    with pytest.raises(TypeError):
+        canonical_json({"at": datetime.datetime(2026, 11, 9)})

@@ -16,6 +16,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.stacks.requirements import PlatformTarget, ResponsibilityRequirement
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOBS
 
@@ -114,6 +115,13 @@ class DevelopmentProfile:
     #: Empty means a product's cycle is never pinned to this profile from its blueprint, and a
     #: source-backed run under it is shown the prose above, as before.
     product_conventions_template: str = ""
+    #: The platform and variant this profile's work targets (SIP-0116 §5.1). ``None`` for a
+    #: profile whose work requires nothing of the squad beyond the base set.
+    platform: PlatformTarget | None = None
+    #: For each responsibility, the skillsets the work requires (SIP-0116 §5.1). Empty means
+    #: nothing beyond the base set. Selecting a profile equips no one: these are compared with
+    #: what the selected squad's agents carry, and nothing here reaches an agent.
+    requires: tuple[ResponsibilityRequirement, ...] = ()
 
 
 #: What a product's source and tests look like when no blueprint says (SIP-0112 H.26). The product's
@@ -753,8 +761,16 @@ def development_profile_conflict(name: str, runners: Iterable[str]) -> str | Non
 
 def development_profile_fingerprint(name: str) -> str:
     """What identifies a profile's behaviour, so a retry or replay can tell it changed (H.26): a
-    digest of its whole definition. A prompt asset it names is covered by name, not by content."""
-    document = json.dumps(dataclasses.asdict(get_development_profile(name)), sort_keys=True)
+    digest of its whole definition. A prompt asset it names is covered by name, not by content.
+
+    ``platform`` and ``requires`` are covered where declared (SIP-0116 §5.1). A profile that
+    declares neither is digested without their keys, so its fingerprint is the one every
+    stored selection and every retry's drift check already holds."""
+    definition = dataclasses.asdict(get_development_profile(name))
+    for declared_only in ("platform", "requires"):
+        if not definition[declared_only]:
+            del definition[declared_only]
+    document = json.dumps(definition, sort_keys=True)
     return hashlib.sha256(document.encode()).hexdigest()[:16]
 
 
