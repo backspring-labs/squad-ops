@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.scripts import meminfo_reading
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts" / "dev" / "ops"))
 _spec = importlib.util.spec_from_file_location(
@@ -58,6 +60,9 @@ def test_a_kill_is_followed_by_the_restoration_and_its_outcome_is_logged(
     monkeypatch, tmp_path, restore, event
 ):
     monkeypatch.setattr(watchdog, "LOG", tmp_path / "watchdog.jsonl")
+    # Each log line carries the memory, read from /proc/meminfo: a known reading on every
+    # platform, macOS included, which has no /proc (#2976).
+    meminfo_reading.install(monkeypatch, watchdog, tmp_path)
     calls, run = _answering(restore)
     monkeypatch.setattr(watchdog.subprocess, "run", run)
 
@@ -67,6 +72,9 @@ def test_a_kill_is_followed_by_the_restoration_and_its_outcome_is_logged(
     assert calls == ["docker kill", "restore"]
     assert [x["event"] for x in lines] == ["killing_tensorfold", "killed_tensorfold", event]
     assert lines[0]["reason"] == "memory floor"
+    assert {(x["mem_available_gib"], x["swap_used_gib"]) for x in lines} == {
+        (meminfo_reading.MEM_AVAILABLE_GIB, meminfo_reading.SWAP_USED_GIB)
+    }
 
 
 GIB = 2**30

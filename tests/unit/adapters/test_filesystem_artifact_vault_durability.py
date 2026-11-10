@@ -5,9 +5,11 @@ error to the read that needs it, and a listing skips it and names it."""
 
 from __future__ import annotations
 
+import fcntl
 import importlib.util
 import logging
 import os
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -35,6 +37,14 @@ def _ref(n: int, run: str = "run_1", *, aid: str | None = None) -> ArtifactRef:
         cycle_id="cyc_1",
         run_id=run,
     )
+
+
+def _path_of(fd: int) -> Path:
+    """The path an open descriptor names: ``/proc/self/fd`` on Linux, ``F_GETPATH`` on macOS,
+    which has no ``/proc`` (#2976)."""
+    if sys.platform == "darwin":
+        return Path(os.fsdecode(fcntl.fcntl(fd, fcntl.F_GETPATH, bytes(1024)).split(b"\0", 1)[0]))
+    return Path(os.readlink(f"/proc/self/fd/{fd}"))
 
 
 def _meta(vault: FilesystemArtifactVault, ref: ArtifactRef) -> Path:
@@ -73,7 +83,7 @@ async def test_each_write_is_fsynced_and_renamed_in_order(tmp_path, monkeypatch)
     real_fsync = os.fsync
 
     def recording_fsync(fd):
-        target = Path(os.readlink(f"/proc/self/fd/{fd}"))
+        target = _path_of(fd)
         synced.append(target.name if target.is_dir() else target.suffix)
         real_fsync(fd)
 
