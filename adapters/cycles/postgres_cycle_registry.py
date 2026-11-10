@@ -74,7 +74,7 @@ _CYCLE_INSERT_COLUMNS = (
     "build_strategy, applied_defaults, execution_overrides, "
     "expected_artifact_types, experiment_context, notes, request_profile, "
     "framework_version, framework_git_sha, deploy_id, campaign_id, kind, source_context, "
-    "increment_id"
+    "increment_id, skillset_record"
 )
 _CYCLE_INSERT_COLUMN_COUNT = len(_CYCLE_INSERT_COLUMNS.split(","))
 
@@ -107,6 +107,7 @@ def _cycle_insert_args(cycle: Cycle) -> tuple:
         cycle.kind,
         cycle.source_context.to_document() if cycle.source_context is not None else None,
         cycle.increment_id,
+        cycle.skillset_record,
     )
 
 
@@ -963,6 +964,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 if row["source_context"] is not None
                 else None
             ),
+            skillset_record=row["skillset_record"],
             notes=row["notes"],
             cancelled=row["cancelled"],
         )

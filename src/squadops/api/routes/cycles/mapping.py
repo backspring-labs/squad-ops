@@ -330,6 +330,7 @@ def cycle_to_response(
         source_context=(
             cycle.source_context.to_document() if cycle.source_context is not None else None
         ),
+        skillset_record=cycle.skillset_record,
         notes=cycle.notes,
         status=status.value,
         runs=[run_to_response(r) for r in runs],

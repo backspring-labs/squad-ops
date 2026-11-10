@@ -140,6 +140,7 @@ def _cycle_row(**overrides):
         "increment_id": None,  # #2578, migration 1699
         # SIP-0112 contract 1: a sample application's cycle pins no source.
         "source_context": None,
+        "skillset_record": None,  # SIP-0116 §10, migration 2200
         "notes": None,
         "cancelled": False,
     }
@@ -249,6 +250,28 @@ class TestPostgresCycleRegistry:
         assert isinstance(gate, Gate)
         assert gate.name == "qa_gate"
         assert gate.after_task_types == ("dev",)
+
+    async def test_a_cycles_skillset_record_is_stored_and_read_back_whole(self, registry, conn):
+        """SIP-0116 §10. Bug caught: the INSERT or the row reader dropping the record, so a
+        cycle that was created with one reads ``None`` and its digest can't be checked."""
+        record = {"schema": "squadops.skillset-record/v1", "requirements": [], "digest": "d1"}
+        conn.execute.return_value = None
+
+        await registry.create_cycle(replace(_CYCLE, skillset_record=record))
+
+        sql, *args = conn.execute.call_args[0]
+        assert sql.count("$") == len(args)
+        assert (
+            args[
+                sql.split("(")[1].split(")")[0].replace(" ", "").split(",").index("skillset_record")
+            ]
+            == record
+        )
+
+        conn.fetchrow.return_value = _cycle_row(skillset_record=record)
+        assert (await registry.get_cycle("cyc_001")).skillset_record == record
+        conn.fetchrow.return_value = _cycle_row()
+        assert (await registry.get_cycle("cyc_001")).skillset_record is None
 
     async def test_create_cycle_persists_request_profile(self, registry, conn):
         """Catches the INSERT dropping the cycle-level request-profile provenance."""

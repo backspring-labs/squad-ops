@@ -682,6 +682,23 @@ def effective_development_profile(resolved_config: Mapping[str, Any] | None) -> 
     return resolve_development_profile(resolved_config) or DEFAULT_DEVELOPMENT_PROFILE
 
 
+def development_profile_selection_origin(resolved_config: Mapping[str, Any] | None) -> str:
+    """How the profile ``effective_development_profile`` answers with was selected, for the
+    cycle's skillset record (SIP-0116 §10).
+
+    A repository-backed cycle recorded its selection when it was pinned (H.26), and that
+    origin stands. Otherwise the scaffold stack requires the profile, or the config names it,
+    or nothing does and the default applies.
+    """
+    config = resolved_config or {}
+    selection = config.get("development_profile_selection")
+    if isinstance(selection, Mapping) and selection.get("origin"):
+        return str(selection["origin"])
+    if development_profile_for(str(config.get("build_profile") or "")):
+        return ORIGIN_STACK
+    return ORIGIN_OPERATOR if config.get("development_profile") else ORIGIN_DEFAULT
+
+
 def blueprint_development_profile(blueprint_stack: str | None) -> str:
     """The development profile a product made from ``blueprint_stack`` runs under, or ``""``
     (SIP-0112 H.13).
@@ -699,6 +716,9 @@ def blueprint_development_profile(blueprint_stack: str | None) -> str:
 
 #: Where a cycle's development profile came from (SIP-0112 H.26).
 ORIGIN_OPERATOR, ORIGIN_BLUEPRINT, ORIGIN_DERIVED = "operator", "blueprint", "derived"
+#: And for a cycle with no repository behind it: its scaffold stack requires the profile, or
+#: nothing names one (SIP-0116 §2's table, the greenfield rows).
+ORIGIN_STACK, ORIGIN_DEFAULT = "stack", "default"
 NEUTRAL_DEVELOPMENT_PROFILE = "product_neutral"
 _PYTHON_RUNNERS = frozenset({"pytest", "unittest"})
 _NODE_RUNNERS = frozenset({"vitest", "jest"})

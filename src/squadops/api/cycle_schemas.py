@@ -816,6 +816,9 @@ class CycleResponse(BaseModel):
     increment_id: str | None = None
     # SIP-0112 contract 1 (E.4.3): the external source this Cycle pinned; None for a sample app.
     source_context: dict[str, Any] | None = None
+    # SIP-0116 §10: what the work required and what the squad supplied, with its digest. None
+    # on a cycle created before the record existed.
+    skillset_record: dict[str, Any] | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)

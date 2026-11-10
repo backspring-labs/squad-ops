@@ -418,3 +418,23 @@ def test_the_pin_is_read_as_stored_and_a_context_from_before_it_as_pinned_at_the
         context.pinned_commit,
         context.previous_verification_ref,
     ) == read_as
+
+
+def test_a_repository_backed_cycles_skillset_record_names_the_profile_it_pinned(client, ports):
+    """SIP-0116 §10 on SIP-0112 H.26's selection. Bug caught: the record built before the
+    profile is pinned, or from the request's defaults, so it reads ``default`` for a
+    product whose cycle runs under the profile derived from its runners."""
+    import asyncio
+
+    resp = client.post(
+        "/api/v1/projects/prj-tally/cycles",
+        json={"squad_profile_id": "full", "applied_defaults": {"implementation_plan": True}},
+    )
+    assert resp.status_code == 201, resp.json()
+
+    cycle = asyncio.run(ports.cycle_registry.get_cycle(resp.json()["cycle_id"]))
+    selection = cycle.execution_overrides["development_profile_selection"]
+    recorded_profile = cycle.skillset_record["development_profile"]
+
+    assert {k: recorded_profile[k] for k in ("name", "origin", "fingerprint")} == selection
+    assert cycle.skillset_record["squad"] == {"profile_id": "full", "roster_hash": "sha256:abc"}

@@ -210,7 +210,8 @@ def _platform(platform: Any, errors: list[str]) -> tuple[str, tuple[str, ...]]:
     if not isinstance(platform, dict) or set(platform) - {"id", "variants"}:
         errors.append("platform must be a mapping of `id` and `variants`")
         return "", ()
-    platform_id = platform.get("id") if isinstance(platform.get("id"), str) else ""
+    declared_id = platform.get("id")
+    platform_id = declared_id if isinstance(declared_id, str) else ""
     if not platform_id.strip():
         errors.append("platform.id is required")
     variants = _names(platform.get("variants"), "platform.variants", errors, required=True)
