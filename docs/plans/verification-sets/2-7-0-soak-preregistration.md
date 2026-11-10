@@ -468,10 +468,16 @@ document.
 
 Each value is written here, in a commit, before the Campaign is created.
 
-- **The deploy pin:** `dep_<…>`, its commit, and its seven image ids, from the passing shakeout pair (plan §4.3).
-  **PLACEHOLDER**
+- **The deploy pin:** `dep_d2b4ca823f07` at main `ae684458` (#3012), every service labelled `ae684458`, 256 loaded
+  checks passing. The seven image ids: runtime-api `1db21765bb19`, max `60da24770386`, neo `d7b8b1d54914`, nat
+  `2a6d72840210`, eve `a69d054d4f3a`, data `4c6fc7f09844`, bob `2dc9858c4d8a`. The shakeout pair on it,
+  `cyc_fa03dc263093` (FastAPI + React, accepted 21/21) and `cyc_f058965a33b0` (Next.js, rejected 20/21 on the
+  built app's own UI tests: `run-error` and `run-not-found` absent from its view), found no seam defect, so the
+  loop exits at one pair (plan §4.3). The counted increment ran on it too (`cmp_ec6f1c5b709a`, accepted).
 - **The Project at the base:** `prj-shelfnote`'s development baseline commit, which must equal §2's; its Development
-  Configuration revision; and its inherited baseline, ids and verdict. **PLACEHOLDER**
+  Configuration revision; and its inherited baseline, ids and verdict. Read 2026-11-10: baseline and integrated commit
+  `177323bed8f6bea36eac4e8aefc8901bca13b8f4`, equal to §2's; configuration revision 11; inherited baseline `boots`,
+  `backend_tests` and `frontend_tests`, each PASS, inherited; the derived profile names no gap.
 - **The goal set:** `prj-shelfnote`'s goal set, revision 3 (2026-11-09 12:50 UTC), holding §2's backlog SN-6 to SN-15.
   It was made as `squadops-admin` with the owner's OK (#2892, 2026-11-09).
 - **The recording:**
@@ -489,7 +495,12 @@ Each value is written here, in a commit, before the Campaign is created.
     those 30 and nothing else, is `4721341de0a2`. The deploy record's `scripted` model digest must read that, or name
     the scripts added since;
   - the hand-written answers: none. One latency was hand-filled, `shelfnote-soak-c04`'s proposal at 108.6 s (§3a).
-- **The dry run on the final deploy:** its Campaign id, and that it reproduced the recording's order. **PLACEHOLDER**
+- **The dry run on the final deploy:** `cmp_5113d589fd4e` on `dep_d2b4ca823f07`, completed. Its decision sequence
+  (A acceptance, rN the row, R a resume) is `A A r7 A r7 A r7 r12 r9 R A r7 r12 r13 A r7 r12 A r3`; the recording's
+  is the same through its sixth acceptance, where the dry run stops at its target (row 3) and the recording ran on.
+  The recording's extra `R` is the supervisor's refused resume before the owner's seat (§6.5). An earlier dry run,
+  `cmp_10099196fce1` on `dep_d67c384673bd`, failed at launch 1 on the recorder's derived-fields defect, fixed in
+  #3012 (§3a).
 - **The supervisor's login,** ruled by the owner on 2026-11-08. The session driving the soak logs the CLI in as
   `squadops-supervisor` with no prompt, and logs in again the same way after §6.1's and §6.4's expiries. It reads
   `SQUADOPS_SUPERVISOR_PASSWORD` from the deploy's `.env`, where it is already held, and never prints it. This
