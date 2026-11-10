@@ -1743,6 +1743,8 @@ async def test_a_continuation_carries_the_increments_keys_and_its_own_lineage_an
             "unapproved_proposals": [{"proposal_id": "prop_old"}],
             "supervisor_note": "narrow it",
             "a_lineage_key_added_later": "cyc_first",
+            # §24dq: the continuation's acceptance judges the pages its increment's launch pinned.
+            "accepted_pages": [{"route": "/t", "anchor": "t-view", "testids": ["t-view"]}],
         },
     )
 
@@ -1751,9 +1753,10 @@ async def test_a_continuation_carries_the_increments_keys_and_its_own_lineage_an
     assert retry.cycle_kind is CycleKind.RETRY
     assert sorted(block) == sorted(
         ["proposal_id", "version", "baseline_tree", "accepted_cycle_id", "baseline_manifest"]
-        + ["continues", "prior_cycle"]
+        + ["accepted_pages", "continues", "prior_cycle"]
     )
     assert (block["continues"], block["prior_cycle"]["cycle_id"]) == ("cyc_inc", "cyc_inc")
+    assert block["accepted_pages"] == [{"route": "/t", "anchor": "t-view", "testids": ["t-view"]}]
 
 
 async def test_a_retry_whose_failed_cycle_cant_be_read_carries_no_brief_not_an_older_one(
@@ -2950,6 +2953,56 @@ async def test_a_cycle_ended_for_criteria_met_on_the_head_goes_to_a_new_proposal
     ]
 
 
+async def test_a_run_failed_for_a_test_that_passes_on_the_head_is_repaired_and_never_already_met(
+    calibrating, stored
+):
+    """#2933 D1 (SIP-0109 §24do), the campaign's side, entered at the completion boundary as the
+    executor ends the run once qa's refusal is spent: a failed implementation run with no terminal
+    kind and no ``criterion_head_check`` record (the executor stores none for a pass on the head).
+    Bugs caught: the ending read as row 19, an uncounted abandonment; or the next cycle told the
+    head already meets the criterion, so the backlog moves on with the behaviour missing (BT-2)."""
+    from squadops.campaigns.continuation import UNCOUNTED_ABANDONMENT_ROWS
+    from squadops.cycles.llm_usage import RunUsage
+    from squadops.cycles.run_loop_summary import RunLoopSummary
+
+    stored["art_candidate"] = (
+        _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
+        MANIFEST.encode(),
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    block = {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "baseline_tree": (await w.campaigns.get_campaign(CID)).accepted.identity,
+        "accepted_cycle_id": "cyc_cal",
+        "baseline_manifest": MANIFEST,
+    }
+    increment_run = await w.launched_cycle(
+        "increment", "cyc_inc", "implementation", "failed", overrides={"campaign_proposal": block}
+    )
+    await w.cycles.record_run_loop_summary(
+        increment_run.run_id,
+        RunLoopSummary(
+            run_id=increment_run.run_id,
+            usage=RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=()),
+            terminal=None,
+        ),
+    )
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.RUN_FAILED)
+
+    recorded_end = await w.cycles.get_cycle_end("cyc_inc")
+    assert recorded_end is not None
+    assert recorded_end.stopped_because is CycleStopReason.RUN_FAILED
+    decision = (await w.campaigns.control_log(CID))[-1]
+    # Row 8: a run with no verdict, repaired, and counted (it isn't one of rows 16 and 19).
+    assert (decision.binding["row"], decision.binding["action"]) == (8, "repair")
+    assert decision.binding["row"] not in UNCOUNTED_ABANDONMENT_ROWS
+    *_, launched = await w.campaigns.launch_intents(CID)
+    assert "already_met" not in json.dumps(launched.cycle_request, default=str)
+
+
 @pytest.mark.parametrize(
     ("evaluation", "only"),
     [
@@ -3139,4 +3192,7 @@ async def test_a_rebase_that_supersedes_the_items_repair_proposes_the_item_again
         "campaign_branch",
         "upstream_moved",
     )
+    # SIP-0109 §24dr item 4: pinned on every repository-backed launch, empty for none, so the
+    # proposal and acceptance can tell it from a block an old runtime-api wrote.
+    assert block["accepted_pages"] == []
     assert isinstance(unaware, str) and "no pending backlog item" in unaware

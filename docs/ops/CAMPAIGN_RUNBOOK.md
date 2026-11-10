@@ -206,6 +206,14 @@ retry, as `build_profile` and `development_profile`. Leave it out and the campai
 profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
 creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
 
+**A scripted Campaign names its scripts** (`policy.llm_scripts`, SIP-0109 §24dt; #2892). On the `machinery`
+squad every call is answered from a recorded script (#2495), and a Campaign names one pinned script,
+`<name>@<version>`, per cycle it launches, in launch order: its first launch takes the first, a repair or a retry
+the next one, like any other launch. Creation refuses a script this deploy doesn't hold at that version. A launch
+past the last script escalates the Campaign as `LLM_SCRIPT_MISSING`, with the intent pending: add the script, which
+is package data (`src/squadops/llm/llm_scripts/`), so it reaches a deploy only by a rebuild. A scripted Campaign is
+evidence about the machinery, never about a model.
+
 **Which escalations the operator may resume on its own is the campaign's declaration too**
 (`policy.unattended_resume`, SIP-0109 §24da; the 2.6 plan's D6). Leave it out and nothing is delegated: every
 escalation waits for you, as before. Each class you list lets the operator's `campaign-supervisor` principal make one
@@ -310,9 +318,15 @@ accepted work stays on the campaign branch until the supervisor opens it:
   `contribution_failed` row naming why, and the same command tries again.
 - **Read what isn't in yet:** `squadops projects unintegrated <project>`. Nothing listed means every
   accepted increment is in the Project's integrated commit.
+- **After the owner merges it, before the next draft:** `squadops projects check-integration <project>
+  --token-from-gh`. It syncs, re-validates the Project where the merge is in, and lists what still waits, each
+  row with what clears it. It only reads the forge. `merge_state_unread` means the merge wasn't read, never that
+  it isn't merged. After a re-validation, record the configuration and capture the baseline at the new commit
+  before a cycle starts (SIP-0112 H.30). Compose the draft from reads at the `integrated_commit` it answered: a
+  `source-file` read at another commit means the commit moved, so check again (SIP-0109 §24ds).
 - **`contribution_closed`:** the request was closed unmerged, and it keeps blocking. The command above
-  can't reopen it. The owner reopens it on the forge, merges it with a merge commit, and re-validates
-  the Project. If the work won't land, the owner says so, which clears it and can't be undone:
+  can't reopen it, and the check doesn't read it. The owner reopens it on the forge, merges it with a merge
+  commit, then syncs and re-validates the Project (`squadops projects sync`, then `projects validate`). If the work won't land, the owner says so, which clears it and can't be undone:
   `squadops campaigns dismiss-contribution <id> --reason "<why>"` (SIP-0109 §24dg). The supervisor
   can't run it, and the control log shows it as `contribution_dismissed`.
 
@@ -431,7 +445,7 @@ What the supervisor (the operator, or whoever holds the seat, §24al) does alone
 | alone | stops for the owner |
 |---|---|
 | rule increment gates and answer plan gates; pause a campaign; classify a proposal; take the lease at an open gate with no run in flight (all `campaigns:supervise`, which the `campaign-supervisor` role holds) | a pre-registration, or any material change to one (a policy value, a prediction, the set's size or frame) |
-| create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone), except the classes a campaign declares in `policy.unattended_resume` (§24da) |
+| create, start and abort campaigns, materialize a package, and resume its own pause (`campaigns:manage`, which the `campaign-supervisor` role holds since 2.1, #1940, SIP-0109 §24az); and the draft's integration check, which may sync a Project and re-validate it only in its bounded delegation: READY, after its own sync, at that sync's commit, fenced (SIP-0112 H.30). `projects sync` and `projects validate` themselves stay the owner's (`admin:write`) | resuming an escalation, a limit's pause or the owner's own pause: the owner's word (§10's rows, `campaigns resume --action`; `campaigns:control`, the admin role alone), except the classes a campaign declares in `policy.unattended_resume` (§24da) |
 | add goal-set candidates; promote or drop one, or split a backlog item, within a Campaign the owner has granted (`campaigns:supervise`; a promotion appends) | granting a Campaign's goal-set curation (`campaigns delegate`; `campaigns:control`, the admin role alone), and any reorder of the backlog |
 | file findings; fix them on branches; merge on full green, reading main's run | an unexplained red on main |
 | rebuild between campaigns, verifying the new code is loaded | a fix needed while a counted set is open: it voids the set |

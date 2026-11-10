@@ -777,14 +777,18 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # a directly constructed adapter. Construction is outside the try on purpose — an
     # unknown provider name is a misconfiguration and must stop startup, while the
     # registration below stays non-fatal.
-    from adapters.llm.factory import create_llm_provider
+    from adapters.llm.factory import create_llm_provider, with_scripted_model
 
-    llm_adapter = create_llm_provider(
-        provider=config.llm.provider,
-        base_url=config.llm.url,
-        default_model=config.llm.model or "qwen2.5:7b",
-        timeout_seconds=float(config.llm.timeout),
-        api_key=config.llm.api_key,
+    # #2495: the deploy serves the model `scripted` beside the engine, as its agents do, so the
+    # create-time model check admits a `machinery` squad.
+    llm_adapter = with_scripted_model(
+        create_llm_provider(
+            provider=config.llm.provider,
+            base_url=config.llm.url,
+            default_model=config.llm.model or "qwen2.5:7b",
+            timeout_seconds=float(config.llm.timeout),
+            api_key=config.llm.api_key,
+        )
     )
     try:
         state.llm_port = llm_adapter

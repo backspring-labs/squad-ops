@@ -97,6 +97,23 @@ profiles:
 # always-runnable 'smoke' tier so an unspecified cycle never hard-fails on a missing
 # model (the former 'full-squad' default was the #173 footgun). Real cycles pass
 # --squad-profile explicitly; the model-availability preflight (#224) guards the rest.
+  # #2495: the scripted squad. Every agent names the model `scripted`, so each call is answered
+  # from the recorded script the cycle names (`--set llm_script=<name>@<version>`, scripts in
+  # src/squadops/llm/llm_scripts/) and dispatch, emission, correction and acceptance run their
+  # normal paths with no model loaded. Checks the machinery only: a scripted run is never
+  # evidence about a model or a prompt, and its cycle record says it was scripted.
+  - profile_id: machinery
+    name: "Machinery Squad (scripted)"
+    description: "All 6 agents answered from a recorded script, no model — for checking execution machinery (dispatch, emission, correction, acceptance) in seconds and with the same outcome every run. NOT evidence about any model or prompt."
+    version: 1
+    agents:
+      - { agent_id: max, role: lead, model: "scripted", enabled: true, serves_roles: [lead] }
+      - { agent_id: neo, role: dev, model: "scripted", enabled: true, serves_roles: [dev] }
+      - { agent_id: nat, role: strat, model: "scripted", enabled: true, serves_roles: [strat] }
+      - { agent_id: bob, role: builder, model: "scripted", enabled: true, serves_roles: [builder] }
+      - { agent_id: eve, role: qa, model: "scripted", enabled: true, serves_roles: [qa] }
+      - { agent_id: data, role: data, model: "scripted", enabled: true, serves_roles: [data] }
+
   # SIP-0108 §10i (1.8.1 plan §3.5): the Solo arm — declarations only. One process, `han`,
   # role `generalist` in source, serving every step role the squad's `full-38` serves. The
   # flat completion cap is `full-38`'s (§10l: the arms are held equal by flattening the

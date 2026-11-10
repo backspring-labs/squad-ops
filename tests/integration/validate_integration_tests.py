@@ -99,9 +99,9 @@ def main():
 
         print("\n" + "=" * 70)
         print("REFERENCE:")
-        print("  tests/integration/README.md line 238:")
+        print("  tests/integration/README.md, The rules, 1:")
         print("    'Use real services - Avoid mocking external services in integration tests'")
-        print("\n  tests/integration/README.md line 257:")
+        print("\n  tests/integration/README.md, The rules, 2:")
         print("    'Real Integration - Tests use actual services, not mocks'")
         print("\n  SQUADOPS_BUILD_PARTNER_PROMPT.md:")
         print("    'No deceptive simulations - real implementation or nothing'")

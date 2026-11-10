@@ -79,7 +79,9 @@ class _Registry:
         self.initialization = initialization
         return initialization, False
 
-    async def record_validation(self, project_id, *, commit, diagnostic, actor, idempotency_key):
+    async def record_validation(
+        self, project_id, *, commit, diagnostic, actor, idempotency_key, expected_baseline
+    ):
         status = (
             ProjectLifecycleStatus.READY if commit else ProjectLifecycleStatus.FAILED_REGISTRATION
         )

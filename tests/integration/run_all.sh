@@ -77,7 +77,7 @@ if [ "$1" != "" ]; then
         echo ""
         echo "Examples:"
         echo "  $0                                    # Run all integration tests"
-        echo "  $0 test_workflow.py                   # Run workflow tests only"
+        echo "  $0 cycles/test_postgres_cycle_registry_integration.py  # one file"
         echo "  $0 -m service_postgres                # Run PostgreSQL-dependent tests"
         echo "  $0 -m service_ollama                  # Run Ollama-dependent tests"
         echo ""
@@ -113,7 +113,7 @@ else
     echo "  1. Check service status: python3 $SERVICE_CHECK_SCRIPT"
     echo "  2. Check agent containers: docker ps --filter 'name=squadops'"
     echo "  3. Check service logs: docker logs squadops-max"
-    echo "  4. Run specific test: $0 test_workflow.py"
+    echo "  4. Run specific test: $0 cycles/test_postgres_cycle_registry_integration.py"
     echo ""
     exit 1
 fi

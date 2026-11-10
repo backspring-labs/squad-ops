@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-11-07)
+## Delivery ledger (current as of 2026-11-08)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -126,7 +126,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **shipped**: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), a blueprint's conventions without its test placement (H.13), a product's qa suite run on the product's tree (H.15, #2815), with SIP-0109 §24bv point 5's proposal input and point 6's `qa.evaluate_increment` drop shipped there; read live on the 2.5 cut's final deploy on `z_shelfnote` and `z_continuum` (the cut's pre-registration §14b). Narrowed by the owner (2026-10-29): no product increment was accepted, and H.13's two unbuilt items remain, so the row below carries them | 2.5.0, closes #2619 with the release PR |
-| H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), waiting on #2799 (#2818 shipped in 2.5.1; the 2.6 spikes' accepted increments are uncounted); and H.13's two items not built (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing) | 2.7.0, #2827 |
+| H.4's remainder: an accepted product increment end to end (IR-5, IR-6's increment half, IR-9's increment reading), read on one counted increment on `prj-z-continuum` by the 2.7 plan's §4.5 (#2818 shipped in 2.5.1; the 2.6 spikes' accepted increments are uncounted; SIP-0109 §24dp, #2799, ships in 2.7 the page loader a vitest product's page criteria discriminate through, which no counted reading has read); and H.13's two items (`nextjs_ts`'s collected-test vocabulary, a plan-less product cycle's test author shown the product) | **placed** (the cut's sweep, under the owner's narrowing). H.13's two items are built in 2.7 (H.29), and the counted increment remains, so #2827 stays open | 2.7.0, #2827 |
 | H.4's remainder for a product with no blueprint: its development profile selected from the derived facts, a neutral profile and a named gap in place of a silent `python_cli`, and QA evidence that says where its suite ran (H.26, superseding H.13's "no blueprint" paragraph) | **shipped** | 2.6.0, PR #2941, closes #2937 |
 | a size preflight: before a Campaign starts on a product, every task type it dispatches rendered against the product's tree at the pinned commit, a binding that can't fit named as a blocking gap (H.21) | **shipped** (H.21): measured at the start route on the live path's own counter, a floor, `prompt_over_window` and `size_unmeasured` | 2.6.0, PR #2919, closes #2889 |
 | a dev repair's retest of a product's qa suite judged on the product's runner: the failed task's own tests, with the patched source overlaid on the tree | **shipped** | 2.6.0, PR #2898, closes #2881 |
@@ -136,13 +136,14 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a product's suite judged on its own runner on the product's tree at the pin, with the files a run's artifacts hold back (a lockfile) (H.19) | **shipped** | 2.6.0, PR #2902, closes #2900 |
 | a source-backed change that deletes a file | **shipped** (H.23): the `delete:<path>` form, judged against the task's view and grant, applied to the delivery candidate, named in `changed_paths` and absent from the capture | 2.6.0, PR #2923, closes #2612 |
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
-| a merged contribution syncs its Project, so the integrated commit includes the work | **placed** (the 2.6 plan, adopted 2026-11-03) | 2.7.0, #2862 |
-| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.7.0, #2709 |
+| a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #3002, closes #2862 |
+| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect) | 2.8.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
 
-**What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It closes in 2.6
-(the owner, 2026-10-23). Greenfield creation (E.4.6)
+**What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It was to close in 2.6
+(the owner, 2026-10-23). It can't close before 2.8: E.4.5 (#2709) moved there by the 2.7 plan's R1 (the owner,
+2026-11-08). Greenfield creation (E.4.6)
 is in the completion scope by the owner's ruling of 2026-10-17 (Q34), and leaves it only by a numbered
 amendment the owner rules. The 2.4 cut requires it shipped (G6, ruled the same day).
 
@@ -3293,3 +3294,265 @@ and #2862 moved to 2.7 on the owner's rulings of 2026-11-07. No Project needs a 
 Shelfnote and `z_continuum` all run from their repositories.
 
 **Who ruled.** The owner, 2026-11-07, on the implementer's recommendation.
+
+## H.28 A merged contribution syncs its Project, from a host-side sweep on the host's own forge access (2026-11-08; E.4.3, E.4.4, FR-21; #2862; the Spark lane)
+
+**What changed.** E.4.4's sync recorded where each pending contribution stands, but only when someone ran it. After the
+owner merged a contribution's review request, the Project's `integrated_upstream_commit` stayed put, and the next
+Campaign read a product without the merged work. The merge sweep (`scripts/dev/ops/merge_sweep.py`) now runs on a host
+timer (`infra/systemd/squadops-merge-sweep.*`, every 15 minutes, so detection is by polling):
+1. **It reads.** For each repository-backed Project, it lists the contributions and reads each pending one's review
+   request on the forge. Every forge call is a `GET`; the sweep never pushes, comments, merges or edits.
+2. **It records a sync** for a Project with a merged one. E.4.4's sync marks the contribution integrated against the
+   commit that took it (a squash merge's included) and names the drift.
+3. **It re-validates the Project,** so the development baseline advances and new cycles wait for configure and
+   baseline capture, as after any sync (the owner's ruling of 2026-11-05). A validation that never landed is retried on
+   the next run.
+4. **A refused sync or validation is reported, never retried in silence.** The run exits 1, and a sync that can't
+   reconcile reads `unreconciled` on the Project, as before.
+
+**The credential, as the owner ruled it.** On 2026-11-05 the owner chose a read-only credential for the sweep's fetch.
+On 2026-11-08 the owner replaced that with the host's current access: "can you just accomplish the goal with your
+current access and just not write anything you shouldn't". So the sweep uses the host's GitHub CLI login, passed with
+each sync and validation request for that request alone, as `--token-from-gh` already does. The deploy stores no token,
+and the sweep writes none. The guarantee that it only reads is the code's, held by a test: that login's token has full
+repository scope, and a fine-grained read-only token can replace it in the same slot later. The sweep signs in to the
+runtime as `squadops-admin` (syncs and validations need `admin:write`), under its own CLI config home, so it never
+overwrites another login on the box. The password reaches the CLI in its environment, never as an argument.
+
+**The evidence.** `tests/unit/scripts/test_merge_sweep.py`:
+- a merged contribution syncs, then validates;
+- nothing is recorded for an unmerged, integrated or unlinked contribution;
+- a refused sync reports and never validates;
+- a validation that never landed is retried;
+- a dry run records nothing;
+- every forge call is a `GET`;
+- the sign-in keeps the password out of the arguments, uses its own config home, and signs in to the deploy's realm.
+
+A dry run on the Spark's deploy read every Project and acted on none, since every contribution there was already
+integrated.
+
+**Who ruled it.** The owner: the 2.7 plan's R2 kept #2862 in 2.7 as the line's named exception (2026-11-08), and the
+credential is the owner's ruling of the same day, above.
+
+## H.29 A product's repaired suite is read by its own runners, and a plan-less test author is shown the product (2026-11-08; H.13's "Not built here", H.26; #2827; the Spark lane)
+
+**What changed.** H.13 left two items unbuilt, and #2827 carries them. Both are built here. H.13's third item, the repairs
+(`qa.test_repair`, `development.correction_repair`), isn't one of #2827's and is unchanged.
+
+1. **Patch acceptance reads a product's repaired suite by the product's runners.** A repaired suite is what
+   `_repaired_suite_files` finds in the patch, and two decisions read it: whether a structurally unevaluable verdict is
+   decided by the retest (`retest_decides`, #1586), and whether the retest runs at all (#1269). It read the stack's
+   collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/` rule (#1534), which a product made from
+   that blueprint runs under (H.13's pin). So a repair placed where the product's vitest collects it was never retested,
+   and one placed by the scaffold's rule was.
+   - **On a repository-backed product's task,** a repaired suite is a file one of the product's runners holds: under
+     that runner's roots, named by its file pattern (`runner_holds`). That is the rule `Runner.holds`, the qa run tree
+     and the product runner's retest (`suite_under_judgement`) already use. The runners are the dispatched task's
+     (`suite_runners`, from `source_repository.runners` on the enriched envelope), since the base envelope carries no
+     view.
+   - **A sample application,** and a product whose view names no runner, keep the stack's vocabulary. With no runner, the
+     qa image's run is the only one there is.
+   - **What the stack's vocabulary still decides.** Plan validation (`validate_check_applicability`) reads it only where
+     `tests_pass` is required, and no profile a product runs on requires it (`campaign-increment-source` names no
+     `required_checks`). It is unchanged. The repair's emission veto (`correction_repair`) keeps its `__tests__/` clause,
+     which over-matches on purpose.
+2. **A plan-less product cycle's test author is shown the product.** A plan's `qa.test` takes the focused prompt, which
+   shows the product's repository view. A plan-less cycle's takes the monolithic prompt, `request.qa_test.test_validate`,
+   which showed none of it, and it carried a paragraph about the scaffold's test harness, which a product doesn't have.
+   - **Template version 6** slots the view (`source_repository_section`): the map, the stack's conventions for a
+     product, how the product is checked, and where its runners find a test. The task's step names the deletion form
+     it may use, as on the focused path.
+   - **The harness paragraph** is its own asset, `request.qa_test_scaffold_harness_block`, rendered only for a sample
+     application. A sample application's prompt is byte for byte what version 5 rendered.
+   - **Where the view shows the stack's conventions,** the profile's test supplement is withheld in their favour, as the
+     developer's system supplement is (H.13 point 2). `nextjs_ts`'s supplement places tests under `__tests__/` and calls
+     the scaffold's `@/lib/store`. `node_vitest`'s, the one a plan-less cycle is pinned to (H.26 point 5), only names
+     vitest, which its conventions say too ("A test is vitest, run by the product's own runner").
+   - **The files the prompt shows** are unchanged: the stack's source files (`qa_prompt_contents.source_files`), which the
+     composer counts. The monolithic path has no suite and no task text to trace imports from, so #2953's tracer, the
+     focused path's, has nothing to start from. The source files are the code a suite can call. The composer already
+     counted the view among the shared context slots, and the qa contract now lists the harness block too.
+3. **The pin is unchanged.** H.13 point 3 kept a plan-less cycle off a blueprint's profile because "only the plan's tasks
+   are shown the product". That reason is superseded for the test author, and the rule stands on the developer's: its
+   monolithic prompt (`request.development_develop.code_generate`) still lays files out by the profile's
+   `file_structure_guidance` and `example_structure`. So a plan-less cycle on a product made from a blueprint runs as
+   H.26 point 5 says, and its test author is shown the view, with no conventions block and `python_cli`'s supplement.
+
+**The evidence:**
+- **The repaired suite** (`tests/unit/cycles/test_outcome_routing.py`,
+  `TestAProductsRepairedSuiteIsReadByTheProductsRunners`). The tests enter at `_try_accept_patch`, as the correction loop
+  calls it, on the config `prepare_cycle` pins for a product made from `nextjs_ts`, with the enriched envelope carrying
+  a view whose vitest collects `*.test.ts` under `app`. The failed task is #1586's shape, an emission failure with prose
+  criteria only. In each case:
+  - `app/runs/runs.test.ts` is retested and accepted on the pass;
+  - `__tests__/runs.test.ts` and `app/runs/runs.spec.ts` end the round as a deadlock, with no retest;
+  - a sample application reads both the other way;
+  - a product whose view names no runner keeps the stack's reading.
+- **The plan-less test author** (`tests/unit/cycles/test_planless_test_author_product_view.py`). The tests enter at
+  `prepare_cycle` on `implement` with no plan, then at `QATestHandler.handle` with the cycle's own `resolved_config()`
+  and the shipped assets:
+  - a Python product, a Node product and a product made from `fullstack_fastapi_react` are each shown the map and their
+    runner, with no harness paragraph and none of the skeleton's placements;
+  - the Node product is shown `node_vitest`'s conventions in place of its supplement;
+  - an operator-named `nextjs_ts` shows the blueprint's conventions and neither "Place tests in __tests__/" nor
+    `@/lib/store`;
+  - a product with no runner is shown its map and no runner block;
+  - a sample application keeps the harness, between its files and its supplement.
+- **H.26's monolithic-prompt test** (`test_the_monolithic_test_prompt_names_vitest_not_pytest`) now reads vitest from the
+  conventions, where it read the supplement. `pytest` still never appears.
+- **Ten mutants, each caught:**
+  - the runners read from the base envelope;
+  - the source-backed test inverted;
+  - the runner rule never taken;
+  - each of the two readers left on the stack's vocabulary;
+  - a runner's roots ignored;
+  - the view never rendered;
+  - the harness shown to a product, or withheld from a sample application;
+  - the supplement kept beside the conventions.
+- **Loaded checks:** `2827-repaired-suite-runners` (the runtime) and `2827-planless-qa-view` (the qa agent), each run on
+  the source.
+
+**Not built.**
+- The plan-less developer's skeleton prose, which is why the pin stays (point 3).
+- Plan validation's reading, for the reason in point 1.
+- #2827's counted increment on `prj-z-continuum` (the 2.7 plan's §4.5). It remains, and #2827 stays open for it.
+
+**Who ruled.** The Spark lane built it, within H.13's rule ("the profile's prose for the skeleton is withheld wherever the
+product's repository view is shown"), under the supervisor's brief for #2827's item 2. The owner reviews it on the PR.
+
+## H.30 The draft checks integration where it is drafted, in place of H.28's timer (2026-11-08; E.4.3, E.4.4, FR-21; SIP-0109 §24dc, §24ds; #2862; the owner's ruling of 2026-11-08, option 1; the Spark lane)
+
+**What changed.** H.28 is superseded. Its host timer (`scripts/dev/ops/merge_sweep.py`,
+`infra/systemd/squadops-merge-sweep.*`) and its test are removed. They were never installed. In their place, the
+next Campaign's draft checks integration when it needs to:
+`POST /api/v1/projects/{id}/integration-check` (`campaigns:manage`, 200, `IntegrationCheckResponse`), or
+`squadops projects check-integration <project> [--token-from-gh]`. In one request it:
+1. **reads the Project's unintegrated set** (SIP-0109 §24dc item 7). With no row `contribution_pending` or
+   `merged_not_synced`, it records nothing and answers the set;
+2. **syncs** (E.4.4), for either kind of row: the managed clone fetches the base ref, and each pending review
+   request's state is read on the forge. A request merged into the base ref (a squash merge's new commit included)
+   is recorded integrated against the commit that took it. A patch export, and a merge with a merge commit, are
+   read by ancestry alone, with no forge and no forge token. The sync's idempotency key is the upstream commit's
+   (`integration-check:<project>:sync:<commit>`), so a second check at that commit records no second sync: it
+   replays the first. A manual `POST …/syncs` keeps its caller's key;
+3. **re-validates, within a bounded delegation** (below), when a row stands `merged_not_synced` and the sync
+   completed: the development baseline and the integrated commit move to the commit the sync read, and the row is
+   carried. New cycles then wait for configure and baseline capture there, as after any re-validation (the owner's
+   ruling of 2026-11-05). The answer's `next_step` says so;
+4. **reads the set again,** as recorded, and answers it: `clear` when it is empty, so the draft may proceed.
+   Otherwise each row says what it waits on: `campaign_open`, `contribution_not_opened`, `merge`,
+   `merge_state_unread`, `revalidation` or `closed_unmerged`, with `clears_when` in words. A sync that read drift
+   the Project hasn't reconciled is answered too (`unreconciled`, #2608).
+
+**It only reads the forge.** The fetch is the managed clone's, and the forge is asked only `review_request_state`, a
+`GET`. Nothing is pushed, commented, merged or labelled.
+
+**The token.** The request's `token`, else the one the deploy holds for the Project in
+`projects.review_request_tokens`, the order the sync and validate routes already read. It is used for that request's
+reads only, and never recorded. No new credential is stored and no host script reads a password.
+- **A pending review request needs a token and a forge.** Without them its merge isn't read, the sync isn't run
+  (it would answer `pending` without a reading), and the answer says so: `merge_state_unread: {reason: no_token}`
+  or `no_forge`, never "not merged".
+- **A fetch the remote refused for its credentials** is `fetch_unauthorized`, with or without a token passed, told
+  apart from the missing review-request token. The managed clone names it `unauthorized`
+  (`adapters/tools/git_source.py`, `fetch_unauthorized`).
+- The other reasons are `sync_refused`, `source_unavailable` and `forge_unavailable`.
+
+**A sync that was needed and didn't complete advances nothing.** No re-validation follows it, and the rows are
+answered as they are recorded after it, since a sync can record one contribution before a later one's read fails. A
+re-validation that doesn't adopt is answered in `validation_failed` with its reason. Neither is retried inside the
+request; the next check syncs and tries again.
+
+**The fence: a validation never moves a newer adoption back.** `record_validation` takes the development baseline its
+caller read before it fetched (`expected_baseline`, ProjectRegistryPort). Under the Project's row lock, a baseline
+that has moved since, and isn't the commit being adopted, means another validation adopted in between. Nothing is
+written, and `ProjectBaselineMovedError` names the commit held: 409 `BASELINE_MOVED` on `POST …/validate`, and
+`validation_failed: baseline_moved` in the check, which reads the Project again. One already at the commit is
+answered as it stands. The fence is in the registry's write, so a manual validation is fenced as the check's is. A
+key that recorded before replays, and the replay says the key was used, not where the Project is now: the check's
+validation key names the move, `integration-check:<project>:validate:<baseline read>:<commit adopted>`. So a later
+check that reads another baseline has a key of its own, and a spent key never holds a retry back.
+
+**The bounded delegation.** `campaigns:manage` doesn't otherwise imply validation authority: `POST …/syncs` and
+`POST …/validate` stay `admin:write`. The check may re-validate only:
+- a READY Project (`not_ready` otherwise);
+- after its own sync completed, for a row whose contribution that sync, or an earlier one, recorded integrated;
+- at exactly the commit that sync read (`validate_project(adopt_only=…)`). An upstream that moved between the sync's
+  fetch and the validation's is refused, `upstream_moved`, never adopted unread. The next check syncs it;
+- through the fence above.
+
+The Development Configuration and inherited baseline are still required at the new commit before a cycle. The
+exception is recorded in `squadops.auth.models` (the scope's comment) and the campaign runbook's approval boundary.
+
+**`contribution_closed`.** The check reads only pending contributions, so it does nothing for a closed one, and its
+row says the whole recovery. The owner reopens the request and merges it with a merge commit (a squash merge of a
+closed request can't be read), then syncs and re-validates the Project (`POST …/syncs`, then `POST …/validate`).
+Otherwise the owner dismisses it (SIP-0109 §24dg).
+
+**Where the gate is.** It stays the supervisor's, where SIP-0109 §24dc and #2863 placed it. #2863 built the signal and
+left refusing a draft while the set is non-empty to the supervisor's side. A draft is composed from the
+product read at the integrated commit (#2855's `source-file`) before any Campaign is created. So a check at
+`POST /api/v1/campaigns` would run after that read. It would either let through a draft composed from the commit
+before the merge, or refuse every creation while any row stands, which is a policy nobody has ruled. The check is the
+supervisor's first call, ahead of that read. SIP-0109 §24ds records the change on the supervisor's side, and its
+contract: the draft reads the product at the `integrated_commit` the check answered.
+
+**The evidence.** `tests/unit/api/test_integration_check.py` enters at the route, as the runtime mounts it, for the
+supervisor's seat. It runs over `test_close_contribution`'s world: a real managed clone, real deliveries, the
+contribution opened through `POST /api/v1/campaigns/{id}/contributions`, the owner's merges made in the fixture's
+repository, and the forge the real GitHub adapter over a recorded transport. The Project's writes keep the Postgres
+registry's replay and fence (`tests/fixtures/project_writes.py`), and one contract,
+`validation_record_contract`, holds both: the stand-in in the unit tests, and Postgres in
+`test_postgres_project_registry_integration.py`, which also races two validations from one baseline. The tests show:
+- a merged request is integrated, the baseline and the integrated commit move to the merge, the answer is clear, and
+  the read route lists nothing;
+- the forge sees one `GET` with the caller's token. Nothing is opened, and the product's refs are unchanged;
+- an open request keeps the draft waiting, names the row and its address, and moves nothing;
+- a second check at the same upstream commit replays the sync and records no second one;
+- no token gives `no_token`, with no sync and no forge request;
+- the request's token wins over the held one, and the held one is used when none is passed;
+- a forge refusal gives `forge_unavailable`, with no sync recorded and nothing validated;
+- a merge the sandbox can't carry (a symlink) gives `validation_failed: capability_gap`, and the next check tries again;
+- with nothing pending, nothing is recorded and the forge isn't read;
+- triage and viewer seats get 403, and a sample application gets 409 `NO_SOURCE_REPOSITORY`;
+- the review's race: a manual validation reads U1 and is held, the owner squash-merges (U2), and the check adopts U2.
+  The held validation then writes nothing (`ProjectBaselineMovedError`), and the next check is clear;
+- a closed request the owner reopens and merges clears by the steps its row names;
+- a patch export is read by ancestry with no token and no forge, merged or not, and a fetch refused for its
+  credentials is `fetch_unauthorized`, with no token or with one refused;
+- `tests/unit/projects/test_integration_check_partial_sync.py`:
+  - a sync that fails part-way re-validates nothing and answers what it recorded, for a row merged before the check
+    and for one the failing sync recorded;
+  - an upstream that moves after the sync is refused `upstream_moved` and adopted by the next check;
+  - an upstream rewound and restored is adopted again.
+
+Mutations, each on a commit and restored by commit:
+- **First round, eight, all caught:** the no-token guard removed; a key per call; no re-validation;
+  re-validation on a pending row; a forge refusal swallowed; no re-read after the sync; the token order swapped;
+  the route's scope lowered to `cycles:read`.
+- **After the review, nine, all caught:** the Postgres fence off; the stand-in's fence off; the stand-in's replay
+  read by payload; validation after a failed sync; no re-read after a failed sync; a validation key named for the
+  target alone; no adoption bound; a patch export requiring a token; a credential refusal read as an outage. Two
+  survived the first run: the target-only key and no adoption bound. Each has a test now (the rewound upstream, and
+  the upstream that moves after the sync).
+
+**Revised after the owner's outside review of PR #3002 (2026-11-08).** H.30 hasn't merged, so it is revised in place.
+The review, at `99625329`, asked for four changes and answered the packet's five questions. The sections above are
+the revised design:
+1. **The fence and the move-named key** (item 1). The review reproduced the failure: two checks, one at U1 and one at
+   U2, with the U1 validation finishing last. It wrote U1 over U2, and every later check replayed U2's spent key over
+   a Project left at U1. The new race regression fails on `99625329` the same way: the baseline is left at U1, and
+   the next check answers `revalidation` for good.
+2. **The test stand-in replays by key** (item 2). It had stored `None` and read `None` as "not recorded", so no
+   validation key ever replayed. One contract now holds the stand-in and Postgres.
+3. **No validation after a failed sync, and rows as recorded** (item 3).
+4. **The closed row's whole recovery** (item 4).
+5. **Answer 2, the bounded delegation, and answer 5, ancestry without a token,** as above. Answers 1, 3 and 4 keep
+   option (b), the held token for reads, and the 200 answer. Answer 1's source-file check is the supervisor's, in
+   SIP-0109 §24ds.
+
+**Who ruled.** The owner, 2026-11-08: "I don't like the design that relies on a timer"; option 1, no timer, the check
+at the point of use. The owner's outside review of PR #3002 ruled the four changes and the five answers above. The
+route's shape, its home on the supervisor's side, the fence's place in the registry and the answer's fields are the
+implementer's design under those rulings.

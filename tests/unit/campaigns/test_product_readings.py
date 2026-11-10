@@ -109,7 +109,8 @@ def _cycle():
         source_context=SimpleNamespace(
             development_baseline_commit="c" * 40, development_configuration_revision=1
         ),
-        resolved_config=lambda: {},
+        # SIP-0109 §24dr item 4: a repository-backed increment's launch pins an inventory.
+        resolved_config=lambda: {"campaign_proposal": {"accepted_pages": []}},
     )
 
 

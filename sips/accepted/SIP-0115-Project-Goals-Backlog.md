@@ -14,7 +14,7 @@ recommendations on the other decisions", made this SIP 2.6.0's headline (D1) and
 Proposed 2026-10-30.
 **Authors:** Jason Ladd (the owner's direction, 2026-10-30); drafted by the Spark lane's supervisor
 **Created:** 2026-10-30
-**Targets:** what its ledger still names, in 2.7: the crew's reading on three accepted items in one Campaign (the owner's ruling of 2026-11-07, recorded in `docs/plans/2-6-0-plan.md`). Slice 6 is not placed.
+**Targets:** what its ledger still names: in 2.7, an operator's reading on three accepted items in one Campaign (the owner's ruling of 2026-11-07, recorded in `docs/plans/2-6-0-plan.md`); in 2.8, an operator's assessment in the digest and the next proposal (#2954, the 2.7 plan's R2). Slice 6 is not placed.
 **Builds on:** SIP-0112 (Project Lifecycle Management: the Project Record), SIP-0109 (Campaign Orchestration: the
 objective and its requirements source), SIP-0113 (Outcome Evaluation: the held-out suite), SIP-0069 (the console's
 Continuum plugins)
@@ -59,7 +59,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 - **The Continuum Runtime Console** (proposed, partly absorbed). The goals panel here is a SIP-0069 plugin. The
   duty view that SIP keeps is unrelated.
 
-## Delivery ledger (current as of 2026-11-07)
+## Delivery ledger (current as of 2026-11-08)
 
 | part | status | where |
 |---|---|---|
@@ -70,7 +70,8 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | §6's squad and system candidates: a cycle's or a proposal's findings recorded as candidates by the runtime, with no principal of its own | **unplaced**, deliberately: not built in slice 3 (§10c) | — |
 | slice 4: the console's goals panel: a panel of the Projects plugin, its edit a confirm-level command (`squadops.revise_goal_set`). §8.3's latest assessment of each expected result is not shown: no assessment record exists until slice 5 (§5.7), and showing it in the panel is that slice's | **shipped** | 2.6.0, PR #2916, closes #2887 |
 | slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7), shown in the console (as built: §10d) | **shipped** | 2.6.0, PR #2927, closes #2888 |
-| a crew's assessment shown in the Campaign digest and the next proposal | **placed** | 2.7, #2954 |
+| an operator's assessment shown in the Campaign digest and the next proposal | **placed** (re-placed from 2.7 by the 2.7 plan's R2, the owner, 2026-11-08: it changes what the next proposal receives, so it is feature work) | 2.8, #2954 |
+| an item ended at §10 row 19 gets one automatic re-proposal, shown the abandonment's reason (the 2.7 plan's R3) | **dropped** (§10f): after SIP-0109 §24do no path ends an item at row 19 | — |
 | slice 6: the repository export | **unplaced**, deliberately: not in 2.6 (the plan's D1, ruled 2026-11-03) | — |
 
 **What closes this SIP:** slices 1–5 shipped and read live on a Campaign whose backlog reached three accepted items,
@@ -682,3 +683,25 @@ modules named it or its tool, against §2's boundary.
 
 **Who ruled it.** The owner, 2026-11-07: "squad ops should know nothing about Buzz, Nostromo or a crew", and "you can call it
 operator".
+
+### 10f. R3's re-proposal after a row-19 ending, dropped (2026-11-08, §5.3; SIP-0109 §24do; #2935; the Spark lane)
+
+**What changed.** The 2.7 plan's R3 (the owner, 2026-11-08) gave an item that ended at SIP-0109's §10 row 19
+(`criteria_not_checkable`) one automatic re-proposal, so a backlog item abandoned because one of its criteria
+passed on the head wasn't skipped for good, as #2935's BT-2 was. SIP-0109 §24do (#2992) then removed the ending
+it acted on. A criterion that passes on the head at qa's first emission is now refused to `qa.test_repair`. If it
+still passes once that round is spent, the run fails as an ordinary failure, and the Campaign repairs and counts
+it. No executor path produces `criteria_not_checkable` any more. So no item is abandoned at row 19, and a
+re-proposal rule for one would never run. It is dropped, not built.
+
+**What it leaves.** §5.3 stands as written: an abandoned item stays abandoned, and the next eligible item is
+proposed. Row 19 stays in SIP-0109's table for endings recorded before §24do, which a restart re-hears. #2935's
+first gap (a half-true item's guard kept inside the criterion that fails) shipped as SIP-0109 §24di.
+
+**The evidence.** SIP-0109 §24do and #2992's tests: a first emission passing on the head is refused to its author,
+then fails the run with no terminal kind (`test_criterion_head_check.py`). The Campaign reads that as a counted
+row-8 repair, and nothing launched carries "already met" (`test_progress.py`).
+
+**Who ruled it.** The owner ruled R3 on 2026-11-08, before §24do showed it had nothing to act on. It was dropped
+under the owner's delegation of the line's judgement calls, the same day, and the owner is told.
+

@@ -5,7 +5,80 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **A scripted squad for machinery cycles** (#2495): the `machinery` squad profile's agents all name the model
+  `scripted`, and every call they make is answered from a recorded script
+  (`--set llm_script=<name>@<version>`, scripts in `src/squadops/llm/llm_scripts/`), with no model loaded. The
+  answers sit behind the existing LLM port, so dispatch, emission, correction and acceptance run their normal
+  paths, and every other profile keeps the engine on the same deploy. A missing answer fails the task naming its
+  key `(task_type, occurrence, call)`; it never falls back to a model. Cycle create refuses a scripted squad with
+  no script, an unpinned or stale version, or a mixed squad, and refuses a script named on a model squad. A
+  scripted cycle produces no Cross-Cycle Memory observation, and its calls are charted under the engine
+  `scripted`. `scripts/dev/record_llm_script.py` records a script from a run's stored emissions; an answer may
+  carry its recorded latency, which the provider waits out when the script sets `replay_latency`.
+- **A scripted Campaign answers each cycle from its own script** (refs #2892, SIP-0109 §24dt): a Campaign's
+  `policy.llm_scripts` names one pinned script, `<name>@<version>`, per cycle it launches, in launch order, bound at
+  the launch from the control log's own count, so a restart doesn't reset it. A Campaign of several scripted
+  increments can now make a different change in each. A launch past the last script is refused,
+  `LLM_SCRIPT_MISSING`, and the Campaign escalates; it's never answered from another script or by a model.
+  Creation refuses a script the deploy doesn't hold at that version. `record_llm_script.py` gains
+  `--latency-scale` and `--latency-cap`, written into the script's `recorded_from.latency` with the replayed total:
+  a recorded gap includes any gate wait between two stored files, which can outlast the deploy's per-task
+  timeout. The soak's pre-registration is `docs/plans/verification-sets/2-7-0-soak-preregistration.md`.
+- **The draft's integration check** (#2862, SIP-0112 H.30): `POST /api/v1/projects/{id}/integration-check`
+  (`campaigns:manage`), or `squadops projects check-integration <project> [--token-from-gh]`. Before the next
+  Campaign is drafted on a repository-backed Project, it syncs where a contribution is pending, reading each
+  review request's merge on the forge, re-validates where one merged, and answers what is still not in, each row
+  with what it waits on. The forge is only read. One sync is recorded per upstream commit. With no token (the
+  request's, else the one the deploy holds for the Project) the merge is answered unread, `no_token`, never "not
+  merged". A patch export is read by ancestry with no forge token, and a fetch refused for its credentials is
+  `fetch_unauthorized`. Its re-validation is bounded: a READY Project, after its own sync, at that sync's commit. It
+  replaces the host-side merge sweep and its timer, which the owner ruled against on 2026-11-08 and which was never
+  installed.
+- **A validation is fenced on the baseline it read** (#2862, SIP-0112 H.30): one that another validation overtook
+  writes nothing, and `POST /api/v1/projects/{id}/validate` answers 409 `BASELINE_MOVED`, so a slow validation can
+  no longer move a newer adoption back.
+
+### Changed
+- **An outside operator's pull request is held to its branch's boundary by a policy the repository doesn't
+  hold** (#2975, PR #2991): `operator branch checks` runs on `pull_request_target` from the default branch,
+  never runs the pull request's code, and reads the policy from the `OPERATOR_BRANCH_POLICY` repository
+  variable, which only an administrator can change. It fails closed on a missing or malformed policy, an
+  undeclared role, an unresolved commit identity or a foreign author, and the check's own files are out of
+  bounds to every operator branch. It is now the required check, and the check it replaces is removed
+  with its script and its in-repository boundary file.
+
 ### Fixed
+- **A product's change request can't reuse the anchor of a page an earlier increment added** (#2783, SIP-0109 §24dq):
+  the PROMOTE row on a campaign branch records each page the increment added and acceptance held, with every test id
+  its page carried. The next launch pins that inventory beside the frozen criteria. The rails judge an accepted page
+  as a pinned one and refuse an added page's anchor that one carries. The proposer is shown those pages and their ids.
+  Acceptance renders them in the expected set, so a candidate that drops one is rejected, and a page never built
+  that reuses one's anchor is blocked, never held. A product with no approved manifest is covered by the same
+  inventory. After its outside review (§24dr): an added page's anchor is also held unique against the candidate's
+  own rendered pages; each promotion records the inventory's pages again with the ids they carry now; a pinned
+  route's inventory ids stay taken at acceptance. A launch or promotion from before the inventory is refused rather
+  than read as empty: the proposal and acceptance refuse a block without one, and a Campaign whose log has such a
+  promotion escalates before its next proposal, naming the row. Both the runtime-api and nat images have to answer
+  their loaded checks (`2783-runtime`, `2783-nat`) before the fix is relied on.
+- **A suite handed to the product's own runner is banked as handed off, not failed** (#2949): on a product
+  only its own runner runs (SIP-0112 H.26), every `qa.test` banked its emission `emission_status=failed`
+  seconds before the runner passed the task. The router now takes the runner's reading before the bank, and an
+  emission whose hand-off the runner passed is banked `handed_off`. It stays out of every workspace, delivered
+  tree and deliverable, as a failed one does, and the scorecard's `failed_emissions` and the verification-set
+  records no longer count it. A runner that fails the suite, a pass refused on the head, and a suite the image
+  ran and failed still bank `failed`. Stored rows read as they did. The Prefect task run, the agent's activity
+  and `task.failed` still read the hand-off as failed (#3000).
+- **A product's repaired suite is read by the product's own runners** (SIP-0112 H.29, #2827 item 2): patch acceptance
+  found a repaired suite by the stack's collected-test vocabulary, and `nextjs_ts`'s is the scaffold's `__tests__/`
+  rule (#1534). A product made from that blueprint runs under it, so a repair placed where the product's vitest
+  collects it was never retested, and one placed by the scaffold's rule was. Now the dispatched task's runners (their
+  roots and file pattern) decide, and a sample application, or a product with no runner, keeps the stack's reading.
+- **A plan-less product cycle's test author is shown the product** (SIP-0112 H.29, #2827 item 2): the monolithic qa
+  prompt (`request.qa_test.test_validate`, version 6) shows the product's repository view, its map, conventions,
+  checks and runners, as a plan's task is shown it. The scaffold's harness paragraph is now a sample application's
+  block only, and a sample application's prompt renders byte for byte as before. Where the view shows a stack's
+  conventions for a product, the profile's test supplement is left out in their favour, as the developer's is.
 - **The vault's metadata is readable again by its readers on the host** (a regression from PR #2968): the atomic
   write kept `mkstemp`'s 0600, so every metadata file written after it deployed was unreadable to the release
   capture, the verification-set driver and triage, which read the vault as another user. Files are 0644 again, as

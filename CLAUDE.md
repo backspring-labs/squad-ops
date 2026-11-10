@@ -97,8 +97,8 @@ squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  #
 ## Architecture
 
 ### Hexagonal Structure (Ports & Adapters)
-**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (26) and
-`adapters/` (17), and the layering the guards enforce. `test_architecture_overview.py` fails when a
+**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (25) and
+`adapters/` (16), and the layering the guards enforce. `test_architecture_overview.py` fails when a
 package and its entry disagree (#1989), so read it rather than a list here.
 - **`src/squadops/`**: the domain (ports, models, decisions, handlers, prompts). **Only the composition
   roots import `adapters.*`** (`squadops.api.runtime`, `squadops.agents.entrypoint`,
@@ -397,6 +397,17 @@ fix was refused (#1259). The table goes in the PR's Evidence section.
 
 **Structure**:
 - Permanent utilities: `scripts/dev/`
+- **Shared scripts run on every bootstrap profile as it ships, with nothing extra installed** (#2402):
+  `dev-mac` (macOS, bash 3.2, BSD userland), `dev-pc` and `local-spark`.
+  - **bash 3.2 is the floor:** no `mapfile`/`readarray`, associative arrays, case-changing expansions,
+    namerefs, `wait -n`, `globstar` or `coproc`.
+  - **Only flags BSD and GNU share:** no `grep -P`, bare `sed -i` (use `sed_in_place` in
+    `scripts/bootstrap/lib/common.sh`), `readlink -f`, `date -d`, `stat -c`, `sort -V` or `find -printf`.
+    When the portable form gets awkward, write it in Python; the venv is on every profile.
+  - **A newer tool is a declared requirement:** the bootstrap profile installs it and `squadops doctor`
+    checks it.
+  - **A script written for one box says so** in its header (`# Platform: local-spark`) and checks the
+    platform. `tests/unit/architecture/test_shell_portability.py` holds the rest to the rule.
 - Maintainer-only: `scripts/maintainer/`
 - Temp migrations: `scripts/dev/migrations/temp_*.py`
 - New SIP drafts go in `sips/proposed/` (unnumbered)

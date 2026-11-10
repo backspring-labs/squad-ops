@@ -23,7 +23,9 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchRequest,
 )
+from squadops.campaigns.product_routes import ACCEPTED_PAGES
 from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
+from squadops.llm.script import LLM_SCRIPT_KEY
 
 if TYPE_CHECKING:
     from squadops.campaigns.campaign_branch import CampaignHead
@@ -89,6 +91,8 @@ def increment_launch(
     abandoned: dict | None = None,
     qa_proposed: list[dict] | None = None,
     unapproved: list[dict] | None = None,
+    *,
+    accepted_pages: tuple[dict, ...] = (),
 ) -> LaunchRequest:
     """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
     against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
@@ -105,6 +109,12 @@ def increment_launch(
 
     ``unapproved`` is each proposal the campaign ruled on and never approved, by its last ruling
     (#2593), when there is any.
+
+    ``accepted_pages`` is the accepted-page inventory (§24dq): every page a repository-backed
+    campaign's accepted increments added, with the test ids acceptance held it by. Pinned at
+    launch as ``frozen`` is, so the proposal's rails and the increment's acceptance read the same
+    pages. Written on every repository-backed increment's block, an empty list for none (§24dr
+    item 4). A sample application's pages are its manifest's, so its block carries none.
 
     **A repository-backed increment's intent binds no tree** (§24cd point 1). Its accepted tree is
     the campaign branch's head, which a rebase can move between this decision and the drain
@@ -182,6 +192,12 @@ def increment_launch(
                         },
                         "prior_criteria": [f["criterion_id"] for f in frozen],
                         "frozen_criteria": [dict(f) for f in frozen],
+                        # §24dq: on every repository-backed increment's, empty for none (§24dr
+                        # item 4), so a block without it is one written before §24dq, which the
+                        # proposal and acceptance refuse. A sample application's carries none.
+                        **(
+                            {ACCEPTED_PAGES: [dict(p) for p in accepted_pages]} if on_branch else {}
+                        ),
                         "max_revisions": policy.max_proposal_revisions,
                         # Row 13 (#1692): why the increment this one replaces was abandoned. Its
                         # own key, read by the proposal alone — never ``prior_cycle``, which tells
@@ -220,6 +236,8 @@ CONTINUED_KEYS = (
     "objective",
     "prior_criteria",
     "frozen_criteria",
+    # §24dq: a repair's or retry's acceptance judges the pages its increment's launch pinned.
+    ACCEPTED_PAGES,
     "max_revisions",
 )
 
@@ -275,6 +293,39 @@ def bound_at_head(kind: CycleKind, cycle_request: dict, head: CampaignHead | Non
     return {
         **cycle_request,
         "body": {**body, "execution_overrides": {**overrides, "campaign_proposal": block}},
+    }
+
+
+def scripted_launch(campaign: Campaign, cycle_request: dict, launched_before: int) -> dict:
+    """§24dt (#2892): the cycle request a scripted campaign's launch is built from, naming the
+    script for its place in the campaign's launch order. ``launched_before`` is how many of the
+    campaign's launches already have their cycle: the first launch takes the policy's first
+    script, the second its second, and so on, whatever kind each is (a calibration, an increment,
+    a repair or a retry). A campaign that names no script returns the request as it was written.
+
+    Bound at drain, as the head is (``bound_at_head``), from the control log's own count, so a
+    restart re-drains the same launch onto the same script, and no process remembers it.
+
+    Raises ``ValueError`` for a launch past the policy's last script, naming which launch it is
+    and how many scripts the campaign names: it is refused, never answered from another script or
+    by a model."""
+    scripts = campaign.policy.llm_scripts
+    if not scripts:
+        return cycle_request
+    if launched_before >= len(scripts):
+        raise ValueError(
+            f"campaign {campaign.campaign_id}'s launch {launched_before + 1} has no script: its "
+            f"llm_scripts names {len(scripts)}, one per cycle it launches. Add the script for "
+            "this launch; a scripted cycle is never answered by a model instead"
+        )
+    body = cycle_request.get("body") or {}
+    overrides = body.get("execution_overrides") or {}
+    return {
+        **cycle_request,
+        "body": {
+            **body,
+            "execution_overrides": {**overrides, LLM_SCRIPT_KEY: scripts[launched_before]},
+        },
     }
 
 

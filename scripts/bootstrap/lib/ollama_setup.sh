@@ -52,8 +52,9 @@ configure_ollama_container() {
         run_or_dry mkdir -p "${home}/.ollama/models"
     fi
     local uid gid
-    uid="$(stat -c %u "${home}/.ollama" 2>/dev/null || id -u)"
-    gid="$(stat -c %g "${home}/.ollama" 2>/dev/null || id -g)"
+    # The directory's owner, read portably (#2402: `stat -c` is GNU's; BSD's is `stat -f`).
+    uid="$(python3 -c 'import os, sys; print(os.stat(sys.argv[1]).st_uid)' "${home}/.ollama" 2>/dev/null || id -u)"
+    gid="$(python3 -c 'import os, sys; print(os.stat(sys.argv[1]).st_gid)' "${home}/.ollama" 2>/dev/null || id -g)"
     # SIP-0111: a deploy whose engine is TensorFold keeps its overlay. The switch changes engines,
     # never bootstrap (scripts/dev/ops/engine_switch.py records the engine in COMPOSE_FILE).
     local files="docker-compose.yml:docker-compose.ollama.yml"

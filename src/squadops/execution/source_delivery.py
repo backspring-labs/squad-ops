@@ -30,7 +30,9 @@ content, that differ from the checkout's, and the checkout's files they removed 
 H.23). A removal is applied to the candidate as the patch's ``None`` for its path, and named in
 the verification's ``changed_paths`` like a write. A file it rewrites keeps the checkout's CRLF
 line endings when the original used them throughout. A run's own documents (plans, reports) are
-never part of the product.
+never part of the product. On a repository-backed increment, the files its change request placed
+for the framework (the page loaders its page criteria's tests import, #2799) are laid over the
+squad's change, as the framework writes them, whatever the squad emitted at their paths.
 """
 
 from __future__ import annotations
@@ -50,7 +52,7 @@ from uuid import uuid4
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.cycles.deletions import is_deletion
 from squadops.cycles.delivered_tree import WORKSPACE_ARTIFACT_TYPES
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
 from squadops.cycles.task_outcome import TaskOutcome
@@ -125,9 +127,9 @@ def squad_changes(
     left_out: set[str] = set()
     for art_id, ref in stored_artifacts:
         producer = ref.metadata.get("producing_task_type", "")
-        # As the executor's own resolution reads the workspace: a failed emission is never
+        # As the executor's own resolution reads the workspace: a banked emission is never
         # input, and a repair candidate is unaccepted until it is re-stored as the task's own.
-        if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
+        if banked_as(ref.metadata.get("emission_status")) is not None:
             continue
         if producer in REPAIR_TASK_TYPES or producer == SOURCE_CHECKOUT:
             continue
@@ -158,6 +160,51 @@ def squad_changes(
         if checkout.get(path) != content:
             changes[path] = content
     return changes, tuple(sorted(left_out - set(latest)))
+
+
+def with_framework_files(
+    changes: Mapping[str, bytes | None],
+    placed: Mapping[str, bytes],
+    checkout: Mapping[str, bytes],
+) -> dict[str, bytes | None]:
+    """The squad's ``changes`` with the framework's ``placed`` files over them (#2799): each one
+    written where the checkout doesn't hold it as it is, and the squad's own change at its path
+    dropped where it does. So the candidate holds every placed file as the framework wrote it,
+    whatever the squad emitted there."""
+    merged = dict(changes)
+    for path, content in placed.items():
+        if checkout.get(path) == content:
+            merged.pop(path, None)
+        else:
+            merged[path] = content
+    return merged
+
+
+async def placed_framework_files(cycle: Cycle, vault: Any) -> dict[str, bytes]:
+    """#2799: the framework's files a repository-backed increment's change request placed: the
+    page loaders its page criteria's tests import. Laid over the squad's change at delivery
+    (``with_framework_files``), so the candidate verified, captured and judged holds them as the
+    framework wrote them, and the bundles frozen from it carry them. Empty for every other run,
+    and for a change request that placed none."""
+    # deferred (cycle): campaigns.increment_tree loads the cycles package, which loads this one
+    from squadops.campaigns.increment_tree import (
+        approved_change_request,
+        increment_basis,
+        increment_page_loader_files,
+    )
+
+    basis = increment_basis(cycle.resolved_config())
+    if basis is None or not basis.evaluated_at_delivery:
+        return {}
+    try:
+        document = await approved_change_request(vault, cycle)
+        files = increment_page_loader_files(document) if document is not None else {}
+    except ValueError as e:
+        # The acceptance after delivery would refuse it too: nothing is judged unread.
+        raise SourceDeliveryRefused(
+            f"the increment's approved change request can't be read for the files it placed: {e}"
+        ) from e
+    return {p: c.encode("utf-8") for p, c in files.items()}
 
 
 def _is_product_file(
@@ -301,6 +348,14 @@ async def deliver_source_change(
     if not changes:
         named = f"; it left out what isn't the product's: {', '.join(left_out)}" if left_out else ""
         raise SourceDeliveryRefused(f"the run changed no file of the product{named}")
+    changes = with_framework_files(
+        changes, await placed_framework_files(cycle, vault), checkout.files
+    )
+    if not changes:
+        raise SourceDeliveryRefused(
+            "the run changed no file of the product: its one change was a file the framework "
+            "places, which the head already holds"
+        )
     binary = sorted(
         p for p, c in changes.items() if c is not None and _is_binary(checkout.files.get(p))
     )

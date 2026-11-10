@@ -19,11 +19,14 @@ pytestmark = [pytest.mark.domain_capabilities]
 _REPO = Path(__file__).resolve().parents[3]
 _ROOTS = (_REPO / "src", _REPO / "adapters")
 
-#: No production file is exempt. The one entry this held — ``src/squadops/llm/router.py``
-#: — was exempted because ``LLMRouter`` was a pass-through off the production path; #944
-#: deleted the class, so the exemption went with it rather than outliving its subject as
-#: a rule about a file that no longer exists.
-_PASS_THROUGH: set[str] = set()
+#: Ports that hand a call to another port, never a handler. The entry this held before —
+#: ``src/squadops/llm/router.py`` — went with its class (#944). #2495's router is on the
+#: production path: it is the deploy's LLM port, and passes each call to the engine or to the
+#: scripted provider unchanged. It is itself what ``_llm_call`` calls, so the emission capture,
+#: the fault hook and the generation record wrap it as they wrap any port. Its own override of
+#: the method is kept so an engine's streaming-with-usage still runs (dropping it would send
+#: every engine call through ``chat()``).
+_PASS_THROUGH: set[str] = {"adapters/llm/scripted.py"}
 
 
 def _seam_counts(path: Path) -> tuple[int, int]:
@@ -77,7 +80,7 @@ def test_no_handler_calls_the_llm_port_directly():
     for path in _production_files():
         rel = str(path.relative_to(_REPO))
         calls, _ = _seam_counts(path)
-        if calls and rel != _THE_SEAM:
+        if calls and rel != _THE_SEAM and rel not in _PASS_THROUGH:
             offenders.append(f"{rel}: {calls} direct LLM call(s)")
 
     assert offenders == [], (
@@ -85,6 +88,13 @@ def test_no_handler_calls_the_llm_port_directly():
         "the fault hook and the generation record are wrapped around that one call, "
         "and a seam that skips it is dark to all three:\n  " + "\n  ".join(offenders)
     )
+
+
+def test_every_pass_through_still_passes_a_call_through():
+    """The other direction (#2495): an exemption for a file that no longer calls the port would
+    readmit a future seam under an old name."""
+    stale = [p for p in sorted(_PASS_THROUGH) if not _seam_counts(_REPO / p)[0]]
+    assert stale == [], f"pass-through entries that no longer call the port: {stale}"
 
 
 def test_the_one_seam_calls_the_port_exactly_once():

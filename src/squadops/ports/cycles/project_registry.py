@@ -57,15 +57,29 @@ class ProjectRegistryPort(ABC):
         diagnostic: str | None,
         actor: str,
         idempotency_key: str,
+        expected_baseline: str | None,
     ) -> tuple[Project, bool]:
         """Record a registered Project's validation (SIP-0112 E.4.2, §B.6): READY at ``commit``
         when its source was reached, FAILED_REGISTRATION with ``diagnostic`` when not. Exactly
         one of the two is given. Returns the Project and whether this replayed an earlier
         validation under the same key.
 
+        **The fence** (H.30, #2862). ``expected_baseline`` is the development baseline the caller
+        read before it fetched. Under the Project's lock, a baseline that is no longer it, and isn't
+        ``commit`` either, means another validation adopted a commit in between: nothing is written,
+        and ``ProjectBaselineMovedError`` names the commit held. A baseline already at ``commit``
+        is answered as it stands, with nothing written. So a stale validation never moves a newer
+        adoption back.
+
+        **The replay.** A key that recorded a validation before replays it: the Project as it is
+        now, and ``True``, whatever this attempt found. The replay says the key was used, not that
+        the Project is at the commit it adopted then: a caller that needs that compares the
+        Project's commit.
+
         Raises:
             ProjectRegistryReadOnlyError: The registry refuses writes.
-            ProjectStateConflictError: The Project is not REGISTERING or FAILED_REGISTRATION.
+            ProjectStateConflictError: The Project is not REGISTERING, FAILED_REGISTRATION or READY.
+            ProjectBaselineMovedError: The baseline moved after ``expected_baseline`` was read.
             RegistrationKeyConflictError: The key recorded a different validation.
         """
 

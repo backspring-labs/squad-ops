@@ -26,7 +26,7 @@ restart, and the Keycloak admin password changes before the realm sync signs in 
 | `LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT` | compose recreates Langfuse with them (step 8). **A new `SALT` invalidates every Langfuse API key**: step 9 mints new ones |
 | `LANGFUSE_ADMIN_PASSWORD` | the Langfuse UI user's password, changed in the UI (step 9) |
 | `SQUADOPS_SANDBOX_SERVICE_TOKEN` | compose recreates the sandbox service with it (step 8) |
-| `SQUADOPS_TENSORFOLD_API_KEY` | while TensorFold serves, `engine_switch.py to-tensorfold` (after `to-ollama`) restarts it with the rewritten key file and recreates the model clients with the new value. While Ollama serves, nothing reads it until the next switch |
+| `SQUADOPS_TENSORFOLD_API_KEY` | while TensorFold serves, `engine_switch.py to-tensorfold` (after `to-ollama`) restarts it with the rewritten key file and recreates the model clients with the new value. While Ollama serves, nothing reads it until the next switch. Only the `squadops` line is rewritten: an operator's key on the same file is kept (see "Operator keys on TensorFold") |
 
 All commands run from the repository root.
 
@@ -132,6 +132,55 @@ The old API keys no longer verify. Sign in to the Langfuse UI (`http://localhost
 
 Then one smoke cycle, read to its end. Agents that cannot authenticate show as `unhealthy` within a
 minute, and the runtime API's log names a refused client-credentials grant.
+
+## Operator keys on TensorFold (#2286)
+
+`secrets/tensorfold_api_key.txt` is the file TensorFold reads at `--api-key-file`. It takes one
+`label: key` per line, and this deploy owns the `squadops` line alone. A second client on the box, such
+as an operator's local-model client, gets a line of its own. That makes its key revocable on its own,
+attributable by its label on TensorFold's side, and untouched by the deploy key's rotation.
+
+**What SquadOps already does with the other lines:**
+- **It reads only its own.** `engine_switch.api_key()` and the bootstrap's credential reader
+  (`value_from_secret_file`) take the `squadops` line by its label. A file with more lines works. A
+  second `squadops` line is refused, with no value printed.
+- **Rotation keeps the other lines.** `rotate` and `ensure` rewrite the `squadops` line in place
+  (`merge_key_file`), so `rotate --only SQUADOPS_TENSORFOLD_API_KEY` changes that line and nothing
+  else (`e4a3d20d`).
+
+**Adding, rotating or removing an operator key** is done by hand, with the file kept at mode 0600 and
+no key on a command line, in a log or in a commit. This writes `LABEL`'s line, new or replaced, and
+prints nothing. The client reads its key from the file:
+
+```bash
+python3 - LABEL <<'PY'
+import os, secrets, sys, tempfile
+from pathlib import Path
+
+label, path = sys.argv[1], Path("secrets/tensorfold_api_key.txt")
+assert label and label == label.strip() and label != "squadops" and ":" not in label
+lines = [l for l in path.read_text().splitlines() if l.partition(":")[0].strip() != label]
+lines.append(f"{label}: {secrets.token_urlsafe(32)}")
+fd, tmp = tempfile.mkstemp(dir=path.parent)  # created 0600
+with os.fdopen(fd, "w") as f:
+    f.write("\n".join(lines) + "\n")
+os.replace(tmp, path)
+PY
+```
+
+To remove a key, run the same program without its `lines.append` line.
+
+**TensorFold reads the file only when it starts,** so a change takes effect at a restart. Make it
+when the box is idle, with no cycle in flight (`engine_switch.py status`), through the switch, as the
+deploy key's rotation does: `engine_switch.py to-ollama`, then `engine_switch.py to-tensorfold`.
+
+**The launch gate reads an operator's request as busy, as intended** (SIP-0111 §5.5). A request on
+an operator key is still one the launch didn't start. So while the operator's client is generating,
+a Campaign's next run waits (`run_start_waiting_for_box … refusal=box_not_quiet`) and starts once
+the engine is free.
+
+A managed form of these keys, listed in `.env` and written by `rotate`, isn't built. Nothing on the
+box needed more than the hand path above.
 
 ## Undo
 

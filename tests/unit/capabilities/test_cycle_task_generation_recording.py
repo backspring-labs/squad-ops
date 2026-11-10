@@ -216,7 +216,8 @@ class TestHandlerEmitsCallMetrics:
             )
         )
         ctx.ports.metrics = MagicMock()
-        ctx.ports.llm.engine = "tensorfold"
+        # #2495: the engine that answers the call's model, which the port names per model
+        ctx.ports.llm.engine_for = MagicMock(return_value="tensorfold")
 
         result = await StrategyAnalyzeHandler().handle(ctx, {"prd": "Build a widget"})
 

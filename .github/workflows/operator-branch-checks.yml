@@ -1,0 +1,74 @@
+name: operator branch checks
+
+# #2975 (the 2.7 plan's R7): an outside operator's pull request is held to its branch's path
+# boundary and commit identity. The policy is the repository variable OPERATOR_BRANCH_POLICY, which
+# only an administrator can change; the repository names no operator.
+#
+# pull_request_target, so this workflow and its script run as they are on the default branch: a
+# guarded pull request can't change the check that judges it. The pull request's code is never
+# checked out or run: its files and commit authors are read through the API. No job-level `if:`,
+# so the check always reports a status (a required check that reports "skipped" can leave a pull
+# request waiting). The script fails closed: a missing policy, an unknown role or an identity that
+# can't be resolved refuses an operator's branch.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  operator:
+    name: operator branch checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read the pull request's files, its commit authors and the role's identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          OPERATOR_BRANCH_POLICY: ${{ vars.OPERATOR_BRANCH_POLICY }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename' > changed-files.txt
+          gh api --paginate "repos/$REPO/pulls/$PR/commits" --jq '.[].commit.author.email' \
+            | sort -u > authors.txt
+          # The bot login the branch's role commits as, from the policy; empty when the branch isn't
+          # an operator's, or the policy can't say. The script refuses an operator branch without it.
+          login="$(python3 - <<'EOF' || true
+          import json, os
+          try:
+              policy = json.loads(os.environ.get("OPERATOR_BRANCH_POLICY") or "")
+              prefix, ref = policy["branch_prefix"], os.environ["HEAD_REF"]
+              role = ref[len(prefix):].partition("/")[0] if ref.startswith(prefix) else ""
+              print(policy["bot_login"].replace("{role}", role) if role else "")
+          except Exception:
+              print("")
+          EOF
+          )"
+          : > expected-author.txt
+          if [ -n "$login" ]; then
+            gh api "/users/${login/\[bot\]/%5Bbot%5D}" \
+              --jq '"\(.id)+\(.login)@users.noreply.github.com"' > expected-author.txt \
+              || : > expected-author.txt
+          fi
+
+      - name: Check the boundary and the attribution
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          OPERATOR_BRANCH_POLICY: ${{ vars.OPERATOR_BRANCH_POLICY }}
+        run: |
+          set -euo pipefail
+          authors=()
+          while IFS= read -r a; do [ -n "$a" ] && authors+=("$a"); done < authors.txt
+          python3 scripts/dev/check_operator_branch_pr.py \
+            --branch "$HEAD_REF" \
+            --files-from changed-files.txt \
+            --expected-author "$(cat expected-author.txt)" \
+            --authors "${authors[@]+"${authors[@]}"}"

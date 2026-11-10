@@ -48,7 +48,10 @@ class Scope:
     TASKS_WRITE = "tasks:write"
     ADMIN_WRITE = "admin:write"
     # SIP-0109 §13: read a campaign and its control log; supervise it (rule, lease, pause);
-    # manage it (create, start, abort, package, resume the supervisor's pause; #1940, §24az);
+    # manage it (create, start, abort, package, resume the supervisor's pause; #1940, §24az; and
+    # the draft's integration check, SIP-0112 H.30, which may sync a Project and re-validate it only
+    # within its bounded delegation: READY, after its own sync, at that sync's commit, fenced. It
+    # implies no other validation: POST …/syncs and …/validate stay admin:write);
     # control it (resume an escalation, a limit's pause or the owner's pause; grant the operator a
     # Campaign's goal-set curation, SIP-0115 Q41) — the last is the owner's alone.
     CAMPAIGNS_READ = "campaigns:read"

@@ -95,12 +95,14 @@ from squadops.cycles.preflight import (
     model_registration_decision,
     required_check_tooling_decision,
     required_roles_decision,
+    scripted_squad_decision,
     source_backed_stack_decision,
     stack_development_profile_decision,
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
+from squadops.llm.script import ScriptLibrary
 from squadops.memory.pinning import cycle_binding, pin_standalone_cycle
 from squadops.memory.records import RecordRefused, Source, SourceKind
 from squadops.memory.reference_binding import bound_for_cycle
@@ -240,6 +242,9 @@ async def _run_create_preflight(
         # different completion budget than a registered model on the same capability —
         # silently, until it shows up as an odd result in a measurement window.
         model_registration_decision(profile),
+        # #2495: a scripted squad names a script the deploy holds, at the version it holds; a
+        # script no agent reads is refused, so a model run is never labelled scripted.
+        scripted_squad_decision(profile, config, ScriptLibrary.packaged()),
         # SIP-0096 §6.5: a required check whose tooling is knowably absent is a
         # create-time reject, never a mid-run blocked_unverified surprise.
         required_check_tooling_decision(
@@ -341,9 +346,12 @@ def _pin_development_profile(
     A profile the request names stands, unless it contradicts the product's runners, which is
     refused rather than run (``development_profile_conflict``).
 
-    A plan-less cycle's tasks aren't shown the product, so a profile with skeleton prose would give
-    them its test placement: it gets a pin only from a profile that holds none, which the ones
-    leaving the suite to the product's runner don't. Nothing is pinned with no profile at the pin.
+    A plan-less cycle's test author is shown the product, with the profile's test prose withheld in
+    favour of its conventions (H.29), but its developer's monolithic prompt still lays files out by
+    the profile's ``file_structure_guidance`` and ``example_structure``. So a profile with skeleton
+    prose would place its files: such a cycle gets a pin only from a profile that holds none, which
+    the ones leaving the suite to the product's runner don't. Nothing is pinned with no profile at
+    the pin.
 
     Returns what was selected, or ``None``."""
     if profile is None:

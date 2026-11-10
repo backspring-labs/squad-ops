@@ -23,7 +23,7 @@ from uuid import uuid4
 
 from squadops.capabilities.handlers.cycle.validation import _classify_file
 from squadops.cycles.deletions import deleted_paths
-from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
+from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.models import ArtifactRef, Cycle, DerivedProfileNotFoundError
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.projects.checkout import (
@@ -192,9 +192,9 @@ async def task_source_repository(
     for art_id, ref in stored_artifacts:
         if ref.filename not in wanted or ref.filename in manifest.held_back:
             continue
-        # As the executor's own resolution reads the workspace: a failed emission is never
+        # As the executor's own resolution reads the workspace: a banked emission is never
         # input, and a repair candidate is unaccepted until it is re-stored as the task's own.
-        if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
+        if banked_as(ref.metadata.get("emission_status")) is not None:
             continue
         if ref.metadata.get("producing_task_type", "") in REPAIR_TASK_TYPES:
             continue

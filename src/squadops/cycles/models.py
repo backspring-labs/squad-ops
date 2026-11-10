@@ -198,6 +198,17 @@ class ProjectStateConflictError(CycleError):
     again here (re-validation against drift is E.4.4's)."""
 
 
+class ProjectBaselineMovedError(ProjectStateConflictError):
+    """Raised when a validation would adopt a commit over a development baseline that moved after
+    its caller read it (SIP-0112 H.30, #2862): another validation adopted ``held`` in between.
+    Nothing is written. The caller reads the Project again, and validates again if it still must.
+    """
+
+    def __init__(self, message: str, *, held: str | None) -> None:
+        super().__init__(message)
+        self.held = held
+
+
 class DevelopmentConfigurationNotFoundError(CycleError):
     """Raised when a Project has no Development Configuration, or not the revision asked for."""
 
@@ -236,6 +247,13 @@ class RegistrationKeyConflictError(CycleError):
 
 class ArtifactNotFoundError(CycleError):
     """Raised when an artifact_id cannot be found."""
+
+
+class ArtifactUnreadableError(CycleError):
+    """An artifact's record exists but can't be read whole (#2931): its metadata doesn't parse, or
+    its content is missing or doesn't match the size and hash its metadata records. Never a
+    subclass of ``ArtifactNotFoundError``: a reader that treats a missing artifact as absent must
+    not read a damaged one as absent too."""
 
 
 class BaselineNotAllowedError(CycleError):
