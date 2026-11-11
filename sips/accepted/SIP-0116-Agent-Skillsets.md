@@ -134,7 +134,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **shipped** | 2.8 (PR #3013, closing #3011) |
 | Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **shipped** | 2.8 (PR #3015, closing #3014) |
 | Phase 3, part 1: skills, kept: the catalog holds each skill's text, a cycle keeps a checked copy of the skills its work requires, the record names them by digest, and which skills a task loads is decided from the record and the copy (§7, §10, §17e) | **shipped** | 2.8 (PR #3032; #3028 tracks part 2) |
-| Phase 3, part 2: skills, loaded: a task is handed its skills from the kept copy at dispatch, a repair loads the skills of the step it revises, the prompt budget counts them, and where they render (§7, §7.1, §17e) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 3, part 2: skills, loaded: a task is handed its skills from the kept copy at dispatch, a repair loads the skills of the step it revises, the prompt budget counts them, and where they render (§7, §7.1, §17e) | **shipped** | 2.8 (PR #3033, closing #3028) |
 | Phase 4: tools: requests within existing authority, and the coverage, authorization and availability outcomes (§8, §9) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3036 |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
 | Phase 6: lessons: the recall identity, supplied, omitted and flagged records, supersession, and the promotion review (§10a) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3038 |
@@ -873,6 +873,49 @@ reached the dev repair. A step that runs an operation authors nothing, and no re
 
 **Citations that moved:** `repairs_revising` and `repair_steps_for` are at `cycles/task_plan.py:377` and `:422`,
 and the create preflight at `api/routes/cycles/cycles.py:207`. The text above them cites the lines as they were.
+
+### 17f. Phase 3, part 2 as built: skills loaded, and where they render (2026-11-11)
+
+**Not yet ruled:** the points below are the implementer's, for the owner's review in part 2's PR (#3033). Points 1,
+5 and 6 change what §7 says.
+
+| §7's part | as built |
+|---|---|
+| "a task receives the skills declared for its capability" | **the runtime hands them on the envelope, at every dispatch.** `SkillSupply.hand` reads the cycle's kept copy (checked, §17e) and puts the task's skills on its envelope at its first dispatch, each re-dispatch and each repair. An agent reads no skill from its own tree and has no way to the vault |
+| "and those of the step it repairs (§7.1)" | **by the step whose output the repair revises** (`task_plan.revised_task_type`, the repair tables read the other way), from the skillset the repair's own agent supplies. A dev repair is handed the developer's skills whether a suite or an operation failed |
+| "Budget … counts the skills and resources a task loads before optional lessons are given space" | **the skills are an envelope input, handed before memory measures the prompt,** so they are counted with the task's other inputs, and the section's framing is added. Lessons are given what they leave |
+| "Precedence in the prompt" | **the section says it,** as the instruction sections do: after the task's requirements, the manifest, the application, the task's instructions and the project's; before the stack's general guidance and before any lesson |
+
+**What changes in §7:**
+1. **Skills render in a section of their own in the request, after the project's instructions and before the
+   lessons.** §7 placed them "in the stack's section, where `system_prompt_supplement` renders today". §17e's
+   finding 1 is the evidence: only `development.develop` has that place, and it is left out there for a
+   repository-backed product. The slot is in every template that has the instruction slots (13), so every authoring
+   seam shows skills the same way. The order on the page is the order of §7's precedence for the three sections
+   that share it. The stack's own text stays where each route renders it, and the section's words put skills
+   above it.
+2. **Skills are handed only to an authoring seam** (`authoring_seam_of`, the seams memory's sections go to). A
+   record that offers skills to any other step raises at that step's dispatch, since no other handler has the slot.
+3. **A task handed skills that can't be shown fails.** No renderer, no `SKILL.md` or no name raises. A prompt never
+   goes out without the skills its task was handed.
+4. **A skill is shown as its name, its `SKILL.md` body and each resource under its path.** Its description isn't
+   shown: it is for whoever chooses skills, and §7 has no model choose.
+5. **`qa.run_remote_operation` is handed none.** §7.1's table loads `studio-play-scenario` for it. Its handler
+   calls no model (SIP-0117 R4.4), so a skill has nowhere to be read. A skill for the operation is handed when a
+   handler or a provider has a prompt for it, by the SIP that adds one.
+6. **The size preflight counts skills with the Campaign's pin (phase 5).** §7 has it count them "before the first
+   cycle". It runs at a Campaign's start, before any cycle or record exists, so what it would count is the
+   Campaign's pinned record, which phase 5 builds. A standalone cycle has no size preflight today, for skills as for
+   any other input.
+
+**Left as it was, and named for phase 4:** `qa.run_remote_operation`'s handler compares the deployed skillset's
+digest with the record's before it requests a tool (phase 2a). A redeploy that edits only a skill moves that
+digest, so a paused cycle's operation would then be refused. The tool declarations aren't in the kept copy, and
+whether they should be is phase 4's (§8).
+
+**Two existing checks changed:** the repair prompt's golden records one more variable per render, empty for a
+repair handed no skill; and the manifest author's input contract (SIP-0103 §5c.1) names the skills input, which its
+handler reads through the shared slot. No contract runs as that step.
 
 ---
 

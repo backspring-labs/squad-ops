@@ -20,6 +20,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   **Every deploy's `.env` needs one new line: `SQUADOPS__REMOTE_EXECUTION__PROVIDER=none`** (or `runtime_api`
   where a worker runs). Compose reads it onto the runtime API and every agent, and stops with the key named when
   it is absent. `.env.example` ships `none`.
+- **A task is handed its skills and shows them in its prompt** (#3028; SIP-0116 phase 3, part 2): at each
+  dispatch, re-dispatch and repair, the runtime puts the task's skills on its envelope from its cycle's kept copy.
+  A repair is handed the skills of the step whose output it revises. They render in a section of their own
+  (`request.skills_section`), after the project's instructions and before the lessons, in every request template
+  that has the instruction slots, and the prompt budget counts them before lessons are given space. A step that
+  runs an operation is handed none. No profile requires a skillset yet, so every prompt renders as before.
 - **A cycle keeps a copy of the skills its work requires** (#3028; SIP-0116 phase 3, part 1): when a cycle is
   created on a development profile that requires skillsets, the skills its agents were assigned to supply are
   copied into the vault with it (`skillset_content`), and the cycle's skillset record names each skill and file
