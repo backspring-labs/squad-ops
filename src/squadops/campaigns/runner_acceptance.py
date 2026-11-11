@@ -54,7 +54,6 @@ from squadops.campaigns.acceptance import (
     DiscriminationReason,
     FrozenResult,
     RouteResult,
-    Side,
     discrimination_on_runner,
     held_on_runner,
     increment_acceptance,
@@ -73,6 +72,7 @@ from squadops.campaigns.evaluator_trees import (
     candidate_verifier_overlay,
     freeze_bundle,
 )
+from squadops.remote_execution.models import ReadingSide
 
 if TYPE_CHECKING:
     from squadops.sandbox.findings import FindingsReading
@@ -82,7 +82,7 @@ logger = logging.getLogger(__name__)
 
 #: The two sides a criterion's file is run on (§8.2): the baseline-evaluator overlay, and the
 #: candidate-verifier overlay.
-BASELINE, CANDIDATE = Side.BASELINE, Side.CANDIDATE
+BASELINE, CANDIDATE = ReadingSide.BASELINE, ReadingSide.CANDIDATE
 
 
 class CandidateNotDelivered(RuntimeError):

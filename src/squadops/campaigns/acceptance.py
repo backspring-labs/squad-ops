@@ -35,7 +35,13 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from squadops.remote_execution.models import AssertionOutcome, OperationStatus
+from squadops.remote_execution.models import (
+    AssertionOutcome,
+    OperationStatus,
+    ReadingSide,
+    Scenario,
+)
+from squadops.remote_execution.scenario import BaselineVerdict, baseline_verdict
 
 if TYPE_CHECKING:
     from squadops.sandbox.findings import FindingsReading
@@ -354,33 +360,15 @@ def held_on_runner(
 # =============================================================================
 
 
-@dataclass(frozen=True)
-class FrozenScenario:
-    """What a scenario criterion froze: the digest of its canonical declaration, and the
-    assertion that names the change. Read from the frozen criterion file, never from a reading,
-    since a reading is only credited against it."""
-
-    digest: str
-    named_assertion: str
-
-
-class Side(StrEnum):
-    """The two trees a criterion is read on (§8.2): the baseline-evaluator overlay and the
-    candidate-verifier overlay. A product runner's run and a scenario's reading (#3044 §4) both
-    name theirs."""
-
-    BASELINE = "baseline"
-    CANDIDATE = "candidate"
-
-
 def credited_outcomes(
-    reading: Mapping | None, frozen: FrozenScenario, revision: str, side: Side
+    reading: Mapping | None, frozen: Scenario, revision: str, side: ReadingSide
 ) -> tuple[dict[str, AssertionOutcome] | None, str]:
     """Each declared assertion's outcome in ``reading`` (a ``remote_operation_assertions``
     document), or ``None`` and why it can't be credited.
 
     A reading counts only for the scenario that was frozen, on the revision being judged and the
-    side it is read for (#3044 §4). One for another digest or revision counts for nothing: an
+    side it is read for (#3044 §4); ``revision`` is ``scenario.staged_revision`` over the files
+    the judged tree put on the request. One for another digest or revision counts for nothing: an
     edit after freezing, or a run of an older tree, is never this tree's evidence. A declared
     assertion with no record is ``missing``, never a pass.
     """
@@ -403,9 +391,10 @@ def credited_outcomes(
     if status != OperationStatus.COMPLETED:
         why = reading.get("reason") or "no reason given"
         return None, f"the operation is {status or 'unread'}: {why}"
-    declared = tuple(scenario.get("assertions") or ())
+    # What was declared is the frozen scenario's: the digest matched, so it is the reading's too.
+    declared = frozen.assertions
     if frozen.named_assertion not in declared:
-        return None, f"the scenario declares no assertion {frozen.named_assertion!r}"
+        return None, f"the frozen scenario declares no assertion {frozen.named_assertion!r}"
     recorded: dict[str, AssertionOutcome] = {}
     for record in reading.get("assertions") or ():
         try:
@@ -423,47 +412,9 @@ def _failed(outcomes: Mapping[str, AssertionOutcome]) -> list[str]:
     return sorted(a for a, o in outcomes.items() if o is AssertionOutcome.FAILED)
 
 
-class BaselineVerdict(StrEnum):
-    """What the accepted baseline says of a new scenario before development (#3044 §5)."""
-
-    #: The named assertion executed and failed; every precondition executed and passed.
-    MAY_START = "may_start"
-    #: The named assertion passed: the scenario describes what the baseline already does.
-    SCENARIO_PASSES_ON_BASELINE = "scenario_passes_on_baseline"
-    #: A precondition executed and failed: the scenario's world isn't the baseline's.
-    PRECONDITION_FAILS = "precondition_fails"
-    #: A declared assertion didn't execute: nothing can be read.
-    BLOCKED = "blocked"
-
-
-def _baseline_verdict(
-    outcomes: Mapping[str, AssertionOutcome], named_assertion: str
-) -> tuple[BaselineVerdict, str]:
-    """#3044 §5 over one credited baseline reading. A stand-in: #3044 single-sources this rule in
-    ``squadops.remote_execution.scenario``, and this goes when that lands, so the baseline step
-    and acceptance never read one reading two ways. An assertion that didn't execute blocks it
-    first: a reading with a gap shows neither that the scenario fails for its named reason nor
-    that its world is the baseline's (SIP-0096: only executed results count)."""
-    unexecuted = _unexecuted(outcomes)
-    if unexecuted:
-        return BaselineVerdict.BLOCKED, "didn't execute on the baseline: " + ", ".join(unexecuted)
-    if outcomes[named_assertion] is AssertionOutcome.PASSED:
-        return (
-            BaselineVerdict.SCENARIO_PASSES_ON_BASELINE,
-            f"{named_assertion} already passes on the baseline",
-        )
-    preconditions = [a for a in _failed(outcomes) if a != named_assertion]
-    if preconditions:
-        return (
-            BaselineVerdict.PRECONDITION_FAILS,
-            "preconditions fail on the baseline: " + ", ".join(preconditions),
-        )
-    return BaselineVerdict.MAY_START, ""
-
-
 def discrimination_on_scenario(
     criterion_id: str,
-    frozen: FrozenScenario,
+    frozen: Scenario,
     baseline_revision: str,
     candidate_revision: str,
     baseline: Mapping | None,
@@ -473,10 +424,10 @@ def discrimination_on_scenario(
     baseline, with every precondition passing, and every declared assertion executed and passed
     on the candidate. Each reading is credited only for the frozen digest and its own side's
     revision; anything unread is ``not_run``, never unmet."""
-    outcomes, why = credited_outcomes(baseline, frozen, baseline_revision, Side.BASELINE)
+    outcomes, why = credited_outcomes(baseline, frozen, baseline_revision, ReadingSide.BASELINE)
     if outcomes is None:
         return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN, detail=why)
-    verdict, why = _baseline_verdict(outcomes, frozen.named_assertion)
+    verdict, why = baseline_verdict(outcomes, frozen.named_assertion)
     if verdict is BaselineVerdict.BLOCKED:
         return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN, detail=why)
     if verdict is BaselineVerdict.PRECONDITION_FAILS:
@@ -484,9 +435,9 @@ def discrimination_on_scenario(
             criterion_id, False, DiscriminationReason.ONLY_SETUP_FAILURES, detail=why
         )
     on_candidate, candidate_why = credited_outcomes(
-        candidate, frozen, candidate_revision, Side.CANDIDATE
+        candidate, frozen, candidate_revision, ReadingSide.CANDIDATE
     )
-    if verdict is BaselineVerdict.SCENARIO_PASSES_ON_BASELINE:
+    if verdict is BaselineVerdict.PASSES_ON_BASELINE:
         return Discrimination(
             criterion_id,
             False,
@@ -520,14 +471,12 @@ def discrimination_on_scenario(
     )
 
 
-def held_on_scenario(
-    frozen: FrozenScenario, revision: str, reading: Mapping | None
-) -> tuple[Held, str]:
+def held_on_scenario(frozen: Scenario, revision: str, reading: Mapping | None) -> tuple[Held, str]:
     """§8.1 for an earlier increment's scenario, replayed on this candidate: it holds when every
     assertion it declares executed and passed on this revision. A failure breaks it, a
     precondition's as much as the named one's (the world it relied on is gone). An unread
     reading, or one with an assertion that didn't execute, is blocked, never held."""
-    outcomes, why = credited_outcomes(reading, frozen, revision, Side.CANDIDATE)
+    outcomes, why = credited_outcomes(reading, frozen, revision, ReadingSide.CANDIDATE)
     if outcomes is None:
         return Held.BLOCKED_UNVERIFIED, why
     failed = _failed(outcomes)
