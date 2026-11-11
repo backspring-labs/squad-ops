@@ -919,6 +919,37 @@ handler reads through the shared slot. No contract runs as that step.
 
 ---
 
+### 17g. A skill may hold its provider's scenario vocabulary (2026-11-11)
+
+**What changed.** One resource name in a skill is read by the framework as data:
+`scenario_vocabulary.json` at the skill's root. It is the vocabulary of the scenario reader that the
+capability's provider executes (SIP-0117 R5.8): its reader id, its actions and observations with their
+arguments, and its contexts.
+- **At load.** The skillset loader reads it as a vocabulary and refuses the skillset when it can't, naming
+  the file. A capability whose skills hold two is refused, since its provider reads one.
+- **In the kept copy.** It is a skill file like any other: kept with the cycle, named by digest in the
+  record and checked before it is read (§10). A scenario criterion is validated against the supplier's
+  vocabulary, read from the cycle's kept copy (`skillset_content.scenario_vocabulary_for`). So a redeploy
+  that edits a vocabulary doesn't change what a cycle already created accepts. Two suppliers of one
+  contract with different vocabularies are refused.
+- **Not a prompt.** An operation task loads no skill (§17f). The file reaches a prompt only where a skill
+  that holds it is loaded for an authoring task: a strategy skillset may load the same shared skill, so
+  the author of a scenario reads the vocabulary it is validated against.
+
+**Why a resource and not a spec field.** §4.1 adds a spec field only by a SIP. More to the point, the kept
+copy's capability rows aren't named in the record, while its skill files are, by digest. A pointer on a
+capability row would be the one part of the vocabulary's path the record doesn't check.
+
+**Evidence.** SIP-0117 R4.6's isolation test allows a platform's name only in the skillset directories, the
+development profile's entry, the squad profiles, the adapter directory and the worker root's configuration
+section. A survey of the seams for #3044's part 2 found no field on a development profile or a capability
+contract that could carry provider data. The skillset is the place R4.6 allows, and its content is the one
+part that is kept and digested.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-11); the design
+is on #3044.
+
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each

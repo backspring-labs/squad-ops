@@ -33,13 +33,20 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from squadops.capabilities.skillsets import SKILLS_INPUT, Skillset, skill_files_digest
+from squadops.capabilities.skillsets import (
+    SCENARIO_VOCABULARY_FILE,
+    SKILLS_INPUT,
+    Skillset,
+    read_scenario_vocabulary,
+    skill_files_digest,
+)
 from squadops.core.hashing import canonical_json
 from squadops.cycles.models import ArtifactRef
 
 if TYPE_CHECKING:
     from squadops.cycles.skillset_coverage import Assignment
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
+    from squadops.remote_execution.scenario import ScenarioVocabulary
 
 SKILLSET_CONTENT_SCHEMA = "squadops.skillset-content/v1"
 SKILLSET_CONTENT_ARTIFACT_TYPE = "skillset_content"
@@ -57,6 +64,7 @@ __all__ = [
     "kept_document",
     "kept_document_of",
     "read_kept_document",
+    "scenario_vocabulary_for",
     "skills_for",
     "skills_input",
 ]
@@ -293,6 +301,54 @@ def skills_for(
                 ),
             )
     return tuple(loaded.values())
+
+
+def scenario_vocabulary_for(
+    document: Mapping[str, Any], record: Mapping[str, Any], contract: str
+) -> ScenarioVocabulary | None:
+    """The scenario vocabulary of ``contract``'s supplier, from the cycle's record and its kept
+    copy (§17g): the ``SCENARIO_VOCABULARY_FILE`` of a skill the supplying skillset's capability
+    loads for it. ``None`` when the record names no supplier of the contract, or its skills
+    hold none. Raises when two suppliers' vocabularies differ: a scenario is frozen against
+    one reader, and the provider that runs it is whichever agent's operation is dispatched."""
+    offered = record.get("offered")
+    if not isinstance(offered, list):
+        raise SkillsetContentError("the cycle's record has no list of offered contracts")
+    found: dict[str, str] = {}
+    for skillset_id in dict.fromkeys(r["skillset"] for r in offered if r["contract"] == contract):
+        skillset = _kept_skillset(document, skillset_id)
+        names = next(
+            (c["skills"] for c in skillset["capabilities"] if c["contract"] == contract), None
+        )
+        if names is None:
+            raise SkillsetContentError(
+                f"the kept copy's {skillset_id} has no capability for {contract}, which the "
+                "record says it supplies"
+            )
+        by_name = {s["skill"]: s for s in skillset["skills"]}
+        for name in names:
+            if name not in by_name:
+                raise SkillsetContentError(
+                    f"the kept copy's {skillset_id} names the skill {name} for {contract} and "
+                    "doesn't hold it"
+                )
+            text = by_name[name]["files"].get(SCENARIO_VOCABULARY_FILE)
+            if text is not None:
+                found[f"{skillset_id}/{name}"] = text
+    if not found:
+        return None
+    if len(set(found.values())) > 1:
+        raise SkillsetContentError(
+            f"the suppliers of {contract} hold different scenario vocabularies "
+            f"({', '.join(sorted(found))}), so no one reader can freeze a scenario for it"
+        )
+    where, text = next(iter(found.items()))
+    try:
+        return read_scenario_vocabulary(text)
+    except ValueError as e:
+        raise SkillsetContentError(
+            f"the kept copy's {where}: {SCENARIO_VOCABULARY_FILE}: {e}"
+        ) from e
 
 
 def skills_input(skills: Iterable[LoadedSkill]) -> list[dict[str, Any]]:
