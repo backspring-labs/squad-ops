@@ -530,6 +530,13 @@ REPAIR_DROPPED_MARKER = "write authorization dropped every file the repair emitt
 REPAIR_SUBJECT_DROPPED_MARKER = "the repair dropped a failing slot assertion's subject"
 
 
+#: The executor's wording for a repair round in which a repair step's task FAILED (#3020): it
+#: is neither an empty emission nor a refused patch, and nothing of it reached the tree. A failure
+#: a retry would repeat (``semantic_failure``) spends the round; any other is refunded, since a
+#: correction step is dispatched once and the refund is its only retry. Read like the others.
+REPAIR_STEP_FAILED_MARKER = "a repair step failed"
+
+
 #: The executor's wording for an in-plan repair refused because it removes a file (#2612,
 #: SIP-0112 H.23): the patch verifier and the retest materialize the candidate as the workspace
 #: overlaid with the repair's files, so a removal is never in the tree they judge, and accepting it
@@ -565,7 +572,8 @@ def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: i
     - **refused for dropping a failing slot assertion's subject** (#2664) — the same: spent,
       and nothing of the repair reached the tree;
     - **refused for removing a file inside the plan** (#2612) — the same;
-    - **refused for a rewritten suite that passes on the head** (#2933) — the same.
+    - **refused for a rewritten suite that passes on the head** (#2933) — the same;
+    - **a repair step that failed** (#3020) — refunded or spent, nothing of it was applied.
 
     The carry entries are the executor's own ``"correction attempt N: <marker> …"`` lines; a
     retest that ran and FAILED is a different entry and stays informative.
@@ -579,6 +587,7 @@ def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: i
             REPAIR_SUBJECT_DROPPED_MARKER,
             REPAIR_REMOVAL_REFUSED_MARKER,
             REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
+            REPAIR_STEP_FAILED_MARKER,
         )
     )
     return any(str(entry).startswith(prefixes) for entry in repair_rejections or [])

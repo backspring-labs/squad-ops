@@ -70,6 +70,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A failed repair step is named, and spent only when a retry would repeat it** (#3020): a correction
+  round whose repair step's task failed was read as "the repair emitted no content" and refunded. It now
+  names the step and its error in the log and in the next round's carry. A failure that says a retry
+  repeats it (`semantic_failure`, which a missing scripted answer now carries) spends the round. Any other
+  is refunded as before, since a correction step is dispatched once and the refund is its only retry.
+- **A rewind or an abort says what ended the run** (#3020): its failure reason names the round, the attempts
+  left unspent, the classification, the first sentence of the decision's rationale and the plan delta that
+  records it, after the words it carried before (`Rewinding to checkpoint after … failure`).
 - **A scripted cycle's answers survive an agent restart** (#3005): the scripted squad keys each answer by the task's
   type, its occurrence among the cycle's tasks of that type, and its call. Those counts lived in the agent's
   process, so an agent that restarted mid-cycle counted from the first task again and answered a later task from

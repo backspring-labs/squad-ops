@@ -9268,3 +9268,181 @@ class TestAProposalRunCompletesOnlyWithItsChangeRequest:
         assert RunStatus.COMPLETED in [
             c.args[1] for c in mock_registry.update_run_status.call_args_list
         ]
+
+
+class TestAFailedRepairStepIsNamedAndSplitByWhatARetryDoes:
+    """#3020. The 2.7 soak's second repair failed on a missing scripted answer, and the round was
+    read as "emitted no content", refunded and re-taken: the replay's rounds drifted from the
+    recording, and its run then ended on a later scripted decision, stored as a bare "Rewinding to
+    checkpoint". A correction step is dispatched once, so the refund is a failed step's only
+    retry: a failure a retry repeats is spent, every other one is refunded, and both are named.
+
+    Entry point: ``run_correction_protocol``'s real round, then the executor's
+    ``_route_correction_path`` with what that round returned, where the refund and the carry are
+    decided."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    @staticmethod
+    def _responder(repair_result):
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "Patch the handler. It reads the wrong field.",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type.endswith("correction_repair"):
+                return repair_result(envelope)
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        return responder
+
+    async def _round(self, cycle, repair_result):
+        runner, _r, _v, _b = self._make_runner(self._responder(repair_result))
+        return await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="route failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            correction_budget=3,
+        )
+
+    async def _route(self, executor, cycle, protocol, counter, carry, path=None):
+        import dataclasses as _dc
+
+        from squadops.execution.dispatched_flow_executor import _CorrectionRound
+
+        if path is not None:
+            protocol = _dc.replace(protocol, correction_path=path)
+        return await executor._route_correction_path(
+            _CorrectionRound(protocol=protocol, attempt=1, max_attempts=3),
+            TaskResult(task_id="task_failed", status="FAILED", error="route failed"),
+            self._failed_envelope(),
+            "run_001",
+            cycle=cycle,
+            correction_counter=counter,
+            patched_result_holder=None,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            budget_guard=None,
+            interface_manifest=None,
+            repair_rejection_carry=carry,
+            bound_record=None,
+            compliance_counter=None,
+        )
+
+    @pytest.mark.parametrize(
+        ("outputs", "refunded"),
+        [
+            ({"outcome_class": "semantic_failure"}, False),
+            (None, True),
+            ({"outcome_class": "retryable_failure"}, True),
+        ],
+        ids=["a-retry-repeats-it", "unclassified", "classed-retryable"],
+    )
+    async def test_a_failed_step_is_named_in_the_carry_and_spent_only_when_a_retry_repeats_it(
+        self, executor, cycle, outputs, refunded
+    ):
+        error = (
+            "script s@0123456789ab has no answer for development.correction_repair "
+            "occurrence 2 call 2"
+        )
+        protocol = await self._round(
+            cycle,
+            lambda env: TaskResult(
+                task_id=env.task_id, status="FAILED", outputs=outputs, error=error
+            ),
+        )
+        counter = {"n": 1}
+        carry: dict[str, list[str]] = {}
+
+        routed = await self._route(executor, cycle, protocol, counter, carry)
+
+        failed = protocol.repair_failed_refundable or protocol.repair_failed_spent
+        assert [(s["task_type"], s["error"]) for s in failed] == [
+            ("development.correction_repair", error)
+        ]
+        assert (protocol.emission_empty, bool(protocol.repair_failed_spent)) == (
+            refunded,
+            not refunded,
+        )
+        assert counter.get("empty_refunds", 0) == (1 if refunded else 0)
+        assert routed == "continue"
+        (entry,) = carry["task_failed"]
+        assert entry.startswith("correction attempt 1: a repair step failed (")
+        assert error in entry
+        assert ("a retry repeats it" in entry) is not refunded
+        assert "emitted no content" not in entry
+
+    async def test_a_step_that_succeeded_with_nothing_is_still_the_empty_emission(
+        self, executor, cycle
+    ):
+        """The edge: no failed step, an empty file. Bug caught: the split reading every empty
+        round as a failed step, or naming a step that never failed."""
+        protocol = await self._round(
+            cycle,
+            lambda env: TaskResult(
+                task_id=env.task_id,
+                status="SUCCEEDED",
+                outputs={"artifacts": [{"name": "repair_output.md", "content": ""}]},
+            ),
+        )
+        carry: dict[str, list[str]] = {}
+
+        await self._route(executor, cycle, protocol, {"n": 1}, carry)
+
+        assert (protocol.repair_failed_refundable, protocol.repair_failed_spent) == ((), ())
+        (entry,) = carry["task_failed"]
+        assert entry.startswith("correction attempt 1: the repair emitted no content")
+
+    @pytest.mark.parametrize("path", ["rewind", "abort"])
+    async def test_a_decision_that_ends_the_run_names_its_round_classification_and_record(
+        self, executor, cycle, path
+    ):
+        from squadops.execution.execution_errors import _ExecutionError
+
+        protocol = await self._round(
+            cycle,
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={}),
+        )
+        record = protocol.decision_record
+
+        with pytest.raises(_ExecutionError) as raised:
+            await self._route(executor, cycle, protocol, {"n": 1}, {}, path=path)
+
+        reason = str(raised.value)
+        assert record["artifact_id"].startswith("delta_")
+        assert reason.endswith(
+            ": the correction decision ended the run at round 1 of 3, leaving 2 attempts "
+            f"unspent; classification {record['classification']}; "
+            f'"Patch the handler" (see {record["artifact_id"]})'
+        )
+
+    async def test_a_decision_no_delta_recorded_says_so(self, executor, cycle):
+        """The edge: a protocol result with no banked delta. Bug caught: a reason that reads as
+        complete with the record silently missing."""
+        from squadops.execution.correction_runner import CorrectionProtocolResult
+        from squadops.execution.execution_errors import _ExecutionError
+
+        with pytest.raises(_ExecutionError, match="no plan delta recorded the decision$"):
+            await self._route(
+                executor, cycle, CorrectionProtocolResult(correction_path="rewind"), {"n": 1}, {}
+            )

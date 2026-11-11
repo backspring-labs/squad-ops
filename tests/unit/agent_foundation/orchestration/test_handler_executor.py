@@ -10,6 +10,7 @@ import pytest
 
 from squadops.agents.base import PortsBundle
 from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
+from squadops.llm.script import LLMScriptError, ScriptEntryMissingError
 from squadops.orchestration.handler_executor import HandlerExecutor
 from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.tasks.models import TaskEnvelope
@@ -248,3 +249,54 @@ class TestHandlerExecutorTimeout:
 
         with pytest.raises(TimeoutError):
             await executor.execute(envelope, timeout_seconds=0.1)
+
+
+class _RaisingHandler(MockHandler):
+    """A handler whose model call raised: the exception reaches the executor unhandled."""
+
+    def __init__(self, task_type: str, error: Exception):
+        super().__init__(task_type=task_type)
+        self._raise = error
+
+    async def handle(self, context, inputs):
+        raise self._raise
+
+
+class TestAScriptedAnswerTheScriptLacks:
+    """#3020: a missing scripted answer is a failure a retry repeats. Bug caught: the correction
+    loop read the failed repair as one that "emitted no content", refunded its round and re-took
+    it unchanged, so a scripted replay drifted from its recording by a round."""
+
+    @pytest.mark.parametrize(
+        ("error", "classed"),
+        [
+            (
+                ScriptEntryMissingError(
+                    "script s@0123456789ab has no answer for development.correction_repair "
+                    "occurrence 2 call 2"
+                ),
+                True,
+            ),
+            (LLMScriptError("names no script"), True),
+            (RuntimeError("the model timed out"), False),
+        ],
+        ids=["a-missing-entry", "the-base-script-error", "any-other-error"],
+    )
+    async def test_only_a_script_error_is_classed_semantic_and_its_evidence_kept(
+        self, handler_registry, mock_ports, error, classed
+    ):
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        handler_registry.register(_RaisingHandler("mock.scripted", error), allow_override=True)
+        executor = HandlerExecutor(
+            executor_id="test", handler_registry=handler_registry, ports=mock_ports, role="dev"
+        )
+
+        result = await executor.execute(create_envelope(task_type="mock.scripted"))
+
+        assert result.status == "FAILED"
+        assert result.error == str(error)
+        assert result.execution_evidence == {"exception": type(error).__name__}
+        assert (result.outputs or {}).get("outcome_class") == (
+            TaskOutcome.SEMANTIC_FAILURE if classed else None
+        )

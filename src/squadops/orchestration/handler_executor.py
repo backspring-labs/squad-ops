@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.comms.task_delivery import dispatch_of
 from squadops.cycles.llm_usage import UsageTotals
 from squadops.cycles.task_outcome import TaskOutcome
+from squadops.llm.script import LLMScriptError
 from squadops.memory.authoring_envelope import json_safe
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
@@ -45,6 +46,19 @@ def _with_disputes(outputs: dict[str, Any] | None, context: ExecutionContext | N
     # and a failed result's outputs need not carry the role anywhere else.
     disputes = [{**d, "by": context.role_id} for d in context.disputed_checks]
     return {**(outputs or {}), DISPUTED_CHECKS: disputes}
+
+
+def _deterministic_if_scripted(outputs: dict[str, Any] | None, error: BaseException):
+    """A failed task's ``outputs``, classed ``semantic_failure`` when the failure is a scripted
+    answer the cycle's script doesn't hold (#3020; ``LLMScriptError`` and its subclasses only).
+
+    The script holds what it holds, so a re-take of the task fails the same way: a correction
+    round would refund it and re-take it unchanged. The class says a retry repeats it. The
+    evidence keeps the error's own type and message beside it (``execution_evidence``).
+    """
+    if not isinstance(error, LLMScriptError):
+        return outputs
+    return {**(outputs or {}), "outcome_class": TaskOutcome.SEMANTIC_FAILURE}
 
 
 def _held_if_blocked(outputs: dict[str, Any] | None, context: ExecutionContext | None):
@@ -255,7 +269,9 @@ class HandlerExecutor(CapabilityExecutor):
             return TaskResult(
                 task_id=task_id,
                 status=TaskResultStatus.FAILED,
-                outputs=_held_if_blocked(_with_disputes(None, context), context),
+                outputs=_held_if_blocked(
+                    _deterministic_if_scripted(_with_disputes(None, context), e), context
+                ),
                 error=str(e),
                 execution_evidence={"exception": type(e).__name__},
                 llm_usage=context.llm_usage.to_dict() if context is not None else None,
