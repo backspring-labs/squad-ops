@@ -1,7 +1,6 @@
-"""The plan gate's skillset check and the plannable property (SIP-0116 §6.3, §9; phase 2).
-
-The fixture makes one existing task type plannable for the test, since none outside the base
-set is yet: the first is the Game Development Platform SIP's ``qa.run_remote_operation``."""
+"""The plan gate's skillset check and the plannable property (SIP-0116 §6.3, §9; phase 2),
+on the first plannable type outside the base set, ``qa.run_remote_operation`` (SIP-0117 R4.4).
+The contract and the offer are fixtures: no profile requires anything yet."""
 
 from __future__ import annotations
 
@@ -9,13 +8,12 @@ import pytest
 import yaml
 
 from squadops.cycles.implementation_plan import ImplementationPlan, planner_build_task_types
-from squadops.tasks import task_types
 from squadops.tasks.base_set import BASE_SETS, base_plannable_task_types
 from squadops.tasks.task_types import TaskType, plannable
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-FIXTURE_TYPE = TaskType.QA_VALIDATE
+FIXTURE_TYPE = TaskType.QA_RUN_REMOTE_OPERATION
 OFFER = {
     "contract": "fixture.scenario_verification",
     "mode": "play",
@@ -25,11 +23,6 @@ OFFER = {
     "skillset": "fixture-qa",
 }
 RECORD = {"base_set": {"version": "base@1"}, "offered": [OFFER]}
-
-
-@pytest.fixture
-def fixture_type_is_plannable(monkeypatch):
-    monkeypatch.setattr(task_types, "_PLANNABLE", task_types._PLANNABLE | {FIXTURE_TYPE})
 
 
 def _plan(*tasks: dict) -> str:
@@ -58,21 +51,25 @@ SCENARIO = {
 }
 
 
-def test_every_base_set_type_is_plannable_and_nothing_else_is_yet():
+def test_every_base_set_type_is_plannable_and_only_one_type_is_plannable_outside_it():
     """Bug caught: a type added to the base set without being plannable, so the planner is
-    offered a type its own parser refuses."""
+    offered a type its own parser refuses; or a second plannable type slipping in without its
+    own proposal (SIP-0116 §6.3), which this exact set makes a deliberate edit."""
     for version, members in BASE_SETS.items():
         assert all(t.plannable for t in members), version
-    assert {t for t in TaskType if t.plannable} == set(base_plannable_task_types())
+    assert {t for t in TaskType if t.plannable} - set(base_plannable_task_types()) == {
+        TaskType.QA_RUN_REMOTE_OPERATION
+    }
+    assert TaskType.QA_RUN_REMOTE_OPERATION not in base_plannable_task_types()
     assert plannable("not.a.task_type") is False
 
 
 def test_a_type_outside_the_plannable_set_is_refused_when_the_plan_is_parsed():
     with pytest.raises(ValueError, match="unknown task_type 'qa.validate'"):
-        ImplementationPlan.from_yaml(_plan(DEV, SCENARIO))
+        ImplementationPlan.from_yaml(_plan(DEV, {**SCENARIO, "task_type": "qa.validate"}))
 
 
-def test_an_ordinary_cycle_is_not_offered_a_registered_plannable_type(fixture_type_is_plannable):
+def test_an_ordinary_cycle_is_not_offered_a_registered_plannable_type():
     """§14's proof: with a fixture capability plannable, a cycle whose work requires nothing
     isn't offered it. Bug caught: registration reading as enablement, so every stack's
     planner and gate accept a step only one stack's squad can take."""
@@ -85,13 +82,13 @@ def test_an_ordinary_cycle_is_not_offered_a_registered_plannable_type(fixture_ty
         "builder.assemble",
     }
     assert plan.validate_against_offered(ordinary) == [
-        "Task 1: `fixture.scenario_verification` in `play` mode as `qa.validate` for `qa` "
+        "Task 1: `fixture.scenario_verification` in `play` mode as `qa.run_remote_operation` for `qa` "
         "isn't offered to this cycle. Its requirements name no contract"
     ]
     assert plan.validate_against_offered(None) == plan.validate_against_offered(ordinary)
 
 
-def test_a_contract_the_cycles_requirements_name_is_accepted(fixture_type_is_plannable):
+def test_a_contract_the_cycles_requirements_name_is_accepted():
     plan = ImplementationPlan.from_yaml(_plan(DEV, SCENARIO))
 
     assert plan.validate_against_offered(RECORD) == []
@@ -103,30 +100,28 @@ def test_a_contract_the_cycles_requirements_name_is_accepted(fixture_type_is_pla
     [
         (
             {"mode": "multiplayer"},
-            "Task 1: `fixture.scenario_verification` in `multiplayer` mode as `qa.validate` for "
+            "Task 1: `fixture.scenario_verification` in `multiplayer` mode as `qa.run_remote_operation` for "
             "`qa` isn't offered to this cycle. Its requirements name "
-            "`fixture.scenario_verification` in `play` mode as `qa.validate` for `qa`",
+            "`fixture.scenario_verification` in `play` mode as `qa.run_remote_operation` for `qa`",
         ),
         (
             {"role": "dev"},
-            "Task 1: `fixture.scenario_verification` in `play` mode as `qa.validate` for `dev` "
+            "Task 1: `fixture.scenario_verification` in `play` mode as `qa.run_remote_operation` for `dev` "
             "isn't offered to this cycle.",
         ),
         (
             {"contract": "fixture.capture"},
-            "Task 1: `fixture.capture` in `play` mode as `qa.validate` for `qa` isn't offered",
+            "Task 1: `fixture.capture` in `play` mode as `qa.run_remote_operation` for `qa` isn't offered",
         ),
         (
             {"contract": "", "mode": ""},
-            "Task 1: `qa.validate` is outside the base set, so the task names the contract and "
+            "Task 1: `qa.run_remote_operation` is outside the base set, so the task names the contract and "
             "mode it runs as",
         ),
     ],
     ids=["another mode", "another role's agent", "another contract", "no contract"],
 )
-def test_a_task_the_record_does_not_offer_is_refused_by_name(
-    fixture_type_is_plannable, change, expected
-):
+def test_a_task_the_record_does_not_offer_is_refused_by_name(change, expected):
     """One mode never implies another, and the supplier is the task's routed agent. Bug
     caught: a plan taking a contract in a mode nobody declared, or handing it to a role whose
     agent doesn't carry the skillset."""
@@ -147,9 +142,7 @@ def test_a_base_set_task_naming_an_unoffered_contract_is_refused():
     )
 
 
-def test_a_plan_of_base_set_tasks_serializes_as_it_did_before_the_fields_existed(
-    fixture_type_is_plannable,
-):
+def test_a_plan_of_base_set_tasks_serializes_as_it_did_before_the_fields_existed():
     """Bug caught: two new keys entering every stored plan, which moves every plan's canonical
     hash and the byte-identity SIP-0116 §14 holds existing stacks to."""
     base = ImplementationPlan.from_yaml(_plan(DEV)).to_dict()

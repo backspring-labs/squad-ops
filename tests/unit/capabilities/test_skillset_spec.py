@@ -269,3 +269,68 @@ def test_declared_contracts_are_checked_for_ids_modes_and_evidence():
         "fixture.twice: a contract says what evidence it must produce",
     ]
     assert contract_errors(CONTRACTS) == []
+
+
+GAME_SPEC = """
+    api_version: squadops.skillset/v1
+    skillset:
+      id: fixture-game-qa
+      version: 1
+      description: Verifies a fixture game
+      roles: [qa]
+      platform: {id: fixture, variants: [local]}
+      prerequisites:
+        - provider: fixture-editor
+      capabilities:
+        - contract: game.unit_tests
+          modes: [headless]
+        - contract: game.scenario_verification
+          modes: [play]
+          tools:
+            - {id: play_scenario, provider: fixture-editor, location: worker}
+"""
+
+
+def _game_skillset(tmp_path, spec: str = GAME_SPEC) -> Path:
+    directory = tmp_path / "fixture-game-qa"
+    directory.mkdir()
+    (directory / "skillset.yaml").write_text(textwrap.dedent(spec))
+    return directory
+
+
+def test_a_skillset_specializes_the_registered_game_contracts(tmp_path):
+    """SIP-0118 R4.2 with SIP-0116 §4: checked against the contracts the deployment declares,
+    not a fixture table. Bug caught: the registry and the loader disagreeing on a contract's
+    id or modes, so the first real skillset fails to load."""
+    skillset = load_skillset(_game_skillset(tmp_path))
+
+    assert [(c.contract, c.modes) for c in skillset.capabilities] == [
+        ("game.unit_tests", (VerificationMode.HEADLESS,)),
+        ("game.scenario_verification", (VerificationMode.PLAY,)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        (
+            "modes: [play]",
+            "modes: [headless]",
+            "capability game.scenario_verification: the contract doesn't run in headless mode",
+        ),
+        (
+            "contract: game.unit_tests",
+            "contract: game.build_verification",
+            "capability game.build_verification: no such capability contract",
+        ),
+    ],
+    ids=["a mode the contract lacks", "a contract nobody declared"],
+)
+def test_a_skillset_cannot_claim_what_the_registered_contracts_do_not_declare(
+    tmp_path, old, new, expected
+):
+    """One mode never implies another, and a skillset specializes: it never defines."""
+    with pytest.raises(SkillsetError) as refused:
+        load_skillset(_game_skillset(tmp_path, GAME_SPEC.replace(old, new)))
+
+    assert expected in refused.value.errors

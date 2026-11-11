@@ -70,6 +70,7 @@ from squadops.cycles.failure_evidence import (
 )
 from squadops.cycles.interface_conformance import detect_interface_drift
 from squadops.cycles.models import ArtifactRef
+from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.run_loop_summary import (
     REFUND_CONFIRMED_DISPUTE,
@@ -100,6 +101,7 @@ from squadops.execution.correction_ids import RETEST_PREFIX, correction_task_id
 from squadops.execution.correction_repair import OWNERSHIP_DROPPED_KEY, CorrectionRepair
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.product_suite import RETEST_SUITE_KEY
+from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import TaskType
@@ -1849,3 +1851,122 @@ class CorrectionRunner:
             if judged is not None:
                 return judged
         return result
+
+    async def reexecute_operation(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        patched_artifacts: list[dict[str, Any]],
+        correction_attempts: int,
+        *,
+        round_seq: int = 0,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None = None,
+        budget_guard: Callable[[], None] | None = None,
+    ) -> TaskResult | None:
+        """Re-run a failed remote operation on the tree a repair produced (SIP-0117 R4.4).
+
+        A repair of an operation's failure changes the application, and the only evidence
+        that it worked is the operation itself, run again: same contract, same supplier,
+        same frozen scenario, on the candidate tree with the repaired files laid over it.
+        It dispatches the failed task's own type back to the role that ran it. No model is
+        called and no skill is loaded: it is an operation.
+
+        The tree is the failed dispatch's ``acceptance_workspace_files`` with the repair's
+        files over it, and its revision id is cut from exactly that mapping, so the evidence
+        names the tree it ran on. The failed run's own evidence artifacts are left out: they
+        describe the last run, and aren't the product's files.
+
+        Returns the re-run's ``TaskResult``, or ``None`` when there is nothing to run it on:
+        the failed envelope carries no tree, or the repair changed no file.
+        """
+        from uuid import uuid4
+
+        failed_inputs = envelope.inputs or {}
+        base = failed_inputs.get("acceptance_workspace_files")
+        repaired = {
+            str(art["name"]): str(art.get("content") or "")
+            for art in patched_artifacts
+            if isinstance(art, dict)
+            and isinstance(art.get("name"), str)
+            and art.get("type") not in EVIDENCE_ARTIFACT_TYPES
+        }
+        # The role that ran the operation, as its envelope recorded it. Never assumed: a
+        # re-run sent to a role nobody named would be evidence from another agent.
+        operation = failed_inputs.get("operation")
+        role = operation.get("role") if isinstance(operation, Mapping) else None
+        skipped = (
+            "the failed envelope carries no candidate tree"
+            if not isinstance(base, Mapping)
+            else "the repair changed no file"
+            if not repaired
+            else "the failed envelope names no role for the operation"
+            if not isinstance(role, str) or not role
+            else ""
+        )
+        if skipped:
+            logger.warning("operation re-run for %s skipped: %s", envelope.task_id, skipped)
+            return None
+        assert isinstance(base, Mapping) and isinstance(role, str)
+        tree = {**base, **repaired}
+
+        resolved = resolve_agent_config(role, profile)
+        rerun_inputs: dict[str, Any] = {
+            "prd": cycle.prd_ref,
+            "agent_model": resolved.model,
+            "agent_config_overrides": resolved.config_overrides,
+            "acceptance_workspace_files": tree,
+            "workspace_revision_id": WorkspaceRevision.cut(
+                cycle_id=cycle.cycle_id,
+                origin=RevisionOrigin.ACCEPTANCE_ASSEMBLY,
+                files=tree,
+            ).revision_id,
+            # What the operation is, unchanged: the contract and its recorded supplier, the
+            # frozen scenario, and the surface a further repair would be aimed at.
+            **{
+                key: failed_inputs[key]
+                for key in (
+                    "resolved_config",
+                    "operation",
+                    "operation_scenario",
+                    "implementation_artifacts",
+                    "subtask_focus",
+                    "subtask_description",
+                )
+                if key in failed_inputs
+            },
+        }
+        rerun_envelope = TaskEnvelope(
+            task_id=correction_task_id(
+                RETEST_PREFIX, run_id, correction_attempts, round_seq, envelope.task_type
+            ),
+            agent_id=resolved.agent_id,
+            cycle_id=cycle.cycle_id,
+            pulse_id=uuid4().hex,
+            project_id=cycle.project_id,
+            task_type=envelope.task_type,
+            correlation_id=uuid4().hex,
+            causation_id=envelope.task_id,
+            trace_id=uuid4().hex,
+            span_id=uuid4().hex,
+            inputs=rerun_inputs,
+            metadata={"role": role, "retest": True},
+        )
+        return await self._dispatch_protocol_step(
+            rerun_envelope,
+            run_id,
+            cycle,
+            flow_run_id,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            budget_guard=budget_guard,
+        )

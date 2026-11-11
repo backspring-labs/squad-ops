@@ -75,7 +75,7 @@ from squadops.stacks.development_profiles import (
 )
 from squadops.stacks.scaffold_contract import emit_contract_dict
 from squadops.tasks.models import TaskResultStatus
-from squadops.tasks.task_types import authors_qa_suite, emits_required_files
+from squadops.tasks.task_types import authors_qa_suite, emits_required_files, runs_an_operation
 
 if TYPE_CHECKING:
     from squadops.cycles.models import ArtifactRef, Cycle
@@ -387,6 +387,7 @@ class PatchAcceptance:
         self,
         *,
         reexecute_repaired_suite: Callable[..., Any],
+        reexecute_operation: Callable[..., Any],
         enforce_frozen_ownership: Callable[..., tuple[list[dict], list[Any]]],
         emit_integrity_evidence: Callable[[Any, Any], None],
         enforce_compliance_budget: Callable[..., None],
@@ -394,6 +395,7 @@ class PatchAcceptance:
     ) -> None:
         self._read_repaired_suite_on_head = read_repaired_suite_on_head
         self._reexecute_repaired_suite = reexecute_repaired_suite
+        self._reexecute_operation = reexecute_operation
         self._enforce_frozen_ownership = enforce_frozen_ownership
         self._emit_integrity_evidence = emit_integrity_evidence
         self._enforce_compliance_budget = enforce_compliance_budget
@@ -765,7 +767,12 @@ class PatchAcceptance:
             verification.status == PATCH_UNVERIFIABLE
             and verification.reason in STRUCTURALLY_UNEVALUABLE_REASONS
             and (
-                isinstance((result.outputs or {}).get("test_result"), dict) or bool(repaired_suites)
+                isinstance((result.outputs or {}).get("test_result"), dict)
+                or bool(repaired_suites)
+                # SIP-0117 R4.4: a remote operation's behavioural evidence is the operation.
+                # Its task carries no typed criterion, so without this its every repair
+                # would be refused unheard and the round would end as a deadlock.
+                or runs_an_operation(envelope.task_type)
             )
         )
         if retest_decides:
@@ -895,6 +902,26 @@ class PatchAcceptance:
         resolved_config = subject.resolved_config
         patched_artifacts = subject.patched_artifacts
         corrected_outputs = dict(result.outputs or {})
+        if runs_an_operation(envelope.task_type):
+            return await self._rerun_operation(
+                envelope,
+                result,
+                subject,
+                run_id=run_id,
+                cycle=cycle,
+                correction_attempts=correction_attempts,
+                round_seq=round_seq,
+                prior_outputs=prior_outputs,
+                all_artifact_refs=all_artifact_refs,
+                stored_artifacts=stored_artifacts,
+                completed_task_ids=completed_task_ids,
+                plan_delta_refs=plan_delta_refs,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                enriched_envelope=enriched_envelope,
+                budget_guard=budget_guard,
+                repair_rejection_carry=repair_rejection_carry,
+            )
 
         # #456: behavioral-evidence-backed task — re-execute the repaired
         # suite before accepting; fresh test_result supersedes the stale one.
@@ -1030,6 +1057,116 @@ class PatchAcceptance:
             corrected_outputs=corrected_outputs,
             rows=retest_rows,
             evidence=retest_evidence,
+        )
+
+    async def _rerun_operation(
+        self,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        subject: _PatchSubject,
+        *,
+        run_id: str,
+        cycle: Cycle | None,
+        correction_attempts: int,
+        round_seq: int,
+        prior_outputs: dict[str, Any] | None,
+        all_artifact_refs: list[str] | None,
+        stored_artifacts: list[tuple[str, ArtifactRef]] | None,
+        completed_task_ids: list[str] | None,
+        plan_delta_refs: list[str] | None,
+        profile: Any,
+        flow_run_id: str | None,
+        enriched_envelope: TaskEnvelope | None,
+        budget_guard: Callable[[], None] | None,
+        repair_rejection_carry: dict[str, list[str]] | None,
+    ) -> _RetestOutcome | None:
+        """Block 5 for a remote operation (SIP-0117 R4.4): the repair is accepted only when
+        the operation, re-run on the repaired tree, executes every assertion and passes it.
+
+        ``None`` refuses the repair, and the reason is recorded for the next round. A re-run
+        that passes some assertions and leaves others failed or unexecuted is not a pass: a
+        repair is the claim that the scenario now holds, and the scenario is all of its
+        assertions. A re-run that executed nothing proves nothing about the repair either
+        way, and is refused as that, never read as the repair failing.
+        """
+        if cycle is None:
+            logger.warning(
+                "patch_verification task=%s is a remote operation with no retest context — "
+                "falling back to re-dispatch",
+                envelope.task_id,
+            )
+            return None
+        rerun = await self._reexecute_operation(
+            run_id,
+            cycle,
+            enriched_envelope if enriched_envelope is not None else envelope,
+            subject.patched_artifacts,
+            correction_attempts,
+            round_seq=round_seq,
+            prior_outputs=prior_outputs if prior_outputs is not None else {},
+            all_artifact_refs=all_artifact_refs if all_artifact_refs is not None else [],
+            stored_artifacts=stored_artifacts if stored_artifacts is not None else [],
+            completed_task_ids=completed_task_ids if completed_task_ids is not None else [],
+            plan_delta_refs=plan_delta_refs if plan_delta_refs is not None else [],
+            profile=profile,
+            flow_run_id=flow_run_id,
+            budget_guard=budget_guard,
+        )
+        outputs = (rerun.outputs or {}) if rerun is not None else {}
+        validation = outputs.get("validation_result")
+        rows = [
+            row
+            for row in (validation.get("checks") if isinstance(validation, dict) else None) or []
+            if isinstance(row, dict)
+        ]
+        failing = [row for row in rows if row_is_blocking_failure(row)]
+        unexecuted = [row for row in rows if row.get("status") == ResultStatus.SKIPPED]
+        passed = (
+            rerun is not None
+            and rerun.status == TaskResultStatus.SUCCEEDED
+            and bool(rows)
+            and not failing
+            and not unexecuted
+        )
+        logger.info(
+            "patch_operation_rerun task=%s status=%s rows=%d failing=%d unexecuted=%d passed=%s",
+            envelope.task_id,
+            rerun.status if rerun is not None else "not_dispatched",
+            len(rows),
+            len(failing),
+            len(unexecuted),
+            passed,
+        )
+        if not passed:
+            if rerun is None:
+                why = "the operation could not be re-run on the repaired tree"
+            elif failing:
+                why = "the operation still fails on the repaired tree: " + "; ".join(
+                    f"{row.get('check', '?')}: {row.get('reason') or 'failed'}" for row in failing
+                )
+            elif unexecuted:
+                why = (
+                    "the operation's re-run did not execute, so the repair is unverified: "
+                    + "; ".join(
+                        f"{row.get('check', '?')}: {row.get('reason') or 'not executed'}"
+                        for row in unexecuted
+                    )
+                )
+            else:
+                why = f"the operation's re-run produced no assertion rows: {rerun.error or '-'}"
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {correction_attempts}: {why}",
+            )
+            return None
+        corrected_outputs = dict(result.outputs or {})
+        if outputs.get("summary"):
+            corrected_outputs["summary"] = outputs["summary"]
+        return _RetestOutcome(
+            corrected_outputs=corrected_outputs,
+            rows=rows,
+            evidence=outputs.get("artifacts") or [],
         )
 
     async def _suite_passes_on_head(

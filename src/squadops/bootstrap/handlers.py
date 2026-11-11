@@ -12,6 +12,9 @@ import logging
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.handlers.cycle.evaluate_increment import QAEvaluateIncrementHandler
+from squadops.capabilities.handlers.cycle.run_remote_operation import (
+    QARunRemoteOperationHandler,
+)
 from squadops.capabilities.handlers.cycle_tasks import (
     BuilderAssembleHandler,
     DataReportHandler,
@@ -140,6 +143,10 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (GovernancePublishHandoffHandler, ("lead",)),
     # SIP-0109 §8: an increment's acceptance, deterministic, on the stack's runner.
     (QAEvaluateIncrementHandler, ("qa",)),
+    # SIP-0117 R4.4: a provider's operation, run for a capability contract. Registered for
+    # every stack and offered to none: a cycle plans it only where its requirements name a
+    # contract over it (SIP-0116 §6.3).
+    (QARunRemoteOperationHandler, ("qa",)),
 ]
 
 

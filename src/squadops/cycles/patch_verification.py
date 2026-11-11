@@ -47,6 +47,7 @@ from squadops.cycles.emission_integrity import (
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.write_authorization import WriteAuthorization
+from squadops.remote_execution.models import OPERATION_ARTIFACT_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,12 @@ def overlay_artifacts(
 #: Artifact types that are EVIDENCE about a task's own run — a report of what the
 #: suite did, a typed-check evaluation — rather than work product. They describe one
 #: execution and are wrong the moment a later execution of the same task supersedes it.
-EVIDENCE_ARTIFACT_TYPES: frozenset[str] = frozenset({"test_report", "typed_check_evaluation"})
+#:
+#: A remote operation's assertion records and provider evidence are the same kind
+#: (SIP-0117 R4.4): superseded by the operation's re-run, and never the product's files.
+EVIDENCE_ARTIFACT_TYPES: frozenset[str] = (
+    frozenset({"test_report", "typed_check_evaluation"}) | OPERATION_ARTIFACT_TYPES
+)
 
 
 @dataclass(frozen=True)

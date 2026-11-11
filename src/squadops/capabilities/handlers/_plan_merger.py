@@ -64,7 +64,9 @@ _Pair = tuple[PlanTask, CanonicalTaskProvenance, ProposedTask]
 # canonical tasks. Dev tasks proposed by qa are dropped (qa stays in its
 # lane); qa tasks proposed by dev are likewise dropped.
 _DEV_TASK_TYPES = frozenset({TaskType.DEVELOPMENT_DEVELOP, TaskType.BUILDER_ASSEMBLE})
-_QA_TASK_TYPES = frozenset({TaskType.QA_TEST})
+# SIP-0117 R4.4: a remote operation is qa's to propose too. Left out, a qa proposal naming
+# one would be dropped here with an info line, and the contract it named with it.
+_QA_TASK_TYPES = frozenset({TaskType.QA_TEST, TaskType.QA_RUN_REMOTE_OPERATION})
 
 
 def _resolve_dependency_edges(

@@ -26,6 +26,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.cycles.task_outcome import TaskOutcome
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.tasks.models import INPUT_REFUSAL_EVIDENCE, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
@@ -3631,3 +3632,228 @@ class TestAProductsRepairedSuiteIsReadByTheProductsRunners:
             assert action == "break_correction"
             assert holder == {}
             retest.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SIP-0117 R4.4, R5.1: a remote operation in the outcome router and at patch acceptance
+# ---------------------------------------------------------------------------
+
+_OPERATION = {
+    "contract": "game.scenario_verification",
+    "mode": "play",
+    "role": "qa",
+    "skillset": "fixture-qa",
+    "skillset_digest": "digest-1",
+    "agent_id": "eve",
+}
+_SCENARIO = {"scenario_id": "open-the-map", "digest": "sha256:s", "assertions": ["opens", "closes"]}
+_OPERATION_TASK_ID = "task-run_001-m002-qa.run_remote_operation"
+
+
+def _row(assertion: str, status: str, reason: str = "") -> dict:
+    check = f"scenario:open-the-map:{assertion}"
+    row = {"check": check, "criterion_id": check, "status": status, "reason": reason}
+    if status == "skipped":
+        row["evidence_gap"] = True
+    return row
+
+
+def _records(content: str = "{}") -> dict:
+    return {
+        "name": "operation_assertions.json",
+        "content": content,
+        "type": "remote_operation_assertions",
+    }
+
+
+def _envelope():
+    from squadops.tasks.models import TaskEnvelope
+
+    return TaskEnvelope(
+        task_id=_OPERATION_TASK_ID,
+        agent_id="eve",
+        cycle_id="cyc_001",
+        pulse_id="p",
+        project_id="hello_squad",
+        task_type="qa.run_remote_operation",
+        correlation_id="corr",
+        causation_id=None,
+        trace_id="t",
+        span_id="s",
+        inputs={
+            "resolved_config": {},
+            "operation": _OPERATION,
+            "operation_scenario": _SCENARIO,
+            "implementation_artifacts": ["src/map.py"],
+            "acceptance_workspace_files": {"src/map.py": "def open_map():\n    return False\n"},
+            "workspace_revision_id": "rev_before",
+            "acceptance_criteria": [],
+        },
+        metadata={"role": "qa"},
+    )
+
+
+def _failed_result(*rows: dict, error: str = "scenario:open-the-map:opens: observed") -> TaskResult:
+    return TaskResult(
+        task_id=_OPERATION_TASK_ID,
+        status="FAILED",
+        outputs={
+            "summary": "[qa] 1 passed, 1 failed",
+            "role": "qa",
+            "validation_result": {"checks": list(rows)},
+            "artifacts": [_records(content='{"status": "completed", "run": "first"}')],
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+        },
+        error=error,
+    )
+
+
+FAILED = _failed_result(
+    _row("opens", "failed", "observed 'False', expected 'True'"), _row("closes", "passed")
+)
+REPAIR = [{"name": "src/map.py", "content": "def open_map():\n    return True\n"}]
+
+
+def _classify(executor, cycle, result):
+    return executor._classify_unhandled_outcome(
+        (result.outputs or {}).get("outcome_class"),
+        result,
+        _envelope(),
+        cycle,
+        {},
+        enriched_envelope=None,
+    )
+
+
+def test_an_executed_assertion_failure_goes_on_to_correction(executor, cycle):
+    assert _classify(executor, cycle, FAILED) is None
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        TaskResult(
+            task_id="t",
+            status="FAILED",
+            outputs={"summary": "s", "outcome_class": TaskOutcome.SEMANTIC_FAILURE},
+            error="skillset `fixture-qa` has changed since the cycle was created",
+        ),
+        _failed_result(_row("opens", "skipped", "operation_not_executed"), error="provider raised"),
+    ],
+    ids=["a supplier the deployment can't vouch for", "an operation that never ran"],
+)
+def test_a_failure_with_no_executed_assertion_ends_the_run_without_a_repair(
+    executor, cycle, result
+):
+    """Bug caught: the loop's default sending any failure of this type to a dev repair, so a
+    developer is asked to fix an application that was never run."""
+    with pytest.raises(_ExecutionError, match="no executed failure to repair"):
+        _classify(executor, cycle, result)
+
+
+def _accept_kwargs(cycle, carry):
+    return {
+        "run_id": "run_001",
+        "cycle": cycle,
+        "correction_attempts": 0,
+        "prior_outputs": {},
+        "all_artifact_refs": [],
+        "stored_artifacts": [],
+        "completed_task_ids": [],
+        "plan_delta_refs": [],
+        "profile": None,
+        "flow_run_id": None,
+        "repair_rejection_carry": carry,
+    }
+
+
+def _rerun_result(*rows, status="SUCCEEDED", error=None) -> TaskResult:
+    return TaskResult(
+        task_id="retest-run_001-00-s00-qa.run_remote_operation",
+        status=status,
+        outputs={
+            "summary": "[qa] 2 passed, 0 failed",
+            "validation_result": {"checks": list(rows)},
+            "artifacts": [_records(content='{"status": "completed", "run": "rerun"}')],
+        },
+        error=error,
+    )
+
+
+async def test_a_repair_is_accepted_when_the_rerun_executes_and_passes_every_assertion(
+    executor, cycle
+):
+    """Enters at ``_try_accept_patch``, as the executor's outcome router does. Bug caught: the
+    repair refused unheard because the operation's task carries no typed criterion, or
+    accepted with the failed run's rows and records still standing as the task's state."""
+    executor._correction_runner.reexecute_operation = AsyncMock(
+        return_value=_rerun_result(_row("opens", "passed"), _row("closes", "passed"))
+    )
+    holder: dict = {}
+
+    action = await executor._try_accept_patch(
+        _envelope(), FAILED, REPAIR, holder, **_accept_kwargs(cycle, {})
+    )
+
+    assert action == "accept_patch"
+    corrected = holder["patched_result"]
+    assert corrected.status == "SUCCEEDED" and corrected.error is None
+    checks = corrected.outputs["validation_result"]["checks"]
+    assert [(c["check"], c["status"]) for c in checks] == [
+        ("scenario:open-the-map:opens", "passed"),
+        ("scenario:open-the-map:closes", "passed"),
+    ]
+    stored = {a["name"]: a for a in corrected.outputs["artifacts"]}
+    assert stored["src/map.py"]["content"] == "def open_map():\n    return True\n"
+    assert '"run": "rerun"' in stored["operation_assertions.json"]["content"]
+    assert corrected.outputs["summary"] == "[qa] 2 passed, 0 failed"
+    # The re-run was handed the repaired file over the failed run's artifacts.
+    handed = executor._correction_runner.reexecute_operation.await_args.args[3]
+    assert {a["name"]: a["content"] for a in handed}["src/map.py"].endswith("return True\n")
+
+
+@pytest.mark.parametrize(
+    ("rerun", "why"),
+    [
+        (
+            _rerun_result(
+                _row("opens", "failed", "observed 'False', expected 'True'"),
+                _row("closes", "passed"),
+                status="FAILED",
+            ),
+            "the operation still fails on the repaired tree: scenario:open-the-map:opens",
+        ),
+        (
+            _rerun_result(
+                _row("opens", "skipped", "operation_not_executed"),
+                _row("closes", "skipped", "operation_not_executed"),
+            ),
+            "the operation's re-run did not execute, so the repair is unverified",
+        ),
+        (
+            _rerun_result(_row("opens", "passed"), _row("closes", "skipped", "missing")),
+            "the operation's re-run did not execute, so the repair is unverified: "
+            "scenario:open-the-map:closes: missing",
+        ),
+        (_rerun_result(error="no rows"), "the operation's re-run produced no assertion rows"),
+        (None, "the operation could not be re-run on the repaired tree"),
+    ],
+    ids=["still failing", "did not run", "one assertion unexecuted", "no rows", "not dispatched"],
+)
+async def test_a_repair_is_refused_unless_the_rerun_passes_whole_and_the_next_round_is_told_why(
+    executor, cycle, rerun, why
+):
+    """A repair is the claim that the scenario now holds. Bug caught: accepting it on a re-run
+    that executed nothing or only some assertions, and stamping the patch as verified."""
+    executor._correction_runner.reexecute_operation = AsyncMock(return_value=rerun)
+    holder: dict = {}
+    carry: dict = {}
+
+    action = await executor._try_accept_patch(
+        _envelope(), FAILED, REPAIR, holder, **_accept_kwargs(cycle, carry)
+    )
+
+    assert action == "continue"
+    assert "patched_result" not in holder
+    (recorded,) = carry[_envelope().task_id]
+    assert why in recorded

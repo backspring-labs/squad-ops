@@ -164,6 +164,12 @@ stores (contract 5), which imports only the standard library. A suite's markers
 (`squadops.scenarios.markers`), the step values the P2 sweep searches for and a proposal's goals are
 held back by.
 
+### `squadops.remote_execution`
+The engine-neutral models of a remote operation (SIP-0117): the request a handler makes for a
+capability contract in a verification mode, the provider's result, and the assertion records it
+is read from. Its port is `squadops.ports.remote_execution`; the transport and the providers are
+adapters'.
+
 ### `squadops.sandbox`
 The execution sandbox domain (SIP-0102): the service that builds and runs a delivered app in
 isolation, and its entrypoint (`squadops.sandbox.main`, a composition root).

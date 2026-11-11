@@ -96,6 +96,7 @@ from squadops.tasks.task_types import (
     authors_qa_suite,
     authors_source,
     fails_without_correction,
+    runs_an_operation,
 )
 
 logger = logging.getLogger(__name__)
@@ -351,6 +352,10 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
     TaskType.BUILDER_ASSEMBLE: [
         (TaskType.BUILDER_ASSEMBLE_REPAIR, "builder"),
     ],
+    # SIP-0117 R4.4: a remote operation authors nothing, so its failure is the application's,
+    # and the dev repair is its route for every locus. Stated here rather than left to the
+    # ``.get`` default below, which would give the same steps without saying why.
+    TaskType.QA_RUN_REMOTE_OPERATION: REPAIR_TASK_STEPS,
 }
 
 # #568: repair sequences reachable ONLY when the failure locus is the failed
@@ -1649,6 +1654,50 @@ def _plan_task_acceptance(
     return acceptance
 
 
+def _operation_for(cycle: Cycle, plan_task: Any) -> dict[str, str]:
+    """The contract a plan task names, with the skillset the cycle's record says supplies it
+    and that skillset's digest as recorded (SIP-0116 §10).
+
+    Raises when the record offers no such contract to the task's role, or holds no assignment
+    for its supplier. The plan checks refuse that plan before dispatch, so reaching here
+    without one is a defect to surface, never a supplier to guess.
+    """
+    record = cycle.skillset_record if isinstance(cycle.skillset_record, Mapping) else {}
+    offer = next(
+        (
+            row
+            for row in record.get("offered") or ()
+            if (row.get("task_type"), row.get("contract"), row.get("mode") or "", row.get("role"))
+            == (plan_task.task_type, plan_task.contract, plan_task.mode, plan_task.role)
+        ),
+        None,
+    )
+    assignment = next(
+        (
+            row
+            for row in record.get("assignment") or ()
+            if offer is not None
+            and (row.get("role"), row.get("skillset")) == (offer.get("role"), offer.get("skillset"))
+        ),
+        None,
+    )
+    if offer is None or assignment is None or not assignment.get("digest"):
+        raise CycleError(
+            f"Task {plan_task.task_index} names contract `{plan_task.contract}`"
+            + (f" in `{plan_task.mode}` mode" if plan_task.mode else "")
+            + f" for `{plan_task.role}`, and cycle {cycle.cycle_id}'s skillset record "
+            "holds no supplier for it"
+        )
+    return {
+        "contract": plan_task.contract,
+        "mode": plan_task.mode,
+        "role": plan_task.role,
+        "skillset": str(offer["skillset"]),
+        "skillset_digest": str(assignment["digest"]),
+        "agent_id": str(offer.get("agent_id") or ""),
+    }
+
+
 def _step_inputs(
     facts: _PlanFacts,
     *,
@@ -1699,8 +1748,14 @@ def _step_inputs(
         # own artifacts are the test files, so a no-drift correction must reach
         # past them to the dev source. Dev tasks already own their source
         # artifact, so omitting the key keeps their corrections byte-identical.
-        if authors_qa_suite(task_type):
+        # SIP-0117 R4.4: an operation authors nothing, so a failed assertion is repaired in
+        # the implementation it verified. The surface rides its envelope for the same reason.
+        if authors_qa_suite(task_type) or runs_an_operation(task_type):
             inputs["implementation_artifacts"] = implementation_artifacts
+        if plan_task.contract:
+            # SIP-0116 §6.1: the contract and mode the task names, and who supplies them by
+            # the cycle's record. The handler reads these; it never looks a supplier up.
+            inputs["operation"] = _operation_for(cycle, plan_task)
         acceptance = _plan_task_acceptance(task_type, plan_task, contract, interface_manifest)
         inputs["acceptance_criteria"] = acceptance
 
@@ -1789,6 +1844,16 @@ def generate_task_plan(
     _require_plan_for_instrumented_cycle(plan, has_build_steps, resolved_config)
     if plan is not None and has_build_steps:
         plan = _bind_plan_criteria(plan, contract)
+        # SIP-0116 §9, SIP-0117 R4.4: the dispatch-time net for the two plan checks that read
+        # the cycle's skillset record. The gates record a refusal first; this is the raising
+        # backstop, so a plan that reached dispatch another way still can't name a contract
+        # its squad doesn't supply.
+        offered_errors = plan.validate_against_offered(cycle.skillset_record)
+        offered_errors += plan.validate_operation_tasks()
+        if offered_errors:
+            raise CycleError(
+                "Plan validation failed (skillset coverage): " + "; ".join(offered_errors)
+            )
         steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
     # SIP-0109 §8: after everything that builds the candidate, never before the plan's body.
     steps = list(steps) + list(evaluation.steps)

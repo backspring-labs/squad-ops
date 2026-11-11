@@ -50,7 +50,13 @@ from squadops.stacks.scaffold import (
     scaffold_stack_for,
 )
 from squadops.tasks.base_set import BASE_SET_VERSION, base_plannable_task_types
-from squadops.tasks.task_types import TaskType, authors_qa_suite, plannable
+from squadops.tasks.task_types import (
+    TaskType,
+    authors_qa_suite,
+    authors_source,
+    plannable,
+    runs_an_operation,
+)
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_contract import VerificationContract
@@ -551,6 +557,33 @@ class ImplementationPlan:
                     f"isn't offered to this cycle. Its requirements name "
                     f"{_offered_listing(offered_rows)}"
                 )
+        return errors
+
+    def validate_operation_tasks(self) -> list[str]:
+        """SIP-0117 R4.4: a task that runs an operation authors nothing. Its artifacts are the
+        operation's evidence, which the handler names, so the task declares no expected
+        artifacts. A claim on a file here would be a claim on source by a step that writes
+        none, and on an increment it would be judged against a footprint it can't be in.
+        """
+        operations = [t for t in self.tasks if runs_an_operation(t.task_type)]
+        errors = [
+            f"Task {task.task_index}: `{task.task_type}` runs an operation and authors no "
+            f"file, so it declares no expected_artifacts (it lists "
+            f"{', '.join(task.expected_artifacts)})"
+            for task in operations
+            if task.expected_artifacts
+        ]
+        if operations and not any(
+            authors_source(t.task_type) and t.expected_artifacts for t in self.tasks
+        ):
+            # What the operation verifies is this plan's implementation, and a failed
+            # assertion is repaired there. With none, there is nothing to verify and no file a
+            # repair could be aimed at.
+            errors.append(
+                f"Task(s) {', '.join(str(t.task_index) for t in operations)}: the plan runs an "
+                "operation and no task authors source, so there is no implementation for it "
+                "to verify or for a repair to change"
+            )
         return errors
 
     def validate_build_config(self, resolved_config: dict) -> list[str]:

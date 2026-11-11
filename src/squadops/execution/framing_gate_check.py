@@ -221,6 +221,12 @@ class FramingGateCheck:
                             parsed_plan.validate_against_offered(cycle.skillset_record),
                         )
                     )
+                    # SIP-0117 R4.4: an operation task authors nothing. On this seam too.
+                    errors.extend(
+                        classifier.collect(
+                            "validate_operation_tasks", parsed_plan.validate_operation_tasks()
+                        )
+                    )
                     # Roll 15: a plan whose builder task under-covers the build
                     # profile's required_files converges its whole suite and then
                     # dies at the #291 completion gate — which has no repair path
