@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from squadops.ports.memory.recall import FailurePatternRecallPort
     from squadops.ports.outcomes import ProposalEvidencePort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
+    from squadops.ports.remote_execution import RemoteExecutionPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
@@ -180,6 +181,10 @@ def create_flow_executor(
     # SIP-0115 §5.2: required, so the root says where a goal-set Campaign's proposal reads its
     # goal set. ``None``: nowhere, and such a proposal's run fails naming it.
     goal_set_registry: GoalSetRegistryPort | None,
+    # SIP-0117 (#3053, #3044): required, so the root says how the runtime itself reaches a worker
+    # (a scenario's baseline before development, its readings at delivery). ``None``: no way,
+    # and each reads not executed.
+    remote_execution: RemoteExecutionPort | None,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -235,4 +240,5 @@ def create_flow_executor(
         sandbox=sandbox,
         route_renderer=route_renderer,
         goal_set_registry=goal_set_registry,
+        remote_execution=remote_execution,
     )

@@ -7,6 +7,8 @@ only this proves the runtime hands them one, on the cycle registry's selector.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi import FastAPI
 
@@ -58,3 +60,28 @@ def test_the_runtime_serves_the_worker_routes_and_the_operators_reads():
         ("GET", "/api/v1/workers"),
         ("GET", "/api/v1/workers/{worker_id}"),
     }
+
+
+async def test_the_runtimes_own_remote_execution_queues_into_the_registry_the_routes_serve():
+    """#3053, #3044. Bug caught: the runtime's port built on a registry of its own, so its asks
+    never reach a worker claiming from the routes; or a deploy that runs no remote execution
+    (``none``) still queueing work for nobody."""
+    from squadops.config.schema import RemoteExecutionConfig
+
+    registry = runtime_main._worker_registry("memory", None)
+    session = await registry.register(registration())
+    off = runtime_main._runtime_remote_execution(RemoteExecutionConfig(provider="none"), registry)
+    on = runtime_main._runtime_remote_execution(
+        RemoteExecutionConfig(provider="runtime_api", wait_seconds=1, max_attempts=1), registry
+    )
+    asked = request()
+
+    waiting = asyncio.create_task(on.run_operation(asked))
+    await asyncio.sleep(0)
+    claim = await registry.claim(session.session_id)
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+
+    assert off is None
+    assert claim is not None and claim.request == asked

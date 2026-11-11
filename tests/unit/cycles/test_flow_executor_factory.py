@@ -36,6 +36,8 @@ _UNWIRED = {
     "route_renderer": None,
     # SIP-0115 §5.2: where a goal-set Campaign's proposal reads its goal set; ``None``, nowhere.
     "goal_set_registry": None,
+    # SIP-0117 (#3053, #3044): how the runtime reaches a worker; ``None``, readings not executed.
+    "remote_execution": None,
 }
 _REQUIRED = (*_UNWIRED, "task_timeout")
 

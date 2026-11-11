@@ -237,6 +237,7 @@ if TYPE_CHECKING:
     from squadops.ports.outcomes import ProposalEvidencePort
     from squadops.ports.projects.goal_sets import GoalSetRegistryPort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
+    from squadops.ports.remote_execution import RemoteExecutionPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
@@ -905,6 +906,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         source_repository: SourceRepositoryPort | None = None,
         sandbox: ExecutionSandboxPort | None = None,
         route_renderer: RouteRenderer | None = None,
+        # SIP-0117 (#3053, #3044): how the runtime itself reaches a worker. ``None``: no remote
+        # execution is bound here, and a scenario's reading is not executed.
+        remote_execution: RemoteExecutionPort | None = None,
         # SIP-0115 §5.2: the goal sets a goal-set Campaign's proposal reads. Required at the
         # factory, the roots' seam. ``None``: such a proposal's run fails, naming it.
         goal_set_registry: GoalSetRegistryPort | None = None,
@@ -972,6 +976,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # module never imports the held-out scenarios' package (SIP-0113 §4.1). ``None``: none, so
         # each route a profile names is read ``blocked_unverified``.
         self._route_renderer = route_renderer
+        # SIP-0117 (#3053, #3044): the runtime's own way to a worker, straight into the registry
+        # the worker routes serve. A scenario criterion's baseline is read on it before
+        # development, and its readings at an increment's delivery.
+        self._remote_execution = remote_execution
         self._cancelled: set[str] = set()
         # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
         # injected collaborator with a default composed from this executor's
