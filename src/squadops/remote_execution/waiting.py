@@ -77,8 +77,9 @@ async def await_result(
         return ended(
             request,
             OperationStatus.INTERRUPTED,
-            f"{waited}, and the runtime API can't be reached to stop operation "
-            f"{operation_id}: whether it ran is unknown ({e})",
+            # The exception's own words name what couldn't be reached.
+            f"{waited}, and operation {operation_id} couldn't be asked to stop: whether it ran "
+            f"is unknown ({e})",
         )
     grace = reading.lease_seconds
     grace_ends = clock() + grace
