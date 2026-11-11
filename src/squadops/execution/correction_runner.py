@@ -369,6 +369,18 @@ class CorrectionProtocolResult:
     #: refused for them (``REPAIR_REMOVAL_REFUSED_MARKER``); at a source-backed run's end of plan
     #: they are stored with the repair and judged by the next delivery (SIP-0112 H.20, H.23).
     repair_deletions: tuple[str, ...] = ()
+    #: #3020: the round's repair steps that FAILED in a way a retry repeats (``semantic_failure``),
+    #: each naming its task, its error and its outcome. Such a round is spent: the repair failed,
+    #: it did not emit nothing.
+    repair_failed_spent: tuple[dict[str, str | None], ...] = ()
+    #: #3020: the round's other failed repair steps (an unclassified failure among them). Their
+    #: round is refunded as an empty one is, since a correction step is dispatched once, and the
+    #: refund and the next round's carry name each step and its error.
+    repair_failed_refundable: tuple[dict[str, str | None], ...] = ()
+    #: #3020: the decision this round acted on, as its plan delta recorded it: ``classification``,
+    #: ``rationale`` and ``artifact_id``. A rewind or abort ends the run, and its failure reason
+    #: names these instead of the bare path. Empty only where no delta was banked.
+    decision_record: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1161,7 +1173,7 @@ class CorrectionRunner:
             round_index=correction_attempts,
         )
 
-        await self._bank_delta_and_check_termination(
+        decision_record = await self._bank_delta_and_check_termination(
             diagnosis,
             correction_path,
             envelope,
@@ -1205,6 +1217,7 @@ class CorrectionRunner:
             dispute_carry[envelope.task_id] = list(repair.disputes)
 
         emission_empty = self._correction_repair.judge_emission(repair, correction_attempts)
+        repair_failed_spent, repair_failed_refundable = self._correction_repair.failed_steps(repair)
         repair_dropped = self._correction_repair.dropped_entirely(repair)
         repair_subject_dropped = self._correction_repair.subject_refused(repair)
 
@@ -1228,6 +1241,9 @@ class CorrectionRunner:
                 "repair_dropped": [d["path"] for d in repair_dropped],
                 # #2664: and a round whose qa repair dropped a failing assertion's subject.
                 "repair_subject_dropped": [str(d.get("slot_id")) for d in repair_subject_dropped],
+                # #3020: and a round whose repair step failed, by what a retry would do.
+                "repair_failed_spent": [s.get("task_id") for s in repair_failed_spent],
+                "repair_failed_refundable": [s.get("task_id") for s in repair_failed_refundable],
             },
         )
 
@@ -1243,6 +1259,9 @@ class CorrectionRunner:
             repair_dropped=repair_dropped,
             repair_subject_dropped=repair_subject_dropped,
             repair_deletions=tuple(repair.deletions),
+            repair_failed_spent=repair_failed_spent,
+            repair_failed_refundable=repair_failed_refundable,
+            decision_record=decision_record,
         )
 
     async def _diagnose(
@@ -1626,8 +1645,12 @@ class CorrectionRunner:
         signature_state: dict[str, Any] | None,
         repair_rejections: list[str] | None,
         ledger: RunLedger | None = None,
-    ) -> None:
+    ) -> dict[str, str]:
         """Step 3 — store the plan delta, then the progress-aware termination check.
+
+        Returns the decision as the delta records it (#3020): its ``classification``, its
+        ``rationale`` and the delta's ``artifact_id``, for the failure reason of a path that
+        ends the run.
 
         Order is the contract (#435, 1.5 A4): after the delta is stored, so the decision
         evidence survives the termination, and before any repair dispatch, so the maximum
@@ -1717,6 +1740,11 @@ class CorrectionRunner:
                 all_artifact_refs=all_artifact_refs,
                 repair_rejections=repair_rejections,
             )
+        return {
+            "classification": str(delta.failure_classification),
+            "rationale": str(delta.decision_rationale),
+            "artifact_id": delta_ref.artifact_id,
+        }
 
     # Artifact types a qa.test task emits *about* its run, not *into* its
     # workspace — excluded from re-execution so the repaired suite matches

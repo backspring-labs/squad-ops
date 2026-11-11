@@ -64,6 +64,7 @@ from squadops.cycles.correction_signature import (
     REPAIR_DROPPED_MARKER,
     REPAIR_EMPTY_MARKER,
     REPAIR_REMOVAL_REFUSED_MARKER,
+    REPAIR_STEP_FAILED_MARKER,
     REPAIR_SUBJECT_DROPPED_MARKER,
     REPAIR_SUITE_PASSES_ON_HEAD_MARKER,
 )
@@ -135,8 +136,8 @@ from squadops.cycles.verification_normalize import has_blocking_failure, normali
 from squadops.cycles.wrapup_models import verification_evidence_summary
 from squadops.events.types import EventType
 from squadops.execution.binding_holds import BindingFill, BindingHolds
-from squadops.execution.correction_repair import CorrectionRepair
-from squadops.execution.correction_runner import CorrectionRunner
+from squadops.execution.correction_repair import CorrectionRepair, describe_failed_steps
+from squadops.execution.correction_runner import CorrectionProtocolResult, CorrectionRunner
 from squadops.execution.criterion_head_check import (
     check_criteria_on_head,
     refusal_entry,
@@ -289,6 +290,40 @@ def record_absent_emission(ledger: RunLedger, task_result: Any, envelope: TaskEn
             attempt=int((envelope.inputs or {}).get("prior_attempts") or 0) + 1,
         )
     )
+
+
+def _what_the_empty_round_was(protocol: CorrectionProtocolResult) -> str:
+    """What a refunded round produced, for its log line (#998, #3020): a repair step that failed
+    with no classification saying a retry repeats it, named with its error, or an emission with no
+    content, named by its signatures. Never the second for the first."""
+    if protocol.repair_failed_refundable:
+        return (
+            f"{REPAIR_STEP_FAILED_MARKER} ({describe_failed_steps(protocol.repair_failed_refundable)})"
+            " with no classification saying a retry repeats it"
+        )
+    signatures = ", ".join(protocol.empty_emission_signatures) or "signature unreported"
+    return f"the repair emitted no content ({signatures})"
+
+
+def _what_ended_the_run(protocol: CorrectionProtocolResult, attempt: int, max_attempts: int) -> str:
+    """The rest of a rewind's or an abort's failure reason (#3020): the round it was decided on,
+    the attempts it leaves unspent, the classification it acted on, the first sentence of its
+    rationale, and the plan delta that records it. Both paths end the run, and the bare path said
+    none of this. A round that banked no delta says so."""
+    unspent = max(max_attempts - attempt, 0)
+    clause = (
+        f": the correction decision ended the run at round {attempt} of {max_attempts}, "
+        f"leaving {unspent} attempt{'' if unspent == 1 else 's'} unspent"
+    )
+    record = protocol.decision_record
+    if not record:
+        return clause + "; no plan delta recorded the decision"
+    rationale = str(record.get("rationale") or "").strip()
+    first = rationale.split(". ")[0].rstrip(".") if rationale else ""
+    clause += f"; classification {record.get('classification') or 'unrecorded'}"
+    if first:
+        clause += f'; "{first}"'
+    return clause + f" (see {record.get('artifact_id')})"
 
 
 def _carry_retake_suite(
@@ -4133,11 +4168,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         )
                     )
                 logger.warning(
-                    "correction attempt %d refunded (round s%02d): the repair emitted no content "
-                    "(%s), so the round is re-taken rather than spent (refund %d of %d, #1053/#998)",
+                    "correction attempt %d refunded (round s%02d): %s, so the round is re-taken "
+                    "rather than spent (refund %d of %d, #1053/#998/#3020)",
                     attempt,
                     round_seq,
-                    ", ".join(protocol.empty_emission_signatures) or "signature unreported",
+                    _what_the_empty_round_was(protocol),
                     correction_counter["empty_refunds"],
                     max_corrections,
                 )
@@ -4163,12 +4198,73 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             _record_repair_rejection(
                 repair_rejection_carry,
                 envelope.task_id,
-                f"correction attempt {attempt}: {REPAIR_EMPTY_MARKER} "
+                (
+                    f"correction attempt {attempt}: {REPAIR_STEP_FAILED_MARKER} ("
+                    + describe_failed_steps(protocol.repair_failed_refundable)
+                    + ") — nothing was applied, verified or retested"
+                )
+                if protocol.repair_failed_refundable
+                else f"correction attempt {attempt}: {REPAIR_EMPTY_MARKER} "
                 f"({', '.join(protocol.empty_emission_signatures) or 'signature unreported'})"
                 " — nothing was applied, verified or retested",
             )
             _carry_retake_suite(result, envelope, enriched_envelope)
             return "continue"
+        if protocol.repair_failed_spent and correction_path == "patch":
+            # #3020: a repair step failed in a way a retry repeats (a missing scripted answer, for
+            # one). It is a repair that failed, not an absent one, so the round is spent, as a
+            # refused patch's is, and the next one is told the step and its error.
+            logger.warning(
+                "correction attempt %d spent (round s%02d): %s (%s), and a retry repeats it (#3020)",
+                attempt,
+                round_seq,
+                REPAIR_STEP_FAILED_MARKER,
+                describe_failed_steps(protocol.repair_failed_spent),
+            )
+            # A mixed round: another step emitted files. The round was one attempt at the failure,
+            # so they are not applied either (#2664's reading of a refusal beside an emission),
+            # and the entry says which.
+            discarded = sorted(
+                str(a.get("name")) for a in protocol.repair_artifacts if isinstance(a, dict)
+            )
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: {REPAIR_STEP_FAILED_MARKER} ("
+                + describe_failed_steps(protocol.repair_failed_spent)
+                + ") — nothing was applied, verified or retested, and a retry repeats it"
+                + (
+                    "; the files the round's other steps emitted were not applied either ("
+                    + ", ".join(discarded)
+                    + "): the round was one attempt at the failure"
+                    if discarded
+                    else ""
+                ),
+            )
+            _carry_retake_suite(result, envelope, enriched_envelope)
+            return "continue"
+        if protocol.repair_failed_refundable and not protocol.emission_empty:
+            # #3020: a mixed round. A step failed with no classification saying a retry repeats
+            # it, and another step emitted files, which go on to verification as the round's
+            # repair. The failed step is named in the log and told to the next round. The entry
+            # does not open with the marker: these files may be applied, so the plan_defect rule
+            # must not read the round as unapplied (``repair_not_applied_in_round``).
+            logger.warning(
+                "correction attempt %d (round s%02d): beside the files its other steps emitted, "
+                "%s (%s); those files are verified as the round's repair (#3020)",
+                attempt,
+                round_seq,
+                REPAIR_STEP_FAILED_MARKER,
+                describe_failed_steps(protocol.repair_failed_refundable),
+            )
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: beside the files its other steps emitted, "
+                f"{REPAIR_STEP_FAILED_MARKER} ("
+                + describe_failed_steps(protocol.repair_failed_refundable)
+                + ") — those files are verified as the round's repair, without that step's part",
+            )
         if protocol.repair_dropped and correction_path == "patch":
             # #2521: every file the repair emitted was one its grant excludes, so nothing reached
             # the tree. The round is spent — it was not refunded above, since the repair emitted
@@ -4216,9 +4312,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if correction_path == "abort":
             raise _ExecutionError(
                 f"Correction protocol decided to abort after {envelope.task_type} failure"
+                + _what_ended_the_run(protocol, attempt, max_corrections)
             )
         elif correction_path == "rewind":
-            raise _ExecutionError(f"Rewinding to checkpoint after {envelope.task_type} failure")
+            raise _ExecutionError(
+                f"Rewinding to checkpoint after {envelope.task_type} failure"
+                + _what_ended_the_run(protocol, attempt, max_corrections)
+            )
         elif correction_path == "patch":
             # #374/#389 (pure-behavioral): the verdict is the re-executed check,
             # never an LLM judgment (the validate_repair step was removed, #556).

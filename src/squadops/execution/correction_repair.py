@@ -20,7 +20,7 @@ is the inconsistency Scoped Code Revision exists to remove.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -36,6 +36,7 @@ from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPE
 from squadops.cycles.acceptance_check_spec import is_frontend_source
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
+from squadops.cycles.correction_signature import REPAIR_STEP_FAILED_MARKER
 from squadops.cycles.deletions import DELETIONS_KEY, DELETIONS_REFUSED_KEY
 from squadops.cycles.failure_evidence import (
     OWN_ARTIFACT_FROM_TESTS_PASS_ROW,
@@ -53,6 +54,7 @@ from squadops.cycles.failure_evidence import (
 from squadops.cycles.patch_verification import rebase_artifact_paths
 from squadops.cycles.scaffold_enforcement import name_producer
 from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT, CLASS_FILL
+from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import own_artifact_role, repair_steps_for
 from squadops.cycles.verification_contract import Probe
 from squadops.cycles.write_authorization import normalize_ws_path
@@ -60,7 +62,7 @@ from squadops.execution.binding_holds import supplied_or_held
 from squadops.execution.correction_ids import correction_task_id
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
-from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import authors_qa_suite, runs_an_operation
 
 if TYPE_CHECKING:
@@ -1015,6 +1017,10 @@ class RepairOutcome:
     #: #2612: the product files the round's repair steps removed, each accepted by its handler
     #: against the view and the repairing step's grant. Not a file: the overlay never carries one.
     deletions: list[str] = field(default_factory=list)
+    #: #3020: each repair step whose task FAILED, naming its task type, its task id, its error and
+    #: its ``outcome_class`` as the failed result stated it (``None`` when it stated none). Such a
+    #: step emitted no file, but it is not an empty emission: it is read by :meth:`failed_steps`.
+    failed_steps: list[dict[str, str | None]] = field(default_factory=list)
 
 
 class CorrectionRepair:
@@ -1099,6 +1105,7 @@ class CorrectionRepair:
         repair_dropped: list[dict[str, str]] = []
         repair_subject_dropped: list[dict[str, Any]] = []
         repair_deletions: list[str] = []
+        repair_failed_steps: list[dict[str, str | None]] = []
         anchored_edits_refused = False
         repair_steps_ran = False
         empty_signatures: list[str] = []
@@ -1279,6 +1286,9 @@ class CorrectionRepair:
                 repair_subject_dropped.extend(_slot_subject_dropped(repair_result))
                 # #2612: a removal rides beside the files, and a refused one is a write the
                 # grant or the view excluded: the round is spent, and the next one told why.
+                # #3020: a step whose task failed is named, never read as an empty emission.
+                if repair_result.status != TaskResultStatus.SUCCEEDED:
+                    repair_failed_steps.append(_failed_step(repair_envelope, repair_result))
                 removed, refused = _removals(repair_result, task_type)
                 repair_deletions.extend(p for p in removed if p not in repair_deletions)
                 repair_dropped.extend(refused)
@@ -1336,6 +1346,7 @@ class CorrectionRepair:
             dropped=repair_dropped,
             subject_dropped=repair_subject_dropped,
             deletions=repair_deletions,
+            failed_steps=repair_failed_steps,
         )
 
     @staticmethod
@@ -1369,6 +1380,26 @@ class CorrectionRepair:
             return ()
         return tuple(repair.dropped)
 
+    @staticmethod
+    def failed_steps(
+        repair: RepairOutcome,
+    ) -> tuple[tuple[dict[str, str | None], ...], tuple[dict[str, str | None], ...]]:
+        """The round's failed repair steps, split by what a retry would do (#3020).
+
+        Returns ``(spent, refundable)``. A step whose failure says a retry repeats it
+        (``outcome_class`` ``semantic_failure``: a missing scripted answer, for one) spends the
+        round, as a refused patch does. Every other failed step, an unclassified one included, is
+        refundable: a correction step is dispatched once, so the refund is its only retry. Each
+        split is explicit, and neither reading is taken for a failure that stated nothing.
+        """
+        if not repair.steps_ran:
+            return (), ()
+        spent = tuple(
+            s for s in repair.failed_steps if s.get("outcome_class") == TaskOutcome.SEMANTIC_FAILURE
+        )
+        refundable = tuple(s for s in repair.failed_steps if s not in spent)
+        return spent, refundable
+
     def judge_emission(self, repair: RepairOutcome, correction_attempts: int) -> bool:
         """Step 5 — did the repair emit a *file*?
 
@@ -1395,15 +1426,27 @@ class CorrectionRepair:
         # refund re-took the round unchanged until the budget was spent (cyc_0df8d7215ef2).
         # #2664: and so is a repair whose merge refused a slot revision for dropping its subject.
         # #2612: and a repair whose one act was a removal emitted one.
+        # #3020: and a step that failed in a way a retry repeats is a repair that failed. A failed
+        # step with any other classification stays refundable (a correction step is dispatched
+        # once, so the refund is its only retry), and is named below, never as "no content".
         emission_empty = (
             repair_steps_ran
             and not repair.anchored_edits_refused
             and not repair.dropped
             and not repair.subject_dropped
             and not repair.deletions
+            and not self.failed_steps(repair)[0]
             and not _emitted_content(repair_artifacts)
         )
-        if emission_empty:
+        if emission_empty and repair.failed_steps:
+            logger.warning(
+                "correction: %s on attempt %d (%s) with no classification saying a retry "
+                "repeats it — read as possibly transient, so its round may be refunded (#3020)",
+                REPAIR_STEP_FAILED_MARKER,
+                correction_attempts,
+                describe_failed_steps(repair.failed_steps),
+            )
+        elif emission_empty:
             logger.warning(
                 "correction: repair emitted no content on attempt %d (%d artifact(s), all "
                 "empty; signature %s) — the round produced nothing to verify (#1053, #998)",
@@ -1412,3 +1455,24 @@ class CorrectionRepair:
                 ", ".join(empty_signatures) or "unreported",
             )
         return emission_empty
+
+
+def _failed_step(envelope: TaskEnvelope, result: TaskResult) -> dict[str, str | None]:
+    """A failed repair step as the round records it (#3020): its task, its error, and the
+    ``outcome_class`` its result stated, or ``None`` when it stated none."""
+    outcome = (result.outputs or {}).get("outcome_class")
+    return {
+        "task_type": envelope.task_type,
+        "task_id": envelope.task_id,
+        "error": result.error or "the failed result recorded no error",
+        "outcome_class": str(outcome) if outcome is not None else None,
+    }
+
+
+def describe_failed_steps(steps: Sequence[Mapping[str, str | None]]) -> str:
+    """The failed steps, one clause each, for a log line and the rejection carry (#3020)."""
+    return "; ".join(
+        f"{s.get('task_type')} {s.get('task_id')}: {s.get('error')} "
+        f"(outcome {s.get('outcome_class') or 'unclassified'})"
+        for s in steps
+    )
