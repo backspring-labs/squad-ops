@@ -422,6 +422,23 @@ def _branch_rebase(state, *, campaigns, projects, vault, creation) -> BranchReba
     )
 
 
+def _runtime_remote_execution(config, registry: WorkerRegistry):
+    """SIP-0117 (#3053, #3044): how the runtime itself reaches a worker: straight into the
+    registry the worker routes serve, never back through its own API. ``none`` binds nothing,
+    as it does for an agent, and each reading is not executed."""
+    from datetime import timedelta
+
+    from adapters.remote_execution.factory import create_runtime_remote_execution
+
+    return create_runtime_remote_execution(
+        config.provider,
+        registry=registry,
+        origin={"requester": "runtime-api"},
+        wait=timedelta(seconds=config.wait_seconds),
+        max_attempts=config.max_attempts,
+    )
+
+
 def _worker_registry(provider: str, pool) -> WorkerRegistry:
     """SIP-0117 R5.4: the worker registry, beside the cycles whose operations it queues and on
     their selector. In Postgres its leases outlive this process."""
@@ -771,6 +788,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # and the sandbox its candidate is verified in.
         source_repository=state.source_repository,
         sandbox=sandbox_client,
+        # SIP-0117 (#3053, #3044): the runtime's own way to a worker, on the registry above.
+        remote_execution=_runtime_remote_execution(config.remote_execution, worker_registry),
         # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
         # started from its declaration, by the same runner the cycle-end hook evaluates with.
         route_renderer=DeclaredStartRoutes(scenario_runner),
