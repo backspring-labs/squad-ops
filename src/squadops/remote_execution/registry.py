@@ -39,6 +39,7 @@ from squadops.remote_execution.workers import (
     SendConflict,
     UnknownOperation,
     UnknownSession,
+    WorkerReading,
     WorkerRegistration,
     WorkerSession,
 )
@@ -52,6 +53,9 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+#: How many of a worker's refused results an operator's reading shows (#3047).
+RECENT_REFUSALS = 10
 
 
 def _utc_now() -> datetime:
@@ -290,6 +294,27 @@ class WorkerRegistry:
     async def refusals(self, operation_id: str) -> list[RecordedRefusal]:
         async with self._store.exclusive() as tx:
             return await tx.refusals(operation_id)
+
+    async def readings(self, *, refusals: int = RECENT_REFUSALS) -> list[WorkerReading]:
+        """Every live session as an operator reads it (#3047), oldest registration first. As
+        ``operation`` does, a lease that ran out is ended first, so an operation is never shown
+        held by a worker that stopped renewing it."""
+        now = self._clock()
+        async with self._store.exclusive() as tx:
+            await self._end_lapsed_attempts(tx, now)
+            claimed = await tx.claimed_operations()
+            readings = []
+            for session in await tx.live_sessions():
+                held = tuple(o for o in claimed if o.session_id == session.session_id)
+                readings.append(
+                    WorkerReading(
+                        session,
+                        leasing.health(session, now),
+                        held,
+                        tuple(await tx.refusals_of(session.worker_id, refusals)),
+                    )
+                )
+            return readings
 
     # ------------------------------------------------------------------ within a transaction
 

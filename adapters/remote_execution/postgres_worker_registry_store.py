@@ -220,14 +220,18 @@ class _PostgresTransaction(WorkerRegistryTransaction):
             "FROM remote_operation_refusals WHERE operation_id = $1 ORDER BY refusal_id",
             operation_id,
         )
-        return [
-            RecordedRefusal(
-                Fence(row["operation_id"], row["attempt"], row["session_id"], row["lease_id"]),
-                FenceRefusal(row["refusal"]),
-                row["received_at"],
-            )
-            for row in rows
-        ]
+        return [_refusal(row) for row in rows]
+
+    async def refusals_of(self, worker_id: str, limit: int) -> list[RecordedRefusal]:
+        rows = await self._conn.fetch(
+            "SELECT r.operation_id, r.attempt, r.session_id, r.lease_id, r.refusal, "
+            "r.received_at FROM remote_operation_refusals r "
+            "JOIN remote_worker_sessions s ON s.session_id = r.session_id "
+            "WHERE s.worker_id = $1 ORDER BY r.refusal_id DESC LIMIT $2",
+            worker_id,
+            limit,
+        )
+        return [_refusal(row) for row in rows]
 
 
 def _session(row: asyncpg.Record) -> WorkerSession:
@@ -274,4 +278,12 @@ def _attempt(row: asyncpg.Record) -> Attempt:
         claimed_at=row["claimed_at"],
         ended_at=row["ended_at"],
         outcome=AttemptOutcome(row["outcome"]) if row["outcome"] is not None else None,
+    )
+
+
+def _refusal(row: asyncpg.Record) -> RecordedRefusal:
+    return RecordedRefusal(
+        Fence(row["operation_id"], row["attempt"], row["session_id"], row["lease_id"]),
+        FenceRefusal(row["refusal"]),
+        row["received_at"],
     )

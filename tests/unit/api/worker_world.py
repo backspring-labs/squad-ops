@@ -14,6 +14,7 @@ from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.remote_operations import router as remote_operations_router
+from squadops.api.routes.worker_readings import router as readings_router
 from squadops.api.routes.workers import router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.remote_execution.registry import WorkerRegistry
@@ -70,6 +71,7 @@ class World:
         app.add_middleware(InjectIdentity)
         app.include_router(router)
         app.include_router(remote_operations_router)
+        app.include_router(readings_router)
         register_domain_error_handlers(app)
         app.state.worker_registry = self.registry if registry else None
         self.sends = CurrentSends()

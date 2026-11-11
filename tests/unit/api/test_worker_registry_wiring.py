@@ -38,7 +38,7 @@ def test_the_root_never_falls_back_to_memory(provider, message):
         runtime_main._worker_registry(provider, None)
 
 
-def test_the_runtime_serves_the_four_worker_routes():
+def test_the_runtime_serves_the_worker_routes_and_the_operators_reads():
     app = FastAPI()
     runtime_main._include_routers(app)
 
@@ -54,4 +54,7 @@ def test_the_runtime_serves_the_four_worker_routes():
         ("POST", "/api/v1/workers/sessions/{session_id}/heartbeats"),
         ("POST", "/api/v1/workers/sessions/{session_id}/claims"),
         ("POST", "/api/v1/workers/sessions/{session_id}/results"),
+        # #3047: the registry, as an operator reads it
+        ("GET", "/api/v1/workers"),
+        ("GET", "/api/v1/workers/{worker_id}"),
     }

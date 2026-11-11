@@ -40,6 +40,7 @@ from squadops.cli.commands.request_profiles import app as request_profiles_app
 from squadops.cli.commands.runs import app as runs_app
 from squadops.cli.commands.scenarios import app as scenarios_app
 from squadops.cli.commands.snapshots import app as snapshots_app
+from squadops.cli.commands.workers import app as workers_app
 
 app = typer.Typer(
     name="squadops",
@@ -114,3 +115,4 @@ app.add_typer(lessons_app, name="lessons")  # SIP-0110 §0.6: Cross-Cycle Memory
 app.add_typer(snapshots_app, name="snapshots")  # Appendix A §3.7: a unit's snapshot, re-bound
 app.add_typer(instructions_app, name="instructions")  # Appendix A §3.5: task instructions
 app.add_typer(scenarios_app, name="scenarios")  # SIP-0113 §4.1: held-out scenario suites
+app.add_typer(workers_app, name="workers")  # #3047: the worker registry, read
