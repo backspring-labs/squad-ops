@@ -9,18 +9,12 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
-from datetime import UTC, datetime
 
 import pytest
 
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
-from squadops.capabilities.capability_contracts import (
-    CapabilityContractDeclaration,
-    VerificationMode,
-)
-from squadops.capabilities.skillsets import Skillset, SkillsetCapability, skill_files_digest
+from squadops.capabilities.skillsets import skill_files_digest
 from squadops.core.hashing import canonical_json
-from squadops.cycles.models import AgentProfileEntry, SquadProfile
 from squadops.cycles.skillset_content import (
     SKILLSET_CONTENT_ARTIFACT_TYPE,
     SkillsetContentError,
@@ -30,143 +24,29 @@ from squadops.cycles.skillset_content import (
     skills_for,
 )
 from squadops.cycles.skillset_record import skillset_record_and_content
-from squadops.stacks import development_profiles
-from squadops.stacks.requirements import (
-    ContractNeed,
-    PlatformTarget,
-    ResponsibilityRequirement,
-    SkillsetRequirement,
+from tests.unit.cycles.skillset_fixture import (
+    CONTRACTS,
+    DEV,
+    LOADER,
+    PLAY,
+    PROFILE,
+    SHARED,
+    built,
+    requiring_config,
+    skillset,
 )
-from squadops.tasks.task_types import TaskType
+from tests.unit.cycles.skillset_fixture import catalog as fixture_catalog
 
 pytestmark = [pytest.mark.domain_orchestration]
-
-NOW = datetime(2026, 11, 10, tzinfo=UTC)
-LOADER = {"SKILL.md": "---\nname: test-loader\n---\nWrite specs.\n", "loader.luau": "return {}\n"}
-PLAY = {"SKILL.md": "---\nname: play-scenario\n---\nPlay it.\n"}
-DEV = {"SKILL.md": "---\nname: luau\n---\nStrict mode.\n"}
-SHARED = {"SKILL.md": "---\nname: conventions\n---\nNames.\n"}
-
-CONTRACTS = {
-    "fixture.unit_tests": CapabilityContractDeclaration(
-        "fixture.unit_tests", TaskType.QA_TEST, "per test", (VerificationMode.HEADLESS,)
-    ),
-    "fixture.scenario": CapabilityContractDeclaration(
-        "fixture.scenario",
-        TaskType.QA_RUN_REMOTE_OPERATION,
-        "per assertion",
-        (VerificationMode.PLAY,),
-    ),
-    "fixture.suite_review": CapabilityContractDeclaration(
-        "fixture.suite_review", TaskType.QA_TEST, "per test", (VerificationMode.HEADLESS,)
-    ),
-    "fixture.implementation": CapabilityContractDeclaration(
-        "fixture.implementation", TaskType.DEVELOPMENT_DEVELOP, "source", ()
-    ),
-}
-
-
-def _skillset(skillset_id, role, capabilities, files_by_skill) -> Skillset:
-    digests = {name: skill_files_digest(files) for name, files in files_by_skill.items()}
-    return Skillset(
-        id=skillset_id,
-        version=2,
-        description="fixture",
-        roles=(role,),
-        platform_id="fixture",
-        platform_variants=("local",),
-        prerequisites=(),
-        capabilities=capabilities,
-        skill_digests=digests,
-        digest=f"digest-of-{skillset_id}",
-        skill_files=files_by_skill,
-    )
-
-
-def _catalog() -> dict[str, Skillset]:
-    return {
-        "fixture-qa": _skillset(
-            "fixture-qa",
-            "qa",
-            (
-                SkillsetCapability(
-                    "fixture.unit_tests",
-                    (VerificationMode.HEADLESS,),
-                    ("test-loader", "shared/conventions"),
-                ),
-                SkillsetCapability(
-                    "fixture.scenario", (VerificationMode.PLAY,), ("play-scenario",)
-                ),
-                # A capability of the skillset this cycle's work doesn't name.
-                SkillsetCapability(
-                    "fixture.suite_review", (VerificationMode.HEADLESS,), ("shared/conventions",)
-                ),
-            ),
-            {"test-loader": LOADER, "play-scenario": PLAY, "shared/conventions": SHARED},
-        ),
-        "fixture-dev": _skillset(
-            "fixture-dev",
-            "dev",
-            (SkillsetCapability("fixture.implementation", (), ("luau", "shared/conventions")),),
-            {"luau": DEV, "shared/conventions": SHARED},
-        ),
-        # Carried by an agent, required by nothing.
-        "fixture-web": _skillset(
-            "fixture-web",
-            "qa",
-            (SkillsetCapability("fixture.unit_tests", (VerificationMode.HEADLESS,), ("web",)),),
-            {"web": {"SKILL.md": "---\nname: web\n---\nPlaywright.\n"}},
-        ),
-    }
-
-
-PROFILE = SquadProfile(
-    profile_id="fixture-squad",
-    name="Fixture",
-    description="",
-    version=1,
-    agents=(
-        AgentProfileEntry("eve", "qa", "m", True, {}, ("qa",), ("fixture-qa", "fixture-web")),
-        AgentProfileEntry("neo", "dev", "m", True, {}, ("dev",), ("fixture-dev",)),
-    ),
-    created_at=NOW,
-)
 
 
 @pytest.fixture
 def config(monkeypatch):
-    """A cycle on a development profile whose work requires both fixture skillsets."""
-    requires = (
-        ResponsibilityRequirement(
-            "qa",
-            (
-                SkillsetRequirement(
-                    "fixture-qa",
-                    ">=2",
-                    (
-                        ContractNeed("fixture.unit_tests", "headless"),
-                        ContractNeed("fixture.scenario", "play"),
-                    ),
-                ),
-            ),
-        ),
-        ResponsibilityRequirement(
-            "dev",
-            (SkillsetRequirement("fixture-dev", "", (ContractNeed("fixture.implementation"),)),),
-        ),
-    )
-    profile = dataclasses.replace(
-        development_profiles.DEVELOPMENT_PROFILES["python_cli"],
-        name="fixture_stack",
-        platform=PlatformTarget("fixture", "local"),
-        requires=requires,
-    )
-    monkeypatch.setitem(development_profiles.DEVELOPMENT_PROFILES, "fixture_stack", profile)
-    return {"development_profile": "fixture_stack"}
+    return requiring_config(monkeypatch)
 
 
-def _built(config, catalog=None):
-    return skillset_record_and_content(PROFILE, "hash-1", config, catalog or _catalog(), CONTRACTS)
+def _built(config, skillsets=None):
+    return built(config, skillsets)
 
 
 def _names(skills) -> list[tuple[str, str]]:
@@ -207,9 +87,9 @@ def test_a_record_is_the_same_for_the_same_equipment_and_moves_with_a_skills_tex
     cycle to the next on the same equipment, or stays put when a skill is revised."""
     one, _ = _built(config)
     two, _ = _built(config)
-    catalog = _catalog()
+    catalog = fixture_catalog()
     revised = {**DEV, "SKILL.md": DEV["SKILL.md"] + "No globals.\n"}
-    catalog["fixture-dev"] = _skillset(
+    catalog["fixture-dev"] = skillset(
         "fixture-dev",
         "dev",
         catalog["fixture-dev"].capabilities,
@@ -274,7 +154,7 @@ def test_a_task_loads_the_skills_its_agent_supplies_for_its_capability(
     skills = skills_for(document, record, task_type=task_type, agent_id=agent, contract=contract)
 
     assert _names(skills) == loaded
-    assert all(s.files == _catalog()[s.skillset].skill_files[s.skill] for s in skills)
+    assert all(s.files == fixture_catalog()[s.skillset].skill_files[s.skill] for s in skills)
 
 
 async def test_a_cycle_loads_from_its_kept_copy_after_a_redeploy_revises_the_skill(
@@ -288,8 +168,8 @@ async def test_a_cycle_loads_from_its_kept_copy_after_a_redeploy_revises_the_ski
     record, document = _built(config)
     ref = await keep_skillset_content(vault, project_id="p", cycle_id="cyc_1", document=document)
 
-    redeployed = _catalog()
-    redeployed["fixture-dev"] = _skillset(
+    redeployed = fixture_catalog()
+    redeployed["fixture-dev"] = skillset(
         "fixture-dev",
         "dev",
         redeployed["fixture-dev"].capabilities,
@@ -311,7 +191,9 @@ async def test_a_cycle_loads_from_its_kept_copy_after_a_redeploy_revises_the_ski
 async def test_a_cycle_that_requires_nothing_keeps_and_loads_nothing(tmp_path):
     """Bug caught: every existing cycle writing an empty artifact, or its record's digest
     moving because the content part changed shape."""
-    record, document = skillset_record_and_content(PROFILE, "hash-1", {}, _catalog(), CONTRACTS)
+    record, document = skillset_record_and_content(
+        PROFILE, "hash-1", {}, fixture_catalog(), CONTRACTS
+    )
 
     assert (record["content"], document) == ([], None)
     assert await kept_document_of(None, cycle_id="cyc_1", record=record) is None
@@ -397,7 +279,7 @@ async def test_a_record_that_names_skills_with_no_copy_to_load_is_refused(config
 )
 def test_a_copy_that_couldnt_be_checked_later_is_never_written(config, change, says):
     """Bug caught: a cycle created with a copy its own first task then refuses."""
-    catalog = _catalog()
+    catalog = fixture_catalog()
     catalog["fixture-dev"] = change(catalog["fixture-dev"])
 
     with pytest.raises(SkillsetContentError, match=says):

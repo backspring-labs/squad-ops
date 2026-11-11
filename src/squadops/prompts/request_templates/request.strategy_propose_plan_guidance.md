@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_plan_guidance
-version: "8"
+version: "9"
 required_variables:
   - brief_content
   - planning_content
@@ -13,6 +13,7 @@ optional_variables:
   - prior_cycle_section
   - task_instructions_section
   - project_instructions_section
+  - skills_section
   - source_repository_section
   - cross_cycle_lessons_section
   - authoring_rules_section
@@ -73,4 +74,4 @@ defer_if_time_constrained: [] # Items the merger may drop first under pressure.
 confidence: ""                # low | medium | high
 ```
 {{rejection_context_section}}
-{{source_repository_section}}{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
+{{source_repository_section}}{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{skills_section}}{{cross_cycle_lessons_section}}

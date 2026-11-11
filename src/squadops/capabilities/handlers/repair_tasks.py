@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
+from squadops.capabilities.handlers.skills import skills_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -50,6 +51,8 @@ class _RepairTaskHandler(_CycleTaskHandler):
             # SIP-0110 §0.9: rendered in handle(); "" when no lesson was supplied.
             "task_instructions_section": str(inputs.get("task_instructions_section") or ""),
             "project_instructions_section": str(inputs.get("project_instructions_section") or ""),
+            # SIP-0116 §7.1: rendered in handle(); "" when the repair was handed no skill.
+            "skills_section": str(inputs.get("skills_section") or ""),
             "cross_cycle_lessons_section": str(inputs.get("cross_cycle_lessons_section") or ""),
         }
 
@@ -64,6 +67,10 @@ class _RepairTaskHandler(_CycleTaskHandler):
         project = await project_instructions_section(renderer, inputs)
         if project:
             inputs = {**inputs, "project_instructions_section": project}
+        # SIP-0116 §7.1: the skills of the step this repair revises, before the lessons.
+        skills = await skills_section(renderer, inputs)
+        if skills:
+            inputs = {**inputs, "skills_section": skills}
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:
             inputs = {**inputs, "cross_cycle_lessons_section": lessons}

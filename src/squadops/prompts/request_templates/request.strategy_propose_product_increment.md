@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_product_increment
-version: "3"
+version: "4"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -25,6 +25,7 @@ optional_variables:
   - qa_proposed_behaviours_section
   - task_instructions_section
   - project_instructions_section
+  - skills_section
   - cross_cycle_lessons_section
 ---
 ## Propose the next increment of this product
@@ -70,7 +71,7 @@ on the first half, and its second half guards what the change must leave alone.
 {{unapproved_proposals_section}}
 {{abandoned_increment_section}}
 {{qa_proposed_behaviours_section}}
-{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
+{{task_instructions_section}}{{project_instructions_section}}{{skills_section}}{{cross_cycle_lessons_section}}
 {{product_tree_section}}
 {{approved_manifest_section}}
 

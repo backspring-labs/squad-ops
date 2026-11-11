@@ -76,6 +76,11 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
         "task_instructions",
         # #2179: the unit's pinned project instructions that apply to this task.
         "project_instructions",
+        # SIP-0116 §7: the skills this step loads, handed by the runtime from the cycle's kept
+        # copy. `squadops.capabilities.skillsets.SKILLS_INPUT`, spelled here for the same
+        # reason. No contract runs as this step, so none is handed today; the key is declared
+        # because every authoring seam shows its skills through the one slot.
+        "skills",
     }
 )
 

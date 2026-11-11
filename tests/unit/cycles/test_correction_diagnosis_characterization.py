@@ -209,6 +209,8 @@ def _cycle(case: _Case) -> SimpleNamespace:
         campaign_id=None,
         execution_overrides={},
         applied_defaults={},
+        # What a repair's skill supply reads (SIP-0116 §7.1): no record, so it loads none.
+        skillset_record=None,
     )
 
 

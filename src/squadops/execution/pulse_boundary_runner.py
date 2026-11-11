@@ -51,6 +51,7 @@ from squadops.cycles.pulse_verification import (
 from squadops.events.types import EventType
 from squadops.execution.binding_holds import supplied_or_held
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.skill_supply import SkillSupply
 from squadops.tasks.models import TaskResultStatus
 from squadops.telemetry.models import StructuredEvent
 
@@ -90,8 +91,12 @@ class PulseBoundaryRunner:
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
         failure_recall: FailurePatternRecallPort,
         hold: Callable[..., Awaitable[Any]] | None = None,
+        skills: SkillSupply | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
+        # SIP-0116 §7.1: the chain's repair is handed the skills of the step it revises. With
+        # no vault (outside an executor), a cycle whose record names skills raises.
+        self._skills = skills or SkillSupply(None)
         # SIP-0110 §0.9: the chain's repair asks its unit's pinned snapshot for its lessons.
         self._failure_recall = failure_recall
         # #2178: the executor's ``BindingHolds.supplied``; ``None`` outside an executor, where
@@ -603,6 +608,8 @@ class PulseBoundaryRunner:
                         "agent_config_overrides": resolved.config_overrides,
                     },
                 )
+                # SIP-0116 §7.1: its skills first, by the step it revises.
+                await self._skills.hand(cycle, enriched_repair)
                 # SIP-0110 §0.9: the chain's repair is supplied its approved lessons, if any.
                 [enriched_repair] = await supplied_or_held(
                     self._hold,

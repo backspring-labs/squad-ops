@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from squadops.capabilities.skillsets import Skillset, skill_files_digest
+from squadops.capabilities.skillsets import SKILLS_INPUT, Skillset, skill_files_digest
 from squadops.core.hashing import canonical_json
 from squadops.cycles.models import ArtifactRef
 
@@ -44,6 +44,22 @@ if TYPE_CHECKING:
 SKILLSET_CONTENT_SCHEMA = "squadops.skillset-content/v1"
 SKILLSET_CONTENT_ARTIFACT_TYPE = "skillset_content"
 SKILLSET_CONTENT_FILENAME = "skillset_content.json"
+
+
+__all__ = [
+    "SKILLSET_CONTENT_ARTIFACT_TYPE",
+    "SKILLSET_CONTENT_SCHEMA",
+    "SKILLS_INPUT",
+    "LoadedSkill",
+    "SkillsetContentError",
+    "content_entries",
+    "keep_skillset_content",
+    "kept_document",
+    "kept_document_of",
+    "read_kept_document",
+    "skills_for",
+    "skills_input",
+]
 
 
 class SkillsetContentError(ValueError):
@@ -277,6 +293,21 @@ def skills_for(
                 ),
             )
     return tuple(loaded.values())
+
+
+def skills_input(skills: Iterable[LoadedSkill]) -> list[dict[str, Any]]:
+    """``skills`` as the envelope input a handler renders: each skill with its files as text,
+    and the digest the cycle's record names it by."""
+    return [
+        {
+            "skillset": s.skillset,
+            "version": s.version,
+            "skill": s.skill,
+            "digest": s.digest,
+            "files": dict(s.files),
+        }
+        for s in skills
+    ]
 
 
 def _kept_skillset(document: Mapping[str, Any], skillset_id: str) -> Mapping[str, Any]:
