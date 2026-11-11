@@ -6,6 +6,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A Campaign increment's criterion can be a frozen scenario** (#3044, part 2; SIP-0117 R5.9): a criterion with
+  `surface_kind: scenario` declares its scenario. On a repository-backed Project it is checked against the
+  vocabulary the cycle's operation supplier keeps, which the runtime now puts on the proposal's input. It is
+  refused as unverifiable with no vocabulary, and as outside the vocabulary when its reader can't run it. It is
+  placed by the framework at `.squadops/scenarios/criterion_<id>.json`. No skillset ships a vocabulary yet, so
+  no proposal can carry one until the rest of part 2 lands.
 - **A skill may hold its provider's scenario vocabulary** (#3044, part 2; SIP-0116 §17g): `scenario_vocabulary.json`
   at a skill's root is read as the vocabulary of the scenario reader its capability's provider executes. The
   skillset loader refuses one it can't read, and a capability whose skills hold two. The vocabulary is kept and

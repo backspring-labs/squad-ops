@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,6 +27,7 @@ from squadops.cycles.skillset_content import (
     skills_for,
 )
 from squadops.cycles.skillset_record import skillset_record_and_content
+from squadops.execution import product_proposal
 from tests.unit.cycles.skillset_fixture import (
     CONTRACTS,
     DEV,
@@ -340,3 +342,21 @@ def test_a_capability_naming_a_skill_the_copy_doesnt_hold_is_refused(config):
 
     with pytest.raises(SkillsetContentError, match="names the skill play-scenario"):
         scenario_vocabulary_for(document, record, "fixture.scenario")
+
+
+async def test_the_proposals_input_carries_the_operation_suppliers_kept_vocabulary(
+    config, tmp_path
+):
+    """#3044: the runtime's side, entered at the function the proposal's input is composed with,
+    over a real vault. Bug caught: the vocabulary read from the tree rather than the copy the
+    cycle kept, or a cycle with no record read as having some default reader."""
+    vault = FilesystemArtifactVault(tmp_path)
+    record, document = _built(config, _with_vocabulary(json.dumps(FIXTURE_VOCABULARY)))
+    await keep_skillset_content(vault, project_id="p", cycle_id="cyc_1", document=document)
+    cycle = SimpleNamespace(cycle_id="cyc_1", skillset_record=record)
+
+    composed = await product_proposal._scenario_vocabulary(cycle, vault)
+
+    assert composed == {"scenario_vocabulary": FIXTURE_VOCABULARY}
+    unequipped = SimpleNamespace(cycle_id="cyc_2", skillset_record=None)
+    assert await product_proposal._scenario_vocabulary(unequipped, vault) == {}

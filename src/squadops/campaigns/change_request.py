@@ -44,6 +44,11 @@ from squadops.campaigns.page_loader import page_loader_path
 from squadops.cycles.acceptance_check_spec import parse_method_path
 from squadops.cycles.manifest_gates import assess_winnability
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.remote_execution.scenario import (
+    ScenarioRefused,
+    ScenarioVocabulary,
+    read_declaration,
+)
 from squadops.stacks.scaffold import (
     MANIFEST_ELEMENT_KEYS,
     InterfaceManifest,
@@ -90,6 +95,10 @@ class DeltaTarget(StrEnum):
     ERROR_CODE = "error_code"  # by code
 
 
+#: #3044: where the framework places a scenario criterion's declaration in a product's tree.
+SCENARIO_CRITERIA_DIR = ".squadops/scenarios"
+
+
 class SurfaceKind(StrEnum):
     """A criterion's public surface: something a caller or a browser reaches (§7.2). On a
     repository-backed Project, also a command-line entry point or a package's public interface,
@@ -99,6 +108,10 @@ class SurfaceKind(StrEnum):
     CLIENT_ROUTE = "client_route"
     COMMAND = "command"
     PACKAGE = "package"
+    #: #3044, on a repository-backed Project only: a frozen scenario its provider's reader runs
+    #: (SIP-0117 R5.8). The criterion's ``scenario`` is the declaration, and its surface is the
+    #: path its named assertion observes.
+    SCENARIO = "scenario"
 
 
 class IncrementBasis(StrEnum):
@@ -164,6 +177,11 @@ class Criterion:
     #: (#659). A route the request adds is judged rendered at acceptance by it (§8.3, §24co item
     #: 11). Authored and hashed; left out of the document and its hash when empty, as ``paths``.
     anchor: str = ""
+    #: #3044, on a ``scenario`` criterion only: the scenario's declaration (``squadops.scenario/1``),
+    #: as authored. Checked against the supplier's vocabulary when the proposal is validated, and
+    #: placed by the framework as its canonical text. Left out of the document and its hash when
+    #: empty, as ``anchor``.
+    scenario: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -264,6 +282,11 @@ class RefusalKind(StrEnum):
     #: any but the next eligible one (the first pending in the order; an abandoned one is skipped).
     #: Also a ``backlog_item`` on a Campaign that names no goal set. One item per increment.
     NOT_THE_NEXT_ITEM = "not_the_next_backlog_item"
+    #: #3044: a scenario criterion on a cycle whose squad keeps no scenario reader's vocabulary.
+    SCENARIO_UNVERIFIABLE = "scenario_unverifiable"
+    #: #3044: a scenario its reader can't run: outside its vocabulary, named for another
+    #: criterion, or on a surface its named assertion doesn't observe.
+    SCENARIO_OUTSIDE_VOCABULARY = "scenario_outside_vocabulary"
 
 
 @dataclass(frozen=True)
@@ -392,7 +415,33 @@ def _criterion(raw: Any, basis: IncrementBasis) -> Criterion:
         observable=_text(raw, "observable"),
         paths=_paths(raw.get("paths"), f"criterion {raw.get('id')!r} paths"),
         anchor=_anchor(raw, surface_kind, basis),
+        scenario=_scenario(raw, surface_kind, basis),
     )
+
+
+def _scenario(raw: Any, surface_kind: SurfaceKind, basis: IncrementBasis) -> dict | None:
+    """A ``scenario`` criterion's declaration (#3044), or ``None`` for every other criterion.
+    Its content is checked against the supplier's vocabulary when the proposal is validated."""
+    where = f"criterion {raw.get('id')!r}"
+    if surface_kind is not SurfaceKind.SCENARIO:
+        if "scenario" in raw:
+            raise ChangeRequestError(
+                f"{where}: a scenario is declared only by a criterion whose surface_kind is "
+                f"scenario, and this one asserts at a {surface_kind}. Leave scenario out"
+            )
+        return None
+    if basis.has_manifest:
+        raise ChangeRequestError(
+            f"{where}: a scenario criterion is run by a provider on a repository-backed "
+            "Project's tree; this application's criteria are tests its stack places"
+        )
+    value = raw.get("scenario")
+    if not isinstance(value, dict) or not value:
+        raise ChangeRequestError(
+            f"{where}: a scenario criterion declares its scenario: an object with schema, "
+            "scenario_id, reader, setup, steps, assertions and named_assertion"
+        )
+    return value
 
 
 #: §24cp: an anchor is a ``data-testid`` value, written as a manifest's test ids are
@@ -473,7 +522,7 @@ def _authored_fields(payload: dict) -> dict:
     }
     if "criteria" in out:
         out["criteria"] = [
-            {k: v for k, v in c.items() if k not in ("paths", "anchor") or v}
+            {k: v for k, v in c.items() if k not in ("paths", "anchor", "scenario") or v}
             for c in out["criteria"]
         ]
     if "criterion_files" in out:
@@ -624,6 +673,13 @@ def placement_inconsistency(request: ChangeRequest) -> str | None:
             return f"criterion {f.criterion_id}'s file {f.path} is not named for it"
     kinds = {c.id: c.surface_kind for c in request.criteria}
     for f in placed:
+        # #3044: the framework places a scenario at its one path, and nothing else there.
+        scenario = kinds.get(f.criterion_id) is SurfaceKind.SCENARIO
+        if scenario != (f.path == scenario_criterion_path(f.criterion_id)):
+            return (
+                f"criterion {f.criterion_id}'s file {f.path} isn't where the framework places "
+                + ("a scenario" if scenario else "only a scenario")
+            )
         # #2799: the rails place a loader only beside a page criterion's file, at the loader's
         # one path for it, and every reader writes or freezes the file at that path.
         if f.page_loader and kinds.get(f.criterion_id) is not SurfaceKind.CLIENT_ROUTE:
@@ -899,6 +955,10 @@ class ProductContext:
     #: pinned. Each is judged at acceptance by that anchor, as a judged route is by its manifest's,
     #: and an added page names an anchor none of them carries. Empty before any page was accepted.
     accepted_pages: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    #: #3044: the vocabulary of the reader that runs this cycle's scenarios, read from the kept
+    #: copy of the skillset its record names as the operation's supplier (SIP-0116 §17g). ``None``
+    #: when no supplier holds one, and then a scenario criterion is refused as unverifiable.
+    scenario_vocabulary: ScenarioVocabulary | None = None
 
     def serves(self, kind: str) -> tuple[str, ...]:
         return tuple(value for k, value in self.surfaces if k == kind)
@@ -1097,6 +1157,14 @@ def _validate_product_proposal(
     refusals.extend(_anchor_refusals(request, product))
     placed: list[PlacedCriterionFile] = []
     for c in request.criteria:
+        if c.surface_kind is SurfaceKind.SCENARIO:
+            refused = _scenario_refusals(c, product)
+            if refused:
+                refusals.extend(refused)
+            else:
+                # No runner runs a scenario, so none places it: the framework does (#3044).
+                placed.append(PlacedCriterionFile(c.id, scenario_criterion_path(c.id)))
+            continue
         paths = c.paths or product.product_paths(footprint)
         stray = [p for p in c.paths if not in_footprint(p, footprint)]
         if stray:
@@ -1278,7 +1346,63 @@ def _unseedable(route: str) -> bool:
     )
 
 
+def scenario_criterion_path(criterion_id: str) -> str:
+    """Where the framework places a scenario criterion's declaration in the product's tree."""
+    return f"{SCENARIO_CRITERIA_DIR}/{CRITERION_STEM}{criterion_module_name(criterion_id)}.json"
+
+
+def _scenario_refusals(c: Criterion, product: ProductContext) -> list[ProposalRefusal]:
+    """A scenario criterion (#3044) is run by the reader its cycle's supplier kept, so it is
+    checked against that reader's vocabulary: its declaration is one the reader executes, it is
+    this criterion's (its ``scenario_id``), and its surface is the path its named assertion
+    observes, which is what the plan gate shows a reviewer."""
+    vocabulary = product.scenario_vocabulary
+    if vocabulary is None:
+        return [
+            ProposalRefusal(
+                RefusalKind.SCENARIO_UNVERIFIABLE,
+                f"criterion {c.id} is a scenario, and this cycle's squad keeps no scenario "
+                "reader's vocabulary: no skillset it supplies the remote operation with holds "
+                "one, so nothing could run the scenario",
+            )
+        ]
+    try:
+        declaration = read_declaration(c.scenario, vocabulary)
+    except ScenarioRefused as refused:
+        return [
+            ProposalRefusal(
+                RefusalKind.SCENARIO_OUTSIDE_VOCABULARY,
+                f"criterion {c.id}'s scenario can't be run by {vocabulary.reader}: "
+                + "; ".join(refused.defects),
+            )
+        ]
+    refusals = []
+    if declaration.scenario_id != c.id:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.SCENARIO_OUTSIDE_VOCABULARY,
+                f"criterion {c.id}'s scenario names itself {declaration.scenario_id!r}: a "
+                "scenario's id is its criterion's",
+            )
+        )
+    named = next(a for a in declaration.assertions if a.assertion_id == declaration.named_assertion)
+    observed = named.observe.arguments.get("path")
+    if c.surface != observed:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.SCENARIO_OUTSIDE_VOCABULARY,
+                f"criterion {c.id}'s surface is {c.surface!r}, and its named assertion "
+                f"{declaration.named_assertion} observes {observed!r}: the surface is the path the "
+                "criterion's assertion reads",
+            )
+        )
+    return refusals
+
+
 def _unserved(c: Criterion, product: ProductContext) -> str | None:
+    if c.surface_kind is SurfaceKind.SCENARIO:
+        # Its surface is checked against its own declaration (``_scenario_refusals``).
+        return None
     if c.surface_kind is SurfaceKind.ENDPOINT:
         if not product.serves("http_base"):
             return "the product declares no HTTP base its start serves, so no endpoint is reached"

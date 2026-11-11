@@ -572,6 +572,32 @@ the Spark's.
 - the baseline step before development, which keeps its reading as a cycle artifact;
 - the plan gate's view of each assertion's observation.
 
+
+## R5.9 The frozen scenario, part 2: the vocabulary's source and the scenario criterion (2026-11-11)
+
+**Ruled:** part 2's design was posted on #3044 (2026-11-11, comment 6806301917) after a survey of the seams, under
+the owner's "go with your recommendations and merge as you need". Part 2 ships in several PRs, and this
+section grows with them.
+
+**What changed, with the evidence for each:**
+
+| change | evidence |
+|---|---|
+| **The vocabulary a scenario is frozen against is the supplier's kept one.** It is a skill's `scenario_vocabulary.json` (SIP-0116 §17g), read from the cycle's kept copy for the skillset its record names as a remote operation's supplier. The runtime puts it on the proposal's input (`scenario_vocabulary`), and the rails read it from there. Two operation suppliers with different vocabularies are refused | R5.8 left the vocabulary's source to part 2. No development-profile or contract field can carry provider data, and R4.6 allows a platform's name in a skillset directory |
+| **A scenario criterion** is `surface_kind: scenario`, with its declaration in `scenario`. Its surface is the path its named assertion observes, and its declaration's `scenario_id` is the criterion's id. It exists only on a repository-backed increment | the plan gate shows a reviewer the surface as the criterion's observed effect (R5.7's first row) |
+| **Refusals.** A scenario criterion is refused as `scenario_unverifiable` when the cycle keeps no vocabulary. It is refused as `scenario_outside_vocabulary` when the reader can't run its declaration, when it names another criterion's id, or when its surface isn't its named assertion's path | — |
+| **It is placed by the framework** at `.squadops/scenarios/criterion_<id>.json`. No runner places it, since none runs it. Its file is named for its criterion, as every placed criterion file is (§24cj). The load-time placement check refuses a scenario anywhere else, or anything else at that path | R5.8 named the file `<criterion>.json`. The placement rule names each criterion's file by its id |
+
+**Still to build in part 2:**
+- the framework writing the placed declaration into the cycle's tree;
+- the operation step that plan expansion appends per scenario criterion;
+- the qa routing and the product runners that must leave a scenario criterion's file alone;
+- the plan gate's view;
+- the baseline step.
+
+**No proposal can carry a scenario criterion yet:** no skillset ships a vocabulary, so every one is refused as
+unverifiable until those land.
+
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile

@@ -124,6 +124,19 @@ class ScenarioVocabulary:
             contexts=frozenset(contexts),
         )
 
+    def to_document(self) -> dict[str, Any]:
+        """The vocabulary as the data document ``from_document`` reads."""
+        return {
+            "reader": self.reader,
+            "contexts": sorted(self.contexts),
+            "actions": {
+                k: {a: v.value for a, v in args.items()} for k, args in self.actions.items()
+            },
+            "observations": {
+                k: {a: v.value for a, v in args.items()} for k, args in self.observations.items()
+            },
+        }
+
 
 def _kinds(value: Any, where: str) -> dict[str, dict[str, ArgumentKind]]:
     if not isinstance(value, Mapping) or not value:

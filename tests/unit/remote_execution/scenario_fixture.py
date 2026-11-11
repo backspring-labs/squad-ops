@@ -11,11 +11,12 @@ from __future__ import annotations
 import json
 
 from adapters.remote_execution.fixture_operation_runner import VOCABULARY, WORLD_PATH
+from squadops.campaigns.change_request import scenario_criterion_path
 from squadops.remote_execution.models import Scenario
 from squadops.remote_execution.scenario import frozen_scenario
 
 #: Where the framework places a criterion's scenario in the tree (#3044 §2).
-SCENARIO_PATH = ".squadops/scenarios/C-2.json"
+SCENARIO_PATH = scenario_criterion_path("C-2")
 
 DOOR_OPENS = {
     "schema": "squadops.scenario/1",

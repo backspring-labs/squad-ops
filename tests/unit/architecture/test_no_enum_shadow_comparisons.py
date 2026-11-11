@@ -130,6 +130,9 @@ _ALLOWLIST: set[tuple[str, str]] = {
     ("src/squadops/scenarios/steps.py", "contains"),
     ("src/squadops/scenarios/steps.py", "text"),
     ("adapters/comms/a2a_client.py", "text"),
+    # #3044 made "scenario" a SurfaceKind value. These test for a criterion's ``scenario`` KEY in
+    # its authored mapping, the declaration's field name, not a surface kind.
+    ("src/squadops/campaigns/change_request.py", "scenario"),
 }
 
 # Enum values this short/common that they produce coincidental matches are not

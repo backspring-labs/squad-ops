@@ -52,6 +52,7 @@ from squadops.outcomes.proposal_evidence import (
     shown_goal_statements,
 )
 from squadops.projects.derived_profile import SURFACES
+from squadops.remote_execution.scenario import ScenarioVocabulary
 from squadops.stacks.scaffold import InterfaceManifest, frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
@@ -161,6 +162,13 @@ def product_context(
         judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
         route_anchors=_route_anchors(product.get("approved_manifest")),
         accepted_pages=tuple(page_inventory(accepted_pages, required=required).items()),
+        # #3044: present only where the cycle's operation supplier keeps a vocabulary. Without
+        # one, a scenario criterion is refused as unverifiable: stricter, never looser.
+        scenario_vocabulary=(
+            ScenarioVocabulary.from_document(product["scenario_vocabulary"])
+            if "scenario_vocabulary" in product
+            else None
+        ),
     )
 
 

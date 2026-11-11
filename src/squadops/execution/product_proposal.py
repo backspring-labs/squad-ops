@@ -44,14 +44,20 @@ from squadops.campaigns.criterion_placement import runner_placements
 from squadops.campaigns.evidence import reading_line
 from squadops.campaigns.increment_tree import increment_basis
 from squadops.campaigns.models import parse_requirements_source
+from squadops.core.hashing import canonical_json
 from squadops.cycles.models import Cycle, GoalSetNotFoundError
+from squadops.cycles.skillset_content import (
+    SkillsetContentError,
+    kept_document_of,
+    scenario_vocabulary_for,
+)
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.source_delivery import SourceDeliveryRefused, regression_baseline
 from squadops.projects.derived_profile import DISCLOSED, DerivedProfile
 from squadops.projects.models import SourceUnavailable
 from squadops.tasks.models import TaskEnvelope
-from squadops.tasks.task_types import authors_change_request
+from squadops.tasks.task_types import authors_change_request, runs_an_operation
 
 __all__ = ["PRODUCT_PROPOSAL_INPUT", "product_proposal_input", "with_product_proposal"]
 
@@ -157,7 +163,41 @@ async def product_proposal_input(
             }
         ),
         **await _approved_manifest(projects, cycle.project_id),
+        **await _scenario_vocabulary(cycle, vault),
     }
+
+
+async def _scenario_vocabulary(cycle: Cycle, vault: Any) -> dict[str, Any]:
+    """#3044: ``{"scenario_vocabulary": <document>}`` when the skillset the cycle's record names
+    as a remote operation's supplier keeps one (SIP-0116 §17g), else ``{}``. Read from the cycle's
+    kept copy, so a scenario is frozen against the reader the cycle kept. Two operation contracts
+    whose suppliers keep different vocabularies are refused: a criterion names no contract."""
+    record = cycle.skillset_record
+    if record is None:
+        return {}
+    try:
+        document = await kept_document_of(vault, cycle_id=cycle.cycle_id, record=record)
+        if document is None:
+            return {}
+        contracts = sorted(
+            {row["contract"] for row in record["offered"] if runs_an_operation(row["task_type"])}
+        )
+        found = {
+            contract: vocabulary
+            for contract in contracts
+            if (vocabulary := scenario_vocabulary_for(document, record, contract)) is not None
+        }
+    except SkillsetContentError as e:
+        raise _ExecutionError(
+            f"cycle {cycle.cycle_id}'s scenario vocabulary can't be read from its kept skills: {e}"
+        ) from e
+    if len({canonical_json(v.to_document()) for v in found.values()}) > 1:
+        raise _ExecutionError(
+            f"cycle {cycle.cycle_id}'s operation contracts are supplied with different scenario "
+            f"vocabularies ({', '.join(f'{c}: {v.reader}' for c, v in found.items())}), so a "
+            "scenario criterion can't be frozen against one reader"
+        )
+    return {"scenario_vocabulary": next(iter(found.values())).to_document()} if found else {}
 
 
 async def _approved_manifest(projects: Any, project_id: str) -> dict[str, Any]:
