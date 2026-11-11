@@ -62,7 +62,16 @@ from squadops.campaigns.runner_acceptance import (
     SandboxTree,
     evaluate_on_runner,
 )
+from squadops.campaigns.scenario_runs import (
+    ScenarioRuns,
+    approved_scenario_digests,
+    is_scenario_criterion,
+)
+from squadops.capabilities.operation_supply import OperationSupplyError, scenario_operation
+from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.cycles.models import ArtifactRef, Cycle
+from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.product_proposal import kept_scenario_vocabulary
 
 #: What ``evaluated_on`` names on a document this evaluator writes.
 PRODUCT_RUNNER = "product_runner"
@@ -95,6 +104,7 @@ async def evaluate_product_increment(
     sandbox: Any,
     route_renderer: Any,
     read_profile: Any,
+    remote_execution: Any = None,
 ) -> str:
     """Judge the delivered increment on its product's runner and store its ``increment_evaluation``
     on the run. Returns the stored artifact's id.
@@ -192,6 +202,14 @@ async def evaluate_product_increment(
         # #2799: the page loaders delivery wrote into the candidate, which the bundles of the
         # tests that import them are frozen with. The inputs name them only where one is placed.
         placed_support=tuple(inputs.get("increment_page_loaders") or ()),
+        # #3053: a scenario criterion is played through the runtime's own remote execution.
+        scenarios=await _scenario_runs(
+            cycle, run_id, increment_id, (*new, *replaced, *frozen), vault, remote_execution
+        ),
+        # Read only where a new scenario criterion holds its declaration to it.
+        approved_digests=approved_scenario_digests(change_request)
+        if any(is_scenario_criterion(c.criterion_id, c.test_path) for c in (*new, *replaced))
+        else None,
     )
     # #2938: what the product's own measurements say of the candidate. It reports, so it runs after
     # the verdict is formed and can't change it.
@@ -212,6 +230,48 @@ async def evaluate_product_increment(
         **({"readings": readings} if readings else {}),
     }
     return await _store(cycle, run_id, document, vault)
+
+
+async def _scenario_runs(
+    cycle: Cycle,
+    run_id: str,
+    increment_id: str,
+    criteria: tuple[Any, ...],
+    vault: Any,
+    remote_execution: Any,
+) -> ScenarioRuns | None:
+    """#3053: how this increment's scenario criteria are played at delivery, or ``None`` when it
+    has none. The operation is the one the cycle's record says supplies a scenario
+    (``scenario_operation``, on the packaged skillsets the record's digest is checked against),
+    and the vocabulary the one its kept copy holds. What can't be had is named, and every
+    reading is then absent with that reason."""
+    if not any(is_scenario_criterion(c.criterion_id, c.test_path) for c in criteria):
+        return None
+    reasons = []
+    if remote_execution is None:
+        reasons.append("this runtime binds no remote execution (remote_execution.provider none)")
+    try:
+        operation = scenario_operation(cycle.skillset_record, packaged_skillsets())
+    except OperationSupplyError as e:
+        operation = None
+        reasons.append(str(e))
+    try:
+        vocabulary = await kept_scenario_vocabulary(cycle, vault)
+    except _ExecutionError as e:
+        vocabulary = None
+        reasons.append(str(e))
+    if vocabulary is None and not reasons:
+        reasons.append("this cycle keeps no scenario reader's vocabulary")
+    return ScenarioRuns(
+        remote_execution,
+        operation=operation,
+        vocabulary=vocabulary,
+        campaign_id=cycle.campaign_id or cycle.cycle_id,
+        increment_id=increment_id,
+        # A re-evaluation of the run is a new send of each ask, and stops the older one's.
+        dispatch_id=f"{run_id}:{uuid4().hex[:12]}",
+        unavailable="; ".join(reasons),
+    )
 
 
 async def _store(cycle: Cycle, run_id: str, document: dict, vault: Any) -> str:

@@ -2822,6 +2822,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     sandbox=self._sandbox,
                     route_renderer=self._route_renderer,
                     read_profile=self._derived_profile_for,
+                    remote_execution=self._remote_execution,
                 )
             except (
                 ProductAcceptanceRefused,

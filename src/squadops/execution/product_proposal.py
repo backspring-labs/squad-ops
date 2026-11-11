@@ -56,6 +56,7 @@ from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.source_delivery import SourceDeliveryRefused, regression_baseline
 from squadops.projects.derived_profile import DISCLOSED, DerivedProfile
 from squadops.projects.models import SourceUnavailable
+from squadops.remote_execution.scenario import ScenarioVocabulary
 from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import authors_change_request, runs_an_operation
 
@@ -168,17 +169,25 @@ async def product_proposal_input(
 
 
 async def _scenario_vocabulary(cycle: Cycle, vault: Any) -> dict[str, Any]:
-    """#3044: ``{"scenario_vocabulary": <document>}`` when the skillset the cycle's record names
-    as a remote operation's supplier keeps one (SIP-0116 §17g), else ``{}``. Read from the cycle's
-    kept copy, so a scenario is frozen against the reader the cycle kept. Two operation contracts
-    whose suppliers keep different vocabularies are refused: a criterion names no contract."""
+    """#3044: ``{"scenario_vocabulary": <document>}`` when the cycle keeps one
+    (``kept_scenario_vocabulary``), else ``{}``."""
+    vocabulary = await kept_scenario_vocabulary(cycle, vault)
+    return {"scenario_vocabulary": vocabulary.to_document()} if vocabulary is not None else {}
+
+
+async def kept_scenario_vocabulary(cycle: Cycle, vault: Any) -> ScenarioVocabulary | None:
+    """#3044: the scenario vocabulary of the skillset the cycle's record names as a remote
+    operation's supplier (SIP-0116 §17g), or ``None`` when it keeps none. Read from the cycle's
+    kept copy, so a scenario is frozen, and later played (#3053), against the reader the cycle
+    kept. Two operation contracts whose suppliers keep different vocabularies are refused: a
+    criterion names no contract."""
     record = cycle.skillset_record
     if record is None:
-        return {}
+        return None
     try:
         document = await kept_document_of(vault, cycle_id=cycle.cycle_id, record=record)
         if document is None:
-            return {}
+            return None
         contracts = sorted(
             {row["contract"] for row in record["offered"] if runs_an_operation(row["task_type"])}
         )
@@ -197,7 +206,7 @@ async def _scenario_vocabulary(cycle: Cycle, vault: Any) -> dict[str, Any]:
             f"vocabularies ({', '.join(f'{c}: {v.reader}' for c, v in found.items())}), so a "
             "scenario criterion can't be frozen against one reader"
         )
-    return {"scenario_vocabulary": next(iter(found.values())).to_document()} if found else {}
+    return next(iter(found.values())) if found else None
 
 
 async def _approved_manifest(projects: Any, project_id: str) -> dict[str, Any]:

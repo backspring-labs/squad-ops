@@ -53,9 +53,12 @@ from squadops.campaigns.acceptance import (
     Discrimination,
     DiscriminationReason,
     FrozenResult,
+    Held,
     RouteResult,
     discrimination_on_runner,
+    discrimination_on_scenario,
     held_on_runner,
+    held_on_scenario,
     increment_acceptance,
 )
 from squadops.campaigns.acceptance_run import (
@@ -71,6 +74,12 @@ from squadops.campaigns.evaluator_trees import (
     VerifierBundle,
     candidate_verifier_overlay,
     freeze_bundle,
+)
+from squadops.campaigns.scenario_runs import (
+    Reading,
+    ScenarioRuns,
+    is_scenario_criterion,
+    scenario_bundle,
 )
 from squadops.remote_execution.models import ReadingSide
 
@@ -610,6 +619,136 @@ async def _discriminated(
     return decided, bundle, tuple(sides)
 
 
+def _readings(*readings: Reading) -> dict[str, Any]:
+    """The readings as the evaluation keeps them: each side's records document, or why there is
+    none."""
+    return {
+        str(r.side): r.document if r.document is not None else {"not_read": r.why} for r in readings
+    }
+
+
+async def _scenario_discriminated(
+    scenarios: ScenarioRuns | None,
+    criterion: NewCriterion,
+    *,
+    accepted: SandboxTree,
+    candidate: SandboxTree,
+    surface: ProductTestSurface,
+    approved_digest: str | None,
+) -> tuple[Discrimination, VerifierBundle | None, dict[str, Any]]:
+    """One new scenario criterion (§8.2, #3053): its declaration frozen as a one-file bundle from
+    the candidate, played on the baseline-evaluator and candidate-verifier overlays, and read by
+    ``discrimination_on_scenario``. Anything unread is ``not_run`` with why."""
+    criterion_id = criterion.criterion_id
+
+    def not_run(why: str) -> Discrimination:
+        return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN, detail=why)
+
+    bundle = scenario_bundle(criterion_id, candidate.file_tree)
+    if bundle is None:
+        return not_run(f"the candidate holds no scenario at {criterion.test_path}"), None, {}
+    if scenarios is None:
+        return not_run("this runtime binds no remote execution"), bundle, {}
+    scenario, why = scenarios.scenario(bundle, approved_digest)
+    if scenario is None:
+        return not_run(why), bundle, {}
+    on_baseline = await scenarios.read(
+        criterion_id,
+        BASELINE,
+        candidate_verifier_overlay(accepted.file_tree, bundle, surface).tree,
+        scenario,
+    )
+    on_candidate = await scenarios.read(
+        criterion_id,
+        CANDIDATE,
+        candidate_verifier_overlay(candidate.file_tree, bundle, surface).tree,
+        scenario,
+    )
+    readings = _readings(on_baseline, on_candidate)
+    unread = on_baseline.why or on_candidate.why
+    if unread:
+        return not_run(unread), bundle, readings
+    decided = discrimination_on_scenario(
+        criterion_id,
+        scenario,
+        on_baseline.revision,
+        on_candidate.revision,
+        on_baseline.document,
+        on_candidate.document,
+    )
+    return decided, bundle, readings
+
+
+async def _scenario_held(
+    scenarios: ScenarioRuns | None,
+    criterion: FrozenCriterion,
+    *,
+    subject_id: str,
+    tree: SandboxTree,
+    surface: ProductTestSurface,
+) -> tuple[FrozenResult, dict[str, Any]]:
+    """An earlier increment's scenario (§8.1, #3053), replayed on the candidate-verifier overlay
+    and read by ``held_on_scenario``. A missing bundle, or nothing to ask with, is blocked."""
+    candidate = tree.file_tree
+    bundle = criterion.bundle
+
+    def result(held: Held, detail: str) -> FrozenResult:
+        address = bundle.address if bundle is not None else None
+        return FrozenResult(
+            subject_id, criterion.criterion_id, candidate.identity, address, held, detail
+        )
+
+    if bundle is None:
+        return result(Held.BLOCKED_UNVERIFIED, "the verifier bundle is missing"), {}
+    if scenarios is None:
+        return result(Held.BLOCKED_UNVERIFIED, "this runtime binds no remote execution"), {}
+    scenario, why = scenarios.scenario(bundle)
+    if scenario is None:
+        return result(Held.BLOCKED_UNVERIFIED, why), {}
+    reading = await scenarios.read(
+        criterion.criterion_id,
+        CANDIDATE,
+        candidate_verifier_overlay(candidate, bundle, surface).tree,
+        scenario,
+    )
+    if reading.document is None:
+        return result(Held.BLOCKED_UNVERIFIED, reading.why), _readings(reading)
+    held, detail = held_on_scenario(scenario, reading.revision, reading.document)
+    return result(held, detail), _readings(reading)
+
+
+def _renewed(
+    runs: RunnerAcceptance,
+    replaced: Iterable[NewCriterion],
+    *,
+    candidate: SandboxTree,
+    surface: ProductTestSurface,
+) -> list[FrozenCriterion]:
+    """§8.1: "the old bundle is retired and the new one frozen." Each replaced verifier frozen
+    anew from the candidate: a scenario's as its one-file declaration, a test's on its runner. A
+    replacement the candidate does not carry whole has no bundle, and is blocked like a missing
+    one."""
+    renewed = []
+    for criterion in replaced:
+        runner = runs.profile.runner_for(criterion.test_path)
+        bundle = None
+        if is_scenario_criterion(criterion.criterion_id, criterion.test_path):
+            bundle = scenario_bundle(criterion.criterion_id, candidate.file_tree)
+        elif runner is not None and runner.single_file_argv is not None:
+            try:
+                bundle = freeze_product_bundle(
+                    criterion.criterion_id,
+                    candidate.file_tree,
+                    criterion.test_path,
+                    surface,
+                    runner,
+                )
+            except BundleIncomplete:
+                bundle = None
+        renewed.append(FrozenCriterion(criterion.criterion_id, criterion.test_path, bundle))
+    return renewed
+
+
 async def evaluate_on_runner(
     runs: RunnerAcceptance,
     *,
@@ -622,6 +761,8 @@ async def evaluate_on_runner(
     routes: Sequence[RouteResult],
     replaced: Iterable[NewCriterion] = (),
     placed_support: Iterable[str] = (),
+    scenarios: ScenarioRuns | None = None,
+    approved_digests: Mapping[str, str] | None = None,
 ) -> tuple[IncrementEvaluation, tuple[OverlayRun, ...]]:
     """The increment's acceptance on the product's runner (§8, §24cd point 6): discrimination,
     accumulated acceptance and the profile's routes, as ``acceptance_run.evaluate_increment``
@@ -634,8 +775,14 @@ async def evaluate_on_runner(
     ``placed_support`` is the framework's files the change request placed beside its criteria's
     tests, the page loaders (#2799): test files, as the placed criterion files are, so a bundle
     whose test imports one is frozen with it, and the baseline's overlay takes it from the bundle,
-    since the accepted tree has none."""
+    since the accepted tree has none.
+
+    A scenario criterion (``scenario_runs.is_scenario_criterion``, #3053) is never run as a test:
+    its declaration is frozen as a one-file bundle and played through ``scenarios``, a new one
+    on both sides and an earlier one on the candidate. ``approved_digests`` is each new scenario
+    criterion's digest as its change request froze it."""
     new, replaced = tuple(new), tuple(replaced)
+    approved_digests = approved_digests or {}
     retired = frozenset(retired)
     frozen = tuple(c for c in frozen if c.criterion_id not in retired)
     placed = {c.test_path for c in new} | {c.test_path for c in frozen}
@@ -644,39 +791,45 @@ async def evaluate_on_runner(
     discriminations: list[Discrimination] = []
     bundles: dict[str, VerifierBundle] = {}
     done: list[OverlayRun] = []
+    readings: dict[str, dict[str, Any]] = {}
     for criterion in new:
-        decided, bundle, made = await _discriminated(
-            runs, criterion, accepted=accepted, candidate=candidate, surface=surface
-        )
+        if is_scenario_criterion(criterion.criterion_id, criterion.test_path):
+            decided, bundle, read = await _scenario_discriminated(
+                scenarios,
+                criterion,
+                accepted=accepted,
+                candidate=candidate,
+                surface=surface,
+                approved_digest=approved_digests.get(criterion.criterion_id),
+            )
+            if read:
+                readings[criterion.criterion_id] = read
+            made: tuple[OverlayRun, ...] = ()
+        else:
+            decided, bundle, made = await _discriminated(
+                runs, criterion, accepted=accepted, candidate=candidate, surface=surface
+            )
         discriminations.append(decided)
         if bundle is not None:
             bundles[criterion.criterion_id] = bundle
         done.extend(made)
 
-    # §8.1: "the old bundle is retired and the new one frozen." A replacement the candidate does
-    # not carry whole has no bundle, and is blocked like a missing one.
-    renewed = []
-    for criterion in replaced:
-        runner = runs.profile.runner_for(criterion.test_path)
-        bundle = None
-        if runner is not None and runner.single_file_argv is not None:
-            try:
-                bundle = freeze_product_bundle(
-                    criterion.criterion_id,
-                    candidate.file_tree,
-                    criterion.test_path,
-                    surface,
-                    runner,
-                )
-            except BundleIncomplete:
-                bundle = None
-        if bundle is not None:
-            bundles[criterion.criterion_id] = bundle
-        renewed.append(FrozenCriterion(criterion.criterion_id, criterion.test_path, bundle))
+    renewed = _renewed(runs, replaced, candidate=candidate, surface=surface)
+    bundles.update({c.criterion_id: c.bundle for c in renewed if c.bundle is not None})
+    every = (*frozen, *renewed)
+    on_runner = [c for c in every if not is_scenario_criterion(c.criterion_id, c.test_path)]
     held, made = await frozen_on_runner(
-        runs, subject_id=increment_id, tree=candidate, frozen=(*frozen, *renewed), surface=surface
+        runs, subject_id=increment_id, tree=candidate, frozen=on_runner, surface=surface
     )
     done.extend(made)
+    for earlier in every:
+        if is_scenario_criterion(earlier.criterion_id, earlier.test_path):
+            result, read = await _scenario_held(
+                scenarios, earlier, subject_id=increment_id, tree=candidate, surface=surface
+            )
+            held = (*held, result)
+            if read:
+                readings[earlier.criterion_id] = read
     held = changed_verifiers_blocked(held, list(frozen), candidate.file_tree)
     routes = tuple(routes)
     return (
@@ -686,6 +839,7 @@ async def evaluate_on_runner(
             frozen=held,
             routes=routes,
             new_bundles=bundles,
+            scenario_readings=readings,
         ),
         tuple(done),
     )

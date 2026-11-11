@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from squadops.campaigns.acceptance import (
     Discrimination,
@@ -74,6 +75,9 @@ class IncrementEvaluation:
     #: The bundles the new criteria, and the replaced verifiers, were frozen into: what a
     #: promotion freezes for later increments (§8.1).
     new_bundles: Mapping[str, VerifierBundle]
+    #: #3053: each scenario criterion's readings by side, kept beside its result so the verdict
+    #: can be re-read without playing it again. Empty where the increment has none.
+    scenario_readings: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
 
 def _runner_files(overlay: Overlay, surface: TestSurface) -> tuple[list[dict], list[dict]]:
@@ -253,6 +257,13 @@ def evaluation_document(
             }
             for r in evaluation.routes
         ],
+        # #3053: only an increment with a scenario criterion carries its readings, so every other
+        # document is as it was.
+        **(
+            {"scenario_readings": dict(evaluation.scenario_readings)}
+            if evaluation.scenario_readings
+            else {}
+        ),
         # §8.1: the criteria this increment retires — dropped from the frozen set at promotion.
         "retired": sorted(retired),
         # §8.1: of those, the criteria whose verifier was replaced — their new bundles are in
