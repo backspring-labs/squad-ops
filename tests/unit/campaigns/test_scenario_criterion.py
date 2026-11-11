@@ -242,3 +242,85 @@ def test_a_planner_is_never_offered_a_scenarios_declaration_to_claim():
     _inject_increment_indexes(inputs, ("src/door.luau", SCENARIO_PATH), ())
 
     assert inputs["increment_footprint_index"] == "- `src/door.luau`"
+
+
+# ---------------------------------------------------------------- the operation step (C2b)
+
+
+def _equipped(monkeypatch):
+    """The Tally increment's cycle, equipped as cycle creation equips one whose work requires
+    the fixture skillsets, with the deployment's catalog holding the scenario's tool."""
+    from squadops.capabilities import skillsets
+    from tests.unit.capabilities.test_operation_supply import TOOL, _catalog
+    from tests.unit.cycles._product_increment import increment_cycle
+    from tests.unit.cycles.skillset_fixture import built, requiring_config
+
+    catalog = _catalog(TOOL)
+    record, _ = built(requiring_config(monkeypatch), catalog)
+    monkeypatch.setattr(skillsets, "packaged_skillsets", lambda: catalog)
+    return dataclasses.replace(increment_cycle(), skillset_record=record), catalog
+
+
+def test_plan_expansion_appends_one_operation_step_that_runs_the_frozen_scenario(monkeypatch):
+    """The wiring, entered at ``generate_task_plan`` for the increment's implementation run, as
+    ``RunProvisioning.prepare`` calls it. Bugs caught: a scenario criterion that no task runs;
+    one run under a tool other than the one the cycle recorded; a scenario whose digest isn't
+    the frozen one, so the provider refuses it; or no repair surface, so a failed assertion has
+    nothing to be repaired in."""
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.cycles._product_increment import plan, run, squad
+
+    cycle, catalog = _equipped(monkeypatch)
+
+    envelopes = generate_task_plan(
+        cycle,
+        run("implementation"),
+        squad(),
+        plan=plan("tally/report.py"),
+        change_request=_stored_with_a_suite_criterion(),
+    )
+
+    [step] = [e for e in envelopes if e.task_type == "qa.run_remote_operation"]
+    frozen = frozen_scenario(DOOR_OPENS, VOCABULARY)
+    assert step.agent_id == "eve"
+    assert step.inputs["operation"] == {
+        "contract": "fixture.scenario",
+        "mode": "play",
+        "role": "qa",
+        "skillset": "fixture-qa",
+        "skillset_digest": catalog["fixture-qa"].digest,
+        "agent_id": "eve",
+    }
+    assert step.inputs["operation_scenario"] == {
+        "scenario_id": "C-2",
+        "digest": frozen.digest,
+        "assertions": ["spawned", "door-open"],
+        "named_assertion": "door-open",
+        "path": SCENARIO_PATH,
+        "document": frozen.document,
+    }
+    assert step.inputs["implementation_artifacts"] == ["tally/report.py"]
+    # After the plan's body, which builds the candidate it verifies.
+    assert envelopes.index(step) > max(
+        i for i, e in enumerate(envelopes) if e.task_type == "development.develop"
+    )
+
+
+def test_a_scenario_no_one_can_run_stops_plan_expansion_by_name(monkeypatch):
+    """Bug caught: a scenario criterion silently dropped from the plan because its cycle's
+    record offers no operation, so the increment is judged without it."""
+    from squadops.cycles.models import CycleError
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.cycles._product_increment import plan, run, squad
+
+    cycle, _ = _equipped(monkeypatch)
+    cycle = dataclasses.replace(cycle, skillset_record=None)
+
+    with pytest.raises(CycleError, match="names scenario criteria \\(C-2\\), and none can be run"):
+        generate_task_plan(
+            cycle,
+            run("implementation"),
+            squad(),
+            plan=plan("tally/report.py"),
+            change_request=_stored_with_a_suite_criterion(),
+        )

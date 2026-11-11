@@ -6,6 +6,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Each scenario criterion is run by an operation step the framework appends** (#3044, part 2; SIP-0117
+  R5.9): plan expansion appends one `qa.run_remote_operation` per scenario criterion after the plan's body,
+  under the operation the cycle's record offers a scenario. It carries the criterion's frozen scenario. At
+  dispatch, its workspace has the declaration laid in as frozen, over any copy the squad wrote there.
 - **A scenario criterion's declaration is the framework's file** (#3044, part 2; SIP-0117 R5.9): it is
   derived from the approved change request, and delivery lays it over the squad's change, so the delivered
   candidate holds it as frozen. No qa task is held to write it, the head check never runs it as a test, a

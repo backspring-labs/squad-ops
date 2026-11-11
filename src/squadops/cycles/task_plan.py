@@ -21,12 +21,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.capabilities import skillsets
 from squadops.capabilities.assembly_notes import RETIRED_HANDOFF_DOCUMENT
 from squadops.capabilities.context_assembly import get_context_contract
 from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
+from squadops.capabilities.operation_supply import OperationSupplyError, scenario_operation
 from squadops.capabilities.reasoning_policy import REASONING_OVERRIDE_KEY
 from squadops.cycles import pulse_verification
 from squadops.cycles.acceptance_check_spec import (
@@ -68,6 +70,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.profile_utils import validate_reasoning_override
 from squadops.cycles.proposed_role_tasks import role_to_id
+from squadops.remote_execution.scenario import canonical_text, scenario_digest
 from squadops.stacks.response_shape import declared_field_kinds
 from squadops.stacks.scaffold import (
     InterfaceManifest,
@@ -1583,6 +1586,80 @@ def _resolve_cycle_reasoning(cycle: Cycle) -> str | None:
 
 
 @dataclass(frozen=True)
+class ScenarioOperationStep:
+    """#3044: a step the framework appends to run one scenario criterion. Its operation is the
+    one the cycle's record offers a scenario (``operation_supply.scenario_operation``), and its
+    scenario is the criterion's, frozen in the approved change request."""
+
+    task_type: str
+    role: str
+    criterion_id: str
+    operation: Mapping[str, str]
+    operation_scenario: Mapping[str, Any]
+
+
+def _scenario_operation_steps(
+    cycle: Cycle, change_request: str | None
+) -> tuple[ScenarioOperationStep, ...]:
+    """One operation step per scenario criterion of the approved change request (#3044), in the
+    request's order; ``()`` for a request with none, or no request.
+
+    The declaration was checked against the supplier's kept vocabulary when the proposal was
+    validated, and the stored request is hash-checked on load, so its text is the frozen one.
+    The provider checks it again before it runs anything. A cycle whose record offers no single
+    supplier of a scenario's operation raises: the proposal's rails would have refused it."""
+    if not change_request:
+        return ()
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.change_request import (
+        SurfaceKind,
+        load_stored_change_request,
+        scenario_criterion_path,
+    )
+
+    request = load_stored_change_request(change_request)
+    criteria = [c for c in request.criteria if c.surface_kind is SurfaceKind.SCENARIO]
+    if not criteria:
+        return ()
+    try:
+        supplied = scenario_operation(cycle.skillset_record, skillsets.packaged_skillsets())
+    except OperationSupplyError as e:
+        raise CycleError(
+            f"cycle {cycle.cycle_id}'s change request names scenario criteria "
+            f"({', '.join(c.id for c in criteria)}), and none can be run: {e}"
+        ) from e
+    operation = {
+        "contract": supplied.contract,
+        "mode": supplied.mode,
+        "role": supplied.role,
+        "skillset": supplied.skillset,
+        "skillset_digest": supplied.skillset_digest,
+    }
+    steps = []
+    for c in criteria:
+        assert c.scenario is not None  # the rails refuse a scenario criterion without one
+        text = canonical_text(c.scenario)
+        steps.append(
+            ScenarioOperationStep(
+                task_type=TaskType.QA_RUN_REMOTE_OPERATION,
+                role=supplied.role,
+                criterion_id=c.id,
+                operation=operation,
+                operation_scenario={
+                    "scenario_id": c.scenario["scenario_id"],
+                    "digest": scenario_digest(text),
+                    "assertions": [a["id"] for a in c.scenario["assertions"]],
+                    "named_assertion": c.scenario["named_assertion"],
+                    "path": scenario_criterion_path(c.id),
+                    # The framework lays it into the step's workspace at dispatch.
+                    "document": text,
+                },
+            )
+        )
+    return tuple(steps)
+
+
+@dataclass(frozen=True)
 class _PlanFacts:
     """What every envelope of one run is built from, read once per run (#1994, the extraction
     map's §4e step 5a): the resolved config with a re-roll's rejection lifted out of it, and an
@@ -1885,6 +1962,9 @@ def generate_task_plan(
                 "Plan validation failed (skillset coverage): " + "; ".join(offered_errors)
             )
         steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
+        # #3044: each scenario criterion is run by an operation step the framework appends,
+        # after the plan's body has built the candidate.
+        steps = list(steps) + list(_scenario_operation_steps(cycle, change_request))
     # SIP-0109 §8: after everything that builds the candidate, never before the plan's body.
     steps = list(steps) + list(evaluation.steps)
 
@@ -1937,9 +2017,13 @@ def generate_task_plan(
     ]
 
     for step_index, step in enumerate(steps):
-        # Steps are either (task_type, role) tuples or PlanTask objects
+        # Steps are (task_type, role) tuples, PlanTask objects, or a scenario's operation step
+        scenario_step = step if isinstance(step, ScenarioOperationStep) else None
         if isinstance(step, tuple):
             task_type, role = step
+            plan_task = None
+        elif scenario_step is not None:
+            task_type, role = scenario_step.task_type, scenario_step.role
             plan_task = None
         else:
             task_type = step.task_type
@@ -1990,6 +2074,12 @@ def generate_task_plan(
             implementation_artifacts=implementation_artifacts,
             ruling_notes=ruling_notes,
         )
+        if scenario_step is not None:
+            # SIP-0117 R4.4: what the handler runs, and the surface a failed assertion's repair
+            # is aimed at, as a plan task naming a contract carries them.
+            inputs["operation"] = {**scenario_step.operation, "agent_id": agent_id}
+            inputs["operation_scenario"] = dict(scenario_step.operation_scenario)
+            inputs["implementation_artifacts"] = implementation_artifacts
 
         envelope = TaskEnvelope(
             task_id=task_id,
