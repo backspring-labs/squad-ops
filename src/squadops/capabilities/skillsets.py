@@ -18,10 +18,12 @@ requires, are cycle preflight's checks (§9), not this module's.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import yaml
@@ -234,6 +236,13 @@ def load_skillsets(
         for entry in sorted(base.iterdir())
         if entry.is_dir() and entry.name != SHARED_DIR and not entry.name.startswith(".")
     }
+
+
+@functools.cache
+def packaged_skillsets() -> Mapping[str, Skillset]:
+    """The skillsets this deployment holds, read once. An agent carries the version the
+    deployment holds (§5.2), so the catalog is fixed for the life of the process."""
+    return MappingProxyType(load_skillsets())
 
 
 def _names(value: Any, field: str, errors: list[str], *, required: bool) -> tuple[str, ...]:

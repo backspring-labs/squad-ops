@@ -55,6 +55,7 @@ from squadops.campaigns.proposal_rating import (
 )
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.contract_derivation import (
     ContractDerivationError,
@@ -97,6 +98,7 @@ from squadops.cycles.preflight import (
     required_check_tooling_decision,
     required_roles_decision,
     scripted_squad_decision,
+    skillset_coverage_decision,
     source_backed_stack_decision,
     stack_development_profile_decision,
 )
@@ -239,6 +241,9 @@ async def _run_create_preflight(
         # #2437: a builder squad with a build step and no build_profile fails the moment
         # implementation starts (#392), after the whole framing workload. Fail in seconds.
         builder_build_profile_decision(profile, config, source_backed=source_backed),
+        # SIP-0116 §9: the agent each responsibility routes to carries the skillsets the
+        # development profile requires, or the cycle is refused here with what is missing.
+        skillset_coverage_decision(profile, config, packaged_skillsets()),
         # SIP-0112 E.4.3: an external product's cycle starts from its tree, never a stack's.
         source_backed_stack_decision(config, source_backed=source_backed),
         model_availability_decision(profile, await _pulled_model_names(llm_port)),
@@ -867,7 +872,10 @@ async def prepare_cycle(
         # SIP-0116 §10: recorded here, after the development profile is pinned and preflight
         # has passed, from the configuration dispatch will read.
         skillset_record=build_skillset_record(
-            profile, snapshot_hash, resolve_config(applied_defaults, body.execution_overrides or {})
+            profile,
+            snapshot_hash,
+            resolve_config(applied_defaults, body.execution_overrides or {}),
+            packaged_skillsets(),
         ),
     )
     return PreparedCycle(

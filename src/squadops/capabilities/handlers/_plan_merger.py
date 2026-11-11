@@ -404,6 +404,8 @@ def _build_canonical_pair(
         acceptance_criteria=list(ptask.acceptance_criteria),
         depends_on=[],  # resolved in rule-5 pass
         criteria_refs=list(ptask.criteria_refs),  # SIP-0098 98.3: carry bind refs through
+        contract=ptask.contract,  # SIP-0116 §6.1: and the contract and mode it names
+        mode=ptask.mode,
     )
     provenance = CanonicalTaskProvenance(
         task_index=0,
@@ -770,6 +772,11 @@ def _plan_task_to_dict(task: PlanTask) -> dict[str, Any]:
         # SIP-0098 98.3: emit criteria_refs only when present so contract-less merged
         # plans stay byte-identical to today (from_yaml defaults the field to []).
         **({"criteria_refs": list(task.criteria_refs)} if task.criteria_refs else {}),
+        # SIP-0116 §6.1: and the contract and mode a task names, on the same terms. A field
+        # this serializer forgets is dropped from the merged plan without a word, and a task
+        # that named a contract reaches the gate as a plain task of its type.
+        **({"contract": task.contract} if task.contract else {}),
+        **({"mode": task.mode} if task.mode else {}),
     }
 
 

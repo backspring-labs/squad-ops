@@ -49,8 +49,8 @@ from squadops.stacks.scaffold import (
     qa_test_namespace_for_stack,
     scaffold_stack_for,
 )
-from squadops.tasks.base_set import base_plannable_task_types
-from squadops.tasks.task_types import TaskType, authors_qa_suite
+from squadops.tasks.base_set import BASE_SET_VERSION, base_plannable_task_types
+from squadops.tasks.task_types import TaskType, authors_qa_suite, plannable
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_contract import VerificationContract
@@ -108,6 +108,25 @@ def _importable_module_surface(paths: frozenset[str] | set[str]) -> frozenset[st
             continue
         modules.add(".".join(parts))
     return frozenset(modules)
+
+
+def _is_offer_row(row: object) -> bool:
+    """Whether ``row`` is one of a skillset record's offered contracts as it is written: the
+    task type, contract and role as text."""
+    return isinstance(row, Mapping) and all(
+        isinstance(row.get(key), str) and row.get(key) for key in ("task_type", "contract", "role")
+    )
+
+
+def _offered_listing(offered: Any) -> str:
+    """The contracts a cycle's record offers, for a refusal's message."""
+    rows = [
+        f"`{o.get('contract')}`"
+        + (f" in `{o.get('mode')}` mode" if o.get("mode") else "")
+        + f" as `{o.get('task_type')}` for `{o.get('role')}`"
+        for o in offered
+    ]
+    return "; ".join(rows) if rows else "no contract"
 
 
 def planner_build_task_types(*, offer_builder: bool) -> set[str]:
@@ -194,6 +213,12 @@ class PlanTask:
     # covered files; dispatch resolves each ref into a TypedCheck against the
     # seeded contract. Empty in contract-less (author) mode — the default.
     criteria_refs: list[str] = field(default_factory=list)
+    # SIP-0116 §6.1: the capability contract this task is, and the verification mode it runs
+    # in. Empty for a base-set task, which is its own contract. A task of a type outside the
+    # base set names both, and ``validate_against_offered`` checks them against the cycle's
+    # skillset record. A plan names a contract, never a platform's operation.
+    contract: str = ""
+    mode: str = ""
 
 
 @dataclass(frozen=True)
@@ -274,7 +299,10 @@ class ImplementationPlan:
                     raise ValueError(f"Task {i} missing required field: {req}")
 
             task_type = td["task_type"]
-            if task_type not in _KNOWN_BUILD_TASK_TYPES:
+            # SIP-0116 §6.3: the parser accepts every plannable type, and whether THIS cycle
+            # was offered it is ``validate_against_offered``'s question, asked of the cycle's
+            # record. The two sets are the same until a type outside the base set is plannable.
+            if task_type not in _KNOWN_BUILD_TASK_TYPES and not plannable(task_type):
                 raise ValueError(
                     f"Task {i}: unknown task_type '{task_type}'. "
                     f"Known types: {', '.join(sorted(_KNOWN_BUILD_TASK_TYPES))}"
@@ -311,6 +339,10 @@ class ImplementationPlan:
             if not isinstance(raw_refs, list) or not all(isinstance(r, str) for r in raw_refs):
                 raise ValueError(f"Task {task_index}: criteria_refs must be a list of strings")
 
+            contract, mode = td.get("contract", ""), td.get("mode", "")
+            if not isinstance(contract, str) or not isinstance(mode, str):
+                raise ValueError(f"Task {task_index}: contract and mode must be strings")
+
             tasks.append(
                 PlanTask(
                     task_index=task_index,
@@ -322,6 +354,8 @@ class ImplementationPlan:
                     acceptance_criteria=criteria,
                     depends_on=depends_on,
                     criteria_refs=list(raw_refs),
+                    contract=contract,
+                    mode=mode,
                 )
             )
 
@@ -455,6 +489,67 @@ class ImplementationPlan:
                     f"a test suite this stack's runner never collects ({shown}) — it would "
                     f"run nothing while the collected suites read green. Rename it to match "
                     f"{shown}, or drop it from expected_artifacts"
+                )
+        return errors
+
+    def validate_against_offered(self, skillset_record: Mapping[str, Any] | None) -> list[str]:
+        """SIP-0116 §9, at the plan gate: every task is a base-set type, or a contract and
+        mode the cycle's requirements name, supplied by the task's routed agent.
+
+        ``skillset_record`` is the cycle's (``Cycle.skillset_record``): the base set it ran
+        under and what coverage offered at creation. So whether a plan is well formed is a
+        property of the plan and the record, decidable without today's files. A cycle with no
+        record, created before one existed, was offered the current base set and nothing else.
+        """
+        if skillset_record is None:
+            # The one case with no record: a cycle created before records existed. It ran
+            # under what is now ``base@1``, and was offered nothing else.
+            version: Any = BASE_SET_VERSION
+            offered_rows: Any = ()
+        else:
+            # A record that is present is read as written. A missing part is refused, never
+            # filled in: a default here would let a plan through on a record nobody can vouch
+            # for, which is the gate reading as passed when it didn't run.
+            base_set = (
+                skillset_record.get("base_set") if isinstance(skillset_record, Mapping) else None
+            )
+            version = base_set.get("version") if isinstance(base_set, Mapping) else None
+            offered_rows = (
+                skillset_record.get("offered") if isinstance(skillset_record, Mapping) else None
+            )
+            if (
+                not isinstance(version, str)
+                or not isinstance(offered_rows, list | tuple)
+                or not all(_is_offer_row(row) for row in offered_rows)
+            ):
+                return [
+                    "The cycle's skillset record can't be read: it names no base set version, "
+                    "or its offered contracts aren't a list of task type, contract and role. "
+                    "The plan can't be checked against it"
+                ]
+        try:
+            base = {t.value for t in base_plannable_task_types(version)}
+        except ValueError as unknown:
+            # A record written by a deploy this one can't read: refused, never guessed at.
+            return [f"The cycle's skillset record can't be read here. {unknown}"]
+        offered = {
+            (o.get("task_type"), o.get("contract"), o.get("mode") or "", o.get("role"))
+            for o in offered_rows
+        }
+        errors: list[str] = []
+        for task in self.tasks:
+            named = f"`{task.contract}`" + (f" in `{task.mode}` mode" if task.mode else "")
+            if not task.contract:
+                if task.task_type not in base:
+                    errors.append(
+                        f"Task {task.task_index}: `{task.task_type}` is outside the base set, "
+                        f"so the task names the contract and mode it runs as"
+                    )
+            elif (task.task_type, task.contract, task.mode, task.role) not in offered:
+                errors.append(
+                    f"Task {task.task_index}: {named} as `{task.task_type}` for `{task.role}` "
+                    f"isn't offered to this cycle. Its requirements name "
+                    f"{_offered_listing(offered_rows)}"
                 )
         return errors
 
@@ -1272,6 +1367,11 @@ class ImplementationPlan:
             task_dict["acceptance_criteria"] = [
                 _serialize_acceptance_criterion(c) for c in task.acceptance_criteria
             ]
+            # SIP-0116: written only where a task names them, so a plan of base-set tasks
+            # serializes, and hashes, exactly as it did before the fields existed.
+            for declared_only in ("contract", "mode"):
+                if not task_dict[declared_only]:
+                    del task_dict[declared_only]
         return result
 
 

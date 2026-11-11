@@ -5,10 +5,12 @@ set, the squad, the development profile, the requirements checked, the agent eac
 to, and the content loaded. It is stored with the cycle beside ``squad_profile_snapshot_ref``
 (Q57) and holds enough to read the assignment later without today's files.
 
-Phase 1 writes the parts that exist before coverage does: the base set, the squad, the
-development profile and its declared requirements. ``assignment`` and ``content`` are empty,
-and are filled by the coverage check and the skill loader when those are built. Every
-development profile requires nothing today, so every record's requirements are empty too.
+``assignment`` and ``offered`` come from the coverage check (``skillset_coverage``), which
+cycle preflight has already passed by the time a record is built: each requirement, the agent
+it routed to and the skillset that agent supplied, and the contracts those skillsets put in
+front of the planner. ``content`` is empty until the skill loader is built. Every development
+profile requires nothing today, so every record's requirements, assignment and offered
+contracts are empty too.
 """
 
 from __future__ import annotations
@@ -17,8 +19,11 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Any
 
+from squadops.capabilities.capability_contracts import CapabilityContractDeclaration
+from squadops.capabilities.skillsets import Skillset
 from squadops.core.hashing import canonical_sha256
 from squadops.cycles.models import SquadProfile
+from squadops.cycles.skillset_coverage import cycle_coverage
 from squadops.stacks.development_profiles import (
     development_profile_fingerprint,
     development_profile_selection_origin,
@@ -38,11 +43,25 @@ def skillset_record_digest(record: Mapping[str, Any]) -> str:
 
 
 def build_skillset_record(
-    profile: SquadProfile, roster_hash: str, resolved_config: Mapping[str, Any]
+    profile: SquadProfile,
+    roster_hash: str,
+    resolved_config: Mapping[str, Any],
+    catalog: Mapping[str, Skillset],
+    contracts: Mapping[str, CapabilityContractDeclaration] | None = None,
 ) -> dict[str, Any]:
-    """The record for a cycle created now, under ``profile`` and ``resolved_config``."""
+    """The record for a cycle created now, under ``profile`` and ``resolved_config``, with the
+    skillsets ``catalog`` holds."""
     name = effective_development_profile(resolved_config)
     development = get_development_profile(name)
+    coverage = cycle_coverage(profile, resolved_config, catalog, contracts)
+    if not coverage.covered:
+        # Cycle preflight refuses an uncovered cycle before anything is built. A record
+        # written anyway would hold requirements beside an empty assignment, and read later
+        # as a cycle that ran with its work covered.
+        raise ValueError(
+            "a skillset record is written only for a cycle whose requirements are covered: "
+            + " ".join(f.message for f in coverage.findings)
+        )
     record: dict[str, Any] = {
         "schema": SKILLSET_RECORD_SCHEMA,
         "base_set": {
@@ -59,7 +78,10 @@ def build_skillset_record(
             ),
         },
         "requirements": [_requirement(entry) for entry in development.requires],
-        "assignment": [],
+        "assignment": [dataclasses.asdict(a) for a in coverage.assignments],
+        "offered": [
+            {**dataclasses.asdict(o), "task_type": o.task_type.value} for o in coverage.offered
+        ],
         "content": [],
     }
     record["digest"] = skillset_record_digest(record)

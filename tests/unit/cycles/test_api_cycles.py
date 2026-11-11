@@ -1412,6 +1412,7 @@ class TestCreateCycleSkillsetRecord:
             },
             "requirements": [],
             "assignment": [],
+            "offered": [],
             "content": [],
         }
         assert digest == skillset_record_digest(record)
@@ -1440,3 +1441,132 @@ class TestCreateCycleSkillsetRecord:
             name,
             origin,
         )
+
+
+class TestCreateCycleSkillsetCoverage:
+    """SIP-0116 §9, phase 2: coverage at cycle creation, on the routed agent.
+
+    Enters at ``POST /api/v1/projects/{project}/cycles`` with a fixture profile that requires a
+    skillset (none is registered). Bug caught: the coverage check existing as a function the
+    create path never calls, so a squad that can't do the work is admitted and fails at
+    dispatch, after framing."""
+
+    @pytest.fixture
+    def requiring_stack(self, monkeypatch):
+        import dataclasses
+
+        from squadops.api.routes.cycles import cycles as cycles_route
+        from squadops.capabilities.skillsets import Skillset, SkillsetCapability
+        from squadops.stacks import development_profiles
+        from squadops.stacks.requirements import (
+            ContractNeed,
+            PlatformTarget,
+            ResponsibilityRequirement,
+            SkillsetRequirement,
+        )
+
+        requires = (
+            ResponsibilityRequirement(
+                "qa", (SkillsetRequirement("fixture-qa", ">=2", (ContractNeed("qa.test"),)),)
+            ),
+        )
+        profile = dataclasses.replace(
+            development_profiles.DEVELOPMENT_PROFILES["python_cli"],
+            name="fixture_stack",
+            platform=PlatformTarget("fixture", "local"),
+            requires=requires,
+        )
+        monkeypatch.setitem(development_profiles.DEVELOPMENT_PROFILES, "fixture_stack", profile)
+        catalog = {
+            "fixture-qa": Skillset(
+                id="fixture-qa",
+                version=2,
+                description="fixture",
+                roles=("qa",),
+                platform_id="fixture",
+                platform_variants=("local",),
+                prerequisites=(),
+                capabilities=(SkillsetCapability("qa.test"),),
+                skill_digests={},
+                digest="digest-of-fixture-qa",
+            )
+        }
+        monkeypatch.setattr(cycles_route, "packaged_skillsets", lambda: catalog)
+        return {
+            "squad_profile_id": "full",
+            "execution_overrides": {"development_profile": "fixture_stack"},
+        }
+
+    def _equip(self, mock_squad_profile, agent_id, *skillsets):
+        import dataclasses
+
+        profile = _full_plan_profile()
+        mock_squad_profile.resolve_snapshot.return_value = (
+            dataclasses.replace(
+                profile,
+                agents=tuple(
+                    dataclasses.replace(a, skillsets=skillsets) if a.agent_id == agent_id else a
+                    for a in profile.agents
+                ),
+            ),
+            "sha256:equipped",
+        )
+
+    def test_a_squad_whose_routed_agent_lacks_the_skillset_is_refused_before_anything_is_stored(
+        self, client, mock_cycle_registry, mock_squad_profile, requiring_stack
+    ):
+        # Neo carries it, and qa routes to Eve: an agent elsewhere doesn't help.
+        self._equip(mock_squad_profile, "neo", "fixture-qa")
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=requiring_stack)
+
+        assert resp.status_code == 422, resp.text
+        assert (
+            "Squad skillset requirements not met. Selected squad: `full`. Missing: "
+            "`fixture-qa` for `qa` (agent `eve`)." in resp.text
+        )
+        mock_cycle_registry.create_cycle.assert_not_called()
+
+    def test_an_equipped_squad_is_admitted_and_its_record_names_who_supplied_what(
+        self, client, mock_cycle_registry, mock_squad_profile, requiring_stack
+    ):
+        self._equip(mock_squad_profile, "eve", "fixture-qa")
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=requiring_stack)
+
+        assert resp.status_code == 201, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        record = cycle.skillset_record
+        assert record["assignment"] == [
+            {
+                "role": "qa",
+                "agent_id": "eve",
+                "skillset": "fixture-qa",
+                "version": 2,
+                "digest": "digest-of-fixture-qa",
+            }
+        ]
+        assert record["offered"] == [
+            {
+                "contract": "qa.test",
+                "mode": "",
+                "task_type": "qa.test",
+                "role": "qa",
+                "agent_id": "eve",
+                "skillset": "fixture-qa",
+            }
+        ]
+        assert record["development_profile"]["platform"] == {"id": "fixture", "variant": "local"}
+
+    def test_an_ordinary_cycle_on_an_equipped_squad_is_unaffected(
+        self, client, mock_cycle_registry, mock_squad_profile, requiring_stack
+    ):
+        """A squad may carry skillsets for stacks this cycle isn't on. Bug caught: equipment
+        the work doesn't require entering the record or the planner's offer."""
+        self._equip(mock_squad_profile, "eve", "fixture-qa")
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json={"squad_profile_id": "full"})
+
+        assert resp.status_code == 201, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert (cycle.skillset_record["assignment"], cycle.skillset_record["offered"]) == ([], [])

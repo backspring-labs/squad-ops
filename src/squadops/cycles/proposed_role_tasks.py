@@ -125,6 +125,11 @@ class ProposedTask:
     # (lists refs) instead of authoring typed criteria for covered files; the merger
     # carries them onto the PlanTask. Empty in author mode — the default.
     criteria_refs: list[str] = field(default_factory=list)
+    # SIP-0116 §6.1: the capability contract and verification mode the proposer names for
+    # this task. The merger carries both onto the PlanTask, as it carries ``criteria_refs``:
+    # a contract dropped here would reach the plan gate as a plain task of its type.
+    contract: str = ""
+    mode: str = ""
 
 
 _VALID_BRIEF_CONFLICT_SEVERITIES = frozenset({"warning", "blocking"})
@@ -363,6 +368,8 @@ def _parse_proposed_task(td: object, i: int, seen_keys: set[str]) -> ProposedTas
     if not isinstance(raw_refs, list) or not all(isinstance(r, str) for r in raw_refs):
         raise ValueError(f"Proposal task {i} criteria_refs must be a list of strings")
 
+    contract, mode = _contract_and_mode(td, i)
+
     return ProposedTask(
         task_type=str(td["task_type"]).strip(),
         role=role,
@@ -372,7 +379,18 @@ def _parse_proposed_task(td: object, i: int, seen_keys: set[str]) -> ProposedTas
         acceptance_criteria=criteria,
         depends_on_focus=depends_on_focus,
         criteria_refs=list(raw_refs),
+        contract=contract,
+        mode=mode,
     )
+
+
+def _contract_and_mode(td: dict, i: int) -> tuple[str, str]:
+    """The capability contract and mode a proposed task names (SIP-0116 §6.1), or two empty
+    strings. A value that isn't text is refused, since it can't name either."""
+    contract, mode = td.get("contract", ""), td.get("mode", "")
+    if not isinstance(contract, str) or not isinstance(mode, str):
+        raise ValueError(f"Proposal task {i} contract and mode must be strings")
+    return contract, mode
 
 
 def _advisory_str_list(raw: object, section: str, degraded: list[str]) -> list[str]:

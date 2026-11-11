@@ -68,6 +68,9 @@ def _make_cycle(**overrides) -> MagicMock:
     cycle = MagicMock()
     cycle.execution_overrides = {}
     cycle.applied_defaults = {"implementation_plan": True}
+    # SIP-0116: a fake cycle says what its record is. None is a cycle created before records
+    # existed; a bare MagicMock attribute is refused at the plan gate as unreadable.
+    cycle.skillset_record = None
     cycle.project_id = "group_run"
     cycle.cycle_id = "cyc"
     for k, v in overrides.items():

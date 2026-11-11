@@ -89,6 +89,16 @@ class TaskType(StrEnum):
     # --- properties: the kind of step, declared once beside the members (rule 3) ---
 
     @property
+    def plannable(self) -> bool:
+        """A planner may put a task of this type in an implementation plan (SIP-0116 §6.3).
+
+        Being plannable makes a type *eligible*, never offered: a cycle's planner is offered
+        the base set's types, plus those its requirements name through a capability contract
+        that its routed agent supplies. A new plannable type is its own proposal, with its
+        handler, expected artifacts, footprint rules, correction mapping and verifier seams."""
+        return self in _PLANNABLE
+
+    @property
     def authors_qa_suite(self) -> bool:
         """The step whose emission IS the qa suite — the one the typed suite checks bind to,
         whose expected artifacts must match the test-file patterns, and whose corrections
@@ -167,6 +177,13 @@ class TaskType(StrEnum):
         return self.domain == "builder"
 
 
+#: The plannable task types. Today they are the base set's three; the first addition is the
+#: Game Development Platform SIP's ``qa.run_remote_operation``.
+_PLANNABLE: frozenset[TaskType] = frozenset(
+    {TaskType.DEVELOPMENT_DEVELOP, TaskType.QA_TEST, TaskType.BUILDER_ASSEMBLE}
+)
+
+
 class DeletionGrant(StrEnum):
     """The files a step's deletion form may remove (#2612)."""
 
@@ -195,6 +212,12 @@ def _member_or_none(value: object) -> TaskType | None:
         return TaskType(str(value))
     except ValueError:
         return None
+
+
+def plannable(task_type: object) -> bool:
+    """``TaskType.plannable`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.plannable)
 
 
 def authors_qa_suite(task_type: object) -> bool:
