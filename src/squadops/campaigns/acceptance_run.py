@@ -228,6 +228,7 @@ def evaluation_document(
                 "met": d.met,
                 "reason": str(d.reason),
                 "discriminating": list(d.discriminating),
+                "detail": d.detail,
             }
             for d in evaluation.discriminations
         ],

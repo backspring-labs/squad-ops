@@ -22,6 +22,10 @@ On a repository-backed product's own runner (SIP-0109 §24bv point 3), the same 
 read each run by the runner's test-id reader (``squadops.sandbox.findings``) instead of the
 stack's rows: ``discrimination_on_runner`` and ``held_on_runner``. A runner with no test-id reader
 reads no criterion as discriminating (§24ci (a)).
+
+A scenario criterion (SIP-0117 R3.7, #3044) is read from its operation's assertion records
+instead: ``discrimination_on_scenario`` and ``held_on_scenario``. A reading counts only for the
+frozen digest and the revision being judged (#3053).
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
+
+from squadops.remote_execution.models import AssertionOutcome, OperationStatus
 
 if TYPE_CHECKING:
     from squadops.sandbox.findings import FindingsReading
@@ -102,6 +108,8 @@ class Discrimination:
     #: #2849: on ``no_baseline_failure``, whether the file's tests passed on the candidate too, so
     #: the criterion describes behaviour the change keeps (a preservation check), not one it broke.
     candidate_passed: bool = False
+    #: Why, in words, when it isn't met: which reading was unread and why (#3053).
+    detail: str = ""
 
 
 def discrimination(
@@ -342,6 +350,196 @@ def held_on_runner(
 
 
 # =============================================================================
+# §8.1/§8.2 on a frozen scenario's assertion records (SIP-0117 R3.7; #3053)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class FrozenScenario:
+    """What a scenario criterion froze: the digest of its canonical declaration, and the
+    assertion that names the change. Read from the frozen criterion file, never from a reading,
+    since a reading is only credited against it."""
+
+    digest: str
+    named_assertion: str
+
+
+class Side(StrEnum):
+    """The two trees a criterion is read on (§8.2): the baseline-evaluator overlay and the
+    candidate-verifier overlay. A product runner's run and a scenario's reading (#3044 §4) both
+    name theirs."""
+
+    BASELINE = "baseline"
+    CANDIDATE = "candidate"
+
+
+def credited_outcomes(
+    reading: Mapping | None, frozen: FrozenScenario, revision: str, side: Side
+) -> tuple[dict[str, AssertionOutcome] | None, str]:
+    """Each declared assertion's outcome in ``reading`` (a ``remote_operation_assertions``
+    document), or ``None`` and why it can't be credited.
+
+    A reading counts only for the scenario that was frozen, on the revision being judged and the
+    side it is read for (#3044 §4). One for another digest or revision counts for nothing: an
+    edit after freezing, or a run of an older tree, is never this tree's evidence. A declared
+    assertion with no record is ``missing``, never a pass.
+    """
+    if reading is None:
+        return None, f"no {side} reading"
+    if reading.get("side") != side:
+        return None, f"the reading is the {reading.get('side') or 'unnamed'} side's, not the {side}"
+    scenario = reading.get("scenario") or {}
+    if scenario.get("digest") != frozen.digest:
+        return None, (
+            f"the reading ran scenario {scenario.get('digest') or 'with no digest'}, and the "
+            f"frozen one is {frozen.digest}"
+        )
+    if reading.get("source_revision") != revision:
+        return None, (
+            f"the reading is of revision {reading.get('source_revision') or 'unnamed'}, and the "
+            f"{side} judged is {revision}"
+        )
+    status = reading.get("status")
+    if status != OperationStatus.COMPLETED:
+        why = reading.get("reason") or "no reason given"
+        return None, f"the operation is {status or 'unread'}: {why}"
+    declared = tuple(scenario.get("assertions") or ())
+    if frozen.named_assertion not in declared:
+        return None, f"the scenario declares no assertion {frozen.named_assertion!r}"
+    recorded: dict[str, AssertionOutcome] = {}
+    for record in reading.get("assertions") or ():
+        try:
+            recorded[str(record.get("assertion_id"))] = AssertionOutcome(record.get("outcome"))
+        except ValueError:
+            return None, f"a record's outcome {record.get('outcome')!r} is no assertion outcome"
+    return {a: recorded.get(a, AssertionOutcome.MISSING) for a in declared}, ""
+
+
+def _unexecuted(outcomes: Mapping[str, AssertionOutcome]) -> list[str]:
+    return [f"{a} ({o})" for a, o in sorted(outcomes.items()) if not o.executed]
+
+
+def _failed(outcomes: Mapping[str, AssertionOutcome]) -> list[str]:
+    return sorted(a for a, o in outcomes.items() if o is AssertionOutcome.FAILED)
+
+
+class BaselineVerdict(StrEnum):
+    """What the accepted baseline says of a new scenario before development (#3044 §5)."""
+
+    #: The named assertion executed and failed; every precondition executed and passed.
+    MAY_START = "may_start"
+    #: The named assertion passed: the scenario describes what the baseline already does.
+    SCENARIO_PASSES_ON_BASELINE = "scenario_passes_on_baseline"
+    #: A precondition executed and failed: the scenario's world isn't the baseline's.
+    PRECONDITION_FAILS = "precondition_fails"
+    #: A declared assertion didn't execute: nothing can be read.
+    BLOCKED = "blocked"
+
+
+def _baseline_verdict(
+    outcomes: Mapping[str, AssertionOutcome], named_assertion: str
+) -> tuple[BaselineVerdict, str]:
+    """#3044 §5 over one credited baseline reading. A stand-in: #3044 single-sources this rule in
+    ``squadops.remote_execution.scenario``, and this goes when that lands, so the baseline step
+    and acceptance never read one reading two ways. An assertion that didn't execute blocks it
+    first: a reading with a gap shows neither that the scenario fails for its named reason nor
+    that its world is the baseline's (SIP-0096: only executed results count)."""
+    unexecuted = _unexecuted(outcomes)
+    if unexecuted:
+        return BaselineVerdict.BLOCKED, "didn't execute on the baseline: " + ", ".join(unexecuted)
+    if outcomes[named_assertion] is AssertionOutcome.PASSED:
+        return (
+            BaselineVerdict.SCENARIO_PASSES_ON_BASELINE,
+            f"{named_assertion} already passes on the baseline",
+        )
+    preconditions = [a for a in _failed(outcomes) if a != named_assertion]
+    if preconditions:
+        return (
+            BaselineVerdict.PRECONDITION_FAILS,
+            "preconditions fail on the baseline: " + ", ".join(preconditions),
+        )
+    return BaselineVerdict.MAY_START, ""
+
+
+def discrimination_on_scenario(
+    criterion_id: str,
+    frozen: FrozenScenario,
+    baseline_revision: str,
+    candidate_revision: str,
+    baseline: Mapping | None,
+    candidate: Mapping | None,
+) -> Discrimination:
+    """§8.2 for a new scenario criterion: its named assertion executed and failed on the
+    baseline, with every precondition passing, and every declared assertion executed and passed
+    on the candidate. Each reading is credited only for the frozen digest and its own side's
+    revision; anything unread is ``not_run``, never unmet."""
+    outcomes, why = credited_outcomes(baseline, frozen, baseline_revision, Side.BASELINE)
+    if outcomes is None:
+        return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN, detail=why)
+    verdict, why = _baseline_verdict(outcomes, frozen.named_assertion)
+    if verdict is BaselineVerdict.BLOCKED:
+        return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN, detail=why)
+    if verdict is BaselineVerdict.PRECONDITION_FAILS:
+        return Discrimination(
+            criterion_id, False, DiscriminationReason.ONLY_SETUP_FAILURES, detail=why
+        )
+    on_candidate, candidate_why = credited_outcomes(
+        candidate, frozen, candidate_revision, Side.CANDIDATE
+    )
+    if verdict is BaselineVerdict.SCENARIO_PASSES_ON_BASELINE:
+        return Discrimination(
+            criterion_id,
+            False,
+            DiscriminationReason.NO_BASELINE_FAILURE,
+            candidate_passed=on_candidate is not None
+            and all(o is AssertionOutcome.PASSED for o in on_candidate.values()),
+            detail=why,
+        )
+    if on_candidate is None:
+        return Discrimination(
+            criterion_id, False, DiscriminationReason.NOT_RUN, detail=candidate_why
+        )
+    failed = _failed(on_candidate)
+    if failed:
+        return Discrimination(
+            criterion_id,
+            False,
+            DiscriminationReason.FAILS_ON_CANDIDATE,
+            detail="fail on the candidate: " + ", ".join(failed),
+        )
+    unexecuted = _unexecuted(on_candidate)
+    if unexecuted:
+        return Discrimination(
+            criterion_id,
+            False,
+            DiscriminationReason.NOT_RUN,
+            detail="didn't execute on the candidate: " + ", ".join(unexecuted),
+        )
+    return Discrimination(
+        criterion_id, True, DiscriminationReason.DISCRIMINATES, (frozen.named_assertion,)
+    )
+
+
+def held_on_scenario(
+    frozen: FrozenScenario, revision: str, reading: Mapping | None
+) -> tuple[Held, str]:
+    """§8.1 for an earlier increment's scenario, replayed on this candidate: it holds when every
+    assertion it declares executed and passed on this revision. A failure breaks it, a
+    precondition's as much as the named one's (the world it relied on is gone). An unread
+    reading, or one with an assertion that didn't execute, is blocked, never held."""
+    outcomes, why = credited_outcomes(reading, frozen, revision, Side.CANDIDATE)
+    if outcomes is None:
+        return Held.BLOCKED_UNVERIFIED, why
+    failed = _failed(outcomes)
+    if failed:
+        return Held.BROKEN, ", ".join(failed)
+    unexecuted = _unexecuted(outcomes)
+    if unexecuted:
+        return Held.BLOCKED_UNVERIFIED, "didn't execute: " + ", ".join(unexecuted)
+    return Held.HELD, ""
+
+
+# =============================================================================
 # §8.3: every declared route renders
 # =============================================================================
 
@@ -436,13 +634,14 @@ def increment_acceptance(
     (SIP-0096), and it outranks a failure only when nothing failed."""
     preserved = preserved_criteria(discriminations)
     unmet = [
-        f"criterion {d.criterion_id}: {d.reason}"
+        f"criterion {d.criterion_id}: {d.reason}" + (f" ({d.detail})" if d.detail else "")
         for d in discriminations
         if not d.met and d.reason not in _UNREAD and d.criterion_id not in preserved
     ]
     blocked = [
         f"criterion {d.criterion_id}: "
         + ("not run" if d.reason is DiscriminationReason.NOT_RUN else "its runner names no test")
+        + (f": {d.detail}" if d.detail else "")
         for d in discriminations
         if d.reason in _UNREAD
     ]

@@ -241,6 +241,7 @@ async def test_a_criterion_that_asserts_the_change_discriminates_and_its_bundle_
             "met": True,
             "reason": "discriminates",
             "discriminating": [f"{CRITERION}::test_it"],
+            "detail": "",
         }
     ]
     bundle = document["new_bundles"]["C1"]
