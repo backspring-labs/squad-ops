@@ -47,6 +47,7 @@ from squadops.cycles.models import (
     WORKLOAD_REQUIRED_ROLES,
     WorkloadType,
 )
+from squadops.cycles.skillset_coverage import cycle_coverage
 from squadops.cycles.task_plan import builder_assembles
 from squadops.llm.model_registry import get_model_spec
 from squadops.llm.script import (
@@ -59,10 +60,13 @@ from squadops.llm.script import (
 from squadops.stacks.development_profiles import (
     DEFAULT_DEVELOPMENT_PROFILE,
     DEVELOPMENT_PROFILES,
+    effective_development_profile,
 )
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 
 if TYPE_CHECKING:
+    from squadops.capabilities.capability_contracts import CapabilityContractDeclaration
+    from squadops.capabilities.skillsets import Skillset
     from squadops.cycles.models import SquadProfile
 
 
@@ -136,6 +140,35 @@ def required_roles_decision(profile: SquadProfile, config: Mapping[str, Any]) ->
                 )
             )
     return PreflightDecision(blocking=tuple(findings))
+
+
+def skillset_coverage_decision(
+    profile: SquadProfile,
+    config: Mapping[str, Any],
+    catalog: Mapping[str, Skillset],
+    contracts: Mapping[str, CapabilityContractDeclaration] | None = None,
+) -> PreflightDecision:
+    """Block when the squad doesn't supply the skillsets the cycle's work requires (SIP-0116
+    §9), before framing or any model work.
+
+    Each requirement is checked on the agent its responsibility routes to. A refusal is a
+    ``skillset_coverage`` finding (the squad lacks it: select another) or a
+    ``skillset_declaration`` finding (what is written can't be met by any squad: its author
+    fixes it), and every one is reported. A profile that requires nothing, which is every
+    registered profile today, yields no finding. Never warns: coverage is always decidable
+    from the declarations.
+    """
+    if effective_development_profile(config) not in DEVELOPMENT_PROFILES:
+        # ``development_profile_known_decision`` blocks this cycle and names the profile. It
+        # has no requirements to compare, and the cycle is refused either way.
+        return PreflightDecision()
+    coverage = cycle_coverage(profile, config, catalog, contracts)
+    return PreflightDecision(
+        blocking=tuple(
+            Finding(code=f"skillset_{f.kind}", severity="block", message=f.message)
+            for f in coverage.findings
+        )
+    )
 
 
 def _required_roles_by_workload(config: Mapping[str, Any]) -> dict[str, frozenset[str]]:

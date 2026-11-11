@@ -6,6 +6,16 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Skillset coverage at cycle creation and at the plan gate** (#3014, SIP-0116 phase 2): where a development
+  profile requires skillsets, cycle create checks the agent each responsibility routes to and refuses with what is
+  missing ("Squad skillset requirements not met. Selected squad: … Missing: … for … (agent …)"), or with what is
+  declared wrongly: an unknown skillset, one the agent's role doesn't allow, two supplying one capability, or a
+  requirement its skillset can't meet for the contract, mode or platform. The cycle's skillset record names which
+  agent supplied which skillset and the contracts offered. `TaskType` gains `plannable`; a plan task may name a
+  `contract` and `mode`, and the plan gate refuses one the record doesn't offer (`validate_against_offered`, on both
+  seams). A role's proposed task carries its contract and mode through the merge. A record with a part missing is
+  refused at the gate as unreadable. No profile requires anything yet, so every existing cycle is created, planned
+  and gated as before.
 - **Skillset declarations and each cycle's skillset record, inert** (#3011, SIP-0116 phase 1): an agent in a squad
   profile may declare the `skillsets` it carries, and a development profile may declare its `platform` and what its
   work `requires`. Nothing is required or shipped yet, so every cycle runs as before, and every existing squad

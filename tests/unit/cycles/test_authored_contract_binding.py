@@ -81,6 +81,9 @@ def _cycle(**overrides: Any) -> Any:
     cycle.cycle_id = "cyc_test"
     cycle.project_id = "group_run"
     cycle.execution_overrides = dict(overrides)
+    # SIP-0116: a fake cycle says what its record is. None is a cycle created before records
+    # existed; a bare MagicMock attribute is refused at the plan gate as unreadable.
+    cycle.skillset_record = None
     return cycle
 
 

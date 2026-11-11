@@ -118,6 +118,11 @@ def test_seam_error_channels_stay_distinct():
             "a plan writing where a blocking gap stops the work reaches implementation, where "
             "nothing it writes there can be verified (SIP-0112 H.8)",
         ),
+        (
+            "validate_against_offered",
+            "a plan naming a contract the cycle's squad doesn't supply reaches dispatch through "
+            "that path, where its task fails as handler_not_found (SIP-0116 §9)",
+        ),
     ],
 )
 def test_a_rule_both_seams_need_is_wired_at_both_seams(validator, consequence):

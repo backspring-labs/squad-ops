@@ -214,6 +214,13 @@ class FramingGateCheck:
                             parsed_plan.validate_build_config(cycle.resolved_config()),
                         )
                     )
+                    # SIP-0116 §9: the plan gate's skillset check, on this seam too.
+                    errors.extend(
+                        classifier.collect(
+                            "validate_against_offered",
+                            parsed_plan.validate_against_offered(cycle.skillset_record),
+                        )
+                    )
                     # Roll 15: a plan whose builder task under-covers the build
                     # profile's required_files converges its whole suite and then
                     # dies at the #291 completion gate — which has no repair path

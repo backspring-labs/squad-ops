@@ -1484,6 +1484,73 @@ class TestGateRejectsBuilderPlanWithoutBuildProfile:
         )
 
 
+class TestMidRunGateRefusesAContractTheCycleWasNotOffered:
+    """SIP-0116 §9 on the mid-run gate seam: the plan gate reads the cycle's skillset record.
+
+    Enters at ``_reject_unsatisfiable_plan_at_gate``, the seam the live run's gate calls, with
+    the plan read from the vault. Bug caught: ``validate_against_offered`` existing on the
+    plan while the gate never passes it the cycle's record, so a plan naming a contract no
+    agent supplies is admitted and its task fails at dispatch."""
+
+    _PLAN = TestGateRejectsBuilderPlanWithoutBuildProfile._BUILDER_PLAN_YAML.replace(
+        "    depends_on: []\n", "    depends_on: []\n    contract: fixture.packaging\n"
+    )
+    _OFFER = {
+        "contract": "fixture.packaging",
+        "mode": "",
+        "task_type": "builder.assemble",
+        "role": "builder",
+        "agent_id": "bob",
+        "skillset": "fixture-builder",
+    }
+
+    def _gated(self, cycle, offered):
+        import dataclasses
+
+        return dataclasses.replace(
+            cycle,
+            applied_defaults={
+                "implementation_plan": True,
+                "correction_steps": ["analyze", "decide", "repair"],
+            },
+            execution_overrides={"build_profile": "python_cli_builder"},
+            skillset_record={"base_set": {"version": "base@1"}, "offered": offered},
+        )
+
+    async def _gate(self, executor, cycle):
+        helper = TestGateRejectsBuilderPlanWithoutBuildProfile
+        await executor._reject_unsatisfiable_plan_at_gate(
+            helper._stored_plan_artifacts(),
+            helper._profile_with_builder(),
+            ["progress_plan_review"],
+            cycle,
+        )
+
+    async def test_an_unoffered_contract_is_refused_naming_the_validator(
+        self, executor, mock_vault, cycle
+    ):
+        from squadops.execution.execution_errors import _ExecutionError
+
+        mock_vault.retrieve.return_value = ("ref", self._PLAN.encode())
+
+        with pytest.raises(_ExecutionError) as refused:
+            await self._gate(executor, self._gated(cycle, offered=[]))
+
+        assert "`fixture.packaging` as `builder.assemble` for `builder` isn't offered" in str(
+            refused.value
+        )
+        assert refused.value.terminal == RunTerminalDecision(
+            kind=TerminalKind.PLAN_GATE_REFUSED, refused_validators=("validate_against_offered",)
+        )
+
+    async def test_the_same_plan_passes_where_the_record_offers_the_contract(
+        self, executor, mock_vault, cycle
+    ):
+        mock_vault.retrieve.return_value = ("ref", self._PLAN.encode())
+
+        await self._gate(executor, self._gated(cycle, offered=[self._OFFER]))
+
+
 class TestMidRunGateRejectsUnwinnableQaTask:
     """#715 on the mid-run gate seam — parity with the workload seam."""
 

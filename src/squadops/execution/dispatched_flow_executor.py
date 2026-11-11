@@ -5235,6 +5235,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         errors += classifier.collect(
             "validate_build_config", plan.validate_build_config(cycle.resolved_config())
         )
+        # SIP-0116 §9: a task outside the base set is a contract the cycle's requirements
+        # name, supplied by its routed agent. Both seams, per the #718/#719 rule.
+        errors += classifier.collect(
+            "validate_against_offered", plan.validate_against_offered(cycle.skillset_record)
+        )
         # Roll 15: builder floor coverage — both seams per the #718/#719 rule.
         errors += classifier.collect(
             "validate_builder_floor", plan.validate_builder_floor(cycle.resolved_config())

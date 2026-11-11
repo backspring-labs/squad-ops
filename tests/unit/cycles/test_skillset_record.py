@@ -64,8 +64,49 @@ def requiring_profile(monkeypatch):
     return "fixture_stack"
 
 
-def test_a_profiles_requirements_are_recorded_as_declared_with_its_platform(requiring_profile):
-    record = build_skillset_record(PROFILE, "hash-1", {"development_profile": requiring_profile})
+def test_a_record_is_refused_for_a_cycle_whose_requirements_are_not_covered(requiring_profile):
+    """Bug caught: a record holding requirements beside an empty assignment, which reads
+    later as a cycle that ran with its work covered. Preflight refuses such a cycle first;
+    the builder refuses too, so a caller that skipped preflight can't write one."""
+    with pytest.raises(ValueError, match="written only for a cycle whose requirements are covered"):
+        build_skillset_record(PROFILE, "hash-1", {"development_profile": requiring_profile}, {})
+
+
+def test_a_covered_cycles_requirements_are_recorded_as_declared_with_who_supplied_them(
+    requiring_profile,
+):
+    from squadops.capabilities.capability_contracts import (
+        CapabilityContractDeclaration,
+        VerificationMode,
+    )
+    from squadops.capabilities.skillsets import Skillset, SkillsetCapability
+    from squadops.tasks.task_types import TaskType
+
+    contracts = {
+        "fixture.unit_tests": CapabilityContractDeclaration(
+            "fixture.unit_tests", TaskType.QA_TEST, "per test", (VerificationMode.HEADLESS,)
+        )
+    }
+    catalog = {
+        "fixture-qa": Skillset(
+            id="fixture-qa",
+            version=2,
+            description="fixture",
+            roles=("qa",),
+            platform_id="fixture",
+            platform_variants=("local",),
+            prerequisites=(),
+            capabilities=(SkillsetCapability("fixture.unit_tests", (VerificationMode.HEADLESS,)),),
+            skill_digests={},
+            digest="digest-of-fixture-qa",
+        )
+    }
+    # Every declared alternative is checked, so the second one exists too.
+    catalog["fixture-qa-b"] = dataclasses.replace(catalog["fixture-qa"], id="fixture-qa-b")
+
+    record = build_skillset_record(
+        PROFILE, "hash-1", {"development_profile": requiring_profile}, catalog, contracts
+    )
 
     assert record["development_profile"]["platform"] == {"id": "fixture", "variant": "local"}
     assert record["requirements"] == [
@@ -81,8 +122,15 @@ def test_a_profiles_requirements_are_recorded_as_declared_with_its_platform(requ
             ],
         }
     ]
-    # Phase 1 records what was declared. Coverage assigns an agent in phase 2.
-    assert record["assignment"] == []
+    assert record["assignment"] == [
+        {
+            "role": "qa",
+            "agent_id": "eve",
+            "skillset": "fixture-qa",
+            "version": 2,
+            "digest": "digest-of-fixture-qa",
+        }
+    ]
 
 
 def test_a_repository_backed_cycles_recorded_selection_gives_the_origin():
@@ -91,7 +139,7 @@ def test_a_repository_backed_cycles_recorded_selection_gives_the_origin():
         "development_profile_selection": {"name": "node_vitest", "origin": "derived"},
     }
 
-    record = build_skillset_record(PROFILE, "hash-1", config)
+    record = build_skillset_record(PROFILE, "hash-1", config, {})
 
     assert record["development_profile"]["origin"] == "derived"
 
@@ -107,7 +155,7 @@ def test_a_selection_that_is_not_this_profiles_pin_is_refused_rather_than_borrow
     config = {"development_profile": "node_vitest", "development_profile_selection": selection}
 
     with pytest.raises(ValueError, match="recorded development_profile_selection"):
-        build_skillset_record(PROFILE, "hash-1", config)
+        build_skillset_record(PROFILE, "hash-1", config, {})
 
 
 @pytest.mark.parametrize(
@@ -123,7 +171,7 @@ def test_a_selection_that_is_not_this_profiles_pin_is_refused_rather_than_borrow
 def test_any_change_to_the_record_no_longer_matches_its_digest(change):
     """Bug caught: a digest that covers part of the record, so a stored record edited after
     creation still reads as the one the cycle ran under."""
-    record = build_skillset_record(PROFILE, "hash-1", {})
+    record = build_skillset_record(PROFILE, "hash-1", {}, {})
     assert skillset_record_digest(record) == record["digest"]
 
     edited = copy.deepcopy(record)
@@ -133,9 +181,9 @@ def test_any_change_to_the_record_no_longer_matches_its_digest(change):
 
 
 def test_the_same_inputs_give_the_same_digest_and_a_different_squad_another():
-    one = build_skillset_record(PROFILE, "hash-1", {})
-    two = build_skillset_record(PROFILE, "hash-1", {})
-    other = build_skillset_record(PROFILE, "hash-2", {})
+    one = build_skillset_record(PROFILE, "hash-1", {}, {})
+    two = build_skillset_record(PROFILE, "hash-1", {}, {})
+    other = build_skillset_record(PROFILE, "hash-2", {}, {})
 
     assert one == two
     assert other["digest"] != one["digest"]
@@ -143,13 +191,13 @@ def test_the_same_inputs_give_the_same_digest_and_a_different_squad_another():
 
 def test_an_unknown_development_profile_is_refused_rather_than_recorded():
     with pytest.raises(ValueError, match="Unknown development profile 'no_such_stack'"):
-        build_skillset_record(PROFILE, "hash-1", {"development_profile": "no_such_stack"})
+        build_skillset_record(PROFILE, "hash-1", {"development_profile": "no_such_stack"}, {})
 
 
 async def test_the_registry_and_the_read_route_return_the_record_a_cycle_was_created_with():
     """Bug caught: the record written at creation and lost by the registry's read or by the
     response mapper, so an operator can't see what a cycle ran under."""
-    record = build_skillset_record(PROFILE, "hash-1", {})
+    record = build_skillset_record(PROFILE, "hash-1", {}, {})
     registry = MemoryCycleRegistry()
     await registry.create_cycle(
         Cycle(

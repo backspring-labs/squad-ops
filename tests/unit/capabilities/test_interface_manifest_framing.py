@@ -204,6 +204,9 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
     run.workload_type = "framing"  # the plan gate judges the run that authored the plan (#1864)
     cycle = MagicMock()
     cycle.applied_defaults = {"implementation_plan": True}
+    # SIP-0116: a fake cycle says what its record is. None is a cycle created before records
+    # existed; a bare MagicMock attribute is refused at the plan gate as unreadable.
+    cycle.skillset_record = None
     # a real Cycle always has a dict here; without it MagicMock's .get() returns a
     # truthy mock and the SIP-0098 98.3 bind-mode branch would misfire (author mode
     # is keyed on contract_ref being absent).

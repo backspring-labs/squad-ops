@@ -343,3 +343,112 @@ def test_author_mode_injects_no_index():
     cycle, run, profile = _framing_setup()
     envs = generate_task_plan(cycle, run, profile, plan=None, contract=None)
     assert all("contract_criteria_index" not in e.inputs for e in envs)
+
+
+# --------------------------------------------------------------------------- #
+# SIP-0116 §6.1: a task's contract and mode survive the proposal, the merge and both
+# serializers
+# --------------------------------------------------------------------------- #
+
+
+def test_a_proposed_tasks_contract_and_mode_reach_the_merged_plan():
+    """Enters at the proposal's parser and leaves through the merged plan's own YAML. Bug
+    caught: a field the proposal parser, the merger or its serializer doesn't know being
+    dropped in silence, so ``qa.test`` proposed as a contract in ``headless`` mode reaches the
+    plan gate as a plain ``qa.test`` and nothing says a contract was ever named."""
+    import yaml
+
+    from squadops.capabilities.handlers._plan_merger import (
+        _build_canonical_pair,
+        _plan_task_to_dict,
+    )
+    from squadops.cycles.implementation_plan import ImplementationPlan
+
+    proposal = ProposedRoleTasks.from_yaml(
+        _proposal_yaml("contract: fixture.unit_tests\n    mode: headless")
+    )
+    assert (proposal.tasks[0].contract, proposal.tasks[0].mode) == (
+        "fixture.unit_tests",
+        "headless",
+    )
+
+    plan_task, _, _ = _build_canonical_pair(proposal.tasks[0], proposing_role="development")
+    emitted = _plan_task_to_dict(plan_task)
+    assert (emitted["contract"], emitted["mode"]) == ("fixture.unit_tests", "headless")
+
+    reparsed = ImplementationPlan.from_yaml(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "project_id": "p",
+                "cycle_id": "c",
+                "prd_hash": "h",
+                "tasks": [emitted],
+                "summary": {"total_dev_tasks": 1, "total_qa_tasks": 0, "total_tasks": 1},
+            }
+        )
+    )
+    assert (reparsed.tasks[0].contract, reparsed.tasks[0].mode) == (
+        "fixture.unit_tests",
+        "headless",
+    )
+
+
+def test_a_proposed_contract_that_is_not_text_is_refused():
+    with pytest.raises(ValueError, match="contract and mode must be strings"):
+        ProposedRoleTasks.from_yaml(_proposal_yaml("contract: [fixture.unit_tests]"))
+
+
+def test_every_plan_task_field_survives_both_serializers():
+    """The general form of the bug above. ``PlanTask`` is serialized by hand in two places
+    (the plan's ``to_dict`` and the merger's ``_plan_task_to_dict``), so a field added to the
+    dataclass and to neither is lost with no error. Every field is set to a value that isn't
+    its default, and each serializer must carry all of them back through the parser."""
+    import dataclasses
+
+    import yaml
+
+    from squadops.capabilities.handlers._plan_merger import _plan_task_to_dict
+    from squadops.cycles.implementation_plan import (
+        ImplementationPlan,
+        PlanSummary,
+        PlanTask,
+    )
+
+    task = PlanTask(
+        task_index=0,
+        task_type="qa.test",
+        role="qa",
+        focus="suite",
+        description="write the suite",
+        expected_artifacts=["tests/test_a.py"],
+        acceptance_criteria=["the suite runs"],
+        depends_on=[],
+        criteria_refs=["vc-a"],
+        contract="fixture.unit_tests",
+        mode="headless",
+    )
+    defaults = PlanTask(0, "qa.test", "qa", "suite", "write the suite")
+    unset = [
+        f.name
+        for f in dataclasses.fields(PlanTask)
+        if f.name != "depends_on"
+        and getattr(task, f.name) == getattr(defaults, f.name)
+        and f.name not in ("task_index", "task_type", "role", "focus", "description")
+    ]
+    assert not unset, f"give {unset} a non-default value here, so a serializer can't drop it"
+
+    plan = ImplementationPlan(
+        version=1,
+        project_id="p",
+        cycle_id="c",
+        prd_hash="h",
+        tasks=[task],
+        summary=PlanSummary(total_dev_tasks=0, total_qa_tasks=1, total_tasks=1),
+    )
+    by_plan = plan.to_dict()
+    by_merger = {**by_plan, "tasks": [_plan_task_to_dict(task)]}
+
+    for serialized in (by_plan, by_merger):
+        (parsed,) = ImplementationPlan.from_yaml(yaml.safe_dump(serialized)).tasks
+        assert parsed == task

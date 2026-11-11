@@ -93,6 +93,11 @@ NOT_AUTHOR_FACING: dict[str, str] = {
     # was never offered builder tasks would be noise about an unavailable option.
     "validate_build_config": "enforced-by-offer (#426): unconfigured squads are never "
     "offered builder task types; the inline task-types vocabulary is the teaching",
+    # SIP-0116 §9: the same shape. A planner is offered the base set's task types and the
+    # contracts its cycle's requirements name, so a compliant author can't trip this. The
+    # gate check is the net for an author that named a type or contract it wasn't offered.
+    "validate_against_offered": "enforced-by-offer (SIP-0116 §6.3): a cycle's planner is "
+    "offered only its base set and the contracts its requirements name",
 }
 
 

@@ -160,6 +160,7 @@ _C = AttributionClass
 #: names ``RejectionClassifier`` records. Listed, not introspected, so a new validator fails the
 #: drift test until someone declares what its refusal shows.
 PLAN_VALIDATORS: tuple[str, ...] = (
+    "validate_against_offered",
     "validate_against_profile",
     "validate_blocking_gaps",
     "validate_build_config",

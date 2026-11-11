@@ -132,7 +132,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | part | status | where |
 |---|---|---|
 | Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **shipped** | 2.8 (PR #3013, closing #3011) |
-| Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **shipped** | 2.8 (PR #3015, closing #3014) |
 | Phase 3: skills: loading with repair lineage, the kept copy, dispatch-time budgeting, precedence and digests (§7, §10) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 4: tools: requests within existing authority, and the coverage, authorization and availability outcomes (§8, §9) | **unplaced**, deliberately: the 2.8 plan places it, with the Game Development Platform's worker registry | — |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **unplaced**, deliberately: the 2.8 plan places it | — |
@@ -753,6 +753,38 @@ that skillset as `luau-dev`. Those examples are illustrative (§4.1), and they r
 records: a fourth contract, `game.increment_design`, over `strategy.propose_increment`, and a strategy skillset
 (`roblox-increment-design`), since strategy writes each play scenario.
 
+### 17c. Phase 2 as built (2026-11-09)
+
+Building phase 2 (#3014) settled five points the accepted text leaves open or states differently. **Ruled by the
+owner on 2026-11-10, as written** ("approve both SIP-0116 17c and 17d"), on the implementer's write-up in phase 2's
+PR (#3015).
+
+1. **The planner's prompt doesn't render offered contracts yet.** §6.3 says the offered set is what the planner is
+   offered. Phase 2 computes it, records it (the record's `offered` part) and enforces it at the plan gate on both
+   validation seams. The plan-authoring prompt still lists the base set's task types, as today.
+   - **Why:** no contract outside the base set exists until the Game Development Platform SIP's
+     `qa.run_remote_operation`. Telling a planner how to name a contract and a mode is prompt content, which belongs
+     in a managed prompt asset with a worked example (`docs/PROMPT_AUTHORING_STANDARD.md`), and 2.7 is changing the
+     prompt manifest (#2933, #2935).
+   - **Where it lands:** with the first planned contract (that SIP's phase 2a). Until then a plan can't name a
+     contract its planner was never shown, and the gate refuses one that does.
+2. **A plan task names its contract and mode in two optional fields,** `contract` and `mode`. §6.1 says a plan names
+   the contract and mode and doesn't say how. A base-set task omits both, and a plan of base-set tasks serializes
+   and hashes exactly as before. The multi-contributor path carries both: a role's proposed task, the merge and the
+   merged plan's own serializer (§17d point 4).
+3. **One supplier per capability is checked per responsibility and task type.** §5.3 (Q62) refuses "two that both
+   add skills or tools to the same capability". Two required skillsets overlap when both supply a contract over the
+   same task type for the same role. One skillset supplying two contracts over one task type is a single supplier.
+4. **A role mismatch is checked on the routed agent's supplying skillset.** §9 lists "an agent declares one its
+   roles don't allow" as a declaration outcome. It's refused when that skillset is the one the routed agent would
+   supply for a requirement. A squad profile may name skillsets a cycle's work doesn't require, including ones this
+   deployment doesn't hold (§5.2), and those aren't this cycle's findings.
+5. **The record gains `offered`,** beside `assignment`: each contract and mode a requirement names, with its task
+   type, role, routed agent and supplying skillset. It's what the plan gate reads, so a plan's validity stays a
+   property of the plan and the record (§6.3).
+
+**Not built in phase 2, as §14 orders it:** the authorization and availability outcomes (phase 4, with the worker
+registry).
 ### 17d. No silent reads (2026-11-10)
 
 **What prompted it.** The owner, on phases 1 and 2 as built: "I also want to be sure we avoid silent fallback that
@@ -777,6 +809,23 @@ behaviour.
    skillset per character.
 3. **A selection's origin is never borrowed.** The record takes "how it was selected" from the cycle's recorded
    selection only when that selection names the profile in force. Otherwise building the record raises.
+
+**Phase 2 (#3014):**
+4. **A task's contract and mode survive the proposal, the merge and both serializers.** As first built, a role's
+   proposed task dropped both fields, and so did the merger's own serializer. A `qa.test` proposed as a contract in
+   `headless` mode would have reached the gate as a plain `qa.test`, which the gate accepts. A test now sets every
+   plan-task field and requires each serializer to carry all of them, and it was watched failing with one field
+   removed.
+5. **A record that is present is read as written at the plan gate.** A record with no base-set version, no
+   `offered` list, or a malformed offer is refused as unreadable. Only a cycle with no record at all takes the
+   legacy reading below.
+6. **A record is written only for a covered cycle.** Building one for a cycle with a coverage finding raises, so a
+   caller that skipped preflight can't store requirements beside an empty assignment.
+7. **Coverage asks dispatch's own routing rule** (`resolve_agent_config`) which agent a responsibility routes to.
+   It first held a second copy of "the first enabled agent serving the role".
+8. **Coverage for an unknown development profile raises,** and a profile with a malformed requirement is refused as
+   a declaration finding. The first draft answered "requires nothing" for an unknown name, on the strength of a
+   preflight check that didn't exist until point 1.
 
 **Left as a stated reading, on purpose:**
 - a cycle with no record at all was created before records existed, and reads as `base@1` with nothing offered;
