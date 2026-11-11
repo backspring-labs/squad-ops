@@ -20,6 +20,8 @@ from squadops.capabilities.skillsets import (
     ToolRequest,
     load_skillset,
     load_skillsets,
+    skill_digest,
+    skill_files_digest,
 )
 from squadops.tasks.task_types import TaskType
 
@@ -114,7 +116,7 @@ def test_a_valid_directory_loads_with_its_contracts_modes_skills_and_tools(root)
         lambda root: (root / "_shared/conventions/SKILL.md").write_text(
             _SKILL.format(name="conventions") + "A shared rule changed.\n"
         ),
-        lambda root: (root / "fixture-qa/skills/test-loader/loader.txt").write_bytes(b"\xff\x00"),
+        lambda root: (root / "fixture-qa/skills/test-loader/loader.txt").write_text("require()\n"),
     ],
     ids=["the spec", "its own skill", "a shared skill it includes", "a skill's resource"],
 )
@@ -125,6 +127,43 @@ def test_the_digest_moves_when_the_spec_or_any_skill_content_changes(root, edit)
     edit(root)
 
     assert load_skillset(root / "fixture-qa", contracts=CONTRACTS).digest != before
+
+
+def test_a_skills_text_is_kept_byte_for_byte_and_hashes_to_its_directorys_digest(root):
+    """SIP-0116 §10: a cycle keeps a copy of this text and checks the copy against the digest.
+    Bug caught: text read with line endings rewritten, so a skill authored with CRLF, or one
+    with a byte-order mark, is kept as text that no longer hashes to its own digest, and the
+    copy is refused at the cycle's first task."""
+    resource = root / "fixture-qa/skills/test-loader/loader.txt"
+    resource.write_bytes("\ufeffline one\r\nline two\r\n".encode())
+
+    skillset = load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+    files = skillset.skill_files["test-loader"]
+    assert files == {
+        "SKILL.md": _SKILL.format(name="test-loader"),
+        "loader.txt": "\ufeffline one\r\nline two\r\n",
+    }
+    assert (
+        skill_files_digest(files)
+        == skill_digest(root / "fixture-qa/skills/test-loader")
+        == skillset.skill_digests["test-loader"]
+    )
+    assert sorted(skillset.skill_files) == ["play-scenario", "shared/conventions", "test-loader"]
+
+
+def test_a_resource_that_isnt_text_is_refused_by_name(root):
+    """§17e: a skill's files are loaded into a prompt. Bug caught: a binary resource accepted,
+    digested, and then dropped or mangled when the skill is loaded."""
+    (root / "fixture-qa/skills/test-loader/icon.png").write_bytes(b"\x89PNG\xff\x00")
+
+    with pytest.raises(SkillsetError) as refused:
+        load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+    assert refused.value.errors == [
+        "skill test-loader: icon.png is not UTF-8 text, and a skill's files are loaded "
+        "into a prompt"
+    ]
 
 
 def test_the_digest_is_the_same_for_the_same_content(root):

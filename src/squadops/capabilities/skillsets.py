@@ -21,7 +21,7 @@ from __future__ import annotations
 import functools
 import hashlib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -100,6 +100,10 @@ class Skillset:
     skill_digests: Mapping[str, str]
     #: Covers the spec and every skill's content, so any change to either moves it.
     digest: str
+    #: Each skill's files as text, by the skill's name and then the file's path within it: its
+    #: ``SKILL.md`` and each resource beside it. Read once with the catalog, so the text a
+    #: cycle keeps a copy of (§10) is the text its digest was taken from.
+    skill_files: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     def capability_for(self, contract: str) -> SkillsetCapability | None:
         return next((c for c in self.capabilities if c.contract == contract), None)
@@ -124,6 +128,34 @@ def skill_digest(directory: Path) -> str:
     )
 
 
+def skill_files_digest(files: Mapping[str, str]) -> str:
+    """The digest of a skill's content from its files as text: the same value
+    ``skill_digest`` takes from the directory, since each file is UTF-8 and read byte for
+    byte. A kept copy is checked against it before it is loaded (§10)."""
+    return canonical_sha256(
+        {
+            path: hashlib.sha256(text.encode("utf-8")).hexdigest()
+            for path, text in sorted(files.items())
+        }
+    )
+
+
+def read_skill_files(directory: Path) -> tuple[dict[str, str], list[str]]:
+    """A skill's files as text, by relative path, and each file that isn't UTF-8 text. A skill
+    is loaded into a prompt, so a resource that can't be read as text can't be one (§7)."""
+    files: dict[str, str] = {}
+    unreadable: list[str] = []
+    for path in sorted(p for p in directory.rglob("*") if p.is_file()):
+        relative = path.relative_to(directory).as_posix()
+        try:
+            # Bytes, decoded: ``read_text`` would rewrite line endings, and the text would
+            # then no longer hash to the directory's digest.
+            files[relative] = path.read_bytes().decode("utf-8")
+        except UnicodeDecodeError:
+            unreadable.append(relative)
+    return files, unreadable
+
+
 def load_skillset(
     directory: Path, *, contracts: Mapping[str, CapabilityContractDeclaration] | None = None
 ) -> Skillset:
@@ -140,13 +172,22 @@ def load_skillset(
     capabilities = _capabilities(spec.get("capabilities"), errors, contracts)
 
     skill_digests: dict[str, str] = {}
+    skill_files: dict[str, dict[str, str]] = {}
     for skill in dict.fromkeys(s for c in capabilities for s in c.skills):
         location = skill_directory(directory.parent, skillset_id, skill)
         problem = _skill_problem(location)
         if problem:
             errors.append(f"skill {skill}: {problem}")
-        else:
-            skill_digests[skill] = skill_digest(location)
+            continue
+        files, unreadable = read_skill_files(location)
+        if unreadable:
+            errors.append(
+                f"skill {skill}: {', '.join(unreadable)} is not UTF-8 text, and a skill's "
+                "files are loaded into a prompt"
+            )
+            continue
+        skill_digests[skill] = skill_files_digest(files)
+        skill_files[skill] = files
 
     if errors:
         raise SkillsetError(skillset_id, errors)
@@ -161,6 +202,7 @@ def load_skillset(
         capabilities=capabilities,
         skill_digests=dict(sorted(skill_digests.items())),
         digest=canonical_sha256({"spec": spec, "skills": skill_digests}),
+        skill_files={name: skill_files[name] for name in sorted(skill_files)},
     )
 
 
@@ -364,7 +406,9 @@ def _skill_problem(directory: Path) -> str:
     if not skill_file.is_file():
         return f"no {SKILL_FILE} in {directory.name}/"
     try:
-        header, _body = parse_frontmatter(skill_file.read_text(encoding="utf-8"))
+        header, _body = parse_frontmatter(skill_file.read_bytes().decode("utf-8"))
+    except UnicodeDecodeError:
+        return f"{SKILL_FILE} is not UTF-8 text"
     except FrontmatterError as exc:
         return f"{SKILL_FILE} front matter: {exc}"
     missing = [k for k in ("name", "description") if not str(header.get(k) or "").strip()]
