@@ -88,6 +88,17 @@ class ReadingSide(StrEnum):
     CANDIDATE = "candidate"
 
 
+def acceptance_task_id(
+    campaign_id: str, increment_id: str, criterion_id: str, side: ReadingSide
+) -> str:
+    """The task a scenario reading is asked for under, by the runtime itself (#3053, #3044): one
+    per criterion and side. The registry stops a task's older sends' operations when a newer
+    send asks, so two criteria, or a criterion's baseline and candidate, never stop each other;
+    a re-evaluation (a new dispatch id) stops the older one's. Core's, so the executor's
+    baseline step and acceptance's delivery readings name one task the same way."""
+    return f"campaign:{campaign_id}:{increment_id}:{criterion_id}:{side.value}"
+
+
 @dataclass(frozen=True)
 class RemoteOperationRequest:
     """One operation to run. Its inputs are named, never a live tree."""

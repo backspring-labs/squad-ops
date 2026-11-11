@@ -26,16 +26,14 @@ from adapters.remote_execution.fixture_operation_runner import (
     FixtureOperationRunner,
 )
 from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
-from adapters.remote_execution.registry_remote_execution import (
-    RegistryRemoteExecution,
-    acceptance_task_id,
-)
+from adapters.remote_execution.registry_remote_execution import RegistryRemoteExecution
 from squadops.campaigns.acceptance import Held, held_on_scenario
 from squadops.remote_execution import leasing
 from squadops.remote_execution.models import (
     OperationStatus,
     ReadingSide,
     RemoteOperationRequest,
+    acceptance_task_id,
     records_document,
 )
 from squadops.remote_execution.registry import WorkerRegistry

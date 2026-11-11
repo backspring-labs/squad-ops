@@ -8,7 +8,7 @@ leg back into itself. An agent's handler asks through the runtime API instead
 **Who asks, and which ask supersedes another.** The registry keys an operation on (task id,
 dispatch id), and a newer send of a task stops every unsettled operation of that task. Acceptance
 names each ask ``campaign:<campaign>:<increment>:<criterion>:<side>`` with a dispatch id per
-evaluation (``acceptance_task_id``), so two criteria or two sides never stop each other, and a
+evaluation (``models.acceptance_task_id``), so two criteria or two sides never stop each other, and a
 re-evaluation stops the older one's operation.
 
 | what happens | the result |
@@ -31,7 +31,6 @@ from datetime import timedelta
 from squadops.ports.remote_execution import RemoteExecutionPort
 from squadops.remote_execution.models import (
     OperationStatus,
-    ReadingSide,
     RemoteOperationRequest,
     RemoteOperationResult,
 )
@@ -40,14 +39,6 @@ from squadops.remote_execution.waiting import OperationReading, await_result, en
 from squadops.remote_execution.workers import NoWorker, QueuedOperation, UnknownOperation
 
 logger = logging.getLogger(__name__)
-
-
-def acceptance_task_id(
-    campaign_id: str, increment_id: str, criterion_id: str, side: ReadingSide
-) -> str:
-    """The task an acceptance ask is queued under: one per criterion and side, so no ask stops
-    another's operation (#3053)."""
-    return f"campaign:{campaign_id}:{increment_id}:{criterion_id}:{side.value}"
 
 
 class RegistryRemoteExecution(RemoteExecutionPort):
