@@ -1,0 +1,32 @@
+tag: v2.7.0
+applied_at: '2026-11-11T01:38:17+00:00'
+worktrees_removed:
+- /home/jladd/Code/sq-2-7-shakeout
+- /home/jladd/Code/sq-2286
+- /home/jladd/Code/sq-2402
+- /home/jladd/Code/sq-2736
+- /home/jladd/Code/sq-2737
+- /home/jladd/Code/sq-2765
+- /home/jladd/Code/sq-2775
+- /home/jladd/Code/sq-2776
+- /home/jladd/Code/sq-2798
+- /home/jladd/Code/sq-2862
+- /home/jladd/Code/sq-2862b
+- /home/jladd/Code/sq-2892-derived
+- /home/jladd/Code/sq-2892-scripts
+- /home/jladd/Code/sq-2892-soak
+- /home/jladd/Code/sq-2931
+- /home/jladd/Code/sq-2931b
+- /home/jladd/Code/sq-2932
+- /home/jladd/Code/sq-2935
+- /home/jladd/Code/sq-2949
+- /home/jladd/Code/sq-2974
+- /home/jladd/Code/sq-2975
+- /home/jladd/Code/sq-2975-retire
+- /home/jladd/Code/sq-adopt-27
+- /home/jladd/Code/sq-release-2.7.0
+- /home/jladd/Code/sq-v2.7.0-package
+branches_deleted:
+- docs/2-7-0-plan
+problems: []
+scenario_evidence_purged: 0

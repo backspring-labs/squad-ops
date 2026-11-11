@@ -554,3 +554,27 @@ showcase:
     no correction round; 2.7 is a stabilization release with no feature to show, so
     the pictures are of the sample application it built
   role: shakeout
+records:
+  asset: squadops-2.7.0-records.tar.gz
+  sha256: 6d0a0e51267ff5e1ec8b634ab8590ddff872d540aa6de7b50701bfffaa36c3ff
+  files: 60
+  campaigns:
+  - cmp_056721e622e2
+  - cmp_10099196fce1
+  - cmp_5113d589fd4e
+  - cmp_e27a006adea1
+  - cmp_ec6f1c5b709a
+  - cmp_f14bab82c35f
+  engine_records:
+  - var/engine_switch/20261108T145324Z-status.jsonl
+  bytes: 118592
+  attached_at: '2026-11-11T01:36:13Z'
+  scanned:
+    secret_values: 70
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
+    heldout_markers: 155
+  withheld: []
