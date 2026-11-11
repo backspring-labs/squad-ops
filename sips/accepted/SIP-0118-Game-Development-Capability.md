@@ -73,7 +73,7 @@ Agent Skillsets, accepted 2026-11-09.
 - **One question, shared with the companion (Q68), ruled 2026-11-09:** skillset ids keep SIP-0116's platform-first
   form, and the Roblox dev skillset is `roblox-luau-dev`.
 
-## Delivery ledger (current as of 2026-11-10)
+## Delivery ledger (current as of 2026-11-11)
 
 The rows follow the adopted plan's phases, as revision 4 orders them (R4.5). The 2.8 plan places them, so none is
 placed yet. SIP-0116's phases are in its own ledger.
@@ -84,13 +84,38 @@ placed yet. SIP-0116's phases are in its own ledger.
 | F2 and F3 as separate packs | **dropped** by Revision 3 (R3.2): one specialty, `game-dev-roblox`, until a second engine needs shared content | — |
 | Phase 2a as revision 3 cut it: the specialty table and declaration, the digest pin, both preflights, the isolation test, the profile's `specialties` field | **dropped** by Revision 4 (R4.1): SIP-0116's phases 1, 2 and 5 carry the declarations, the checks, the record and the pin, in its own ledger | — |
 | Phase 2a: the game capability contracts, declared once in `squadops.capabilities` (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`; R4.2), proved with the companion's fixture provider | **shipped** | 2.8 (PR #3019) |
-| Phase 2f: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the squad profiles whose agents declare them, the tolerant emission parser (R4.1, R4.3; replaces F2–F4). Its requirements are switched on only after SIP-0116's phases 2–6 | **unplaced**, deliberately: the 2.8 plan places it | — |
-| Phase 2g: the product: `z_tower-ascension`'s eligibility, registration and goal set; its copy, sweep and place file already exist | **unplaced**, deliberately: the 2.8 plan places it | — |
-| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run (R3.5; replaces F5) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2f: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the squad profiles whose agents declare them, the tolerant emission parser (R4.1, R4.3; replaces F2–F4). Its requirements are switched on only after SIP-0116's phases 2–6 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3041 |
+| Phase 2g: the product: `z_tower-ascension`'s eligibility, registration and goal set; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3042 |
+| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run (R3.5; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
 | F6: Unity, as the check that the contracts generalize across engines: a second set of skillsets and a provider, with no new core task type | **unplaced**, deliberately: after phase 3 | — |
 
 **What closes this SIP:** phases 2a, 2f, 2g and 3 shipped, with §8's "the squad can build and improve a playable
 game" read live (R3.5). F6 shipped or dropped by a numbered amendment.
+
+---
+
+## R5. Post-acceptance amendments
+
+### R5.1 The 2.8 plan's additions, adopted (2026-11-11)
+
+**Ruled by the owner on 2026-11-11** with the 2.8 plan's decisions ("good with your recommednation. go"). The plan was
+adopted by its merge (#3051). The companion records the same additions in its R5.7.
+
+- **Strategy's scenario is declarative** (#3044). Under `game.increment_design`, strategy writes actions, observations
+  and expected values from the harness's vocabulary, never Luau. Each observation reads the player-facing effect the
+  criterion names, never a value the change itself sets.
+  - **Evidence:** the outside review's answers to questions 2 and 8.
+  - **Changes:** the Roblox skillsets (R4.3), where `roblox-increment-design`'s scenario skill writes declarations,
+    and phase 2f's replay tests (#3041), which include a criterion the vocabulary can't observe, where the skill
+    must stop and say so.
+- **The demonstration is pre-registered with its counting rules** (#3043):
+  - how the increments are selected;
+  - when counting starts and stops;
+  - which operator actions are permitted;
+  - that every attempt, retry and intervention is reported, and a failed increment is never replaced by an easier
+    one.
+
+  It waits on Campaign delivery (the companion's #3053). Evidence: the outside review's answers to questions 1 and 7.
 
 ---
 

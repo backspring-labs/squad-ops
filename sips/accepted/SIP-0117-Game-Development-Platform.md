@@ -175,14 +175,22 @@ phases are in its own ledger.
 | Phase 2b, part 1: the runtime's side of remote execution: the worker registry and its migration, the claim, lease and fence rules, `/api/v1/workers`, and the worker's own identity (R3.3, R5.3, R5.4) | **shipped** | 2.8 (PR #3024) |
 | Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **shipped** | 2.8 (PR #3027) |
 | Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4, R5.6) | **shipped** | 2.8 (PR #3052, closing #3023) |
-| Phase 2c: the Luau runner (#2906; core, R3.2) | **unplaced**, deliberately: the 2.8 plan places it | — |
-| Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations (R3.6, R4.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
-| Phase 2e: the assertion harness and reader (R3.7) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2c: the Luau runner (#2906; core, R3.2), built by the Spark lane (the 2.8 plan's decision 4) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #2906 |
+| Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations, and the isolation test (R3.6, R4.3, R4.6, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
+| Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
+| The frozen scenario: declarative (actions, observations and expected values the harness validates and executes), frozen before development with its reader, and its named assertion executed and failing on the accepted baseline before development starts (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3044 |
+| A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3045 |
+| The worker as a service on the MacBook: launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
+| The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3047 |
+| Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3048 |
+| Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3049 |
+| The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3050 |
+| Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3053 |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
 
-**What closes this SIP:** phases 2a–2e shipped (Roblox integration works), then G-1 and U-1 shipped or dropped by a
+**What closes this SIP:** phases 2a–2e and R5.7's rows shipped (Roblox integration works), then G-1 and U-1 shipped or dropped by a
 numbered amendment. B-1 is optional. "The squad can build and improve a playable game" is the companion's to close
 (R2.10).
 
@@ -505,6 +513,31 @@ route.
   An expired lease is ended when its operation is next read, and a waiting requester reads it
   every 2 seconds.
 - **The worker as a service on its machine, and the Studio provider** (phase 2d).
+
+## R5.7 The 2.8 plan's additions, adopted (2026-11-11)
+
+**Ruled by the owner on 2026-11-11:**
+- the 2.8 plan's nine decisions (`docs/plans/2-8-0-plan.md` §8), after an outside review of its revision 1: "good with your recommednation. go";
+- its lanes and the order of the two rulings on the request path: "approve both lanes to spark, decision 2 governs";
+- the Studio first slice: "confirm the studio first slice, merge 3051".
+
+The plan was adopted by its merge (#3051).
+
+**What changed, with the evidence for each:**
+
+| addition | evidence | issue |
+|---|---|---|
+| **the frozen scenario is declarative.** Strategy declares actions, observations and expected values. The harness validates them against its own vocabulary and executes them, and nothing an assignment supplies runs as Luau. The game-dev-roblox plan's "the frozen scenario" among the harness's fixed programs (§2.6) reads as the harness's scenario executor over a validated declaration | the outside review's answer to question 8: freezing a file establishes its identity, not what it may do under the owner's Studio login. Revision 1 of the plan had called the scenario an authored Luau program | #3044 |
+| **the baseline must execute and fail.** The named assertion executes and fails on the accepted baseline before development starts, and anything unread (no record, `setup_failed`, no worker) blocks the increment. The reader is frozen with the scenario | the outside review's answer to question 2. The existing pass-on-head check proceeds where it can't run (`execution/criterion_head_check.py:16-20`) | #3044 |
+| **Campaign delivery reads scenario evidence.** A scenario criterion is accepted on evidence bound to the candidate's revision, and every earlier increment's scenario is replayed on the same candidate | the outside review's answer to question 7. Campaign acceptance runs criteria as files on the product's runner (`campaigns/runner_acceptance.py`), and nothing under `campaigns/` read an operation's evidence | #3053 |
+| **an unavailable worker is waited for, within a budget.** `launch_blocked` before launch, and an availability-only gap relaunched within a budget persisted per logical increment, then escalated. The in-cycle wait, cancel and outcomes are R5.6's | the outside review's answer to question 4. `launch_blocked` counts attempts per episode, and an unblock ends the episode (`campaigns/launch_blocking.py`) | #3045 |
+| **the machinery Campaign** proves the path with no model and no MacBook, through two increments and six injected faults, including a dropped create response and a superseded send | the outside review's answer to question 5; CLAUDE.md's wiring-test rule | #3050 |
+| **the worker as a service, the operator's read surface, re-qualification after a Studio update, payload limits** | R5.4 and R5.5 left the first two out on purpose. A pin with no recorded way to move it blocks every run after a Studio update. The request carries the whole tree inline | #3046–#3049 |
+| **the isolation test** (R4.6) is a committed design that no row carried. It ships with the Studio adapter | — | #3039 |
+| **one credential per host before a second worker.** One worker credential is accepted for one trusted MacBook | the outside review's answer to question 8; R5.4 shares one client identity across workers | — (a condition, no work in 2.8) |
+| **the Studio first slice,** an early read on the plan's Studio gate: read-only, `z_tower-ascension` only, nothing published, built after R5.6's changes | confirmed by the owner, 2026-11-11 | #3039 |
+
+**R5.6's request path** is decision 2's: an agent's calls are scoped to its task's current send, there is one operation per send, and a newer send stops the older sends' operations. It is recorded in R5.6, as built in PR #3052.
 
 ---
 

@@ -1,6 +1,6 @@
 # 2.8.0 plan: a squad develops and tests a Roblox game
 
-**Status: ADOPTED on merge, revision 3 as ruled (2026-11-11), with the owner's rulings and the reconciliation with the MacBook lane (§11).** The owner asked for a 2.8 plan whose headline
+**Status: ADOPTED 2026-11-11 (#3051), revision 3 as ruled, with the owner's rulings and the reconciliation with the MacBook lane (§11).** The owner asked for a 2.8 plan whose headline
 is the game-development work, with a review of what the MacBook lane has merged for it and what more it needs to hold
 up. An outside review of revision 1 requested changes before adoption (§10). The owner then ruled all nine decisions
 as recommended in revision 2's write-up, which takes the review's rulings and adds two of this plan's (§8: "good
@@ -358,7 +358,7 @@ Campaign (§3, #3050). Decision 8 was ruled earlier the same day: "no doesn't co
 
 ## 9. Adoption
 
-**This plan is adopted when the owner merges this PR.** The adoption PR, after that:
+**This plan was adopted when #3051 merged (2026-11-11).** The adoption PR, after #3052 merged (`docs/2-8-0-plan-adoption`):
 - places each row below in its SIP's ledger with its issue, and applies the `sip:` labels
   (`scripts/maintainer/sync_sip_labels.py`, then `refresh_open_issues.py`);
 - writes SIP-0117 **R5.7** (R5.6 is #3052's), with the evidence for each part:
