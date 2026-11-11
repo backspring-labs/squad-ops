@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from adapters.llm.factory import create_llm_provider, with_scripted_model
+from adapters.llm.script_positions import InProcessScriptPositions
 from squadops.llm.call_scope import LLMCallScope, use_llm_call_scope
 from squadops.llm.models import ChatMessage
 from squadops.llm.script import (
@@ -89,13 +90,18 @@ def slept() -> list[float]:
 
 
 @pytest.fixture
-def port(library, slept, monkeypatch):
+def positions():
+    """The cycles' answer positions, outside any one port: what a deploy keeps in Redis."""
+    return InProcessScriptPositions()
+
+
+def _port(library, positions, slept, monkeypatch):
     """The deploy's port, over a real Ollama adapter whose every call fails the test."""
     engine = create_llm_provider(
         provider="ollama", base_url="http://unreachable.invalid:1", default_model="qwen2.5:7b"
     )
     trap = _BoobyTrappedEngine(engine)
-    port = with_scripted_model(engine, library)
+    port = with_scripted_model(engine, positions, library)
 
     async def _sleep(seconds: float) -> None:
         slept.append(seconds)
@@ -103,6 +109,11 @@ def port(library, slept, monkeypatch):
     monkeypatch.setattr(port._scripted, "_sleep", _sleep)
     port.trap = trap
     return port
+
+
+@pytest.fixture
+def port(library, positions, slept, monkeypatch):
+    return _port(library, positions, slept, monkeypatch)
 
 
 def _scope(task_id: str, task_type: str = "development.develop", script: str | None = None):
@@ -245,6 +256,60 @@ async def test_a_step_whose_envelope_carries_no_config_takes_its_cycle_s_script(
     with pytest.raises(LLMScriptError, match="named script dev-repair@.* and now other@"):
         with _scope("task-c", script="other@0123456789ab"):
             await port.chat_stream_with_usage(MSG, model="scripted")
+
+
+async def test_an_agent_that_restarts_mid_cycle_goes_on_from_its_cycle_s_place(
+    port, library, positions, slept, monkeypatch
+):
+    """#3005. An agent restart builds a new port: a new process, the deploy's same store. Bug
+    caught: the next task of a type that already ran counted as the cycle's first again, and
+    was answered with the failing patch recorded for the first task instead of its own."""
+    first = await _ask(port, "task-a")
+    restarted = _port(library, positions, slept, monkeypatch)
+
+    repair = await _ask(restarted, "task-b")
+    reask = await _ask(restarted, "task-a")
+    with use_llm_call_scope(LLMCallScope("cyc_1", "task-c", "qa.test")):
+        unconfigured = await restarted.chat_stream_with_usage(MSG, model="scripted")
+
+    assert first.content == "```python:app.py\nraise SystemExit(1)\n```"
+    assert repair.content == "```python:app.py\nprint('ok')\n```"
+    assert reask.content == "the re-ask's answer"
+    assert unconfigured.content == "qa's answer"  # the cycle's script, bound before the restart
+
+
+async def test_a_restart_whose_store_lost_the_cycle_fails_rather_than_answering_from_the_start(
+    port, library, slept, monkeypatch
+):
+    """The edge: positions lost with their store (Redis flushed). A step whose envelope names
+    no script then can't be answered, and says so. Bug caught: an answer from a guessed place."""
+    await _ask(port, "task-a")
+    restarted = _port(library, InProcessScriptPositions(), slept, monkeypatch)
+
+    with pytest.raises(LLMScriptError, match="names no script"):
+        with use_llm_call_scope(LLMCallScope("cyc_1", "task-b", "development.develop")):
+            await restarted.chat_stream_with_usage(MSG, model="scripted")
+
+
+def test_every_root_s_factory_reads_the_config_s_redis_url_and_keeps_positions_for_days(
+    monkeypatch,
+):
+    """Wiring: the agents, the runtime and the deploy record build their positions through
+    ``create_script_positions(config.comms)``. Bug caught: a store that reads another URL, or
+    one that expires within a cycle's life."""
+    from adapters.llm import factory
+    from adapters.llm.script_positions import RedisScriptPositions
+
+    built: dict = {}
+    monkeypatch.setattr(
+        RedisScriptPositions,
+        "from_url",
+        classmethod(lambda cls, url, ttl: built.update(url=url, ttl=ttl) or "positions"),
+    )
+    comms = type("Comms", (), {"redis": type("R", (), {"url": "redis://redis:6379/0"})()})()
+
+    assert factory.create_script_positions(comms) == "positions"
+    assert built == {"url": "redis://redis:6379/0", "ttl": 14 * 24 * 3600}
 
 
 async def test_a_seed_is_refused_rather_than_dropped(port):

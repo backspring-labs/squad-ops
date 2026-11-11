@@ -15,9 +15,16 @@ from adapters.llm.tensorfold import TensorFoldAdapter
 from adapters.llm.vllm import VLLMAdapter
 from squadops.llm.script import ScriptLibrary
 from squadops.ports.llm.provider import LLMPort
+from squadops.ports.llm.script_positions import ScriptPositionsPort
 
 if TYPE_CHECKING:
     from squadops.core.secret_manager import SecretManager
+
+    from squadops.config.schema import CommsConfig
+
+#: How long a scripted cycle's answer positions are kept after its last scripted call (#3005).
+#: Long past any cycle's life, so a cycle resumed after a pause or a reboot finds its place.
+SCRIPT_POSITIONS_TTL_SECONDS = 14 * 24 * 3600
 
 
 def create_llm_provider(
@@ -87,15 +94,29 @@ def create_llm_provider(
     raise ValueError(f"Unknown LLM provider: {provider}")
 
 
-def with_scripted_model(engine: LLMPort, library: ScriptLibrary | None = None) -> LLMPort:
+def with_scripted_model(
+    engine: LLMPort, positions: ScriptPositionsPort, library: ScriptLibrary | None = None
+) -> LLMPort:
     """The deploy's LLM port: ``engine``, also serving the model ``scripted`` from recorded
     scripts (#2495).
 
     Every composition root that builds the engine wraps it here, so the runtime (which checks a
     cycle's models at create) and the agents (which answer them) agree that the deploy serves
     ``scripted``. A call naming any other model reaches ``engine`` unchanged; one naming
-    ``scripted`` never does. ``library`` is the package's own scripts unless a test names another.
+    ``scripted`` never does. ``positions`` keeps each scripted cycle's answer positions
+    (:func:`create_script_positions` on a deploy, #3005), and is required: a store held in one
+    process loses a cycle's place when that process restarts. ``library`` is the package's own
+    scripts unless a test names another.
     """
     return ScriptedModelRouter(
-        engine, ScriptedLLMAdapter(library if library is not None else ScriptLibrary.packaged())
+        engine,
+        ScriptedLLMAdapter(library if library is not None else ScriptLibrary.packaged(), positions),
     )
+
+
+def create_script_positions(comms: CommsConfig) -> ScriptPositionsPort:
+    """Each scripted cycle's answer positions, in the stack's Redis (``comms.redis.url``), kept
+    for :data:`SCRIPT_POSITIONS_TTL_SECONDS` after a cycle's last scripted call (#3005)."""
+    from adapters.llm.script_positions import RedisScriptPositions
+
+    return RedisScriptPositions.from_url(comms.redis.url, SCRIPT_POSITIONS_TTL_SECONDS)

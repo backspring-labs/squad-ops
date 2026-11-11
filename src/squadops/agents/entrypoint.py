@@ -484,7 +484,11 @@ class AgentRunner:
             create_queue_adapter,
             create_task_attempts,
         )
-        from adapters.llm.factory import create_llm_provider, with_scripted_model
+        from adapters.llm.factory import (
+            create_llm_provider,
+            create_script_positions,
+            with_scripted_model,
+        )
         from adapters.prompts import create_prompt_repository
         from adapters.remote_execution.factory import create_remote_execution
         from adapters.telemetry.factory import (
@@ -523,7 +527,10 @@ class AgentRunner:
                 default_model=llm_model,
                 timeout_seconds=config.llm.timeout,
                 api_key=config.llm.api_key,
-            )
+            ),
+            # #3005: a scripted cycle's answer positions in the stack's Redis, so a restarted
+            # agent goes on from its cycle's place instead of counting from the first task.
+            create_script_positions(config.comms),
         )
 
         # Create prompt service

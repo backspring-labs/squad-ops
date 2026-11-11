@@ -13,9 +13,11 @@ looked for (:mod:`squadops.llm.script`'s errors). It is never sent to the engine
 
 **The key** is the task the call serves, read from the agent's
 :func:`~squadops.llm.call_scope.current_llm_call_scope`, never from the prompt:
-``(task_type, occurrence, call)``, with the occurrence and the call counted here, per cycle, as
-the calls arrive (see :mod:`squadops.llm.script`). The counts live in this process, so an agent
-that restarts mid-cycle counts that cycle's tasks from the first again.
+``(task_type, occurrence, call)``, with the occurrence and the call counted per cycle as the calls
+arrive (see :mod:`squadops.llm.script`). The counts, and the script each cycle named, are kept
+behind :class:`~squadops.ports.llm.script_positions.ScriptPositionsPort` (Redis on a deploy), so
+an agent that restarts mid-cycle goes on from where its cycle was (#3005). Before, they lived in
+this process, and a restarted agent answered a later task from an earlier task's entry.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from squadops.llm.script import (
     UnscopedScriptedCallError,
 )
 from squadops.ports.llm.provider import LLMCapability, LLMPort
+from squadops.ports.llm.script_positions import ScriptPositionsPort
 
 
 class ScriptedLLMAdapter(LLMPort):
@@ -46,19 +49,16 @@ class ScriptedLLMAdapter(LLMPort):
     def __init__(
         self,
         library: ScriptLibrary,
+        positions: ScriptPositionsPort,
         *,
         sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
     ) -> None:
         self._library = library
+        #: Each cycle's occurrences, calls and named script, kept outside this process (#3005).
+        #: A step whose envelope carries no resolved config (a pulse-check repair) is answered
+        #: from the script an earlier task of its cycle named; with none bound, it fails.
+        self._positions = positions
         self._sleep = sleep
-        #: (cycle_id, task_type) -> the task ids of that type, in the order their first calls came.
-        self._occurrences: dict[tuple[str, str], list[str]] = {}
-        #: task_id -> the calls it has made.
-        self._calls: dict[str, int] = {}
-        #: cycle_id -> the script its tasks named. A step whose envelope carries no resolved
-        #: config (a pulse-check repair) is answered from the script its cycle named on an
-        #: earlier task served here; with none seen, it fails.
-        self._cycle_scripts: dict[str, str] = {}
 
     @property
     def engine(self) -> str:
@@ -88,25 +88,24 @@ class ScriptedLLMAdapter(LLMPort):
                 f"a call to {SCRIPTED_MODEL!r} outside any task: an answer is keyed by the task it "
                 "serves, so there is nothing to look it up by"
             )
-        named = scope.llm_script or self._cycle_scripts.get(scope.cycle_id)
-        if named is None:
+        bound = await self._positions.bind_script(scope.cycle_id, scope.llm_script)
+        if bound is None:
             raise LLMScriptError(
                 f"task {scope.task_type} ({scope.task_id}) of cycle {scope.cycle_id} runs on "
                 f"{SCRIPTED_MODEL!r} but its cycle names no script: set "
                 f"{LLM_SCRIPT_KEY}=<name>@<version>"
             )
-        earlier = self._cycle_scripts.setdefault(scope.cycle_id, named)
-        if earlier != named:
+        if scope.llm_script is not None and bound != scope.llm_script:
             raise LLMScriptError(
-                f"cycle {scope.cycle_id} named script {earlier} and now {named}; a cycle has one"
+                f"cycle {scope.cycle_id} named script {bound} and now {scope.llm_script}; "
+                "a cycle has one"
             )
-        script = self._library.resolve(ScriptReference.parse(named))
+        script = self._library.resolve(ScriptReference.parse(bound))
 
-        seen = self._occurrences.setdefault((scope.cycle_id, scope.task_type), [])
-        if scope.task_id not in seen:
-            seen.append(scope.task_id)
-        self._calls[scope.task_id] = self._calls.get(scope.task_id, 0) + 1
-        key = AnswerKey(scope.task_type, seen.index(scope.task_id) + 1, self._calls[scope.task_id])
+        occurrence, call = await self._positions.next_call(
+            scope.cycle_id, scope.task_type, scope.task_id
+        )
+        key = AnswerKey(scope.task_type, occurrence, call)
 
         answer = script.answer_for(key)
         if script.replay_latency and answer.latency_seconds:

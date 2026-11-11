@@ -18,6 +18,7 @@ import pytest
 from adapters.cycles.factory import create_project_registry, create_squad_profile_port
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+from adapters.llm.script_positions import InProcessScriptPositions
 from adapters.llm.scripted import ScriptedLLMAdapter
 from squadops.api.campaign_launch import CampaignLaunchService
 from squadops.api.routes.cycles.cycles import CreationPorts
@@ -181,7 +182,7 @@ async def test_each_cycle_a_scripted_campaign_launches_is_answered_from_its_own_
     ]
     launched = [await cycles.get_cycle(i.cycle_id) for i in intents]
     assert [c.resolved_config()["llm_script"] for c in launched] == scripts
-    adapter = ScriptedLLMAdapter(library)
+    adapter = ScriptedLLMAdapter(library, InProcessScriptPositions())
     assert [await _answer(adapter, c) for c in launched] == list(CHANGES.values())
 
 
