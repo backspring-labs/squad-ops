@@ -426,14 +426,13 @@ def _runtime_remote_execution(config, registry: WorkerRegistry):
     """SIP-0117 (#3053, #3044): how the runtime itself reaches a worker: straight into the
     registry the worker routes serve, never back through its own API. ``none`` binds nothing,
     as it does for an agent, and each reading is not executed."""
-    if config.provider == "none":
-        return None
     from datetime import timedelta
 
-    from adapters.remote_execution.registry_remote_execution import RegistryRemoteExecution
+    from adapters.remote_execution.factory import create_runtime_remote_execution
 
-    return RegistryRemoteExecution(
-        registry,
+    return create_runtime_remote_execution(
+        config.provider,
+        registry=registry,
         origin={"requester": "runtime-api"},
         wait=timedelta(seconds=config.wait_seconds),
         max_attempts=config.max_attempts,

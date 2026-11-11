@@ -1374,6 +1374,7 @@ class TestRunCompletionActivityWiring:
             binding_fill=None,
             route_renderer=None,
             goal_set_registry=None,
+            remote_execution=None,
             focus_lease_port=focus_lease_port,
         )
 

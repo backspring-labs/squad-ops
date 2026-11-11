@@ -3,13 +3,15 @@
 The worker registry's store is chosen by the cycle registry's selector: its operations belong
 to the cycles that asked for them, so it lives beside them. A worker's operation runner is
 chosen by the worker's own ``provider``, and its way to the runtime is HTTP. An agent's
-remote-execution port is chosen by ``remote_execution.provider``.
+remote-execution port is chosen by ``remote_execution.provider``, and so is the runtime's own
+(#3053), which queues straight into the registry.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from squadops.ports.remote_execution import (
     OperationRunnerPort,
@@ -17,6 +19,9 @@ from squadops.ports.remote_execution import (
     WorkerApiPort,
     WorkerRegistryStorePort,
 )
+
+if TYPE_CHECKING:
+    from squadops.remote_execution.registry import WorkerRegistry
 
 
 def create_remote_execution(
@@ -43,6 +48,29 @@ def create_remote_execution(
 
         return RuntimeApiRemoteExecution(
             base_url, token, origin=origin, wait=wait, max_attempts=max_attempts
+        )
+    raise ValueError(f"Unknown remote execution provider: {provider}")
+
+
+def create_runtime_remote_execution(
+    provider: str,
+    *,
+    registry: WorkerRegistry,
+    origin: Mapping[str, str],
+    wait: timedelta,
+    max_attempts: int,
+) -> RemoteExecutionPort | None:
+    """The runtime's own remote-execution port (#3053, #3044), on the same provider vocabulary
+    as an agent's. ``none`` binds nothing. ``runtime_api``, where the runtime is the API,
+    queues straight into ``registry``: the one the worker routes serve, never back through its
+    own HTTP."""
+    if provider == "none":
+        return None
+    if provider == "runtime_api":
+        from adapters.remote_execution.registry_remote_execution import RegistryRemoteExecution
+
+        return RegistryRemoteExecution(
+            registry, origin=origin, wait=wait, max_attempts=max_attempts
         )
     raise ValueError(f"Unknown remote execution provider: {provider}")
 
