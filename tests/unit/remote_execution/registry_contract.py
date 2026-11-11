@@ -21,7 +21,6 @@ from squadops.remote_execution.models import (
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
-    Scenario,
 )
 from squadops.remote_execution.registry import WorkerRegistry
 from squadops.remote_execution.workers import (
@@ -36,6 +35,7 @@ from squadops.remote_execution.workers import (
     UnknownSession,
     WorkerRegistration,
 )
+from tests.unit.remote_execution.scenario_fixture import door_opens
 
 T0 = datetime(2026, 11, 10, 15, 0, tzinfo=UTC)
 LEASE = timedelta(seconds=leasing.LEASE_SECONDS)
@@ -71,7 +71,7 @@ def request(
         location="worker",
         source_revision="rev_1",
         source_files={"src/server/init.luau": "return {}\n"},
-        scenario=Scenario("scn_1", "sha256:abc", ("door_opens", "score_counts")),
+        scenario=door_opens(),
         task_id=task_id if task_id is not None else f"task_{next(_TASKS)}",
         dispatch_id=dispatch_id,
     )

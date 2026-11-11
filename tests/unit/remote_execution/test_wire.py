@@ -100,6 +100,11 @@ def test_a_result_that_is_not_one_is_refused_by_name(document, message):
     [
         (lambda d: d.pop("dispatch_id"), "request lacks dispatch_id"),
         (lambda d: d["scenario"].pop("digest"), "request.scenario lacks digest"),
+        (lambda d: d["scenario"].pop("document"), "request.scenario lacks document"),
+        (
+            lambda d: d["scenario"].__setitem__("named_assertion", " "),
+            "request.scenario.named_assertion is blank",
+        ),
         (
             lambda d: d["scenario"].__setitem__("assertions", ["a", 2]),
             r"request.scenario.assertions\[1\] is int",
@@ -107,7 +112,15 @@ def test_a_result_that_is_not_one_is_refused_by_name(document, message):
         (lambda d: d.__setitem__("source_files", ["a.luau"]), "request.source_files is list"),
         (lambda d: d.__setitem__("shell", "rm -rf /"), "request has unknown shell"),
     ],
-    ids=["no dispatch", "a scenario with no digest", "an assertion id", "files", "an extra key"],
+    ids=[
+        "no dispatch",
+        "a scenario with no digest",
+        "a scenario with no declaration",
+        "a blank named assertion",
+        "an assertion id",
+        "files",
+        "an extra key",
+    ],
 )
 def test_a_request_that_is_not_one_is_refused_by_name(change, message):
     """Bug caught: a stored request read back with its scenario's digest filled in as empty,

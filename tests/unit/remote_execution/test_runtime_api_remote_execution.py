@@ -38,6 +38,7 @@ from squadops.cycles.verification_integrity import ResultStatus
 from squadops.execution.reply_router import ReplyRouter
 from squadops.remote_execution import leasing
 from squadops.remote_execution.models import OperationStatus
+from squadops.remote_execution.scenario import staged_revision
 from squadops.remote_execution.serving import REASON_CANCELLED, Worker
 from squadops.remote_execution.wire import result_to_wire
 from squadops.remote_execution.workers import (
@@ -47,6 +48,7 @@ from squadops.remote_execution.workers import (
 )
 from tests.unit.api.worker_world import World, identity
 from tests.unit.remote_execution.registry_contract import T0, passing, registration, request
+from tests.unit.remote_execution.scenario_fixture import SCENARIO_PATH, SHUT, door_opens, tree
 from tests.unit.remote_execution.worker_harness import (
     RegistryWorkerApi,
     ScriptedRunner,
@@ -221,6 +223,7 @@ async def test_the_handlers_operation_reaches_a_worker_and_its_assertions_come_b
         dispatch_id="send-7",
     )
     world.sends.waiting["task-7"] = "send-7"
+    scenario, staged = door_opens(), tree(SHUT)
     inputs = {
         "operation": {
             "contract": "game.scenario_verification",
@@ -231,11 +234,15 @@ async def test_the_handlers_operation_reaches_a_worker_and_its_assertions_come_b
             "agent_id": "eve",
         },
         "operation_scenario": {
-            "scenario_id": "staged",
-            "digest": "sha256:scenario",
-            "assertions": ["src/init.luau", "src/empty.luau"],
+            "scenario_id": scenario.scenario_id,
+            "digest": scenario.digest,
+            "assertions": list(scenario.assertions),
+            "named_assertion": scenario.named_assertion,
+            "path": SCENARIO_PATH,
         },
-        "acceptance_workspace_files": {"src/init.luau": "return {}\n", "src/empty.luau": ""},
+        # The baseline's world, so one assertion passes and the named one fails, and a file the
+        # wire can't carry, which the reading names.
+        "acceptance_workspace_files": {**staged, "assets/door.png": b"\x89PNG"},
         "workspace_revision_id": "rev_candidate",
     }
 
@@ -248,30 +255,35 @@ async def test_the_handlers_operation_reaches_a_worker_and_its_assertions_come_b
 
     assert result.outputs["validation_result"]["checks"] == [
         {
-            "check": "scenario:staged:src/init.luau",
-            "criterion_id": "scenario:staged:src/init.luau",
+            "check": "scenario:C-2:spawned",
+            "criterion_id": "scenario:C-2:spawned",
             "status": ResultStatus.PASSED,
             "reason": "",
         },
         {
-            "check": "scenario:staged:src/empty.luau",
-            "criterion_id": "scenario:staged:src/empty.luau",
+            "check": "scenario:C-2:door-open",
+            "criterion_id": "scenario:C-2:door-open",
             "status": ResultStatus.FAILED,
-            "reason": "observed 'staged, empty', expected 'a staged file with content'",
+            "reason": "observed 'true', expected 'equals false'",
         },
     ]
     document = json.loads(result.outputs["artifacts"][0]["content"])
-    assert (document["status"], document["provider_version"], document["ran_with"]) == (
+    assert (document["side"], document["status"], document["provider_version"]) == (
+        "candidate",
         "completed",
-        "fixture@1",
-        {"fixture": "1"},
+        "fixture@2",
     )
+    assert (document["source_revision"], document["not_staged"]) == (
+        staged_revision(staged),
+        ["assets/door.png"],
+    )
+    assert document["scenario"]["digest"] == scenario.digest
     stored = await world.registry.operation(recording.operation_id)
     assert stored.state is OperationState.SETTLED
     assert stored.origin == {"agent_id": "eve", "requested_by": Role.AGENT}
     assert (stored.request.task_id, stored.request.dispatch_id) == ("task-7", "send-7")
     assert (stored.attempt, stored.max_attempts) == (1, 2)
-    assert stored.request.source_revision == "rev_candidate"
+    assert stored.request.source_revision == staged_revision(staged)
 
 
 # ---------------------------------------------------------------- over the real registry

@@ -35,6 +35,7 @@ from squadops.remote_execution.models import (
     RemoteOperationRequest,
     RemoteOperationResult,
 )
+from squadops.remote_execution.scenario import staged_revision
 from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import (
     TaskType,
@@ -47,6 +48,10 @@ pytestmark = [pytest.mark.domain_capabilities]
 
 CONTRACT = "game.scenario_verification"
 TOOL = ToolRequest("play_scenario", "fixture-editor", "worker")
+#: The scenario's declaration, where the framework placed it. The provider behind this port is a
+#: fake, so the text is never digested here; the fixture provider's tests do that.
+SCENARIO_PATH = ".squadops/scenarios/open-the-map.json"
+SCENARIO_TEXT = '{"scenario_id":"open-the-map"}'
 
 
 def _skillset(*tools: ToolRequest, digest: str = "digest-1") -> Skillset:
@@ -101,8 +106,13 @@ def _inputs(**over):
             "scenario_id": "open-the-map",
             "digest": "sha256:scenario",
             "assertions": ["map_opens", "marker_shown", "closes_on_escape"],
+            "named_assertion": "map_opens",
+            "path": SCENARIO_PATH,
         },
-        "acceptance_workspace_files": {"src/Client/Map.local.luau": "-- map"},
+        "acceptance_workspace_files": {
+            "src/Client/Map.local.luau": "-- map",
+            SCENARIO_PATH: SCENARIO_TEXT,
+        },
         "workspace_revision_id": "rev_candidate",
     }
     return {**base, **over}
@@ -162,9 +172,16 @@ async def test_the_provider_is_asked_for_the_contract_by_the_skillsets_tool_on_t
         "play_scenario",
         "worker",
     )
-    assert request.source_revision == "rev_candidate"
-    assert request.source_files == {"src/Client/Map.local.luau": "-- map"}
+    staged = {"src/Client/Map.local.luau": "-- map", SCENARIO_PATH: SCENARIO_TEXT}
+    assert request.source_files == staged
+    # The revision of exactly what was staged, never the workspace's own id (#3044 §4).
+    assert request.source_revision == staged_revision(staged)
     assert request.scenario.assertions == ("map_opens", "marker_shown", "closes_on_escape")
+    # The declaration is read from the tree at the path it was placed.
+    assert (request.scenario.named_assertion, request.scenario.document) == (
+        "map_opens",
+        SCENARIO_TEXT,
+    )
     assert (request.task_id, request.dispatch_id) == ("task-7", "send-7")
     assert result.success
 
@@ -195,7 +212,10 @@ async def test_every_assertion_passing_is_an_accepted_run_with_its_evidence_stor
     document = json.loads(records["content"])
     assert document["provider_version"] == "fixture-editor@0.1"
     assert document["ran_with"] == {"editor": "9.9"}
-    assert document["source_revision"] == "rev_candidate"
+    assert (document["side"], document["not_staged"]) == ("candidate", [])
+    assert document["source_revision"] == staged_revision(
+        {"src/Client/Map.local.luau": "-- map", SCENARIO_PATH: SCENARIO_TEXT}
+    )
     assert document["scenario"]["digest"] == "sha256:scenario"
     assert [a["outcome"] for a in document["assertions"]] == ["passed", "passed", "passed"]
 
@@ -416,7 +436,26 @@ async def test_a_supplier_the_deployment_cannot_vouch_for_fails_the_task_and_run
             "'operation_scenario.digest' is required",
         ),
         ({"acceptance_workspace_files": None}, "'acceptance_workspace_files' is required"),
-        ({"workspace_revision_id": ""}, "'workspace_revision_id' is required"),
+        (
+            {"acceptance_workspace_files": {"src/Client/Map.local.luau": "-- map"}},
+            "the candidate tree holds no scenario declaration at '.squadops/scenarios/",
+        ),
+        (
+            {
+                "operation_scenario": {
+                    "scenario_id": "s",
+                    "digest": "d",
+                    "assertions": ["a"],
+                    "named_assertion": "b",
+                    "path": SCENARIO_PATH,
+                }
+            },
+            "'operation_scenario.named_assertion' is 'b', which the scenario doesn't declare",
+        ),
+        (
+            {"operation_scenario": {"scenario_id": "s", "digest": "d", "assertions": ["a"]}},
+            "'operation_scenario.path' is required",
+        ),
     ],
 )
 def test_an_input_the_operation_needs_is_required_and_nothing_is_filled_in(change, expected):

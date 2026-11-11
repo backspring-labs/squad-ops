@@ -48,7 +48,7 @@ _REQUEST_KEYS = frozenset(
         "dispatch_id",
     }
 )
-_SCENARIO_KEYS = frozenset({"scenario_id", "digest", "assertions"})
+_SCENARIO_KEYS = frozenset({"scenario_id", "digest", "assertions", "named_assertion", "document"})
 _RESULT_KEYS = frozenset(
     {"status", "reason", "records", "evidence", "provider_version", "ran_with", "dispatch_id"}
 )
@@ -69,6 +69,8 @@ def request_to_wire(request: RemoteOperationRequest) -> dict[str, Any]:
             "scenario_id": request.scenario.scenario_id,
             "digest": request.scenario.digest,
             "assertions": list(request.scenario.assertions),
+            "named_assertion": request.scenario.named_assertion,
+            "document": request.scenario.document,
         },
         "task_id": request.task_id,
         "dispatch_id": request.dispatch_id,
@@ -90,6 +92,8 @@ def request_from_wire(document: Any) -> RemoteOperationRequest:
             scenario_id=_text(scenario, "scenario_id", "request.scenario"),
             digest=_text(scenario, "digest", "request.scenario"),
             assertions=tuple(_text_list(scenario["assertions"], "request.scenario.assertions")),
+            named_assertion=_named(scenario, "named_assertion", "request.scenario"),
+            document=_named(scenario, "document", "request.scenario"),
         ),
         task_id=_named(body, "task_id", "request"),
         dispatch_id=_named(body, "dispatch_id", "request"),
