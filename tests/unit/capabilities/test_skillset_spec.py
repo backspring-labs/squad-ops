@@ -16,6 +16,7 @@ from squadops.capabilities.capability_contracts import (
 )
 from squadops.capabilities.skillsets import (
     PACKAGED_SKILLSETS_DIR,
+    SCENARIO_VOCABULARY_FILE,
     SkillsetError,
     ToolRequest,
     load_skillset,
@@ -373,3 +374,48 @@ def test_a_skillset_cannot_claim_what_the_registered_contracts_do_not_declare(
         load_skillset(_game_skillset(tmp_path, GAME_SPEC.replace(old, new)))
 
     assert expected in refused.value.errors
+
+
+_VOCABULARY = (
+    '{"reader": "fixture/1", "contexts": ["server"], "actions": {"click_gui": {"path": "text"}},'
+    ' "observations": {"property": {"path": "text", "name": "text"}}}'
+)
+
+
+def test_a_skill_may_hold_its_providers_scenario_vocabulary(root):
+    """§17g. Bug caught: the one data file the framework reads from a skill refused as an
+    unknown resource, or loaded without being kept and digested with the skill."""
+    path = root / "fixture-qa" / "skills" / "play-scenario" / SCENARIO_VOCABULARY_FILE
+    path.write_text(_VOCABULARY)
+
+    skillset = load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+    assert skillset.skill_files["play-scenario"][SCENARIO_VOCABULARY_FILE] == _VOCABULARY
+    assert skillset.skill_digests["play-scenario"] == skill_digest(path.parent)
+
+
+@pytest.mark.parametrize(
+    ("text", "says"),
+    [
+        ("{", "play-scenario: scenario_vocabulary.json: isn't JSON"),
+        ('{"reader": "fixture/1"}', "play-scenario: scenario_vocabulary.json: scenario vocabulary"),
+    ],
+)
+def test_a_vocabulary_that_cant_be_read_refuses_the_skillset(root, text, says):
+    """Bug caught: an unreadable vocabulary loaded, and found only when a scenario criterion is
+    refused as unverifiable on someone's cycle."""
+    (root / "fixture-qa" / "skills" / "play-scenario" / SCENARIO_VOCABULARY_FILE).write_text(text)
+
+    with pytest.raises(SkillsetError, match=says):
+        load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+
+def test_a_capability_whose_skills_hold_two_vocabularies_is_refused(root):
+    """Bug caught: one of two vocabularies chosen silently, so a scenario is frozen against a
+    reader its provider may not be."""
+    _respec(root, "skills: [play-scenario]", "skills: [play-scenario, test-loader]")
+    for skill in ("play-scenario", "test-loader"):
+        (root / "fixture-qa" / "skills" / skill / SCENARIO_VOCABULARY_FILE).write_text(_VOCABULARY)
+
+    with pytest.raises(SkillsetError, match="each hold a scenario_vocabulary.json"):
+        load_skillset(root / "fixture-qa", contracts=CONTRACTS)

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +37,7 @@ from squadops.capabilities.capability_contracts import (
 from squadops.core.hashing import canonical_sha256
 from squadops.prompts import __file__ as _prompts_pkg
 from squadops.prompts.frontmatter import FrontmatterError, parse_frontmatter
+from squadops.remote_execution.scenario import ScenarioVocabulary
 
 SKILLSET_API_VERSION = "squadops.skillset/v1"
 #: The envelope input a task's skills are handed on, by the runtime, at each dispatch (§7):
@@ -49,6 +51,10 @@ SHARED_DIR = "_shared"
 SHARED_PREFIX = "shared/"
 #: Where a tool's operation runs (§8).
 TOOL_LOCATIONS = ("agent", "sandbox", "worker")
+#: §17g: the one resource a skill may hold that the framework reads as data: the vocabulary of
+#: the scenario reader its capability's provider executes (SIP-0117 R5.8), at the skill's root.
+#: A scenario is validated against it when it is frozen. Kept and digested as any skill file.
+SCENARIO_VOCABULARY_FILE = "scenario_vocabulary.json"
 
 _SPEC_FIELDS = frozenset(
     {"id", "version", "description", "roles", "platform", "prerequisites", "capabilities"}
@@ -159,6 +165,15 @@ def read_skill_files(directory: Path) -> tuple[dict[str, str], list[str]]:
     return files, unreadable
 
 
+def read_scenario_vocabulary(text: str) -> ScenarioVocabulary:
+    """A skill's ``SCENARIO_VOCABULARY_FILE``, read strictly. Raises ``ValueError``."""
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"isn't JSON: {e}") from e
+    return ScenarioVocabulary.from_document(document)
+
+
 def load_skillset(
     directory: Path, *, contracts: Mapping[str, CapabilityContractDeclaration] | None = None
 ) -> Skillset:
@@ -191,6 +206,22 @@ def load_skillset(
             continue
         skill_digests[skill] = skill_files_digest(files)
         skill_files[skill] = files
+
+    for capability in capabilities:
+        holders = [
+            s for s in capability.skills if SCENARIO_VOCABULARY_FILE in skill_files.get(s, {})
+        ]
+        if len(holders) > 1:
+            errors.append(
+                f"capability {capability.contract}: skills {', '.join(holders)} each hold a "
+                f"{SCENARIO_VOCABULARY_FILE}, and a capability's provider reads one vocabulary"
+            )
+    for skill, files in skill_files.items():
+        if SCENARIO_VOCABULARY_FILE in files:
+            try:
+                read_scenario_vocabulary(files[SCENARIO_VOCABULARY_FILE])
+            except ValueError as e:
+                errors.append(f"skill {skill}: {SCENARIO_VOCABULARY_FILE}: {e}")
 
     if errors:
         raise SkillsetError(skillset_id, errors)

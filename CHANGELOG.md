@@ -6,6 +6,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A skill may hold its provider's scenario vocabulary** (#3044, part 2; SIP-0116 §17g): `scenario_vocabulary.json`
+  at a skill's root is read as the vocabulary of the scenario reader its capability's provider executes. The
+  skillset loader refuses one it can't read, and a capability whose skills hold two. The vocabulary is kept and
+  digested with the cycle like any skill file, and is read from the kept copy
+  (`skillset_content.scenario_vocabulary_for`). No skillset ships one yet.
 - **A frozen scenario is a declaration, read strictly and digested** (#3044, part 1; SIP-0117 R5.8): a scenario
   declares its reader, setup, steps, assertions and the one assertion its criterion names. It is refused when it
   steps outside its reader's vocabulary, and frozen as the `sha256` of its canonical text. A remote operation's

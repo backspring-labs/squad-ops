@@ -13,7 +13,8 @@ import json
 import pytest
 
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
-from squadops.capabilities.skillsets import skill_files_digest
+from adapters.remote_execution.fixture_operation_runner import VOCABULARY
+from squadops.capabilities.skillsets import SCENARIO_VOCABULARY_FILE, skill_files_digest
 from squadops.core.hashing import canonical_json
 from squadops.cycles.skillset_content import (
     SKILLSET_CONTENT_ARTIFACT_TYPE,
@@ -21,6 +22,7 @@ from squadops.cycles.skillset_content import (
     keep_skillset_content,
     kept_document_of,
     read_kept_document,
+    scenario_vocabulary_for,
     skills_for,
 )
 from squadops.cycles.skillset_record import skillset_record_and_content
@@ -38,6 +40,16 @@ from tests.unit.cycles.skillset_fixture import (
 from tests.unit.cycles.skillset_fixture import catalog as fixture_catalog
 
 pytestmark = [pytest.mark.domain_orchestration]
+
+#: The fixture provider's vocabulary as a skill would hold it.
+FIXTURE_VOCABULARY = {
+    "reader": VOCABULARY.reader,
+    "contexts": sorted(VOCABULARY.contexts),
+    "actions": {k: {a: v.value for a, v in args.items()} for k, args in VOCABULARY.actions.items()},
+    "observations": {
+        k: {a: v.value for a, v in args.items()} for k, args in VOCABULARY.observations.items()
+    },
+}
 
 
 @pytest.fixture
@@ -284,3 +296,47 @@ def test_a_copy_that_couldnt_be_checked_later_is_never_written(config, change, s
 
     with pytest.raises(SkillsetContentError, match=says):
         _built(config, catalog)
+
+
+def _with_vocabulary(text: str) -> dict:
+    """The fixture catalog with ``text`` as the qa skillset's scenario skill's vocabulary."""
+    skillsets = fixture_catalog()
+    qa = skillsets["fixture-qa"]
+    files = {**qa.skill_files, "play-scenario": {**PLAY, SCENARIO_VOCABULARY_FILE: text}}
+    skillsets["fixture-qa"] = skillset("fixture-qa", "qa", qa.capabilities, files)
+    return skillsets
+
+
+def test_the_scenario_vocabulary_is_read_from_the_suppliers_kept_skill(config):
+    """§17g. Bug caught: a scenario frozen against a vocabulary read from the tree, so a
+    redeploy that edits the reader's vocabulary changes what a cycle already created accepts;
+    or a contract nobody supplies read as having a vocabulary."""
+    record, document = _built(config, _with_vocabulary(json.dumps(FIXTURE_VOCABULARY)))
+
+    vocabulary = scenario_vocabulary_for(document, record, "fixture.scenario")
+
+    assert vocabulary == VOCABULARY
+    assert scenario_vocabulary_for(document, record, "fixture.unit_tests") is None
+    assert scenario_vocabulary_for(document, record, "fixture.unsupplied") is None
+
+
+def test_a_kept_vocabulary_that_cant_be_read_is_refused_by_name(config):
+    """Bug caught: an unreadable vocabulary read as none, so a scenario criterion is refused as
+    unverifiable when the defect is in the skillset's file."""
+    record, document = _built(config, _with_vocabulary(json.dumps(FIXTURE_VOCABULARY)))
+    skill = next(s for s in document["skillsets"][0]["skills"] if s["skill"] == "play-scenario")
+    skill["files"][SCENARIO_VOCABULARY_FILE] = "{"
+
+    with pytest.raises(SkillsetContentError, match="play-scenario: scenario_vocabulary.json"):
+        scenario_vocabulary_for(document, record, "fixture.scenario")
+
+
+def test_a_capability_naming_a_skill_the_copy_doesnt_hold_is_refused(config):
+    """Bug caught: a missing skill read as one with no vocabulary."""
+    record, document = _built(config)
+    document["skillsets"][0]["skills"] = [
+        s for s in document["skillsets"][0]["skills"] if s["skill"] != "play-scenario"
+    ]
+
+    with pytest.raises(SkillsetContentError, match="names the skill play-scenario"):
+        scenario_vocabulary_for(document, record, "fixture.scenario")
