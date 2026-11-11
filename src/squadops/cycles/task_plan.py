@@ -378,7 +378,13 @@ def repairs_revising(task_type: str) -> tuple[str, ...]:
     """The repair task types that revise ``task_type``'s own output (SIP-0110 Appendix A §3.7;
     #2178), read from the two tables above: its own-artifact repair, else its declared repair.
     None for a type with neither: the default chain repairs the application, not that type's
-    output, so a task instruction for the type never reaches it."""
+    output, so a task instruction for the type never reaches it.
+
+    None for a type that runs an operation, too (#3030). It authors nothing, so no repair
+    revises its output: its entry in the declared table says where its failure is routed
+    (SIP-0117 R4.4), and the repair it names revises the application."""
+    if runs_an_operation(task_type):
+        return ()
     steps = _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT.get(
         task_type
     ) or _REPAIR_STEPS_BY_FAILED_TASK_TYPE.get(task_type, [])

@@ -55,6 +55,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   **One change in behaviour:** cycle create now refuses a `development_profile` this deployment doesn't hold,
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
+### Fixed
+- **A task instruction for a remote operation stays with the operation** (#3030): `repairs_revising` read the
+  repair-routing entry that phase 2a added for `qa.run_remote_operation` as lineage, so an instruction selecting
+  that type also reached the dev repair its failure is routed to. A step that runs an operation authors nothing,
+  so no repair revises its output. Where its failure is routed is unchanged.
+
 ## [2.7.0] — 2026-11-10
 
 Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the 2.6 line's debts closed. The cut's evidence is

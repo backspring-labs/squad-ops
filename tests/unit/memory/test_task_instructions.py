@@ -126,15 +126,19 @@ async def test_the_exposure_names_the_revision_each_dispatch_was_handed():
         (("development.develop",), "development.correction_repair", True),
         (("development.design_plan",), "development.correction_repair", False),
         (("builder.assemble",), "builder.assemble_repair", True),
+        (("qa.run_remote_operation",), "development.correction_repair", False),
+        (("qa.run_remote_operation",), "qa.run_remote_operation", True),
     ],
     ids=["qa-reauthoring", "qa-behavioural-repair", "develop-repair", "plan-no-repair",
-         "builder-repair"],
+         "builder-repair", "operation-failure-repairs-the-app", "operation-itself"],
 )  # fmt: skip
 def test_an_instruction_reaches_the_repair_that_revises_its_tasks_output(
     selector, dispatch, reached
 ):
     """T12's repair part. Bug caught: an instruction for qa.test reaching the app's repair, which
-    revises the code, not the tests; or never reaching qa.test's own re-authoring."""
+    revises the code, not the tests; or never reaching qa.test's own re-authoring. And #3030: an
+    instruction for a remote operation, which authors nothing, reaching the dev repair its
+    failure is routed to."""
     assert reaches(selector, dispatch) is reached
 
 
