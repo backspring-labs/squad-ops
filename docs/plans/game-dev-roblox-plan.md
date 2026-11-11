@@ -16,6 +16,19 @@
   skillset's id.
 - **Building starts with SIP-0116's phases 1 and 2,** in a MacBook worktree (D6). Nothing merges before 2.8 opens.
 
+**Superseded for 2.8 where the 2.8 plan differs** (`docs/plans/2-8-0-plan.md` §11.3, adopted 2026-11-11, #3051):
+- the Luau runner (phase 2c, #2906) is the Spark lane's;
+- the scenario is declarative: actions, observations and expected values the harness validates and executes, never
+  authored Luau. §2.6's "the frozen scenario" among the harness's fixed programs reads as the harness's scenario
+  executor over a validated declaration (SIP-0117 R5.7);
+- §1's "the criterion fails on the accepted baseline" means the named assertion **executes** and fails, and anything
+  unread blocks the increment, with the demonstration's counting rules (#3044, #3043);
+- Campaign delivery on scenario evidence is the Spark lane's #3053;
+- §2.5's protocol gains the 2.8 plan's decision 2 (SIP-0117 R5.6), and one credential per host before a second
+  worker;
+- §5's counted run is in an attended window, after the worker service's reboot check (#3046);
+- a read-only Studio first slice is an early read on the 2.8 plan's Studio gate (its §5).
+
 ## Revision log
 
 - **Revision 1** (2026-11-08): the first draft.
