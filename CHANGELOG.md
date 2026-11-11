@@ -6,6 +6,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The runtime's side of remote execution** (#3023; SIP-0117 phase 2b, part 1): a worker on another machine
+  registers a session, claims one queued operation under a lease, renews it and submits the result, through four
+  routes under `/api/v1/workers` (`workers:serve`, held by the new `worker` role alone). A result is accepted only
+  under the current operation, attempt, session and lease ids; one whose ids aren't current is refused with its
+  reason and recorded. The registry's rows are in Postgres (migration 2300), so a lease outlives a runtime
+  restart. **A deploy gains** the Keycloak client `squadops-worker` and one generated credential,
+  `SQUADOPS_WORKER_CLIENT_SECRET`. Nothing queues an operation yet, so every cycle runs as before.
 - **`qa.run_remote_operation` and the game capability contracts** (#3017, #3018; SIP-0117 and SIP-0118 phase 2a): a new task type that runs a provider's operation for a capability contract in a verification mode,
   behind `squadops.ports.remote_execution`. It is plannable and in no base set, so a cycle plans it only where its
   requirements name a contract over it. The handler writes one evidence row per assertion the frozen scenario

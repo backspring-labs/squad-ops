@@ -162,7 +162,9 @@ def test_a_service_account_missing_its_declared_role_is_granted_it_and_nothing_e
         "http://kc", "t", "squadops-dev", "squadops-agent", declared["squadops-agent"]
     )
 
-    assert declared == {"squadops-agent": ["agent"]}
+    # Every service account the export declares, each with its one role (the worker's is
+    # SIP-0117 R5.3's): the sync grants exactly these.
+    assert declared == {"squadops-agent": ["agent"], "squadops-worker": ["worker"]}
     assert "granted ['agent']" in line
     [post] = [c for c in realm.calls if c[0] != "GET"]
     assert post == (

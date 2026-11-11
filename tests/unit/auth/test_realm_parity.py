@@ -74,6 +74,62 @@ class TestRealmParity:
         assert svc.get("realmRoles") == ["agent"]
 
 
+@pytest.mark.parametrize("fname", _REALM_FILES)
+class TestWorkerClient:
+    """SIP-0117 R5.3: a remote-execution worker's own identity, in every realm."""
+
+    def test_the_worker_client_can_take_a_token_the_runtime_accepts(self, fname):
+        """Bug caught: a client that can't use client credentials, or whose token lacks the
+        runtime's audience, so every worker call is a 401 on that realm alone."""
+        clients = {c["clientId"]: c for c in _load(fname)["clients"]}
+        worker = clients["squadops-worker"]
+        audiences = [
+            m["config"]["included.client.audience"]
+            for m in worker.get("protocolMappers", [])
+            if m.get("protocolMapper") == "oidc-audience-mapper"
+        ]
+        assert (worker["publicClient"], worker["serviceAccountsEnabled"]) == (False, True)
+        assert (worker["standardFlowEnabled"], worker["directAccessGrantsEnabled"]) == (
+            False,
+            False,
+        )
+        assert audiences == ["squadops-runtime"]
+
+    def test_the_worker_client_commits_no_secret(self, fname):
+        """Bug caught: a seed secret in the repository for a client whose holder is a machine
+        outside the deploy. The realm sync sets the secret from ``.env``."""
+        clients = {c["clientId"]: c for c in _load(fname)["clients"]}
+        assert "secret" not in clients["squadops-worker"]
+
+    def test_the_worker_service_account_holds_only_the_worker_role(self, fname):
+        """Least privilege: a worker's token implies the workers API and nothing else."""
+        users = {u.get("username"): u for u in _load(fname).get("users", [])}
+        svc = users["service-account-squadops-worker"]
+        assert svc.get("serviceAccountClientId") == "squadops-worker"
+        assert svc.get("realmRoles") == ["worker"]
+
+
+class TestWorkerRoleScopes:
+    def test_only_the_worker_role_implies_the_workers_scope_and_it_implies_nothing_else(self):
+        """Bug caught: the scope added to a person's role or the agent's, so a squad agent
+        could claim an operation and report a result for it; or the worker role fattened with
+        a cycle or task scope."""
+        assert ROLE_SCOPES[Role.WORKER] == frozenset({Scope.WORKERS_SERVE})
+        holders = {role for role, scopes in ROLE_SCOPES.items() if Scope.WORKERS_SERVE in scopes}
+        assert holders == {Role.WORKER}
+
+    def test_the_registry_names_the_worker_clients_secret_with_nothing_committed(self):
+        registry = json.loads((_AUTH_DIR.parent / "deploy_credentials.json").read_text())
+        [entry] = [
+            c for c in registry["credentials"] if c.get("keycloak_client") == "squadops-worker"
+        ]
+        assert (entry["env"], entry["legacy"], entry["committed"]) == (
+            "SQUADOPS_WORKER_CLIENT_SECRET",
+            None,
+            [],
+        )
+
+
 class TestAgentRoleScopes:
     def test_agent_role_implies_exactly_agents_write(self):
         """The agent role must grant agents:write (or heartbeats 403) and

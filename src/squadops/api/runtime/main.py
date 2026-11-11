@@ -62,6 +62,7 @@ from squadops.api.routes.outcomes import router as outcomes_router
 from squadops.api.routes.platform_health import router as platform_health_router
 from squadops.api.routes.scenarios import evaluations_router as scenario_evaluations_router
 from squadops.api.routes.scenarios import router as scenarios_router
+from squadops.api.routes.workers import router as workers_router
 from squadops.api.runtime.startup_reaps import (
     detect_stranded_cycles,
     reap_stranded_activities,
@@ -91,6 +92,7 @@ from squadops.projects.cutover import (
     unknown_project_ids,
 )
 from squadops.projects.registration import LocatorPolicy
+from squadops.remote_execution.registry import WorkerRegistry
 from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
 from squadops.scenarios.declared_routes import DeclaredStartRoutes
 
@@ -177,6 +179,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(scenarios_router)  # SIP-0113 §4.1 (#2413): held-out scenario suites
     # SIP-0113 §10p ruling 8 (#2564): a page scenario's evidence, the owner's alone
     app.include_router(scenario_evaluations_router)
+    app.include_router(workers_router)  # SIP-0117 R3.3: a remote-execution worker's calls
 
 
 #: Connection and process objects live on ``app.state`` (FastAPI's per-app holder), so an
@@ -415,6 +418,16 @@ def _branch_rebase(state, *, campaigns, projects, vault, creation) -> BranchReba
     )
 
 
+def _worker_registry(provider: str, pool) -> WorkerRegistry:
+    """SIP-0117 R5.4: the worker registry, beside the cycles whose operations it queues and on
+    their selector. In Postgres its leases outlive this process."""
+    from adapters.remote_execution.factory import create_worker_registry_store
+
+    return WorkerRegistry(
+        create_worker_registry_store(provider, **({"pool": pool} if provider == "postgres" else {}))
+    )
+
+
 async def _init_cycle_subsystem(state, config, pool) -> None:
     """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator.
 
@@ -518,6 +531,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         config.cycles.registry_provider,
         **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
     )
+    worker_registry = _worker_registry(config.cycles.registry_provider, pool)
     squad_profile_provider = config.cycles.squad_profile_provider
     if squad_profile_provider == "postgres":
         squad_profile = create_squad_profile_port("postgres", pool=pool)
@@ -767,6 +781,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.intervention_ledger = intervention_ledger
     state.sandbox_client = sandbox_client
     state.scenario_store = scenario_store
+    state.worker_registry = worker_registry
     state.campaign_progress = campaign_progress
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault
