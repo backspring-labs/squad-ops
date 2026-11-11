@@ -124,6 +124,16 @@ class ReplyRouter:
         self._dispatches[task_id] = dispatch_id
         return fut
 
+    def current_dispatch(self, task_id: str) -> str | None:
+        """The send of ``task_id`` the runtime is waiting on now, or ``None`` when it waits on
+        none. A remote operation is asked for, read and stopped only under this send
+        (SIP-0117 R5.6): an earlier send's reply would be dropped, so its operation is read by
+        nobody."""
+        fut = self._futures.get(task_id)
+        if fut is None or fut.done():
+            return None
+        return self._dispatches.get(task_id)
+
     def cancel(self, task_id: str) -> None:
         """Drop a pending future (e.g. on dispatch timeout or publish failure).
 

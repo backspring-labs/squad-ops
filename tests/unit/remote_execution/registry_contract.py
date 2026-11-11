@@ -8,7 +8,8 @@ routes call, so the rules and the rows are proved together.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import itertools
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -24,9 +25,12 @@ from squadops.remote_execution.models import (
 )
 from squadops.remote_execution.registry import WorkerRegistry
 from squadops.remote_execution.workers import (
+    Enqueued,
     Fence,
     FenceRefusal,
+    NoWorker,
     OperationState,
+    SendConflict,
     ServedOperation,
     UnknownOperation,
     UnknownSession,
@@ -51,7 +55,14 @@ class Clock:
         self.now += timedelta(seconds=seconds)
 
 
-def request(served: ServedOperation = PLAY, dispatch_id: str = "dispatch-1"):
+_TASKS = itertools.count(1)
+
+
+def request(
+    served: ServedOperation = PLAY, dispatch_id: str = "dispatch-1", task_id: str | None = None
+):
+    """A request. Each is for a task of its own unless the test names one, so two requests
+    are two operations unless a test makes them one task's sends."""
     return RemoteOperationRequest(
         contract="game.playtest",
         mode="simulation",
@@ -61,8 +72,21 @@ def request(served: ServedOperation = PLAY, dispatch_id: str = "dispatch-1"):
         source_revision="rev_1",
         source_files={"src/server/init.luau": "return {}\n"},
         scenario=Scenario("scn_1", "sha256:abc", ("door_opens", "score_counts")),
+        task_id=task_id if task_id is not None else f"task_{next(_TASKS)}",
         dispatch_id=dispatch_id,
     )
+
+
+async def queue(registry: WorkerRegistry, asked=None, *, max_attempts: int = 2):
+    """Queue a request, whether or not a worker is registered yet, and return its operation."""
+    enqueued = await registry.enqueue(
+        asked if asked is not None else request(),
+        ORIGIN,
+        max_attempts=max_attempts,
+        only_with_worker=False,
+    )
+    assert isinstance(enqueued, Enqueued), enqueued
+    return enqueued.operation
 
 
 def passing(dispatch_id: str = "dispatch-1", by: str = "worker") -> RemoteOperationResult:
@@ -101,11 +125,11 @@ class WorkerRegistryContract:
     ):
         """Bug caught: a worker handed an operation it doesn't serve, a newer operation before
         an older one, or a second claim while it still holds the first."""
-        other = await registry.enqueue(request(BUILD), ORIGIN, max_attempts=2)
+        other = await queue(registry, request(BUILD), max_attempts=2)
         clock.advance(1)
-        first = await registry.enqueue(request(PLAY), ORIGIN, max_attempts=2)
+        first = await queue(registry, request(PLAY), max_attempts=2)
         clock.advance(1)
-        await registry.enqueue(request(PLAY), ORIGIN, max_attempts=2)
+        await queue(registry, request(PLAY), max_attempts=2)
         session = await registry.register(registration("macbook", PLAY))
 
         claim = await registry.claim(session.session_id)
@@ -113,7 +137,7 @@ class WorkerRegistryContract:
 
         assert claim.fence.operation_id == first.operation_id
         assert (claim.fence.attempt, claim.fence.session_id) == (1, session.session_id)
-        assert claim.request == request(PLAY)
+        assert claim.request == first.request
         assert claim.lease_expires_at == clock.now + LEASE
         assert claim.reconcile_first is False
         assert again is None
@@ -134,7 +158,7 @@ class WorkerRegistryContract:
     ):
         """Bug caught: a fence checked on some of its ids, so a result with the right lease
         and the wrong attempt settles the operation. And a refusal that leaves no record."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=2)
+        queued = await queue(registry, request(), max_attempts=2)
         session = await registry.register(registration())
         claim = await registry.claim(session.session_id)
         presented = Fence(**{**claim.fence.__dict__, **stale})
@@ -156,7 +180,7 @@ class WorkerRegistryContract:
     async def test_a_late_result_never_satisfies_a_newer_attempt(self, registry, clock):
         """R3.3's fence, whole. Bug caught: the first worker's completion, arriving after its
         lease ran out and another worker took the operation, read as the operation's result."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=3)
+        queued = await queue(registry, request(), max_attempts=3)
         first = await registry.register(registration("macbook"))
         second = await registry.register(registration("mac-mini"))
         early = await registry.claim(first.session_id)
@@ -181,7 +205,7 @@ class WorkerRegistryContract:
         """Bug caught: an operation held for ever by a worker that went to sleep; an attempt
         number that doesn't advance, so a late result's fence matches the next attempt; or an
         exhausted operation read as failed or passed."""
-        queued = await registry.enqueue(request(dispatch_id="d-7"), ORIGIN, max_attempts=2)
+        queued = await queue(registry, request(dispatch_id="d-7"), max_attempts=2)
         session = await registry.register(registration())
         first = await registry.claim(session.session_id)
         clock.advance(leasing.LEASE_SECONDS + 1)
@@ -211,7 +235,7 @@ class WorkerRegistryContract:
     async def test_a_heartbeat_renews_the_lease_and_carries_a_cancel(self, registry, clock):
         """Bug caught: a long operation losing its lease while its worker reports in; a cancel
         the worker never hears about; a cancelled operation's ``interrupted`` result refused."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=1)
+        queued = await queue(registry, request(), max_attempts=1)
         session = await registry.register(registration())
         claim = await registry.claim(session.session_id)
 
@@ -239,7 +263,7 @@ class WorkerRegistryContract:
     ):
         """Bug caught: a heartbeat that revives a lease already run out, so two workers can
         hold one operation once the second has claimed it."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=2)
+        queued = await queue(registry, request(), max_attempts=2)
         session = await registry.register(registration())
         claim = await registry.claim(session.session_id)
         clock.advance(leasing.LEASE_SECONDS + 1)
@@ -256,7 +280,7 @@ class WorkerRegistryContract:
     ):
         """A restart. Bug caught: the old session still able to renew or submit, or the
         operation it held staying claimed by a process that no longer exists."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=2)
+        queued = await queue(registry, request(), max_attempts=2)
         before = await registry.register(registration("macbook"))
         held = await registry.claim(before.session_id)
 
@@ -280,7 +304,7 @@ class WorkerRegistryContract:
         """A worker whose first submission's reply was lost. Bug caught: the retry refused, so
         the worker reports a failure for work that was accepted; or the retry's body stored
         over the result that was accepted."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=1)
+        queued = await queue(registry, request(), max_attempts=1)
         session = await registry.register(registration())
         claim = await registry.claim(session.session_id)
         await registry.submit_result(claim.fence, passing(by="first"))
@@ -296,7 +320,7 @@ class WorkerRegistryContract:
     async def test_a_cancel_before_any_claim_settles_as_not_executed(self, registry):
         """Bug caught: a cancelled operation a worker can still claim and run; or one that
         reads interrupted, though no worker began it."""
-        queued = await registry.enqueue(request(dispatch_id="d-9"), ORIGIN, max_attempts=2)
+        queued = await queue(registry, request(dispatch_id="d-9"), max_attempts=2)
         session = await registry.register(registration())
 
         cancelled = await registry.cancel(queued.operation_id)
@@ -317,7 +341,7 @@ class WorkerRegistryContract:
         """R5.6. Bug caught: the lease runs out, an attempt is left, and the operation is
         queued again still marked cancelled: no worker may claim it and nothing settles it, so
         its requester waits on it for ever."""
-        queued = await registry.enqueue(request(dispatch_id="d-4"), ORIGIN, max_attempts=3)
+        queued = await queue(registry, request(dispatch_id="d-4"), max_attempts=3)
         session = await registry.register(registration())
         await registry.claim(session.session_id)
 
@@ -338,7 +362,7 @@ class WorkerRegistryContract:
     async def test_two_workers_claiming_at_once_never_share_an_operation(self, registry):
         """Bug caught: a claim that reads the queue and writes the lease in two steps, so two
         workers that ask together are both handed the one operation."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=2)
+        queued = await queue(registry, request(), max_attempts=2)
         sessions = [await registry.register(registration(f"worker-{n}")) for n in range(4)]
 
         claims = await asyncio.gather(*(registry.claim(s.session_id) for s in sessions))
@@ -414,7 +438,7 @@ class WorkerRegistryContract:
     async def test_a_transaction_that_fails_keeps_none_of_its_writes(self, store, registry):
         """The store's own promise. Bug caught: a claim whose lease is written and whose
         attempt row is not, which leaves an operation no fence can ever settle."""
-        queued = await registry.enqueue(request(), ORIGIN, max_attempts=1)
+        queued = await queue(registry, request(), max_attempts=1)
         session = await registry.register(registration())
 
         with pytest.raises(RuntimeError, match="mid-transaction"):
@@ -427,3 +451,119 @@ class WorkerRegistryContract:
 
         assert (await registry.operation(queued.operation_id)).state is OperationState.QUEUED
         assert (await registry.claim(session.session_id)).fence.attempt == 1
+
+    # ------------------------------------------------------------------ one operation per send
+
+    async def test_a_send_that_asks_again_is_given_the_operation_it_asked_for(
+        self, clock, registry
+    ):
+        """A requester whose answer was lost, or that restarted, asks again under the same
+        send (R5.6). Bug caught: a second operation for one send, both run in the editor and
+        one read by nobody; or the repeat refused because the worker went quiet since."""
+        session = await registry.register(registration())
+        asked = request(task_id="task_7", dispatch_id="send-1")
+        first = await registry.enqueue(asked, ORIGIN, max_attempts=2, only_with_worker=True)
+        await registry.claim(session.session_id)
+        clock.advance(leasing.SESSION_SILENT_SECONDS + 5)  # quiet, and its lease still held
+
+        again = await registry.enqueue(asked, ORIGIN, max_attempts=2, only_with_worker=True)
+
+        assert isinstance(first, Enqueued) and isinstance(again, Enqueued)
+        assert (first.repeated, again.repeated) == (False, True)
+        assert again.operation.operation_id == first.operation.operation_id
+        assert again.operation.state is OperationState.CLAIMED
+        assert await registry.no_worker_for(PLAY.provider, PLAY.operation) is not None
+
+    async def test_a_send_asking_with_a_different_request_is_refused_and_the_first_stands(
+        self, registry
+    ):
+        """Bug caught: the second request replacing the first under one send, so the result
+        read is for a tree or scenario the send never asked about."""
+        first = await queue(registry, request(task_id="task_7", dispatch_id="send-1"))
+        changed = replace(
+            request(task_id="task_7", dispatch_id="send-1"), source_revision="rev_other"
+        )
+
+        with pytest.raises(SendConflict, match="send-1 of task task_7"):
+            await registry.enqueue(changed, ORIGIN, max_attempts=2, only_with_worker=False)
+
+        stored = await registry.operation(first.operation_id)
+        assert stored.request.source_revision == "rev_1"
+        assert stored.state is OperationState.QUEUED
+
+    async def test_a_newer_send_stops_every_older_sends_operation_and_reads_only_its_own(
+        self, registry
+    ):
+        """The task was sent again (a retry, a resumed run), so the older sends' replies would
+        be dropped and their operations read by nobody (R5.6). Bug caught: an older operation
+        left to run in the editor beside the new one; another task's operation stopped; or a
+        settled result rewritten."""
+        session = await registry.register(registration())
+        claimed = await queue(registry, request(task_id="task_7", dispatch_id="send-1"))
+        await registry.claim(session.session_id)
+        queued = await queue(registry, request(task_id="task_7", dispatch_id="send-2"))
+        other = await queue(registry, request(task_id="task_8", dispatch_id="send-1"))
+
+        newest = await registry.enqueue(
+            request(task_id="task_7", dispatch_id="send-3"),
+            ORIGIN,
+            max_attempts=2,
+            only_with_worker=True,
+        )
+
+        assert isinstance(newest, Enqueued)
+        assert newest.superseded == (claimed.operation_id, queued.operation_id)
+        held = await registry.operation(claimed.operation_id)
+        assert (held.state, held.cancel_requested) == (OperationState.CLAIMED, True)
+        stopped = await registry.operation(queued.operation_id)
+        assert (stopped.state, stopped.result.status, stopped.result.reason) == (
+            OperationState.SETTLED,
+            OperationStatus.NOT_EXECUTED,
+            leasing.superseded_reason("send-3"),
+        )
+        assert stopped.result.dispatch_id == "send-2"
+        assert (await registry.operation(other.operation_id)).state is OperationState.QUEUED
+
+    async def test_a_newer_send_with_no_worker_queues_nothing_and_still_stops_the_older(
+        self, store, registry
+    ):
+        """Bug caught: the older send's operation left queued because the newer one couldn't
+        be, so it runs for nobody the moment a worker returns."""
+        older = await queue(registry, request(task_id="task_7", dispatch_id="send-1"))
+
+        newer = await registry.enqueue(
+            request(task_id="task_7", dispatch_id="send-2"),
+            ORIGIN,
+            max_attempts=2,
+            only_with_worker=True,
+        )
+
+        assert isinstance(newer, NoWorker)
+        assert newer.reason == "no registered worker serves fixture-editor/play_scenario"
+        stopped = await registry.operation(older.operation_id)
+        assert (stopped.state, stopped.result.reason) == (
+            OperationState.SETTLED,
+            leasing.superseded_reason("send-2"),
+        )
+        async with store.exclusive() as tx:
+            assert await tx.operation_for_send("task_7", "send-2") is None
+
+    async def test_a_cancel_after_an_attempt_that_lapsed_is_interrupted_never_not_executed(
+        self, clock, registry
+    ):
+        """Queued again after its first attempt's lease ran out, then stopped. Bug caught: it
+        reads not executed, "no worker began it", though attempt 1 began in the editor and
+        may have run there."""
+        session = await registry.register(registration())
+        queued = await queue(registry, request(dispatch_id="d-3"), max_attempts=2)
+        await registry.claim(session.session_id)
+        clock.advance(leasing.LEASE_SECONDS + 1)
+        assert (await registry.operation(queued.operation_id)).state is OperationState.QUEUED
+
+        stopped = await registry.cancel(queued.operation_id)
+
+        assert (stopped.result.status, stopped.result.reason) == (
+            OperationStatus.INTERRUPTED,
+            f"{leasing.REASON_CANCELLED_UNCLAIMED}; attempt 1 had begun and its lease ran out "
+            "with no result, so whether it ran is unknown",
+        )

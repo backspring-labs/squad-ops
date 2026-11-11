@@ -5,6 +5,11 @@ An agent's handler asks for one operation. This adapter queues it at
 result, and returns that result. The worker that runs it is on another machine and is never
 called from here: it claims the operation from the same registry.
 
+The request names its task and the send of it (#2932). The runtime queues one operation per
+send, so asking again is safe: a create that got no answer is sent again, and the runtime
+returns the operation the first one queued, if it did. Every call is refused once the send is
+no longer the task's current one.
+
 **What it returns, and what it raises.** The port's rule is that an operation that can't run
 is ``not_executed`` with the reason, and one that may have started and has no result is
 ``interrupted``. Neither is a pass or a failure. So:
@@ -12,17 +17,18 @@ is ``not_executed`` with the reason, and one that may have started and has no re
 | what happens | the result |
 |---|---|
 | no worker serves the operation, or none is being heard from | ``not_executed``, with the registry's reason. Nothing is queued |
-| the runtime gives no answer to the request to queue | ``not_executed``: nothing is known to be queued |
+| the runtime gives no answer to the request to queue | it is asked again, until the wait ends |
+| the runtime gives no answer to any request to queue within the wait | ``interrupted``: it may have been queued, and whether it ran is unknown. The task's next send stops it |
 | the operation settles | its result, as the worker or the registry wrote it |
 | no result within the wait | the operation is asked to stop. Queued, it settles ``not_executed``. Claimed, its worker answers ``interrupted`` or its lease runs out, within one lease's length |
 | it is still unsettled one lease after being asked to stop | ``interrupted``, naming its state |
 | the runtime can't be reached when the wait ends | ``interrupted``: it was queued, and whether it ran is unknown |
 | the runtime no longer knows the operation | ``interrupted``, likewise |
 
-A runtime that **refuses** the agent (its credentials, its scope, a request it can't read) or
-answers with a document this version can't read is a defect of the deploy. Those raise
-(``RequestRefused``, ``RuntimeAnswerUnreadable``): the task fails with the reason, and nothing
-is read as an operation that merely didn't run.
+A runtime that **refuses** the agent (its credentials, its scope, a request it can't read, a
+send that is no longer the task's current one), or answers with a document this version can't
+read, raises (``RequestRefused``, ``RuntimeAnswerUnreadable``): the task fails with the reason,
+and nothing is read as an operation that merely didn't run.
 """
 
 from __future__ import annotations
@@ -101,7 +107,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
-        """``origin`` says who asks, for the audit; each request adds its task. ``wait`` is how
+        """``origin`` says who asks, for the audit; the request names its task and send. ``wait`` is how
         long a result is waited for before the operation is asked to stop, and
         ``max_attempts`` how many times a worker may claim it."""
         if wait <= timedelta(0):
@@ -118,20 +124,13 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         self._sleep = sleep
 
     async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
-        try:
-            queued = await self._queue(request)
-        except RuntimeUnreachable as e:
-            return _ended(
-                request,
-                OperationStatus.NOT_EXECUTED,
-                f"the runtime API gave no answer to the request, so nothing is known to be "
-                f"queued: {e}",
-            )
+        deadline = self._clock() + self._wait.total_seconds()
+        queued = await self._queue_within(request, deadline)
         if isinstance(queued, RemoteOperationResult):
             return queued
         operation_id, first = queued
         try:
-            return await self._result_of(request, operation_id, first)
+            return await self._result_of(request, operation_id, first, deadline)
         except _OperationLost:
             return _ended(
                 request,
@@ -150,10 +149,40 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
 
     # ------------------------------------------------------------------ the wait
 
+    async def _queue_within(
+        self, request: RemoteOperationRequest, deadline: float
+    ) -> tuple[str, _Reading] | RemoteOperationResult:
+        """Ask for the operation until the runtime answers or the wait ends. Asking again is
+        safe: the runtime keeps one operation per send."""
+        while True:
+            try:
+                return await self._queue(request)
+            except RuntimeUnreachable as e:
+                if self._clock() >= deadline:
+                    return _ended(
+                        request,
+                        OperationStatus.INTERRUPTED,
+                        f"the runtime API gave no answer to any request to queue within "
+                        f"{self._wait.total_seconds():g} s, so the operation may be queued and "
+                        f"whether it ran is unknown: {e}",
+                    )
+                logger.warning(
+                    "remote_operation_queue_unanswered",
+                    extra={
+                        "task_id": request.task_id,
+                        "dispatch_id": request.dispatch_id,
+                        "reason": str(e),
+                    },
+                )
+            await self._sleep(POLL_SECONDS)
+
     async def _result_of(
-        self, request: RemoteOperationRequest, operation_id: str, reading: _Reading
+        self,
+        request: RemoteOperationRequest,
+        operation_id: str,
+        reading: _Reading,
+        deadline: float,
     ) -> RemoteOperationResult:
-        deadline = self._clock() + self._wait.total_seconds()
         while reading.result is None and self._clock() < deadline:
             await self._sleep(POLL_SECONDS)
             reading = await self._read_again(operation_id, reading)
@@ -232,19 +261,19 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         self, request: RemoteOperationRequest
     ) -> tuple[str, _Reading] | RemoteOperationResult:
         """The queued operation's id and first reading, or the result when no worker can run
-        it."""
+        it. A send that already asked is answered 200 with the operation it asked for."""
         status, body = await self._calls.post(
             _OPERATIONS,
             {
                 "request": request_to_wire(request),
-                "origin": {**self._origin, "task_id": request.dispatch_id},
+                "origin": dict(self._origin),
                 "max_attempts": self._max_attempts,
             },
         )
         if status == 409 and error_code(body) == ERROR_NO_WORKER:
             details = as_object(field(error(body), "details"), "error.details")
             return _ended(request, OperationStatus.NOT_EXECUTED, text(details, "reason"))
-        if status != 201:
+        if status not in (200, 201):
             raise self._calls.refusal(status, body, _OPERATIONS)
         return text(body, "operation_id"), _reading(body)
 

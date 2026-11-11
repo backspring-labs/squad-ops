@@ -14,6 +14,7 @@ What it guarantees:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -26,6 +27,7 @@ from squadops.remote_execution.workers import (
     Attempt,
     AttemptOutcome,
     Claim,
+    Enqueued,
     Fence,
     FenceRefusal,
     LeaseReading,
@@ -34,6 +36,7 @@ from squadops.remote_execution.workers import (
     QueuedOperation,
     RecordedRefusal,
     ResultReading,
+    SendConflict,
     UnknownOperation,
     UnknownSession,
     WorkerRegistration,
@@ -46,6 +49,9 @@ if TYPE_CHECKING:
         WorkerRegistryStorePort,
         WorkerRegistryTransaction,
     )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -170,22 +176,76 @@ class WorkerRegistry:
     # ------------------------------------------------------------------ the requester's calls
 
     async def enqueue(
-        self, request: RemoteOperationRequest, origin: Mapping[str, str], *, max_attempts: int
-    ) -> QueuedOperation:
-        """Queue ``request`` for a worker that serves it."""
+        self,
+        request: RemoteOperationRequest,
+        origin: Mapping[str, str],
+        *,
+        max_attempts: int,
+        only_with_worker: bool,
+    ) -> Enqueued | NoWorker:
+        """Queue ``request`` for a worker that serves it: once per send of its task (R5.6).
+
+        - **The send already asked:** the operation it asked for then, as it stands now, so a
+          requester that lost the answer or restarted reads the one it has. The same send with
+          a different request is refused (``SendConflict``).
+        - **An older send of the task asked:** each of its operations still without a result
+          is asked to stop. Only the current send's result is read, so an older one's would
+          run for nobody.
+        - **No worker can run it now,** when ``only_with_worker``: nothing is queued, and the
+          reason is returned. A requester always asks this way. Without it, the operation
+          waits in the queue for a worker to register.
+        """
         if max_attempts < 1:
             raise ValueError(f"max_attempts is {max_attempts}; an operation needs at least one")
-        operation = QueuedOperation(
-            operation_id=new_id("rop"),
-            request=request,
-            origin=dict(origin),
-            max_attempts=max_attempts,
-            state=OperationState.QUEUED,
-            created_at=self._clock(),
-        )
+        now = self._clock()
         async with self._store.exclusive() as tx:
-            await tx.save_operation(operation)
-        return operation
+            earlier = await tx.operation_for_send(request.task_id, request.dispatch_id)
+            if earlier is not None:
+                if earlier.request != request:
+                    raise SendConflict(
+                        f"send {request.dispatch_id} of task {request.task_id} asked for "
+                        f"operation {earlier.operation_id} with a different request"
+                    )
+                if leasing.lease_ran_out(earlier, now):
+                    earlier = await self._end_attempt(tx, earlier, now)
+                return Enqueued(earlier, repeated=True)
+            superseded = []
+            reason = leasing.superseded_reason(request.dispatch_id)
+            for older in await tx.unsettled_operations_of(request.task_id):
+                if leasing.lease_ran_out(older, now):
+                    older = await self._end_attempt(tx, older, now)
+                await tx.save_operation(leasing.cancelled(older, now, reason=reason))
+                superseded.append(older.operation_id)
+            no_worker = (
+                leasing.no_worker_for(
+                    request.provider, request.operation, await tx.live_sessions(), now
+                )
+                if only_with_worker
+                else None
+            )
+            if no_worker is None:
+                operation = QueuedOperation(
+                    operation_id=new_id("rop"),
+                    request=request,
+                    origin=dict(origin),
+                    max_attempts=max_attempts,
+                    state=OperationState.QUEUED,
+                    created_at=now,
+                )
+                await tx.save_operation(operation)
+        if superseded:
+            # Named: each was stopped in favour of this send, and its result says so.
+            logger.info(
+                "remote_operation_superseded",
+                extra={
+                    "task_id": request.task_id,
+                    "dispatch_id": request.dispatch_id,
+                    "superseded": superseded,
+                },
+            )
+        if no_worker is not None:
+            return no_worker
+        return Enqueued(operation, repeated=False, superseded=tuple(superseded))
 
     async def operation(self, operation_id: str) -> QueuedOperation:
         """The operation as it stands now: a lease that ran out is ended first, so a reader
@@ -208,7 +268,7 @@ class WorkerRegistry:
                 raise UnknownOperation(operation_id)
             if leasing.lease_ran_out(operation, now):
                 operation = await self._end_attempt(tx, operation, now)
-            cancelled = leasing.cancelled(operation, now)
+            cancelled = leasing.cancelled(operation, now, reason=leasing.REASON_CANCELLED_UNCLAIMED)
             await tx.save_operation(cancelled)
             return cancelled
 

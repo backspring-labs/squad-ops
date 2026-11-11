@@ -17,7 +17,7 @@ from squadops.api.routes.remote_operations import router as remote_operations_ro
 from squadops.api.routes.workers import router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.remote_execution.registry import WorkerRegistry
-from tests.unit.remote_execution.registry_contract import ORIGIN, Clock, request
+from tests.unit.remote_execution.registry_contract import Clock, queue, request
 
 REGISTRATION = {
     "worker_id": "macbook",
@@ -37,8 +37,21 @@ def identity(role: str) -> Identity:
     )
 
 
+class CurrentSends:
+    """The one thing the requester's routes read from the runtime's reply router: the send of
+    a task the runtime is waiting on (#2932, R5.6). A test says which sends are current."""
+
+    def __init__(self) -> None:
+        self.waiting: dict[str, str] = {}
+
+    def current_dispatch(self, task_id: str) -> str | None:
+        return self.waiting.get(task_id)
+
+
 class World:
-    def __init__(self, *, registry: bool = True) -> None:
+    def __init__(self, *, registry: bool = True, reply_router: object = True) -> None:
+        """``reply_router``: ``True`` for the stand-in the test sets sends on (``current``),
+        ``False`` for a runtime with none, or a real router."""
         self.clock = Clock()
         self.registry = WorkerRegistry(MemoryWorkerRegistryStore(), clock=self.clock)
         self.identity = identity(Role.WORKER)
@@ -59,6 +72,10 @@ class World:
         app.include_router(remote_operations_router)
         register_domain_error_handlers(app)
         app.state.worker_registry = self.registry if registry else None
+        self.sends = CurrentSends()
+        app.state.reply_router = (
+            self.sends if reply_router is True else None if reply_router is False else reply_router
+        )
         # Without an authorization backend, require_scopes is a no-op: the scopes go unread.
         app.state.authz_port = KeycloakAuthzAdapter()
         self.client = TestClient(app)
@@ -67,8 +84,13 @@ class World:
         self.identity = identity(role)
         return self.client
 
+    def current(self, asked):
+        """Make ``asked``'s send the one the runtime waits on for its task, and return it."""
+        self.sends.waiting[asked.task_id] = asked.dispatch_id
+        return asked
+
     def enqueue(self, *, max_attempts: int = 2):
-        return asyncio.run(self.registry.enqueue(request(), ORIGIN, max_attempts=max_attempts))
+        return asyncio.run(queue(self.registry, request(), max_attempts=max_attempts))
 
     def operation(self, operation_id: str):
         return asyncio.run(self.registry.operation(operation_id))

@@ -212,8 +212,14 @@ async def test_the_handlers_operation_reaches_a_worker_and_its_assertions_come_b
     ports = MagicMock()
     ports.remote_execution = port
     context = ExecutionContext.create(
-        agent_id="eve", role_id="qa", task_id="task-7", cycle_id="cyc_1", ports=ports
+        agent_id="eve",
+        role_id="qa",
+        task_id="task-7",
+        cycle_id="cyc_1",
+        ports=ports,
+        dispatch_id="send-7",
     )
+    world.sends.waiting["task-7"] = "send-7"
     inputs = {
         "operation": {
             "contract": "game.scenario_verification",
@@ -261,7 +267,8 @@ async def test_the_handlers_operation_reaches_a_worker_and_its_assertions_come_b
     )
     stored = await world.registry.operation(recording.operation_id)
     assert stored.state is OperationState.SETTLED
-    assert stored.origin == {"agent_id": "eve", "task_id": "task-7", "requested_by": Role.AGENT}
+    assert stored.origin == {"agent_id": "eve", "requested_by": Role.AGENT}
+    assert (stored.request.task_id, stored.request.dispatch_id) == ("task-7", "send-7")
     assert (stored.attempt, stored.max_attempts) == (1, 2)
     assert stored.request.source_revision == "rev_candidate"
 
@@ -275,7 +282,7 @@ async def test_with_no_worker_the_operation_is_not_executed_and_nothing_is_queue
     world = _world()
     port, recording = _port(world)
 
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
     session = await world.registry.register(registration())
 
     assert (result.status, result.reason, result.dispatch_id) == (
@@ -294,7 +301,7 @@ async def test_an_operation_nobody_claims_within_the_wait_is_stopped_and_reads_n
     port, recording = _port(world)
     session = await world.registry.register(registration())
 
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
 
     assert (result.status, result.dispatch_id) == (OperationStatus.NOT_EXECUTED, "task-7")
     assert result.reason == (
@@ -328,7 +335,7 @@ async def test_a_running_operation_past_the_wait_is_cancelled_and_its_worker_ans
 
     async with Serving(worker) as serving:
         await serving.until(registered)
-        result = await port.run_operation(request(dispatch_id="task-7"))
+        result = await port.run_operation(world.current(request(dispatch_id="task-7")))
 
     assert (result.status, result.dispatch_id) == (OperationStatus.INTERRUPTED, "task-7")
     assert result.reason == (
@@ -352,7 +359,7 @@ async def test_a_claimed_operation_whose_worker_went_silent_ends_interrupted_wit
             await asyncio.sleep(0)
 
     silent = asyncio.ensure_future(claim_then_go_silent())
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
     await silent
 
     assert result.status is OperationStatus.INTERRUPTED
@@ -383,7 +390,7 @@ async def test_a_result_at_the_waits_last_read_is_returned_and_nothing_is_cancel
         await world.registry.submit_result(claim.fence, passing("task-7"))
 
     finishing = asyncio.ensure_future(claim_and_finish_late())
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
     await finishing
 
     assert result == passing("task-7")
@@ -399,7 +406,9 @@ async def test_a_requester_that_is_stopped_asks_for_its_operation_to_stop_too():
     port, recording = _port(world)
     await world.registry.register(registration())
 
-    waiting = asyncio.ensure_future(port.run_operation(request(dispatch_id="task-7")))
+    waiting = asyncio.ensure_future(
+        port.run_operation(world.current(request(dispatch_id="task-7")))
+    )
     while not recording.calls:
         await asyncio.sleep(0)
     waiting.cancel()
@@ -459,23 +468,80 @@ async def test_an_agent_whose_role_may_not_ask_is_a_refusal_and_never_a_result()
     await world.registry.register(registration())
 
     with pytest.raises(RequestRefused, match="HTTP 403 from /api/v1/remote-operations"):
-        await port.run_operation(request())
+        await port.run_operation(world.current(request()))
 
 
 # ------------------------------------------------------------------ answers one at a time
 
 
-async def test_no_answer_to_the_request_to_queue_is_not_executed_with_what_failed():
+async def test_no_answer_to_any_request_to_queue_within_the_wait_is_interrupted(caplog):
+    """The runtime may have stored the operation and lost only its answer, so it may run
+    (R5.6). Bug caught: that read as not executed, nothing is known to be queued, while the
+    editor plays it for nobody; or one unanswered request ending the wait."""
     port, asked = _answering(httpx.ConnectError("connection refused"))
 
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    with caplog.at_level("WARNING"):
+        result = await port.run_operation(request(dispatch_id="task-7"))
 
-    assert (result.status, result.dispatch_id) == (OperationStatus.NOT_EXECUTED, "task-7")
+    assert (result.status, result.dispatch_id) == (OperationStatus.INTERRUPTED, "task-7")
     assert result.reason == (
-        "the runtime API gave no answer to the request, so nothing is known to be queued: "
-        "no answer from /api/v1/remote-operations: ConnectError: connection refused"
+        "the runtime API gave no answer to any request to queue within 30 s, so the operation "
+        "may be queued and whether it ran is unknown: no answer from "
+        "/api/v1/remote-operations: ConnectError: connection refused"
     )
-    assert asked == [("POST", "/api/v1/remote-operations")]
+    assert asked == [("POST", "/api/v1/remote-operations")] * (1 + int(30 / POLL_SECONDS))
+    unanswered = [r for r in caplog.records if r.message == "remote_operation_queue_unanswered"]
+    assert len(unanswered) == int(30 / POLL_SECONDS)
+
+
+async def test_a_create_whose_answer_was_lost_asks_again_and_reads_the_one_operation():
+    """The machinery Campaign's dropped-response fault, at the port (R5.6, #3050): the runtime
+    stores the operation and its answer never arrives. Bug caught: a second operation queued
+    for the same send, both run in the editor; or the first reported not executed while it
+    runs."""
+    world = _world()
+    port, recording = _port(world)
+    session = await world.registry.register(registration())
+    dropped: list[int] = []
+    inner = recording.handle_async_request
+
+    async def drop_the_first_create(http_request: httpx.Request) -> httpx.Response:
+        reply = await inner(http_request)
+        if http_request.method == "POST" and http_request.url.path.endswith("operations"):
+            if not dropped:
+                dropped.append(reply.status_code)
+                raise httpx.ReadTimeout("the answer was lost", request=http_request)
+        return reply
+
+    recording.handle_async_request = drop_the_first_create  # type: ignore[method-assign]
+
+    async def claim_and_pass() -> None:
+        while (claim := await world.registry.claim(session.session_id)) is None:
+            await asyncio.sleep(0)
+        await world.registry.submit_result(claim.fence, passing("send-1"))
+
+    passing_it = asyncio.ensure_future(claim_and_pass())
+    asked = world.current(request(task_id="task_7", dispatch_id="send-1"))
+    result = await port.run_operation(asked)
+    await passing_it
+
+    assert result == passing("send-1")
+    creates = [(path, status) for method, path, status, _ in recording.calls if method == "POST"]
+    assert dropped == [201]
+    assert creates == [("/api/v1/remote-operations", 201), ("/api/v1/remote-operations", 200)]
+    assert await world.registry.claim(session.session_id) is None
+
+
+async def test_a_send_that_is_no_longer_current_is_a_refusal_naming_it():
+    """Bug caught: a stale send's refusal read as an operation that didn't run, so the task's
+    record says not executed while the current send's operation runs."""
+    world = _world()
+    port, _ = _port(world)
+    await world.registry.register(registration())
+    world.sends.waiting["task_7"] = "send-2"
+
+    with pytest.raises(RequestRefused, match="REMOTE_OPERATION_SEND_NOT_CURRENT"):
+        await port.run_operation(request(task_id="task_7", dispatch_id="send-1"))
 
 
 async def test_a_runtime_that_restarts_during_the_wait_is_read_again_and_the_result_returned(
@@ -587,7 +653,7 @@ async def test_an_operation_the_runtime_no_longer_knows_is_interrupted():
             "HTTP 404 from /api/v1/remote-operations/rop_1",
         ),
         ([(401, _envelope("UNAUTHENTICATED"))], RequestRefused, "HTTP 401"),
-        ([(200, _operation())], RequestRefused, "HTTP 200 from /api/v1/remote-operations"),
+        ([(202, _operation())], RequestRefused, "HTTP 202 from /api/v1/remote-operations"),
         ([(201, "<html>a proxy</html>")], RuntimeAnswerUnreadable, "a body that isn't JSON"),
         (
             [(201, {k: v for k, v in _operation().items() if k != "state"})],
@@ -630,7 +696,7 @@ async def test_an_operation_the_runtime_no_longer_knows_is_interrupted():
         "an-address-that-isnt-the-runtime",
         "a-404-that-isnt-the-routes-own",
         "credentials-refused",
-        "a-create-not-answered-201",
+        "a-create-answered-neither-200-nor-201",
         "not-json",
         "a-key-missing",
         "a-state-outside-the-vocabulary",
@@ -713,7 +779,7 @@ async def test_the_attempts_the_port_was_given_are_the_operations():
     port, recording = _port(world, max_attempts=4)
     await world.registry.register(registration())
 
-    waiting = asyncio.ensure_future(port.run_operation(request()))
+    waiting = asyncio.ensure_future(port.run_operation(world.current(request())))
     while not recording.calls:
         await asyncio.sleep(0)
     waiting.cancel()

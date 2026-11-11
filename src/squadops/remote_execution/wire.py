@@ -41,6 +41,7 @@ _REQUEST_KEYS = frozenset(
         "source_revision",
         "source_files",
         "scenario",
+        "task_id",
         "dispatch_id",
     }
 )
@@ -66,6 +67,7 @@ def request_to_wire(request: RemoteOperationRequest) -> dict[str, Any]:
             "digest": request.scenario.digest,
             "assertions": list(request.scenario.assertions),
         },
+        "task_id": request.task_id,
         "dispatch_id": request.dispatch_id,
     }
 
@@ -86,7 +88,8 @@ def request_from_wire(document: Any) -> RemoteOperationRequest:
             digest=_text(scenario, "digest", "request.scenario"),
             assertions=tuple(_text_list(scenario["assertions"], "request.scenario.assertions")),
         ),
-        dispatch_id=_text(body, "dispatch_id", "request"),
+        task_id=_named(body, "task_id", "request"),
+        dispatch_id=_named(body, "dispatch_id", "request"),
     )
 
 
@@ -170,6 +173,14 @@ def _text(body: Mapping[str, Any], key: str, where: str) -> str:
     value = body[key]
     if not isinstance(value, str):
         raise ValueError(f"{where}.{key} is {type(value).__name__}, and text is needed")
+    return value
+
+
+def _named(body: Mapping[str, Any], key: str, where: str) -> str:
+    """An identity: text, and never blank, since a blank one names nothing."""
+    value = _text(body, key, where)
+    if not value.strip():
+        raise ValueError(f"{where}.{key} is blank, and it names what the request belongs to")
     return value
 
 

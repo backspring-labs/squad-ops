@@ -20,10 +20,10 @@ from squadops.remote_execution.workers import (
     WorkerRefused,
 )
 from tests.unit.remote_execution.registry_contract import (
-    ORIGIN,
     PLAY,
     Clock,
     passing,
+    queue,
     registration,
     request,
 )
@@ -52,8 +52,8 @@ class _World:
         )
 
     async def enqueue(self, *, max_attempts: int = 2, dispatch_id: str = "dispatch-1"):
-        return await self.registry.enqueue(
-            request(dispatch_id=dispatch_id), ORIGIN, max_attempts=max_attempts
+        return await queue(
+            self.registry, request(dispatch_id=dispatch_id), max_attempts=max_attempts
         )
 
     async def stored(self, operation_id: str):

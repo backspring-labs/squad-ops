@@ -11,14 +11,14 @@ import pytest
 from fastapi import FastAPI
 
 from squadops.api.runtime import main as runtime_main
-from tests.unit.remote_execution.registry_contract import ORIGIN, registration, request
+from tests.unit.remote_execution.registry_contract import queue, registration, request
 
 pytestmark = [pytest.mark.domain_api]
 
 
 async def test_the_root_binds_a_registry_that_serves_a_claim_on_the_memory_selector():
     registry = runtime_main._worker_registry("memory", None)
-    queued = await registry.enqueue(request(), ORIGIN, max_attempts=1)
+    queued = await queue(registry, request(), max_attempts=1)
     session = await registry.register(registration())
 
     claim = await registry.claim(session.session_id)

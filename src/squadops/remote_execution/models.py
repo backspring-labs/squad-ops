@@ -86,8 +86,12 @@ class RemoteOperationRequest:
     #: The candidate tree's files, path to content, as staged for the provider.
     source_files: Mapping[str, str]
     scenario: Scenario
-    #: The dispatch this request belongs to, echoed in the result (#2932's convention).
-    dispatch_id: str = ""
+    #: The task the operation verifies for.
+    task_id: str
+    #: The send of that task this request belongs to (#2932): the runtime mints one per
+    #: dispatch, and the result echoes it. A task's operation is asked for once per send, and a
+    #: newer send's request supersedes an older one's (SIP-0117 R5.6).
+    dispatch_id: str
 
 
 @dataclass(frozen=True)

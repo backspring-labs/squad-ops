@@ -124,6 +124,24 @@ class _PostgresTransaction(WorkerRegistryTransaction):
         )
         return [_operation(row) for row in rows]
 
+    async def operation_for_send(self, task_id: str, dispatch_id: str) -> QueuedOperation | None:
+        row = await self._conn.fetchrow(
+            f"SELECT {_OPERATION_COLUMNS} FROM remote_operations "
+            "WHERE task_id = $1 AND dispatch_id = $2",
+            task_id,
+            dispatch_id,
+        )
+        return _operation(row) if row else None
+
+    async def unsettled_operations_of(self, task_id: str) -> list[QueuedOperation]:
+        rows = await self._conn.fetch(
+            f"SELECT {_OPERATION_COLUMNS} FROM remote_operations "
+            "WHERE task_id = $1 AND state <> $2 ORDER BY created_at, operation_id",
+            task_id,
+            OperationState.SETTLED.value,
+        )
+        return [_operation(row) for row in rows]
+
     async def save_operation(self, operation: QueuedOperation) -> None:
         await self._conn.execute(
             f"INSERT INTO remote_operations ({_OPERATION_COLUMNS}) "

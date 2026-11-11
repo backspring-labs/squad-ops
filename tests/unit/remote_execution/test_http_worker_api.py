@@ -42,7 +42,7 @@ from squadops.remote_execution.workers import (
     WorkerRegistration,
 )
 from tests.unit.api.worker_world import World, identity
-from tests.unit.remote_execution.registry_contract import ORIGIN, PLAY, passing, request
+from tests.unit.remote_execution.registry_contract import PLAY, passing, queue, request
 from tests.unit.remote_execution.worker_harness import Serving, sleeping_on
 
 pytestmark = pytest.mark.auth
@@ -95,9 +95,10 @@ async def test_a_worker_over_http_serves_a_queued_operation_to_its_accepted_resu
         source_revision="rev_1",
         source_files={"src/init.luau": "return {}\n", "src/empty.luau": "", HOLD_PATH: "40"},
         scenario=Scenario("scn_1", "sha256:abc", ("src/init.luau", "src/empty.luau", "src/no")),
+        task_id="task_1",
         dispatch_id="dispatch-7",
     )
-    queued = await world.registry.enqueue(asked, ORIGIN, max_attempts=1)
+    queued = await queue(world.registry, asked, max_attempts=1)
     worker = Worker(
         _api(world),
         FixtureOperationRunner(sleep=sleeping_on(world.clock)),
@@ -138,7 +139,7 @@ async def test_each_call_reads_the_routes_answer_into_the_registrys_own_words():
     dropped between the route's body and what the worker's loop is handed."""
     world = World()
     api = _api(world)
-    queued = await world.registry.enqueue(request(), ORIGIN, max_attempts=2)
+    queued = await queue(world.registry, request(), max_attempts=2)
 
     enrolment = await api.register(REGISTRATION)
     assert (enrolment.heartbeat, enrolment.lease) == (

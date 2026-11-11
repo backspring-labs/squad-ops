@@ -35,6 +35,7 @@ def _request(files: dict[str, str], *assertions: str, operation: str = OPERATION
         source_revision="rev_1",
         source_files=files,
         scenario=Scenario("scn_1", "sha256:abc", assertions),
+        task_id="task_1",
         dispatch_id="dispatch-3",
     )
 

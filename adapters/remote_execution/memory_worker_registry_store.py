@@ -77,6 +77,20 @@ class _MemoryTransaction(WorkerRegistryTransaction):
         ]
         return sorted(queued, key=lambda o: (o.created_at, o.operation_id))
 
+    async def operation_for_send(self, task_id: str, dispatch_id: str) -> QueuedOperation | None:
+        for o in self._rows.operations.values():
+            if (o.request.task_id, o.request.dispatch_id) == (task_id, dispatch_id):
+                return o
+        return None
+
+    async def unsettled_operations_of(self, task_id: str) -> list[QueuedOperation]:
+        unsettled = [
+            o
+            for o in self._rows.operations.values()
+            if o.request.task_id == task_id and o.state is not OperationState.SETTLED
+        ]
+        return sorted(unsettled, key=lambda o: (o.created_at, o.operation_id))
+
     async def save_operation(self, operation: QueuedOperation) -> None:
         self._rows.operations[operation.operation_id] = operation
 

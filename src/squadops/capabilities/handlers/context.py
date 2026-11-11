@@ -46,6 +46,10 @@ class ExecutionContext:
     ports: PortsBundle
     project_id: str = ""
     correlation_context: CorrelationContext | None = None
+    #: The send this task came in (#2932): the dispatch id the runtime minted for it, or
+    #: ``None`` when the envelope carried none. A handler that acts under the send (a remote
+    #: operation, SIP-0117 R5.6) refuses to act without one.
+    dispatch_id: str | None = None
     #: SIP-0108 §4.1: this task's LLM usage, added by ``_llm_call`` for every call — the one
     #: seam every generation passes — and carried on the task result on every exit path.
     llm_usage: UsageLedger = field(default_factory=UsageLedger)
@@ -77,6 +81,7 @@ class ExecutionContext:
         ports: PortsBundle,
         project_id: str = "",
         correlation_context: CorrelationContext | None = None,
+        dispatch_id: str | None = None,
     ) -> ExecutionContext:
         """Factory method for creating execution context.
 
@@ -91,6 +96,7 @@ class ExecutionContext:
                 project_id alongside cycle_id so they don't ask the LLM
                 to invent it)
             correlation_context: Optional LangFuse correlation context
+            dispatch_id: The send this task came in, when the envelope names one
 
         Returns:
             ExecutionContext instance
@@ -103,4 +109,5 @@ class ExecutionContext:
             ports=ports,
             project_id=project_id,
             correlation_context=correlation_context,
+            dispatch_id=dispatch_id,
         )

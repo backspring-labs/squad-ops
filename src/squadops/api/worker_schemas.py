@@ -100,7 +100,7 @@ class RemoteOperationCreate(_Strict):
 
     #: The request, as ``wire.request_to_wire`` writes it.
     request: dict[str, Any]
-    #: Who asked, for the audit: the task, and the agent it ran in.
+    #: Who asked, for the audit: the agent it ran in. The task and its send are the request's.
     origin: dict[str, str]
     #: How many times a worker may claim it. The requester's to say.
     max_attempts: int = Field(ge=1)

@@ -82,6 +82,15 @@ class WorkerRegistryTransaction(ABC):
         """The queued operations among ``served``, oldest first."""
 
     @abstractmethod
+    async def operation_for_send(self, task_id: str, dispatch_id: str) -> QueuedOperation | None:
+        """The operation a task's send asked for, if it asked (SIP-0117 R5.6: one per send)."""
+
+    @abstractmethod
+    async def unsettled_operations_of(self, task_id: str) -> list[QueuedOperation]:
+        """Every operation asked for by any send of the task that has no result yet, oldest
+        first."""
+
+    @abstractmethod
     async def save_operation(self, operation: QueuedOperation) -> None:
         """Insert the operation, or replace the one with its id."""
 
