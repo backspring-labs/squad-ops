@@ -17,7 +17,7 @@ the adoption PR (§9).
 - the changes to the MacBook lane's own documents;
 - what each lane confirms before it resumes.
 
-The lane assignments marked *proposed* are the owner's to rule.
+**The owner ruled §11's open points on 2026-11-11** ("approve both lanes to spark, decision 2 governs"). The MacBook lane confirmed revision 3 with no objection (this PR's comments).
 
 ## Revision log
 
@@ -55,10 +55,13 @@ The lane assignments marked *proposed* are the owner's to rule.
   - **#3052 is read against decision 2.** It was built on the owner's earlier ruling ("approve part 3 as
     recommended") and opened at 08:41 ET, before decision 2 was ruled. It matches on the transport and the scope.
     It differs on three points (§11.2), and the adoption PR's SIP-0117 amendment becomes R5.7, since #3052 takes R5.6.
-  - **#3045 narrows to the Campaign's relaunch budget, Spark lane (proposed).** #3052's wait and cancel already
+  - **#3045 narrows to the Campaign's relaunch budget, Spark lane** (ruled 2026-11-11). #3052's wait and cancel already
     give the in-cycle limits and outcomes it asked for.
-  - **#3047, the operator's read surface, is proposed for the Spark lane.**
+  - **#3047, the operator's read surface, goes to the Spark lane** (ruled 2026-11-11).
   - **Every issue has one lane** (§11.1).
+- **Revision 3, as ruled** (2026-11-11): the owner ruled both lanes to the Spark and that decision 2 governs ("approve both lanes to spark, decision 2 governs").
+  - The MacBook lane confirmed revision 3 with no objection (issuecomment-6798562647).
+  - The owner released the MacBook lane's hold, and that lane is building §11.2's three changes on #3052.
 
 ## What 2.8 is
 
@@ -67,7 +70,7 @@ Spark lane carries the pieces the headline needs on its own files:
 - Campaign delivery (#3053);
 - the end-to-end machinery Campaign (#3050);
 - the Luau runner (#2906);
-- and, as proposed in §11.1, the Campaign's relaunch budget (#3045) and the operator's read surface (#3047).
+- the Campaign's relaunch budget (#3045) and the operator's read surface (#3047), ruled to the Spark lane on 2026-11-11.
 
 It also carries the ride-alongs in §7.
 
@@ -153,7 +156,7 @@ Sizes are the SIPs' own where they give one (S, M, L). A size marked * is this p
 |---|---|---|---|
 | **The squad's side of remote execution:** the adapter behind the port, its required selector (`none` = no remote execution), and the request path ruled in decision 2: HTTP; enqueue, read and cancel scoped to the task's current dispatch identity; idempotent on that identity; a newer send cancels an older send's operation. **Built as #3052 (open, draft),** which differs from decision 2 on three points (§11.2) | #3023, part 3 (#3052) | MacBook | M* |
 | **Tools:** the authorization and availability refusals at creation, and availability read again at dispatch | #3036 (SIP-0116 phase 4) | MacBook | M |
-| **A Campaign whose worker is unavailable:** `launch_blocked` before launch, and a relaunch budget persisted per logical increment, then escalation. The in-cycle wait, cancel and outcomes are #3052's (§11.2) | #3045 | **Spark** (proposed, §11.1) | S* |
+| **A Campaign whose worker is unavailable:** `launch_blocked` before launch, and a relaunch budget persisted per logical increment, then escalation. The in-cycle wait, cancel and outcomes are #3052's (§11.2) | #3045 | **Spark** (ruled, §11.1) | S* |
 | **Campaign delivery:** a scenario criterion discriminates on revision-bound evidence; every earlier increment's scenario is replayed on the same candidate; delivery is refused when one fails | #3053 | Spark | M* |
 | **The end-to-end machinery Campaign:** two increments, from a fixture change request, with the scripted squad and the fixture worker, through plan, claim, verdict, repair, re-run and delivery; six injected faults; in CI and as a cut gate | #3050 | Spark | M* |
 | its prerequisites: a scripted squad's answer key survives an agent restart; a scripted repair's refused edit is named, not read as empty | #3005, #3020 | Spark | S* each |
@@ -174,7 +177,7 @@ Sizes are the SIPs' own where they give one (S, M, L). A size marked * is this p
 | **Payload limits:** measure the request, claim and row sizes on the real tree (about 1.7 MB), then set explicit limits from the measurements; captures stay outside 2.8's acceptance evidence | #3049 | MacBook | S* |
 | **Re-qualification after a Studio update:** a recorded run moves the pin, never a hand edit | #3048 | MacBook | S* |
 | **The worker as a service on the MacBook:** launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step | #3046 | MacBook | M* |
-| **The operator's view of the registry:** a read-only route and `squadops workers list` / `show` | #3047 | **Spark** (proposed, §11.1) | S* |
+| **The operator's view of the registry:** a read-only route and `squadops workers list` / `show` | #3047 | **Spark** (ruled, §11.1) | S* |
 
 ### Skills, the squad and the product
 
@@ -428,8 +431,8 @@ build check, agent image and deploy are the Spark lane's. Where a ruling assigns
 | Spark | #3050 | the end-to-end machinery Campaign | CI and the scripted squad |
 | Spark | #3005, #3020 | the scripted squad's two defects | the scripted provider |
 | Spark | #2906 | the Luau runner | decision 4 (the game plan said MacBook; decision 4 moved it) |
-| Spark | #3045 | the Campaign's relaunch budget | **proposed:** `campaigns/launch_blocking.py`. #3052 holds the in-cycle part |
-| Spark | #3047 | the operator's read surface | **proposed:** the Spark runs the runtime the operator reads. The MacBook lane holds every other headline item |
+| Spark | #3045 | the Campaign's relaunch budget | **ruled 2026-11-11:** `campaigns/launch_blocking.py`. #3052 holds the in-cycle part |
+| Spark | #3047 | the operator's read surface | **ruled 2026-11-11:** the Spark runs the runtime the operator reads. The MacBook lane holds every other headline item |
 | Spark | #2954, #2287, #2421, #3010 | the ride-alongs and the patch | decision 9 |
 | Spark | — | the Spark deploy's `.env` gains `SQUADOPS__REMOTE_EXECUTION__PROVIDER=none` before its first rebuild after #3052 merges | deploy (#3052's own note) |
 | the owner | #3009 | the Actions policy, verified 2026-11-16 16:00–18:00 UTC | an administrator's setting |
@@ -443,7 +446,7 @@ build check, agent image and deploy are the Spark lane's. Where a ruling assigns
 
 **The timing.** #3052 was built on the owner's ruling "approve part 3 as recommended", given to the MacBook session
 before it opened the PR at 08:41 ET. Decision 2 was ruled about 09:00 ET, after the outside review. It refines the
-earlier ruling and doesn't reverse it. **Proposed: decision 2 governs where the two differ.**
+earlier ruling and doesn't reverse it. **Decision 2 governs where the two differ** (the owner, 2026-11-11: "approve both lanes to spark, decision 2 governs").
 
 **Where they agree, and #3052 stands as built:**
 - the transport is HTTP;
@@ -498,6 +501,6 @@ or **objects**, with the evidence for any objection. **Its first work on resumin
 **The Spark session** confirms §11.1's Spark rows on this PR. It builds nothing until the plan is adopted.
 
 **The owner:**
-- rules the two proposed lanes (#3045, #3047) and §11.2's "decision 2 governs";
+- rules the two proposed lanes (#3045, #3047) and §11.2's "decision 2 governs" (**ruled 2026-11-11:** "approve both lanes to spark, decision 2 governs");
 - reads each lane's confirmation;
 - merges this PR to adopt the plan.
