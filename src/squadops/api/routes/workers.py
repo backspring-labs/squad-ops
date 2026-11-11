@@ -34,7 +34,12 @@ from squadops.api.worker_schemas import (
 from squadops.auth.models import Scope
 from squadops.remote_execution import leasing
 from squadops.remote_execution.registry import WorkerRegistry, cadence
-from squadops.remote_execution.wire import request_to_wire, result_from_wire
+from squadops.remote_execution.wire import (
+    ERROR_RESULT_REFUSED,
+    ERROR_SESSION_NOT_FOUND,
+    request_to_wire,
+    result_from_wire,
+)
 from squadops.remote_execution.workers import (
     Fence,
     ServedOperation,
@@ -61,7 +66,7 @@ def _registry(request: Request) -> WorkerRegistry:
 def _unknown_session(session_id: str):
     return http_error(
         404,
-        "WORKER_SESSION_NOT_FOUND",
+        ERROR_SESSION_NOT_FOUND,
         "no live session has this id: register again",
         {"session_id": session_id},
     )
@@ -164,7 +169,7 @@ async def submit_result(request: Request, session_id: str, body: ResultRequest) 
     if reading.refusal is not None:
         raise http_error(
             409,
-            "RESULT_REFUSED",
+            ERROR_RESULT_REFUSED,
             "the result's ids are not the current ones for this operation; it was recorded "
             "and not accepted",
             {

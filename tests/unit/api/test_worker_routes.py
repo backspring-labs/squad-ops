@@ -9,78 +9,16 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from fastapi import FastAPI, Request
-from fastapi.testclient import TestClient
-from starlette.middleware.base import BaseHTTPMiddleware
 
-from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
-from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
-from squadops.api.error_handlers import register_domain_error_handlers
-from squadops.api.routes.workers import router
-from squadops.auth.models import ROLE_SCOPES, Identity, IdentityType, Role, scopes_for_roles
+from squadops.auth.models import ROLE_SCOPES, Role
 from squadops.remote_execution import leasing
-from squadops.remote_execution.registry import WorkerRegistry
 from squadops.remote_execution.wire import request_to_wire, result_to_wire
 from squadops.remote_execution.workers import OperationState
-from tests.unit.remote_execution.registry_contract import ORIGIN, Clock, passing, request
+from tests.unit.api.worker_world import REGISTRATION
+from tests.unit.api.worker_world import World as _World
+from tests.unit.remote_execution.registry_contract import passing, request
 
 pytestmark = pytest.mark.auth
-
-REGISTRATION = {
-    "worker_id": "macbook",
-    "platform": "macos-arm64",
-    "tool_versions": {"fixture-editor": "1.0"},
-    "operations": [{"provider": "fixture-editor", "operation": "play_scenario"}],
-}
-
-
-def _identity(role: str) -> Identity:
-    return Identity(
-        user_id=role,
-        display_name=role,
-        roles=(role,),
-        scopes=tuple(sorted(scopes_for_roles((role,)))),
-        identity_type=IdentityType.SERVICE,
-    )
-
-
-class _World:
-    def __init__(self, *, registry: bool = True) -> None:
-        self.clock = Clock()
-        self.registry = WorkerRegistry(MemoryWorkerRegistryStore(), clock=self.clock)
-        self.identity = _identity(Role.WORKER)
-        world = self
-        app = FastAPI()
-
-        class InjectIdentity(BaseHTTPMiddleware):
-            async def dispatch(self, request: Request, call_next):
-                request.state.identity = world.identity
-                return await call_next(request)
-
-        app.add_middleware(InjectIdentity)
-        app.include_router(router)
-        register_domain_error_handlers(app)
-        app.state.worker_registry = self.registry if registry else None
-        # Without an authorization backend, require_scopes is a no-op: the scopes go unread.
-        app.state.authz_port = KeycloakAuthzAdapter()
-        self.client = TestClient(app)
-
-    def as_(self, role: str) -> TestClient:
-        self.identity = _identity(role)
-        return self.client
-
-    def enqueue(self, *, max_attempts: int = 2):
-        return asyncio.run(self.registry.enqueue(request(), ORIGIN, max_attempts=max_attempts))
-
-    def operation(self, operation_id: str):
-        return asyncio.run(self.registry.operation(operation_id))
-
-    def register(self, worker_id: str = "macbook") -> str:
-        reply = self.client.post(
-            "/api/v1/workers/sessions", json={**REGISTRATION, "worker_id": worker_id}
-        )
-        assert reply.status_code == 201, reply.text
-        return reply.json()["session_id"]
 
 
 def _fence(claim: dict) -> dict:

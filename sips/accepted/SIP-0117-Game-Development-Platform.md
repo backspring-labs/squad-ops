@@ -173,7 +173,7 @@ phases are in its own ledger.
 | Phase 2a, part 1: `qa.run_remote_operation`: the task type, the engine-neutral request, result and assertion records, the remote-execution port, the handler and its evidence rows, the plan checks and the envelope, proved with a fixture provider (R4.4, R5.1) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
 | Phase 2a, part 2: the correction route for a remote operation: a dev repair aimed at the implementation, the operation re-run on the repaired tree as the repair's deciding evidence, and the repaired source delivered (R4.4's correction mapping, R5.2) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
 | Phase 2b, part 1: the runtime's side of remote execution: the worker registry and its migration, the claim, lease and fence rules, `/api/v1/workers`, and the worker's own identity (R3.3, R5.3, R5.4) | **shipped** | 2.8 (PR #3024; #3023 tracks parts 2 and 3) |
-| Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **shipped** | 2.8 (PR #3027; #3023 tracks part 3) |
 | Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2c: the Luau runner (#2906; core, R3.2) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations (R3.6, R4.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
@@ -334,6 +334,61 @@ Two things recorded for later:
 
 **Not in part 1:** a route for a person to read the registry, a background sweep for expired leases, and anything
 that queues an operation in a live cycle (part 3).
+
+## R5.5 Phase 2b, part 2 as built: the worker (2026-11-10)
+
+**Not yet ruled:** the points below are the implementer's, for the owner's review in part 2's PR. Part 2 changes no
+ruling of R5.3 or R5.4.
+
+**What part 2 is.** The worker is a process on the machine that hosts a tool. It registers, claims one operation,
+runs it, renews its lease while it runs, and submits the result. It connects outward and listens on nothing.
+
+| part | as built |
+|---|---|
+| the process | `python -m squadops.remote_execution.worker_main`, a fifth composition root. It reads its own section, `SQUADOPS__WORKER__*`, and never the platform configuration, as the sandbox service does: the worker's machine holds one secret, its own client's |
+| its configuration | six fields, each required: the worker's id, the runtime API's address, the identity provider's token endpoint, the client's id and secret (a `secret://` reference is resolved; one with no secrets provider is refused), and `provider`, a `Literal` whose one value today is `fixture` |
+| its two ports | `WorkerApiPort`, the runtime as the worker calls it, and `OperationRunnerPort`, the tool. The loop (`squadops.remote_execution.serving`) knows neither HTTP nor any tool |
+| the way to the runtime | HTTP, with the worker client's token. Every answer is read strictly. A 404 is "no such session" only when it carries the route's own code, so a worker pointed at an address that isn't the runtime stops with what it received |
+| three ways a call fails | *unreachable* (no answer, or a server failure): tried again. *Refused* (credentials, scope, a request the runtime can't read) and *unreadable* (an answer that isn't this version's document): the worker stops, exit code 1, with the reason |
+| the fixture provider | one operation, `fixture/staged_files`. Each assertion names a path, and passes when the request stages a file with content there. Its evidence is a manifest of the staged paths and their digests. A staged `.fixture/hold_seconds` makes it wait, so a rehearsal sees a lease renewed and a cancel arrive. It drives no tool |
+
+**What the worker does with each thing that can happen while it holds a claim:**
+
+| what happens | what the worker does |
+|---|---|
+| the operation ends | submits the result. While the runtime can't be reached it submits again, renewing the lease, for one lease's length at most |
+| a cancel, seen at a renewal | stops the tool, resets it, and submits `interrupted` (R3.3) |
+| a renewal is refused | stops the tool and resets it. It submits nothing: the runtime would refuse it |
+| the runtime can't be reached | the operation runs on and the renewal is tried at each interval, until the lease's last known expiry. Then it stops the tool and resets it |
+| the runtime no longer knows the session | stops the tool, resets it, and registers again |
+| the tool raises | submits `interrupted` with what it raised, and resets the tool |
+| the worker is stopped | stops the tool and submits nothing |
+
+**For the owner's review:**
+1. **A stopped worker submits nothing.** The lease runs out and the operation is queued again while it has an
+   attempt left. Submitting `interrupted` would settle it, and a restart of the worker would then cost the requester
+   its operation.
+2. **What the tool raises is `interrupted`, and it settles the operation.** It had started. The requester decides
+   whether to ask again.
+3. **The tool is reset after any ending but a returned result,** and once per ending: a reset made when the claim
+   was lost is not made again when the next claim says "reconcile first". **A tool that can't be reset runs
+   nothing.** The next operation is answered `not_executed` with why, and the reset is tried again at the claim
+   after.
+4. **A result is tried for one lease's length.** A worker whose submissions alone keep failing would otherwise hold
+   its claim for ever.
+5. **The worker asks for work every 3 seconds.** That number is the worker's. The heartbeat interval and the lease's
+   length stay the runtime's, told at registration.
+6. **The worker has no time limit of its own on an operation.** The requester cancels (part 3).
+
+**Changed in part 1's files:** the two error codes a worker acts on are named once, in
+`squadops.remote_execution.wire`, and the route uses them. The reading of one configuration section from the
+environment, and of the secrets provider's selection, moved from the sandbox root to shared homes
+(`squadops.config.env_section`, `squadops.bootstrap.secrets`), since the worker is their second user.
+
+**Found while building it:** the worker read its own stop request as its tool's, and served on. A test holds it.
+
+**Not in part 2:** running the worker as a service on its machine, the Studio provider (phase 2d), and anything that
+queues an operation in a live cycle (part 3).
 
 ---
 

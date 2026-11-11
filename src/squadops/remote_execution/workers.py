@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 from squadops.remote_execution.models import RemoteOperationRequest, RemoteOperationResult
@@ -198,6 +198,31 @@ class RecordedRefusal:
     fence: Fence
     refusal: FenceRefusal
     received_at: datetime
+
+
+@dataclass(frozen=True)
+class Enrolment:
+    """What a worker is told when it registers: its session, and the cadence to keep."""
+
+    session_id: str
+    #: How often to heartbeat, and how long a lease lasts from a claim or a renewal.
+    heartbeat: timedelta
+    lease: timedelta
+
+
+class RuntimeUnreachable(Exception):
+    """A call to the runtime got no answer: the network, the identity provider or the runtime
+    itself is down. The worker tries again."""
+
+
+class WorkerRefused(Exception):
+    """The runtime answered and will not serve this worker: its credentials, its scope, or a
+    request the runtime can't read. Trying again changes nothing, so the worker stops."""
+
+
+class RuntimeAnswerUnreadable(Exception):
+    """The runtime's answer isn't the document this worker reads: a key missing or of the
+    wrong kind. The two are different versions, so the worker stops."""
 
 
 class UnknownSession(LookupError):

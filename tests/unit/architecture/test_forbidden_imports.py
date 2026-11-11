@@ -157,6 +157,10 @@ COMPOSITION_ROOTS: dict[str, str] = {
     "squadops.api.runtime": "the runtime API's wiring — deps, main, scheduler_bootstrap",
     "squadops.agents.entrypoint": "the agent container's wiring: queue, LLM, memory, prompts, telemetry",
     "squadops.sandbox.main": "the sandbox service's wiring",
+    "squadops.remote_execution.worker_main": (
+        "the remote-execution worker's wiring: the runtime API it calls and its provider's "
+        "runner (SIP-0117 R5.5)"
+    ),
     "squadops.bootstrap": "the bootstrap package: system composition, the doctor's checks, the secrets provider",
 }
 

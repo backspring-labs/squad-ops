@@ -34,6 +34,7 @@ _ENTRY_MODULE = {
     "squadops.api.runtime": "squadops.api.runtime.main",
     "squadops.agents.entrypoint": "squadops.agents.entrypoint",
     "squadops.sandbox.main": "squadops.sandbox.main",
+    "squadops.remote_execution.worker_main": "squadops.remote_execution.worker_main",
     "squadops.bootstrap": "squadops.bootstrap",
 }
 
@@ -240,6 +241,11 @@ _EXPECTED_FACTORY_CALLS: dict[str, dict[str, int]] = {
         "create_a2a_server": 1,
     },
     "squadops.sandbox.main": {"create_sandbox_service": 1},
+    # SIP-0117 R5.5: the worker's way to the runtime, and the runner its provider selects.
+    "squadops.remote_execution.worker_main": {
+        "create_worker_api": 1,
+        "create_operation_runner": 1,
+    },
     # secret_provider_for is DEFINED here and called by the other roots; the binding this
     # package performs is the secrets adapter, through adapters.secrets.factory.
     "squadops.bootstrap": {"create_provider": 1},
