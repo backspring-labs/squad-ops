@@ -4221,15 +4221,50 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 REPAIR_STEP_FAILED_MARKER,
                 describe_failed_steps(protocol.repair_failed_spent),
             )
+            # A mixed round: another step emitted files. The round was one attempt at the failure,
+            # so they are not applied either (#2664's reading of a refusal beside an emission),
+            # and the entry says which.
+            discarded = sorted(
+                str(a.get("name")) for a in protocol.repair_artifacts if isinstance(a, dict)
+            )
             _record_repair_rejection(
                 repair_rejection_carry,
                 envelope.task_id,
                 f"correction attempt {attempt}: {REPAIR_STEP_FAILED_MARKER} ("
                 + describe_failed_steps(protocol.repair_failed_spent)
-                + ") — nothing was applied, verified or retested, and a retry repeats it",
+                + ") — nothing was applied, verified or retested, and a retry repeats it"
+                + (
+                    "; the files the round's other steps emitted were not applied either ("
+                    + ", ".join(discarded)
+                    + "): the round was one attempt at the failure"
+                    if discarded
+                    else ""
+                ),
             )
             _carry_retake_suite(result, envelope, enriched_envelope)
             return "continue"
+        if protocol.repair_failed_refundable and not protocol.emission_empty:
+            # #3020: a mixed round. A step failed with no classification saying a retry repeats
+            # it, and another step emitted files, which go on to verification as the round's
+            # repair. The failed step is named in the log and told to the next round. The entry
+            # does not open with the marker: these files may be applied, so the plan_defect rule
+            # must not read the round as unapplied (``repair_not_applied_in_round``).
+            logger.warning(
+                "correction attempt %d (round s%02d): beside the files its other steps emitted, "
+                "%s (%s); those files are verified as the round's repair (#3020)",
+                attempt,
+                round_seq,
+                REPAIR_STEP_FAILED_MARKER,
+                describe_failed_steps(protocol.repair_failed_refundable),
+            )
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: beside the files its other steps emitted, "
+                f"{REPAIR_STEP_FAILED_MARKER} ("
+                + describe_failed_steps(protocol.repair_failed_refundable)
+                + ") — those files are verified as the round's repair, without that step's part",
+            )
         if protocol.repair_dropped and correction_path == "patch":
             # #2521: every file the repair emitted was one its grant excludes, so nothing reached
             # the tree. The round is spent — it was not refunded above, since the repair emitted

@@ -9446,3 +9446,70 @@ class TestAFailedRepairStepIsNamedAndSplitByWhatARetryDoes:
             await self._route(
                 executor, cycle, CorrectionProtocolResult(correction_path="rewind"), {"n": 1}, {}
             )
+
+    @staticmethod
+    def _mixed(spent: bool):
+        """A round in which one repair step failed and another emitted a file."""
+        from squadops.execution.correction_runner import CorrectionProtocolResult
+
+        step = {
+            "task_type": "qa.test_repair",
+            "task_id": "repair-qa",
+            "error": "the model timed out" if not spent else "no answer for occurrence 2 call 2",
+            "outcome_class": "semantic_failure" if spent else None,
+        }
+        return CorrectionProtocolResult(
+            correction_path="patch",
+            repair_artifacts=[{"name": "backend/routes.py", "content": "def fill(): return 1\n"}],
+            **(
+                {"repair_failed_spent": (step,)} if spent else {"repair_failed_refundable": (step,)}
+            ),
+        )
+
+    async def test_a_spent_failure_beside_another_steps_files_says_they_were_not_applied(
+        self, executor, cycle
+    ):
+        """The MacBook lane's review of #3056. Bug caught: the other step's files discarded with
+        the round and nothing saying so, so the next round re-emits them blind."""
+        from squadops.cycles.correction_signature import repair_not_applied_in_round
+
+        carry: dict[str, list[str]] = {}
+        routed = await self._route(executor, cycle, self._mixed(spent=True), {"n": 1}, carry)
+
+        (entry,) = carry["task_failed"]
+        assert routed == "continue"
+        assert entry.startswith("correction attempt 1: a repair step failed (qa.test_repair ")
+        assert entry.endswith(
+            "; the files the round's other steps emitted were not applied either "
+            "(backend/routes.py): the round was one attempt at the failure"
+        )
+        assert repair_not_applied_in_round(carry["task_failed"], 1) is True
+
+    async def test_a_refundable_failure_beside_another_steps_files_is_named_and_they_verified(
+        self, executor, cycle, monkeypatch, caplog
+    ):
+        """The MacBook lane's review of #3056. Bug caught: the failed step named nowhere but the
+        event's ids while its sibling's files are verified. And the other way: an entry the
+        plan_defect rule reads as an unapplied round, when this round's files may be applied."""
+        from unittest.mock import AsyncMock
+
+        from squadops.cycles.correction_signature import repair_not_applied_in_round
+
+        verified = AsyncMock(return_value="continue")
+        monkeypatch.setattr(executor, "_try_accept_patch", verified)
+        carry: dict[str, list[str]] = {}
+
+        with caplog.at_level("WARNING"):
+            await self._route(executor, cycle, self._mixed(spent=False), {"n": 1}, carry)
+
+        (entry,) = carry["task_failed"]
+        assert entry == (
+            "correction attempt 1: beside the files its other steps emitted, a repair step failed "
+            "(qa.test_repair repair-qa: the model timed out (outcome unclassified)) — those files "
+            "are verified as the round's repair, without that step's part"
+        )
+        assert verified.await_args.args[2] == [
+            {"name": "backend/routes.py", "content": "def fill(): return 1\n"}
+        ]
+        assert repair_not_applied_in_round(carry["task_failed"], 1) is False
+        assert any("repair-qa: the model timed out" in r.getMessage() for r in caplog.records)
