@@ -539,6 +539,38 @@ The plan was adopted by its merge (#3051).
 
 **R5.6's request path** is decision 2's: an agent's calls are scoped to its task's current send, there is one operation per send, and a newer send stops the older sends' operations. It is recorded in R5.6, as built in PR #3052.
 
+
+## R5.8 The frozen scenario, part 1 as built: the declaration, its digest, the wire and the baseline rule (2026-11-11)
+
+**Ruled:** the shape was posted on #3044 (2026-11-11) and agreed with the Spark lane, which builds Campaign
+delivery against it (#3053). The owner's word was "go with your recommendations and merge as you need". #3044 is
+built in two parts. This is part 1.
+
+**What changed, with the evidence for each:**
+
+| change | evidence |
+|---|---|
+| **A scenario is a declaration**, schema `squadops.scenario/1`: `reader`, `setup`, `steps`, `assertions` (each an observation in a context and an expectation) and `named_assertion`. A key outside the schema, or a kind or argument outside the reader's vocabulary, is refused with every defect named (`remote_execution.scenario`) | R5.7's first row: nothing an assignment supplies runs as code |
+| **Core holds no vocabulary.** The validator takes a `ScenarioVocabulary` value, and a provider ships its own as data. The fixture's reader is `fixture/1`. `roblox-studio/1` ships with the development profile (#3041) and the Studio adapter (#3039) | R4.6's isolation test allows a platform's name only in the skillset directories, the development profile's entry, the squad profiles, the adapter directory and the worker root's configuration section. #3044's first post put the vocabulary beside the capability contracts, which that test refuses |
+| **The digest** is `sha256:` over the declaration's canonical text (sorted keys, no whitespace, UTF-8, NaN refused, and a repeated key refused rather than kept). The text names the reader, the setup, the steps and the expected values, so one digest freezes all four, as R3.7 asks | — |
+| **The request carries the declaration.** `Scenario` gains `named_assertion` and `document`, and the wire requires both. A provider digests the text it was handed and refuses a difference, another reader, or a declaration it can't read, as `not_executed` (`handed_scenario_defects`). The handler reads the text from the candidate tree at the path the scenario was placed, so an edit made to the file after freezing reads `not_executed` at the provider | #3044's done-when: "A scenario edited after freezing is refused by the provider as `not_executed`" |
+| **The request's revision is that of exactly what it stages**: `staged_revision(source_files)`, with no executable bit, since the wire carries text only. The handler took the workspace's revision id until now, which on a baseline overlay names another tree | the Spark lane's review of #3044's shape, point 2, and its correction |
+| **One reading shape.** `models.records_document` writes the assertion-records artifact for every lane: the `side` (`baseline` or `candidate`), the revision, the paths left out of staging (`not_staged`), the scenario with its digest, named assertion and text, and one record per declared assertion. The handler stages text files and names every other path there | the Spark lane's review: a pass on a tree without its binary files must be visible to whoever reads it. Whether a non-empty `not_staged` blocks credit is #3039's to decide |
+| **The baseline rule is one function**, `baseline_verdict`. It judges in this order: a gap blocks; then a named assertion that passes is refused to its author; then a precondition that fails is refused; else development may start. Campaign acceptance (#3053) calls the same function | the Spark lane's review, point 1 |
+| **An observation of an instance that isn't there executes.** It observes `absent`, a value of its own, and is compared like any other. Only a setup that isn't established reads `setup_failed` | without it, every feature not yet built would read not executed on the baseline, and block, instead of failing |
+| **The fixture provider runs `fixture/declared_scenario`**, which reads a staged `.fixture/world.json`, in place of `fixture/staged_files`. Its hold for the lease rehearsal stays | every scenario is now a declaration, which `staged_files`' paths-as-assertions were not. Nothing outside the tests named it |
+
+**Rows of the earlier shape.** A stored request without `named_assertion` and `document` raises when it is read
+back, as R5.6 records for `task_id`. Only rehearsal rows are of that shape, all settled, on the MacBook's deploy and
+the Spark's.
+
+**Part 2, still to build:**
+- the change request's scenario criterion (`Criterion.scenario`, `SurfaceKind.scenario`), validated when it is
+  stored, and placed at `.squadops/scenarios/<criterion>.json`;
+- `operation_scenario` at plan expansion, with one operation task per scenario criterion;
+- the baseline step before development, which keeps its reading as a cycle artifact;
+- the plan gate's view of each assertion's observation.
+
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
