@@ -67,16 +67,23 @@ def _run(**kw) -> Run:
 
 
 def _vault() -> tuple[SimpleNamespace, list[str]]:
-    """A vault holding two working artifacts and one already promoted; returns what it promoted."""
+    """A vault holding two working artifacts and one already promoted; returns what it promoted.
+    A promoted artifact lists as promoted afterwards, as a vault's does: the gate promotes an
+    approved run's artifacts after the recorder has (#3034), and promotes none twice."""
     promoted: list[str] = []
     working = [
         SimpleNamespace(artifact_id="art_plan", promotion_status="working"),
         SimpleNamespace(artifact_id="art_manifest", promotion_status="working"),
         SimpleNamespace(artifact_id="art_done", promotion_status="promoted"),
     ]
+
+    def promote(artifact_id: str) -> None:
+        promoted.append(artifact_id)
+        next(a for a in working if a.artifact_id == artifact_id).promotion_status = "promoted"
+
     vault = SimpleNamespace(
         list_artifacts=AsyncMock(return_value=working),
-        promote_artifact=AsyncMock(side_effect=lambda aid: promoted.append(aid)),
+        promote_artifact=AsyncMock(side_effect=promote),
         retrieve=AsyncMock(side_effect=KeyError("none")),
         store=AsyncMock(),
     )

@@ -506,11 +506,8 @@ class WorkloadGate:
             )
             return step(GateOutcome.STOP, CycleStopReason.GATE_DECISION_UNRECOGNIZED)
 
-        # Write refinement notes as artifact (D10). #2029: the decision promoted the run's
-        # artifacts when it was recorded, before these notes existed, so they are promoted here
-        # too: the next workload's forwarding reads promoted artifacts only, and the record
-        # keeps them with the plan they refine. Nothing renders them to a model; they are the
-        # operator's record.
+        # Write refinement notes as artifact (D10). Nothing renders them to a model; they are
+        # the operator's record, kept with the plan they refine.
         if decision.decision == GateDecisionValue.APPROVED_WITH_REFINEMENTS and decision.notes:
             artifact_content = f"# Refinement Notes\n\n{decision.notes}\n"
             content_bytes = artifact_content.encode()
@@ -531,7 +528,14 @@ class WorkloadGate:
             await self._cycle_registry.append_artifact_refs(
                 current_run_id, (refinement_ref.artifact_id,)
             )
-            await promote_run_artifacts(self._artifact_vault, current_run_id)
+
+        # #3034: the gate promotes the approved run's artifacts itself, on every approval. The
+        # next workload's forwarding reads promoted artifacts only. The decision's recorder
+        # promotes them after it writes the decision, and this gate reads the decision as soon
+        # as it is written: a gate that read it first forwarded a run without its plan
+        # (cyc_bdd75601c397), and the refinement notes above are stored after the recorder's
+        # promotion (#2029). Promotion skips what is already promoted.
+        await promote_run_artifacts(self._artifact_vault, current_run_id)
 
         if gate_name == INCREMENT_RULING_GATE:
             # SIP-0109 §7.3 (#1705 step a): the approved increment's framing binds to the

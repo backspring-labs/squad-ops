@@ -1422,6 +1422,82 @@ class TestRefinementArtifactWriting:
         mock_registry.create_run.assert_called_once()
 
 
+class TestAnApprovalReadBeforeItsPromotion:
+    """#3034: the decision's recorder writes the decision, then promotes the run's artifacts, and
+    the gate reads the decision as soon as it is written. ``cyc_bdd75601c397`` read it in between:
+    its implementation run was forwarded no plan and refused, with the plan in the framing run's
+    artifacts. Each test enters at ``execute_cycle`` with a real vault holding the framing run's
+    plan as the recorder has not yet promoted it, and reads the next workload's forwarding as
+    ``execute_run`` gets it."""
+
+    @staticmethod
+    async def _a_framing_run_with_an_unpromoted_plan(executor, mock_registry, tmp_path, decision):
+        from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
+
+        vault = FilesystemArtifactVault(tmp_path)
+        executor._artifact_vault = vault
+        plan = _make_artifact_ref(
+            "art_plan", artifact_type="control_implementation_plan", promotion_status="working"
+        )
+        await vault.store(plan, b"version: 1\n")
+        mock_registry.get_cycle.return_value = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ]
+        )
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run1_decided = _make_run(
+            "run_001",
+            1,
+            "completed",
+            "framing",
+            gate_decisions=(_gate_decision("progress_plan_review", decision),),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1, run1, run1_decided, run2]
+        mock_registry.list_runs.side_effect = [[run1_decided], [run1_decided]]
+        mock_registry.create_run.side_effect = lambda r: r
+        return vault
+
+    @pytest.mark.parametrize(
+        "decision",
+        [GateDecisionValue.APPROVED, GateDecisionValue.APPROVED_WITH_REFINEMENTS],
+    )
+    async def test_the_next_workload_is_forwarded_the_plan(
+        self, executor, mock_registry, tmp_path, decision
+    ):
+        """Bug caught: the forwarding listed the run's promoted artifacts before any was
+        promoted, so ``plan_artifact_refs`` was empty and the implementation run refused."""
+        vault = await self._a_framing_run_with_an_unpromoted_plan(
+            executor, mock_registry, tmp_path, decision
+        )
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        forwarded = executor.execute_run.await_args_list[-1].kwargs["forwarding_overrides"]
+        assert forwarded["plan_artifact_refs"] == ["art_plan"]
+        assert forwarded["prior_workload_artifact_refs"] == ["art_plan"]
+        assert (await vault.get_metadata("art_plan")).promotion_status == "promoted"
+
+    async def test_a_rejection_promotes_nothing_and_starts_no_run(
+        self, executor, mock_registry, tmp_path
+    ):
+        """Bug caught: a gate that promoted on any decision would promote a rejected run's
+        plan, which a later retry's forwarding would then carry."""
+        vault = await self._a_framing_run_with_an_unpromoted_plan(
+            executor, mock_registry, tmp_path, GateDecisionValue.REJECTED
+        )
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        assert (await vault.get_metadata("art_plan")).promotion_status == "working"
+        assert executor.execute_run.await_count == 1
+        mock_registry.create_run.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Artifact forwarding (Phase 3b)
 # ---------------------------------------------------------------------------

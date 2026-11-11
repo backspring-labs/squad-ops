@@ -60,6 +60,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   repair-routing entry that phase 2a added for `qa.run_remote_operation` as lineage, so an instruction selecting
   that type also reached the dev repair its failure is routed to. A step that runs an operation authors nothing,
   so no repair revises its output. Where its failure is routed is unchanged.
+- **An approved gate's next run always receives the approved run's artifacts** (#3034): an approval writes its
+  decision and then promotes the run's artifacts, and the executor reads the run for the decision every two
+  seconds. A read that landed between the two forwarded the next workload nothing, and an implementation run
+  refused with "implementation plan required but absent" while the plan sat in the framing run's artifacts. The
+  gate now promotes the approved run's artifacts itself before it builds the next workload's forwarding.
 
 ## [2.7.0] — 2026-11-10
 

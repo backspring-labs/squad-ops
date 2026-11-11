@@ -18,6 +18,13 @@ artifacts.
 
 So promotion is a consequence of *the gate being approved*, not of *how it was approved*,
 and it belongs where both callers can reach it rather than in the transport layer of one.
+
+**The gate that waits on the decision promotes too** (#3034). A decision is written before its
+recorder promotes, and the executor's gate reads the run for the decision every two seconds.
+``cyc_bdd75601c397`` read it in between: the forwarding listed the promoted artifacts while
+they were still ``working``, and the implementation run refused with the plan beside it. So
+``WorkloadGate.decide`` calls this on every approval before the next workload's forwarding is
+built. Promotion is idempotent, which is what lets both run.
 """
 
 from __future__ import annotations
