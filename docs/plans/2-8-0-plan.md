@@ -1,6 +1,6 @@
 # 2.8.0 plan: a squad develops and tests a Roblox game
 
-**Status: DRAFT, revision 3 (2026-11-11), with the owner's rulings and the reconciliation with the MacBook lane (§11).** The owner asked for a 2.8 plan whose headline
+**Status: ADOPTED on merge, revision 3 as ruled (2026-11-11), with the owner's rulings and the reconciliation with the MacBook lane (§11).** The owner asked for a 2.8 plan whose headline
 is the game-development work, with a review of what the MacBook lane has merged for it and what more it needs to hold
 up. An outside review of revision 1 requested changes before adoption (§10). The owner then ruled all nine decisions
 as recommended in revision 2's write-up, which takes the review's rulings and adds two of this plan's (§8: "good
@@ -62,6 +62,7 @@ the adoption PR (§9).
 - **Revision 3, as ruled** (2026-11-11): the owner ruled both lanes to the Spark and that decision 2 governs ("approve both lanes to spark, decision 2 governs").
   - The MacBook lane confirmed revision 3 with no objection (issuecomment-6798562647).
   - The owner released the MacBook lane's hold, and that lane is building §11.2's three changes on #3052.
+- **The Studio first slice, confirmed** (2026-11-11: "confirm the studio first slice, merge 3051"): read-only, `z_tower-ascension` only, nothing published. The MacBook lane reported it as approved that morning, and the owner confirmed it here. It is an early read on §5's gate (below). The plan is adopted by this PR's merge.
 
 ## What 2.8 is
 
@@ -240,7 +241,7 @@ Sequencing, not dates.
 
    Also built alongside steps 2–4: the Luau runner (#2906, Spark) and SIP-0116 phases 3, 5 and 6 (#3028, #3037,
    #3038).
-5. **Studio:** the adapter (#3039) with the harness (#3040), payload measurement (#3049), re-qualification (#3048),
+5. **Studio:** the first slice (§5: read-only, after #3052's amendment), then the adapter (#3039) with the harness (#3040), payload measurement (#3049), re-qualification (#3048),
    the worker service (#3046) and the read surface (#3047).
 6. **The Studio gate** (§5), read at the adapter's exit, before the squad's skills are replay-tested.
 7. **The squad and the product** (#3041, #3042). The `game_dev_roblox` profile's requirements are switched on only
@@ -263,6 +264,13 @@ quietly stretch to fit the claim. It is read at the adapter's exit, and §6 give
 | **go** | each operation is qualified on the worker, unattended, including after a Studio restart with no person involved | the claim stands as written, and the `game_dev_roblox` profile is switched on |
 | **narrow** | sync, read-back and reset are proved, but play or the harness isn't reliable unattended | **the play-requiring profile stays switched off.** The claim narrows, by a revision of this plan before the cut, to the engine-neutral path proved end to end, the headless Luau checks, and Studio sync, read-back and reset demonstrated. The release notes state the reduced claim |
 | **stop** | the tested state can't be confirmed inside Studio, or the place can't be reset reliably | **the play-requiring profile stays switched off.** The line ships the engine-neutral path and the Luau runner once their gates pass, and the plan returns to the owner with what was found |
+
+**The Studio first slice** (confirmed by the owner, 2026-11-11):
+- read-only, on `z_tower-ascension` only, with nothing published;
+- part of the Studio adapter (#3039), built by the MacBook lane after #3052's amendment;
+- an **early read** on this gate, not the gate's reading. It shows what the adapter's read side does on the real place
+  before the transaction's writes and play are built. The gate is still read at the adapter's exit;
+- its scope is stated in its own PR.
 
 **If the line has to narrow for time** rather than for Studio:
 - SIP-0116's lessons phase (#3038) is the one item to move;
