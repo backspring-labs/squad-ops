@@ -6,6 +6,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`qa.run_remote_operation` and the game capability contracts** (#3017, #3018; SIP-0117 and SIP-0118 phase 2a): a new task type that runs a provider's operation for a capability contract in a verification mode,
+  behind `squadops.ports.remote_execution`. It is plannable and in no base set, so a cycle plans it only where its
+  requirements name a contract over it. The handler writes one evidence row per assertion the frozen scenario
+  declares: `passed` and `failed` are executed, and a missing record, a setup that didn't establish, an
+  unsupported input, a wrong context, an operation that didn't run or was interrupted, and a result that doesn't
+  answer its request each leave the run `blocked_unverified`. Four engine-neutral contracts are declared
+  (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`). No
+  provider, skillset or profile ships. **Its correction route** (part 2): a failed assertion is repaired in the
+  application by the dev repair, aimed at the plan's implementation and never at the operation's evidence, and the
+  repair is accepted only when the operation, re-run on the repaired tree, executes every assertion and passes it.
+  Any other failure of the type (an operation that didn't run, a supplier the deployment can't vouch for) ends the
+  run rather than becoming a developer's edit. An accepted repair's source is part of the delivered change.
 - **Skillset coverage at cycle creation and at the plan gate** (#3014, SIP-0116 phase 2): where a development
   profile requires skillsets, cycle create checks the agent each responsibility routes to and refuses with what is
   missing ("Squad skillset requirements not met. Selected squad: … Missing: … for … (agent …)"), or with what is

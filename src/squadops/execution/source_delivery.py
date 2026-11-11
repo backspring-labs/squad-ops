@@ -86,7 +86,7 @@ from squadops.projects.workspaces import (
 )
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision, content_bytes
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
-from squadops.tasks.task_types import authors_qa_suite, authors_source
+from squadops.tasks.task_types import authors_qa_suite, authors_source, runs_an_operation
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,12 @@ def squad_changes(
             continue
         if producer in REPAIR_TASK_TYPES or producer == SOURCE_CHECKOUT:
             continue
-        if not (authors_source(producer) or authors_qa_suite(producer)):
+        # SIP-0117 R4.4: a repair accepted from a failed remote operation is re-stored as that
+        # task's own, like any accepted patch, and it is source. Its evidence is left out by
+        # type below.
+        if not (
+            authors_source(producer) or authors_qa_suite(producer) or runs_an_operation(producer)
+        ):
             continue
         # #2591: a task's own records (its test report, its typed-check evaluation) are the
         # squad's evidence, never the product's files (FR-19).

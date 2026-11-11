@@ -67,6 +67,8 @@ REASONING_BY_TASK_TYPE: dict[str, str] = {
     # SIP-0109 §8: deterministic — no model is called. Declared so the registry stays complete
     # and a later model call cannot inherit an unread posture.
     TaskType.QA_EVALUATE_INCREMENT: ReasoningLevel.NONE,
+    # SIP-0117 R4.4: tool-backed, so no model is called. Declared for the same reason.
+    TaskType.QA_RUN_REMOTE_OPERATION: ReasoningLevel.NONE,
     TaskType.DEVELOPMENT_DEVELOP: ReasoningLevel.MEDIUM,
     TaskType.DEVELOPMENT_REPAIR: ReasoningLevel.MEDIUM,
     TaskType.DEVELOPMENT_CORRECTION_REPAIR: ReasoningLevel.MEDIUM,

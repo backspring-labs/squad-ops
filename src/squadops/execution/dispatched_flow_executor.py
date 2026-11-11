@@ -131,7 +131,7 @@ from squadops.cycles.task_outcome import (
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES, inject_contract_inputs
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_contract import VerificationContract
-from squadops.cycles.verification_normalize import normalize_task_checks
+from squadops.cycles.verification_normalize import has_blocking_failure, normalize_task_checks
 from squadops.cycles.wrapup_models import verification_evidence_summary
 from squadops.events.types import EventType
 from squadops.execution.binding_holds import BindingFill, BindingHolds
@@ -211,6 +211,7 @@ from squadops.tasks.task_types import (
     TaskType,
     authors_qa_suite,
     authors_source,
+    corrects_only_executed_failures,
     fails_without_correction,
 )
 from squadops.telemetry.context import use_correlation_context
@@ -1000,6 +1001,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         self._patch_acceptance = patch_acceptance or PatchAcceptance(
             reexecute_repaired_suite=(
                 lambda *args, **kw: self._correction_runner.reexecute_repaired_suite(*args, **kw)
+            ),
+            reexecute_operation=(
+                lambda *args, **kw: self._correction_runner.reexecute_operation(*args, **kw)
             ),
             enforce_frozen_ownership=lambda *args, **kw: self._enforce_frozen_ownership(
                 *args, **kw
@@ -3923,6 +3927,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"{envelope.task_type} task {envelope.task_id} failed (no correction): "
                 f"{result.error}"
             )
+        # SIP-0117 R5.1: a remote operation is corrected by repairing the application, which
+        # is a remedy only for an assertion that executed and failed. Without one there is
+        # nothing a developer's edit could fix.
+        if corrects_only_executed_failures(envelope.task_type) and not has_blocking_failure(
+            result.outputs
+        ):
+            raise _ExecutionError(
+                f"{envelope.task_type} task {envelope.task_id} failed with no executed "
+                f"failure to repair (no correction): {result.error}"
+            )
         return None
 
     async def _dispatch_correction_protocol(
@@ -5240,6 +5254,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         errors += classifier.collect(
             "validate_against_offered", plan.validate_against_offered(cycle.skillset_record)
         )
+        # SIP-0117 R4.4: an operation task authors nothing. Both seams.
+        errors += classifier.collect("validate_operation_tasks", plan.validate_operation_tasks())
         # Roll 15: builder floor coverage — both seams per the #718/#719 rule.
         errors += classifier.collect(
             "validate_builder_floor", plan.validate_builder_floor(cycle.resolved_config())

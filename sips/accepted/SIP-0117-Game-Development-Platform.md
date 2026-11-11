@@ -170,7 +170,8 @@ phases are in its own ledger.
 |---|---|---|
 | Slices A–E of revision 1 (§9.5) | **dropped** by Revision 2 (R2.10): restructured into milestones. None was placed | — |
 | M0 as revision 2 cut it, on the companion's plugin foundation | **dropped** by Revision 3 (R3.9): re-cut as phase 2b on the in-tree seam | — |
-| Phase 2a: `qa.run_remote_operation`, the first new plannable task type: its handler, expected artifacts, footprint rule, correction mapping and verifier seams, proved with a fixture provider (R4.4) | **unplaced**, deliberately: the 2.8 plan places it, after SIP-0116's phases 1 and 2 | — |
+| Phase 2a, part 1: `qa.run_remote_operation`: the task type, the engine-neutral request, result and assertion records, the remote-execution port, the handler and its evidence rows, the plan checks and the envelope, proved with a fixture provider (R4.4, R5.1) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
+| Phase 2a, part 2: the correction route for a remote operation: a dev repair aimed at the implementation, the operation re-run on the repaired tree as the repair's deciding evidence, and the repaired source delivered (R4.4's correction mapping, R5.2) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
 | Phase 2b: remote execution: the port, the worker registry and its migration, `/api/v1/workers`, the claim, lease and fence protocol, the worker's composition root, a fixture adapter (R3.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2c: the Luau runner (#2906; core, R3.2) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations (R3.6, R4.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
@@ -182,6 +183,95 @@ phases are in its own ledger.
 **What closes this SIP:** phases 2a–2e shipped (Roblox integration works), then G-1 and U-1 shipped or dropped by a
 numbered amendment. B-1 is optional. "The squad can build and improve a playable game" is the companion's to close
 (R2.10).
+
+---
+
+# R5. Post-acceptance amendments
+
+## R5.1 Phase 2a is delivered in two parts, and part 1 as built (2026-11-10)
+
+**Ruled by the owner on 2026-11-10:** "approve R5.1 and build part 2 next", on the implementer's write-up in part 1's
+PR (#3019).
+
+**What changed.** R4.4 lists the type's correction mapping and verifier seams as part of phase 2a. Building it showed
+the correction loop can't yet serve this type, so phase 2a is delivered in two parts and the ledger has a row for
+each.
+
+**The evidence** (the correction loop as it stands, read on 2026-11-10):
+- a failed task's repair defaults to the dev repair, aimed at the failed task's own expected artifacts. For this type
+  those are evidence files;
+- the retest after a repair re-runs a test suite. Nothing re-runs an operation, so a repaired run would end on the
+  original failed assertions or as a deadlock;
+- a patch accepted from a failure is stored under the failed task's type, and delivery leaves out a producer that
+  authors neither source nor a suite. The repaired source would be missing from the delivered change;
+- no task outcome means "not executed: no repair, and don't stop the run".
+
+**Part 1** builds everything the framework owns before correction, and holds the type out of the loop:
+- **A failed assertion leaves the run `rejected`,** with the assertion, the observed value and the expected value
+  named. No repair is attempted.
+- **A failed task of this type ends the run** (`TaskType.fails_without_correction`), so nothing reaches a repair
+  aimed at evidence.
+- **Part 2** adds the route R4.4 describes. It changes the correction runner, patch acceptance and delivery. The 2.7
+  changes to those files (#2932, #2949) are merged, so it can be built next.
+
+**R4.4, as part 1 builds it:**
+
+| R4.4's part | as built |
+|---|---|
+| the type | `TaskType.QA_RUN_REMOTE_OPERATION`, `plannable`, outside `base@1`. Its handler is registered for `qa` on every stack and offered to none |
+| the handler | reads the contract, mode and supplying skillset from the task's inputs, which the plan step takes from the cycle's skillset record. It refuses when the deployment doesn't hold that skillset, when its digest isn't the recorded one, or when the skillset requests no single tool for the contract. **One tool per contract** is the operation it runs |
+| the port | `squadops.ports.remote_execution.RemoteExecutionPort`, one method. It is an optional field of the agent's ports bundle, and no adapter binds it yet: the adapter, its factory and its configuration selector are phase 2b's. With no port bound, the operation is reported as not executed, with that reason |
+| a result is checked before it's believed | a stale echo, a record for an assertion the scenario doesn't declare, two records for one assertion, or a non-completion with no reason credits nothing. Every declared assertion then reads not executed |
+| expected artifacts | the handler's own: `operation_assertions.json` and the provider's evidence items. **A plan task of this type declares no `expected_artifacts`** (`validate_operation_tasks`), which also keeps it out of an increment's footprint check |
+| `not_executed`, `interrupted`, and an assertion that didn't execute | each is a not-executed row marked as a criterion the run couldn't verify (SIP-0096's evidence-gap rule, #423). The run's verdict is `blocked_unverified`, and takes precedence over a failure |
+| the scenario | required on the task's inputs as `operation_scenario` (its id, digest and declared assertions), and refused when absent. Nothing supplies it in a live cycle yet: phases 2e and 2f take it from the change request |
+| the wire | the request carries the task's id as its identity and the result must echo it. #2932's dispatch identity (merged, `793bb7ba`) is the transport's: it rides in the message's metadata and isn't handed to a handler. Phase 2b's protocol adds the durable token R3.3 calls for |
+| verifier seams | the table is in part 1's PR. No seam evaluates this task's criteria on a container's tree: its evidence comes from the provider |
+
+## R5.2 Phase 2a, part 2 as built: the correction route (2026-11-10)
+
+**Ruled by the owner on 2026-11-10, as written** ("approve all as recommended"). The owner had ruled the split and
+asked for part 2 ("approve R5.1 and build part 2 next"); this records how it was built.
+
+**What changed from R5.1.** Part 1 held the type out of the correction loop. Part 2 lets it in for one kind of
+failure and builds the route R4.4 describes.
+
+| R4.4's correction mapping | as built |
+|---|---|
+| an executed failure in the application routes to the dev repair | a failed assertion fails the task, and the loop runs. `repair_steps_for` holds an explicit row for the type: the dev repair, for every locus |
+| `not_executed` and `interrupted` route to no repair | `TaskType.corrects_only_executed_failures`: a failure of this type with no executed failed row ends the run, named. That covers an operation that never ran, a supplier the deployment can't vouch for, and a provider that raised. A run whose assertions only didn't execute isn't a failed task at all: it succeeds with its unverified rows and reads `blocked_unverified` (R5.1) |
+| where the repair is aimed | the plan's implementation: the source the plan's development tasks author, carried on the operation's envelope. It is narrowed to the files the analyzer named when those are files of the plan. It is never the operation's own artifacts, which are evidence. A plan that runs an operation and authors no source is refused (`validate_operation_tasks`) |
+| a re-run after a repair is an operation | `CorrectionRunner.reexecute_operation` dispatches the same task type to the same role with the same contract, supplier and frozen scenario, on the candidate tree with the repair's files laid over it. The tree's revision id is cut from exactly that mapping. No model is called and no skill is loaded |
+| what accepts the repair | the re-run alone. The operation's task carries no typed criterion, so nothing else could decide. **Every declared assertion must execute and pass.** A re-run that still fails, that leaves any assertion unexecuted, or that didn't run refuses the repair, and the next round is told which |
+| the evidence | the re-run's assertion records and provider evidence replace the failed run's on acceptance (both artifact types join `EVIDENCE_ARTIFACT_TYPES`). The task's check rows are the re-run's |
+| delivery | an accepted repair is re-stored as the failed task's own, as every accepted patch is. Delivery now takes source from a task that runs an operation, and leaves its evidence out by type |
+
+**Two things the first reading of the correction loop got right, and one it got wrong** (R5.1's evidence list):
+- the repair default would have been aimed at evidence, and nothing re-ran an operation: both are fixed above;
+- delivery left the repaired source out: fixed above;
+- **a later task's workspace does include the repaired source.** The workspace filter selects by artifact type as
+  well as by producer, so a source file stored under the operation is read by the tasks after it. No change was
+  needed, and the operation's evidence types are selected by neither rule.
+
+**Not built, and why:**
+- **Keeping a partial improvement.** A suite retest that clears some failures and breaks nothing is kept for the
+  next round (#1522). An operation's re-run is refused unless it passes whole. Whether a partly better scenario run
+  should be kept is a question for the first real provider's evidence.
+- **The verifier's typed checks for the repaired files.** Where a cycle has an interface manifest, the criteria that
+  own the repaired files are still evaluated on the patch before the re-run, as for any repair. An operation's own
+  task adds none.
+
+## R5.3 Phase 2b: three decisions, ruled before it is built (2026-11-10)
+
+Phase 2b (R3.3: the port's transport, the worker registry and its migration, `/api/v1/workers`) touches three things
+that are the owner's to decide. **Ruled by the owner on 2026-11-10, each as recommended** ("approve all as
+recommended"):
+
+| decision | ruling |
+|---|---|
+| editing `docker-compose.yml`, which CLAUDE.md reserves | **approved:** one selector literal for the remote-execution adapter on each service that loads the configuration, as the composition-root rule requires (R2). It merges with 2.8 |
+| a new required `.env` key on every deploy | **approved,** with a value that means "no remote execution" shipped in `.env.example` and written by the bootstrap. A deploy that runs no worker, the Spark's included, needs that one line, at 2.8. The Spark session is told when the PR opens |
+| the worker's service account (D3) | **approved:** a new client-credentials client in the realm exports, with one scope for the workers API, and its secret generated per deploy into `.env` as the agent client's is |
 
 ---
 

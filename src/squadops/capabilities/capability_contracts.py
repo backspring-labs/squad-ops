@@ -7,8 +7,8 @@ verification modes it may run in. A skillset specializes contracts for one platf
 never adds a task type.
 
 The three task types a planner may already offer are their own contracts and need no
-declaration. A domain declares a contract over a task type where its evidence differs. None
-is declared yet: the game contracts are the first, and they arrive with their own proposal.
+declaration. A domain declares a contract over a task type where its evidence differs. The
+game contracts are the first (SIP-0118 R4.2): four, defined once, for every engine.
 
 These are the SIP-0116 contracts. The ``TaskContract`` manifests under ``manifests/contracts``
 are SIP-0.8.6's, a different record with a different loader, and the name they had before
@@ -50,8 +50,55 @@ class CapabilityContractDeclaration:
     modes: tuple[VerificationMode, ...] = ()
 
 
-#: The declared contracts, by id. Empty until the first domain declares one.
-CAPABILITY_CONTRACTS: Mapping[str, CapabilityContractDeclaration] = MappingProxyType({})
+def _declared(
+    *contracts: CapabilityContractDeclaration,
+) -> Mapping[str, CapabilityContractDeclaration]:
+    return MappingProxyType({contract.id: contract for contract in contracts})
+
+
+#: The declared contracts, by id.
+#:
+#: The four ``game.*`` contracts are SIP-0118 R4.2's: what the work is and the evidence it must
+#: produce, for any engine. A platform's skillsets specialize them (Roblox is the first), and a
+#: platform adds no task type. Declaring a contract offers it to no one: a cycle is offered one
+#: only where its development profile requires it and its routed agent supplies it.
+CAPABILITY_CONTRACTS: Mapping[str, CapabilityContractDeclaration] = _declared(
+    CapabilityContractDeclaration(
+        id="game.increment_design",
+        task_type=TaskType.STRATEGY_PROPOSE_INCREMENT,
+        evidence=(
+            "the change request: a player-facing criterion and a play scenario for each, in the "
+            "form its verification contract reads, frozen by digest before development"
+        ),
+    ),
+    CapabilityContractDeclaration(
+        id="game.gameplay_implementation",
+        task_type=TaskType.DEVELOPMENT_DEVELOP,
+        evidence=(
+            "source files inside the change request's footprint, judged by the cycle's typed "
+            "checks as any development output is"
+        ),
+    ),
+    CapabilityContractDeclaration(
+        id="game.unit_tests",
+        task_type=TaskType.QA_TEST,
+        evidence=(
+            "one executed-passed, executed-failed or not-executed result per test, read per "
+            "test id from the runner's own output; a run that collected nothing is not executed"
+        ),
+        modes=(VerificationMode.HEADLESS, VerificationMode.EDITOR, VerificationMode.PLAY),
+    ),
+    CapabilityContractDeclaration(
+        id="game.scenario_verification",
+        task_type=TaskType.QA_RUN_REMOTE_OPERATION,
+        evidence=(
+            "one record per declared assertion of a frozen scenario: passed and failed are "
+            "executed; missing, setup_failed, unsupported_input and wrong_context are not "
+            "executed. Each run names the source revision and the scenario's digest"
+        ),
+        modes=(VerificationMode.PLAY, VerificationMode.MULTIPLAYER),
+    ),
+)
 
 
 def capability_contract(

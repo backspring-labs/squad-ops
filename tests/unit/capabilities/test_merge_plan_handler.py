@@ -737,3 +737,83 @@ async def test_handler_fails_loudly_when_brief_missing():
     result = await handler.handle(ctx, inputs)
     assert result.success is False
     assert "plan_authoring_brief" in (result.error or "")
+
+
+class TestAProposedOperationSurvivesTheMerge:
+    """SIP-0117 R4.4 on SIP-0093's merge. Bug caught: the merge keeping only ``qa.test`` from
+    a qa proposal and dropping a remote operation with an info line, so the plan the gate
+    sees never held the contract qa proposed."""
+
+    def test_qas_operation_reaches_the_plan_with_its_contract_mode_and_dependency(
+        self, brief, dev_proposal, qa_proposal
+    ):
+        import dataclasses
+
+        from squadops.cycles.proposed_role_tasks import ProposedTask
+
+        operation = ProposedTask(
+            task_type="qa.run_remote_operation",
+            role="qa",
+            focus="open the map",
+            description="play the frozen scenario",
+            depends_on_focus=["dev:api join"],
+            contract="game.scenario_verification",
+            mode="play",
+        )
+        proposal = dataclasses.replace(qa_proposal, tasks=[*qa_proposal.tasks, operation])
+
+        plan, _decisions = merge_proposals(
+            brief=brief,
+            dev_proposal=dev_proposal,
+            qa_proposal=proposal,
+            strategy_guidance=None,
+            project_id="test_proj",
+            cycle_id="cyc_test",
+            prd_hash="abc123",
+            configured_contributors=["development", "qa"],
+            missing_proposals=[],
+            criterion_files=(),
+        )
+
+        (merged,) = [t for t in plan.tasks if t.task_type == "qa.run_remote_operation"]
+        assert (merged.role, merged.contract, merged.mode) == (
+            "qa",
+            "game.scenario_verification",
+            "play",
+        )
+        assert merged.depends_on == [0]
+        assert merged.expected_artifacts == []
+        assert plan.summary.total_qa_tasks == 2
+
+    def test_a_dev_proposal_naming_an_operation_is_still_dropped(
+        self, brief, dev_proposal, qa_proposal
+    ):
+        """The lane rule stands: an operation is qa's to propose."""
+        import dataclasses
+
+        from squadops.cycles.proposed_role_tasks import ProposedTask
+
+        stray = ProposedTask(
+            task_type="qa.run_remote_operation",
+            role="qa",
+            focus="stray",
+            description="d",
+            contract="game.scenario_verification",
+            mode="play",
+        )
+        proposal = dataclasses.replace(dev_proposal, tasks=[*dev_proposal.tasks, stray])
+
+        plan, _decisions = merge_proposals(
+            brief=brief,
+            dev_proposal=proposal,
+            qa_proposal=qa_proposal,
+            strategy_guidance=None,
+            project_id="test_proj",
+            cycle_id="cyc_test",
+            prd_hash="abc123",
+            configured_contributors=["development", "qa"],
+            missing_proposals=[],
+            criterion_files=(),
+        )
+
+        assert [t.task_type for t in plan.tasks] == ["development.develop", "qa.test"]

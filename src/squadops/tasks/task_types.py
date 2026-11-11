@@ -57,6 +57,10 @@ class TaskType(StrEnum):
     QA_ASSESS_OUTCOMES = "qa.assess_outcomes"
     #: SIP-0109 §8: an increment's acceptance, run on the stack's runner — deterministic, no model.
     QA_EVALUATE_INCREMENT = "qa.evaluate_increment"
+    #: SIP-0117 R4.4: a verification run by an operation behind the remote-execution port,
+    #: named in a plan by its capability contract and mode. Engine-neutral: the operation is a
+    #: provider's, behind an adapter. Plannable, and outside the base set.
+    QA_RUN_REMOTE_OPERATION = "qa.run_remote_operation"
 
     # --- builder ---
     BUILDER_ASSEMBLE = "builder.assemble"
@@ -141,6 +145,26 @@ class TaskType(StrEnum):
         return self in (TaskType.GOVERNANCE_DEFINE_DONE, TaskType.STRATEGY_PROPOSE_INCREMENT)
 
     @property
+    def corrects_only_executed_failures(self) -> bool:
+        """A failure here enters the correction loop only when a check executed and failed
+        (SIP-0117 R4.4, R5.1).
+
+        A remote operation is repaired by changing the application it verified. That is a
+        remedy for one thing: an assertion that ran and was wrong. An operation that didn't
+        run, a supplier the deployment can't vouch for, or a provider that raised has no
+        application defect to repair, so that failure ends the run, named, and never becomes
+        a developer's edit.
+        """
+        return self is TaskType.QA_RUN_REMOTE_OPERATION
+
+    @property
+    def runs_an_operation(self) -> bool:
+        """The step runs a provider's operation and authors nothing (SIP-0117 R4.4): its
+        artifacts are the operation's evidence, named by the handler, so a plan task of this
+        type declares no expected artifacts and claims no file."""
+        return self is TaskType.QA_RUN_REMOTE_OPERATION
+
+    @property
     def shown_outcome_evidence(self) -> bool:
         """The one step shown its campaign's outcome evidence: the increment's proposal, which
         chooses the gap the next increment closes (SIP-0113 §4.5). No other role is shown a goal
@@ -177,10 +201,16 @@ class TaskType(StrEnum):
         return self.domain == "builder"
 
 
-#: The plannable task types. Today they are the base set's three; the first addition is the
-#: Game Development Platform SIP's ``qa.run_remote_operation``.
+#: The plannable task types: the base set's three, and SIP-0117's ``qa.run_remote_operation``,
+#: which no base set holds. A cycle is offered it only through a capability contract its
+#: requirements name (SIP-0116 §6.3).
 _PLANNABLE: frozenset[TaskType] = frozenset(
-    {TaskType.DEVELOPMENT_DEVELOP, TaskType.QA_TEST, TaskType.BUILDER_ASSEMBLE}
+    {
+        TaskType.DEVELOPMENT_DEVELOP,
+        TaskType.QA_TEST,
+        TaskType.BUILDER_ASSEMBLE,
+        TaskType.QA_RUN_REMOTE_OPERATION,
+    }
 )
 
 
@@ -212,6 +242,18 @@ def _member_or_none(value: object) -> TaskType | None:
         return TaskType(str(value))
     except ValueError:
         return None
+
+
+def corrects_only_executed_failures(task_type: object) -> bool:
+    """``TaskType.corrects_only_executed_failures`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.corrects_only_executed_failures)
+
+
+def runs_an_operation(task_type: object) -> bool:
+    """``TaskType.runs_an_operation`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.runs_an_operation)
 
 
 def plannable(task_type: object) -> bool:

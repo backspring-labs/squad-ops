@@ -98,6 +98,11 @@ NOT_AUTHOR_FACING: dict[str, str] = {
     # gate check is the net for an author that named a type or contract it wasn't offered.
     "validate_against_offered": "enforced-by-offer (SIP-0116 §6.3): a cycle's planner is "
     "offered only its base set and the contracts its requirements name",
+    # SIP-0117 R4.4: a planner isn't offered a remote operation until the prompt asset for
+    # offered contracts exists (SIP-0116 §17c point 1), and that asset is where "an operation
+    # task lists no expected_artifacts" is taught, with its worked example.
+    "validate_operation_tasks": "enforced-by-offer (SIP-0116 §17c): no planner is offered a "
+    "remote operation until the offered-contracts prompt asset teaches its shape",
 }
 
 

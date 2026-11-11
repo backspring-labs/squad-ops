@@ -123,6 +123,11 @@ def test_seam_error_channels_stay_distinct():
             "a plan naming a contract the cycle's squad doesn't supply reaches dispatch through "
             "that path, where its task fails as handler_not_found (SIP-0116 §9)",
         ),
+        (
+            "validate_operation_tasks",
+            "an operation task claiming a file reaches implementation through that path, as a "
+            "step that authors nothing owning source (SIP-0117 R4.4)",
+        ),
     ],
 )
 def test_a_rule_both_seams_need_is_wired_at_both_seams(validator, consequence):

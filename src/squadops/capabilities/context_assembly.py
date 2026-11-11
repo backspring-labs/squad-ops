@@ -569,6 +569,9 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     TaskType.QA_EVALUATE_INCREMENT: ContextAssemblyContract(
         acceptance_workspace=True, increment_evaluation=True
     ),
+    # --- SIP-0117 R4.4: the operation runs against the candidate tree at its revision, which
+    # the handler stages for the provider. It reads nothing else through this registry.
+    TaskType.QA_RUN_REMOTE_OPERATION: ContextAssemblyContract(acceptance_workspace=True),
     # --- SIP-0110 §0.9: the proposal and the pulse-check repair are authoring seams. Neither
     # threads other context through this registry: the proposal's arrives on its launch
     # (SIP-0109 §9.1), and the pulse repair chain composes its own (SIP-0070).

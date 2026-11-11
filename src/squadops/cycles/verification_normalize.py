@@ -162,6 +162,14 @@ def row_is_blocking_failure(row: Mapping[str, Any]) -> bool:
     return row.get("status") in (ResultStatus.FAILED, ResultStatus.ERROR)
 
 
+def has_blocking_failure(outputs: Mapping[str, Any] | None) -> bool:
+    """Whether a task's outputs carry a check that executed and failed, judged as every
+    reader judges a row (``row_is_blocking_failure``)."""
+    validation = (outputs or {}).get("validation_result")
+    rows = validation.get("checks") if isinstance(validation, Mapping) else None
+    return any(isinstance(row, Mapping) and row_is_blocking_failure(row) for row in rows or ())
+
+
 def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:
     """Normalize a check row that carries a boolean ``passed`` (no ``status``)."""
     provenance = _inspection_provenance(row)

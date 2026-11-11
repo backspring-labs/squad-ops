@@ -997,6 +997,7 @@ async def test_patch_acceptance_hands_the_retest_the_failed_tasks_suite():
 
     acceptance = PatchAcceptance(
         reexecute_repaired_suite=retest,
+        reexecute_operation=AsyncMock(),
         enforce_frozen_ownership=lambda *a, **k: ([], []),
         emit_integrity_evidence=lambda *a: None,
         enforce_compliance_budget=lambda *a, **k: None,

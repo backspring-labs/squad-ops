@@ -58,9 +58,10 @@ from squadops.cycles.verification_contract import Probe
 from squadops.cycles.write_authorization import normalize_ws_path
 from squadops.execution.binding_holds import supplied_or_held
 from squadops.execution.correction_ids import correction_task_id
+from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope
-from squadops.tasks.task_types import authors_qa_suite
+from squadops.tasks.task_types import authors_qa_suite, runs_an_operation
 
 if TYPE_CHECKING:
     from squadops.cycles.models import ArtifactRef, Cycle
@@ -620,6 +621,33 @@ def _locus_and_repair_target(
     existing target resolution unchanged.
     """
 
+    if runs_an_operation(failed_task_type):
+        # SIP-0117 R4.4: the operation authors nothing and owns no file, so its failed
+        # assertion is the application's. The target is the plan's implementation, narrowed
+        # to the files the analyzer verified when it named any. Decided here, ahead of the
+        # classifier: its signals are about a task's own emission, and this task has none.
+        surface = [str(a) for a in (failed_inputs.get("implementation_artifacts") or []) if a]
+        if not surface:
+            raise _ExecutionError(
+                f"{failed_task_type} failed and its envelope carries no implementation "
+                "surface, so there is no file a repair could be aimed at"
+            )
+        named = [
+            f for f in _verified_implicated_files(failure_analysis, failed_inputs) if f in surface
+        ]
+        target = named or surface
+        logger.info(
+            "correction_repair_locus: subject — %s authors nothing; the dev repair targets %s (%s)",
+            failed_task_type,
+            ", ".join(target),
+            "the analyzer's verified files" if named else "the plan's implementation",
+        )
+        return (
+            FailureLocus.SUBJECT,
+            target,
+            failed_inputs.get("subtask_focus"),
+            failed_inputs.get("subtask_description"),
+        )
     failure_locus = classify_failure_locus(failure_evidence)
     own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
     # SIP-0109 §24do (#2933): qa's emission was refused because a criterion's test passes on the

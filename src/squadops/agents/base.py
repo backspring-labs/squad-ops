@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
     from squadops.ports.prompts.service import PromptService
+    from squadops.ports.remote_execution import RemoteExecutionPort
     from squadops.ports.telemetry.events import EventPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.ports.telemetry.metrics import MetricsPort
@@ -44,6 +45,10 @@ class PortsBundle:
     llm_observability: LLMObservabilityPort | None = None
     request_renderer: RequestTemplateRenderer | None = None
     messaging: MessagingPort | None = None
+    #: SIP-0117 R4.4: where ``qa.run_remote_operation`` sends its operation. ``None`` on a
+    #: deployment with no remote-execution adapter bound, and the handler then reports the
+    #: operation as not executed, with that reason. It never stands in a provider.
+    remote_execution: RemoteExecutionPort | None = None
 
 
 class BaseAgent:
