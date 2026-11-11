@@ -392,10 +392,17 @@ queues an operation in a live cycle (part 3).
 
 ## R5.6 Phase 2b, part 3 as built: the squad's side (2026-11-11)
 
-**Ruled by the owner on 2026-11-11:** "approve part 3 as recommended", on the recommendation in
-R5.4's third part: an agent's request reaches the queue under the agent's own service identity,
-which gains one scope. **Not yet ruled:** the eight points for review below. They are the
-implementer's, for the owner's review in part 3's PR.
+**Ruled by the owner on 2026-11-11, in two steps.**
+- First: "approve part 3 as recommended", on the recommendation in R5.4's third part. An
+  agent's request reaches the queue under the agent's own service identity, which gains one
+  scope.
+- Then: the 2.8 plan's decision 2 (`docs/plans/2-8-0-plan.md` §8, after its outside review),
+  with "decision 2 governs" over the first ruling where the two differ (§11.2). An agent's
+  calls are scoped to the send of its task the runtime is waiting on, one operation is queued
+  per send, and a newer send stops the older sends' operations.
+
+The plan proposed accepting points 1–5 and 8 below as built, and it was adopted when it merged
+(#3051). Points 6 and 7 are answered by decision 2, as built below.
 
 **What part 3 is.** The handler of `qa.run_remote_operation` runs in an agent, and the worker
 that runs its operation is on another machine. Part 3 joins them: the handler's port now has an
@@ -406,8 +413,12 @@ required setting whether it runs remote execution.
 |---|---|
 | the scope | `operations:request`, held by the `agent` role alone. A scope is implied by a role (#270), so no realm export changes and no deploy re-imports a realm. A worker's role doesn't hold it, so a worker can't queue work for itself; no person's role does |
 | the requester's routes | three, under `/api/v1/remote-operations`: **create** queues an operation (201), **read** returns it as it stands with its result once it has one, and **cancel** asks for it to stop |
+| the request's send | the request names its task and the send of it: the dispatch id the runtime minted for that dispatch (#2932), which the agent's envelope carries. The handler executor puts it on the handler's context, and the handler sends it. A task that came in no named send asks for nothing and fails with the reason; the task id is never sent in its place |
+| only the current send | every route answers only while the request's send is the one the runtime's reply router waits on for its task. Otherwise 403 `REMOTE_OPERATION_SEND_NOT_CURRENT`. One client identity serves all the squad's agents, so the send is what tells one requester from another. A send that isn't current would have its reply dropped as stale, so nothing is done under it |
+| one operation per send | create is keyed on the task and the send, unique in Postgres (migration 2301). A send that asks again is answered 200 with the operation it asked for, whether or not a worker is heard from now. The same send asking with a different request is refused, 409 `REMOTE_OPERATION_SEND_CONFLICT`, and the first stands |
+| a newer send | create stops every operation an older send of the task asked for that has no result yet: a queued one settles with the reason that it was superseded, and a claimed one is marked for its worker to stop. This holds when no worker can run the newer send's operation, and after a runtime restart, since it reads the stored operations |
 | with no worker to run it | create queues nothing and answers 409 with the registry's reason: no registered worker serves the operation, or the ones that do are offline, named |
-| who asked | the operation's origin is the task's id and the agent's id, from the adapter, and `requested_by`, which the route writes from the identity the call was made under |
+| who asked | the operation's origin is the agent's id, from the adapter, and `requested_by`, which the route writes from the identity the call was made under. The task and the send are the request's |
 | the adapter | `RuntimeApiRemoteExecution`, behind `RemoteExecutionPort`. It queues the operation, reads it every 2 seconds until it has its result, and returns the result |
 | the selector | `remote_execution.provider`, required, with no default: `none` or `runtime_api`. It is on the runtime API and all eight agents in `docker-compose.yml`, read from `.env` (R5.3), and `.env.example` ships `none` |
 | `none` | binds no port. The handler reports the operation as not executed, saying no port is bound, as it did before part 3 |
@@ -421,7 +432,9 @@ result is `interrupted`, and neither is a pass or a failure.
 | what happens | the result |
 |---|---|
 | no worker serves the operation, or none is being heard from | `not_executed`, with the registry's reason |
-| the runtime gives no answer to the request to queue | `not_executed`: nothing is known to be queued |
+| the runtime gives no answer to the request to queue | the adapter asks again every 2 seconds, within the same wait. Asking again is safe: the runtime keeps one operation per send |
+| the runtime gives no answer to any request to queue within the wait | `interrupted`: the operation may be queued, and whether it ran is unknown. The task's next send stops it |
+| the send is no longer the task's current one | **raised,** as a refusal |
 | the operation settles | its result, as the worker or the registry wrote it |
 | no result within the wait | the adapter cancels. A queued operation settles `not_executed`. A claimed one's worker answers `interrupted`, or its lease runs out. Either happens within one lease's length, which every answer tells the adapter |
 | still unsettled one lease after the cancel | `interrupted`, naming its state |
@@ -431,13 +444,19 @@ result is `interrupted`, and neither is a pass or a failure.
 | the runtime no longer knows the operation | `interrupted`, likewise |
 | the runtime refuses the agent, or its answer can't be read | **raised.** The task fails with the reason and the run ends on it (R5.2: a failure with no executed failed row). A deploy's defect is never read as an operation that didn't run |
 
-**A rule of part 1 changed.** A claimed operation that is cancelled, and whose lease then runs
-out, **settles as `interrupted`**, whatever attempts it had left. Part 1 queued it again while an
-attempt was left, still marked cancelled: no worker could claim it and nothing settled it. Part 1
-had no requester to wait on it. The registry's contract suite holds the rule over memory and
+**Two rules of part 1 changed.** The registry's contract suite holds both over memory and
 Postgres.
+- **A claimed operation that is cancelled, and whose lease then runs out, settles as
+  `interrupted`,** whatever attempts it had left. Part 1 queued it again while an attempt was
+  left, still marked cancelled: no worker could claim it and nothing settled it. Part 1 had no
+  requester to wait on it.
+- **A queued operation whose earlier attempt's lease ran out settles as `interrupted` when it
+  is stopped,** naming that attempt. Part 1 settled it `not_executed`, "cancelled before a
+  worker claimed it", though the earlier attempt had begun in the tool and may have run there.
+  A cancel and a supersession both reach this rule.
 
-**For the owner's review:**
+**The points reviewed with the plan (1–5 and 8 accepted as built; 6 and 7 answered by
+decision 2):**
 1. **`none` binds no port.** The alternative was an adapter that answers `not_executed`. The
    handler already names an unbound port, and a port that exists is one a later caller might
    trust.
@@ -451,12 +470,14 @@ Postgres.
    way twice costs two runs.
 5. **A refusal raises.** A scope the agent lacks, credentials the identity provider refuses,
    and an answer this version can't read each fail the task and end the run with the reason.
-6. **Every agent signs in as the one agent client,** so any agent may read or cancel any
-   operation whose id it knows. An identity per agent waits for a second reason, as an
+6. **Every agent signs in as the one agent client.** As first built, any agent could read or
+   cancel any operation whose id it knew. **Now:** only the task's current send may, by the
+   send the request names. An identity per agent still waits for a second reason, as an
    identity per worker does (R5.4).
-7. **An agent that dies while it waits leaves its operation to run.** Nothing holds a lease
-   for a requester. The worker finishes it and the result is read by nobody. An agent stopped
-   in order asks for its operation to stop, and names it when that fails.
+7. **An agent that dies while it waits.** As first built, its operation was left to run, read
+   by nobody. **Now:** the runtime sends the task again under a new send (a retry, or a
+   resumed run), and that send's create stops the older operation. An agent stopped in order
+   still asks for its operation to stop, and names it when that fails.
 8. **The agent reads its operation every 2 seconds.** That number is the adapter's.
 
 **Changed in parts 1 and 2's files:** the HTTP calls to the runtime API and the strict reading
@@ -468,6 +489,11 @@ unchanged.
 `SQUADOPS__REMOTE_EXECUTION__PROVIDER=none`. Without it every compose command stops and names
 the key. A fresh bootstrap copies it from `.env.example`. The MacBook's deploy sets
 `runtime_api` when it runs a worker.
+
+**Rows of the earlier shape.** The request now carries `task_id`, which it lacked. An operation
+queued before this change has none: no send matches it, and reading its request raises. Only
+rehearsal rows on the MacBook's deploy are of that shape, since no other deploy had the create
+route.
 
 **Not in part 3:**
 - **A live cycle that queues an operation.** Nothing supplies a scenario yet (R5.1): phases 2e

@@ -257,8 +257,8 @@ service reads.
 The worker registry's store (SIP-0117 R5.4): Postgres beside the cycles whose operations it queues,
 so a lease outlives a runtime restart, and in memory for tests. And the worker's adapters (R5.5): the
 runtime API over HTTP, and the fixture provider's runner. And the agent's (R5.6): the remote-execution
-port through the runtime API's `/api/v1/remote-operations`, which queues an operation for a worker and
-waits for its result.
+port through the runtime API's `/api/v1/remote-operations`, which queues one operation per send of a
+task, under the send the runtime is waiting on, and waits for its result.
 
 ### `adapters.sandbox`
 The sandbox's container adapters (SIP-0102).
