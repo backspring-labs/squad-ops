@@ -8,9 +8,10 @@ to, and the content loaded. It is stored with the cycle beside ``squad_profile_s
 ``assignment`` and ``offered`` come from the coverage check (``skillset_coverage``), which
 cycle preflight has already passed by the time a record is built: each requirement, the agent
 it routed to and the skillset that agent supplied, and the contracts those skillsets put in
-front of the planner. ``content`` is empty until the skill loader is built. Every development
-profile requires nothing today, so every record's requirements, assignment and offered
-contracts are empty too.
+front of the planner. ``content`` names each skill the assigned skillsets load, and each of its
+files, by digest; the text itself is the cycle's kept copy (``skillset_content``). Every
+development profile requires nothing today, so every record's requirements, assignment,
+offered contracts and content are empty.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from squadops.capabilities.capability_contracts import CapabilityContractDeclara
 from squadops.capabilities.skillsets import Skillset
 from squadops.core.hashing import canonical_sha256
 from squadops.cycles.models import SquadProfile
+from squadops.cycles.skillset_content import content_entries, kept_document
 from squadops.cycles.skillset_coverage import cycle_coverage
 from squadops.stacks.development_profiles import (
     development_profile_fingerprint,
@@ -51,6 +53,21 @@ def build_skillset_record(
 ) -> dict[str, Any]:
     """The record for a cycle created now, under ``profile`` and ``resolved_config``, with the
     skillsets ``catalog`` holds."""
+    record, _ = skillset_record_and_content(
+        profile, roster_hash, resolved_config, catalog, contracts
+    )
+    return record
+
+
+def skillset_record_and_content(
+    profile: SquadProfile,
+    roster_hash: str,
+    resolved_config: Mapping[str, Any],
+    catalog: Mapping[str, Skillset],
+    contracts: Mapping[str, CapabilityContractDeclaration] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The record, and the copy of its skills the cycle keeps (§10): ``None`` when the
+    assigned skillsets load no skill, so there is nothing to keep."""
     name = effective_development_profile(resolved_config)
     development = get_development_profile(name)
     coverage = cycle_coverage(profile, resolved_config, catalog, contracts)
@@ -62,6 +79,8 @@ def build_skillset_record(
             "a skillset record is written only for a cycle whose requirements are covered: "
             + " ".join(f.message for f in coverage.findings)
         )
+    document = kept_document(coverage.assignments, catalog)
+    content = content_entries(document)
     record: dict[str, Any] = {
         "schema": SKILLSET_RECORD_SCHEMA,
         "base_set": {
@@ -82,10 +101,10 @@ def build_skillset_record(
         "offered": [
             {**dataclasses.asdict(o), "task_type": o.task_type.value} for o in coverage.offered
         ],
-        "content": [],
+        "content": content,
     }
     record["digest"] = skillset_record_digest(record)
-    return record
+    return record, (document if content else None)
 
 
 def _requirement(entry: Any) -> dict[str, Any]:

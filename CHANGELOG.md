@@ -20,6 +20,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   **Every deploy's `.env` needs one new line: `SQUADOPS__REMOTE_EXECUTION__PROVIDER=none`** (or `runtime_api`
   where a worker runs). Compose reads it onto the runtime API and every agent, and stops with the key named when
   it is absent. `.env.example` ships `none`.
+- **A cycle keeps a copy of the skills its work requires** (#3028; SIP-0116 phase 3, part 1): when a cycle is
+  created on a development profile that requires skillsets, the skills its agents were assigned to supply are
+  copied into the vault with it (`skillset_content`), and the cycle's skillset record names each skill and file
+  by digest. The copy is checked against the record before anything is loaded from it, so a redeploy that edits a
+  skill doesn't reach a cycle already created. A skill's files are UTF-8 text. No profile requires a skillset
+  yet, so every cycle keeps nothing and runs as before; a task is handed its skills in part 2.
 - **The remote-execution worker** (#3023; SIP-0117 phase 2b, part 2): `python -m squadops.remote_execution.worker_main`,
   run on the machine that hosts a tool. It connects outward to the runtime API and listens on nothing. It reads
   its own settings, `SQUADOPS__WORKER__*` (its id, the runtime's address, the token endpoint, its client's id and

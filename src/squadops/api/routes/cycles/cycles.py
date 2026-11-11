@@ -103,7 +103,8 @@ from squadops.cycles.preflight import (
     stack_development_profile_decision,
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
-from squadops.cycles.skillset_record import build_skillset_record
+from squadops.cycles.skillset_content import keep_skillset_content
+from squadops.cycles.skillset_record import skillset_record_and_content
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
 from squadops.llm.script import ScriptLibrary
@@ -842,6 +843,22 @@ async def prepare_cycle(
             extra={"project_id": project_id, "contract_ref": derived_ref},
         )
 
+    # SIP-0116 §10: recorded here, after the development profile is pinned and preflight has
+    # passed, from the configuration dispatch will read. The skills the assigned skillsets
+    # load are kept with the cycle before it is stored, so a stored cycle always has its copy.
+    skillset_record, skillset_content = skillset_record_and_content(
+        profile,
+        snapshot_hash,
+        resolve_config(applied_defaults, body.execution_overrides or {}),
+        packaged_skillsets(),
+    )
+    if skillset_content is not None:
+        await keep_skillset_content(
+            ports.artifact_vault,
+            project_id=project_id,
+            cycle_id=cycle_id,
+            document=skillset_content,
+        )
     cycle = Cycle(
         cycle_id=cycle_id,
         project_id=project_id,
@@ -869,14 +886,7 @@ async def prepare_cycle(
         kind=kind,
         increment_id=increment_id,
         source_context=source_context,
-        # SIP-0116 §10: recorded here, after the development profile is pinned and preflight
-        # has passed, from the configuration dispatch will read.
-        skillset_record=build_skillset_record(
-            profile,
-            snapshot_hash,
-            resolve_config(applied_defaults, body.execution_overrides or {}),
-            packaged_skillsets(),
-        ),
+        skillset_record=skillset_record,
     )
     return PreparedCycle(
         cycle,

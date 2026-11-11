@@ -1558,6 +1558,77 @@ class TestCreateCycleSkillsetCoverage:
         ]
         assert record["development_profile"]["platform"] == {"id": "fixture", "variant": "local"}
 
+    def test_a_cycle_whose_skillset_loads_skills_keeps_a_copy_its_tasks_can_load(
+        self,
+        client,
+        mock_cycle_registry,
+        mock_squad_profile,
+        requiring_stack,
+        monkeypatch,
+        tmp_path,
+    ):
+        """SIP-0116 §10, phase 3, entered at the create route. Bug caught: the record naming
+        skills no copy was kept of (the route builds the record and never stores the copy), a
+        copy stored under another cycle's id, or one the cycle's own record refuses."""
+        import asyncio
+        import dataclasses
+
+        from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
+        from squadops.api.routes.cycles import cycles as cycles_route
+        from squadops.capabilities.skillsets import SkillsetCapability, skill_files_digest
+        from squadops.cycles.skillset_content import kept_document_of, skills_for
+
+        files = {"SKILL.md": "---\nname: suite\n---\nWrite the suite first.\n"}
+        catalog = cycles_route.packaged_skillsets()
+        catalog["fixture-qa"] = dataclasses.replace(
+            catalog["fixture-qa"],
+            capabilities=(SkillsetCapability("qa.test", (), ("suite",)),),
+            skill_digests={"suite": skill_files_digest(files)},
+            skill_files={"suite": files},
+        )
+        vault = FilesystemArtifactVault(tmp_path)
+        client.app.state.artifact_vault = vault
+        self._equip(mock_squad_profile, "eve", "fixture-qa")
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=requiring_stack)
+
+        assert resp.status_code == 201, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        record = cycle.skillset_record
+        assert [(e["skillset"], e["skill"], e["digest"]) for e in record["content"]] == [
+            ("fixture-qa", "suite", skill_files_digest(files))
+        ]
+        kept = asyncio.run(kept_document_of(vault, cycle_id=cycle.cycle_id, record=record))
+        (suite,) = skills_for(kept, record, task_type="qa.test", agent_id="eve")
+        assert suite.files == files
+        assert skills_for(kept, record, task_type="qa.test", agent_id="neo") == ()
+
+    def test_a_cycle_whose_skills_cant_be_kept_is_not_created(
+        self, client, mock_cycle_registry, mock_squad_profile, requiring_stack
+    ):
+        """Bug caught: a cycle stored with a record that names skills and no copy of them, so
+        its first task has nothing to load. This deployment has no vault."""
+        import dataclasses
+
+        from squadops.api.routes.cycles import cycles as cycles_route
+        from squadops.capabilities.skillsets import SkillsetCapability, skill_files_digest
+        from squadops.cycles.skillset_content import SkillsetContentError
+
+        files = {"SKILL.md": "---\nname: suite\n---\nWrite the suite first.\n"}
+        catalog = cycles_route.packaged_skillsets()
+        catalog["fixture-qa"] = dataclasses.replace(
+            catalog["fixture-qa"],
+            capabilities=(SkillsetCapability("qa.test", (), ("suite",)),),
+            skill_digests={"suite": skill_files_digest(files)},
+            skill_files={"suite": files},
+        )
+        self._equip(mock_squad_profile, "eve", "fixture-qa")
+
+        with pytest.raises(SkillsetContentError, match="no artifact vault is configured to keep"):
+            client.post("/api/v1/projects/hello_squad/cycles", json=requiring_stack)
+
+        mock_cycle_registry.create_cycle.assert_not_called()
+
     def test_an_ordinary_cycle_on_an_equipped_squad_is_unaffected(
         self, client, mock_cycle_registry, mock_squad_profile, requiring_stack
     ):
