@@ -13,7 +13,9 @@ calls it, and ``OperationRunnerPort`` is the tool on the worker's machine.
 
 An implementation returns a ``RemoteOperationResult`` for every request it accepts. When the
 operation can't run it says so, as ``not_executed`` with the reason; it doesn't raise for
-that, and it never returns a pass for an operation that didn't run.
+that, and it never returns a pass for an operation that didn't run. It raises for a defect of
+the deploy, which is no reading of the operation at all: a runtime that refuses the caller, or
+an answer it can't read (R5.6).
 """
 
 from __future__ import annotations

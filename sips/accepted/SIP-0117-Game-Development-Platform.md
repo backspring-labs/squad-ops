@@ -157,7 +157,7 @@ in the portfolio's §4).
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
   `docs/ideas/Doc traceability.txt`; the repository's SIP template, `sips/TEMPLATE.md`.
 
-## Delivery ledger (current as of 2026-11-10)
+## Delivery ledger (current as of 2026-11-11)
 
 One row per part that ships separately. Statuses: *shipped* (the release, the PR, and the issue it closed),
 *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once numbered), *unplaced* (said
@@ -172,9 +172,9 @@ phases are in its own ledger.
 | M0 as revision 2 cut it, on the companion's plugin foundation | **dropped** by Revision 3 (R3.9): re-cut as phase 2b on the in-tree seam | — |
 | Phase 2a, part 1: `qa.run_remote_operation`: the task type, the engine-neutral request, result and assertion records, the remote-execution port, the handler and its evidence rows, the plan checks and the envelope, proved with a fixture provider (R4.4, R5.1) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
 | Phase 2a, part 2: the correction route for a remote operation: a dev repair aimed at the implementation, the operation re-run on the repaired tree as the repair's deciding evidence, and the repaired source delivered (R4.4's correction mapping, R5.2) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
-| Phase 2b, part 1: the runtime's side of remote execution: the worker registry and its migration, the claim, lease and fence rules, `/api/v1/workers`, and the worker's own identity (R3.3, R5.3, R5.4) | **shipped** | 2.8 (PR #3024; #3023 tracks parts 2 and 3) |
-| Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **shipped** | 2.8 (PR #3027; #3023 tracks part 3) |
-| Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2b, part 1: the runtime's side of remote execution: the worker registry and its migration, the claim, lease and fence rules, `/api/v1/workers`, and the worker's own identity (R3.3, R5.3, R5.4) | **shipped** | 2.8 (PR #3024) |
+| Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **shipped** | 2.8 (PR #3027) |
+| Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4, R5.6) | **shipped** | 2.8 (PR #3052, closing #3023) |
 | Phase 2c: the Luau runner (#2906; core, R3.2) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations (R3.6, R4.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2e: the assertion harness and reader (R3.7) | **unplaced**, deliberately: the 2.8 plan places it | — |
@@ -389,6 +389,95 @@ environment, and of the secrets provider's selection, moved from the sandbox roo
 
 **Not in part 2:** running the worker as a service on its machine, the Studio provider (phase 2d), and anything that
 queues an operation in a live cycle (part 3).
+
+## R5.6 Phase 2b, part 3 as built: the squad's side (2026-11-11)
+
+**Ruled by the owner on 2026-11-11:** "approve part 3 as recommended", on the recommendation in
+R5.4's third part: an agent's request reaches the queue under the agent's own service identity,
+which gains one scope. **Not yet ruled:** the eight points for review below. They are the
+implementer's, for the owner's review in part 3's PR.
+
+**What part 3 is.** The handler of `qa.run_remote_operation` runs in an agent, and the worker
+that runs its operation is on another machine. Part 3 joins them: the handler's port now has an
+adapter, the adapter queues the operation through the runtime API, and a deploy says with one
+required setting whether it runs remote execution.
+
+| part | as built |
+|---|---|
+| the scope | `operations:request`, held by the `agent` role alone. A scope is implied by a role (#270), so no realm export changes and no deploy re-imports a realm. A worker's role doesn't hold it, so a worker can't queue work for itself; no person's role does |
+| the requester's routes | three, under `/api/v1/remote-operations`: **create** queues an operation (201), **read** returns it as it stands with its result once it has one, and **cancel** asks for it to stop |
+| with no worker to run it | create queues nothing and answers 409 with the registry's reason: no registered worker serves the operation, or the ones that do are offline, named |
+| who asked | the operation's origin is the task's id and the agent's id, from the adapter, and `requested_by`, which the route writes from the identity the call was made under |
+| the adapter | `RuntimeApiRemoteExecution`, behind `RemoteExecutionPort`. It queues the operation, reads it every 2 seconds until it has its result, and returns the result |
+| the selector | `remote_execution.provider`, required, with no default: `none` or `runtime_api`. It is on the runtime API and all eight agents in `docker-compose.yml`, read from `.env` (R5.3), and `.env.example` ships `none` |
+| `none` | binds no port. The handler reports the operation as not executed, saying no port is bound, as it did before part 3 |
+| the agent's identity | its existing service client (#326), through one token client per process, shared with the heartbeats. With no identity configured the calls carry no token, as the heartbeats' do: a runtime that authenticates refuses them, and that is raised |
+| two tunables | `remote_execution.wait_seconds` (900) and `remote_execution.max_attempts` (2), each with a default, as tunables have (the composition-root rules' R5) |
+
+**How each thing that can happen to an operation is told to the handler.** The port's rule
+stands: an operation that didn't run is `not_executed`, one that may have started and has no
+result is `interrupted`, and neither is a pass or a failure.
+
+| what happens | the result |
+|---|---|
+| no worker serves the operation, or none is being heard from | `not_executed`, with the registry's reason |
+| the runtime gives no answer to the request to queue | `not_executed`: nothing is known to be queued |
+| the operation settles | its result, as the worker or the registry wrote it |
+| no result within the wait | the adapter cancels. A queued operation settles `not_executed`. A claimed one's worker answers `interrupted`, or its lease runs out. Either happens within one lease's length, which every answer tells the adapter |
+| still unsettled one lease after the cancel | `interrupted`, naming its state |
+| a result that crosses the cancel | stands as it was submitted |
+| the runtime restarts during the wait | the adapter reads again, and names each read that got no answer. The operation and its lease are in Postgres (R5.4) |
+| the runtime can't be reached when the wait ends | `interrupted`: it was queued, and whether it ran is unknown |
+| the runtime no longer knows the operation | `interrupted`, likewise |
+| the runtime refuses the agent, or its answer can't be read | **raised.** The task fails with the reason and the run ends on it (R5.2: a failure with no executed failed row). A deploy's defect is never read as an operation that didn't run |
+
+**A rule of part 1 changed.** A claimed operation that is cancelled, and whose lease then runs
+out, **settles as `interrupted`**, whatever attempts it had left. Part 1 queued it again while an
+attempt was left, still marked cancelled: no worker could claim it and nothing settled it. Part 1
+had no requester to wait on it. The registry's contract suite holds the rule over memory and
+Postgres.
+
+**For the owner's review:**
+1. **`none` binds no port.** The alternative was an adapter that answers `not_executed`. The
+   handler already names an unbound port, and a port that exists is one a later caller might
+   trust.
+2. **With no worker being heard from, nothing is queued.** A worker that registers a minute
+   later is not waited for. The cycle reads `blocked_unverified` with the reason, and is run
+   again.
+3. **The wait is 900 seconds.** It must stay under the deploy's task timeout (1,800 seconds
+   on both deploys), so a long operation ends with its own named ending and not as a hung
+   agent. The first real provider's timings may move it.
+4. **Two attempts.** The second is for a worker that restarted. A tool that fails the same
+   way twice costs two runs.
+5. **A refusal raises.** A scope the agent lacks, credentials the identity provider refuses,
+   and an answer this version can't read each fail the task and end the run with the reason.
+6. **Every agent signs in as the one agent client,** so any agent may read or cancel any
+   operation whose id it knows. An identity per agent waits for a second reason, as an
+   identity per worker does (R5.4).
+7. **An agent that dies while it waits leaves its operation to run.** Nothing holds a lease
+   for a requester. The worker finishes it and the result is read by nobody. An agent stopped
+   in order asks for its operation to stop, and names it when that fails.
+8. **The agent reads its operation every 2 seconds.** That number is the adapter's.
+
+**Changed in parts 1 and 2's files:** the HTTP calls to the runtime API and the strict reading
+of its answers moved from the worker's adapter to a shared module, since the requester's
+adapter is their second user. The worker's adapter behaves as it did, and its tests pass
+unchanged.
+
+**What a deploy needs at 2.8.** One line in its `.env`:
+`SQUADOPS__REMOTE_EXECUTION__PROVIDER=none`. Without it every compose command stops and names
+the key. A fresh bootstrap copies it from `.env.example`. The MacBook's deploy sets
+`runtime_api` when it runs a worker.
+
+**Not in part 3:**
+- **A live cycle that queues an operation.** Nothing supplies a scenario yet (R5.1): phases 2e
+  and 2f do.
+- **The preflight at cycle creation** that a registered worker serves the plan's operations
+  (R3.4). The create route's refusal says the same thing at dispatch.
+- **A route for a person to read the registry, and a background sweep for expired leases.**
+  An expired lease is ended when its operation is next read, and a waiting requester reads it
+  every 2 seconds.
+- **The worker as a service on its machine, and the Studio provider** (phase 2d).
 
 ---
 
