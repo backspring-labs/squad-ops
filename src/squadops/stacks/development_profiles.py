@@ -16,6 +16,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.stacks.requirements import PlatformTarget, ResponsibilityRequirement
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOBS
 
@@ -114,6 +115,13 @@ class DevelopmentProfile:
     #: Empty means a product's cycle is never pinned to this profile from its blueprint, and a
     #: source-backed run under it is shown the prose above, as before.
     product_conventions_template: str = ""
+    #: The platform and variant this profile's work targets (SIP-0116 §5.1). ``None`` for a
+    #: profile whose work requires nothing of the squad beyond the base set.
+    platform: PlatformTarget | None = None
+    #: For each responsibility, the skillsets the work requires (SIP-0116 §5.1). Empty means
+    #: nothing beyond the base set. Selecting a profile equips no one: these are compared with
+    #: what the selected squad's agents carry, and nothing here reaches an agent.
+    requires: tuple[ResponsibilityRequirement, ...] = ()
 
 
 #: What a product's source and tests look like when no blueprint says (SIP-0112 H.26). The product's
@@ -674,6 +682,32 @@ def effective_development_profile(resolved_config: Mapping[str, Any] | None) -> 
     return resolve_development_profile(resolved_config) or DEFAULT_DEVELOPMENT_PROFILE
 
 
+def development_profile_selection_origin(resolved_config: Mapping[str, Any] | None) -> str:
+    """How the profile ``effective_development_profile`` answers with was selected, for the
+    cycle's skillset record (SIP-0116 §10).
+
+    A repository-backed cycle recorded its selection when it was pinned (H.26), and that
+    origin stands. Otherwise the scaffold stack requires the profile, or the config names it,
+    or nothing does and the default applies.
+    """
+    config = resolved_config or {}
+    selection = config.get("development_profile_selection")
+    if isinstance(selection, Mapping):
+        # The selection is the record of this profile's pin, or it is evidence that the
+        # config was changed after the pin. Its origin is never borrowed for another profile.
+        if selection.get("name") != effective_development_profile(config) or not selection.get(
+            "origin"
+        ):
+            raise ValueError(
+                f"the cycle's recorded development_profile_selection is {dict(selection)!r}, "
+                f"and its config runs `{effective_development_profile(config)}`"
+            )
+        return str(selection["origin"])
+    if development_profile_for(str(config.get("build_profile") or "")):
+        return ORIGIN_STACK
+    return ORIGIN_OPERATOR if config.get("development_profile") else ORIGIN_DEFAULT
+
+
 def blueprint_development_profile(blueprint_stack: str | None) -> str:
     """The development profile a product made from ``blueprint_stack`` runs under, or ``""``
     (SIP-0112 H.13).
@@ -691,6 +725,9 @@ def blueprint_development_profile(blueprint_stack: str | None) -> str:
 
 #: Where a cycle's development profile came from (SIP-0112 H.26).
 ORIGIN_OPERATOR, ORIGIN_BLUEPRINT, ORIGIN_DERIVED = "operator", "blueprint", "derived"
+#: And for a cycle with no repository behind it: its scaffold stack requires the profile, or
+#: nothing names one (SIP-0116 §2's table, the greenfield rows).
+ORIGIN_STACK, ORIGIN_DEFAULT = "stack", "default"
 NEUTRAL_DEVELOPMENT_PROFILE = "product_neutral"
 _PYTHON_RUNNERS = frozenset({"pytest", "unittest"})
 _NODE_RUNNERS = frozenset({"vitest", "jest"})
@@ -753,8 +790,16 @@ def development_profile_conflict(name: str, runners: Iterable[str]) -> str | Non
 
 def development_profile_fingerprint(name: str) -> str:
     """What identifies a profile's behaviour, so a retry or replay can tell it changed (H.26): a
-    digest of its whole definition. A prompt asset it names is covered by name, not by content."""
-    document = json.dumps(dataclasses.asdict(get_development_profile(name)), sort_keys=True)
+    digest of its whole definition. A prompt asset it names is covered by name, not by content.
+
+    ``platform`` and ``requires`` are covered where declared (SIP-0116 §5.1). A profile that
+    declares neither is digested without their keys, so its fingerprint is the one every
+    stored selection and every retry's drift check already holds."""
+    definition = dataclasses.asdict(get_development_profile(name))
+    for declared_only in ("platform", "requires"):
+        if not definition[declared_only]:
+            del definition[declared_only]
+    document = json.dumps(definition, sort_keys=True)
     return hashlib.sha256(document.encode()).hexdigest()[:16]
 
 

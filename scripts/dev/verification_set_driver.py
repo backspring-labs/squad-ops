@@ -1672,6 +1672,9 @@ def live_squad_snapshot(profile_id: str) -> str:
                 # against the runtime's real one, and every counting roll would refuse to
                 # launch reading "SQUAD PROFILE CHANGED" on a profile nobody touched.
                 serves_roles=tuple(a.get("serves_roles") or ()),
+                # Declared skillsets are part of it too, where an agent has any (SIP-0116
+                # Q57), for the same reason.
+                skillsets=tuple(a.get("skillsets") or ()),
             )
             for a in data["agents"]
         ),

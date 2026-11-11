@@ -55,6 +55,9 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # above), and the second tests for an acceptance row's "passed" KEY, not a status value.
     ("src/squadops/execution/patch_acceptance.py", "passed"),
     ("src/squadops/cycles/verification_normalize.py", "passed"),
+    # SIP-0116's VerificationMode (#3011) made "build" an enum value. This is the name of an npm
+    # script, looked up in a product's package.json to choose its build command.
+    ("src/squadops/capabilities/handlers/test_runner.py", "build"),
     # Same CheckOutcome.status vocabulary again, evaluated at plan-authoring time to
     # prove a frozen-file check can pass before the run is dispatched (pf-42).
     ("src/squadops/cycles/frozen_check_validation.py", "failed"),

@@ -5,6 +5,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Skillset declarations and each cycle's skillset record, inert** (#3011, SIP-0116 phase 1): an agent in a squad
+  profile may declare the `skillsets` it carries, and a development profile may declare its `platform` and what its
+  work `requires`. Nothing is required or shipped yet, so every cycle runs as before, and every existing squad
+  snapshot ref and development-profile fingerprint is unchanged. A skillset is a directory under
+  `src/squadops/prompts/skillsets/<id>/` (`skillset.yaml` and its skills), validated and digested by
+  `squadops.capabilities.skillsets` against the capability contracts and the six verification modes in
+  `squadops.capabilities.capability_contracts`. The base set is explicit, `base@1`. Each cycle is created with a
+  skillset record (`squadops.skillset-record/v1`: the base set, the squad, the development profile and its
+  requirements, with a digest), stored in `cycle_registry.skillset_record` (migration 2200) and returned by the
+  cycle read route.
+  **One change in behaviour:** cycle create now refuses a `development_profile` this deployment doesn't hold,
+  naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
+
 ## [2.7.0] — 2026-11-10
 
 Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the 2.6 line's debts closed. The cut's evidence is

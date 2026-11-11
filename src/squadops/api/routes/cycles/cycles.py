@@ -89,6 +89,7 @@ from squadops.cycles.preflight import (
     bind_mode_authoring_decision,
     builder_build_profile_decision,
     combine,
+    development_profile_known_decision,
     fault_injection_decision,
     memory_declaration_decision,
     model_availability_decision,
@@ -100,6 +101,7 @@ from squadops.cycles.preflight import (
     stack_development_profile_decision,
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
+from squadops.cycles.skillset_record import build_skillset_record
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
 from squadops.llm.script import ScriptLibrary
@@ -231,6 +233,9 @@ async def _run_create_preflight(
         # emission outside the fill slots, surfacing as "the plan claims nothing" a full
         # framing workload later.
         stack_development_profile_decision(config),
+        # SIP-0116 §10: the profile a cycle runs under is recorded at creation, so a name this
+        # deployment doesn't hold is refused here rather than at the first task that reads it.
+        development_profile_known_decision(config),
         # #2437: a builder squad with a build step and no build_profile fails the moment
         # implementation starts (#392), after the whole framing workload. Fail in seconds.
         builder_build_profile_decision(profile, config, source_backed=source_backed),
@@ -859,6 +864,11 @@ async def prepare_cycle(
         kind=kind,
         increment_id=increment_id,
         source_context=source_context,
+        # SIP-0116 §10: recorded here, after the development profile is pinned and preflight
+        # has passed, from the configuration dispatch will read.
+        skillset_record=build_skillset_record(
+            profile, snapshot_hash, resolve_config(applied_defaults, body.execution_overrides or {})
+        ),
     )
     return PreparedCycle(
         cycle,

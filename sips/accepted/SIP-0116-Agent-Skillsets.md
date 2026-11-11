@@ -131,7 +131,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 
 | part | status | where |
 |---|---|---|
-| Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **unplaced**, deliberately: the 2.8 plan places it, after acceptance | — |
+| Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **shipped** | 2.8 (PR #3013, closing #3011) |
 | Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 3: skills: loading with repair lineage, the kept copy, dispatch-time budgeting, precedence and digests (§7, §10) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 4: tools: requests within existing authority, and the coverage, authorization and availability outcomes (§8, §9) | **unplaced**, deliberately: the 2.8 plan places it, with the Game Development Platform's worker registry | — |
@@ -675,6 +675,116 @@ Had the operator selected `full`, where no agent declares a skillset, the Campai
 `luau-dev` for `dev` (agent `neo`)." Had Eve carried the skillset and Studio's worker been offline, the refusal would
 be an availability one, naming the worker. §7.1 shows what each step of a failure and its repair loads. A redeploy that
 revises a skill leaves the Campaign on its kept copy; moving to the revision is the owner's recorded transition.
+
+## 17. Post-acceptance amendments
+
+### 17a. Phase 1 as built (2026-11-09)
+
+Building phase 1 (#3011) read the accepted text against the code. Six points narrow or correct it. **Ruled by the
+owner on 2026-11-09, each as recommended** ("approve as recommended"), on the implementer's write-up in phase 1's PR
+(#3013). The PR merges nothing before 2.8.
+
+1. **The development profile's fingerprint covers its prompt assets by name, as it does today.** §10's table says it
+   "covers `requires` and its assets' content", and §2's table had it right: by name only.
+   - **Evidence:** `development_profile_fingerprint` digests the profile's dataclass fields
+     (`stacks/development_profiles.py`), and an asset is a template name there.
+   - **Why it stays:** digesting asset content changes all seven fingerprints. Every stored
+     `development_profile_selection` would stop matching, and every retry of a pinned cycle would report drift on a
+     profile nobody changed. Covering content belongs with the consolidation of the stack's prompt routes (Q54).
+     A skill's content is digested in the record's own `content` part (phase 3), which is what §10 needs.
+2. **`platform` and `requires` are covered by the fingerprint where declared.** §5.1 says the fingerprint covers
+   them and that every existing profile takes the empty value. A profile that declares neither is digested without
+   their keys, so each existing fingerprint is unchanged. It's Q57's rule for the roster hash, applied to the
+   profile. `test_profile_requirements.py` holds it for every registered profile.
+3. **The record is its own column.** §10 says "stored with the cycle beside `squad_profile_snapshot_ref`". It's
+   `cycle_registry.skillset_record` (migration 2200), and `Cycle.skillset_record`.
+   - **Why not a key in `execution_overrides`,** where `development_profile_selection` sits: a key there reaches
+     every task as part of `resolved_config`, is counted by the prompt budget, and changes each run's
+     `resolved_config_hash`. Phase 1 would not be inert.
+4. **In phase 1 the record's base-set part names the base set, and the offered set arrives with phase 2.** §16's
+   worked example shows `builder.assemble` absent for a repository-backed cycle. That narrowing is today's builder
+   rule, applied where the planner is offered its types (`_plan_authoring_service.py`). The record lists
+   `base@1`'s three plannable types for every cycle until phase 2 builds the offered set and records it.
+   `assignment` and `content` are empty for the same reason: phases 2 and 3 fill them.
+5. **How a greenfield cycle's profile was selected is recorded with two new origins.** §2 notes that only a
+   repository-backed cycle records a selection. The record's "how it was selected" reads that selection's origin
+   where one exists (`operator`, `blueprint`, `derived`), and otherwise `stack` (the scaffold stack requires the
+   profile), `operator` (the configuration names it) or `default`.
+
+6. **Until a stack declares requirements, `platform` and `requires` are recorded exceptions to the stack
+   contract's admission rule.** SIP-0105's rule, enforced by `test_stack_blueprint_falsification.py`, admits a
+   stack field once two stacks demonstrate it, and takes a one-stack field only as a declared optional with its
+   reason. A field no stack populates is *unevidenced*, and the rule says it shouldn't be a field. Phase 1 adds
+   both fields empty on every stack, by design (§14: declarations first, activation after phases 2–6).
+   - **What the PR does:** it records both in the guard's `_UNEVIDENCED` list with this reason, and adds a test
+     that fails the day a stack populates either, so the exception can't outlive its reason. When
+     `game_dev_roblox` is registered they become declared optionals, with the reason the other stacks leave them
+     unset.
+   - **The alternative, not taken:** hold the two fields back until the PR that registers the first profile
+     declaring them. Phase 2's coverage check reads `requires`, so they would still precede that profile by
+     several phases, and the exception would only start later. The owner ruled the recorded exception.
+   - This is the one place phase 1 is in tension with a standing rule, and the intake check's "its governance
+     applies to the new fields" did not foresee it.
+
+**Corrections to anchors and citations,** none of which changes the design:
+- five cited lines sit one line above their target (`cycles/agent_config.py:101`, `stacks/scaffold.py:2350` and
+  `:2375`, `cycles/replay.py:56`, `cycles/implementation_plan.py:59`,
+  `capabilities/handlers/_plan_authoring_service.py:119`);
+- §10's "Replay matches the record's digest (`cycles/replay.py:56`)" describes later work. Today the create route
+  compares `prd_ref`, `build_profile` and `contract_ref` only, so the listed `development_profile_fingerprint`
+  element is never compared there;
+- §6.1 and §12 cite Q23 for the `squadops.capabilities` package holding task contracts. Q23 rules that the package
+  keeps its name and that packs never bind into the task-type registry. The contracts it holds today are SIP-0.8.6's
+  `TaskContract` manifests, a different record, and the capability contracts sit beside them in
+  `capabilities/capability_contracts.py`, as `CapabilityContractDeclaration`: the bare class name is a spelling
+  #922 retired for those manifests, and its guard still refuses it;
+- §5.3's "first enabled agent serving that role" has one enabled agent per role only for a profile written through
+  the API (`validate_agent_entries`). A profile seeded from `config/squad-profiles.yaml` isn't run through that
+  check. Phase 2's coverage check reads the routed agent either way.
+
+### 17b. The Roblox dev skillset's id (2026-11-09)
+
+**What changed.** The game SIPs' Q68 asked whether skillset ids take the game-dev-roblox plan's D8 form. **The owner
+ruled it on 2026-11-09** ("approve as recommended"): ids keep this SIP's platform-first form, and the Roblox dev
+skillset is `roblox-luau-dev`, so that every Roblox skillset sorts together. §5.1, §7.1, §16 and Appendix A write
+that skillset as `luau-dev`. Those examples are illustrative (§4.1), and they read as `roblox-luau-dev`.
+
+**The same ruling approved the first consumer's additions** to §16's worked example, which the game SIPs' revision 4
+records: a fourth contract, `game.increment_design`, over `strategy.propose_increment`, and a strategy skillset
+(`roblox-increment-design`), since strategy writes each play scenario.
+
+### 17d. No silent reads (2026-11-10)
+
+**What prompted it.** The owner, on phases 1 and 2 as built: "I also want to be sure we avoid silent fallback that
+have been a killer on this project". The code of both phases was read again for anything that fills in, skips or
+reinterprets a value without saying so. Each place found now refuses with a named reason.
+
+**Ruled by the owner on 2026-11-10:** "approve both SIP-0116 17c and 17d". That includes point 1's change in
+behaviour.
+
+**Phase 1 (#3011):**
+1. **An unknown development profile is refused at cycle creation.** This is a change in behaviour, and the one
+   exception to phase 1's "inert".
+   - **Before:** a cycle naming a profile the registry doesn't hold was accepted, and failed at its first develop
+     or test task, after framing. `_pin_development_profile` left an unknown name "to the create preflight", which
+     had no such check.
+   - **Now:** `development_profile_known_decision` refuses it with the name and the known profiles. The record
+     holds the profile's fingerprint and requirements, so an unresolvable name has no record to write.
+   - **Who is affected:** a cycle whose configuration misspells its profile, and one that named a profile no step
+     ever read (a selftest, a planning-only cycle). Both are refused in seconds with the list to choose from.
+2. **A `skillsets` value that isn't a list of ids is refused,** naming the profile and the agent, where a squad
+   profile is read from its file or its row. Read leniently, a bare `skillsets: roblox-studio-qa` becomes one
+   skillset per character.
+3. **A selection's origin is never borrowed.** The record takes "how it was selected" from the cycle's recorded
+   selection only when that selection names the profile in force. Otherwise building the record raises.
+
+**Left as a stated reading, on purpose:**
+- a cycle with no record at all was created before records existed, and reads as `base@1` with nothing offered;
+- an agent entry with no `skillsets` key carries none, and a profile with no `requires` requires nothing;
+- a deployment with no `skillsets/` directory holds an empty catalog. A profile that requires a skillset is then
+  refused at creation as naming one this deployment doesn't hold.
+
+---
 
 ## Appendix A. A paper compatibility matrix
 

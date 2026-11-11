@@ -1347,3 +1347,96 @@ class TestTheConsolesResolvedRequestCreatesTheCLIsCycle:
             cycle.applied_defaults, cycle.execution_overrides
         ) == compute_config_hash(cli["applied_defaults"], cli["execution_overrides"])
         assert cycle.resolved_config()["build_profile"] == "nextjs_ts"
+
+
+class TestCreateCycleRefusesAnUnknownDevelopmentProfile:
+    """Enters at the create route. Bug caught: a development profile nothing resolves being
+    accepted and recorded as if it were known, or surfacing as a server error, where the
+    operator needs the name and the list to choose from."""
+
+    def test_an_unknown_profile_is_a_named_refusal_and_nothing_is_stored(
+        self, client, mock_cycle_registry
+    ):
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={
+                "squad_profile_id": "full",
+                "execution_overrides": {"development_profile": "python_clii"},
+            },
+        )
+
+        assert resp.status_code == 422, resp.text
+        assert "`development_profile` is `python_clii`, which this deployment doesn't hold" in (
+            resp.text
+        )
+        assert "`python_cli`" in resp.text
+        mock_cycle_registry.create_cycle.assert_not_called()
+
+
+class TestCreateCycleSkillsetRecord:
+    """SIP-0116 §10, phase 1: the record a cycle is created with.
+
+    Enters at ``POST /api/v1/projects/{project}/cycles`` and asserts what reaches the
+    registry. Bug caught: the record's builder and column existing while the create path
+    never writes one, so every cycle reads ``None`` and a Campaign has nothing to pin."""
+
+    def _created(self, client, mock_cycle_registry, **body):
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles", json={"squad_profile_id": "full", **body}
+        )
+        assert resp.status_code == 201, resp.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        return cycle
+
+    def test_an_ordinary_cycle_records_the_base_set_and_no_requirements(
+        self, client, mock_cycle_registry
+    ):
+        from squadops.cycles.skillset_record import skillset_record_digest
+        from squadops.stacks.development_profiles import development_profile_fingerprint
+
+        record = self._created(client, mock_cycle_registry).skillset_record
+
+        digest = record.pop("digest")
+        assert record == {
+            "schema": "squadops.skillset-record/v1",
+            "base_set": {
+                "version": "base@1",
+                "plannable": ["builder.assemble", "development.develop", "qa.test"],
+            },
+            "squad": {"profile_id": "full", "roster_hash": "sha256:abc123"},
+            "development_profile": {
+                "name": "python_cli",
+                "origin": "default",
+                "fingerprint": development_profile_fingerprint("python_cli"),
+                "platform": None,
+            },
+            "requirements": [],
+            "assignment": [],
+            "content": [],
+        }
+        assert digest == skillset_record_digest(record)
+
+    @pytest.mark.parametrize(
+        ("body", "name", "origin"),
+        [
+            (
+                {"execution_overrides": {"development_profile": "python_api"}},
+                "python_api",
+                "operator",
+            ),
+            (
+                {"applied_defaults": {"build_profile": "fullstack_fastapi_react"}},
+                "fullstack_fastapi_react",
+                "stack",
+            ),
+        ],
+    )
+    def test_the_record_names_the_profile_dispatch_will_run_and_how_it_was_selected(
+        self, client, mock_cycle_registry, body, name, origin
+    ):
+        record = self._created(client, mock_cycle_registry, **body).skillset_record
+
+        assert (record["development_profile"]["name"], record["development_profile"]["origin"]) == (
+            name,
+            origin,
+        )

@@ -517,3 +517,23 @@ Runtime API              Postgres
 - **Profile diff view** --- visual diff between two profiles showing what changed (model swaps, parameter changes, agent additions/removals).
 - **"Last Used Model" in Agent Health** --- show the model an agent actually used in its most recent cycle, alongside the configured model from the active profile.
 - **Persistent pull job tracking** --- move pull job state from in-memory to Postgres for durability across runtime-api restarts.
+
+---
+
+## 11. Post-acceptance amendments
+
+### 11a. An agent entry declares the skillsets it carries (2026-11-09)
+
+**What changed.** An agent entry in a squad profile gains `skillsets`, a list of skillset ids, by SIP-0116 §5.2
+(accepted 2026-11-09; its phase 1, #3011). The profile routes accept and return it
+(`AgentProfileEntryRequest`, `AgentProfileEntryResponse`), the YAML file and the Postgres row carry it, and a profile
+refuses an empty or repeated id. Empty means the agent carries none, which is every existing entry.
+
+**The snapshot.** `squad_profile_snapshot_ref` covers an agent's `skillsets` only where it declares any (SIP-0116
+Q57), so every existing profile keeps its ref.
+
+**Not built here.** The console's profile form doesn't edit the field (SIP-0116 §15 leaves console views out), and
+whether a declared skillset exists and suits the agent's roles is cycle preflight's check, in SIP-0116's phase 2.
+
+**Who ruled it.** The owner, by accepting SIP-0116, whose intake check names this overlap.
+

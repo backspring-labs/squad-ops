@@ -51,6 +51,7 @@ def _validate_agent_request(agents_data: list) -> tuple[AgentProfileEntry, ...]:
             "enabled": a.enabled,
             "config_overrides": a.config_overrides,
             "serves_roles": list(a.serves_roles),
+            "skillsets": list(a.skillsets),
         }
         for a in agents_data
     ]
@@ -66,6 +67,7 @@ def _validate_agent_request(agents_data: list) -> tuple[AgentProfileEntry, ...]:
             enabled=a.enabled,
             config_overrides=a.config_overrides,
             serves_roles=tuple(a.serves_roles),
+            skillsets=tuple(a.skillsets),
         )
         for a in agents_data
     )

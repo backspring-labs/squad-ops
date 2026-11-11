@@ -14,6 +14,7 @@ import yaml
 
 from squadops.cycles.lifecycle import compute_profile_snapshot_hash
 from squadops.cycles.models import AgentProfileEntry, CycleError, ProfileNotFoundError, SquadProfile
+from squadops.cycles.profile_utils import declared_skillsets
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ class ConfigSquadProfile(SquadProfilePort):
                     enabled=a.get("enabled", True),
                     config_overrides=a.get("config_overrides", {}),
                     serves_roles=_require_serves_roles(entry["profile_id"], a),
+                    skillsets=declared_skillsets(entry["profile_id"], a),
                 )
                 for a in entry.get("agents", [])
             )

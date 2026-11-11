@@ -49,18 +49,17 @@ from squadops.stacks.scaffold import (
     qa_test_namespace_for_stack,
     scaffold_stack_for,
 )
+from squadops.tasks.base_set import base_plannable_task_types
 from squadops.tasks.task_types import TaskType, authors_qa_suite
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_contract import VerificationContract
     from squadops.projects.derived_profile import DerivedProfile
 
-# Known task types that may appear in plan tasks.
-_KNOWN_BUILD_TASK_TYPES = {
-    TaskType.DEVELOPMENT_DEVELOP,
-    TaskType.QA_TEST,
-    TaskType.BUILDER_ASSEMBLE,
-}
+# Known task types that may appear in plan tasks: the base set's (SIP-0116 §6.3), which is
+# where they are declared. A task type outside it reaches a plan through a cycle's
+# requirements (its phase 2), never by being added here.
+_KNOWN_BUILD_TASK_TYPES = set(base_plannable_task_types())
 
 # Build task types only the builder role (bob) can execute. The plan author
 # must not offer these to a squad without a builder, or the LLM can author a

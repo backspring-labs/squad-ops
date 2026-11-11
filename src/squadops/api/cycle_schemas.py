@@ -170,6 +170,8 @@ class AgentProfileEntryRequest(BaseModel):
     #: ``role`` is what the agent IS; this is what it DOES in this profile. An enabled agent
     #: that serves only its own role declares ``[<role>]``; a disabled one may declare none.
     serves_roles: list[str] = Field(default_factory=list)
+    #: The ids of the skillsets this agent carries (SIP-0116 §5.2). Empty means none.
+    skillsets: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -814,6 +816,9 @@ class CycleResponse(BaseModel):
     increment_id: str | None = None
     # SIP-0112 contract 1 (E.4.3): the external source this Cycle pinned; None for a sample app.
     source_context: dict[str, Any] | None = None
+    # SIP-0116 §10: what the work required and what the squad supplied, with its digest. None
+    # on a cycle created before the record existed.
+    skillset_record: dict[str, Any] | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)
@@ -928,6 +933,9 @@ class AgentProfileEntryResponse(BaseModel):
     #: will launch a counting roll, so a reader that omits the field computes a different
     #: hash from the runtime and every roll refuses to start.
     serves_roles: list[str] = Field(default_factory=list)
+    #: The skillsets the agent carries (SIP-0116 §5.2). Part of the snapshot identity where
+    #: declared, so the same reader carries it for the same reason.
+    skillsets: list[str] = Field(default_factory=list)
 
 
 class SquadProfileResponse(BaseModel):

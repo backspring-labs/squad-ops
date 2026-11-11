@@ -330,6 +330,7 @@ def cycle_to_response(
         source_context=(
             cycle.source_context.to_document() if cycle.source_context is not None else None
         ),
+        skillset_record=cycle.skillset_record,
         notes=cycle.notes,
         status=status.value,
         runs=[run_to_response(r) for r in runs],
@@ -354,6 +355,7 @@ def profile_to_response(
                 agent_id=a.agent_id,
                 role=a.role,
                 serves_roles=list(a.serves_roles),
+                skillsets=list(a.skillsets),
                 role_label=get_role_label(a.role),
                 display_name=a.agent_id.title(),
                 model=a.model,

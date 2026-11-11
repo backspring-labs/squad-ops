@@ -518,6 +518,11 @@ class Cycle:
     #: SIP-0112 contract 1 (E.4.3): an external Project's source, pinned before dispatch and
     #: never changed for this Cycle. None for a sample application.
     source_context: ProjectSourceContext | None = None
+    #: What the cycle's work required and what the squad's agents supplied (SIP-0116 §10):
+    #: the base set, the squad, the development profile, its requirements, the assignment and
+    #: the content, with a digest. Written once, at creation, beside the roster hash above.
+    #: ``None`` for a cycle created before the record existed: unknown, never reconstructed.
+    skillset_record: dict | None = None
 
     notes: str | None = None
 
@@ -685,6 +690,11 @@ class AgentProfileEntry:
     #: profile refuses an enabled agent without one; the default exists so a value can be
     #: constructed and rejected, never so one can be interpreted.
     serves_roles: tuple[str, ...] = ()
+    #: The ids of the skillsets this agent carries (SIP-0116 §5.2). Ids, never versions: an
+    #: agent carries the version the deployment holds, and a requirement's constraint decides
+    #: whether that version is compatible. Empty means the agent carries none, which is every
+    #: agent before a stack declares requirements.
+    skillsets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

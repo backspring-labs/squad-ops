@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from typing import Any
 
 from squadops.cycles.models import (
     ALLOWED_CONFIG_OVERRIDE_KEYS,
@@ -67,11 +69,46 @@ def validate_reasoning_override(overrides: dict) -> list[str]:
     ]
 
 
+def declared_skillsets(profile_id: str, agent: Mapping[str, Any]) -> tuple[str, ...]:
+    """The skillsets a stored or configured agent entry declares (SIP-0116 §5.2), refused when
+    the value isn't a list of ids.
+
+    An absent key means the agent carries none, which is every entry written before skillsets
+    existed. Anything else that isn't a list of non-empty strings raises: read leniently, a
+    bare ``skillsets: roblox-studio-qa`` becomes one skillset per character, and the squad is
+    then refused for lacking a skillset its profile visibly names.
+    """
+    value = agent.get("skillsets")
+    if value is None:
+        return ()
+    if not isinstance(value, list | tuple) or any(
+        not isinstance(s, str) or not s.strip() for s in value
+    ):
+        raise ValueError(
+            f"squad profile {profile_id!r}: agent {agent.get('agent_id')!r} declares "
+            f"`skillsets` as {value!r}. It is a list of skillset ids, for example "
+            "`skillsets: [roblox-studio-qa]`."
+        )
+    return tuple(value)
+
+
+def _skillset_errors(declared: list | tuple | None) -> list[str]:
+    """What is wrong with one agent's ``skillsets`` list as written (SIP-0116 §5.2)."""
+    carried = list(declared or ())
+    if any(not isinstance(s, str) or not s.strip() for s in carried):
+        return ["a skillset id must not be empty"]
+    repeated = sorted({s for s in carried if carried.count(s) > 1})
+    return [f"skillset declared more than once: {', '.join(repeated)}"] if repeated else []
+
+
 def validate_agent_entries(agents: list[dict]) -> list[str]:
     """Validate agent entries, returning a list of error messages.
 
     Checks: non-empty agent_id, non-empty model, no duplicate agent_ids, a non-empty
-    ``serves_roles`` on every enabled agent, and no role served by two enabled agents.
+    ``serves_roles`` on every enabled agent, no role served by two enabled agents, and a
+    ``skillsets`` list of distinct, non-empty ids (SIP-0116 §5.2). Whether a declared skillset
+    exists and suits the agent's roles is cycle preflight's question (its §9), asked of the
+    agent the work routes to, so a profile may name a skillset this deployment doesn't hold.
 
     The last two are what make the declared role → agent map a map (SIP-0108 §10i item 1):
     an agent that declares nothing assigns nothing, and two enabled agents answering for one
@@ -101,6 +138,8 @@ def validate_agent_entries(agents: list[dict]) -> list[str]:
         if unknown:
             errors.append(f"agents[{i}]: unknown config_overrides keys: {', '.join(unknown)}")
         errors.extend(f"agents[{i}]: {e}" for e in validate_reasoning_override(overrides))
+
+        errors.extend(f"agents[{i}]: {e}" for e in _skillset_errors(agent.get("skillsets")))
 
         if agent.get("enabled", True):
             declared = tuple(agent.get("serves_roles") or ())

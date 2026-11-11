@@ -294,6 +294,10 @@ def compute_profile_snapshot_hash(profile: SquadProfile) -> str:
     therefore pins a prefix this formula no longer produces, and a new set pins the ref its
     own deploy stamps.
 
+    **``skillsets`` is covered only where declared** (SIP-0116 Q57). An agent that carries
+    none contributes no key, so every profile written before skillsets existed keeps the
+    ref it had. A declared list is sorted: what an agent carries is a set.
+
     Args:
         profile: SquadProfile to hash.
 
@@ -311,6 +315,7 @@ def compute_profile_snapshot_hash(profile: SquadProfile) -> str:
                 "enabled": a.enabled,
                 "config_overrides": a.config_overrides,
                 "serves_roles": sorted(a.serves_roles),
+                **({"skillsets": sorted(a.skillsets)} if a.skillsets else {}),
             }
             for a in profile.agents
         ],
