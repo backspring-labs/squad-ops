@@ -113,6 +113,11 @@ class WorkerRegistryTransaction(ABC):
     async def refusals(self, operation_id: str) -> list[RecordedRefusal]:
         """The results refused for this operation, in the order they arrived."""
 
+    @abstractmethod
+    async def refusals_of(self, worker_id: str, limit: int) -> list[RecordedRefusal]:
+        """The worker's last ``limit`` refused results across its sessions, newest first
+        (#3047: what an operator reads first when a worker's result went nowhere)."""
+
 
 class WorkerRegistryStorePort(ABC):
     """Where the worker registry's rows are kept (SIP-0117 R3.3, R5.4).

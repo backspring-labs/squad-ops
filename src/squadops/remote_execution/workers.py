@@ -263,3 +263,17 @@ class Enqueued:
     repeated: bool
     #: The older sends' operations this one stopped.
     superseded: tuple[str, ...] = field(default=())
+
+
+@dataclass(frozen=True)
+class WorkerReading:
+    """One live session as an operator reads it (#3047): is it being heard from, what does it
+    serve, what is it holding, and which of its worker's results were refused lately."""
+
+    session: WorkerSession
+    #: ``leasing.health`` now: ``offline`` once it has gone silent.
+    health: RuntimeStatus
+    #: The operations it holds under a live lease.
+    held: tuple[QueuedOperation, ...]
+    #: The worker's latest refused results across its sessions, newest first.
+    refusals: tuple[RecordedRefusal, ...]

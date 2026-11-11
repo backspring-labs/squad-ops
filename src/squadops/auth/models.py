@@ -82,6 +82,9 @@ class Scope:
     # claim an operation and submit its result. Held by the worker role alone; no person's role
     # and no squad agent's holds it.
     WORKERS_SERVE = "workers:serve"
+    # #3047: read the worker registry: each live session's health, what it serves and holds,
+    # and its worker's recent refused results. A person's read; a worker's role doesn't hold it.
+    WORKERS_READ = "workers:read"
     # SIP-0117 R5.6 (ruled 2026-11-11): ask for a remote operation, read it and cancel it. Held
     # by the agent role alone: the handler of ``qa.run_remote_operation`` runs in an agent, and
     # this is how its request reaches the queue. A worker's role doesn't hold it, so a worker
@@ -118,6 +121,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.SCENARIOS_READ,
             Scope.SCENARIOS_DRAFT,
             Scope.SCENARIOS_APPROVE,
+            Scope.WORKERS_READ,
         }
     ),
     Role.OPERATOR: frozenset(
@@ -129,6 +133,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.TASKS_WRITE,
             Scope.CAMPAIGNS_READ,
             Scope.MEMORY_READ,
+            Scope.WORKERS_READ,
         }
     ),
     Role.VIEWER: frozenset(
@@ -138,6 +143,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.TASKS_READ,
             Scope.CAMPAIGNS_READ,
             Scope.MEMORY_READ,
+            Scope.WORKERS_READ,
         }
     ),
     Role.AGENT: frozenset(
@@ -160,6 +166,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.MEMORY_READ,
             Scope.SCENARIOS_READ,
             Scope.SCENARIOS_DRAFT,
+            Scope.WORKERS_READ,
         }
     ),
     Role.CAMPAIGN_TRIAGE: frozenset(
@@ -168,6 +175,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.CAMPAIGNS_READ,
             Scope.MEMORY_READ,
             Scope.SCENARIOS_READ,
+            Scope.WORKERS_READ,
         }
     ),
 }

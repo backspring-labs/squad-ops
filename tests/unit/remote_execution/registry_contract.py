@@ -568,3 +568,50 @@ class WorkerRegistryContract:
             f"{leasing.REASON_CANCELLED_UNCLAIMED}; attempt 1 had begun and its lease ran out "
             "with no result, so whether it ran is unknown",
         )
+
+    async def test_an_operator_reads_each_live_session_with_what_it_holds_and_its_refusals(
+        self, registry, clock
+    ):
+        """#3047, on every store. Bug caught: another worker's refusals shown as this one's; an
+        earlier session's refusals lost when its worker registered again; a silent session read
+        as online; or an operation shown held by a worker whose lease ran out."""
+        queued = await queue(registry, request(), max_attempts=3)
+        first = await registry.register(registration("macbook"))
+        early = await registry.claim(first.session_id)
+        a = await registry.submit_result(replace(early.fence, lease_id="lease-earlier"), passing())
+        clock.advance(1)
+        again = await registry.register(registration("macbook"))
+        b = await registry.submit_result(early.fence, passing())
+        clock.advance(1)
+        other = await registry.register(registration("mac-mini"))
+        held = await registry.claim(other.session_id)
+        c = await registry.submit_result(replace(held.fence, lease_id="lease-earlier"), passing())
+        clock.advance(leasing.HEARTBEAT_SECONDS)
+        await registry.heartbeat(again.session_id, "online", None)
+        while_held = await registry.readings()
+        clock.advance(leasing.LEASE_SECONDS)
+        await registry.heartbeat(again.session_id, "degraded", None)
+
+        lapsed = await registry.readings()
+        newest = await registry.readings(refusals=1)
+
+        assert [(r.session.worker_id, r.health) for r in while_held] == [
+            ("macbook", "online"),
+            ("mac-mini", "online"),
+        ]
+        assert [o.fence for o in while_held[1].held] == [held.fence]
+        assert [(r.session.session_id, r.health) for r in lapsed] == [
+            (again.session_id, "degraded"),
+            (other.session_id, "offline"),
+        ]
+        macbook, mini = lapsed
+        assert [(r.fence, r.refusal) for r in macbook.refusals] == [
+            (early.fence, b.refusal),
+            (replace(early.fence, lease_id="lease-earlier"), a.refusal),
+        ]
+        assert [(r.fence, r.refusal) for r in mini.refusals] == [
+            (replace(held.fence, lease_id="lease-earlier"), c.refusal)
+        ]
+        assert (macbook.held, mini.held) == ((), ())
+        assert (await registry.operation(queued.operation_id)).state is OperationState.QUEUED
+        assert [r.fence for r in newest[0].refusals] == [early.fence]

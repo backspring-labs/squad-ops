@@ -122,3 +122,45 @@ class RemoteOperationResponse(BaseModel):
     #: How long a lease lasts. A claimed operation asked to stop is settled within it: by its
     #: worker, or by its lease running out. So a requester carries no such number itself.
     lease_seconds: float
+
+
+class HeldOperationDTO(BaseModel):
+    """An operation a session holds (#3047). Its lease id is the worker's to present, and is
+    left out."""
+
+    operation_id: str
+    provider: str
+    operation: str
+    attempt: int
+    max_attempts: int
+    lease_expires_at: datetime | None
+    cancel_requested: bool
+    #: Who asked: the cycle, run and task ids.
+    origin: dict[str, str]
+    scenario_id: str
+
+
+class RefusedResultDTO(BaseModel):
+    operation_id: str
+    attempt: int
+    session_id: str
+    refusal: str
+    received_at: datetime
+
+
+class WorkerReadingResponse(BaseModel):
+    """One live session as an operator reads it (#3047)."""
+
+    worker_id: str
+    session_id: str
+    platform: str
+    #: ``offline`` once it has gone silent, else what it last reported.
+    health: str
+    #: What it last reported, whether or not it is still heard from.
+    reported_status: str
+    registered_at: datetime
+    last_heartbeat_at: datetime
+    tool_versions: dict[str, str]
+    operations: list[ServedOperationDTO]
+    held: list[HeldOperationDTO]
+    recent_refusals: list[RefusedResultDTO]

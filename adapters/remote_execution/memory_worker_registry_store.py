@@ -109,3 +109,7 @@ class _MemoryTransaction(WorkerRegistryTransaction):
 
     async def refusals(self, operation_id: str) -> list[RecordedRefusal]:
         return [r for r in self._rows.refusals if r.fence.operation_id == operation_id]
+
+    async def refusals_of(self, worker_id: str, limit: int) -> list[RecordedRefusal]:
+        mine = {s.session_id for s in self._rows.sessions.values() if s.worker_id == worker_id}
+        return [r for r in reversed(self._rows.refusals) if r.fence.session_id in mine][:limit]

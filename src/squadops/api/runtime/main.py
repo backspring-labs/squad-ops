@@ -63,6 +63,7 @@ from squadops.api.routes.platform_health import router as platform_health_router
 from squadops.api.routes.remote_operations import router as remote_operations_router
 from squadops.api.routes.scenarios import evaluations_router as scenario_evaluations_router
 from squadops.api.routes.scenarios import router as scenarios_router
+from squadops.api.routes.worker_readings import router as worker_readings_router
 from squadops.api.routes.workers import router as workers_router
 from squadops.api.runtime.startup_reaps import (
     detect_stranded_cycles,
@@ -181,6 +182,7 @@ def _include_routers(app: FastAPI) -> None:
     # SIP-0113 §10p ruling 8 (#2564): a page scenario's evidence, the owner's alone
     app.include_router(scenario_evaluations_router)
     app.include_router(workers_router)  # SIP-0117 R3.3: a remote-execution worker's calls
+    app.include_router(worker_readings_router)  # #3047: the registry, as an operator reads it
     app.include_router(remote_operations_router)  # SIP-0117 R5.6: a requester's calls
 
 
