@@ -63,6 +63,12 @@
         "clientRole": false
       },
       {
+        "name": "worker",
+        "description": "Remote-execution worker identity — registers, claims and reports operations via /api/v1/workers only",
+        "composite": false,
+        "clientRole": false
+      },
+      {
         "name": "campaign-supervisor",
         "description": "Campaign supervisor (SIP-0109 \u00a713): reads campaigns and cycles, rules at the increment gate, takes and releases the box lease, pauses. Cannot create, resume after a limit, or abort",
         "composite": false,
@@ -188,6 +194,36 @@
       "serviceAccountsEnabled": true,
       "protocol": "openid-connect",
       "secret": "squadops-agent-secret",
+      "protocolMappers": [
+        {
+          "name": "runtime-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "squadops-runtime",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ]
+    },
+    {
+      "clientId": "squadops-worker",
+      "name": "SquadOps Worker",
+      "description": "Confidential client for remote-execution workers — outward calls to /api/v1/workers on runtime-api (SIP-0117 R5.3). No secret is committed: the realm sync sets it from .env",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
       "protocolMappers": [
         {
           "name": "runtime-api-audience",
@@ -356,6 +392,14 @@
       "serviceAccountClientId": "squadops-agent",
       "realmRoles": [
         "agent"
+      ]
+    },
+    {
+      "username": "service-account-squadops-worker",
+      "enabled": true,
+      "serviceAccountClientId": "squadops-worker",
+      "realmRoles": [
+        "worker"
       ]
     }
   ],

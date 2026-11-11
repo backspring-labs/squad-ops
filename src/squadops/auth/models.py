@@ -28,6 +28,9 @@ class Role:
     # Service role held by the squadops-agent service account (#326): lets agent
     # containers report their own status via the authed lane, nothing else.
     AGENT = "agent"
+    # Service role held by the squadops-worker service account (SIP-0117 R5.3): lets a
+    # remote-execution worker register, claim an operation and report on it, nothing else.
+    WORKER = "worker"
     # SIP-0109 §13 (#1799): the operator's two seats. The supervisor supervises a campaign —
     # reads it, rules at its increment gate, takes and releases the box lease, and pauses
     # it — and manages it (#1940, §24az): creates, starts and aborts it, materializes its
@@ -74,6 +77,10 @@ class Scope:
     SCENARIOS_READ = "scenarios:read"
     SCENARIOS_DRAFT = "scenarios:draft"
     SCENARIOS_APPROVE = "scenarios:approve"
+    # SIP-0117 R3.3, R5.3: the workers API, as a worker uses it: register a session, heartbeat,
+    # claim an operation and submit its result. Held by the worker role alone; no person's role
+    # and no squad agent's holds it.
+    WORKERS_SERVE = "workers:serve"
 
 
 # Role → implied scopes (#270). Keycloak is role-centric — it issues realm roles
@@ -130,6 +137,11 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
     Role.AGENT: frozenset(
         {
             Scope.AGENTS_WRITE,
+        }
+    ),
+    Role.WORKER: frozenset(
+        {
+            Scope.WORKERS_SERVE,
         }
     ),
     Role.CAMPAIGN_SUPERVISOR: frozenset(

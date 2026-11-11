@@ -172,7 +172,9 @@ phases are in its own ledger.
 | M0 as revision 2 cut it, on the companion's plugin foundation | **dropped** by Revision 3 (R3.9): re-cut as phase 2b on the in-tree seam | — |
 | Phase 2a, part 1: `qa.run_remote_operation`: the task type, the engine-neutral request, result and assertion records, the remote-execution port, the handler and its evidence rows, the plan checks and the envelope, proved with a fixture provider (R4.4, R5.1) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
 | Phase 2a, part 2: the correction route for a remote operation: a dev repair aimed at the implementation, the operation re-run on the repaired tree as the repair's deciding evidence, and the repaired source delivered (R4.4's correction mapping, R5.2) | **shipped** | 2.8 (PR #3019, closing #3017 and #3018) |
-| Phase 2b: remote execution: the port, the worker registry and its migration, `/api/v1/workers`, the claim, lease and fence protocol, the worker's composition root, a fixture adapter (R3.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2b, part 1: the runtime's side of remote execution: the worker registry and its migration, the claim, lease and fence rules, `/api/v1/workers`, and the worker's own identity (R3.3, R5.3, R5.4) | **shipped** | 2.8 (PR #3024; #3023 tracks parts 2 and 3) |
+| Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2c: the Luau runner (#2906; core, R3.2) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations (R3.6, R4.3) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 2e: the assertion harness and reader (R3.7) | **unplaced**, deliberately: the 2.8 plan places it | — |
@@ -272,6 +274,66 @@ recommended"):
 | editing `docker-compose.yml`, which CLAUDE.md reserves | **approved:** one selector literal for the remote-execution adapter on each service that loads the configuration, as the composition-root rule requires (R2). It merges with 2.8 |
 | a new required `.env` key on every deploy | **approved,** with a value that means "no remote execution" shipped in `.env.example` and written by the bootstrap. A deploy that runs no worker, the Spark's included, needs that one line, at 2.8. The Spark session is told when the PR opens |
 | the worker's service account (D3) | **approved:** a new client-credentials client in the realm exports, with one scope for the workers API, and its secret generated per deploy into `.env` as the agent client's is |
+
+## R5.4 Phase 2b: the transport re-examined and kept, three parts, and part 1 as built (2026-11-10)
+
+**Ruled by the owner on 2026-11-10:** "yes resume part 1", after the transport was re-examined at the owner's
+question. **Not yet ruled:** the points of part 1 as built, in the table below. They are the implementer's, for the
+owner's review in part 1's PR.
+
+**The transport (R3.3), re-examined.** The owner asked why anything on the MacBook calls the runtime, having expected
+the Spark to connect to the tool's host. The evidence, gathered the same day:
+- **Roblox's documentation:** the Studio MCP server "runs as a local process on your machine and communicates with
+  the AI client using `stdio` transport". It names no other transport.
+- **The proxy** (`StudioMCP` 1.0.0, in the Studio application): its options are verbose logging, help, version and a
+  stdio flag its own help calls a no-op. It has no option for an address or a port.
+- **Observed with Studio open:** the proxy hosts a WebSocket on `127.0.0.1:13469`, and Studio connects to it. Studio
+  listens on no port. The link is token-checked (the proxy's log: "WS authentication mode: Enforce"), with the token
+  in a file only the signed-in user can read.
+- **So Studio is reached from another machine in two ways only:** by carrying the proxy's stdio over a sign-in to its
+  host, or by a process on its host that connects outward.
+- **The owner's two constraints:** no remote sign-in on the MacBook ("I'm not crazy about opening this macbook to
+  remote login even over tailnet"); and the PC is to become a Bazzite Linux machine. Studio has no Linux build. On
+  Linux it runs only through Vinegar, a community project over Wine, which is reported to break for days after a
+  Studio update and is unproven for Studio's MCP server.
+- **The result:** the MacBook is the one supported Studio host, and it accepts no connection in. The worker connects
+  outward, as R3.3 says, and the body's SSH transport stays replaced.
+
+Two things recorded for later:
+- **The worker runs on whichever machine hosts the tool.** If Vinegar proves sound on the Bazzite machine, the same
+  worker serves it as a second host. That is a spike of its own, after the machine is installed.
+- **The proxy's cache listed 33 tools,** and S1 recorded 38. Phase 2d counts again against a live `tools/list` before
+  its allow-list is written.
+
+**Three parts.** Phase 2b is delivered in three PRs, each provable alone, and the ledger has a row for each:
+1. the runtime's side: the registry, the rules, the routes and the worker's identity;
+2. the worker: its composition root, its claim loop and a fixture adapter;
+3. the squad's side: the adapter behind the port, its selector, and how an agent's request reaches the queue. The
+   agent's service account holds one scope today, so that last point needs the owner's ruling before it is built.
+
+**R3.3, as part 1 builds it:**
+
+| R3.3's part | as built |
+|---|---|
+| "assignment" | **named the operation and its attempt.** `assignment` is SIP-0089's (`agent_assignments`, `/api/v1/assignments`). R3.3's assignment id is the operation id |
+| the registry | `squadops.remote_execution.registry.WorkerRegistry` applies the rules to rows behind `WorkerRegistryStorePort`, each call in one exclusive transaction. The rules are pure decisions in `squadops.remote_execution.leasing`. One contract suite runs over the memory store and over Postgres |
+| where it is kept | chosen by `cycles.registry_provider`, as the scenario store and the campaign registry are. Part 1 adds no selector. The remote-execution selector R5.3 approved is part 3's |
+| the migration | `2300_remote_execution.sql`, in the next free range (2300–2399) |
+| "a durable token of its own" | **the lease is the operation's own row:** the operation, attempt, session and lease ids. A registry built after a restart accepts the held claim's heartbeat and its result |
+| the fence | all four ids are the current ones and the lease has not run out. Otherwise the result is refused with one of seven named reasons, and the refusal is kept in `remote_operation_refusals` |
+| a result after its lease ran out | **refused, even when no newer claim exists.** R3.3 says expiry frees the assignment. A worker that stopped renewing is one whose state the runtime can no longer vouch for. The cost is a second run when a result arrives just late |
+| when expiry is seen | when the operation is next touched: a claim, a heartbeat, a result or a read. Part 1 has no background sweep |
+| attempts | the requester sets how many. A lease that runs out with an attempt left queues the operation again, and the next claim advances the number. On the last attempt it settles as `interrupted`: a worker held it, so it may have started |
+| cancel | a queued operation settles as `not_executed`. A claimed one is marked, and its worker sees that at its next heartbeat |
+| a repeated submission | the same claim submitting the result it already had accepted is answered as accepted, and nothing is stored again |
+| a worker that registers again | has restarted: its earlier session ends with the attempt it held, and its next claim is told to reconcile and reset first |
+| health | the canonical vocabulary. A session silent for 45 seconds reads `offline`. The heartbeat interval (15 seconds) and the lease's length (60 seconds) are told to the worker when it registers |
+| the routes | four, under `/api/v1/workers`: register a session, heartbeat, claim, submit a result. A refused result is a 409 carrying its reason |
+| the worker's identity (R5.3) | the role `worker` and one scope, `workers:serve`, which no other role holds. The client `squadops-worker` is in all four realm exports **with no secret committed**; its per-deploy value is `SQUADOPS_WORKER_CLIENT_SECRET`, generated by the deploy |
+| one identity for every worker | every worker signs in as that one client, so a session is not tied to its caller's identity. What protects a claim is its lease id. An identity per worker waits for a second worker |
+
+**Not in part 1:** a route for a person to read the registry, a background sweep for expired leases, and anything
+that queues an operation in a live cycle (part 3).
 
 ---
 

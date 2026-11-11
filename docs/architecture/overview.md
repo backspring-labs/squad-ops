@@ -167,8 +167,10 @@ held back by.
 ### `squadops.remote_execution`
 The engine-neutral models of a remote operation (SIP-0117): the request a handler makes for a
 capability contract in a verification mode, the provider's result, and the assertion records it
-is read from. Its port is `squadops.ports.remote_execution`; the transport and the providers are
-adapters'.
+is read from. And the worker registry (R3.3, R5.4): a worker's sessions, the operations queued
+for workers, the lease rules as pure decisions (`leasing`), and the registry that applies them
+(`registry`). Its ports are in `squadops.ports.remote_execution`; the store and the providers
+are adapters'.
 
 ### `squadops.sandbox`
 The execution sandbox domain (SIP-0102): the service that builds and runs a delivered app in
@@ -248,6 +250,10 @@ and cache.
 ### `adapters.prompts`
 Prompt repositories and asset sources: the filesystem fragments and request templates the prompt
 service reads.
+
+### `adapters.remote_execution`
+The worker registry's store (SIP-0117 R5.4): Postgres beside the cycles whose operations it queues,
+so a lease outlives a runtime restart, and in memory for tests.
 
 ### `adapters.sandbox`
 The sandbox's container adapters (SIP-0102).
