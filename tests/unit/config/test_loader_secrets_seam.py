@@ -49,6 +49,7 @@ _ENV = {
     "SQUADOPS__COMMS__QUEUE__PROVIDER": "rabbitmq",
     "SQUADOPS__COMMS__A2A__PROVIDER": "http",
     "SQUADOPS__TOOLS__FILESYSTEM__PROVIDER": "local",
+    "SQUADOPS__REMOTE_EXECUTION__PROVIDER": "none",
     # #1568: and so is every other selector.
     "SQUADOPS__CYCLES__REGISTRY_PROVIDER": "memory",
     "SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER": "config",

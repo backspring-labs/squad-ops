@@ -24,6 +24,7 @@ from squadops.config.schema import (
     QueueConfig,
     RabbitMQConfig,
     RedisConfig,
+    RemoteExecutionConfig,
     SandboxConfig,
     TelemetryConfig,
     ToolsConfig,
@@ -43,6 +44,7 @@ def _rest() -> dict:
         ),
         "auth": AuthConfig(enabled=False, provider="disabled"),
         "tools": ToolsConfig(filesystem=FilesystemToolConfig(provider="local")),
+        "remote_execution": RemoteExecutionConfig(provider="none"),
         # #1568: every other selector section, each naming its provider.
         "cycles": CyclesConfig(
             registry_provider="memory",

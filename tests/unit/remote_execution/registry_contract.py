@@ -311,6 +311,30 @@ class WorkerRegistryContract:
         with pytest.raises(UnknownOperation):
             await registry.cancel("rop-never-queued")
 
+    async def test_a_cancelled_claim_whose_worker_goes_silent_settles_interrupted(
+        self, registry, clock
+    ):
+        """R5.6. Bug caught: the lease runs out, an attempt is left, and the operation is
+        queued again still marked cancelled: no worker may claim it and nothing settles it, so
+        its requester waits on it for ever."""
+        queued = await registry.enqueue(request(dispatch_id="d-4"), ORIGIN, max_attempts=3)
+        session = await registry.register(registration())
+        await registry.claim(session.session_id)
+
+        marked = await registry.cancel(queued.operation_id)
+        clock.advance(leasing.LEASE_SECONDS + 1)
+        after = await registry.operation(queued.operation_id)
+
+        assert (marked.state, marked.cancel_requested) == (OperationState.CLAIMED, True)
+        assert after.state is OperationState.SETTLED
+        assert (after.result.status, after.result.reason, after.result.dispatch_id) == (
+            OperationStatus.INTERRUPTED,
+            f"cancelled while attempt 1 held it, and worker session {session.session_id} "
+            "stopped renewing its lease before it answered",
+            "d-4",
+        )
+        assert await registry.claim(session.session_id) is None
+
     async def test_two_workers_claiming_at_once_never_share_an_operation(self, registry):
         """Bug caught: a claim that reads the queue and writes the lease in two steps, so two
         workers that ask together are both handed the one operation."""

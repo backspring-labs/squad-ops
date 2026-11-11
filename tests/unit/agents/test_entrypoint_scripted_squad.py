@@ -66,6 +66,9 @@ def _config():
         telemetry=SimpleNamespace(backend="null", otlp_endpoint=None),
         langfuse=SimpleNamespace(enabled=False),
         tools=SimpleNamespace(filesystem=SimpleNamespace(provider="local")),
+        remote_execution=SimpleNamespace(provider="none", wait_seconds=900, max_attempts=2),
+        runtime_api_url="http://runtime-api:8001",
+        auth=SimpleNamespace(agent_client=None, oidc=None),
         comms=SimpleNamespace(delivery=None),
     )
 

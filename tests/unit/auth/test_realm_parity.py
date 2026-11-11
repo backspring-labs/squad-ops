@@ -131,8 +131,17 @@ class TestWorkerRoleScopes:
 
 
 class TestAgentRoleScopes:
-    def test_agent_role_implies_exactly_agents_write(self):
+    def test_agent_role_implies_exactly_its_two_scopes(self):
         """The agent role must grant agents:write (or heartbeats 403) and
+        operations:request (or a remote operation is never queued: SIP-0117 R5.6), and
         nothing more (an agent identity must not gain cycle/task/admin
         access if someone fattens the mapping)."""
-        assert ROLE_SCOPES[Role.AGENT] == frozenset({Scope.AGENTS_WRITE})
+        assert ROLE_SCOPES[Role.AGENT] == frozenset({Scope.AGENTS_WRITE, Scope.OPERATIONS_REQUEST})
+
+    def test_only_the_agent_role_may_ask_for_a_remote_operation(self):
+        """Bug caught: the scope added to a person's role, or to the worker's, which could
+        then queue work for itself to run on the machine that hosts a tool."""
+        holders = {
+            role for role, scopes in ROLE_SCOPES.items() if Scope.OPERATIONS_REQUEST in scopes
+        }
+        assert holders == {Role.AGENT}

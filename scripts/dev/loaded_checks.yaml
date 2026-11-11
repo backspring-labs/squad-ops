@@ -2460,3 +2460,20 @@ checks:
       text = (t / "request.qa_test.test_validate.md").read_text()
       print("{{source_repository_section}}" in text, "Test boundary" in text, (t / "request.qa_test_scaffold_harness_block.md").is_file())
     expect: True False True
+  - id: "3023-requester-routes"
+    what: the runtime API serves a requester's remote operations, read under the lease rules that settle a cancelled claim (SIP-0117 R5.6)
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.routes.remote_operations import router
+      from squadops.remote_execution.wire import ERROR_NO_WORKER
+      print(sorted({route.path for route in router.routes}), ERROR_NO_WORKER)
+    expect: "['/api/v1/remote-operations', '/api/v1/remote-operations/{operation_id}', '/api/v1/remote-operations/{operation_id}/cancel'] NO_WORKER_FOR_OPERATION"
+  - id: "3023-agent-port"
+    what: an agent's role may ask for a remote operation, and its remote-execution selector names its vocabulary (SIP-0117 R5.6)
+    container: squadops-eve
+    code: |
+      import typing
+      from squadops.auth.models import ROLE_SCOPES, Role
+      from squadops.config.schema import RemoteExecutionConfig
+      print(sorted(ROLE_SCOPES[Role.AGENT]), typing.get_args(RemoteExecutionConfig.model_fields["provider"].annotation))
+    expect: "['agents:write', 'operations:request'] ('none', 'runtime_api')"

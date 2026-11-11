@@ -231,6 +231,7 @@ services:
       SQUADOPS__TELEMETRY__BACKEND: otel  # required, never defaulted (#1568)
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317  # the runtime's activity metrics (#2204)
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}  # the cycle-create preflight reads it
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
       # #2451: the runtime API's client of the sandbox service, apart from the preflight's selector.
       SQUADOPS__SANDBOX_CLIENT__PROVIDER: ${SQUADOPS__SANDBOX_CLIENT__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX_CLIENT__SERVICE_URL: http://squadops-sandbox-service:8002
@@ -300,6 +301,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -358,6 +360,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -437,6 +440,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -498,6 +502,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -556,6 +561,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -616,6 +622,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -674,6 +681,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -737,6 +745,7 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__REMOTE_EXECUTION__PROVIDER: ${SQUADOPS__REMOTE_EXECUTION__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (SIP-0117 R5.3); `none` runs no remote execution}
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel

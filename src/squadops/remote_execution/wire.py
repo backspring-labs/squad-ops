@@ -27,6 +27,9 @@ from squadops.remote_execution.models import (
 #: worker reads them, so each is named once.
 ERROR_SESSION_NOT_FOUND = "WORKER_SESSION_NOT_FOUND"
 ERROR_RESULT_REFUSED = "RESULT_REFUSED"
+#: The error codes of ``/api/v1/remote-operations`` that a requester acts on (R5.6).
+ERROR_NO_WORKER = "NO_WORKER_FOR_OPERATION"
+ERROR_OPERATION_NOT_FOUND = "REMOTE_OPERATION_NOT_FOUND"
 
 _REQUEST_KEYS = frozenset(
     {

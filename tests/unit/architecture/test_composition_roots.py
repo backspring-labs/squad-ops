@@ -234,6 +234,7 @@ _EXPECTED_FACTORY_CALLS: dict[str, dict[str, int]] = {
         "with_scripted_model": 1,
         "create_queue_adapter": 1,
         "create_filesystem_provider": 1,
+        "create_remote_execution": 1,  # SIP-0117 R5.6
         "create_prompt_repository": 1,
         "create_prompt_asset_source": 2,
         "create_telemetry_provider": 1,
@@ -288,6 +289,7 @@ _SELECTORS = (
     ("PromptsConfig", "asset_source_provider", "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER"),
     ("TelemetryConfig", "backend", "SQUADOPS__TELEMETRY__BACKEND"),
     ("SandboxConfig", "provider", "SQUADOPS__SANDBOX__PROVIDER"),
+    ("RemoteExecutionConfig", "provider", "SQUADOPS__REMOTE_EXECUTION__PROVIDER"),  # SIP-0117 R5.3
 )
 
 #: Selectors one root reads, in a section no other loader carries, with the compose service that

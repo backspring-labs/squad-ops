@@ -1,19 +1,50 @@
-"""Remote execution's adapters (SIP-0117 R5.4, R5.5).
+"""Remote execution's adapters (SIP-0117 R5.4, R5.5, R5.6).
 
 The worker registry's store is chosen by the cycle registry's selector: its operations belong
 to the cycles that asked for them, so it lives beside them. A worker's operation runner is
-chosen by the worker's own ``provider``, and its way to the runtime is HTTP.
+chosen by the worker's own ``provider``, and its way to the runtime is HTTP. An agent's
+remote-execution port is chosen by ``remote_execution.provider``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
+from datetime import timedelta
 
 from squadops.ports.remote_execution import (
     OperationRunnerPort,
+    RemoteExecutionPort,
     WorkerApiPort,
     WorkerRegistryStorePort,
 )
+
+
+def create_remote_execution(
+    provider: str,
+    *,
+    base_url: str,
+    token: Callable[[], Awaitable[str]] | None,
+    origin: Mapping[str, str],
+    wait: timedelta,
+    max_attempts: int,
+) -> RemoteExecutionPort | None:
+    """The agent's remote-execution port, for the provider the config names (R5.6).
+
+    ``none`` is a deploy that runs no remote execution: it binds no port, and the handler of
+    ``qa.run_remote_operation`` reports its operation as not executed, with that reason.
+    ``runtime_api`` queues the operation at the runtime API at ``base_url`` for a worker.
+    """
+    if provider == "none":
+        return None
+    if provider == "runtime_api":
+        from adapters.remote_execution.runtime_api_remote_execution import (
+            RuntimeApiRemoteExecution,
+        )
+
+        return RuntimeApiRemoteExecution(
+            base_url, token, origin=origin, wait=wait, max_attempts=max_attempts
+        )
+    raise ValueError(f"Unknown remote execution provider: {provider}")
 
 
 def create_worker_registry_store(provider: str, **kwargs) -> WorkerRegistryStorePort:

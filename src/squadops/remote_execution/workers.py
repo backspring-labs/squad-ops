@@ -221,8 +221,14 @@ class WorkerRefused(Exception):
 
 
 class RuntimeAnswerUnreadable(Exception):
-    """The runtime's answer isn't the document this worker reads: a key missing or of the
-    wrong kind. The two are different versions, so the worker stops."""
+    """The runtime's answer isn't the document its caller reads: a key missing or of the
+    wrong kind. The two are different versions, so a worker stops and a requester raises."""
+
+
+class RequestRefused(Exception):
+    """The runtime answered and will not take a requester's call: its credentials, its scope,
+    or a request the runtime can't read. Trying again changes nothing. It is a defect of the
+    deploy, never an operation that didn't run (R5.6)."""
 
 
 class UnknownSession(LookupError):

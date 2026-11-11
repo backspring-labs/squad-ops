@@ -461,6 +461,43 @@ class SandboxConfig(BaseModel):
     )
 
 
+class RemoteExecutionConfig(BaseModel):
+    """How an agent's ``qa.run_remote_operation`` reaches a provider (SIP-0117 R5.3, R5.6).
+
+    ``provider`` is required on every deploy and has no default: ``none`` is a deploy that
+    runs no remote execution, said deliberately, and ``runtime_api`` queues each operation at
+    the runtime API for a worker on another machine. The two numbers are tunables of
+    ``runtime_api`` (R5 of the composition-root rules), read only by it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["none", "runtime_api"] = Field(
+        ...,
+        description=(
+            "Remote execution provider (required, never defaulted; the vocabulary is the "
+            "schema's, R2). none: no port is bound, and an operation reads not executed"
+        ),
+    )
+    wait_seconds: int = Field(
+        default=900,
+        ge=1,
+        description=(
+            "Seconds an agent waits for an operation's result before it asks for the "
+            "operation to stop. Keep it under dispatch.task_timeout, so the task ends with "
+            "the operation's own named ending and not as a hung agent"
+        ),
+    )
+    max_attempts: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "How many times a worker may claim one operation. A lease that runs out with an "
+            "attempt left queues it again: the second is for a worker that restarted"
+        ),
+    )
+
+
 class SandboxClientConfig(BaseModel):
     """How the runtime API calls the sandbox service (#2451, ruled by the owner 2026-10-18).
 
@@ -1138,6 +1175,12 @@ class AppConfig(BaseModel):
     sandbox: SandboxConfig = Field(
         ...,
         description="Ephemeral Application Sandbox configuration (SIP-0102; required selector, #1568)",
+    )
+    # Remote execution (SIP-0117 R5.3, R5.6): required on every process that loads this, with
+    # ``none`` for a deploy that runs none. The agents compose it; the runtime API loads it.
+    remote_execution: RemoteExecutionConfig = Field(
+        ...,
+        description="Remote execution's adapter selector (SIP-0117; required, never defaulted)",
     )
     # The runtime API's client of the sandbox service (#2451). Optional here because only the
     # runtime API reads it, and it refuses to start without it (``create_sandbox_client``).
