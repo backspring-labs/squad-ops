@@ -85,6 +85,8 @@ _CYCLE = SimpleNamespace(
     campaign_id=None,
     execution_overrides={},
     applied_defaults={},
+    # What a repair's skill supply reads (SIP-0116 §7.1): a cycle with no record loads none.
+    skillset_record=None,
 )
 
 _RUN_ID = "run_abcdef123456"

@@ -391,6 +391,22 @@ def repairs_revising(task_type: str) -> tuple[str, ...]:
     return tuple(step for step, _ in steps)
 
 
+def revised_task_type(task_type: str) -> str | None:
+    """The task type whose own output a dispatch of ``task_type`` revises, when it is a repair:
+    ``repairs_revising`` read the other way. ``None`` for a task type that is no such repair.
+
+    SIP-0116 §7.1 loads a repair's skills by it: a repair revises the output of one step, and
+    it is given that step's guidance. A repair type that revised two steps' outputs would
+    have no one answer, so the tables are refused here if they ever say so."""
+    revised = [t.value for t in TaskType if task_type in repairs_revising(t.value)]
+    if len(revised) > 1:
+        raise ValueError(
+            f"{task_type} is declared as the repair of more than one task type's own output "
+            f"({', '.join(revised)}); a repair revises one"
+        )
+    return revised[0] if revised else None
+
+
 def own_artifact_role(failed_task_type: str) -> str | None:
     """The role that owns *failed_task_type*'s own artifacts, when declared (#884).
 

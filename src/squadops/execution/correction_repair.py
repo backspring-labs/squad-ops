@@ -61,6 +61,7 @@ from squadops.cycles.write_authorization import normalize_ws_path
 from squadops.execution.binding_holds import supplied_or_held
 from squadops.execution.correction_ids import correction_task_id
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.skill_supply import SkillSupply
 from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import authors_qa_suite, runs_an_operation
@@ -1039,8 +1040,13 @@ class CorrectionRepair:
         dispatch_step: Callable[..., Any],
         failure_recall: FailurePatternRecallPort,
         hold: Callable[..., Awaitable[Any]] | None = None,
+        skills: SkillSupply | None = None,
     ) -> None:
         self._dispatch_step = dispatch_step
+        # SIP-0116 §7.1: each repair is handed the skills of the step it revises, from its
+        # cycle's kept copy. Outside an executor there is no vault: a repair of a cycle whose
+        # record names skills then raises, and one that names none is handed none.
+        self._skills = skills or SkillSupply(None)
         # SIP-0110 §0.9: each repair asks its unit's pinned snapshot for the lessons approved for
         # it, composed here as the plan's tasks are at provisioning. Required: a repair that is
         # never asked records no exposure, which no measurement can tell from memory disabled.
@@ -1226,6 +1232,9 @@ class CorrectionRepair:
                     inputs=repair_inputs,
                     metadata={"role": role, "step_index": step_idx},
                 )
+                # SIP-0116 §7.1: the skills of the step this repair revises, before memory
+                # measures the prompt they are part of.
+                await self._skills.hand(cycle, repair_envelope)
                 # SIP-0110 §0.9: the lessons approved for this repair, if any, and its exposure.
                 [repair_envelope] = await supplied_or_held(
                     self._hold,

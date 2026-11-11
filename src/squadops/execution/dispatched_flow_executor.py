@@ -169,6 +169,7 @@ from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
+from squadops.execution.skill_supply import SkillSupply
 from squadops.execution.source_checkout import seed_checkout_artifacts, task_source_repository
 from squadops.execution.source_delivery import (
     SourceDelivery,
@@ -743,6 +744,8 @@ class _TaskOutcomeRouter:
             # before, it rode the first attempt's envelope and had none.
             # §3.6: a re-dispatch whose binding sections are incomplete holds the run here, at
             # the task's boundary, until re-supply completes it (#2178).
+            # SIP-0116 §7: and it is handed its skills again, from the kept copy.
+            await executor._skill_supply.hand(cycle, _envelope, _enriched)
             await executor._binding_holds.supplied(
                 run_id,
                 cycle,
@@ -929,6 +932,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # as it was, for the startup re-attach (SIP-0109 §24am), never recorded as ended.
         self._stopping = False
         self._artifact_vault = artifact_vault
+        # SIP-0116 §7: each dispatch is handed its skills from its cycle's kept copy.
+        self._skill_supply = SkillSupply(artifact_vault)
         self._queue = queue
         self._reply_router = reply_router
         self._squad_profile = squad_profile
@@ -1015,6 +1020,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             ),
             failure_recall=failure_recall,
             hold=lambda *args, **kw: self._binding_holds.supplied(*args, **kw),
+            skills=self._skill_supply,
         )
         self._correction_runner = correction_runner or CorrectionRunner(
             cycle_registry=cycle_registry,
@@ -1062,6 +1068,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
             failure_recall=failure_recall,
             hold=lambda *args, **kw: self._binding_holds.supplied(*args, **kw),
+            skills=self._skill_supply,
         )
         # SIP-0097 §6.6: per-run pulse summaries live on the RunLedger created
         # in execute_run() and passed explicitly; multi-workload forwarding
@@ -2425,7 +2432,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     ) -> None:
         """SIP-0110 §0.9, §3.6 (#2681): memory's sections composed for this dispatch, on the envelope
         as it goes out (``enriched``), and disclosed as its exposure. One that can't be read, bound
-        or fitted holds the run here, at the task's boundary, until re-supply completes it."""
+        or fitted holds the run here, at the task's boundary, until re-supply completes it.
+
+        SIP-0116 §7: its skills are handed first, from its cycle's kept copy, so the prompt
+        memory measures already carries them and lessons are given what they leave."""
+        await self._skill_supply.hand(cycle, envelope, enriched)
         await self._binding_holds.supplied(
             run_id,
             cycle,

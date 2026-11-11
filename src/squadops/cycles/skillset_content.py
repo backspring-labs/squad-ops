@@ -44,6 +44,8 @@ if TYPE_CHECKING:
 SKILLSET_CONTENT_SCHEMA = "squadops.skillset-content/v1"
 SKILLSET_CONTENT_ARTIFACT_TYPE = "skillset_content"
 SKILLSET_CONTENT_FILENAME = "skillset_content.json"
+#: The envelope input a task's skills are handed on, by the runtime, at each dispatch.
+SKILLS_INPUT = "skills"
 
 
 class SkillsetContentError(ValueError):
@@ -277,6 +279,21 @@ def skills_for(
                 ),
             )
     return tuple(loaded.values())
+
+
+def skills_input(skills: Iterable[LoadedSkill]) -> list[dict[str, Any]]:
+    """``skills`` as the envelope input a handler renders: each skill with its files as text,
+    and the digest the cycle's record names it by."""
+    return [
+        {
+            "skillset": s.skillset,
+            "version": s.version,
+            "skill": s.skill,
+            "digest": s.digest,
+            "files": dict(s.files),
+        }
+        for s in skills
+    ]
 
 
 def _kept_skillset(document: Mapping[str, Any], skillset_id: str) -> Mapping[str, Any]:
