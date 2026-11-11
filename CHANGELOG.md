@@ -6,6 +6,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **One resolver names the operation a frozen scenario runs under** (#3044, part 2):
+  `capabilities.operation_supply.scenario_operation(record, catalog)`. It reads the one operation contract the
+  cycle's skillset record offers in `play` mode, with its supplier, and that supplier's one tool from the
+  deployment's catalog, checked against the recorded digest. It refuses none, more than one, or a changed
+  skillset by name. The operation handler's tool lookup moved beside it (`tool_request`). Plan expansion, the
+  baseline step and Campaign delivery will call it.
 - **A Campaign increment's criterion can be a frozen scenario** (#3044, part 2; SIP-0117 R5.9): a criterion with
   `surface_kind: scenario` declares its scenario. On a repository-backed Project it is checked against the
   vocabulary the cycle's operation supplier keeps, which the runtime now puts on the proposal's input. It is

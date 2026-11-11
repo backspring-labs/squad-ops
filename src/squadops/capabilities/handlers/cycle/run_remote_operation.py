@@ -40,7 +40,8 @@ from squadops.capabilities.handlers.base import (
 )
 from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.capabilities.models import TaskContract
-from squadops.capabilities.skillsets import Skillset, packaged_skillsets
+from squadops.capabilities.operation_supply import OperationSupplyError, tool_request
+from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.remote_execution.models import (
@@ -133,8 +134,8 @@ class QARunRemoteOperationHandler(CapabilityHandler):
         operation = inputs["operation"]
         scenario = _scenario(inputs["operation_scenario"], files)
         try:
-            tool = _tool_request(packaged_skillsets(), operation)
-        except ValueError as refused:
+            tool = tool_request(packaged_skillsets(), operation)
+        except OperationSupplyError as refused:
             # The deployment no longer holds what the cycle's record says supplies this
             # contract. Nothing can be run in its name.
             return self._finish(inputs, started, error=str(refused))
@@ -307,38 +308,6 @@ def _scenario(value: Mapping[str, Any], files: Mapping[str, str]) -> Scenario:
         named_assertion=value["named_assertion"],
         document=files[value["path"]],
     )
-
-
-def _tool_request(catalog: Mapping[str, Skillset], operation: Mapping[str, Any]) -> Any:
-    """The one tool the supplying skillset requests for this contract. Raises ``ValueError``
-    naming what is wrong: the skillset isn't held, isn't the one the cycle recorded, doesn't
-    specialize the contract in this mode, or requests no single tool for it."""
-    skillset = catalog.get(operation["skillset"])
-    if skillset is None:
-        raise ValueError(
-            f"skillset `{operation['skillset']}` supplies this task by the cycle's record, and "
-            "this deployment doesn't hold it"
-        )
-    if skillset.digest != operation["skillset_digest"]:
-        raise ValueError(
-            f"skillset `{skillset.id}` has changed since the cycle was created: the record "
-            f"holds digest {operation['skillset_digest']}, and this deployment holds "
-            f"{skillset.digest}"
-        )
-    capability = skillset.capability_for(operation["contract"])
-    if capability is None or (
-        operation["mode"] and operation["mode"] not in [m.value for m in capability.modes]
-    ):
-        raise ValueError(
-            f"skillset `{skillset.id}` doesn't specialize `{operation['contract']}`"
-            + (f" in `{operation['mode']}` mode" if operation["mode"] else "")
-        )
-    if len(capability.tools) != 1:
-        raise ValueError(
-            f"skillset `{skillset.id}` requests {len(capability.tools)} tools for "
-            f"`{operation['contract']}`; the operation to run is the one it requests"
-        )
-    return capability.tools[0]
 
 
 def _check_rows(
