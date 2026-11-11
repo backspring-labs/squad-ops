@@ -55,7 +55,7 @@ async def _instruction_lines(renderer: Any, instructions: list[dict[str, Any]]) 
                 {
                     "number": str(n),
                     "ref": reference["ref"],
-                    "fence": _fence_for(reference["content"]),
+                    "fence": fence_for(reference["content"]),
                     "content": reference["content"].rstrip("\n"),
                 },
             )
@@ -63,7 +63,7 @@ async def _instruction_lines(renderer: Any, instructions: list[dict[str, Any]]) 
     return "\n\n".join([lines, *shown])
 
 
-def _fence_for(content: str) -> str:
+def fence_for(content: str) -> str:
     """A backtick fence longer than any run of backticks in ``content``, so a file holding its own
     fenced blocks is shown whole."""
     longest = max((len(run) for run in re.findall(r"`+", content)), default=0)

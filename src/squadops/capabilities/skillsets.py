@@ -38,6 +38,9 @@ from squadops.prompts import __file__ as _prompts_pkg
 from squadops.prompts.frontmatter import FrontmatterError, parse_frontmatter
 
 SKILLSET_API_VERSION = "squadops.skillset/v1"
+#: The envelope input a task's skills are handed on, by the runtime, at each dispatch (§7):
+#: a list of skills, each with its files as text.
+SKILLS_INPUT = "skills"
 PACKAGED_SKILLSETS_DIR = Path(_prompts_pkg).parent / "skillsets"
 SPEC_FILE = "skillset.yaml"
 SKILL_FILE = "SKILL.md"

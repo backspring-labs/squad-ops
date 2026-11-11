@@ -16,15 +16,21 @@ Which skills (§7, §7.1):
   has nowhere to be read.
 
 Handing replaces what an earlier dispatch of the same envelope was handed.
+
+Only an authoring seam's handler has a place to show a skill (``authoring_seam_of``, the
+seams memory's sections go to). A record that offers skills to any other step raises at its
+dispatch.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.cycles.skillset_content import (
     SKILLS_INPUT,
     LoadedSkill,
+    SkillsetContentError,
     kept_document_of,
     skills_for,
     skills_input,
@@ -83,6 +89,13 @@ class SkillSupply:
             document = await self._document(cycle, record)
             if document is not None:
                 skills = skills_for_dispatch(document, record, held[0])
+        if skills and authoring_seam_of(str(held[0].task_type)) is None:
+            # No handler but an authoring seam's has a place for a skill. Handing these would
+            # send them nowhere, and the task would read as one that had them.
+            raise SkillsetContentError(
+                f"cycle {cycle.cycle_id}'s record offers {held[0].task_type} "
+                f"{len(skills)} skills, and that step's handler shows a task none"
+            )
         for envelope in held:
             if skills:
                 envelope.inputs[SKILLS_INPUT] = skills_input(skills)

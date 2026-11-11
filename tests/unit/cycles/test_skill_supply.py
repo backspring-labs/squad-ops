@@ -188,6 +188,20 @@ async def test_a_cycle_whose_copy_is_gone_or_edited_hands_nothing_and_says_why(
     assert SKILLS_INPUT not in envelope.inputs
 
 
+async def test_skills_offered_to_a_step_with_no_place_to_show_them_are_refused(equipped):
+    """Bug caught: skills handed to a step whose handler renders none, so they go nowhere and
+    the task reads as one that had them. ``qa.validate`` is at no authoring seam."""
+    record = equipped.cycle.skillset_record
+    offered = {**record["offered"][0], "task_type": "qa.validate"}
+    cycle = SimpleNamespace(cycle_id="cyc_1", skillset_record={**record, "offered": [offered]})
+    envelope = _envelope("qa.validate", "eve")
+
+    with pytest.raises(SkillsetContentError, match="that step's handler shows a task none"):
+        await SkillSupply(equipped.vault).hand(cycle, envelope)
+
+    assert SKILLS_INPUT not in envelope.inputs
+
+
 async def test_the_run_dispatches_a_task_with_its_skills_and_again_on_its_redispatch(
     monkeypatch, reply_router
 ):

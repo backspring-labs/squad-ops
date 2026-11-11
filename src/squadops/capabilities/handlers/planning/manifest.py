@@ -30,6 +30,7 @@ from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.capabilities.handlers.skills import skills_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -99,6 +100,10 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
         project = await project_instructions_section(renderer, inputs)
         if project:
             variables["project_instructions_section"] = project
+        # SIP-0116 §7: this task's skills, after its project's instructions and before the lessons.
+        skills = await skills_section(renderer, inputs)
+        if skills:
+            variables["skills_section"] = skills
         # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:

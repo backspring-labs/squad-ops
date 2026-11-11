@@ -49,6 +49,7 @@ from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.capabilities.repair_prompt_contents import REPAIR_BASE_INPUTS, repair_prompt_contents
+from squadops.capabilities.skillsets import SKILLS_INPUT
 from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.memory.lessons import _tokens
 from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
@@ -148,6 +149,22 @@ def prompt_without_memory_tokens(envelope: TaskEnvelope) -> int:
         system_prompt_tokens(task_type)
         + template_prose_tokens(task_type)
         + rendered_input_tokens(envelope)
+        + skills_framing_tokens(envelope)
+    )
+
+
+def skills_framing_tokens(envelope: TaskEnvelope) -> int:
+    """The fixed text the task's skills are shown in (SIP-0116 §7): their section, each skill's
+    heading and each resource's. The skills' own text is an input, counted with the others.
+    Nothing for a task handed none, so its prompt is measured as it was."""
+    handed = (envelope.inputs or {}).get(SKILLS_INPUT)
+    if not handed:
+        return 0
+    resources = sum(max(0, len(skill["files"]) - 1) for skill in handed)
+    return (
+        _prose("request.skills_section")
+        + len(handed) * _prose("request.skill")
+        + resources * _prose("request.skill_resource")
     )
 
 

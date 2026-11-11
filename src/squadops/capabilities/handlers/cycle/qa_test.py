@@ -32,6 +32,7 @@ from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lesso
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.capabilities.handlers.skills import skills_section
 from squadops.capabilities.handlers.source_repository import (
     product_conventions_template,
     source_backed,
@@ -1982,6 +1983,12 @@ class QATestHandler(_CycleTaskHandler):
             )
             if project_section:
                 user_prompt = f"{user_prompt}{project_section}"
+            # SIP-0116 §7: this task's skills, after its project's instructions and before the lessons.
+            equipment_section = await skills_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if equipment_section:
+                user_prompt = f"{user_prompt}{equipment_section}"
             # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own. The
             # section opens with its own paragraph break.
             lessons_section = await cross_cycle_lessons_section(
@@ -2556,6 +2563,10 @@ class QATestHandler(_CycleTaskHandler):
             project = await project_instructions_section(renderer, inputs or {})
             if project:
                 variables["project_instructions_section"] = project
+            # SIP-0116 §7: this task's skills, after its project's instructions and before the lessons.
+            skills = await skills_section(renderer, inputs or {})
+            if skills:
+                variables["skills_section"] = skills
             # SIP-0110 §0.9 (#2509): the lessons approved for this task, in a slot of their own, as
             # the other build-authoring seams show them. None supplied renders the prompt unchanged.
             lessons = await cross_cycle_lessons_section(renderer, inputs or {})

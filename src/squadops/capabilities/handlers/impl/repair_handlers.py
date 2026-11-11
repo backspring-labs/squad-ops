@@ -48,6 +48,7 @@ from squadops.capabilities.handlers.increment_test_scope import (
     increment_test_scope_section,
     increment_views_section,
 )
+from squadops.capabilities.handlers.skills import skills_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -357,6 +358,8 @@ class _RepairPromptMixin:
             # SIP-0110 §0.9: rendered in handle(); "" when no lesson was supplied.
             "task_instructions_section": str(inputs.get("task_instructions_section") or ""),
             "project_instructions_section": str(inputs.get("project_instructions_section") or ""),
+            # SIP-0116 §7.1: rendered in handle(); "" when the repair was handed no skill.
+            "skills_section": str(inputs.get("skills_section") or ""),
             "cross_cycle_lessons_section": str(inputs.get("cross_cycle_lessons_section") or ""),
             # SIP-0107 step 4: the anchored edit form, for the named files that already exist
             # in the workspace, and — on the one retry — why the previous edits were refused.
@@ -445,6 +448,10 @@ class _RepairPromptMixin:
                 getattr(context.ports, "request_renderer", None), inputs
             ),
             "project_instructions_section": await project_instructions_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            ),
+            # SIP-0116 §7.1: the skills of the step this repair revises, before the lessons.
+            "skills_section": await skills_section(
                 getattr(context.ports, "request_renderer", None), inputs
             ),
             # SIP-0110 §0.9: the lessons approved for this repair, in a slot of their own, apart

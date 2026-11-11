@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from squadops.capabilities.skillsets import Skillset, skill_files_digest
+from squadops.capabilities.skillsets import SKILLS_INPUT, Skillset, skill_files_digest
 from squadops.core.hashing import canonical_json
 from squadops.cycles.models import ArtifactRef
 
@@ -44,8 +44,22 @@ if TYPE_CHECKING:
 SKILLSET_CONTENT_SCHEMA = "squadops.skillset-content/v1"
 SKILLSET_CONTENT_ARTIFACT_TYPE = "skillset_content"
 SKILLSET_CONTENT_FILENAME = "skillset_content.json"
-#: The envelope input a task's skills are handed on, by the runtime, at each dispatch.
-SKILLS_INPUT = "skills"
+
+
+__all__ = [
+    "SKILLSET_CONTENT_ARTIFACT_TYPE",
+    "SKILLSET_CONTENT_SCHEMA",
+    "SKILLS_INPUT",
+    "LoadedSkill",
+    "SkillsetContentError",
+    "content_entries",
+    "keep_skillset_content",
+    "kept_document",
+    "kept_document_of",
+    "read_kept_document",
+    "skills_for",
+    "skills_input",
+]
 
 
 class SkillsetContentError(ValueError):

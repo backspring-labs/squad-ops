@@ -41,12 +41,8 @@ from squadops.campaigns.proposed_behaviours import proposal_lines
 from squadops.campaigns.unapproved_proposals import unapproved_lines
 from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
-from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
+from squadops.capabilities.handlers.context_sections import instruction_sections
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
-from squadops.capabilities.handlers.task_instructions import (
-    project_instructions_section,
-    task_instructions_section,
-)
 from squadops.outcomes.proposal_evidence import (
     PROPOSAL_EVIDENCE_INPUT,
     accepted_prd_lines,
@@ -343,16 +339,9 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             template_id = PRODUCT_REQUEST_TEMPLATE
         # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own, apart from a
         # revision's note (SIP-0109 §9.2).
-        # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
-        instructions = await task_instructions_section(renderer, inputs)
-        if instructions:
-            variables["task_instructions_section"] = instructions
-        project = await project_instructions_section(renderer, inputs)
-        if project:
-            variables["project_instructions_section"] = project
-        lessons = await cross_cycle_lessons_section(renderer, inputs)
-        if lessons:
-            variables["cross_cycle_lessons_section"] = lessons
+        # SIP-0110 Appendix A §3.6 (#2178), SIP-0116 §7: this task's instructions, its project's
+        # and its skills, before the lessons.
+        variables.update(await instruction_sections(renderer, inputs))
         rendered = await renderer.render(template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
