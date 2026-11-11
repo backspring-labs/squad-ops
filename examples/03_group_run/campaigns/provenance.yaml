@@ -1815,4 +1815,82 @@ campaigns:
   definitions: []
   package_identity: ca80d1104a6cf8908c1c72a76043a9b11c8801590f65afc05c23edab7d369474
   package_artifact: art_65ea7d6d7b65
+- campaign_id: cmp_f14bab82c35f
+  created: '2026-11-09T12:51:01.963463+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "the 2.7 soak's recording Campaign (#2892 pre-registration \xA73 step 1): a real-model\
+    \ run whose cycles become the soak's scripts"
+  recorded_definition:
+    path: var/campaigns/2-7-0-soak-recording.yaml
+    sha256: 1e139679c86db058adf4813e9dcddcc6dbc8bab536223cf3fba51dcc55b46d3e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 1f1e281e37fcc3d8e6731690d374033099df76aef9d4885006b9fc8d3e89c32a
+  package_artifact: art_292ac1cd57c8
+- campaign_id: cmp_10099196fce1
+  created: '2026-11-10T01:36:36.133866+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "the 2.7 soak's dry run (#2892 pre-registration \xA73 step 3) on the final deploy: the\
+    \ scripts replayed with no latency, to confirm they reproduce the recording's launch order, rows and\
+    \ acceptances"
+  recorded_definition:
+    path: docs/plans/verification-sets/2-7-0-soak-dry-run-campaign.yaml
+    sha256: e60acc3aa7973207372b7f75812c3a8c1629960b24f5ded2f31b10e1876c7e90
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 1742626c342872732e7ee36b8b7493399f433f1c2d897004a45723de70023723
+  package_artifact: art_31ed0b3f2e04
+- campaign_id: cmp_5113d589fd4e
+  created: '2026-11-10T03:03:45.38876+00:00'
+  state: completed
+  outcome: success
+  create_reason: "the 2.7 soak's dry run, second attempt (#2892 \xA73 step 3) on the rebuilt deploy at\
+    \ ae684458, with the recorder fix of #3012"
+  recorded_definition:
+    path: docs/plans/verification-sets/2-7-0-soak-dry-run-campaign.yaml
+    sha256: 593ac4adfc2df24069dfb6c9a7c2328a8bb12cf4017f0e2efe6c15a8da92643f
+  recorded_reconciles: false
+  definitions: []
+  package_identity: e1056ab85a6c02bc9d484b171ec12181e81344bf9767be3c8b501d6d0201f5ad
+  package_artifact: art_a4e12c49ae70
+- campaign_id: cmp_ec6f1c5b709a
+  created: '2026-11-10T04:48:18.391314+00:00'
+  state: completed
+  outcome: success
+  create_reason: "the 2.7 counted increment (plan \xA74.5, #2827) on the pinned deploy dep_d2b4ca823f07"
+  recorded_definition:
+    path: var/campaigns/2-7-0-counted-increment.yaml
+    sha256: 5ac348304590c08ff14c54d63c1842351abbd9d4b35d9d42dc5743ec20a23acd
+  recorded_reconciles: false
+  definitions: []
+  package_identity: d051950bb884d029d2d9866000b8fbe5aa4598f87028aad9c3bb94b9f22059d2
+  package_artifact: art_af61d5ea9559
+- campaign_id: cmp_056721e622e2
+  created: '2026-11-10T05:06:44.171098+00:00'
+  state: completed
+  outcome: success
+  create_reason: the 2.7 soak (#2892), pre-registered at b9790bb0 (docs/2-7-0-shakeout), on the pinned
+    deploy dep_d2b4ca823f07
+  recorded_definition:
+    path: docs/plans/verification-sets/2-7-0-soak-campaign.yaml
+    sha256: b9537f34d901e55aab7bd5ad328083a52bbeb651b334df2638979528bd45b94d
+  recorded_reconciles: false
+  definitions: []
+  package_identity: f525f3ef75dc72e20c2b3e1cefc47ff4fd5fec4af742a69eb15046e1c2738369
+  package_artifact: art_79642bef5b8b
+- campaign_id: cmp_e27a006adea1
+  created: '2026-11-10T16:00:18.797869+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "the 2.7 restart diagnostic (#2892 \xA76.3, not exercised by the soak), definition at\
+    \ 7813c29b"
+  recorded_definition:
+    path: /home/jladd/Code/sq-2-7-shakeout/docs/plans/verification-sets/2-7-0-restart-diagnostic-campaign.yaml
+    sha256: a97268d10b02d2671639875990e26cb298c978b55ef9687c4151855530aa123e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 2fe291eaf503a309e7a252296f1f34515b696d0fe4eb45f3e083a1869c1f7d30
+  package_artifact: art_5ba6d035eb2c
 examples_only: []
