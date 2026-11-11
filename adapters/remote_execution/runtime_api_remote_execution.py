@@ -38,7 +38,6 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any
 
@@ -59,6 +58,12 @@ from squadops.remote_execution.models import (
     RemoteOperationRequest,
     RemoteOperationResult,
 )
+from squadops.remote_execution.waiting import (
+    POLL_SECONDS,
+    OperationReading,
+    await_result,
+    ended,
+)
 from squadops.remote_execution.wire import (
     ERROR_NO_WORKER,
     ERROR_OPERATION_NOT_FOUND,
@@ -76,20 +81,8 @@ from squadops.remote_execution.workers import (
 logger = logging.getLogger(__name__)
 
 _OPERATIONS = "/api/v1/remote-operations"
-#: How often a waiting requester reads its operation. The requester's own number: the lease's
-#: length is the runtime's, told in every answer.
-POLL_SECONDS = 2.0
 #: How long a requester that is itself being stopped waits for its cancel to be answered.
 _PARTING_CANCEL_SECONDS = 5.0
-
-
-@dataclass(frozen=True)
-class _Reading:
-    """One answer about the operation."""
-
-    state: OperationState
-    result: RemoteOperationResult | None
-    lease_seconds: float
 
 
 class _OperationLost(Exception):
@@ -133,7 +126,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         try:
             return await self._run(request)
         except _SendNotCurrent:
-            return _ended(
+            return ended(
                 request,
                 OperationStatus.INTERRUPTED,
                 f"send {request.dispatch_id} is no longer task {request.task_id}'s current one: "
@@ -150,7 +143,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         try:
             return await self._result_of(request, operation_id, first, deadline)
         except _OperationLost:
-            return _ended(
+            return ended(
                 request,
                 OperationStatus.INTERRUPTED,
                 f"the runtime API no longer knows operation {operation_id}, which it had "
@@ -169,7 +162,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
 
     async def _queue_within(
         self, request: RemoteOperationRequest, deadline: float
-    ) -> tuple[str, _Reading] | RemoteOperationResult:
+    ) -> tuple[str, OperationReading] | RemoteOperationResult:
         """Ask for the operation until the runtime answers or the wait ends. Asking again is
         safe: the runtime keeps one operation per send."""
         while True:
@@ -177,7 +170,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
                 return await self._queue(request)
             except RuntimeUnreachable as e:
                 if self._clock() >= deadline:
-                    return _ended(
+                    return ended(
                         request,
                         OperationStatus.INTERRUPTED,
                         f"the runtime API gave no answer to any request to queue within "
@@ -198,53 +191,22 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         self,
         request: RemoteOperationRequest,
         operation_id: str,
-        reading: _Reading,
+        reading: OperationReading,
         deadline: float,
     ) -> RemoteOperationResult:
-        while reading.result is None and self._clock() < deadline:
-            await self._sleep(POLL_SECONDS)
-            reading = await self._read_again(operation_id, reading)
-        if reading.result is not None:
-            return reading.result
-        return await self._stopped(request, operation_id, reading)
-
-    async def _stopped(
-        self, request: RemoteOperationRequest, operation_id: str, reading: _Reading
-    ) -> RemoteOperationResult:
-        """Ask for the operation to stop and return how that ended it."""
-        waited = f"no result within {self._wait.total_seconds():g} s of asking"
-        try:
-            reading = await self._cancel(operation_id)
-        except RuntimeUnreachable as e:
-            return _ended(
-                request,
-                OperationStatus.INTERRUPTED,
-                f"{waited}, and the runtime API can't be reached to stop operation "
-                f"{operation_id}: whether it ran is unknown ({e})",
-            )
-        # A claimed operation's worker sees the cancel at its next heartbeat, and a worker
-        # that has gone silent loses its lease: either settles it within one lease's length.
-        grace = reading.lease_seconds
-        grace_ends = self._clock() + grace
-        while reading.result is None and self._clock() < grace_ends:
-            await self._sleep(POLL_SECONDS)
-            reading = await self._read_again(operation_id, reading)
-        if reading.result is None:
-            return _ended(
-                request,
-                OperationStatus.INTERRUPTED,
-                f"{waited}; operation {operation_id} was asked to stop and is still "
-                f"{reading.state.value} {grace:g} s later",
-            )
-        if reading.result.status is OperationStatus.COMPLETED:
-            # It finished as the cancel was sent. Its result stands.
-            return reading.result
-        return replace(
-            reading.result,
-            reason=f"{reading.result.reason} (its requester asked it to stop: {waited})",
+        return await await_result(
+            request,
+            operation_id,
+            reading,
+            deadline=deadline,
+            waited_for=self._wait.total_seconds(),
+            read=lambda last: self._read_again(operation_id, last),
+            cancel=lambda: self._cancel(operation_id),
+            clock=self._clock,
+            sleep=self._sleep,
         )
 
-    async def _read_again(self, operation_id: str, last: _Reading) -> _Reading:
+    async def _read_again(self, operation_id: str, last: OperationReading) -> OperationReading:
         """The operation now, or ``last`` while the runtime gives no answer, so a brief outage
         doesn't end the wait. Each failed read is named, never passed over. A runtime that
         restarted answers again, and no longer waits on this send (``_SendNotCurrent``)."""
@@ -277,7 +239,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
 
     async def _queue(
         self, request: RemoteOperationRequest
-    ) -> tuple[str, _Reading] | RemoteOperationResult:
+    ) -> tuple[str, OperationReading] | RemoteOperationResult:
         """The queued operation's id and first reading, or the result when no worker can run
         it. A send that already asked is answered 200 with the operation it asked for."""
         status, body = await self._calls.post(
@@ -292,22 +254,22 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
             raise _SendNotCurrent()
         if status == 409 and error_code(body) == ERROR_NO_WORKER:
             details = as_object(field(error(body), "details"), "error.details")
-            return _ended(request, OperationStatus.NOT_EXECUTED, text(details, "reason"))
+            return ended(request, OperationStatus.NOT_EXECUTED, text(details, "reason"))
         if status not in (200, 201):
             raise self._calls.refusal(status, body, _OPERATIONS)
         return text(body, "operation_id"), _reading(body)
 
-    async def _read(self, operation_id: str) -> _Reading:
+    async def _read(self, operation_id: str) -> OperationReading:
         path = f"{_OPERATIONS}/{operation_id}"
         status, body = await self._calls.get(path)
         return self._answer(status, body, path, operation_id)
 
-    async def _cancel(self, operation_id: str) -> _Reading:
+    async def _cancel(self, operation_id: str) -> OperationReading:
         path = f"{_OPERATIONS}/{operation_id}/cancel"
         status, body = await self._calls.post(path, None)
         return self._answer(status, body, path, operation_id)
 
-    def _answer(self, status: int, body: Any, path: str, operation_id: str) -> _Reading:
+    def _answer(self, status: int, body: Any, path: str, operation_id: str) -> OperationReading:
         if status == 404 and error_code(body) == ERROR_OPERATION_NOT_FOUND:
             raise _OperationLost(operation_id)
         if status == 403 and error_code(body) == ERROR_SEND_NOT_CURRENT:
@@ -322,7 +284,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         return _reading(body)
 
 
-def _reading(body: Any) -> _Reading:
+def _reading(body: Any) -> OperationReading:
     raw_state = text(body, "state")
     try:
         state = OperationState(raw_state)
@@ -343,10 +305,4 @@ def _reading(body: Any) -> _Reading:
             result = result_from_wire(raw_result)
         except ValueError as e:
             raise RuntimeAnswerUnreadable(f"the operation's result can't be read: {e}") from e
-    return _Reading(state, result, seconds(body, "lease_seconds"))
-
-
-def _ended(
-    request: RemoteOperationRequest, status: OperationStatus, reason: str
-) -> RemoteOperationResult:
-    return RemoteOperationResult(status=status, reason=reason, dispatch_id=request.dispatch_id)
+    return OperationReading(state, result, seconds(body, "lease_seconds"))
