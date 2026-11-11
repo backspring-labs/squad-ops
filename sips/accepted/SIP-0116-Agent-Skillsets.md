@@ -131,7 +131,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 
 | part | status | where |
 |---|---|---|
-| Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **unplaced**, deliberately: the 2.8 plan places it, after acceptance | — |
+| Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **shipped** | 2.8 (PR #3013, closing #3011) |
 | Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 3: skills: loading with repair lineage, the kept copy, dispatch-time budgeting, precedence and digests (§7, §10) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 4: tools: requests within existing authority, and the coverage, authorization and availability outcomes (§8, §9) | **unplaced**, deliberately: the 2.8 plan places it, with the Game Development Platform's worker registry | — |

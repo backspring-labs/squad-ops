@@ -5,11 +5,6 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-## [2.7.0] — 2026-11-10
-
-Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the 2.6 line's debts closed. The cut's evidence is
-`docs/plans/verification-sets/2-7-0-cut-record.md`; the soak's record is `2-7-0-soak-record.md` beside it.
-
 ### Added
 - **Skillset declarations and each cycle's skillset record, inert** (#3011, SIP-0116 phase 1): an agent in a squad
   profile may declare the `skillsets` it carries, and a development profile may declare its `platform` and what its
@@ -23,6 +18,13 @@ Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the 2.6 line's
   cycle read route.
   **One change in behaviour:** cycle create now refuses a `development_profile` this deployment doesn't hold,
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
+
+## [2.7.0] — 2026-11-10
+
+Stabilization, feature-free by rule (`docs/plans/2-7-0-plan.md`): the 2.6 line's debts closed. The cut's evidence is
+`docs/plans/verification-sets/2-7-0-cut-record.md`; the soak's record is `2-7-0-soak-record.md` beside it.
+
+### Added
 - **A scripted squad for machinery cycles** (#2495): the `machinery` squad profile's agents all name the model
   `scripted`, and every call they make is answered from a recorded script
   (`--set llm_script=<name>@<version>`, scripts in `src/squadops/llm/llm_scripts/`), with no model loaded. The
