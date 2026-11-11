@@ -434,12 +434,13 @@ result is `interrupted`, and neither is a pass or a failure.
 | no worker serves the operation, or none is being heard from | `not_executed`, with the registry's reason |
 | the runtime gives no answer to the request to queue | the adapter asks again every 2 seconds, within the same wait. Asking again is safe: the runtime keeps one operation per send |
 | the runtime gives no answer to any request to queue within the wait | `interrupted`: the operation may be queued, and whether it ran is unknown. The task's next send stops it |
-| the send is no longer the task's current one | **raised,** as a refusal |
+| the send is no longer the task's current one, at any call | `interrupted`: the task was sent again, or the runtime restarted and waits on no send of it. Its reply would be dropped as stale, and an operation may be queued under the send. The task's next send stops it |
 | the operation settles | its result, as the worker or the registry wrote it |
 | no result within the wait | the adapter cancels. A queued operation settles `not_executed`. A claimed one's worker answers `interrupted`, or its lease runs out. Either happens within one lease's length, which every answer tells the adapter |
 | still unsettled one lease after the cancel | `interrupted`, naming its state |
 | a result that crosses the cancel | stands as it was submitted |
-| the runtime restarts during the wait | the adapter reads again, and names each read that got no answer. The operation and its lease are in Postgres (R5.4) |
+| the runtime is briefly unreachable during the wait | the adapter reads again, and names each read that got no answer |
+| the runtime restarts during the wait | its reply router is new and waits on no send, so the next read is refused as not current: `interrupted`, as above. The operation and its lease are in Postgres (R5.4), and the resumed run's send of the task stops it (found in review by the Spark session) |
 | the runtime can't be reached when the wait ends | `interrupted`: it was queued, and whether it ran is unknown |
 | the runtime no longer knows the operation | `interrupted`, likewise |
 | the runtime refuses the agent, or its answer can't be read | **raised.** The task fails with the reason and the run ends on it (R5.2: a failure with no executed failed row). A deploy's defect is never read as an operation that didn't run |

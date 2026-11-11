@@ -19,6 +19,7 @@ is ``not_executed`` with the reason, and one that may have started and has no re
 | no worker serves the operation, or none is being heard from | ``not_executed``, with the registry's reason. Nothing is queued |
 | the runtime gives no answer to the request to queue | it is asked again, until the wait ends |
 | the runtime gives no answer to any request to queue within the wait | ``interrupted``: it may have been queued, and whether it ran is unknown. The task's next send stops it |
+| the send is no longer the task's current one, at any call | ``interrupted``: the task was sent again, or the runtime restarted and waits on no send of it. Its reply would be dropped as stale, an operation may be queued under it (by this call, or by an earlier process on the same send), and whether it ran is unknown. The task's next send stops it |
 | the operation settles | its result, as the worker or the registry wrote it |
 | no result within the wait | the operation is asked to stop. Queued, it settles ``not_executed``. Claimed, its worker answers ``interrupted`` or its lease runs out, within one lease's length |
 | it is still unsettled one lease after being asked to stop | ``interrupted``, naming its state |
@@ -26,8 +27,8 @@ is ``not_executed`` with the reason, and one that may have started and has no re
 | the runtime no longer knows the operation | ``interrupted``, likewise |
 
 A runtime that **refuses** the agent (its credentials, its scope, a request it can't read, a
-send that is no longer the task's current one), or answers with a document this version can't
-read, raises (``RequestRefused``, ``RuntimeAnswerUnreadable``): the task fails with the reason,
+different request under the same send), or answers with a document this version can't read,
+raises (``RequestRefused``, ``RuntimeAnswerUnreadable``): the task fails with the reason,
 and nothing is read as an operation that merely didn't run.
 """
 
@@ -61,6 +62,7 @@ from squadops.remote_execution.models import (
 from squadops.remote_execution.wire import (
     ERROR_NO_WORKER,
     ERROR_OPERATION_NOT_FOUND,
+    ERROR_SEND_NOT_CURRENT,
     request_to_wire,
     result_from_wire,
 )
@@ -94,6 +96,10 @@ class _OperationLost(Exception):
     """The runtime has no operation with the id it gave."""
 
 
+class _SendNotCurrent(Exception):
+    """The runtime no longer waits on this send of the task (R5.6)."""
+
+
 class RuntimeApiRemoteExecution(RemoteExecutionPort):
     def __init__(
         self,
@@ -124,6 +130,18 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         self._sleep = sleep
 
     async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+        try:
+            return await self._run(request)
+        except _SendNotCurrent:
+            return _ended(
+                request,
+                OperationStatus.INTERRUPTED,
+                f"send {request.dispatch_id} is no longer task {request.task_id}'s current one: "
+                "the task was sent again, or the runtime restarted and waits on no send of it. "
+                "An operation may be queued under this send, and whether it ran is unknown",
+            )
+
+    async def _run(self, request: RemoteOperationRequest) -> RemoteOperationResult:
         deadline = self._clock() + self._wait.total_seconds()
         queued = await self._queue_within(request, deadline)
         if isinstance(queued, RemoteOperationResult):
@@ -227,9 +245,9 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         )
 
     async def _read_again(self, operation_id: str, last: _Reading) -> _Reading:
-        """The operation now, or ``last`` while the runtime gives no answer: a runtime that
-        restarts keeps the operation and its lease, so the wait goes on. Each failed read is
-        named, never passed over."""
+        """The operation now, or ``last`` while the runtime gives no answer, so a brief outage
+        doesn't end the wait. Each failed read is named, never passed over. A runtime that
+        restarted answers again, and no longer waits on this send (``_SendNotCurrent``)."""
         try:
             return await self._read(operation_id)
         except RuntimeUnreachable as e:
@@ -270,6 +288,8 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
                 "max_attempts": self._max_attempts,
             },
         )
+        if status == 403 and error_code(body) == ERROR_SEND_NOT_CURRENT:
+            raise _SendNotCurrent()
         if status == 409 and error_code(body) == ERROR_NO_WORKER:
             details = as_object(field(error(body), "details"), "error.details")
             return _ended(request, OperationStatus.NOT_EXECUTED, text(details, "reason"))
@@ -290,6 +310,8 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
     def _answer(self, status: int, body: Any, path: str, operation_id: str) -> _Reading:
         if status == 404 and error_code(body) == ERROR_OPERATION_NOT_FOUND:
             raise _OperationLost(operation_id)
+        if status == 403 and error_code(body) == ERROR_SEND_NOT_CURRENT:
+            raise _SendNotCurrent()
         if status != 200:
             raise self._calls.refusal(status, body, path)
         answered = text(body, "operation_id")

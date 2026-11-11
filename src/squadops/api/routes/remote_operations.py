@@ -37,6 +37,7 @@ from squadops.remote_execution.registry import WorkerRegistry, cadence
 from squadops.remote_execution.wire import (
     ERROR_NO_WORKER,
     ERROR_OPERATION_NOT_FOUND,
+    ERROR_SEND_NOT_CURRENT,
     request_from_wire,
     result_to_wire,
 )
@@ -55,8 +56,6 @@ router = APIRouter(
 
 #: The origin key the route writes itself: the identity the request was made under.
 ORIGIN_REQUESTED_BY = "requested_by"
-#: The send named isn't the task's current one, so nothing is done under it.
-ERROR_SEND_NOT_CURRENT = "REMOTE_OPERATION_SEND_NOT_CURRENT"
 #: The send already asked, with a different request.
 ERROR_SEND_CONFLICT = "REMOTE_OPERATION_SEND_CONFLICT"
 

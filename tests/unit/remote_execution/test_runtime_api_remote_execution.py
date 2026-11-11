@@ -35,6 +35,7 @@ from squadops.capabilities.handlers.cycle.run_remote_operation import (
 )
 from squadops.capabilities.skillsets import Skillset, SkillsetCapability, ToolRequest
 from squadops.cycles.verification_integrity import ResultStatus
+from squadops.execution.reply_router import ReplyRouter
 from squadops.remote_execution import leasing
 from squadops.remote_execution.models import OperationStatus
 from squadops.remote_execution.serving import REASON_CANCELLED, Worker
@@ -532,23 +533,72 @@ async def test_a_create_whose_answer_was_lost_asks_again_and_reads_the_one_opera
     assert await world.registry.claim(session.session_id) is None
 
 
-async def test_a_send_that_is_no_longer_current_is_a_refusal_naming_it():
-    """Bug caught: a stale send's refusal read as an operation that didn't run, so the task's
-    record says not executed while the current send's operation runs."""
+async def test_a_send_the_runtime_no_longer_waits_on_is_interrupted_and_never_a_refusal():
+    """The task was sent again, so the runtime waits on a newer send. Bug caught: an
+    ordinary re-send read as a refusal, which fails the task as a deploy defect; or read as
+    not executed, though an earlier process on this send may have queued the operation."""
     world = _world()
-    port, _ = _port(world)
+    port, recording = _port(world)
     await world.registry.register(registration())
     world.sends.waiting["task_7"] = "send-2"
 
-    with pytest.raises(RequestRefused, match="REMOTE_OPERATION_SEND_NOT_CURRENT"):
-        await port.run_operation(request(task_id="task_7", dispatch_id="send-1"))
+    result = await port.run_operation(request(task_id="task_7", dispatch_id="send-1"))
+
+    assert (result.status, result.dispatch_id) == (OperationStatus.INTERRUPTED, "send-1")
+    assert result.reason == (
+        "send send-1 is no longer task task_7's current one: the task was sent again, or the "
+        "runtime restarted and waits on no send of it. An operation may be queued under this "
+        "send, and whether it ran is unknown"
+    )
+    assert [call[:3] for call in recording.calls] == [("POST", "/api/v1/remote-operations", 403)]
 
 
-async def test_a_runtime_that_restarts_during_the_wait_is_read_again_and_the_result_returned(
-    caplog,
-):
-    """Bug caught: one failed read ending the wait, when the operation and its lease outlive a
-    runtime restart (R3.3)."""
+async def test_a_runtime_restart_during_the_wait_ends_it_interrupted_and_the_next_send_stops_it():
+    """The runtime restarts while an agent waits. Its reply router is new and waits on no send,
+    so the agent's next read is refused as not current, through the real routes (R5.6). Bug
+    caught: that refusal raised as a deploy defect; or the orphaned operation left to run once
+    the resumed run sends the task again."""
+    world = _world()
+    port, recording = _port(world)
+    await world.registry.register(registration())
+    asked = world.current(request(task_id="task_7", dispatch_id="send-1"))
+
+    async def restart_once_queued() -> None:
+        while not recording.calls:
+            await asyncio.sleep(0)
+        world.app.state.reply_router = ReplyRouter(MagicMock())
+
+    restarting = asyncio.ensure_future(restart_once_queued())
+    result = await port.run_operation(asked)
+    await restarting
+    orphan = recording.operation_id
+
+    assert result.status is OperationStatus.INTERRUPTED
+    assert "is no longer task task_7's current one" in result.reason
+    assert [call[2] for call in recording.calls] == [201, 403]
+    assert (await world.registry.operation(orphan)).state is OperationState.QUEUED
+
+    world.app.state.reply_router.register("task_7", "send-2")  # the resumed run's send
+    resend = asyncio.ensure_future(
+        port.run_operation(request(task_id="task_7", dispatch_id="send-2"))
+    )
+    while len(recording.calls) < 3:
+        await asyncio.sleep(0)
+    resend.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await resend
+
+    stopped = await world.registry.operation(orphan)
+    assert (stopped.state, stopped.result.reason) == (
+        OperationState.SETTLED,
+        leasing.superseded_reason("send-2"),
+    )
+
+
+async def test_a_read_that_gets_no_answer_is_read_again_and_the_result_returned(caplog):
+    """A brief outage: the runtime unreachable, then busy, then answering. Bug caught: one
+    failed read ending the wait. (A runtime that restarted answers that it waits on no send of
+    the task: the restart test above.)"""
     port, asked = _answering(
         (201, _operation()),
         httpx.ConnectError("connection refused"),

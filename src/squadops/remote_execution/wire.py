@@ -30,6 +30,9 @@ ERROR_RESULT_REFUSED = "RESULT_REFUSED"
 #: The error codes of ``/api/v1/remote-operations`` that a requester acts on (R5.6).
 ERROR_NO_WORKER = "NO_WORKER_FOR_OPERATION"
 ERROR_OPERATION_NOT_FOUND = "REMOTE_OPERATION_NOT_FOUND"
+#: The send named isn't its task's current one (R5.6): the task was sent again, or the runtime
+#: restarted and waits on no send of it.
+ERROR_SEND_NOT_CURRENT = "REMOTE_OPERATION_SEND_NOT_CURRENT"
 
 _REQUEST_KEYS = frozenset(
     {
