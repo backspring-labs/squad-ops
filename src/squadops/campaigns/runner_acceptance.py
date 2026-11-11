@@ -76,7 +76,7 @@ from squadops.campaigns.evaluator_trees import (
 
 if TYPE_CHECKING:
     from squadops.sandbox.findings import FindingsReading
-    from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
+    from squadops.sandbox.models import WorkspaceRevision
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +259,7 @@ class _Stage(NamedTuple):
     sandbox records for it."""
 
     name: str
-    origin: RevisionOrigin
+    origin: str
     patch: dict
     revision_id: str
 
