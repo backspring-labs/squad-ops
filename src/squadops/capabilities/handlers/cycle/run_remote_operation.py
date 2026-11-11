@@ -28,7 +28,6 @@ all. It succeeds with its unverified rows, and the roll-up reads ``blocked_unver
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import time
 from collections.abc import Mapping
@@ -49,12 +48,15 @@ from squadops.remote_execution.models import (
     OPERATION_EVIDENCE_ARTIFACT_TYPE,
     AssertionOutcome,
     OperationStatus,
+    ReadingSide,
     RemoteOperationRequest,
     RemoteOperationResult,
     Scenario,
     outcomes_by_assertion,
+    records_document,
     result_defects,
 )
+from squadops.remote_execution.scenario import staged_revision
 from squadops.tasks.task_types import TaskType
 
 ASSERTION_RECORDS_FILENAME = "operation_assertions.json"
@@ -90,8 +92,8 @@ class QARunRemoteOperationHandler(CapabilityHandler):
         self, inputs: dict[str, Any], contract: TaskContract | None = None
     ) -> list[str]:
         """Everything the operation needs is required, and nothing is filled in: the contract
-        and its supplier from the cycle's record, the frozen scenario, and the candidate tree
-        at a revision."""
+        and its supplier from the cycle's record, the frozen scenario, and the candidate tree,
+        which holds the scenario's declaration at the path the scenario names (#3044)."""
         errors = super().validate_inputs(inputs, contract)
         operation = inputs.get("operation")
         if not isinstance(operation, Mapping):
@@ -107,16 +109,29 @@ class QARunRemoteOperationHandler(CapabilityHandler):
             )
             if not isinstance(operation.get("mode"), str):
                 errors.append("'operation.mode' is required, and is empty for a contract with none")
-        errors.extend(_scenario_errors(inputs.get("operation_scenario")))
-        if not isinstance(inputs.get("acceptance_workspace_files"), Mapping):
+        scenario_errors = _scenario_errors(inputs.get("operation_scenario"))
+        errors.extend(scenario_errors)
+        files = inputs.get("acceptance_workspace_files")
+        if not isinstance(files, Mapping):
             errors.append("'acceptance_workspace_files' is required: the candidate tree to verify")
-        if not inputs.get("workspace_revision_id"):
-            errors.append("'workspace_revision_id' is required: the revision the tree was cut at")
+        elif not scenario_errors:
+            path = inputs["operation_scenario"]["path"]
+            if not isinstance(files.get(path), str):
+                errors.append(
+                    f"the candidate tree holds no scenario declaration at {path!r}, where the "
+                    "frozen scenario was placed"
+                )
         return errors
 
     async def handle(self, context: ExecutionContext, inputs: dict[str, Any]) -> HandlerResult:
         started = time.perf_counter()
-        operation, scenario = inputs["operation"], _scenario(inputs["operation_scenario"])
+        # The wire stages text. A path whose content isn't text is left out, and named in the
+        # reading (#3044 §4), so a result on a tree without it is never read as the whole tree's.
+        tree = inputs["acceptance_workspace_files"]
+        files = {path: content for path, content in tree.items() if isinstance(content, str)}
+        not_staged = tuple(sorted(path for path in tree if path not in files))
+        operation = inputs["operation"]
+        scenario = _scenario(inputs["operation_scenario"], files)
         try:
             tool = _tool_request(packaged_skillsets(), operation)
         except ValueError as refused:
@@ -141,8 +156,10 @@ class QARunRemoteOperationHandler(CapabilityHandler):
             provider=tool.provider,
             operation=tool.id,
             location=tool.location,
-            source_revision=str(inputs["workspace_revision_id"]),
-            source_files=dict(inputs["acceptance_workspace_files"]),
+            # The revision of exactly what is staged (#3044 §4), so a reading binds to the tree
+            # the provider ran on, cut the way every lane cuts it.
+            source_revision=staged_revision(files),
+            source_files=files,
             scenario=scenario,
             task_id=context.task_id,
             dispatch_id=context.dispatch_id,
@@ -178,27 +195,15 @@ class QARunRemoteOperationHandler(CapabilityHandler):
             operation_reason = REASON_INTERRUPTED
 
         checks = _check_rows(request, result, operation_reason)
-        document = {
-            "contract": request.contract,
-            "mode": request.mode,
-            "provider": request.provider,
-            "operation": request.operation,
-            "location": request.location,
-            "skillset": operation["skillset"],
-            "skillset_digest": operation["skillset_digest"],
-            "source_revision": request.source_revision,
-            "scenario": dataclasses.asdict(scenario),
-            "status": result.status.value,
-            "reason": result.reason,
-            "provider_version": result.provider_version,
-            "ran_with": dict(result.ran_with),
-            "assertions": [
-                {**dataclasses.asdict(record), "outcome": record.outcome.value}
-                for record in outcomes_by_assertion(request, result).values()
-            ]
-            if result.status is OperationStatus.COMPLETED
-            else [],
-        }
+        # This task verifies the candidate tree it was handed: its reading is the candidate's.
+        document = records_document(
+            request,
+            result,
+            ReadingSide.CANDIDATE,
+            not_staged=not_staged,
+            skillset=operation["skillset"],
+            skillset_digest=operation["skillset_digest"],
+        )
         executed = [c for c in checks if c["status"] != ResultStatus.SKIPPED]
         failed = [c for c in checks if c["status"] == ResultStatus.FAILED]
         summary = (
@@ -267,7 +272,7 @@ def _scenario_errors(value: object) -> list[str]:
         return ["'operation_scenario' is required: the frozen scenario the operation runs"]
     errors = [
         f"'operation_scenario.{key}' is required"
-        for key in ("scenario_id", "digest")
+        for key in ("scenario_id", "digest", "named_assertion", "path")
         if not isinstance(value.get(key), str) or not value.get(key)
     ]
     assertions = value.get("assertions")
@@ -281,11 +286,27 @@ def _scenario_errors(value: object) -> list[str]:
             "'operation_scenario.assertions' is required: the distinct ids of the assertions "
             "the scenario declares. A scenario that asserts nothing verifies nothing"
         )
+    elif isinstance(value.get("named_assertion"), str) and value["named_assertion"] not in (
+        assertions
+    ):
+        errors.append(
+            f"'operation_scenario.named_assertion' is {value['named_assertion']!r}, which the "
+            "scenario doesn't declare"
+        )
     return errors
 
 
-def _scenario(value: Mapping[str, Any]) -> Scenario:
-    return Scenario(str(value["scenario_id"]), str(value["digest"]), tuple(value["assertions"]))
+def _scenario(value: Mapping[str, Any], files: Mapping[str, str]) -> Scenario:
+    """The frozen scenario, with its declaration read from the tree at its path. The provider
+    digests that text and runs it only when it is the frozen one, so an edit made to the file
+    after it was frozen reads not executed there (#3044)."""
+    return Scenario(
+        scenario_id=value["scenario_id"],
+        digest=value["digest"],
+        assertions=tuple(value["assertions"]),
+        named_assertion=value["named_assertion"],
+        document=files[value["path"]],
+    )
 
 
 def _tool_request(catalog: Mapping[str, Skillset], operation: Mapping[str, Any]) -> Any:

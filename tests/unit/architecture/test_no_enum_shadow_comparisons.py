@@ -120,6 +120,16 @@ _ALLOWLIST: set[tuple[str, str]] = {
     ("src/squadops/cycles/verification_normalize.py", "command"),
     # - a campaign evidence artifact's ``part`` metadata (the package, §14).
     ("src/squadops/campaigns/progress.py", "package"),
+    # #3044's scenario vocabulary made "text" and "number" ArgumentKind values, and "equals" and
+    # "contains" ExpectOp values. These are other vocabularies' words: a JSON-schema type name
+    # (scaffold_contract, capabilities/models), SIP-0113's page-scenario check keys and target
+    # field (scenarios/steps), and an A2A message part's kind (a2a_client).
+    ("src/squadops/stacks/scaffold_contract.py", "number"),
+    ("src/squadops/capabilities/models.py", "number"),
+    ("src/squadops/scenarios/steps.py", "equals"),
+    ("src/squadops/scenarios/steps.py", "contains"),
+    ("src/squadops/scenarios/steps.py", "text"),
+    ("adapters/comms/a2a_client.py", "text"),
 }
 
 # Enum values this short/common that they produce coincidental matches are not

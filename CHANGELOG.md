@@ -6,6 +6,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A frozen scenario is a declaration, read strictly and digested** (#3044, part 1; SIP-0117 R5.8): a scenario
+  declares its reader, setup, steps, assertions and the one assertion its criterion names. It is refused when it
+  steps outside its reader's vocabulary, and frozen as the `sha256` of its canonical text. A remote operation's
+  request now carries the declaration's text and named assertion, and the provider refuses one whose text isn't
+  the frozen one, as `not_executed`. The request's revision is that of exactly the files it stages. Every
+  reading is written in one shape, with its side and the paths it didn't stage. The baseline rule
+  (`baseline_verdict`) lives in one place. The fixture provider's operation is now `fixture/declared_scenario`.
+  Nothing in a live cycle supplies a scenario yet; part 2 does.
 - **An agent's remote operation reaches a worker** (#3023; SIP-0117 phase 2b, part 3, R5.6): the handler of
   `qa.run_remote_operation` now has an adapter behind its port. It queues the operation at the runtime API, under
   the agent's service identity and a new scope the agent role alone holds (`operations:request`), through three

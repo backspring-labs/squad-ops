@@ -26,7 +26,6 @@ from squadops.remote_execution.models import (
     AssertionRecord,
     OperationStatus,
     RemoteOperationRequest,
-    Scenario,
 )
 from squadops.remote_execution.serving import Worker
 from squadops.remote_execution.wire import request_to_wire
@@ -43,6 +42,7 @@ from squadops.remote_execution.workers import (
 )
 from tests.unit.api.worker_world import World, identity
 from tests.unit.remote_execution.registry_contract import PLAY, passing, queue, request
+from tests.unit.remote_execution.scenario_fixture import OPEN, door_opens, tree
 from tests.unit.remote_execution.worker_harness import Serving, sleeping_on
 
 pytestmark = pytest.mark.auth
@@ -93,8 +93,8 @@ async def test_a_worker_over_http_serves_a_queued_operation_to_its_accepted_resu
         operation=OPERATION,
         location="worker",
         source_revision="rev_1",
-        source_files={"src/init.luau": "return {}\n", "src/empty.luau": "", HOLD_PATH: "40"},
-        scenario=Scenario("scn_1", "sha256:abc", ("src/init.luau", "src/empty.luau", "src/no")),
+        source_files=tree(OPEN, **{HOLD_PATH: "40"}),
+        scenario=door_opens(),
         task_id="task_1",
         dispatch_id="dispatch-7",
     )
@@ -116,21 +116,15 @@ async def test_a_worker_over_http_serves_a_queued_operation_to_its_accepted_resu
         await serving.until(settled)
 
     result = (await world.registry.operation(queued.operation_id)).result
-    expected = "a staged file with content"
     assert result.status is OperationStatus.COMPLETED
     assert result.records == (
-        AssertionRecord(
-            "src/init.luau", AssertionOutcome.PASSED, "staged, 10 bytes", expected, "worker"
-        ),
-        AssertionRecord(
-            "src/empty.luau", AssertionOutcome.FAILED, "staged, empty", expected, "worker"
-        ),
-        AssertionRecord("src/no", AssertionOutcome.FAILED, "not staged", expected, "worker"),
+        AssertionRecord("spawned", AssertionOutcome.PASSED, "100", "greater_than 0", "client"),
+        AssertionRecord("door-open", AssertionOutcome.PASSED, "false", "equals false", "server"),
     )
-    assert (result.dispatch_id, result.provider_version) == ("dispatch-7", "fixture@1")
+    assert (result.dispatch_id, result.provider_version) == ("dispatch-7", "fixture@2")
     ((session, _),) = await world.registry.sessions()
     assert session.operations == (ServedOperation(PROVIDER, OPERATION),)
-    assert session.tool_versions == {"fixture": "1"}
+    assert session.tool_versions == {"fixture": "2", "reader": "fixture/1"}
     assert await world.registry.refusals(queued.operation_id) == []
 
 

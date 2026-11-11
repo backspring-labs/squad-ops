@@ -63,12 +63,29 @@ class OperationStatus(StrEnum):
 
 @dataclass(frozen=True)
 class Scenario:
-    """A frozen scenario: its identity, its digest, and the assertions it declares. The
-    digest is taken before development, so a pass means the scenario that was approved."""
+    """A frozen scenario: its identity, its digest, the assertions it declares, the one that
+    is its criterion's, and its declaration's text (#3044). The digest is taken before
+    development, so a pass means the scenario that was approved. The provider runs the text it
+    is handed only when that text's digest is this one (``scenario.handed_scenario_defects``).
+    """
 
     scenario_id: str
     digest: str
     assertions: tuple[str, ...]
+    #: The assertion the criterion names: it must execute and fail on the baseline, and pass on
+    #: the candidate. Every other declared assertion is a precondition.
+    named_assertion: str
+    #: The declaration's canonical text, as frozen (``scenario.canonical_text``).
+    document: str
+
+
+class ReadingSide(StrEnum):
+    """Which tree a reading was taken on (#3044 §4)."""
+
+    #: The accepted baseline, with the criterion's scenario file laid over it.
+    BASELINE = "baseline"
+    #: The candidate the work produced.
+    CANDIDATE = "candidate"
 
 
 @dataclass(frozen=True)
@@ -152,6 +169,11 @@ def result_defects(request: RemoteOperationRequest, result: RemoteOperationResul
     if result.status is not OperationStatus.COMPLETED and result.records:
         defects.append(f"the operation is {result.status.value} and still returned records")
     declared = set(request.scenario.assertions)
+    if request.scenario.named_assertion not in declared:
+        defects.append(
+            f"the request names {request.scenario.named_assertion!r} as its criterion's "
+            "assertion, and its scenario doesn't declare it"
+        )
     seen: set[str] = set()
     for record in result.records:
         if record.assertion_id not in declared:
@@ -174,4 +196,59 @@ def outcomes_by_assertion(
         assertion_id: recorded.get(assertion_id)
         or AssertionRecord(assertion_id, AssertionOutcome.MISSING)
         for assertion_id in request.scenario.assertions
+    }
+
+
+def records_document(
+    request: RemoteOperationRequest,
+    result: RemoteOperationResult,
+    side: ReadingSide,
+    *,
+    not_staged: tuple[str, ...],
+    **operation: str,
+) -> dict[str, object]:
+    """One reading as the assertion-records artifact (``ASSERTION_RECORDS_ARTIFACT_TYPE``)
+    holds it (#3044 §4): the side and revision it was taken on, the scenario with its digest
+    and named assertion, the operation's status, and one record per declared assertion when it
+    completed. ``operation`` adds what the caller knows of who supplied the operation (the
+    handler's skillset and its digest). Every lane that keeps a reading writes it here, so a
+    reader reads one shape.
+
+    ``not_staged`` names the paths of the tree being judged that the request didn't carry (the
+    wire stages text only). The revision binds to what was staged, so a reading on a tree that
+    lacks them says so here, and nothing reads it as the whole tree's."""
+    return {
+        "side": side.value,
+        "contract": request.contract,
+        "mode": request.mode,
+        "provider": request.provider,
+        "operation": request.operation,
+        "location": request.location,
+        **operation,
+        "source_revision": request.source_revision,
+        "not_staged": sorted(not_staged),
+        "scenario": {
+            "scenario_id": request.scenario.scenario_id,
+            "digest": request.scenario.digest,
+            "assertions": list(request.scenario.assertions),
+            "named_assertion": request.scenario.named_assertion,
+            "document": request.scenario.document,
+        },
+        "named_assertion": request.scenario.named_assertion,
+        "status": result.status.value,
+        "reason": result.reason,
+        "provider_version": result.provider_version,
+        "ran_with": dict(result.ran_with),
+        "assertions": [
+            {
+                "assertion_id": record.assertion_id,
+                "outcome": record.outcome.value,
+                "observed": record.observed,
+                "expected": record.expected,
+                "context": record.context,
+            }
+            for record in outcomes_by_assertion(request, result).values()
+        ]
+        if result.status is OperationStatus.COMPLETED
+        else [],
     }

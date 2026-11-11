@@ -128,8 +128,8 @@ async def test_the_root_builds_a_worker_that_registers_as_configured(env, monkey
     (registration,) = registered
     assert registration.worker_id == "macbook"
     assert [(o.provider, o.operation) for o in registration.operations] == [
-        ("fixture", "staged_files")
+        ("fixture", "declared_scenario")
     ]
-    assert registration.tool_versions == {"fixture": "1"}
+    assert registration.tool_versions == {"fixture": "2", "reader": "fixture/1"}
     assert registration.platform == f"{platform.system().lower()}-{platform.machine().lower()}"
     assert bound == ["http://spark.test:8001", "closed"]
