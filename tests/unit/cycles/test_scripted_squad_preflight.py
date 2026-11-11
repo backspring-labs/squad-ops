@@ -16,6 +16,7 @@ import pytest
 
 from adapters.cycles.config_squad_profile import ConfigSquadProfile
 from adapters.llm.factory import create_llm_provider, with_scripted_model
+from adapters.llm.script_positions import InProcessScriptPositions
 from squadops.cycles.models import PreflightRejectedError
 from squadops.cycles.preflight import scripted_squad_decision
 from squadops.llm.script import ScriptLibrary, script_version
@@ -154,7 +155,7 @@ async def test_the_create_route_admits_a_pinned_machinery_cycle_and_refuses_an_u
         return []
 
     monkeypatch.setattr(engine, "list_available_models", _pulled)
-    port = with_scripted_model(engine)
+    port = with_scripted_model(engine, InProcessScriptPositions())
     machinery = await _profile("machinery")
     config = {"memory": "disabled", "llm_script": f"shelf-flag@{VERSION}"}
 

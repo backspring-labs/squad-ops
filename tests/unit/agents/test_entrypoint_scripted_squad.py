@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from adapters.llm.script_positions import InProcessScriptPositions
 from squadops.llm.script import script_version
 from squadops.tasks.models import TaskEnvelope
 
@@ -87,6 +88,11 @@ async def runner(tmp_path, monkeypatch):
     queue = AsyncMock()
     monkeypatch.setattr("adapters.comms.factory.create_queue_adapter", lambda *a, **k: queue)
     monkeypatch.setattr("adapters.comms.factory.create_task_attempts", lambda *a, **k: None)
+    # #3005: the positions a deploy keeps in Redis, held in the test.
+    monkeypatch.setattr(
+        "adapters.llm.factory.create_script_positions",
+        lambda comms: InProcessScriptPositions(),
+    )
 
     agent = entrypoint.AgentRunner(role="strat", agent_id="strat-agent")
     agent._config = _config()

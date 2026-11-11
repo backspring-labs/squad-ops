@@ -70,6 +70,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A scripted cycle's answers survive an agent restart** (#3005): the scripted squad keys each answer by the task's
+  type, its occurrence among the cycle's tasks of that type, and its call. Those counts lived in the agent's
+  process, so an agent that restarted mid-cycle counted from the first task again and answered a later task from
+  an earlier task's entry. They now live in the stack's Redis, per cycle, with the script each cycle named, and a
+  restarted agent goes on from its cycle's place. No deploy change: Redis is the one every agent already reaches.
 - **A cancelled remote operation whose worker goes silent is settled** (#3023; SIP-0117 R5.6): its lease runs
   out and it settles `interrupted`. It was queued again while it had an attempt left, still marked cancelled, so
   no worker could claim it and nothing ended it.

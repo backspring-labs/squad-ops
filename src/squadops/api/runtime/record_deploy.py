@@ -186,7 +186,11 @@ def _agent_instances(path: Path) -> list[dict[str, Any]]:
 
 async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
     from adapters.cycles.factory import create_squad_profile_port
-    from adapters.llm.factory import create_llm_provider, with_scripted_model
+    from adapters.llm.factory import (
+        create_llm_provider,
+        create_script_positions,
+        with_scripted_model,
+    )
 
     config, pool = await _deploy_config_and_pool()
     try:
@@ -204,7 +208,8 @@ async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
                 timeout_seconds=float(config.llm.timeout),
                 api_key=config.llm.api_key,
                 **({"default_model": config.llm.model} if config.llm.model else {}),
-            )
+            ),
+            create_script_positions(config.comms),
         )
         return await record_deploy(
             facts,
