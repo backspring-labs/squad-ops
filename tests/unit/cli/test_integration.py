@@ -68,6 +68,7 @@ def _test_config():
             },
             "llm": {"provider": "ollama", "url": "http://ollama:11434"},
             "tools": {"filesystem": {"provider": "local"}},
+            "remote_execution": {"provider": "none"},
         }
     )
 

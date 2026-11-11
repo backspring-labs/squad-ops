@@ -1,7 +1,8 @@
-"""Request and response bodies of ``/api/v1/workers`` (SIP-0117 R3.3, R5.4).
+"""Request and response bodies of ``/api/v1/workers`` and ``/api/v1/remote-operations``
+(SIP-0117 R3.3, R5.4, R5.6).
 
 A request and a result travel as the documents ``squadops.remote_execution.wire`` reads and
-writes, so the route, the store and the worker share one reading of them.
+writes, so the routes, the store, the worker and the requester share one reading of them.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _Strict(BaseModel):
@@ -92,3 +93,32 @@ class ResultResponse(BaseModel):
     accepted: bool
     #: The same claim had already had this result accepted; nothing was stored again.
     replayed: bool
+
+
+class RemoteOperationCreate(_Strict):
+    """A requester's operation to queue (R5.6)."""
+
+    #: The request, as ``wire.request_to_wire`` writes it.
+    request: dict[str, Any]
+    #: Who asked, for the audit: the agent it ran in. The task and its send are the request's.
+    origin: dict[str, str]
+    #: How many times a worker may claim it. The requester's to say.
+    max_attempts: int = Field(ge=1)
+
+
+class RemoteOperationResponse(BaseModel):
+    """One operation as it stands, for the requester that waits on it."""
+
+    operation_id: str
+    #: ``queued``, ``claimed`` or ``settled``.
+    state: str
+    attempt: int
+    max_attempts: int
+    cancel_requested: bool
+    created_at: datetime
+    settled_at: datetime | None
+    #: The result as ``wire.result_to_wire`` writes it, once the operation is settled.
+    result: dict[str, Any] | None
+    #: How long a lease lasts. A claimed operation asked to stop is settled within it: by its
+    #: worker, or by its lease running out. So a requester carries no such number itself.
+    lease_seconds: float

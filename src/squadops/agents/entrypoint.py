@@ -24,6 +24,7 @@ import os
 import signal
 import sys
 from collections.abc import Awaitable, Iterable
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from squadops import __version__ as SQUADOPS_VERSION
@@ -228,12 +229,13 @@ class AgentRunner:
         # diagnosis to the instance-config load below — which fails with a
         # confusing "no instance configuration for 'lead-001'" instead of naming
         # the real cause (#333, the _get_default_instances() masking class).
-        self.agent_id = agent_id or os.getenv("SQUADOPS__AGENT__ID")
-        if not self.agent_id:
+        configured = agent_id or os.getenv("SQUADOPS__AGENT__ID")
+        if not configured:
             raise ValueError(
                 "Agent ID is not configured — set SQUADOPS__AGENT__ID. "
                 "Agent identity is never defaulted."
             )
+        self.agent_id: str = configured
         self.system: SquadOpsSystem | None = None
         self._shutdown_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task | None = None
@@ -362,33 +364,44 @@ class AgentRunner:
         """
         from adapters.observability.healthcheck_http import HealthCheckHttpReporter
 
+        return HealthCheckHttpReporter(token_provider=self._service_token_provider(config))
+
+    def _service_token_provider(self, config):
+        """The agent's bearer token for the runtime API's authed lane, or ``None`` when no
+        agent service identity is configured (#326). One client serves every caller in this
+        process: the heartbeats, and the remote-execution port (SIP-0117 R5.6).
+
+        Raises:
+            ValueError: agent_client is configured without the oidc section
+                needed to reach the token endpoint.
+        """
+        if self._service_token_client is not None:
+            return self._service_token_client.get_token
         auth_cfg = config.auth
-        token_provider = None
-        if auth_cfg.agent_client is not None:
-            if auth_cfg.oidc is None:
-                raise ValueError(
-                    "auth.agent_client is configured but auth.oidc is missing — "
-                    "the OIDC issuer_url is required to acquire service tokens. "
-                    "Set SQUADOPS__AUTH__OIDC__ISSUER_URL (and AUDIENCE) or unset "
-                    "SQUADOPS__AUTH__AGENT_CLIENT__*."
-                )
-            from adapters.auth.factory import create_service_token_client
-
-            self._service_token_client = create_service_token_client(
-                "agent",
-                auth_cfg.agent_client,
-                auth_cfg.oidc,
+        if auth_cfg.agent_client is None:
+            return None
+        if auth_cfg.oidc is None:
+            raise ValueError(
+                "auth.agent_client is configured but auth.oidc is missing — "
+                "the OIDC issuer_url is required to acquire service tokens. "
+                "Set SQUADOPS__AUTH__OIDC__ISSUER_URL (and AUDIENCE) or unset "
+                "SQUADOPS__AUTH__AGENT_CLIENT__*."
             )
-            token_provider = self._service_token_client.get_token
-            logger.info(
-                "Agent service identity configured for heartbeats",
-                extra={
-                    "agent_id": self.agent_id,
-                    "client_id": auth_cfg.agent_client.client_id,
-                },
-            )
+        from adapters.auth.factory import create_service_token_client
 
-        return HealthCheckHttpReporter(token_provider=token_provider)
+        self._service_token_client = create_service_token_client(
+            "agent",
+            auth_cfg.agent_client,
+            auth_cfg.oidc,
+        )
+        logger.info(
+            "Agent service identity configured",
+            extra={
+                "agent_id": self.agent_id,
+                "client_id": auth_cfg.agent_client.client_id,
+            },
+        )
+        return self._service_token_client.get_token
 
     async def stop(self) -> None:
         """Stop the agent gracefully."""
@@ -473,6 +486,7 @@ class AgentRunner:
         )
         from adapters.llm.factory import create_llm_provider, with_scripted_model
         from adapters.prompts import create_prompt_repository
+        from adapters.remote_execution.factory import create_remote_execution
         from adapters.telemetry.factory import (
             create_llm_observability_provider,
             create_telemetry_provider,
@@ -579,6 +593,21 @@ class AgentRunner:
             provider=config.tools.filesystem.provider, allowed_roots=None, production_mode=False
         )
 
+        # SIP-0117 R5.6: where qa.run_remote_operation sends its operation. The selector is
+        # required and has no default: `none` binds no port, said by the deploy, and the
+        # handler then reports the operation as not executed. `runtime_api` queues it at the
+        # runtime API under this agent's service identity. With no identity configured the
+        # calls carry no token, as the heartbeats' do, and a runtime that authenticates
+        # refuses them: that is raised where it happens, never read as "nothing to run".
+        remote_execution = create_remote_execution(
+            config.remote_execution.provider,
+            base_url=config.runtime_api_url,
+            token=self._service_token_provider(config),
+            origin={"agent_id": self.agent_id},
+            wait=timedelta(seconds=config.remote_execution.wait_seconds),
+            max_attempts=config.remote_execution.max_attempts,
+        )
+
         # Create RabbitMQ queue adapter. prefetch_count=1 (#323): the broker
         # hands this agent one unacked comms message at a time, matching the
         # old poll loop's one-at-a-time pickup.
@@ -656,6 +685,7 @@ class AgentRunner:
             "llm_observability": llm_observability,
             "request_renderer": request_renderer,
             "messaging": messaging,
+            "remote_execution": remote_execution,
         }
 
     async def _consume_tasks(self) -> None:

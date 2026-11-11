@@ -289,3 +289,25 @@ async def test_a_waiter_that_names_no_send_is_refused():
 
     with pytest.raises(ValueError, match="names the send"):
         router.register("t1", "")
+
+
+async def test_the_current_send_is_the_one_waited_on_until_its_reply_or_its_cancel():
+    """What the requester's routes read to scope a remote operation to its task's send
+    (SIP-0117 R5.6). Bug caught: a stale send's reply moving the current send, so the stale
+    requester's calls pass and the current one's are refused; or a send still read as current
+    after its reply or its timeout, so a finished task's operation can still be asked for."""
+    q = FakeQueue()
+    router = ReplyRouter(q)
+    await router.ensure_subscribed("eve")
+    assert router.current_dispatch("t1") is None
+
+    router.register("t1", "d2")
+    await q.deliver("eve_replies", _reply("t1", status="FAILED", dispatch="d1"))
+    while_waiting = router.current_dispatch("t1")
+    await q.deliver("eve_replies", _reply("t1", dispatch="d2"))
+    after_its_reply = router.current_dispatch("t1")
+    router.register("t2", "d5")
+    router.cancel("t2")
+
+    assert (while_waiting, after_its_reply) == ("d2", None)
+    assert router.current_dispatch("t2") is None

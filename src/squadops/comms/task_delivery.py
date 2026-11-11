@@ -31,3 +31,14 @@ def delivery_key(task_id: str, metadata: Mapping[str, Any] | None) -> str:
     an envelope that carries no send id (one dispatched before #2333)."""
     dispatch = (metadata or {}).get(DISPATCH_ID_METADATA_KEY)
     return f"{task_id}@{dispatch}" if dispatch else task_id
+
+
+def dispatch_of(metadata: Mapping[str, Any] | None) -> str | None:
+    """The send an envelope came in (#2333, #2932), or ``None`` when it carries none. A value
+    that isn't text, or is blank, names no send and raises."""
+    dispatch = (metadata or {}).get(DISPATCH_ID_METADATA_KEY)
+    if dispatch is None:
+        return None
+    if not isinstance(dispatch, str) or not dispatch.strip():
+        raise ValueError(f"the envelope's {DISPATCH_ID_METADATA_KEY} is {dispatch!r}: no send")
+    return dispatch

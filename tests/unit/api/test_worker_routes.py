@@ -16,7 +16,7 @@ from squadops.remote_execution.wire import request_to_wire, result_to_wire
 from squadops.remote_execution.workers import OperationState
 from tests.unit.api.worker_world import REGISTRATION
 from tests.unit.api.worker_world import World as _World
-from tests.unit.remote_execution.registry_contract import passing, request
+from tests.unit.remote_execution.registry_contract import passing
 
 pytestmark = pytest.mark.auth
 
@@ -64,7 +64,7 @@ def test_a_worker_registers_claims_renews_and_submits_and_the_operation_has_its_
         "lease_id": claim["lease_id"],
         "lease_expires_at": "2026-11-10T15:01:00Z",
         "reconcile_first": False,
-        "request": request_to_wire(request()),
+        "request": request_to_wire(queued.request),
     }
     assert idle.json() == {"claim": None}
     assert renewed.json() == {

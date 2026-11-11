@@ -123,6 +123,17 @@ class QARunRemoteOperationHandler(CapabilityHandler):
             # The deployment no longer holds what the cycle's record says supplies this
             # contract. Nothing can be run in its name.
             return self._finish(inputs, started, error=str(refused))
+        if context.dispatch_id is None:
+            # The operation is asked for, read and stopped under the send this task came in
+            # (SIP-0117 R5.6), and the task id is no send: never ask in its place.
+            return self._finish(
+                inputs,
+                started,
+                error=(
+                    f"task {context.task_id} came in no named send (its envelope has no "
+                    "dispatch id), so no remote operation can be asked for under it"
+                ),
+            )
 
         request = RemoteOperationRequest(
             contract=operation["contract"],
@@ -133,7 +144,8 @@ class QARunRemoteOperationHandler(CapabilityHandler):
             source_revision=str(inputs["workspace_revision_id"]),
             source_files=dict(inputs["acceptance_workspace_files"]),
             scenario=scenario,
-            dispatch_id=context.task_id,
+            task_id=context.task_id,
+            dispatch_id=context.dispatch_id,
         )
         port = getattr(context.ports, "remote_execution", None)
         if port is None:

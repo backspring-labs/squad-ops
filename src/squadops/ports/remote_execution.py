@@ -13,7 +13,9 @@ calls it, and ``OperationRunnerPort`` is the tool on the worker's machine.
 
 An implementation returns a ``RemoteOperationResult`` for every request it accepts. When the
 operation can't run it says so, as ``not_executed`` with the reason; it doesn't raise for
-that, and it never returns a pass for an operation that didn't run.
+that, and it never returns a pass for an operation that didn't run. It raises for a defect of
+the deploy, which is no reading of the operation at all: a runtime that refuses the caller, or
+an answer it can't read (R5.6).
 """
 
 from __future__ import annotations
@@ -78,6 +80,15 @@ class WorkerRegistryTransaction(ABC):
     @abstractmethod
     async def queued_operations(self, served: Sequence[ServedOperation]) -> list[QueuedOperation]:
         """The queued operations among ``served``, oldest first."""
+
+    @abstractmethod
+    async def operation_for_send(self, task_id: str, dispatch_id: str) -> QueuedOperation | None:
+        """The operation a task's send asked for, if it asked (SIP-0117 R5.6: one per send)."""
+
+    @abstractmethod
+    async def unsettled_operations_of(self, task_id: str) -> list[QueuedOperation]:
+        """Every operation asked for by any send of the task that has no result yet, oldest
+        first."""
 
     @abstractmethod
     async def save_operation(self, operation: QueuedOperation) -> None:

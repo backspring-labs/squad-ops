@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.disputed_checks import DISPUTED_CHECKS
 from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.comms.task_delivery import dispatch_of
 from squadops.cycles.llm_usage import UsageTotals
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.memory.authoring_envelope import json_safe
@@ -163,6 +164,7 @@ class HandlerExecutor(CapabilityExecutor):
                 ports=self._ports,
                 project_id=envelope.project_id,
                 correlation_context=corr_ctx,
+                dispatch_id=dispatch_of(envelope.metadata),
             )
 
             # SIP-0110 §0.11 (#2105): an authoring seam's inputs, taken as the handler is handed

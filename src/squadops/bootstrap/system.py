@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
     from squadops.ports.prompts.service import PromptService
+    from squadops.ports.remote_execution import RemoteExecutionPort
     from squadops.ports.telemetry.events import EventPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.ports.telemetry.metrics import MetricsPort
@@ -137,6 +138,7 @@ def create_system(
     llm_observability: LLMObservabilityPort | None = None,
     request_renderer: RequestTemplateRenderer | None = None,
     messaging: MessagingPort | None = None,
+    remote_execution: RemoteExecutionPort | None = None,
     config: SystemConfig,
 ) -> SquadOpsSystem:
     """Create a fully configured SquadOps system.
@@ -152,6 +154,8 @@ def create_system(
         metrics: Metrics collection port
         events: Event/tracing port
         filesystem: Filesystem operations port
+        remote_execution: where ``qa.run_remote_operation`` sends its operation, or ``None``
+            on a deploy whose selector says it runs no remote execution (SIP-0117 R5.6)
         config: system configuration — carries the role this process IS (required)
 
     Returns:
@@ -182,6 +186,7 @@ def create_system(
         llm_observability=llm_observability,
         request_renderer=request_renderer,
         messaging=messaging,
+        remote_execution=remote_execution,
     )
 
     # Create registries

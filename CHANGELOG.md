@@ -6,6 +6,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **An agent's remote operation reaches a worker** (#3023; SIP-0117 phase 2b, part 3, R5.6): the handler of
+  `qa.run_remote_operation` now has an adapter behind its port. It queues the operation at the runtime API, under
+  the agent's service identity and a new scope the agent role alone holds (`operations:request`), through three
+  routes under `/api/v1/remote-operations` (create, read, cancel). It returns the worker's result. With no worker
+  being heard from nothing is queued and the operation reads `not_executed` with the reason. An operation with no
+  result in 900 seconds is cancelled and reads `interrupted`. A runtime that refuses the agent fails the task
+  with the reason. **Each call is scoped to the send of its task** (the 2.8 plan's decision 2): the request names
+  the task and the dispatch id the runtime minted for this send, and every route answers only while the runtime
+  is waiting on that send. One operation is queued per send (migration 2301), so a create whose answer was lost
+  is sent again and returns the operation it queued. A newer send of the task stops the older sends'
+  operations.
+  **Every deploy's `.env` needs one new line: `SQUADOPS__REMOTE_EXECUTION__PROVIDER=none`** (or `runtime_api`
+  where a worker runs). Compose reads it onto the runtime API and every agent, and stops with the key named when
+  it is absent. `.env.example` ships `none`.
 - **The remote-execution worker** (#3023; SIP-0117 phase 2b, part 2): `python -m squadops.remote_execution.worker_main`,
   run on the machine that hosts a tool. It connects outward to the runtime API and listens on nothing. It reads
   its own settings, `SQUADOPS__WORKER__*` (its id, the runtime's address, the token endpoint, its client's id and
@@ -56,6 +70,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A cancelled remote operation whose worker goes silent is settled** (#3023; SIP-0117 R5.6): its lease runs
+  out and it settles `interrupted`. It was queued again while it had an attempt left, still marked cancelled, so
+  no worker could claim it and nothing ended it.
+- **A stopped remote operation whose earlier attempt had begun reads `interrupted`** (#3023; SIP-0117 R5.6):
+  queued again after that attempt's lease ran out, then cancelled, it read `not_executed`, "cancelled before a
+  worker claimed it", though the attempt had begun in the tool.
 - **A task instruction for a remote operation stays with the operation** (#3030): `repairs_revising` read the
   repair-routing entry that phase 2a added for `qa.run_remote_operation` as lineage, so an instruction selecting
   that type also reached the dev repair its failure is routed to. A step that runs an operation authors nothing,

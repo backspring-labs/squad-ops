@@ -208,6 +208,11 @@ def get_worker_registry(request: Request):
     return _slot(request, "worker_registry")
 
 
+def get_reply_router(request: Request):
+    """SIP-0094: the per-agent reply router, which holds each task's current send (#2932)."""
+    return _slot(request, "reply_router")
+
+
 def get_memory_store(request: Request):
     """SIP-0110 (D13): Cross-Cycle Memory's store, beside the cycle registry (``main._init_memory``)."""
     return _slot(request, "memory_store")

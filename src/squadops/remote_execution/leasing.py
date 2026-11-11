@@ -14,7 +14,8 @@ The rules:
   ``interrupted``: a worker held it, so it may have started, and that is never a failure or a
   pass.
 - **A cancel** settles a queued operation as ``not_executed``, and marks a claimed one for its
-  worker to see at its next heartbeat.
+  worker to see at its next heartbeat. A marked operation whose lease then runs out settles
+  as ``interrupted``, whatever attempts it had left: nobody wants it run again (R5.6).
 - **Health is what the worker last reported, while it is being heard from.** A session silent
   past ``SESSION_SILENT_SECONDS`` reads ``offline``. Busy is the lease, never a health value.
 """
@@ -182,9 +183,24 @@ def settled(
 
 def after_expiry(operation: QueuedOperation, now: datetime) -> QueuedOperation:
     """``operation`` once its current attempt has ended without a result: queued again while
-    an attempt is left, and settled as ``interrupted`` on the last."""
+    an attempt is left, and settled as ``interrupted`` on the last. One asked to stop is
+    settled too: queued again it could never be claimed (``claimable_by``), and its requester
+    would wait on an operation nothing will end."""
     if operation.state is not OperationState.CLAIMED:
         raise ValueError(f"operation {operation.operation_id} has no attempt to end")
+    if operation.cancel_requested:
+        return settled(
+            operation,
+            RemoteOperationResult(
+                status=OperationStatus.INTERRUPTED,
+                reason=(
+                    f"cancelled while attempt {operation.attempt} held it, and worker session "
+                    f"{operation.session_id} stopped renewing its lease before it answered"
+                ),
+                dispatch_id=operation.request.dispatch_id,
+            ),
+            now,
+        )
     if operation.attempt < operation.max_attempts:
         return replace(
             operation,
@@ -207,20 +223,33 @@ def after_expiry(operation: QueuedOperation, now: datetime) -> QueuedOperation:
     )
 
 
-def cancelled(operation: QueuedOperation, now: datetime) -> QueuedOperation:
-    """``operation`` after a cancel. Queued: settled as ``not_executed``, since no worker
-    began it. Claimed: marked, for its worker to stop and submit ``interrupted``. Settled:
+def superseded_reason(dispatch_id: str) -> str:
+    """Why an older send's operation was stopped: its task was sent again (SIP-0117 R5.6)."""
+    return f"superseded: its task was sent again, as dispatch {dispatch_id}"
+
+
+def cancelled(operation: QueuedOperation, now: datetime, *, reason: str) -> QueuedOperation:
+    """``operation`` after a cancel. Claimed: marked, for its worker to stop and submit
+    ``interrupted``. Queued and never claimed: settled as ``not_executed`` with ``reason``,
+    since no worker began it. Queued again after an attempt whose lease ran out: settled as
+    ``interrupted``, since that attempt began and whether it ran is unknown. Settled:
     unchanged, since its result stands."""
     if operation.state is OperationState.SETTLED:
         return operation
     if operation.state is OperationState.CLAIMED:
         return replace(operation, cancel_requested=True)
+    if operation.attempt == 0:
+        status = OperationStatus.NOT_EXECUTED
+    else:
+        status = OperationStatus.INTERRUPTED
+        reason = (
+            f"{reason}; attempt {operation.attempt} had begun and its lease ran out with no "
+            "result, so whether it ran is unknown"
+        )
     return settled(
         replace(operation, cancel_requested=True),
         RemoteOperationResult(
-            status=OperationStatus.NOT_EXECUTED,
-            reason=REASON_CANCELLED_UNCLAIMED,
-            dispatch_id=operation.request.dispatch_id,
+            status=status, reason=reason, dispatch_id=operation.request.dispatch_id
         ),
         now,
     )

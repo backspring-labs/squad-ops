@@ -22,6 +22,8 @@ from squadops.capabilities.handlers.cycle.run_remote_operation import (
 from squadops.capabilities.skillsets import Skillset, SkillsetCapability, ToolRequest
 from squadops.cycles.verification_integrity import RunVerdict, aggregate_verification
 from squadops.cycles.verification_normalize import has_blocking_failure, normalize_task_checks
+from squadops.orchestration.handler_executor import HandlerExecutor
+from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.ports.remote_execution import RemoteExecutionPort
 from squadops.remote_execution.models import (
     ASSERTION_RECORDS_ARTIFACT_TYPE,
@@ -33,6 +35,7 @@ from squadops.remote_execution.models import (
     RemoteOperationRequest,
     RemoteOperationResult,
 )
+from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import (
     TaskType,
     corrects_only_executed_failures,
@@ -113,18 +116,25 @@ def held(monkeypatch):
     )
 
 
-def _context(port) -> ExecutionContext:
+def _context(port, dispatch_id: str | None = "send-7") -> ExecutionContext:
     ports = MagicMock()
     ports.remote_execution = port
     return ExecutionContext.create(
-        agent_id="eve", role_id="qa", task_id="task-7", cycle_id="cyc_1", ports=ports
+        agent_id="eve",
+        role_id="qa",
+        task_id="task-7",
+        cycle_id="cyc_1",
+        ports=ports,
+        dispatch_id=dispatch_id,
     )
 
 
-async def _run(answer=None, *, port="provider", **over):
+async def _run(answer=None, *, port="provider", dispatch_id: str | None = "send-7", **over):
     provider = FixtureProvider(answer) if answer is not None else None
     bound = provider if port == "provider" else None
-    result = await QARunRemoteOperationHandler().handle(_context(bound), _inputs(**over))
+    result = await QARunRemoteOperationHandler().handle(
+        _context(bound, dispatch_id), _inputs(**over)
+    )
     return result, provider
 
 
@@ -155,8 +165,20 @@ async def test_the_provider_is_asked_for_the_contract_by_the_skillsets_tool_on_t
     assert request.source_revision == "rev_candidate"
     assert request.source_files == {"src/Client/Map.local.luau": "-- map"}
     assert request.scenario.assertions == ("map_opens", "marker_shown", "closes_on_escape")
-    assert request.dispatch_id == "task-7"
+    assert (request.task_id, request.dispatch_id) == ("task-7", "send-7")
     assert result.success
+
+
+async def test_a_task_that_came_in_no_named_send_asks_for_nothing_and_fails(held):
+    """The operation is asked for, read and stopped under the send (SIP-0117 R5.6). Bug
+    caught: the task id sent in the send's place, so the runtime refuses every call, or a
+    retry's operation can't be told from the first send's."""
+    result, provider = await _run(_completed(PASSED, SHOWN, CLOSES), dispatch_id=None)
+
+    assert not result.success
+    assert "task task-7 came in no named send" in result.error
+    assert provider.requests == []
+    assert result.outputs["outcome_class"] == "semantic_failure"
 
 
 async def test_every_assertion_passing_is_an_accepted_run_with_its_evidence_stored(held):
@@ -425,3 +447,49 @@ def test_the_type_runs_an_operation_and_is_corrected_only_for_an_executed_failur
     assert not fails_without_correction("qa.run_remote_operation")
     assert not runs_an_operation("qa.test")
     assert not corrects_only_executed_failures("qa.test")
+
+
+@pytest.mark.parametrize(
+    ("metadata", "asked", "failure"),
+    [
+        ({"dispatch_id": "send-9"}, ("task-7", "send-9"), None),
+        ({}, None, "came in no named send"),
+        ({"dispatch_id": 9}, None, "ValueError"),
+    ],
+    ids=["the-send-it-came-in", "no-send", "a-send-that-isnt-text"],
+)
+async def test_the_send_an_agent_was_dispatched_reaches_the_request(held, metadata, asked, failure):
+    """The wiring (R5.6), entered at the handler executor, which builds the handler's context
+    from the dispatched envelope as the agent does. Bug caught: the envelope's dispatch id
+    dropped on the way to the context, so every live request goes out under no send; or a
+    malformed one passed through as if it named a send."""
+    provider = FixtureProvider(_completed(PASSED, SHOWN, CLOSES))
+    ports = MagicMock()
+    ports.remote_execution = provider
+    registry = HandlerRegistry()
+    registry.register(QARunRemoteOperationHandler(), roles=("qa",))
+    executor = HandlerExecutor(executor_id="eve", handler_registry=registry, ports=ports, role="qa")
+    envelope = TaskEnvelope(
+        task_id="task-7",
+        agent_id="eve",
+        cycle_id="cyc_1",
+        pulse_id="pulse-1",
+        project_id="project-1",
+        task_type=TaskType.QA_RUN_REMOTE_OPERATION,
+        inputs=_inputs(),
+        correlation_id="corr-1",
+        causation_id="cause-1",
+        trace_id="trace-1",
+        span_id="span-1",
+        metadata=metadata,
+    )
+
+    result = await executor.execute(envelope)
+
+    sent = [(r.task_id, r.dispatch_id) for r in provider.requests]
+    assert sent == ([asked] if asked else [])
+    if failure is None:
+        assert result.status == "SUCCEEDED"
+    else:
+        assert result.status == "FAILED"
+        assert failure in f"{result.error} {result.execution_evidence}"

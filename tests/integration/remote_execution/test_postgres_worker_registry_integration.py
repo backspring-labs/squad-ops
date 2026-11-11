@@ -17,10 +17,10 @@ from adapters.remote_execution.factory import create_worker_registry_store
 from squadops.remote_execution.registry import WorkerRegistry
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.remote_execution.registry_contract import (
-    ORIGIN,
     Clock,
     WorkerRegistryContract,
     passing,
+    queue,
     registration,
     request,
 )
@@ -73,7 +73,7 @@ async def test_a_lease_outlives_the_runtime_that_granted_it(pool):
     the work it finished is refused, or any result at all is accepted."""
     clock = Clock()
     before = WorkerRegistry(create_worker_registry_store("postgres", pool=pool), clock=clock)
-    queued = await before.enqueue(request(), ORIGIN, max_attempts=1)
+    queued = await queue(before, request(), max_attempts=1)
     session = await before.register(registration())
     claim = await before.claim(session.session_id)
 
@@ -89,8 +89,8 @@ async def test_the_table_itself_refuses_a_second_open_claim_for_a_worker(pool):
     """The index under the rule. Bug caught: a path that writes an attempt without going
     through the registry, leaving a worker holding two operations."""
     registry = WorkerRegistry(create_worker_registry_store("postgres", pool=pool))
-    first = await registry.enqueue(request(), ORIGIN, max_attempts=1)
-    second = await registry.enqueue(request(), ORIGIN, max_attempts=1)
+    first = await queue(registry, request(), max_attempts=1)
+    second = await queue(registry, request(), max_attempts=1)
     session = await registry.register(registration())
     await registry.claim(session.session_id)
     assert (await registry.operation(first.operation_id)).attempt == 1

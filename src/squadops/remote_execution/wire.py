@@ -27,6 +27,12 @@ from squadops.remote_execution.models import (
 #: worker reads them, so each is named once.
 ERROR_SESSION_NOT_FOUND = "WORKER_SESSION_NOT_FOUND"
 ERROR_RESULT_REFUSED = "RESULT_REFUSED"
+#: The error codes of ``/api/v1/remote-operations`` that a requester acts on (R5.6).
+ERROR_NO_WORKER = "NO_WORKER_FOR_OPERATION"
+ERROR_OPERATION_NOT_FOUND = "REMOTE_OPERATION_NOT_FOUND"
+#: The send named isn't its task's current one (R5.6): the task was sent again, or the runtime
+#: restarted and waits on no send of it.
+ERROR_SEND_NOT_CURRENT = "REMOTE_OPERATION_SEND_NOT_CURRENT"
 
 _REQUEST_KEYS = frozenset(
     {
@@ -38,6 +44,7 @@ _REQUEST_KEYS = frozenset(
         "source_revision",
         "source_files",
         "scenario",
+        "task_id",
         "dispatch_id",
     }
 )
@@ -63,6 +70,7 @@ def request_to_wire(request: RemoteOperationRequest) -> dict[str, Any]:
             "digest": request.scenario.digest,
             "assertions": list(request.scenario.assertions),
         },
+        "task_id": request.task_id,
         "dispatch_id": request.dispatch_id,
     }
 
@@ -83,7 +91,8 @@ def request_from_wire(document: Any) -> RemoteOperationRequest:
             digest=_text(scenario, "digest", "request.scenario"),
             assertions=tuple(_text_list(scenario["assertions"], "request.scenario.assertions")),
         ),
-        dispatch_id=_text(body, "dispatch_id", "request"),
+        task_id=_named(body, "task_id", "request"),
+        dispatch_id=_named(body, "dispatch_id", "request"),
     )
 
 
@@ -167,6 +176,14 @@ def _text(body: Mapping[str, Any], key: str, where: str) -> str:
     value = body[key]
     if not isinstance(value, str):
         raise ValueError(f"{where}.{key} is {type(value).__name__}, and text is needed")
+    return value
+
+
+def _named(body: Mapping[str, Any], key: str, where: str) -> str:
+    """An identity: text, and never blank, since a blank one names nothing."""
+    value = _text(body, key, where)
+    if not value.strip():
+        raise ValueError(f"{where}.{key} is blank, and it names what the request belongs to")
     return value
 
 

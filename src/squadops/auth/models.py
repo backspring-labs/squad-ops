@@ -26,7 +26,8 @@ class Role:
     OPERATOR = "operator"
     VIEWER = "viewer"
     # Service role held by the squadops-agent service account (#326): lets agent
-    # containers report their own status via the authed lane, nothing else.
+    # containers report their own status via the authed lane, and ask for a remote
+    # operation, read it and cancel it (SIP-0117 R5.6). Nothing else.
     AGENT = "agent"
     # Service role held by the squadops-worker service account (SIP-0117 R5.3): lets a
     # remote-execution worker register, claim an operation and report on it, nothing else.
@@ -81,6 +82,11 @@ class Scope:
     # claim an operation and submit its result. Held by the worker role alone; no person's role
     # and no squad agent's holds it.
     WORKERS_SERVE = "workers:serve"
+    # SIP-0117 R5.6 (ruled 2026-11-11): ask for a remote operation, read it and cancel it. Held
+    # by the agent role alone: the handler of ``qa.run_remote_operation`` runs in an agent, and
+    # this is how its request reaches the queue. A worker's role doesn't hold it, so a worker
+    # can't queue work for itself, and no person's role does.
+    OPERATIONS_REQUEST = "operations:request"
 
 
 # Role → implied scopes (#270). Keycloak is role-centric — it issues realm roles
@@ -137,6 +143,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
     Role.AGENT: frozenset(
         {
             Scope.AGENTS_WRITE,
+            Scope.OPERATIONS_REQUEST,
         }
     ),
     Role.WORKER: frozenset(

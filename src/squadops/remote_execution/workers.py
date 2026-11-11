@@ -221,8 +221,14 @@ class WorkerRefused(Exception):
 
 
 class RuntimeAnswerUnreadable(Exception):
-    """The runtime's answer isn't the document this worker reads: a key missing or of the
-    wrong kind. The two are different versions, so the worker stops."""
+    """The runtime's answer isn't the document its caller reads: a key missing or of the
+    wrong kind. The two are different versions, so a worker stops and a requester raises."""
+
+
+class RequestRefused(Exception):
+    """The runtime answered and will not take a requester's call: its credentials, its scope,
+    a request the runtime can't read, or a send that is no longer its task's current one.
+    Trying again changes nothing. It is never read as an operation that didn't run (R5.6)."""
 
 
 class UnknownSession(LookupError):
@@ -233,6 +239,12 @@ class UnknownOperation(LookupError):
     """No operation has this id."""
 
 
+class SendConflict(Exception):
+    """A send asked again for its operation with a different request. A send's request is
+    built once from its inputs, so two different ones under one dispatch id are a defect, and
+    the first stands (R5.6)."""
+
+
 @dataclass(frozen=True)
 class NoWorker:
     """Why no registered worker can run an operation now, in words for a ``not_executed``."""
@@ -240,3 +252,14 @@ class NoWorker:
     reason: str
     #: The workers that serve the operation and aren't being heard from.
     unreachable: tuple[str, ...] = field(default=())
+
+
+@dataclass(frozen=True)
+class Enqueued:
+    """What a send's request to queue came to (R5.6)."""
+
+    operation: QueuedOperation
+    #: The send had already asked, and this is the operation it asked for then.
+    repeated: bool
+    #: The older sends' operations this one stopped.
+    superseded: tuple[str, ...] = field(default=())

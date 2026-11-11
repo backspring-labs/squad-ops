@@ -26,7 +26,8 @@ def test_a_request_and_a_result_read_back_as_they_were_sent():
         status=OperationStatus.NOT_EXECUTED, reason="Studio is not running", dispatch_id="d-1"
     )
 
-    assert request_from_wire(json.loads(json.dumps(request_to_wire(request())))) == request()
+    asked = request()
+    assert request_from_wire(json.loads(json.dumps(request_to_wire(asked)))) == asked
     for result in (passing(), not_run):
         assert result_from_wire(json.loads(json.dumps(result_to_wire(result)))) == result
     assert result_to_wire(not_run) == {
