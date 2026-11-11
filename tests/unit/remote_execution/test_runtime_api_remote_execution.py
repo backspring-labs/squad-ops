@@ -644,8 +644,8 @@ async def test_a_runtime_unreachable_to_the_end_of_the_wait_is_interrupted_and_s
 
     assert result.status is OperationStatus.INTERRUPTED
     assert result.reason == (
-        "no result within 30 s of asking, and the runtime API can't be reached to stop "
-        "operation rop_1: whether it ran is unknown (no answer from "
+        "no result within 30 s of asking, and operation rop_1 couldn't be asked to stop: "
+        "whether it ran is unknown (no answer from "
         "/api/v1/remote-operations/rop_1/cancel: ConnectError: connection refused)"
     )
     assert asked[-1] == ("POST", "/api/v1/remote-operations/rop_1/cancel")
