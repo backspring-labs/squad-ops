@@ -492,7 +492,7 @@ class WorkerRegistryContract:
         assert stored.state is OperationState.QUEUED
 
     async def test_a_newer_send_stops_every_older_sends_operation_and_reads_only_its_own(
-        self, registry
+        self, clock, registry
     ):
         """The task was sent again (a retry, a resumed run), so the older sends' replies would
         be dropped and their operations read by nobody (R5.6). Bug caught: an older operation
@@ -501,6 +501,7 @@ class WorkerRegistryContract:
         session = await registry.register(registration())
         claimed = await queue(registry, request(task_id="task_7", dispatch_id="send-1"))
         await registry.claim(session.session_id)
+        clock.advance(1)  # oldest first: the order the stopped operations are named in
         queued = await queue(registry, request(task_id="task_7", dispatch_id="send-2"))
         other = await queue(registry, request(task_id="task_8", dispatch_id="send-1"))
 
