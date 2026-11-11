@@ -133,7 +133,8 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 |---|---|---|
 | Phase 1: declarations and the record, inert: the skillset spec and its validation, the capability contracts and the mode list, the agents' `skillsets` field, the profiles' `platform` and `requires` fields, the explicit base set, the versioned record with canonical hashing (§14) | **shipped** | 2.8 (PR #3013, closing #3011) |
 | Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **shipped** | 2.8 (PR #3015, closing #3014) |
-| Phase 3: skills: loading with repair lineage, the kept copy, dispatch-time budgeting, precedence and digests (§7, §10) | **unplaced**, deliberately: the 2.8 plan places it | — |
+| Phase 3, part 1: skills, kept: the catalog holds each skill's text, a cycle keeps a checked copy of the skills its work requires, the record names them by digest, and which skills a task loads is decided from the record and the copy (§7, §10, §17e) | **shipped** | 2.8 (PR #3032; #3028 tracks part 2) |
+| Phase 3, part 2: skills, loaded: a task is handed its skills from the kept copy at dispatch, a repair loads the skills of the step it revises, the prompt budget counts them, and where they render (§7, §7.1, §17e) | **unplaced**, deliberately: the 2.8 plan places it | — |
 | Phase 4: tools: requests within existing authority, and the coverage, authorization and availability outcomes (§8, §9) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3036 |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
 | Phase 6: lessons: the recall identity, supplied, omitted and flagged records, supersession, and the promotion review (§10a) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3038 |
@@ -832,6 +833,46 @@ behaviour.
 - an agent entry with no `skillsets` key carries none, and a profile with no `requires` requires nothing;
 - a deployment with no `skillsets/` directory holds an empty catalog. A profile that requires a skillset is then
   refused at creation as naming one this deployment doesn't hold.
+
+### 17e. Phase 3 is delivered in two parts, and part 1 as built (2026-11-10)
+
+**Not yet ruled:** the points below are the implementer's, for the owner's review in part 1's PR (#3032).
+
+**Two parts,** each with a ledger row:
+1. *kept:* the catalog holds each skill's text, a cycle keeps a checked copy, the record names it by digest, and
+   which skills a task loads is decided from the record and the copy. Nothing is loaded at dispatch.
+2. *loaded:* a task is handed its skills at dispatch, a repair loads the skills of the step it revises, the prompt
+   budget counts them, and they render.
+
+**§7 and §10, as part 1 builds them:**
+
+| the SIP's part | as built |
+|---|---|
+| "the resolved skill text and resources" | **the catalog holds the text.** `Skillset.skill_files` is each skill's `SKILL.md` and resources as text, read once with the catalog and byte for byte, so the text a cycle keeps is the text its digest was taken from |
+| "optional resources beside it" (§7) | **a skill's files are UTF-8 text.** A file that isn't is refused by name when the skillset is loaded. A skill is loaded into a prompt, so a resource that can't be read as text can't be part of one |
+| "copied with the cycle's record at creation" | **one vault artifact of the cycle,** type `skillset_content`, written before the cycle is stored. It holds every skill of each assigned skillset, and which skills each of that skillset's capabilities loads. A cycle whose skills can't be kept (no vault) isn't created |
+| what is kept | **the whole of each assigned skillset,** not only the contracts the work names: a repair loads the skills of the step it revises, and the copy's own capability list decides, never today's tree |
+| "each loaded skill's and resource's digest, and a reference to the kept copy" | **the record's `content` part names each kept skill and each of its files by digest, and names no location.** §10 has replay match the record's digest, so the digest has to be a function of the equipment. A vault id differs for every cycle. The copy is found by its cycle and its type, and exactly one is expected |
+| loading "from the kept copy, never from the tree" | **the copy is checked before anything is loaded from it:** its skills hash to the digests it states, and it holds exactly what the record names. A record that names skills with no copy raises. Nothing reads the tree in its place |
+| "the skills declared for its capability in the required skillsets its agent supplies" | **a task that names a contract loads that contract's skills. A task that names none loads the skills of every required contract that runs as its task type.** §7.1's table loads `luau-test-loader` for a plain `qa.test`, which names no contract until the planner is shown the offered ones. In both cases the agent is the one the record assigned |
+| a cycle that requires nothing | keeps nothing. Its record's `content` is `[]`, as before, and its digest is unchanged |
+
+**Two findings for part 2,** recorded here so they aren't met again as surprises:
+1. **"A skill renders in the stack's section, where `system_prompt_supplement` renders today" (§7) names a place
+   only one task type has.** The supplement renders in `development.develop`'s system prompt alone, and is left out
+   there for a repository-backed product. `qa.test` carries its stack text in the request, the repair handlers carry
+   none, and `qa.run_remote_operation` calls no model. Task and project instructions render in the request, after
+   the system prompt. Part 2 places skills where every consuming task has a place, and amends §7 with what it
+   builds.
+2. **A repair's envelope names the step it repairs only by `failed_task_type`.** Part 2 resolves the skills from
+   the record by the task type the repair revises and the agent it routes to.
+
+**Found while reading for it, and fixed on its own (#3030):** phase 2a's repair-routing entry for
+`qa.run_remote_operation` was read by `repairs_revising` as lineage, so a task instruction for the operation also
+reached the dev repair. A step that runs an operation authors nothing, and no repair revises its output.
+
+**Citations that moved:** `repairs_revising` and `repair_steps_for` are at `cycles/task_plan.py:377` and `:422`,
+and the create preflight at `api/routes/cycles/cycles.py:207`. The text above them cites the lines as they were.
 
 ---
 
