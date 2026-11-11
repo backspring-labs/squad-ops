@@ -1,6 +1,6 @@
 # 2.8.0 plan: a squad develops and tests a Roblox game
 
-**Status: DRAFT, revision 2 (2026-11-11), with the owner's rulings.** The owner asked for a 2.8 plan whose headline
+**Status: DRAFT, revision 3 (2026-11-11), with the owner's rulings and the reconciliation with the MacBook lane (§11).** The owner asked for a 2.8 plan whose headline
 is the game-development work, with a review of what the MacBook lane has merged for it and what more it needs to hold
 up. An outside review of revision 1 requested changes before adoption (§10). The owner then ruled all nine decisions
 as recommended in revision 2's write-up, which takes the review's rulings and adds two of this plan's (§8: "good
@@ -9,6 +9,15 @@ with your recommednation. go", 2026-11-11, about 09:00 ET).
 **The plan is adopted when the owner merges this PR.** Until then nothing is placed and nothing is built on it. The
 issues it proposes are open so the plan can be read against them. They carry no `sip:` label and no ledger row until
 the adoption PR (§9).
+
+**Revision 3 reconciles the plan with the MacBook lane's work in flight** (§11). The owner asked for that on
+2026-11-11 and is holding the MacBook session until the lanes agree. §11 has:
+- one lane per issue;
+- the three points where #3052 (the squad's side of remote execution, opened that morning) differs from decision 2;
+- the changes to the MacBook lane's own documents;
+- what each lane confirms before it resumes.
+
+The lane assignments marked *proposed* are the owner's to rule.
 
 ## Revision log
 
@@ -42,6 +51,14 @@ the adoption PR (§9).
     actions, and that every attempt is reported (#3043).
   - **Settled now:** captures stay outside 2.8's acceptance evidence (#3049). #3009's administrator setting is
     verified in GitHub's 2026-11-16 test window.
+- **Revision 3** (2026-11-11): the reconciliation with the MacBook lane (§11).
+  - **#3052 is read against decision 2.** It was built on the owner's earlier ruling ("approve part 3 as
+    recommended") and opened at 08:41 ET, before decision 2 was ruled. It matches on the transport and the scope.
+    It differs on three points (§11.2), and the adoption PR's SIP-0117 amendment becomes R5.7, since #3052 takes R5.6.
+  - **#3045 narrows to the Campaign's relaunch budget, Spark lane (proposed).** #3052's wait and cancel already
+    give the in-cycle limits and outcomes it asked for.
+  - **#3047, the operator's read surface, is proposed for the Spark lane.**
+  - **Every issue has one lane** (§11.1).
 
 ## What 2.8 is
 
@@ -49,7 +66,8 @@ An even minor, so a feature release, led by one headline (CLAUDE.md, #281). The 
 Spark lane carries the pieces the headline needs on its own files:
 - Campaign delivery (#3053);
 - the end-to-end machinery Campaign (#3050);
-- the Luau runner (#2906).
+- the Luau runner (#2906);
+- and, as proposed in §11.1, the Campaign's relaunch budget (#3045) and the operator's read surface (#3047).
 
 It also carries the ride-alongs in §7.
 
@@ -133,9 +151,9 @@ Sizes are the SIPs' own where they give one (S, M, L). A size marked * is this p
 
 | item | issue | lane | size |
 |---|---|---|---|
-| **The squad's side of remote execution:** the adapter behind the port, its required selector (`none` = no remote execution), and the request path ruled in decision 2: HTTP; enqueue, read and cancel scoped to the task's current dispatch identity; idempotent on that identity; a newer send cancels an older send's operation | #3023, part 3 | MacBook | M* |
+| **The squad's side of remote execution:** the adapter behind the port, its required selector (`none` = no remote execution), and the request path ruled in decision 2: HTTP; enqueue, read and cancel scoped to the task's current dispatch identity; idempotent on that identity; a newer send cancels an older send's operation. **Built as #3052 (open, draft),** which differs from decision 2 on three points (§11.2) | #3023, part 3 (#3052) | MacBook | M* |
 | **Tools:** the authorization and availability refusals at creation, and availability read again at dispatch | #3036 (SIP-0116 phase 4) | MacBook | M |
-| **Time limits and an unavailable worker:** `launch_blocked` before launch; an unclaimed request `not_executed` at its limit; `interrupted` and a reconcile once play may have begun; a relaunch budget persisted per logical increment, then escalation | #3045 | MacBook | M* |
+| **A Campaign whose worker is unavailable:** `launch_blocked` before launch, and a relaunch budget persisted per logical increment, then escalation. The in-cycle wait, cancel and outcomes are #3052's (§11.2) | #3045 | **Spark** (proposed, §11.1) | S* |
 | **Campaign delivery:** a scenario criterion discriminates on revision-bound evidence; every earlier increment's scenario is replayed on the same candidate; delivery is refused when one fails | #3053 | Spark | M* |
 | **The end-to-end machinery Campaign:** two increments, from a fixture change request, with the scripted squad and the fixture worker, through plan, claim, verdict, repair, re-run and delivery; six injected faults; in CI and as a cut gate | #3050 | Spark | M* |
 | its prerequisites: a scripted squad's answer key survives an agent restart; a scripted repair's refused edit is named, not read as empty | #3005, #3020 | Spark | S* each |
@@ -156,7 +174,7 @@ Sizes are the SIPs' own where they give one (S, M, L). A size marked * is this p
 | **Payload limits:** measure the request, claim and row sizes on the real tree (about 1.7 MB), then set explicit limits from the measurements; captures stay outside 2.8's acceptance evidence | #3049 | MacBook | S* |
 | **Re-qualification after a Studio update:** a recorded run moves the pin, never a hand edit | #3048 | MacBook | S* |
 | **The worker as a service on the MacBook:** launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step | #3046 | MacBook | M* |
-| **The operator's view of the registry:** a read-only route and `squadops workers list` / `show` | #3047 | either | S* |
+| **The operator's view of the registry:** a read-only route and `squadops workers list` / `show` | #3047 | **Spark** (proposed, §11.1) | S* |
 
 ### Skills, the squad and the product
 
@@ -182,9 +200,9 @@ Each is open as its own issue. The adoption PR records each in SIP-0117 by a num
    increment one on candidate two, which is the claim's last step. Found by the outside review.
 2. **The frozen scenario has no producer** (#3044). Without it, "fails on the baseline, passes on the candidate"
    can't be shown.
-3. **Nothing on the requesting side bounds the wait, and a relaunch budget resets on unblock** (#3045). Part 1 has
-   no background sweep of leases, the worker has no time limit of its own, and SIP-0117 R5.5 leaves cancelling to
-   the requester. A worker that is online at every launch and offline at every dispatch would never escalate.
+3. **A relaunch budget resets on unblock** (#3045). A worker that is online at every launch and offline at every
+   dispatch would never escalate. The requesting side's wait and cancel, which revision 2 also put here, are built
+   in #3052 (§11.2).
 4. **No test enters at a live cycle and reaches a worker** (#3050). Each seam is proved against fixtures. CLAUDE.md's
    wiring-test rule exists because #1250, #1256 and #1261 were each latent from their own PR and found by a live
    cycle. The scripted squad (#2984) and the fixture worker make a two-increment Campaign deterministic, with no
@@ -210,8 +228,8 @@ SIP-0117 R5.4 shares one client identity across workers).
 Sequencing, not dates.
 
 1. **Adoption:** this PR merges, then the adoption PR (§9).
-2. **The live engine-neutral path:** #3023 part 3, #3036 and #3045 together, since availability, the time limits
-   and the relaunch budget share the registry read.
+2. **The live engine-neutral path:** #3052 amended as §11.2 says, then merged; #3036 and #3045 after it, since
+   availability and the relaunch budget read what #3052 reports.
 3. **The frozen scenario and Campaign delivery** (#3044, #3053), built alongside step 2, since they share no files
    with it.
 4. **The machinery Campaign** (#3050), after #3005, #3020 and steps 2 and 3. **Nothing from Studio is wired into a
@@ -332,7 +350,7 @@ Campaign (§3, #3050). Decision 8 was ruled earlier the same day: "no doesn't co
 **This plan is adopted when the owner merges this PR.** The adoption PR, after that:
 - places each row below in its SIP's ledger with its issue, and applies the `sip:` labels
   (`scripts/maintainer/sync_sip_labels.py`, then `refresh_open_issues.py`);
-- writes SIP-0117 **R5.6**, with the evidence for each part:
+- writes SIP-0117 **R5.7** (R5.6 is #3052's), with the evidence for each part:
   - the eight items of §3 as new rows;
   - the declarative scenario, and the reading of the game-dev-roblox plan §2.6's "the frozen scenario" as the
     harness's scenario executor over a validated declaration;
@@ -348,11 +366,11 @@ Campaign (§3, #3050). Decision 8 was ruled earlier the same day: "no doesn't co
 | SIP-0116 | phase 4, tools | #3036 |
 | SIP-0116 | phase 5, the Campaign's pin | #3037 |
 | SIP-0116 | phase 6, lessons | #3038 |
-| SIP-0117 | phase 2b part 3, the squad's side | #3023 |
+| SIP-0117 | phase 2b part 3, the squad's side | #3023: shipped by #3052's own ledger edit when it merges, so the adoption PR places nothing for it |
 | SIP-0117 | phase 2c, the Luau runner | #2906 |
 | SIP-0117 | phase 2d, the Studio adapter and the isolation test | #3039 |
 | SIP-0117 | phase 2e, the assertion harness and reader | #3040 |
-| SIP-0117 | new rows (R5.6): the frozen scenario, time limits and waiting, the worker service, the read surface, re-qualification, payload limits, the machinery Campaign, Campaign delivery | #3044–#3050, #3053 |
+| SIP-0117 | new rows (R5.7): the frozen scenario, time limits and waiting, the worker service, the read surface, re-qualification, payload limits, the machinery Campaign, Campaign delivery | #3044–#3050, #3053 |
 | SIP-0118 | phase 2f, the squad | #3041 |
 | SIP-0118 | phase 2g, the product | #3042 |
 | SIP-0118 | phase 3, the demonstration | #3043 |
@@ -376,3 +394,110 @@ it is posted on this PR. Each answer, with what revision 2 does:
 **Also settled on the review's recommendation:**
 - **#3009:** an administrator applies the policy, verified in the 2026-11-16 test window;
 - **#3049:** captures stay outside 2.8's acceptance evidence, and the limits are set from measurements.
+
+## 11. Lanes, and the reconciliation with the MacBook lane (revision 3)
+
+The owner, 2026-11-11, asked that this plan be reconciled with the MacBook session, and is holding that session's
+work until the plan's assignments agree. The MacBook session wasn't reachable from the Spark (no peer session was
+running). So this section is the reconciliation, read from the record:
+- that lane's open PRs and branches;
+- its SIP amendments;
+- the adopted game-dev-roblox plan.
+
+Each lane confirms it on this PR before resuming (§11.4).
+
+### 11.1 One lane per issue
+
+The basis is CLAUDE.md's file ownership: executor, handlers and framing are the MacBook lane's; the test runner,
+build check, agent image and deploy are the Spark lane's. Where a ruling assigns a lane, the ruling is cited.
+
+| lane | issue | what | basis |
+|---|---|---|---|
+| MacBook | #3023 → #3052 | the squad's side of remote execution (open, draft; amended per §11.2 before it merges) | the game plan; the owner's part 3 ruling |
+| MacBook | #3028 → #3032, #3033 | SIP-0116 phase 3, skills (open) | the game plan; decision 8 |
+| MacBook | #3035 | the gate promotes an approved run's artifacts before forwarding them (open, for #3034) | its author's lane |
+| MacBook | #3036 | SIP-0116 phase 4, tools | the game plan |
+| MacBook | #3037 | SIP-0116 phase 5, the Campaign's pin | the game plan. It touches Campaign launch, so it lands after #3045 (below) |
+| MacBook | #3038 | SIP-0116 phase 6, lessons | the game plan |
+| MacBook | #3044 | the frozen scenario, declarative | the handler and plan expansion |
+| MacBook | #3039, #3040 | the Studio adapter and the harness | the game plan; they need Studio |
+| MacBook | #3046, #3048, #3049 | the worker service, re-qualification, payload limits | they need the MacBook and Studio |
+| MacBook | #3041, #3042 | the squad and the product | the game plan |
+| MacBook, then Spark | #3043 | the demonstration: the rehearsal and the diagnostic on the MacBook; the counted run on the Spark | the game plan §5 |
+| Spark | #3053 | Campaign delivery | `campaigns/` acceptance and the product runner |
+| Spark | #3050 | the end-to-end machinery Campaign | CI and the scripted squad |
+| Spark | #3005, #3020 | the scripted squad's two defects | the scripted provider |
+| Spark | #2906 | the Luau runner | decision 4 (the game plan said MacBook; decision 4 moved it) |
+| Spark | #3045 | the Campaign's relaunch budget | **proposed:** `campaigns/launch_blocking.py`. #3052 holds the in-cycle part |
+| Spark | #3047 | the operator's read surface | **proposed:** the Spark runs the runtime the operator reads. The MacBook lane holds every other headline item |
+| Spark | #2954, #2287, #2421, #3010 | the ride-alongs and the patch | decision 9 |
+| Spark | — | the Spark deploy's `.env` gains `SQUADOPS__REMOTE_EXECUTION__PROVIDER=none` before its first rebuild after #3052 merges | deploy (#3052's own note) |
+| the owner | #3009 | the Actions policy, verified 2026-11-16 16:00–18:00 UTC | an administrator's setting |
+
+**Where both lanes change one area,** the order is fixed so neither rebases onto the other's half-built work:
+- **`campaigns/`:** #3053, then #3045, then #3037.
+- **`remote_execution/`:** #3052, then #3036.
+- **SIP-0117's ledger:** #3052's edit, then the adoption PR.
+
+### 11.2 #3052 against decision 2
+
+**The timing.** #3052 was built on the owner's ruling "approve part 3 as recommended", given to the MacBook session
+before it opened the PR at 08:41 ET. Decision 2 was ruled about 09:00 ET, after the outside review. It refines the
+earlier ruling and doesn't reverse it. **Proposed: decision 2 governs where the two differ.**
+
+**Where they agree, and #3052 stands as built:**
+- the transport is HTTP;
+- the one scope `operations:request` is held by the agent role alone;
+- the selector is required, with `none` binding no port;
+- with no worker being heard from, nothing is queued and the result is `not_executed`;
+- the 900-second wait ends with a cancel, and a cancelled claim whose lease runs out settles `interrupted`;
+- a refusal or an unreadable answer is raised.
+
+Its review points 1–5 and 8 (SIP-0117 R5.6 on its branch) are consistent with this plan. **Proposed: accept them as
+built.**
+
+**Where they differ.** #3052's review points 6 and 7 are what decision 2 answers:
+
+| | decision 2 | #3052 as built | proposed change to #3052, before it merges |
+|---|---|---|---|
+| 1 | enqueue, read and cancel only for the task the agent is running, at its current dispatch identity | any agent may read or cancel any operation whose id it knows (its point 6) | the routes check the operation's origin (task and dispatch identity) against the runtime's current dispatch for that task, and refuse otherwise |
+| 2 | enqueue is idempotent on the task and its dispatch identity, so a lost reply or a restart recovers the original operation | no answer to the request to queue reads `not_executed`, "nothing is known to be queued", though the operation may be stored and later run in Studio, read by nobody | create is keyed on the task and its dispatch identity, and a repeat returns the stored operation. The adapter asks again on no answer instead of reporting `not_executed` |
+| 3 | an enqueue under a newer dispatch identity for the same task cancels the older send's operation | an agent that dies while it waits leaves its operation to run, read by nobody (its point 7) | create under a newer identity cancels the older send's operation, which then settles as the lease rules say |
+| — | the request carries the send's dispatch identity | the handler sends the task id (`run_remote_operation.py:136`) | the handler carries the identity the agent echoes in its reply (#2932) |
+
+**Why before it merges:**
+- #3052 is the PR that completes #3023, and it's still a draft;
+- the machinery Campaign's dropped-response and superseded-send faults (#3050) have nothing to pass without these
+  changes;
+- point 2 is an unaccounted operation: Studio, under the owner's login, runs work nobody reads.
+
+### 11.3 What changes in the MacBook lane's documents
+
+Where this plan and the adopted game-dev-roblox plan differ, **this plan governs 2.8.** The adoption PR adds a note at
+the top of the game plan naming each difference:
+
+| the game plan | 2.8 | by |
+|---|---|---|
+| §3: the Luau runner (2c) built by the MacBook lane | the Spark lane | decision 4 |
+| §2.6 and §2.7: "the frozen scenario" among the harness's fixed programs, and its assertions in Luau | a declarative scenario of actions, observations and expected values, validated and executed by the harness | #3044; SIP-0117 R5.7 and SIP-0118's amendment |
+| §1: "the criterion fails on the accepted baseline" | the named assertion **executes** and fails, and anything unread blocks; the counting rules | #3044, #3043 |
+| no row for Campaign delivery | #3053, the Spark lane | the outside review, answer 7 |
+| §2.5: the worker protocol | plus decision 2's request path (§11.2) and one credential per host before a second worker | decision 2; §3 |
+| §5: the counted run on the Spark | in an attended window, after #3046's reboot check | decision 7 |
+
+### 11.4 Before each lane resumes
+
+**The MacBook session** (after its model is reset) reads, in order:
+- this plan at revision 3;
+- the outside review and revision 2's response, both comments on this PR;
+- the request-path comment on #3023.
+
+It then posts on this PR, for each of §11.1's MacBook rows, §11.2's three points and §11.3, whether it **confirms**
+or **objects**, with the evidence for any objection. **Its first work on resuming is §11.2's change to #3052.**
+
+**The Spark session** confirms §11.1's Spark rows on this PR. It builds nothing until the plan is adopted.
+
+**The owner:**
+- rules the two proposed lanes (#3045, #3047) and §11.2's "decision 2 governs";
+- reads each lane's confirmation;
+- merges this PR to adopt the plan.
