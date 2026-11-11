@@ -199,7 +199,13 @@ async def test_a_branch_increment_is_judged_at_its_delivery_on_its_runner(world)
         ["criterion R1: its runner names no test", f"frozen F1: {NO_READER_EXIT_ZERO}"],
     )
     assert document["discriminations"] == [
-        {"criterion_id": "R1", "met": False, "reason": "no_test_id_reader", "discriminating": []}
+        {
+            "criterion_id": "R1",
+            "met": False,
+            "reason": "no_test_id_reader",
+            "discriminating": [],
+            "detail": "",
+        }
     ]
     [frozen] = document["frozen"]
     assert (frozen["criterion_id"], frozen["held"], frozen["detail"]) == (

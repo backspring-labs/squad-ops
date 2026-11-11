@@ -47,13 +47,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from squadops.campaigns.acceptance import (
     Discrimination,
     DiscriminationReason,
     FrozenResult,
     RouteResult,
+    Side,
     discrimination_on_runner,
     held_on_runner,
     increment_acceptance,
@@ -81,7 +82,7 @@ logger = logging.getLogger(__name__)
 
 #: The two sides a criterion's file is run on (§8.2): the baseline-evaluator overlay, and the
 #: candidate-verifier overlay.
-BASELINE, CANDIDATE = "baseline", "candidate"
+BASELINE, CANDIDATE = Side.BASELINE, Side.CANDIDATE
 
 
 class CandidateNotDelivered(RuntimeError):
@@ -253,22 +254,37 @@ class OverlayRun:
         }
 
 
-def _stages(tree: SandboxTree, overlay: Overlay) -> list[tuple[str, dict, str]]:
-    """Each revision an overlay is cut through, as ``(stage, patch, revision id)``: the checkout,
-    the candidate (the squad's changes, none for the accepted tree) and the overlay. Each id is
-    what the content names (``compute_revision_id``, contract 3), with the executable bits a
-    patch keeps: a file keeps its mode, and a deleted one drops out."""
+class _Stage(NamedTuple):
+    """One revision an overlay is cut through: the patch that cuts it, and the origin the
+    sandbox records for it."""
+
+    name: str
+    origin: str
+    patch: dict
+    revision_id: str
+
+
+def _stages(tree: SandboxTree, overlay: Overlay) -> list[_Stage]:
+    """Each revision an overlay is cut through: the checkout, the candidate (the squad's changes,
+    none for the accepted tree) and the overlay. Each id is what the content names
+    (``compute_revision_id``, contract 3), with the executable bits a patch keeps: a file keeps
+    its mode, and a deleted one drops out."""
     # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
-    from squadops.sandbox.models import compute_revision_id
+    from squadops.sandbox.models import RevisionOrigin, compute_revision_id
 
     def named(files: Mapping[str, bytes]) -> str:
         return compute_revision_id(files, tree.executable & files.keys())
 
     content, target = tree.content, overlay.tree.as_dict()
     return [
-        ("checkout", dict(tree.files), named(tree.files)),
-        ("candidate", dict(tree.changes), named(content)),
-        ("overlay", _patch_to(content, target), named(target)),
+        _Stage("checkout", RevisionOrigin.GIT_CHECKOUT, dict(tree.files), named(tree.files)),
+        _Stage("candidate", RevisionOrigin.AGENT_PATCH, dict(tree.changes), named(content)),
+        _Stage(
+            "overlay",
+            RevisionOrigin.ACCEPTANCE_ASSEMBLY,
+            _patch_to(content, target),
+            named(target),
+        ),
     ]
 
 
@@ -340,10 +356,10 @@ class RunnerAcceptance:
 
         stages = _stages(tree, overlay)
         expected = self.verified_candidate_revision
-        if tree.changes and expected is not None and stages[1][2] != expected:
+        if tree.changes and expected is not None and stages[1].revision_id != expected:
             raise CandidateNotDelivered(
-                f"the candidate's content is revision {stages[1][2]}, and delivery verified "
-                f"{expected}: the tree judged isn't the tree delivered"
+                f"the candidate's content is revision {stages[1].revision_id}, and delivery "
+                f"verified {expected}: the tree judged isn't the tree delivered"
             )
         workspace_id = f"{self.workspace_prefix}{overlay.identity[:12]}"
 
@@ -360,20 +376,15 @@ class RunnerAcceptance:
                 origin=RevisionOrigin.GIT_CHECKOUT,
                 executable=tree.executable,
             )
-            if revision.revision_id != stages[0][2]:
+            if revision.revision_id != stages[0].revision_id:
                 return unexecuted(
                     f"the sandbox seeded {revision.revision_id}, not the checkout "
-                    f"{stages[0][2]}: the overlay wasn't assembled",
+                    f"{stages[0].revision_id}: the overlay wasn't assembled",
                     revision.revision_id,
                 )
-            for name, files, want in stages[1:]:
+            for name, origin, files, want in stages[1:]:
                 if not files:
                     continue
-                origin = (
-                    RevisionOrigin.AGENT_PATCH
-                    if name == "candidate"
-                    else RevisionOrigin.ACCEPTANCE_ASSEMBLY
-                )
                 patched = await self._patched(revision, files, origin)
                 if patched is None or patched.revision_id != want:
                     cut = patched.revision_id if patched is not None else "nothing"
