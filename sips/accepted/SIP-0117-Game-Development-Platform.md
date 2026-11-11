@@ -587,13 +587,16 @@ section grows with them.
 | **A scenario criterion** is `surface_kind: scenario`, with its declaration in `scenario`. Its surface is the path its named assertion observes, and its declaration's `scenario_id` is the criterion's id. It exists only on a repository-backed increment | the plan gate shows a reviewer the surface as the criterion's observed effect (R5.7's first row) |
 | **Refusals.** A scenario criterion is refused as `scenario_unverifiable` when the cycle keeps no vocabulary. It is refused as `scenario_outside_vocabulary` when the reader can't run its declaration, when it names another criterion's id, or when its surface isn't its named assertion's path | — |
 | **It is placed by the framework** at `.squadops/scenarios/criterion_<id>.json`. No runner places it, since none runs it. Its file is named for its criterion, as every placed criterion file is (§24cj). The load-time placement check refuses a scenario anywhere else, or anything else at that path | R5.8 named the file `<criterion>.json`. The placement rule names each criterion's file by its id |
+| **One resolver names the operation a scenario runs under**: `capabilities.operation_supply.scenario_operation(record, catalog)`. It reads the one contract the cycle's record offers that runs an operation in `play` mode, with its supplier, and that supplier's one tool from the catalog, checked against the recorded digest. None or more than one is refused, never chosen between. Plan expansion's step, the baseline step, the handler and Campaign delivery each call it (#3067) | the Spark lane's review: three seams each resolving a scenario's tool could disagree about which provider runs it |
+| **The declaration is the framework's file.** It is derived from the approved change request wherever it is needed (`placed_scenarios`), as page loaders are (#2799). It is laid over the squad's change at delivery (`placed_framework_files`), so the candidate Campaign acceptance reads holds it as frozen. It is left out of everything that holds a qa suite to a file: the planner's criterion index, the gate's criterion-file rule and the head check (`suite_criterion_files`). It is also left out of the footprint a planner is shown. A task that names it is refused at the plan gate (`validate_increment_scenario_files`) | a squad's copy would be discarded at delivery unread; a qa task held to writing it would block every plan |
 
 **Still to build in part 2:**
-- the framework writing the placed declaration into the cycle's tree;
-- the operation step that plan expansion appends per scenario criterion;
-- the qa routing and the product runners that must leave a scenario criterion's file alone;
+- the operation step that plan expansion appends per scenario criterion, which lays the declaration into
+  its workspace;
 - the plan gate's view;
 - the baseline step.
+
+Campaign acceptance's runner side is the Spark lane's (#3053).
 
 **No proposal can carry a scenario criterion yet:** no skillset ships a vocabulary, so every one is refused as
 unverifiable until those land.

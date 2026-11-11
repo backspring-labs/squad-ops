@@ -21,6 +21,7 @@ from squadops.campaigns.change_request import (
     derive_footprint_from,
     load_stored_change_request,
     placed_page_loaders,
+    placed_scenarios,
 )
 from squadops.campaigns.page_loader import PAGE_LOADER_IMPORT, page_loader_files
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
@@ -382,6 +383,19 @@ def increment_criterion_files(change_request: str, stack: str) -> tuple[Criterio
         )
         for c in request.criteria
     )
+
+
+def suite_criterion_files(files: Iterable[CriterionFile]) -> tuple[CriterionFile, ...]:
+    """The criteria a qa suite proves, each in the test file it writes: every new criterion but a
+    scenario (#3044), whose file is its declaration, written by the framework and run by its
+    provider. What the plan is told to write, the gate checks is planned, and the head runs."""
+    return tuple(f for f in files if f.surface_kind != SurfaceKind.SCENARIO)
+
+
+def increment_scenario_files(change_request: str) -> dict[str, str]:
+    """#3044: the scenario declarations the stored change request placed, each with its text, by
+    path (``placed_scenarios``)."""
+    return placed_scenarios(load_stored_change_request(change_request))
 
 
 def criterion_file_rows(files: Iterable[CriterionFile]) -> list[dict[str, str]]:

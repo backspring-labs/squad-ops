@@ -6,6 +6,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A scenario criterion's declaration is the framework's file** (#3044, part 2; SIP-0117 R5.9): it is
+  derived from the approved change request, and delivery lays it over the squad's change, so the delivered
+  candidate holds it as frozen. No qa task is held to write it, the head check never runs it as a test, a
+  planner is never offered it to claim, and the plan gate refuses a task that names it
+  (`validate_increment_scenario_files`).
 - **One resolver names the operation a frozen scenario runs under** (#3044, part 2):
   `capabilities.operation_supply.scenario_operation(record, catalog)`. It reads the one operation contract the
   cycle's skillset record offers in `play` mode, with its supplier, and that supplier's one tool from the

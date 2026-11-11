@@ -187,7 +187,7 @@ def with_framework_files(
 
 async def placed_framework_files(cycle: Cycle, vault: Any) -> dict[str, bytes]:
     """#2799: the framework's files a repository-backed increment's change request placed: the
-    page loaders its page criteria's tests import. Laid over the squad's change at delivery
+    page loaders its page criteria's tests import, and its scenarios' declarations (#3044). Laid over the squad's change at delivery
     (``with_framework_files``), so the candidate verified, captured and judged holds them as the
     framework wrote them, and the bundles frozen from it carry them. Empty for every other run,
     and for a change request that placed none."""
@@ -196,6 +196,7 @@ async def placed_framework_files(cycle: Cycle, vault: Any) -> dict[str, bytes]:
         approved_change_request,
         increment_basis,
         increment_page_loader_files,
+        increment_scenario_files,
     )
 
     basis = increment_basis(cycle.resolved_config())
@@ -203,7 +204,11 @@ async def placed_framework_files(cycle: Cycle, vault: Any) -> dict[str, bytes]:
         return {}
     try:
         document = await approved_change_request(vault, cycle)
-        files = increment_page_loader_files(document) if document is not None else {}
+        files = (
+            {**increment_page_loader_files(document), **increment_scenario_files(document)}
+            if document is not None
+            else {}
+        )
     except ValueError as e:
         # The acceptance after delivery would refuse it too: nothing is judged unread.
         raise SourceDeliveryRefused(

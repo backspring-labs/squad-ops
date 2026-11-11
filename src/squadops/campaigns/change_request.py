@@ -47,6 +47,7 @@ from squadops.cycles.verification_contract import VerificationContract
 from squadops.remote_execution.scenario import (
     ScenarioRefused,
     ScenarioVocabulary,
+    canonical_text,
     read_declaration,
 )
 from squadops.stacks.scaffold import (
@@ -644,6 +645,17 @@ def placed_page_loaders(request: ChangeRequest) -> tuple[str, ...]:
     """#2799: the page loaders the request's placement put beside its page criteria's files, once
     each, in order: the framework's files, written into every tree a criterion's test runs on."""
     return tuple(dict.fromkeys(f.page_loader for f in request.criterion_files if f.page_loader))
+
+
+def placed_scenarios(request: ChangeRequest) -> dict[str, str]:
+    """#3044: each scenario criterion's declaration, as the framework writes it, by its placed
+    path: the canonical text its digest is taken over. The framework's files, as page loaders
+    are, laid into every tree the scenario is run on and into the delivered candidate."""
+    return {
+        scenario_criterion_path(c.id): canonical_text(c.scenario)
+        for c in request.criteria
+        if c.surface_kind is SurfaceKind.SCENARIO and c.scenario is not None
+    }
 
 
 def placement_inconsistency(request: ChangeRequest) -> str | None:
@@ -1344,6 +1356,11 @@ def _unseedable(route: str) -> bool:
         route_param(s) is not None or (s.startswith("[") and s.endswith("]")) or "*" in s
         for s in route.split("/")
     )
+
+
+def is_scenario_path(path: str) -> bool:
+    """Whether ``path`` is where the framework places scenario declarations (#3044)."""
+    return path.startswith(SCENARIO_CRITERIA_DIR + "/")
 
 
 def scenario_criterion_path(criterion_id: str) -> str:

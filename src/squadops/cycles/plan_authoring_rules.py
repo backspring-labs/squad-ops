@@ -103,6 +103,10 @@ NOT_AUTHOR_FACING: dict[str, str] = {
     # task lists no expected_artifacts" is taught, with its worked example.
     "validate_operation_tasks": "enforced-by-offer (SIP-0116 §17c): no planner is offered a "
     "remote operation until the offered-contracts prompt asset teaches its shape",
+    # #3044: a scenario criterion's declaration is left out of the footprint index a planner is
+    # shown, so a compliant author never names it. The gate check is the net for one that did.
+    "validate_increment_scenario_files": "enforced-by-offer (#3044): a scenario's declaration "
+    "is left out of the footprint a planner is shown",
 }
 
 
