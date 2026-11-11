@@ -8,6 +8,9 @@ outward, its claim, lease and fence) is behind this port. The handler of
 ``WorkerRegistryStorePort`` is where the runtime keeps the workers, the operations queued for
 them and each attempt (R5.4). The rules over those rows are the domain's.
 
+The worker has two ports of its own (R5.5). ``WorkerApiPort`` is the runtime as the worker
+calls it, and ``OperationRunnerPort`` is the tool on the worker's machine.
+
 An implementation returns a ``RemoteOperationResult`` for every request it accepts. When the
 operation can't run it says so, as ``not_executed`` with the reason; it doesn't raise for
 that, and it never returns a pass for an operation that didn't run.
@@ -16,17 +19,27 @@ that, and it never returns a pass for an operation that didn't run.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
+from typing import TYPE_CHECKING
 
 from squadops.remote_execution.models import RemoteOperationRequest, RemoteOperationResult
 from squadops.remote_execution.workers import (
     Attempt,
+    Claim,
+    Enrolment,
+    Fence,
+    LeaseReading,
     QueuedOperation,
     RecordedRefusal,
+    ResultReading,
     ServedOperation,
+    WorkerRegistration,
     WorkerSession,
 )
+
+if TYPE_CHECKING:
+    from squadops.runtime.models import RuntimeStatus
 
 
 class RemoteExecutionPort(ABC):
@@ -101,3 +114,71 @@ class WorkerRegistryStorePort(ABC):
     @abstractmethod
     def exclusive(self) -> AbstractAsyncContextManager[WorkerRegistryTransaction]:
         """One exclusive transaction. Leaving it by an exception keeps none of its writes."""
+
+
+class WorkerApiPort(ABC):
+    """The runtime's ``/api/v1/workers``, as a worker calls it (SIP-0117 R3.3, R5.5).
+
+    Every call raises ``RuntimeUnreachable`` when it gets no answer, ``WorkerRefused`` when the
+    runtime will not serve this worker, and ``RuntimeAnswerUnreadable`` when the answer isn't
+    the document expected. None of them is turned into an empty answer.
+    """
+
+    @abstractmethod
+    async def register(self, registration: WorkerRegistration) -> Enrolment:
+        """Register a session for the worker."""
+
+    @abstractmethod
+    async def heartbeat(self, session_id: str, runtime_status: RuntimeStatus) -> None:
+        """Report the worker's health while it holds no claim. Raises ``UnknownSession`` when
+        the runtime has no live session with this id."""
+
+    @abstractmethod
+    async def renew(
+        self, session_id: str, runtime_status: RuntimeStatus, fence: Fence
+    ) -> LeaseReading:
+        """Report the worker's health and renew the lease of the claim it holds. Raises
+        ``UnknownSession`` as ``heartbeat`` does."""
+
+    @abstractmethod
+    async def claim(self, session_id: str) -> Claim | None:
+        """Claim the oldest queued operation the session serves, or ``None`` when there is
+        none. Raises ``UnknownSession`` as ``heartbeat`` does."""
+
+    @abstractmethod
+    async def submit_result(self, fence: Fence, result: RemoteOperationResult) -> ResultReading:
+        """Submit the claim's result. A refusal is returned with its reason, never raised."""
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Release the connection."""
+
+
+class OperationRunnerPort(ABC):
+    """The tool on a worker's machine, running a provider's operations (SIP-0117 R4.2, R5.5).
+
+    ``run`` returns a result for every request. When the operation can't begin it returns
+    ``not_executed`` with the reason. It is stopped by cancelling the call, and whatever it
+    raises is reported as ``interrupted``, since it had started.
+    """
+
+    @abstractmethod
+    def serves(self) -> tuple[ServedOperation, ...]:
+        """The operations this tool runs, as the worker registers them."""
+
+    @abstractmethod
+    async def tool_versions(self) -> Mapping[str, str]:
+        """The tool and what it runs with, by name, as the worker registers them."""
+
+    @abstractmethod
+    async def health(self) -> RuntimeStatus:
+        """Whether the tool can run an operation now, in the canonical health vocabulary."""
+
+    @abstractmethod
+    async def run(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+        """Run ``request``'s operation and return what it came to."""
+
+    @abstractmethod
+    async def reset(self) -> None:
+        """Reconcile and reset: leave the tool as a new operation can start from, whatever an
+        earlier one left behind. Raises when it can't, and then nothing is run on it."""

@@ -6,6 +6,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The remote-execution worker** (#3023; SIP-0117 phase 2b, part 2): `python -m squadops.remote_execution.worker_main`,
+  run on the machine that hosts a tool. It connects outward to the runtime API and listens on nothing. It reads
+  its own settings, `SQUADOPS__WORKER__*` (its id, the runtime's address, the token endpoint, its client's id and
+  secret, and `provider`), each required. It claims one operation, runs it, renews its lease and submits the
+  result; a cancel stops the tool and settles the operation `interrupted`. A wrong secret or an address that
+  isn't the runtime stops the worker with the reason. `provider: fixture` checks the files a request stages and
+  drives no tool. No deploy changes: the settings live on the worker's machine.
 - **The runtime's side of remote execution** (#3023; SIP-0117 phase 2b, part 1): a worker on another machine
   registers a session, claims one queued operation under a lease, renews it and submits the result, through four
   routes under `/api/v1/workers` (`workers:serve`, held by the new `worker` role alone). A result is accepted only

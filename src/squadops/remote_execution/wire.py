@@ -23,6 +23,11 @@ from squadops.remote_execution.models import (
     Scenario,
 )
 
+#: The error codes of ``/api/v1/workers`` that a worker acts on. The route writes them and the
+#: worker reads them, so each is named once.
+ERROR_SESSION_NOT_FOUND = "WORKER_SESSION_NOT_FOUND"
+ERROR_RESULT_REFUSED = "RESULT_REFUSED"
+
 _REQUEST_KEYS = frozenset(
     {
         "contract",

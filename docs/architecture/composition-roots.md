@@ -53,6 +53,7 @@ with the reason each wires infrastructure (#154):
 | `squadops.api.runtime` (`main`, `deps`, `scheduler_bootstrap`, `record_deploy`) | the runtime API: pool, queue, LLM, registries, vault, telemetry, tracker, events, executor, auth. `record_deploy` is its second process, the deploy step's one-off (#1720): the pool, the deploy registry, the squad profile and the LLM, through the same factories and selectors |
 | `squadops.agents.entrypoint` | the agent container: queue, LLM, prompts, telemetry, filesystem, messaging (no memory store since #2184) |
 | `squadops.sandbox.main` | the sandbox service |
+| `squadops.remote_execution.worker_main` | the remote-execution worker, on the machine that hosts a tool: the runtime API it calls and its provider's runner (SIP-0117 R5.5) |
 | `squadops.bootstrap` | system composition, the doctor's checks, the secrets provider |
 
 **This standard adopts that list as the definition** rather than writing a second one. A new

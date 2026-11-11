@@ -102,7 +102,7 @@ squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  #
 package and its entry disagree (#1989), so read it rather than a list here.
 - **`src/squadops/`**: the domain (ports, models, decisions, handlers, prompts). **Only the composition
   roots import `adapters.*`** (`squadops.api.runtime`, `squadops.agents.entrypoint`,
-  `squadops.sandbox.main`, `squadops.bootstrap`; #154, `docs/architecture/composition-roots.md`).
+  `squadops.sandbox.main`, `squadops.remote_execution.worker_main`, `squadops.bootstrap`; #154, `docs/architecture/composition-roots.md`).
 - **`adapters/`**: implementations behind the ports. The cycle orchestration moved out of
   `adapters/cycles` to `squadops.execution` in 2.3 (#1992); `adapters/cycles` keeps its infrastructure.
 - **`infra/`**: database migrations and DDL.

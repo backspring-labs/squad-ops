@@ -369,6 +369,40 @@ class ServiceClientConfig(BaseModel):
     )
 
 
+class WorkerConfig(BaseModel):
+    """A remote-execution worker's own section, ``SQUADOPS__WORKER__*`` (SIP-0117 R3.3, R5.5).
+
+    The worker runs on the machine that hosts a tool and connects outward to the runtime API.
+    It loads this section alone, never the platform config. Every field is required: a worker
+    that guessed where the runtime is, or who it is, would serve the wrong deploy.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    worker_id: str = Field(
+        min_length=1,
+        description="The worker's identity, the same across its restarts (its machine's name)",
+    )
+    runtime_api_url: str = Field(
+        min_length=1, description="The runtime API the worker connects outward to"
+    )
+    token_endpoint: str = Field(
+        min_length=1,
+        description="The identity provider's token endpoint for the client-credentials grant",
+    )
+    client_id: str = Field(min_length=1, description="The worker's service client")
+    client_secret: str = Field(
+        min_length=1,
+        description="The service client's secret (supports a secret:// reference)",
+    )
+    provider: Literal["fixture"] = Field(
+        description=(
+            "The provider whose operations this worker runs (required; the vocabulary is the "
+            "schema's, R2). 'fixture' checks the files a request stages and drives no tool"
+        )
+    )
+
+
 class SandboxConfig(BaseModel):
     """Ephemeral Application Sandbox configuration (SIP-0102).
 

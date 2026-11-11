@@ -1,9 +1,19 @@
-"""The worker registry's store (SIP-0117 R5.4), chosen by the cycle registry's selector: its
-operations belong to the cycles that asked for them, so it lives beside them."""
+"""Remote execution's adapters (SIP-0117 R5.4, R5.5).
+
+The worker registry's store is chosen by the cycle registry's selector: its operations belong
+to the cycles that asked for them, so it lives beside them. A worker's operation runner is
+chosen by the worker's own ``provider``, and its way to the runtime is HTTP.
+"""
 
 from __future__ import annotations
 
-from squadops.ports.remote_execution import WorkerRegistryStorePort
+from collections.abc import Awaitable, Callable
+
+from squadops.ports.remote_execution import (
+    OperationRunnerPort,
+    WorkerApiPort,
+    WorkerRegistryStorePort,
+)
 
 
 def create_worker_registry_store(provider: str, **kwargs) -> WorkerRegistryStorePort:
@@ -23,3 +33,19 @@ def create_worker_registry_store(provider: str, **kwargs) -> WorkerRegistryStore
 
         return PostgresWorkerRegistryStore(pool=pool)
     raise ValueError(f"Unknown worker registry store provider: {provider}")
+
+
+def create_operation_runner(provider: str) -> OperationRunnerPort:
+    """The runner for the provider a worker's config names."""
+    if provider == "fixture":
+        from adapters.remote_execution.fixture_operation_runner import FixtureOperationRunner
+
+        return FixtureOperationRunner()
+    raise ValueError(f"Unknown operation runner provider: {provider}")
+
+
+def create_worker_api(base_url: str, token: Callable[[], Awaitable[str]]) -> WorkerApiPort:
+    """The runtime API at ``base_url``, called with the bearer token ``token`` returns."""
+    from adapters.remote_execution.http_worker_api import HttpWorkerApi
+
+    return HttpWorkerApi(base_url, token)
