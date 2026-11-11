@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from adapters.llm.script_positions import InProcessScriptPositions
 from adapters.remote_execution.runtime_api_remote_execution import RuntimeApiRemoteExecution
 from tests.unit.agents.test_entrypoint_scripted_squad import _config
 
@@ -31,6 +32,11 @@ def agent(monkeypatch):
     )
     monkeypatch.setattr("adapters.comms.factory.create_queue_adapter", lambda *a, **k: AsyncMock())
     monkeypatch.setattr("adapters.comms.factory.create_task_attempts", lambda *a, **k: None)
+    # #3005: the positions a deploy keeps in Redis, held in the test.
+    monkeypatch.setattr(
+        "adapters.llm.factory.create_script_positions",
+        lambda comms: InProcessScriptPositions(),
+    )
     return entrypoint.AgentRunner(role="qa", agent_id="eve")
 
 

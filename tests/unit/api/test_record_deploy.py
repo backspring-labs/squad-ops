@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
+from adapters.llm.script_positions import InProcessScriptPositions
 from squadops.api.runtime import record_deploy as recorder
 from squadops.campaigns.box import EngineReading, Model, box_quietness
 from squadops.campaigns.box_reading import declared_models
@@ -227,6 +228,7 @@ def _one_off(monkeypatch, instances_file):
                 provider="ollama", url="http://ollama:11434", timeout=5, api_key=None, model=None
             ),
             agent=SimpleNamespace(instances_file=instances_file),
+            comms=SimpleNamespace(redis=SimpleNamespace(url="redis://unused:6379/0")),
         )
 
     pool = AsyncMock()
@@ -236,6 +238,9 @@ def _one_off(monkeypatch, instances_file):
         "adapters.cycles.factory.create_squad_profile_port", lambda *a, **k: _profiles([])
     )
     monkeypatch.setattr("adapters.llm.factory.create_llm_provider", lambda **k: _llm([]))
+    monkeypatch.setattr(
+        "adapters.llm.factory.create_script_positions", lambda comms: InProcessScriptPositions()
+    )
     return seen, pool
 
 
