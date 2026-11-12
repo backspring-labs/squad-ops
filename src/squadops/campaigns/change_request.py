@@ -647,6 +647,71 @@ def placed_page_loaders(request: ChangeRequest) -> tuple[str, ...]:
     return tuple(dict.fromkeys(f.page_loader for f in request.criterion_files if f.page_loader))
 
 
+#: The review aid a proposal emits beside its change request when it names scenarios (#3044).
+SCENARIO_REVIEW_FILENAME = "scenario_review.md"
+
+
+def scenario_review(request: ChangeRequest) -> str:
+    """What each scenario criterion observes, beside what it claims, for whoever rules on the
+    increment (#3044): an observation must read the player-facing effect the criterion names,
+    and a check that reads a value the change itself sets can pass while the player still can't
+    open the door. Empty for a request with no scenario. Derived from the request, never stored
+    in it, so the ruled document and its hash are unchanged."""
+    blocks = []
+    for c in request.criteria:
+        if c.surface_kind is not SurfaceKind.SCENARIO or c.scenario is None:
+            continue
+        scenario = c.scenario
+        lines = [
+            f"## {c.id}: {c.statement}",
+            "",
+            f"- **Claims:** {c.observable}",
+            f"- **Reader:** `{scenario['reader']}`",
+            f"- **Setup:** {_review_actions(scenario['setup'])}",
+            f"- **Steps:** {_review_actions(scenario['steps'])}",
+            "",
+            "| assertion | observes | in | expects |",
+            "|---|---|---|---|",
+        ]
+        for a in scenario["assertions"]:
+            marker = " (named)" if a["id"] == scenario["named_assertion"] else " (precondition)"
+            lines.append(
+                f"| `{a['id']}`{marker} | {_review_observation(a['observe'])} | "
+                f"{a['observe']['context']} | {_review_expectation(a['expect'])} |"
+            )
+        blocks.append("\n".join(lines))
+    if not blocks:
+        return ""
+    return (
+        "# What each scenario observes\n\n"
+        "The named assertion must fail on the accepted baseline and pass on the candidate; each "
+        "precondition must pass on both. Check that each observation reads the effect its "
+        "criterion claims, not a value the change itself sets.\n\n" + "\n\n".join(blocks) + "\n"
+    )
+
+
+def _review_observation(observe: Mapping[str, Any]) -> str:
+    arguments = ", ".join(f"{k}=`{v}`" for k, v in observe.items() if k not in ("kind", "context"))
+    return f"{observe['kind']} ({arguments})"
+
+
+def _review_expectation(expect: Mapping[str, Any]) -> str:
+    if "value" not in expect:
+        return str(expect["op"])
+    return f"{expect['op']} `{json.dumps(expect['value'])}`"
+
+
+def _review_actions(actions: Sequence[Mapping[str, Any]]) -> str:
+    if not actions:
+        return "none"
+    return "; ".join(
+        f"{a['action']}("
+        + ", ".join(f"{k}={json.dumps(v)}" for k, v in a.items() if k != "action")
+        + ")"
+        for a in actions
+    )
+
+
 def placed_scenarios(request: ChangeRequest) -> dict[str, str]:
     """#3044: each scenario criterion's declaration, as the framework writes it, by its placed
     path: the canonical text its digest is taken over. The framework's files, as page loaders

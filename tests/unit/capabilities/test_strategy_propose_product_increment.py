@@ -555,3 +555,30 @@ async def test_a_product_proposal_is_shown_that_a_half_already_true_stays_in_one
     [prompt] = _prompts(ctx)
     assert "**What the product already does stays inside the criterion that changes it.**" in prompt
     assert "this is one criterion, not\ntwo:" in prompt
+
+
+async def test_a_scenario_proposal_emits_what_each_scenario_observes_for_its_ruling():
+    """#3044, entered at the handler's ``handle()``, as the proposal task runs it. Bugs caught:
+    a reviewer ruling on a scenario criterion from raw YAML, never shown which assertion is the
+    criterion's or what it observes; or the review folded into the stored request, moving the
+    hash the ruling binds to."""
+    from adapters.remote_execution.fixture_operation_runner import VOCABULARY
+    from squadops.campaigns.change_request import SCENARIO_REVIEW_FILENAME
+    from tests.unit.campaigns.test_scenario_criterion import _request as scenario_request
+
+    inputs = _inputs()
+    inputs["product_proposal"]["scenario_vocabulary"] = VOCABULARY.to_document()
+    ctx = _ctx(_fenced(yaml.safe_dump(scenario_request(), sort_keys=False)))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert result.success, result.error
+    request, review = result.outputs["artifacts"]
+    assert "scenario_review" not in request["content"]
+    assert (review["name"], review["media_type"]) == (SCENARIO_REVIEW_FILENAME, "text/markdown")
+    assert "## C-2: Clicking the panel's button opens the door" in review["content"]
+    assert (
+        "| `door-open` (named) | property (path=`Workspace.Door`, name=`CanCollide`) | server "
+        "| equals `false` |"
+    ) in review["content"]
+    assert "| `spawned` (precondition) |" in review["content"]
