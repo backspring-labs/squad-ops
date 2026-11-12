@@ -1485,3 +1485,60 @@ class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
             "collaborator captured a bound method instead of looking it up"
         )
         assert result.outputs == {"artifacts": []}
+
+
+async def test_an_operation_stages_its_scenarios_declaration_as_the_framework_froze_it(executor):
+    """#3044, entered at ``_enrich_envelope``, the dispatch's one composition point. Bugs
+    caught: the operation step's workspace missing the declaration (the vault holds only the
+    squad's files), so the handler refuses the task; or the squad's copy at that path staged in
+    the framework's place; or the revision cut before the declaration was laid in."""
+    import dataclasses
+
+    from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
+    from squadops.tasks.models import TaskEnvelope
+
+    stored = [
+        (
+            "art_src",
+            _make_artifact_ref("art_src", "src/door.luau", "source", "development.develop"),
+        ),
+        (
+            "art_forged",
+            _make_artifact_ref(
+                "art_forged", ".squadops/scenarios/criterion_C_2.json", "source",
+                "development.develop",
+            ),
+        ),
+    ]  # fmt: skip
+    bodies = {"art_src": b"return {}\n", "art_forged": b'{"forged":true}'}
+
+    async def retrieve(art_id):
+        return dict(stored)[art_id], bodies[art_id]
+
+    executor._artifact_vault.retrieve = AsyncMock(side_effect=retrieve)
+    frozen = '{"scenario_id":"C-2"}'
+    envelope = dataclasses.replace(
+        TaskEnvelope(
+            task_id="t1", agent_id="eve", cycle_id="cyc_001", pulse_id="p1",
+            project_id="proj_001", task_type="qa.run_remote_operation", correlation_id="c",
+            causation_id="ca", trace_id="tr", span_id="s",
+        ),
+        inputs={
+            "operation_scenario": {
+                "path": ".squadops/scenarios/criterion_C_2.json",
+                "document": frozen,
+            }
+        },
+    )  # fmt: skip
+
+    enriched = await executor._enrich_envelope(envelope, {}, [], stored)
+
+    staged = enriched.inputs["acceptance_workspace_files"]
+    assert staged[".squadops/scenarios/criterion_C_2.json"] == frozen
+    assert staged["src/door.luau"] == "return {}\n"
+    assert (
+        enriched.inputs["workspace_revision_id"]
+        == WorkspaceRevision.cut(
+            cycle_id="cyc_001", origin=RevisionOrigin.ACCEPTANCE_ASSEMBLY, files=staged
+        ).revision_id
+    )

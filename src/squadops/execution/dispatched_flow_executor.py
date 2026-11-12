@@ -215,6 +215,7 @@ from squadops.tasks.task_types import (
     authors_source,
     corrects_only_executed_failures,
     fails_without_correction,
+    runs_an_operation,
 )
 from squadops.telemetry.context import use_correlation_context
 from squadops.telemetry.models import CorrelationContext, StructuredEvent
@@ -3484,6 +3485,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 include_repair_candidates=False,
                 filter_spec=workspace_filter.to_spec(),
             )
+            scenario = envelope.inputs.get("operation_scenario")
+            if runs_an_operation(envelope.task_type) and isinstance(scenario, Mapping):
+                # #3044: a scenario's declaration is the framework's file, laid into the tree its
+                # operation stages as the approved change request froze it.
+                workspace_files = {
+                    **(workspace_files or {}),
+                    scenario["path"]: scenario["document"],
+                }
             if workspace_files:
                 extra_inputs["acceptance_workspace_files"] = workspace_files
             # #734 Slice A: cut a revision from the EXACT post-filter mapping
