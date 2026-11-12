@@ -21,6 +21,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -446,4 +447,35 @@ def _skill_problem(directory: Path) -> str:
     except FrontmatterError as exc:
         return f"{SKILL_FILE} front matter: {exc}"
     missing = [k for k in ("name", "description") if not str(header.get(k) or "").strip()]
-    return f"{SKILL_FILE} front matter lacks {', '.join(missing)}" if missing else ""
+    if missing:
+        return f"{SKILL_FILE} front matter lacks {', '.join(missing)}"
+    try:
+        _supersedes(header)
+    except ValueError as exc:
+        return f"{SKILL_FILE} front matter: {exc}"
+    return ""
+
+
+#: A lesson pattern's id, as ``memory.lessons.pattern_id_for`` writes it.
+_PATTERN_ID = re.compile(r"pat_[0-9a-f]{16}")
+
+
+def skill_supersedes(skill_md: str) -> tuple[str, ...]:
+    """The lesson patterns a skill's ``SKILL.md`` says it supersedes (§10a): its front matter's
+    ``supersedes``, a list of pattern ids, or ``()`` when it names none. The skillset's load
+    refused any other value, so a kept copy's text reads here as it was checked."""
+    header, _body = parse_frontmatter(skill_md)
+    return _supersedes(header)
+
+
+def _supersedes(header: Mapping[str, Any]) -> tuple[str, ...]:
+    value = header.get("supersedes")
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(
+        isinstance(v, str) and _PATTERN_ID.fullmatch(v) for v in value
+    ):
+        raise ValueError(
+            f"supersedes is a list of lesson pattern ids (pat_ and 16 hex digits), not {value!r}"
+        )
+    return tuple(value)

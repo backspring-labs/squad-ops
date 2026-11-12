@@ -211,6 +211,8 @@ def _cycle(case: _Case) -> SimpleNamespace:
         applied_defaults={},
         # What a repair's skill supply reads (SIP-0116 §7.1): no record, so it loads none.
         skillset_record=None,
+        # What its recall stack reads (SIP-0116 §10a): no pinned source, so it recalls unscoped.
+        source_context=None,
     )
 
 

@@ -6,6 +6,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A repository-backed cycle recalls lessons under its development profile, and a skill can supersede a
+  lesson** (#3038, part 1; SIP-0116 §17i): a cycle with no `build_profile` recalls under the development
+  profile it pinned, and every exposure records which identity recall used. A cycle with a `build_profile`
+  recalls exactly as before. A skill's `supersedes: [pat_…]` keeps those lessons from a task that loads it,
+  each omitted as `superseded_by_skill`.
 - **An operation task's tool is read available again at dispatch** (#3036, part 2; SIP-0116 §17h): a worker
   that went offline after the cycle was created ends the run `infrastructure_failed`, classified
   `worker_unavailable` and naming the tool. It doesn't run to an unverified verdict. `create_flow_executor`
