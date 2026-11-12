@@ -186,7 +186,7 @@ phases are in its own ledger.
 | Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3048 |
 | Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3049 |
 | The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3050 |
-| Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3053 |
+| Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |

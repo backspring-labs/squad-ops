@@ -25,10 +25,11 @@ a failure or a pass.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from squadops.campaigns.acceptance import credited_outcomes
 from squadops.campaigns.change_request import (
     SurfaceKind,
     load_stored_change_request,
@@ -91,6 +92,8 @@ class Reading:
     revision: str
     document: Mapping[str, Any] | None
     why: str = ""
+    #: Taken before development by the baseline step (#3044 2b) and credited here, not played.
+    reused: bool = False
 
 
 class ScenarioRuns:
@@ -109,6 +112,7 @@ class ScenarioRuns:
         increment_id: str,
         dispatch_id: str,
         unavailable: str = "",
+        stored_baselines: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     ) -> None:
         self._port = port
         self._operation = operation
@@ -117,6 +121,7 @@ class ScenarioRuns:
         self._increment_id = increment_id
         self._dispatch_id = dispatch_id
         self._unavailable = unavailable
+        self._stored_baselines = stored_baselines or {}
 
     def scenario(
         self, bundle: VerifierBundle, approved_digest: str | None = None
@@ -137,6 +142,20 @@ class ScenarioRuns:
                 f"froze {approved_digest}"
             )
         return scenario, ""
+
+    def credited_baseline(
+        self, criterion_id: str, overlay: FileTree, scenario: Scenario
+    ) -> Reading | None:
+        """The baseline step's stored reading of this criterion (#3044 2b), when one is credited
+        for this overlay: the frozen digest, the baseline side, and the revision this overlay
+        stages as (``baseline_scenario_overlay`` builds the step's from the same rule). ``None``
+        when none is, and the baseline is then played here."""
+        revision = staged_revision(_staged(overlay)[0])
+        for document in self._stored_baselines.get(criterion_id, ()):
+            outcomes, _ = credited_outcomes(document, scenario, revision, ReadingSide.BASELINE)
+            if outcomes is not None:
+                return Reading(ReadingSide.BASELINE, revision, document, reused=True)
+        return None
 
     async def read(
         self,

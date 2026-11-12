@@ -622,9 +622,14 @@ async def _discriminated(
 def _readings(*readings: Reading) -> dict[str, Any]:
     """The readings as the evaluation keeps them: each side's records document, or why there is
     none."""
-    return {
+    kept: dict[str, Any] = {
         str(r.side): r.document if r.document is not None else {"not_read": r.why} for r in readings
     }
+    reused = [str(r.side) for r in readings if r.reused]
+    if reused:
+        # #3044 2b: credited from the baseline step's stored reading, not played at delivery.
+        kept["reused"] = reused
+    return kept
 
 
 async def _scenario_discriminated(
@@ -652,12 +657,12 @@ async def _scenario_discriminated(
     scenario, why = scenarios.scenario(bundle, approved_digest)
     if scenario is None:
         return not_run(why), bundle, {}
-    on_baseline = await scenarios.read(
-        criterion_id,
-        BASELINE,
-        candidate_verifier_overlay(accepted.file_tree, bundle, surface).tree,
-        scenario,
-    )
+    baseline_overlay = candidate_verifier_overlay(accepted.file_tree, bundle, surface).tree
+    # #3044 2b: the baseline step's reading, when it is credited for this very overlay, stands
+    # for the baseline; otherwise the baseline is played now.
+    on_baseline = scenarios.credited_baseline(
+        criterion_id, baseline_overlay, scenario
+    ) or await scenarios.read(criterion_id, BASELINE, baseline_overlay, scenario)
     on_candidate = await scenarios.read(
         criterion_id,
         CANDIDATE,

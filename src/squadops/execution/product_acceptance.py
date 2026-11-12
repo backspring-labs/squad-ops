@@ -32,6 +32,7 @@ can't be judged fails its task. Nothing is accepted unjudged.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
@@ -76,6 +77,7 @@ from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.product_proposal import kept_scenario_vocabulary
+from squadops.remote_execution.models import ASSERTION_RECORDS_ARTIFACT_TYPE, ReadingSide
 
 #: What ``evaluated_on`` names on a document this evaluator writes.
 PRODUCT_RUNNER = "product_runner"
@@ -83,6 +85,9 @@ PRODUCT_RUNNER = "product_runner"
 
 class ProductAcceptanceRefused(RuntimeError):
     """A repository-backed increment that can't be judged on its product's runner, with why."""
+
+
+logger = logging.getLogger(__name__)
 
 
 def evaluated_at_delivery(cycle: Cycle) -> bool:
@@ -316,7 +321,37 @@ async def scenario_runs_for(
         # A re-evaluation of the run is a new send of each ask, and stops the older one's.
         dispatch_id=f"{run_id}:{uuid4().hex[:12]}",
         unavailable="; ".join(reasons),
+        stored_baselines=await _stored_baselines(cycle, vault),
     )
+
+
+async def _stored_baselines(cycle: Cycle, vault: Any) -> dict[str, list[dict[str, Any]]]:
+    """#3044 2b: each scenario criterion's baseline readings the baseline step stored on this
+    increment cycle, newest first. Delivery credits one only for its own overlay's revision
+    (``ScenarioRuns.credited_baseline``); one it can't read is passed over, and the baseline is
+    then played."""
+    if vault is None:
+        return {}
+    refs = await vault.list_artifacts(
+        cycle_id=cycle.cycle_id, artifact_type=ASSERTION_RECORDS_ARTIFACT_TYPE
+    )
+    stored: dict[str, list[dict[str, Any]]] = {}
+    for ref in sorted(refs, key=lambda r: r.created_at, reverse=True):
+        metadata = ref.metadata or {}
+        if metadata.get("side") != ReadingSide.BASELINE.value or not metadata.get("criterion_id"):
+            continue
+        try:
+            _, content = await vault.retrieve(ref.artifact_id)
+            document = json.loads(content)
+        except (ValueError, KeyError) as e:
+            logger.warning(
+                "scenario_baseline_unreadable",
+                extra={"artifact_id": ref.artifact_id, "reason": f"{type(e).__name__}: {e}"},
+            )
+            continue
+        if isinstance(document, dict):
+            stored.setdefault(str(metadata["criterion_id"]), []).append(document)
+    return stored
 
 
 async def _store(cycle: Cycle, run_id: str, document: dict, vault: Any) -> str:
