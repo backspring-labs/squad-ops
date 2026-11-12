@@ -203,6 +203,13 @@ def get_scenario_store(request: Request):
     return _slot(request, "scenario_store")
 
 
+def get_tool_authorities(request: Request) -> dict:
+    """SIP-0116 §8: each provider's authority over its operations, by provider name, as the
+    composition root registered them. Empty where none is registered: every worker tool is then
+    refused at creation, since nothing governs it."""
+    return getattr(request.app.state, "tool_authorities", None) or {}
+
+
 def get_worker_registry(request: Request):
     """SIP-0117 R5.4: the worker registry, beside the cycle registry whose operations it queues."""
     return _slot(request, "worker_registry")

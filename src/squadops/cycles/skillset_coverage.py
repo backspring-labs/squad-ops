@@ -47,6 +47,10 @@ from squadops.tasks.task_types import TaskType
 
 COVERAGE = "coverage"
 DECLARATION = "declaration"
+#: SIP-0116 §9, phase 4: a required tool outside the authority governing its operation.
+AUTHORIZATION = "authorization"
+#: SIP-0116 §9, phase 4: a required tool no provider can run now.
+AVAILABILITY = "availability"
 
 
 @dataclass(frozen=True)

@@ -135,7 +135,8 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 2: coverage: the preflight refusals and consistency checks, the plan-gate check on the routed agent, the `plannable` property and the offered set (§5.1, §6, §9) | **shipped** | 2.8 (PR #3015, closing #3014) |
 | Phase 3, part 1: skills, kept: the catalog holds each skill's text, a cycle keeps a checked copy of the skills its work requires, the record names them by digest, and which skills a task loads is decided from the record and the copy (§7, §10, §17e) | **shipped** | 2.8 (PR #3032; #3028 tracks part 2) |
 | Phase 3, part 2: skills, loaded: a task is handed its skills from the kept copy at dispatch, a repair loads the skills of the step it revises, the prompt budget counts them, and where they render (§7, §7.1, §17e) | **shipped** | 2.8 (PR #3033, closing #3028) |
-| Phase 4: tools: requests within existing authority, and the coverage, authorization and availability outcomes (§8, §9) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3036 |
+| Phase 4, part 1: tools, checked at creation: the authorization outcome against each provider's registered authority (`ToolAuthorityPort`), and the availability outcome against the worker registry and the sandbox client (§8, §9, §17h) | **shipped** | 2.8 (PR #3077; #3036 tracks part 2) |
+| Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3036 |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
 | Phase 6: lessons: the recall identity, supplied, omitted and flagged records, supersession, and the promotion review (§10a) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3038 |
 
@@ -949,6 +950,37 @@ part that is kept and digested.
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-11); the design
 is on #3044.
 
+
+### 17h. Phase 4 in two parts, and part 1 as built: tools checked at creation (2026-11-12)
+
+**What was built.** Every tool a required skillset requests, for a contract the cycle's work requires, is
+checked in the create preflight (`capabilities/tool_checks.py`). Each failure is its own finding, and goes
+through the existing `PreflightRejectedError` (422 `PREFLIGHT_REJECTED`):
+
+| outcome | code | when |
+|---|---|---|
+| authorization | `skillset_authorization` | an `agent` tool: never refused. A `sandbox` tool: not one of the sandbox's typed operations (`OperationName.ALL`). A `worker` tool: its provider registers no authority, or a rule of that authority refuses it. The refusal names the tool and the rule |
+| availability | `skillset_availability` | an `agent` tool: always available. A `sandbox` tool: the runtime binds no sandbox client. A `worker` tool: no registered worker serves it, or every one that does is offline (`WorkerRegistry.no_worker_for`), or the runtime holds no registry. The refusal names the tool and its location, and says the squad still carries the skillset |
+
+**The authority is a port** (`ports/tool_authority.ToolAuthorityPort`). A provider registers its own at the
+composition root, keyed by provider name, and the runtime holds them as `tool_authorities`. **None is
+registered yet**, so a worker tool is refused, naming its provider: §8's "carrying a skillset never
+authorizes an operation", read strictly. Studio's authority is SIP-0117 R4.6's eligibility rules, which come
+with its adapter (#3039).
+
+**Where it reads.** `CreationPorts` gains `tool_authorities`, `worker_registry` and `sandbox_client`, filled
+by the create route and by a campaign's launch, so both create a cycle by one path. "The sandbox service is
+enabled" (§8) is read as the runtime binding a sandbox client (`sandbox_client.provider` isn't `none`): that
+client is what runs a sandbox operation.
+
+**Unchanged:** a cycle whose work requires no tool, which is every existing stack's, is checked for nothing.
+
+**Part 2, placed (#3036):** availability is read again when an operation task is dispatched. An unavailable
+tool ends the run `infrastructure_failed`, classified `worker_unavailable` (a constant beside `TerminalKind`),
+so the Campaign's relaunch budget (#3045) keys on the classification and never on the reason's words.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-11); the design is
+on #3036, and the dispatch ending was agreed with the Spark lane.
 
 ## Appendix A. A paper compatibility matrix
 
