@@ -6,6 +6,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A cycle's tools are checked at creation** (#3036, part 1; SIP-0116 §17h): every tool a required skillset
+  requests is refused as `skillset_authorization` when no authority governs it, or its provider's rule refuses
+  it. It is refused as `skillset_availability` when no provider can run it now: no online worker, no
+  registry, or no sandbox client. The availability refusal says the squad still carries the skillset. No
+  provider registers an authority yet, so a worker tool is refused until one does. A cycle whose work
+  requires no tool is unchanged.
 - **Whoever rules on an increment sees what each scenario observes** (#3044; SIP-0117 R5.9): a proposal that
   names scenarios also emits `scenario_review.md`. For each scenario it shows the claim, the setup and steps,
   and each assertion's observation and expectation, with the named one marked. The stored change request and

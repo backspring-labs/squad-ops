@@ -5,7 +5,8 @@ Cycle API routes (SIP-0064 §9.3).
 import json
 import logging
 import uuid
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -42,7 +43,10 @@ from squadops.api.runtime.deps import (
     get_memory_store,
     get_project_registry,
     get_reference_resolvers,
+    get_sandbox_client,
     get_squad_profile_port,
+    get_tool_authorities,
+    get_worker_registry,
 )
 from squadops.auth.models import AuditEvent, Identity, Scope
 from squadops.campaigns.change_request import load_stored_change_request
@@ -56,6 +60,11 @@ from squadops.campaigns.proposal_rating import (
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.capabilities.skillsets import packaged_skillsets
+from squadops.capabilities.tool_checks import (
+    authorization_findings,
+    availability_findings,
+    required_tools,
+)
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.contract_derivation import (
     ContractDerivationError,
@@ -104,6 +113,7 @@ from squadops.cycles.preflight import (
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
 from squadops.cycles.skillset_content import keep_skillset_content
+from squadops.cycles.skillset_coverage import cycle_coverage
 from squadops.cycles.skillset_record import skillset_record_and_content
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
@@ -113,6 +123,7 @@ from squadops.memory.records import RecordRefused, Source, SourceKind
 from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.llm.provider import LLMCapability
+from squadops.ports.tool_authority import ToolAuthorityPort
 from squadops.projects.source_context import (
     CAMPAIGN_BRANCH,
     PROJECT_BASELINE,
@@ -130,6 +141,7 @@ from squadops.stacks.development_profiles import (
     TEST_FRAMEWORK_PRODUCT_RUNNER,
     ProfileSelection,
     development_profile_conflict,
+    effective_development_profile,
     select_development_profile,
 )
 
@@ -205,6 +217,41 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
     )
 
 
+@dataclass(frozen=True)
+class ToolPreflight:
+    """What the tool checks read (SIP-0116 §8): each provider's registered authority, the worker
+    registry, and the sandbox client. Absent, a tool is unauthorized or unavailable, by name."""
+
+    authorities: Mapping[str, ToolAuthorityPort] = field(default_factory=dict)
+    worker_registry: Any | None = None
+    sandbox_client: Any | None = None
+    project_id: str | None = None
+
+
+async def _tool_preflight_decision(
+    profile: SquadProfile, config: dict, tools: ToolPreflight
+) -> PreflightDecision:
+    """SIP-0116 §9's authorization and availability outcomes, one finding each. A profile this
+    deployment doesn't hold is refused by its own decision, and has no tools to check."""
+    if effective_development_profile(config) not in DEVELOPMENT_PROFILES:
+        return PreflightDecision()
+    catalog = packaged_skillsets()
+    required = required_tools(cycle_coverage(profile, config, catalog), catalog)
+    if not required:
+        return PreflightDecision()
+    findings = authorization_findings(
+        required, tools.authorities, project_id=tools.project_id, config=config
+    ) + await availability_findings(
+        required, worker_registry=tools.worker_registry, sandbox_client=tools.sandbox_client
+    )
+    return PreflightDecision(
+        blocking=tuple(
+            Finding(code=f"skillset_{f.kind}", severity="block", message=f.message)
+            for f in findings
+        )
+    )
+
+
 async def _run_create_preflight(
     llm_port: Any | None,
     profile: SquadProfile,
@@ -212,6 +259,7 @@ async def _run_create_preflight(
     *,
     campaign_cycle: bool,
     source_backed: bool = False,
+    tools: ToolPreflight | None = None,
 ) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
@@ -245,6 +293,9 @@ async def _run_create_preflight(
         # SIP-0116 §9: the agent each responsibility routes to carries the skillsets the
         # development profile requires, or the cycle is refused here with what is missing.
         skillset_coverage_decision(profile, config, packaged_skillsets()),
+        # SIP-0116 §8, §9 (phase 4): each tool the work requires is within the authority that
+        # governs it and has a provider that can run it now.
+        await _tool_preflight_decision(profile, config, tools or ToolPreflight()),
         # SIP-0112 E.4.3: an external product's cycle starts from its tree, never a stack's.
         source_backed_stack_decision(config, source_backed=source_backed),
         model_availability_decision(profile, await _pulled_model_names(llm_port)),
@@ -481,6 +532,12 @@ class CreationPorts:
     #: Where a campaign cycle's own bindings of its campaign's pinned instructions are recorded
     #: when the campaign launches it (SIP-0110 §5ad). Read by a launch only.
     memory_store: Any | None = None
+    #: SIP-0116 §8: each provider's authority over its operations, the worker registry and the
+    #: sandbox client, which a cycle's tools are checked against at creation. A runtime that
+    #: holds none of them refuses a cycle whose work requires a tool, by name.
+    tool_authorities: Mapping[str, Any] = field(default_factory=dict)
+    worker_registry: Any | None = None
+    sandbox_client: Any | None = None
 
     @classmethod
     def of_request(cls, request: Request) -> "CreationPorts":
@@ -501,6 +558,9 @@ class CreationPorts:
             memory_records=get_memory_records(request),
             reference_resolvers=get_reference_resolvers(request),
             memory_store=optional(get_memory_store),
+            tool_authorities=get_tool_authorities(request),
+            worker_registry=get_worker_registry(request),
+            sandbox_client=get_sandbox_client(request),
         )
 
 
@@ -820,6 +880,12 @@ async def prepare_cycle(
         effective_config,
         campaign_cycle=campaign_id is not None,
         source_backed=source_context is not None,
+        tools=ToolPreflight(
+            authorities=ports.tool_authorities,
+            worker_registry=ports.worker_registry,
+            sandbox_client=ports.sandbox_client,
+            project_id=project_id,
+        ),
     )
 
     # SIP-0101 Slice 3: replay declaration validated + interim compatibility
