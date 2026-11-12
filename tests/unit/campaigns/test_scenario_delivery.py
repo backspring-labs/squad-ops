@@ -217,7 +217,7 @@ def _frozen_tree() -> FileTree:
 
 
 async def test_the_delivery_builds_scenario_runs_only_for_an_increment_that_has_one_and_says_why():
-    """``product_acceptance._scenario_runs``, as ``evaluate_product_increment`` calls it. Bug
+    """``product_acceptance.scenario_runs_for``, as ``evaluate_product_increment`` calls it. Bug
     caught: every increment made to resolve an operation it never plays (and fail for a cycle that
     supplies none), or a scenario increment's missing pieces read as one vague reason."""
     from squadops.execution import product_acceptance
@@ -226,8 +226,10 @@ async def test_the_delivery_builds_scenario_runs_only_for_an_increment_that_has_
     runner_only = (NewCriterion("R-1", "tests/test_criterion_R_1.py"),)
     scenario = (NewCriterion("C-2", SCENARIO_PATH),)
 
-    none = await product_acceptance._scenario_runs(cycle, "run_2", "inc_2", runner_only, None, None)
-    runs = await product_acceptance._scenario_runs(cycle, "run_2", "inc_2", scenario, None, None)
+    none = await product_acceptance.scenario_runs_for(
+        cycle, "run_2", "inc_2", runner_only, None, None
+    )
+    runs = await product_acceptance.scenario_runs_for(cycle, "run_2", "inc_2", scenario, None, None)
     reading = await runs.read("C-2", ReadingSide.CANDIDATE, _frozen_tree(), door_opens())
 
     assert none is None

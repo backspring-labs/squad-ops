@@ -6,6 +6,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A scenario must fail on the accepted baseline before development starts** (#3044, part 2b; SIP-0117
+  R5.9): an increment's implementation run plays each of its scenarios on the baseline that acceptance
+  judges, through the runtime's own port, and keeps the reading before dispatching anything. A scenario
+  that already passes, or whose world isn't the baseline's, ends the run `criteria_not_checkable`, and the
+  Campaign asks for a new proposal. One not read ends it `infrastructure_failed`, to be retried.
 - **Each scenario criterion is run by an operation step the framework appends** (#3044, part 2; SIP-0117
   R5.9): plan expansion appends one `qa.run_remote_operation` per scenario criterion after the plan's body,
   under the operation the cycle's record offers a scenario. It carries the criterion's frozen scenario. At
