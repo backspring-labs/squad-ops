@@ -538,6 +538,12 @@ class TerminalKind(StrEnum):
     OTHER = "other"
 
 
+#: SIP-0116 §8 (#3036): the ``failure_classification`` of an ``infrastructure_failed`` run ended at
+#: dispatch because no provider could run an operation task's tool. The Campaign's relaunch
+#: budget (#3045) keys on this, never on the reason's words.
+WORKER_UNAVAILABLE = "worker_unavailable"
+
+
 @dataclass(frozen=True, kw_only=True)
 class MovementEvent:
     """One round's movement class for one failed task (``classify_movement``)."""

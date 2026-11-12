@@ -195,3 +195,75 @@ async def test_the_create_preflight_refuses_the_cycle_with_the_tool_and_its_loca
 
     assert "tool play_scenario (fixture-editor, at worker)" in str(refused.value)
     assert "has no provider available" in str(refused.value)
+
+
+# ---------------------------------------------------------------- at dispatch (part 2)
+
+
+def _operation_task(skillset_digest: str):
+    from squadops.tasks.models import TaskEnvelope
+
+    return TaskEnvelope(
+        task_id="task-op", agent_id="eve", cycle_id="cyc_1", pulse_id="p", project_id="prj-1",
+        task_type="qa.run_remote_operation", correlation_id="c", causation_id="c",
+        trace_id="t", span_id="s",
+        inputs={
+            "operation": {
+                "contract": "fixture.scenario", "mode": "play", "role": "qa",
+                "skillset": "fixture-qa", "skillset_digest": skillset_digest,
+            }
+        },
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize("online", [True, False])
+async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatched(
+    monkeypatch, online
+):
+    """§8, entered at the executor's ``_require_tool_available``, which runs after a task's
+    preconditions. Bugs caught: a worker that went offline after creation leaving the operation
+    to run to an unverified verdict that names no tool; or the ending classified in words the
+    Campaign's relaunch budget (#3045) would have to parse."""
+    from types import SimpleNamespace
+
+    from squadops.cycles.failure_attribution import WORKER_UNAVAILABLE, TerminalKind
+    from squadops.execution import dispatched_flow_executor as executor_module
+    from squadops.execution.execution_errors import _ExecutionError
+
+    catalog = _catalog(TOOL)
+    monkeypatch.setattr(executor_module, "packaged_skillsets", lambda: catalog)
+    executor = SimpleNamespace(_worker_registry=await _registry(online=online), _sandbox=None)
+    method = executor_module.DispatchedFlowExecutor._require_tool_available
+    task = _operation_task(catalog["fixture-qa"].digest)
+
+    if online:
+        await method(executor, task)
+        return
+    with pytest.raises(_ExecutionError) as ended:
+        await method(executor, task)
+
+    terminal = ended.value.terminal
+    assert (terminal.kind, terminal.failure_classification, terminal.task_id) == (
+        TerminalKind.INFRASTRUCTURE_FAILED,
+        WORKER_UNAVAILABLE,
+        "task-op",
+    )
+    assert "tool play_scenario (fixture-editor, at worker)" in str(ended.value)
+    assert "fixture-editor/play_scenario and is offline" in terminal.termination_reason
+
+
+async def test_a_task_that_runs_no_operation_is_never_asked_for_a_tool():
+    """Bug caught: every task of every cycle held to a worker registry it never uses."""
+    from types import SimpleNamespace
+
+    from squadops.execution import dispatched_flow_executor as executor_module
+    from squadops.tasks.models import TaskEnvelope
+
+    develop = TaskEnvelope(
+        task_id="t", agent_id="neo", cycle_id="c", pulse_id="p", project_id="prj-1",
+        task_type="development.develop", correlation_id="c", causation_id="c", trace_id="t",
+        span_id="s",
+    )  # fmt: skip
+    executor = SimpleNamespace(_worker_registry=None, _sandbox=None)
+
+    await executor_module.DispatchedFlowExecutor._require_tool_available(executor, develop)

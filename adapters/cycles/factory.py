@@ -4,7 +4,7 @@ Adapter factory for SIP-0064 cycle execution ports.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
@@ -185,6 +185,9 @@ def create_flow_executor(
     # (a scenario's baseline before development, its readings at delivery). ``None``: no way,
     # and each reads not executed.
     remote_execution: RemoteExecutionPort | None,
+    # SIP-0116 §8 (#3036): required, so the root says where an operation task's tool is read
+    # available at dispatch. ``None``: no worker tool is, and such a task's run ends, naming it.
+    worker_registry: Any,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -241,4 +244,5 @@ def create_flow_executor(
         route_renderer=route_renderer,
         goal_set_registry=goal_set_registry,
         remote_execution=remote_execution,
+        worker_registry=worker_registry,
     )

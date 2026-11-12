@@ -136,7 +136,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 3, part 1: skills, kept: the catalog holds each skill's text, a cycle keeps a checked copy of the skills its work requires, the record names them by digest, and which skills a task loads is decided from the record and the copy (§7, §10, §17e) | **shipped** | 2.8 (PR #3032; #3028 tracks part 2) |
 | Phase 3, part 2: skills, loaded: a task is handed its skills from the kept copy at dispatch, a repair loads the skills of the step it revises, the prompt budget counts them, and where they render (§7, §7.1, §17e) | **shipped** | 2.8 (PR #3033, closing #3028) |
 | Phase 4, part 1: tools, checked at creation: the authorization outcome against each provider's registered authority (`ToolAuthorityPort`), and the availability outcome against the worker registry and the sandbox client (§8, §9, §17h) | **shipped** | 2.8 (PR #3077; #3036 tracks part 2) |
-| Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3036 |
+| Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **shipped** | 2.8 (PR #3078, closing #3036) |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
 | Phase 6: lessons: the recall identity, supplied, omitted and flagged records, supersession, and the promotion review (§10a) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3038 |
 
@@ -975,9 +975,13 @@ client is what runs a sandbox operation.
 
 **Unchanged:** a cycle whose work requires no tool, which is every existing stack's, is checked for nothing.
 
-**Part 2, placed (#3036):** availability is read again when an operation task is dispatched. An unavailable
-tool ends the run `infrastructure_failed`, classified `worker_unavailable` (a constant beside `TerminalKind`),
-so the Campaign's relaunch budget (#3045) keys on the classification and never on the reason's words.
+**Part 2 as built:** an operation task's tool is read available again as it is dispatched, after its
+preconditions (`DispatchedFlowExecutor._require_tool_available`), since a worker can go offline after the
+cycle was created. The executor reads the worker registry the factory now requires (`worker_registry`), and
+its sandbox client. An unavailable tool ends the run `infrastructure_failed`, with the tool and the
+registry's reason as its `termination_reason`, and `failure_classification` set to `WORKER_UNAVAILABLE`
+(`cycles/failure_attribution.py`). So the Campaign's relaunch budget (#3045) keys on the classification and
+never on the reason's words. A task that runs no operation isn't asked.
 
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-11); the design is
 on #3036, and the dispatch ending was agreed with the Spark lane.
