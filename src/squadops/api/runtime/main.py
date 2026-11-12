@@ -790,6 +790,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         sandbox=sandbox_client,
         # SIP-0117 (#3053, #3044): the runtime's own way to a worker, on the registry above.
         remote_execution=_runtime_remote_execution(config.remote_execution, worker_registry),
+        worker_registry=worker_registry,
         # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
         # started from its declaration, by the same runner the cycle-end hook evaluates with.
         route_renderer=DeclaredStartRoutes(scenario_runner),

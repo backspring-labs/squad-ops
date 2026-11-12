@@ -6,6 +6,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **An operation task's tool is read available again at dispatch** (#3036, part 2; SIP-0116 §17h): a worker
+  that went offline after the cycle was created ends the run `infrastructure_failed`, classified
+  `worker_unavailable` and naming the tool. It doesn't run to an unverified verdict. `create_flow_executor`
+  requires the worker registry.
 - **A cycle's tools are checked at creation** (#3036, part 1; SIP-0116 §17h): every tool a required skillset
   requests is refused as `skillset_authorization` when no authority governs it, or its provider's rule refuses
   it. It is refused as `skillset_availability` when no provider can run it now: no online worker, no

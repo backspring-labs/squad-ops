@@ -49,6 +49,9 @@ from squadops.capabilities.context_assembly import (
 )
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.lesson_supply import supply_the_dispatch
+from squadops.capabilities.operation_supply import OperationSupplyError, tool_request
+from squadops.capabilities.skillsets import packaged_skillsets
+from squadops.capabilities.tool_checks import unavailable
 from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
@@ -72,7 +75,7 @@ from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStop
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EmissionStatus, banked_as
-from squadops.cycles.failure_attribution import TerminalKind
+from squadops.cycles.failure_attribution import WORKER_UNAVAILABLE, TerminalKind
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.flow_runs import end_open_flow_runs
 from squadops.cycles.gate_decisions import record_gate_decision
@@ -915,6 +918,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0117 (#3053, #3044): how the runtime itself reaches a worker. ``None``: no remote
         # execution is bound here, and a scenario's reading is not executed.
         remote_execution: RemoteExecutionPort | None = None,
+        # SIP-0116 §8 (#3036): read at dispatch for an operation task's tool. Required at the
+        # factory; ``None``: no worker tool is available, and such a task's run ends, naming it.
+        worker_registry: Any | None = None,
         # SIP-0115 §5.2: the goal sets a goal-set Campaign's proposal reads. Required at the
         # factory, the roots' seam. ``None``: such a proposal's run fails, naming it.
         goal_set_registry: GoalSetRegistryPort | None = None,
@@ -986,6 +992,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # the worker routes serve. A scenario criterion's baseline is read on it before
         # development, and its readings at an increment's delivery.
         self._remote_execution = remote_execution
+        self._worker_registry = worker_registry
         self._cancelled: set[str] = set()
         # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
         # injected collaborator with a default composed from this executor's
@@ -2373,6 +2380,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # the time budget). In the loop this was `continue`; as a method it is the
             # same statement — this task is done, the run moves on.
             return
+        await self._require_tool_available(envelope)
 
         # Enrich envelope with chain context and dispatch
         authored_contract, authored_manifest = state.authored
@@ -3350,6 +3358,34 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
 
         return False
+
+    async def _require_tool_available(self, envelope: TaskEnvelope) -> None:
+        """SIP-0116 §8 (#3036): an operation task's tool is read available again as it is
+        dispatched, since a worker can go offline after the cycle was created. One that isn't
+        ends the run ``infrastructure_failed``, classified ``worker_unavailable`` and naming the
+        tool, rather than running to an unverified verdict. Every other task is not asked."""
+        operation = envelope.inputs.get("operation")
+        if not runs_an_operation(str(envelope.task_type)) or not isinstance(operation, Mapping):
+            return
+        try:
+            tool = tool_request(packaged_skillsets(), operation)
+        except OperationSupplyError:
+            # The handler refuses the task with this reason, as a supplier it can't vouch for.
+            return
+        why = await unavailable(
+            tool, worker_registry=self._worker_registry, sandbox_client=self._sandbox
+        )
+        if why is not None:
+            raise _ExecutionError(
+                f"task {envelope.task_id} runs tool {tool.id} ({tool.provider}, at "
+                f"{tool.location}), and no provider can run it now: {why}",
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.INFRASTRUCTURE_FAILED,
+                    termination_reason=f"tool {tool.id} at {tool.location}: {why}",
+                    failure_classification=WORKER_UNAVAILABLE,
+                    task_id=envelope.task_id,
+                ),
+            )
 
     async def _inject_wrapup_evidence(
         self, plan: list[TaskEnvelope], cycle: Cycle, prior_outputs: dict[str, Any]
