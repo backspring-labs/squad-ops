@@ -411,6 +411,7 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         rendered: Any,
     ) -> HandlerResult:
         request = verdict.change_request
+        assert request is not None  # an accepted verdict carries its request
         document = stored_change_request(request)
         outputs: dict[str, Any] = {
             "summary": (
