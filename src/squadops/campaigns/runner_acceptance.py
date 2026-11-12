@@ -717,6 +717,27 @@ async def _scenario_held(
     return result(held, detail), _readings(reading)
 
 
+def increment_surface(
+    profile: Any,
+    *,
+    new: Iterable[Any],
+    frozen: Iterable[Any],
+    replaced: Iterable[Any],
+    placed_support: Iterable[str],
+    retired: Iterable[str] = (),
+) -> ProductTestSurface:
+    """The increment's test surface (§24cj): the profile's tests, and every file the framework
+    placed for the increment's criteria (new, frozen less ``retired``, replaced) and beside them
+    (the page loaders). An overlay keeps none of the tree's own copies of these. The one rule
+    delivery's evaluation and the baseline step's scenario overlay are built by, so a reading
+    taken before development binds to the revision delivery judges (#3053, #3044 2b)."""
+    retired = frozenset(retired)
+    placed = {c.test_path for c in new}
+    placed |= {c.test_path for c in frozen if c.criterion_id not in retired}
+    placed |= {c.test_path for c in replaced} | set(placed_support)
+    return ProductTestSurface.of(profile, placed)
+
+
 def _renewed(
     runs: RunnerAcceptance,
     replaced: Iterable[NewCriterion],
@@ -785,9 +806,9 @@ async def evaluate_on_runner(
     approved_digests = approved_digests or {}
     retired = frozenset(retired)
     frozen = tuple(c for c in frozen if c.criterion_id not in retired)
-    placed = {c.test_path for c in new} | {c.test_path for c in frozen}
-    placed |= {c.test_path for c in replaced} | set(placed_support)
-    surface = ProductTestSurface.of(runs.profile, placed)
+    surface = increment_surface(
+        runs.profile, new=new, frozen=frozen, replaced=replaced, placed_support=placed_support
+    )
     discriminations: list[Discrimination] = []
     bundles: dict[str, VerifierBundle] = {}
     done: list[OverlayRun] = []
@@ -856,6 +877,7 @@ __all__ = [
     "SandboxTree",
     "evaluate_on_runner",
     "freeze_product_bundle",
+    "increment_surface",
     "frozen_on_runner",
     "single_file_argv",
 ]

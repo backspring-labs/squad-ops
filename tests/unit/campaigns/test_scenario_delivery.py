@@ -236,3 +236,46 @@ async def test_the_delivery_builds_scenario_runs_only_for_an_increment_that_has_
         "this runtime binds no remote execution (remote_execution.provider none); "
     )
     assert "offers no operation contract" in reading.why
+
+
+async def test_the_baseline_steps_overlay_is_the_one_delivery_plays_its_baseline_on():
+    """#3044 2b, #3053: ``baseline_scenario_overlay`` (the baseline step, before development) and
+    delivery's evaluation build one overlay. The pin holds an earlier increment's criterion file,
+    which only the increment's placed-file rule keeps out. Bug caught: the two lanes staging
+    different trees, so the reading taken before development binds to a revision delivery never
+    judges and is never credited there; or the earlier criterion's file staged on one side only."""
+    from squadops.campaigns.change_request import stored_change_request, validate_proposal
+    from squadops.campaigns.increment_tree import increment_scenario_files
+    from squadops.execution.product_acceptance import baseline_scenario_overlay
+    from tests.unit.campaigns.test_product_increment_seams import _BLOCK, _cycle
+    from tests.unit.campaigns.test_scenario_criterion import _ctx
+    from tests.unit.campaigns.test_scenario_criterion import _request as scenario_request
+
+    request = stored_change_request(validate_proposal(scenario_request(), _ctx()).change_request)
+    earlier = "checks/check_criterion_F1.py"
+    pin = {"criterion_id": "F1", "test_path": earlier, "bundle_ref": "a", "bundle_address": "b"}
+    cycle = _cycle(campaign_proposal={**_BLOCK, "frozen_criteria": [pin]})
+    head = {**_tree(SHUT, scenario=False), earlier: b"# an earlier increment's check\n"}
+    declaration = increment_scenario_files(request)
+
+    overlay = baseline_scenario_overlay(
+        cycle, request, "C-2", accepted=FileTree.of(head), profile=_profile()
+    )
+    port = _Port()
+    await evaluate_on_runner(
+        _runs(),
+        increment_id="inc_2",
+        accepted=SandboxTree(head),
+        candidate=SandboxTree(head, changes={**declaration, WORLD_PATH: json.dumps(OPEN).encode()}),
+        new=[NewCriterion("C-2", SCENARIO_PATH)],
+        frozen=[FrozenCriterion("F1", earlier, None)],
+        retired=(),
+        routes=(),
+        scenarios=_scenarios(port),
+        approved_digests={"C-2": door_opens().digest},
+    )
+    on_baseline = next(r for r in port.asked if r.task_id.endswith(":baseline"))
+
+    assert on_baseline.source_files == {p: c.decode() for p, c in overlay.as_dict().items()}
+    assert earlier not in on_baseline.source_files
+    assert on_baseline.source_files[SCENARIO_PATH] == declaration[SCENARIO_PATH]

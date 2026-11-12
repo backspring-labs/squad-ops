@@ -42,6 +42,7 @@ from squadops.campaigns.acceptance_run import (
     evaluation_document,
     frozen_criteria_from,
 )
+from squadops.campaigns.evaluator_trees import FileTree, candidate_verifier_overlay
 from squadops.campaigns.increment_tree import (
     INCREMENT_EVALUATION_ARTIFACT_TYPE,
     INCREMENT_EVALUATION_FILENAME,
@@ -49,6 +50,7 @@ from squadops.campaigns.increment_tree import (
     frozen_bundle_contents,
     increment_basis,
     increment_evaluation_inputs,
+    increment_scenario_files,
 )
 from squadops.campaigns.product_routes import (
     ACCEPTED_PAGES,
@@ -61,11 +63,13 @@ from squadops.campaigns.runner_acceptance import (
     RunnerSetup,
     SandboxTree,
     evaluate_on_runner,
+    increment_surface,
 )
 from squadops.campaigns.scenario_runs import (
     ScenarioRuns,
     approved_scenario_digests,
     is_scenario_criterion,
+    scenario_bundle,
 )
 from squadops.capabilities.operation_supply import OperationSupplyError, scenario_operation
 from squadops.capabilities.skillsets import packaged_skillsets
@@ -143,11 +147,7 @@ async def evaluate_product_increment(
         cycle.project_id, context.development_configuration_revision
     )
     increment_id = str(inputs["increment_id"])
-    new = [NewCriterion(f["criterion_id"], f["path"]) for f in inputs["increment_criterion_files"]]
-    replaced = [
-        NewCriterion(f["criterion_id"], f["path"]) for f in inputs["increment_replaced_criteria"]
-    ]
-    retired = tuple(inputs["increment_retired_criteria"])
+    new, replaced, retired = _criteria(inputs)
     frozen = frozen_criteria_from(
         inputs["increment_frozen_criteria"], await frozen_bundle_contents(vault, resolved)
     )
@@ -230,6 +230,51 @@ async def evaluate_product_increment(
         **({"readings": readings} if readings else {}),
     }
     return await _store(cycle, run_id, document, vault)
+
+
+def _criteria(
+    inputs: dict[str, Any],
+) -> tuple[list[NewCriterion], list[NewCriterion], tuple[str, ...]]:
+    """The increment's new, replaced and retired criteria, from its evaluation inputs."""
+    new = [NewCriterion(f["criterion_id"], f["path"]) for f in inputs["increment_criterion_files"]]
+    replaced = [
+        NewCriterion(f["criterion_id"], f["path"]) for f in inputs["increment_replaced_criteria"]
+    ]
+    return new, replaced, tuple(inputs["increment_retired_criteria"])
+
+
+def baseline_scenario_overlay(
+    cycle: Cycle, change_request: str, criterion_id: str, *, accepted: FileTree, profile: Any
+) -> FileTree:
+    """#3044 2b, #3053: the baseline-evaluator overlay a new scenario criterion is played on:
+    ``accepted`` (the pin's checkout) less every file the increment's surface places, plus the
+    criterion's declaration as its approved change request froze it. Delivery's evaluation
+    builds the same overlay from the same inputs (``increment_surface``,
+    ``candidate_verifier_overlay``), so a baseline reading taken before development binds to
+    the revision delivery judges and is credited there.
+
+    Raises:
+        ValueError: The approved change request places no scenario for ``criterion_id``.
+    """
+    inputs = increment_evaluation_inputs(cycle.resolved_config(), change_request, None)
+    new, replaced, retired = _criteria(inputs)
+    frozen = [
+        NewCriterion(f["criterion_id"], f["test_path"]) for f in inputs["increment_frozen_criteria"]
+    ]
+    surface = increment_surface(
+        profile,
+        new=new,
+        frozen=frozen,
+        replaced=replaced,
+        placed_support=tuple(inputs.get("increment_page_loaders") or ()),
+        retired=retired,
+    )
+    bundle = scenario_bundle(criterion_id, FileTree.of(increment_scenario_files(change_request)))
+    if bundle is None:
+        raise ValueError(
+            f"the approved change request places no scenario for criterion {criterion_id}"
+        )
+    return candidate_verifier_overlay(accepted, bundle, surface).tree
 
 
 async def _scenario_runs(
