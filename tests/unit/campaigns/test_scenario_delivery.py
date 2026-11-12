@@ -281,3 +281,84 @@ async def test_the_baseline_steps_overlay_is_the_one_delivery_plays_its_baseline
     assert on_baseline.source_files == {p: c.decode() for p, c in overlay.as_dict().items()}
     assert earlier not in on_baseline.source_files
     assert on_baseline.source_files[SCENARIO_PATH] == declaration[SCENARIO_PATH]
+
+
+async def test_a_credited_baseline_from_the_baseline_step_stands_and_only_the_candidate_is_played():
+    """#3044 2b. The baseline step's stored reading, taken on the overlay delivery builds, is
+    credited, so delivery plays the candidate alone. Bug caught: every baseline played twice (a
+    Studio session per criterion, for nothing); or a stored reading credited without its
+    revision checked."""
+    first = _Port()
+    played, _ = await _judge(first, candidate_world=OPEN)
+    stored = played.scenario_readings["C-2"]["baseline"]  # what the baseline step stores
+    port = _Port()
+
+    evaluation, _ = await _judge(
+        port,
+        candidate_world=OPEN,
+        scenarios=_scenarios(port, stored_baselines={"C-2": [stored]}),
+    )
+
+    [d] = evaluation.discriminations
+    assert (d.met, d.reason) == (True, DiscriminationReason.DISCRIMINATES)
+    assert [r.task_id for r in port.asked] == ["campaign:cmp_1:inc_2:C-2:candidate"]
+    readings = evaluation.scenario_readings["C-2"]
+    assert (readings["baseline"], readings["reused"]) == (stored, ["baseline"])
+
+
+async def test_a_stored_baseline_of_another_tree_is_never_credited_and_the_baseline_is_played():
+    """Bug caught: a reading the step took on a tree that isn't the one delivery judges (an
+    older pin, an overlay built another way) standing for this baseline."""
+    first = _Port()
+    played, _ = await _judge(first, candidate_world=OPEN)
+    elsewhere = {
+        **played.scenario_readings["C-2"]["baseline"],
+        "source_revision": "sha256:" + "0" * 64,
+    }
+    port = _Port()
+
+    evaluation, _ = await _judge(
+        port,
+        candidate_world=OPEN,
+        scenarios=_scenarios(port, stored_baselines={"C-2": [elsewhere]}),
+    )
+
+    assert [r.task_id.rsplit(":", 1)[1] for r in port.asked] == ["baseline", "candidate"]
+    assert "reused" not in evaluation.scenario_readings["C-2"]
+
+
+async def test_delivery_reads_only_the_baseline_steps_readings_of_each_criterion_newest_first():
+    """``product_acceptance._stored_baselines``. Bug caught: a candidate-side reading, or one
+    naming no criterion, offered as a baseline; or an older reading tried before a newer one."""
+    from datetime import UTC, datetime
+
+    from squadops.cycles.models import ArtifactRef
+    from squadops.execution import product_acceptance
+
+    def ref(artifact_id, minute, metadata):
+        return ArtifactRef(
+            artifact_id=artifact_id, project_id="p", cycle_id="cyc_1", run_id="run_1",
+            artifact_type="remote_operation_assertions", filename="f.json", content_hash="h",
+            size_bytes=1, media_type="application/json",
+            created_at=datetime(2026, 11, 12, 1, minute, tzinfo=UTC), metadata=metadata,
+        )  # fmt: skip
+
+    rows = {
+        "a_old": (ref("a_old", 1, {"side": "baseline", "criterion_id": "C-2"}), b'{"n": "old"}'),
+        "a_new": (ref("a_new", 2, {"side": "baseline", "criterion_id": "C-2"}), b'{"n": "new"}'),
+        "a_cand": (ref("a_cand", 3, {"side": "candidate", "criterion_id": "C-2"}), b"{}"),
+        "a_none": (ref("a_none", 4, {"side": "baseline"}), b"{}"),
+        "a_bad": (ref("a_bad", 5, {"side": "baseline", "criterion_id": "C-3"}), b"not json"),
+    }
+
+    class _Vault:
+        async def list_artifacts(self, *, cycle_id, artifact_type):
+            assert (cycle_id, artifact_type) == ("cyc_1", "remote_operation_assertions")
+            return [r for r, _ in rows.values()]
+
+        async def retrieve(self, artifact_id):
+            return rows[artifact_id]
+
+    stored = await product_acceptance._stored_baselines(SimpleNamespace(cycle_id="cyc_1"), _Vault())
+
+    assert stored == {"C-2": [{"n": "new"}, {"n": "old"}]}
