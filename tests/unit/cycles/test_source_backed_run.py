@@ -99,6 +99,15 @@ class _Vault:
     async def retrieve(self, artifact_id):
         return self.stored[artifact_id]
 
+    async def list_artifacts(self, *, cycle_id=None, artifact_type=None, **_filters):
+        """#3053: what the cycle's kept skill copy is read through (``kept_document_of``)."""
+        return [
+            ref
+            for ref, _ in self.stored.values()
+            if (cycle_id is None or ref.cycle_id == cycle_id)
+            and (artifact_type is None or ref.artifact_type == artifact_type)
+        ]
+
 
 class _LocalBackend:
     """X-3a's disposable copy of a pinned revision, its setup and check run as local processes."""
