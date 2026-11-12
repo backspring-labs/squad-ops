@@ -6,6 +6,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Whoever rules on an increment sees what each scenario observes** (#3044; SIP-0117 R5.9): a proposal that
+  names scenarios also emits `scenario_review.md`. For each scenario it shows the claim, the setup and steps,
+  and each assertion's observation and expectation, with the named one marked. The stored change request and
+  its hash are unchanged.
 - **A scenario must fail on the accepted baseline before development starts** (#3044, part 2b; SIP-0117
   R5.9): an increment's implementation run plays each of its scenarios on the baseline that acceptance
   judges, through the runtime's own port, and keeps the reading before dispatching anything. A scenario

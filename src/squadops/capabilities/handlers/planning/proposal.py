@@ -26,11 +26,13 @@ import yaml
 
 from squadops.campaigns.change_request import (
     PRODUCT_PROPOSAL_INPUT,
+    SCENARIO_REVIEW_FILENAME,
     BacklogRail,
     IncrementBasis,
     ProductContext,
     ProposalContext,
     ProposalVerdict,
+    scenario_review,
     stored_change_request,
     validate_proposal,
 )
@@ -409,6 +411,7 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         rendered: Any,
     ) -> HandlerResult:
         request = verdict.change_request
+        assert request is not None  # an accepted verdict carries its request
         document = stored_change_request(request)
         outputs: dict[str, Any] = {
             "summary": (
@@ -423,7 +426,20 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
                     "content": document,
                     "media_type": "text/yaml",
                     "type": CHANGE_REQUEST_ARTIFACT_TYPE,
-                }
+                },
+                # #3044: what each scenario observes, for whoever rules on the increment.
+                *(
+                    [
+                        {
+                            "name": SCENARIO_REVIEW_FILENAME,
+                            "content": review,
+                            "media_type": "text/markdown",
+                            "type": "document",
+                        }
+                    ]
+                    if (review := scenario_review(request))
+                    else []
+                ),
             ],
             "change_request": {
                 "proposal_id": request.proposal_id,
