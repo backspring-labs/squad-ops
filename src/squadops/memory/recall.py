@@ -8,7 +8,8 @@ squad profile and its config), never from an agent-supplied value. The policy th
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 #: The input a consuming task's supplied lessons ride on: ``{"snapshot", "lessons": [{"revision_id",
@@ -43,3 +44,10 @@ class RecallQuery:
     #: §3.6, T17; #2179 stage 2), when an instruction was supplied; ``None`` when none was, so the
     #: snapshot's own budget stands and the recall is today's exactly. Not part of a stored query.
     available_lesson_tokens: int | None = None
+    #: SIP-0116 §10a: where ``stack`` came from (``StackSource``), recorded with the exposure so a
+    #: reader knows which identity recall used. Empty on a query stored before it was recorded.
+    stack_source: str = ""
+    #: SIP-0116 §10a: each lesson pattern a skill the task loads supersedes, with that skill
+    #: (``<skillset>/<skill>``). Such a lesson isn't recalled for the task: the skill replaces it.
+    #: Not part of a stored query; the exposure's omitted lessons name each one.
+    superseded_by: Mapping[str, str] = field(default_factory=dict)

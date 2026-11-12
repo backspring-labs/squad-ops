@@ -34,6 +34,11 @@ from squadops.memory.records import PinnedInstruction, Rebinding
 ANY_STACK = "*"
 
 
+#: SIP-0116 §10a: the reason a lesson is omitted because a skill the task loads supersedes it. Its
+#: own word: ``superseded`` is a pattern's older revision.
+SUPERSEDED_BY_SKILL = "superseded_by_skill"
+
+
 class RecallDisposition(StrEnum):
     """The outcomes recall keeps apart (§0.8)."""
 
@@ -455,11 +460,21 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
             query.project_id, query.task_type, query.role, query.stack, query.model_family
         )
     ]
+    # SIP-0116 §10a: a lesson a skill the task loads supersedes isn't recalled for it, since the
+    # skill replaces it, and the exposure names each one with that skill.
+    superseding = query.superseded_by
+    omitted: list[tuple[str, str]] = [
+        (e.revision.revision_id, f"{SUPERSEDED_BY_SKILL}:{superseding[e.revision.pattern_id]}")
+        for e in eligible
+        if e.revision.pattern_id in superseding
+    ]
+    eligible = [e for e in eligible if e.revision.pattern_id not in superseding]
     if not eligible:
-        return Recalled(snapshot.snapshot_id, RecallDisposition.NONE_ELIGIBLE)
+        return Recalled(
+            snapshot.snapshot_id, RecallDisposition.NONE_ELIGIBLE, omitted=tuple(omitted)
+        )
     # One revision per pattern: the latest approved in the snapshot.
     latest: dict[str, SnapshotEntry] = {}
-    omitted: list[tuple[str, str]] = []
     for entry in sorted(eligible, key=lambda e: (e.revision.pattern_id, e.revision.revision)):
         held = latest.get(entry.revision.pattern_id)
         if held is not None:

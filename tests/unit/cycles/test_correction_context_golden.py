@@ -87,6 +87,8 @@ _CYCLE = SimpleNamespace(
     applied_defaults={},
     # What a repair's skill supply reads (SIP-0116 §7.1): a cycle with no record loads none.
     skillset_record=None,
+    # What its recall stack reads (SIP-0116 §10a): no pinned source, so it recalls unscoped.
+    source_context=None,
 )
 
 _RUN_ID = "run_abcdef123456"

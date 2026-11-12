@@ -138,7 +138,8 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 4, part 1: tools, checked at creation: the authorization outcome against each provider's registered authority (`ToolAuthorityPort`), and the availability outcome against the worker registry and the sandbox client (§8, §9, §17h) | **shipped** | 2.8 (PR #3077; #3036 tracks part 2) |
 | Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **shipped** | 2.8 (PR #3078, closing #3036) |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
-| Phase 6: lessons: the recall identity, supplied, omitted and flagged records, supersession, and the promotion review (§10a) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3038 |
+| Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
+| Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3038 |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -985,6 +986,39 @@ never on the reason's words. A task that runs no operation isn't asked.
 
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-11); the design is
 on #3036, and the dispatch ending was agreed with the Spark lane.
+
+### 17i. Phase 6 in two parts, and part 1 as built: the recall identity and declared supersession (2026-11-12)
+
+**The recall identity (Q63).** A task's recall stack follows one rule (`lesson_supply.recall_stack`):
+- the cycle's `build_profile`, so every cycle that has one recalls exactly as before;
+- else, for a source-backed cycle, the development profile its skillset record pinned;
+- else `""`, which matches only lessons stored for any stack.
+
+A development-profile name is the vocabulary lesson applicability and project instructions already use. A
+source-backed cycle created before skillset records has none pinned, and recalls unscoped rather than
+under a guessed profile. Each exposure records which source the stack came from (`stack_source`:
+`build_profile`, `development_profile` or `unscoped`) and the rule's version (`identity.rule`, 1). An exposure
+from before carries no identity, and reads as it did.
+
+**Declared supersession (Q64).** A skill's `SKILL.md` front matter may name the lesson patterns it
+supersedes: `supersedes: [pat_…]`, pattern ids as `memory.lessons.pattern_id_for` writes them.
+- **At load.** The skillset's load refuses any other value.
+- **At dispatch.** Recall reads the `supersedes` of each skill the task is handed. A lesson whose pattern is
+  named isn't eligible for that task, since the skill replaces it. It is omitted with the reason
+  `superseded_by_skill:<skillset>/<skill>`, which is its own word, because `superseded` is an older revision
+  of the same pattern.
+- **When every eligible lesson is superseded,** the disposition is `none_eligible`, with each one named.
+
+**Part 2, placed (#3038):**
+- **Flagging** needs the skills a lesson was learned under, which no lesson records. Each exposure will record
+  its task's skills by digest. Drafting a revision will record the skills of the dispatches its observations
+  came from. Recall will then flag a supplied lesson whose learned-under digest differs from the loaded
+  skill's.
+- **The promotion review** adds `promoted_from` beside `supersedes`, and a review record the promotion
+  carries.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-11); the design is
+on #3038.
 
 ## Appendix A. A paper compatibility matrix
 

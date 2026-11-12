@@ -34,14 +34,16 @@ import dataclasses
 import functools
 import logging
 import re
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
+from enum import StrEnum
 from importlib import resources
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
 from squadops.capabilities.prompt_budget import prompt_budget
+from squadops.capabilities.skillsets import SKILL_FILE, SKILLS_INPUT, skill_supersedes
 from squadops.cycles.benchmark_registry import cycle_stack
 from squadops.cycles.models import HoldKind
 from squadops.llm.model_registry import model_family_of
@@ -166,6 +168,40 @@ def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
     return UnitKind.CYCLE, cycle.cycle_id
 
 
+class StackSource(StrEnum):
+    """Where a task's recall stack came from (SIP-0116 §10a), recorded with its exposure."""
+
+    BUILD_PROFILE = "build_profile"
+    DEVELOPMENT_PROFILE = "development_profile"
+    #: Neither: the task recalls only lessons stored for any stack.
+    UNSCOPED = "unscoped"
+
+
+def recall_stack(cycle: Cycle) -> tuple[str, StackSource]:
+    """The stack a cycle's tasks recall under, and where it came from (SIP-0116 §10a, Q63): its
+    ``build_profile``, so every cycle that has one recalls as before; else a source-backed cycle's
+    pinned development profile, the name its skillset record holds; else none (``""``), which
+    matches only lessons stored for any stack."""
+    stack = cycle_stack(cycle)
+    if stack:
+        return stack, StackSource.BUILD_PROFILE
+    record = cycle.skillset_record if isinstance(cycle.skillset_record, Mapping) else None
+    pinned = (record or {}).get("development_profile")
+    if cycle.source_context is not None and isinstance(pinned, Mapping) and pinned.get("name"):
+        return str(pinned["name"]), StackSource.DEVELOPMENT_PROFILE
+    return "", StackSource.UNSCOPED
+
+
+def superseded_by_skills(envelope: TaskEnvelope) -> dict[str, str]:
+    """Each lesson pattern a skill the task loads supersedes, with that skill (SIP-0116 §10a): read
+    from the ``supersedes`` of each handed skill's ``SKILL.md``, which the skillset's load checked."""
+    superseded: dict[str, str] = {}
+    for skill in envelope.inputs.get(SKILLS_INPUT) or ():
+        for pattern in skill_supersedes(skill["files"][SKILL_FILE]):
+            superseded.setdefault(pattern, f"{skill['skillset']}/{skill['skill']}")
+    return superseded
+
+
 def request_for(
     envelope: TaskEnvelope,
     *,
@@ -173,6 +209,7 @@ def request_for(
     stack: str,
     run_id: str,
     measured: TaskEnvelope | None = None,
+    stack_source: str = "",
 ) -> ContextRequest:
     """The task's context request, from trusted context only: its project and cycle from the envelope,
     the role the plan step names and the model the plan resolved, both written by the framework, never
@@ -192,6 +229,8 @@ def request_for(
             model_family=model_family_of(str(envelope.inputs.get("agent_model") or "")),
             agent_id=envelope.agent_id,
             prompt_budget=prompt_budget(measured or envelope),
+            stack_source=stack_source,
+            superseded_by=superseded_by_skills(envelope),
         ),
     )
 
@@ -210,6 +249,8 @@ def query_of(request: ContextRequest) -> RecallQuery:
         model_family=task.model_family,
         unit_kind=task.snapshot_owner.kind,
         unit_id=task.snapshot_owner.unit_id,
+        stack_source=task.stack_source,
+        superseded_by=dict(task.superseded_by),
     )
 
 
@@ -247,7 +288,8 @@ async def supply_for_cycle(
         envelopes,
         recall=recall,
         unit=unit_of(cycle),
-        stack=cycle_stack(cycle) or "",
+        stack=recall_stack(cycle)[0],
+        stack_source=recall_stack(cycle)[1],
         run_id=run_id,
         now=now,
     )
@@ -261,6 +303,7 @@ async def supply_lessons(
     stack: str,
     run_id: str,
     now: datetime,
+    stack_source: str = "",
 ) -> list[TaskEnvelope]:
     """``envelopes``, each consuming task's with the lessons it is supplied, in order. Every
     consuming task's answer is disclosed; a task that consumes nothing is passed through as is.
@@ -278,6 +321,7 @@ async def supply_lessons(
         recall=recall,
         unit=unit,
         stack=stack,
+        stack_source=stack_source,
         run_id=run_id,
         now=now,
     )
@@ -311,7 +355,8 @@ async def check_the_plan(
         [e for e in envelopes if authoring_seam_of(str(e.task_type)) is not None],
         recall=recall,
         unit=unit_of(cycle),
-        stack=cycle_stack(cycle) or "",
+        stack=recall_stack(cycle)[0],
+        stack_source=recall_stack(cycle)[1],
         run_id=run_id,
         now=now,
         disclose=False,
@@ -346,7 +391,8 @@ async def supply_the_dispatch(
         [held[0]],
         recall=recall,
         unit=unit_of(cycle),
-        stack=cycle_stack(cycle) or "",
+        stack=recall_stack(cycle)[0],
+        stack_source=recall_stack(cycle)[1],
         run_id=run_id,
         now=now,
         measured=[held[-1]],
@@ -377,6 +423,7 @@ async def _composed(
     recall: FailurePatternRecallPort,
     unit: tuple[UnitKind, str],
     stack: str,
+    stack_source: str = "",
     run_id: str,
     now: datetime,
     measured: Sequence[TaskEnvelope] | None = None,
@@ -399,7 +446,14 @@ async def _composed(
         async with recall.dispatch_turn(*unit):
             bundles = [
                 await assembly.assemble(
-                    request_for(e, unit=unit, stack=stack, run_id=run_id, measured=m)
+                    request_for(
+                        e,
+                        unit=unit,
+                        stack=stack,
+                        run_id=run_id,
+                        measured=m,
+                        stack_source=stack_source,
+                    )
                 )
                 for e, m in zip(envelopes, sizes, strict=True)
             ]

@@ -13,7 +13,7 @@ work.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -113,6 +113,10 @@ class TaskInvocation:
     #: Tokens: the model's window less the completion reserve and the task's own inputs (§3.6 Budgets);
     #: ``-1`` when the model's window is unknown, which never means room.
     prompt_budget: int
+    #: SIP-0116 §10a: where ``stack`` came from, and the lesson patterns the task's loaded skills
+    #: supersede (pattern id to ``<skillset>/<skill>``).
+    stack_source: str = ""
+    superseded_by: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

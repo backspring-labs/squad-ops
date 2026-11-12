@@ -36,6 +36,12 @@ def exposure_id_for(run_id: str, task_id: str, attempt: int = 1) -> str:
     return "exp_" + hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
+#: SIP-0116 §10a: the version of the rule a task's recall identity follows, recorded beside it. 1:
+#: the stack is the cycle's ``build_profile``, else a source-backed cycle's pinned development
+#: profile, else unscoped.
+RECALL_IDENTITY_RULE = 1
+
+
 @dataclass(frozen=True)
 class Exposure:
     """One authoring invocation's recall, as it was answered."""
@@ -137,6 +143,13 @@ class Exposure:
             },
             "recalled": dict(self.recalled),
             "recorded_at": self.recorded_at.isoformat(),
+            # SIP-0116 §10a: which identity recall used. Only where recorded, so an exposure from
+            # before it is unchanged.
+            **(
+                {"identity": {"stack_source": q.stack_source, "rule": RECALL_IDENTITY_RULE}}
+                if q.stack_source
+                else {}
+            ),
             # Only when instructions were read, so an exposure from before #2178 is unchanged.
             **(
                 {"task_instructions": dict(self.task_instructions)}
@@ -154,6 +167,9 @@ class Exposure:
     def from_dict(cls, data: Mapping[str, Any]) -> Exposure:
         q = dict(data["query"])
         unit_kind = q.pop("unit_kind", None)
+        identity = data.get("identity")
+        if identity is not None:
+            q["stack_source"] = str(identity["stack_source"])
         return cls(
             run_id=str(data["run_id"]),
             task_id=str(data["task_id"]),
