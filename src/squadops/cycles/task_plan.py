@@ -1602,7 +1602,8 @@ def _scenario_operation_steps(
     cycle: Cycle, change_request: str | None
 ) -> tuple[ScenarioOperationStep, ...]:
     """One operation step per scenario criterion of the approved change request (#3044), in the
-    request's order; ``()`` for a request with none, or no request.
+    request's order, appended after the plan's body has built the candidate; ``()`` for a
+    request with none, or no request.
 
     The declaration was checked against the supplier's kept vocabulary when the proposal was
     validated, and the stored request is hash-checked on load, so its text is the frozen one.
@@ -1657,6 +1658,21 @@ def _scenario_operation_steps(
             )
         )
     return tuple(steps)
+
+
+def _scenario_step_inputs(
+    step: Any, agent_id: str, implementation_artifacts: list[str]
+) -> dict[str, Any]:
+    """A scenario step's own inputs (SIP-0117 R4.4): what its handler runs, and the surface a
+    failed assertion's repair is aimed at, as a plan task naming a contract carries them.
+    ``{}`` for every other step."""
+    if not isinstance(step, ScenarioOperationStep):
+        return {}
+    return {
+        "operation": {**step.operation, "agent_id": agent_id},
+        "operation_scenario": dict(step.operation_scenario),
+        "implementation_artifacts": implementation_artifacts,
+    }
 
 
 @dataclass(frozen=True)
@@ -1962,8 +1978,6 @@ def generate_task_plan(
                 "Plan validation failed (skillset coverage): " + "; ".join(offered_errors)
             )
         steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
-        # #3044: each scenario criterion is run by an operation step the framework appends,
-        # after the plan's body has built the candidate.
         steps = list(steps) + list(_scenario_operation_steps(cycle, change_request))
     # SIP-0109 §8: after everything that builds the candidate, never before the plan's body.
     steps = list(steps) + list(evaluation.steps)
@@ -2017,18 +2031,12 @@ def generate_task_plan(
     ]
 
     for step_index, step in enumerate(steps):
-        # Steps are (task_type, role) tuples, PlanTask objects, or a scenario's operation step
-        scenario_step = step if isinstance(step, ScenarioOperationStep) else None
+        # Steps are (task_type, role) tuples, PlanTask objects, or scenario steps (#3044)
         if isinstance(step, tuple):
-            task_type, role = step
-            plan_task = None
-        elif scenario_step is not None:
-            task_type, role = scenario_step.task_type, scenario_step.role
-            plan_task = None
+            (task_type, role), plan_task = step, None
         else:
-            task_type = step.task_type
-            role = step.role
-            plan_task = step
+            task_type, role = step.task_type, step.role
+            plan_task = None if isinstance(step, ScenarioOperationStep) else step
 
         # Determine task ID
         if plan_task is not None:
@@ -2074,12 +2082,7 @@ def generate_task_plan(
             implementation_artifacts=implementation_artifacts,
             ruling_notes=ruling_notes,
         )
-        if scenario_step is not None:
-            # SIP-0117 R4.4: what the handler runs, and the surface a failed assertion's repair
-            # is aimed at, as a plan task naming a contract carries them.
-            inputs["operation"] = {**scenario_step.operation, "agent_id": agent_id}
-            inputs["operation_scenario"] = dict(scenario_step.operation_scenario)
-            inputs["implementation_artifacts"] = implementation_artifacts
+        inputs.update(_scenario_step_inputs(step, agent_id, implementation_artifacts))
 
         envelope = TaskEnvelope(
             task_id=task_id,
