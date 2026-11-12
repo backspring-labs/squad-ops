@@ -23,6 +23,11 @@ from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
+from squadops.campaigns.change_request import (
+    SurfaceKind,
+    load_stored_change_request,
+    scenario_criterion_path,
+)
 from squadops.campaigns.increment_tree import (
     approved_change_request,
     approved_footprint,
@@ -30,6 +35,7 @@ from squadops.campaigns.increment_tree import (
     increment_criterion_files,
     increment_footprint,
     increment_frozen_files,
+    suite_criterion_files,
 )
 from squadops.cycles.authoring_failure import assess_authoring_outcome
 from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE, SEEDED_MANIFEST_FILENAME
@@ -328,6 +334,15 @@ class FramingGateCheck:
                     ),
                 )
             )
+            # #3044: no task writes a scenario criterion's declaration: the framework does.
+            errors.extend(
+                classifier.collect(
+                    "validate_increment_scenario_files",
+                    parsed_plan.validate_increment_scenario_files(
+                        await self._increment_scenario_files(cycle)
+                    ),
+                )
+            )
             # SIP-0112 H.4 (H.8): no task writes where a blocking gap stops the work. A re-roll
             # is told where, so a plan can go around it.
             profile = await self._derived_profile(cycle) if self._derived_profile else None
@@ -569,6 +584,28 @@ class FramingGateCheck:
         logger.info("interface_manifest rejected at gate: classes=%s", outcome.class_counts())
         return [f"interface_manifest [{f.proof}]: {f.detail}" for f in outcome.findings]
 
+    async def _increment_scenario_files(self, cycle: Cycle) -> dict[str, str]:
+        """#3044: each scenario criterion's placed path, with its criterion. ``{}`` for any other
+        cycle; never raises (#473)."""
+
+        try:
+            document = await approved_change_request(self._artifact_vault, cycle)
+            if document is None:
+                return {}
+            request = load_stored_change_request(document)
+            return {
+                scenario_criterion_path(c.id): c.id
+                for c in request.criteria
+                if c.surface_kind is SurfaceKind.SCENARIO
+            }
+        except Exception:
+            logger.warning(
+                "increment scenario files unreadable for cycle %s; the rule is skipped",
+                cycle.cycle_id,
+                exc_info=True,
+            )
+            return {}
+
     async def _increment_frozen_files(self, cycle: Cycle) -> tuple[tuple[str, str], ...]:
         """The frozen criteria files the plan may not write (§8.1): the launch's pins, less what
         the approved change retires. ``()`` for any other cycle; never raises (#473)."""
@@ -594,7 +631,10 @@ class FramingGateCheck:
             document = await approved_change_request(self._artifact_vault, cycle)
             if document is None:
                 return ()
-            return increment_criterion_files(document, scaffold_stack_for(cycle.resolved_config()))
+            # #3044: a scenario's file is the framework's, so no qa task is held to plan it.
+            return suite_criterion_files(
+                increment_criterion_files(document, scaffold_stack_for(cycle.resolved_config()))
+            )
         except Exception:
             logger.warning(
                 "increment criterion files unreadable for cycle %s; the rule is skipped",

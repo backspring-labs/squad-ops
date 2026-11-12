@@ -768,7 +768,12 @@ def _inject_increment_indexes(
     - §8.1: each new criterion's own test file, which a qa task must write.
     """
     if footprint:
-        claimable = [p for p in footprint if p not in scaffold_frozen]
+        # deferred (cycle): campaigns.increment_tree loads this module
+        from squadops.campaigns.change_request import is_scenario_path
+
+        # #3044: a scenario criterion's declaration is the framework's, so it is offered to no
+        # task: the plan gate refuses one that names it (``validate_increment_scenario_files``).
+        claimable = [p for p in footprint if p not in scaffold_frozen and not is_scenario_path(p)]
         regenerated = [p for p in footprint if p in scaffold_frozen]
         if claimable:
             inputs["increment_footprint_index"] = "\n".join(f"- `{p}`" for p in claimable)
@@ -809,9 +814,12 @@ def _increment_criterion_files(
     if not change_request:
         return ()
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_criterion_files
+    from squadops.campaigns.increment_tree import increment_criterion_files, suite_criterion_files
 
-    return increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
+    # #3044: a scenario's file is the framework's, run by its provider, so no qa task writes it.
+    return suite_criterion_files(
+        increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
+    )
 
 
 #: The workloads of an increment cycle that are handed its approved change request.

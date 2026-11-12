@@ -1210,6 +1210,30 @@ class ImplementationPlan:
             {path: f"the frozen verifier of criterion {cid}" for path, cid in frozen.items()}
         )
 
+    def validate_increment_scenario_files(self, scenario_files: Mapping[str, str]) -> list[str]:
+        """#3044: a scenario criterion's file is its declaration, written by the framework from
+        the approved change request and run by its provider. No task writes it: the framework's
+        copy is laid over the tree at delivery, so a task's would be discarded unread.
+        ``scenario_files`` maps each placed path to its criterion. Empty for every other cycle.
+
+        Returns:
+            List of validation error strings (empty = valid), one per offending task and file.
+        """
+        claimed = [
+            f"Task {task.task_index} ({task.focus}): {task.task_type} declares {artifact!r}, the "
+            f"declaration of scenario criterion {scenario_files[artifact]}. The framework writes "
+            "it as the approved change request froze it; leave it out of expected_artifacts"
+            for task in self.tasks
+            for artifact in task.expected_artifacts
+            if artifact in scenario_files
+        ]
+        return claimed + self._same_name_as(
+            {
+                path: f"scenario criterion {cid}'s declaration"
+                for path, cid in scenario_files.items()
+            }
+        )
+
     def validate_frozen_artifact_ownership(self, contract: VerificationContract) -> list[str]:
         """#658: no task, any role, may declare a frozen-surface file as an
         ``expected_artifact``.

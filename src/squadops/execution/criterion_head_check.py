@@ -60,6 +60,7 @@ from squadops.campaigns.increment_tree import (
     increment_basis,
     increment_criterion_files,
     increment_page_loader_files,
+    suite_criterion_files,
 )
 from squadops.campaigns.runner_acceptance import RunnerSetup
 from squadops.cycles.failure_evidence import CRITERIA_PASS_ON_HEAD_KEY
@@ -247,8 +248,9 @@ async def _read_on_head(
     change_request = await _change_request(vault, cycle)
     placed = {
         f.path: f.criterion_id
-        for f in increment_criterion_files(
-            change_request, scaffold_stack_for(cycle.resolved_config())
+        # #3044: a scenario's file is a declaration its provider runs, never a test on the head.
+        for f in suite_criterion_files(
+            increment_criterion_files(change_request, scaffold_stack_for(cycle.resolved_config()))
         )
     }
     rewritten = {path: text for path, text in (repaired or {}).items() if path in placed}

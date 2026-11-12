@@ -21,9 +21,15 @@ from squadops.campaigns.change_request import (
     stored_change_request,
     validate_proposal,
 )
+from squadops.campaigns.increment_tree import increment_criterion_files, suite_criterion_files
 from squadops.capabilities.handlers.planning.proposal import product_context
+from squadops.cycles.implementation_plan import ImplementationPlan
+from squadops.cycles.task_plan import _inject_increment_indexes
+from squadops.execution.source_delivery import placed_framework_files
+from squadops.remote_execution.scenario import frozen_scenario, scenario_digest
 from tests.unit.campaigns.test_product_change_request import _PRODUCT, _context
-from tests.unit.remote_execution.scenario_fixture import DOOR_OPENS
+from tests.unit.campaigns.test_product_page_loader import _Vault, increment
+from tests.unit.remote_execution.scenario_fixture import DOOR_OPENS, SCENARIO_PATH
 
 _SCENARIO_PRODUCT = dataclasses.replace(_PRODUCT, scenario_vocabulary=VOCABULARY)
 
@@ -67,10 +73,8 @@ def test_a_scenario_criterion_is_placed_by_the_framework_and_kept_with_its_decla
 
     assert verdict.accepted, verdict.refusals
     request = verdict.change_request
-    assert request.criterion_files == (
-        PlacedCriterionFile("C-2", ".squadops/scenarios/criterion_C_2.json"),
-    )
-    assert ".squadops/scenarios/criterion_C_2.json" in request.footprint
+    assert request.criterion_files == (PlacedCriterionFile("C-2", SCENARIO_PATH),)
+    assert SCENARIO_PATH in request.footprint
     assert request.criteria[0].scenario == DOOR_OPENS
     assert load_stored_change_request(stored_change_request(request)) == request
 
@@ -158,3 +162,83 @@ def test_the_proposals_product_context_reads_the_kept_vocabulary_and_none_withou
 
     assert with_vocabulary.scenario_vocabulary == VOCABULARY
     assert product_context(base).scenario_vocabulary is None
+
+
+# ---------------------------------------------------------------- the framework's file (C2a)
+
+
+def _stored_with_a_suite_criterion() -> str:
+    """A stored request with a scenario criterion and a package criterion beside it."""
+    authored = _request()
+    authored["criteria"].append(
+        {
+            "id": "R1",
+            "statement": "The report's last line is the total",
+            "surface_kind": "package",
+            "surface": "tally.report",
+            "observable": "render([3, 4])'s last line is 'total 7'",
+        }
+    )
+    verdict = validate_proposal(authored, _ctx())
+    assert verdict.accepted, verdict.refusals
+    return stored_change_request(verdict.change_request)
+
+
+async def test_delivery_writes_the_frozen_declaration_into_the_candidate():
+    """The wiring, entered at the delivery hook every repository-backed increment's candidate
+    passes through. Bugs caught: a scenario's declaration missing from the delivered candidate,
+    so Campaign acceptance finds nothing to run; or a text other than the frozen one, so the
+    provider refuses it as changed after freezing."""
+    vault = _Vault()
+    cycle = increment(vault, _stored_with_a_suite_criterion())
+
+    files = await placed_framework_files(cycle, vault)
+
+    text = files[SCENARIO_PATH].decode("utf-8")
+    assert scenario_digest(text) == frozen_scenario(DOOR_OPENS, VOCABULARY).digest
+    assert set(files) == {SCENARIO_PATH}
+
+
+def test_a_qa_suite_is_held_to_its_criteria_and_never_to_a_scenarios_declaration():
+    """Bug caught: a scenario's declaration routed to a qa task as a test file to write, so the
+    plan gate refuses every plan that doesn't write it, and the head check runs it as a test."""
+    stored = _stored_with_a_suite_criterion()
+
+    every = increment_criterion_files(stored, "")
+    suite = suite_criterion_files(every)
+
+    assert [f.criterion_id for f in every] == ["C-2", "R1"]
+    assert [f.criterion_id for f in suite] == ["R1"]
+
+
+def _plan(*artifacts: str) -> ImplementationPlan:
+    listed = "".join(f'\n      - "{a}"' for a in artifacts) or " []"
+    return ImplementationPlan.from_yaml(
+        "version: 1\nproject_id: p\ncycle_id: c\nprd_hash: h\ntasks:\n"
+        "  - task_index: 0\n    task_type: development.develop\n    role: dev\n"
+        '    focus: "Door"\n    description: "Open the door"\n'
+        f"    expected_artifacts:{listed}\n    depends_on: []\n"
+        "summary:\n  total_tasks: 1\n"
+    )
+
+
+def test_the_plan_gate_refuses_a_task_that_writes_a_scenarios_declaration():
+    """Bug caught: a task allowed to write the declaration, so its edit is discarded at delivery
+    unread, or, if it were kept, the frozen scenario is replaced by the squad's."""
+    errors = _plan("src/door.luau", SCENARIO_PATH).validate_increment_scenario_files(
+        {SCENARIO_PATH: "C-2"}
+    )
+
+    assert len(errors) == 1
+    assert "the declaration of scenario criterion C-2" in errors[0]
+    assert _plan("src/door.luau").validate_increment_scenario_files({SCENARIO_PATH: "C-2"}) == []
+
+
+def test_a_planner_is_never_offered_a_scenarios_declaration_to_claim():
+    """Bug caught: the declaration listed among the footprint's claimable files, so a compliant
+    planner names it and the gate refuses the plan it was taught to write."""
+    inputs: dict = {}
+
+    _inject_increment_indexes(inputs, ("src/door.luau", SCENARIO_PATH), ())
+
+    assert inputs["increment_footprint_index"] == "- `src/door.luau`"
