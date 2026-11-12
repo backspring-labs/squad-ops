@@ -27,19 +27,33 @@ from datetime import UTC, datetime
 
 import pytest
 
+from adapters.remote_execution.fixture_operation_runner import (
+    OPERATION,
+    PROVIDER,
+    VOCABULARY,
+    WORLD_PATH,
+)
 from squadops.campaigns.acceptance import NO_READER_EXIT_ZERO
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
 from squadops.campaigns.runner_acceptance import ProductTestSurface, freeze_product_bundle
+from squadops.campaigns.scenario_runs import scenario_bundle
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+from squadops.capabilities.skillsets import SCENARIO_VOCABULARY_FILE, ToolRequest
 from squadops.cycles.models import ArtifactRef, Run
+from squadops.cycles.skillset_content import keep_skillset_content
+from squadops.execution import product_acceptance
 from squadops.execution.dispatched_flow_executor import _ExecutionError
 from squadops.execution.source_delivery import SOURCE_VERIFICATION_TYPE
 from squadops.projects.derived_profile import parse_profile
 from tests.fixtures.shared_contract.repository import recorded, tracked_files
 from tests.unit.campaigns.test_product_increment_seams import STORED, _cycle, _profile
+from tests.unit.campaigns.test_scenario_delivery import _Port
 from tests.unit.cycles import test_source_backed_run
+from tests.unit.cycles.skillset_fixture import PLAY, built, requiring_config, skillset
+from tests.unit.cycles.skillset_fixture import catalog as fixture_catalog
 from tests.unit.cycles.test_source_backed_run import _end_of_plan, _of_type
+from tests.unit.remote_execution.scenario_fixture import OPEN, SCENARIO_PATH, door_opens
 
 #: The shared fixture's Tally, its real clone and sandbox, and an executor over them (``world``).
 world = test_source_backed_run.world
@@ -846,3 +860,113 @@ async def test_an_increment_an_old_runtime_api_launched_with_no_inventory_is_nev
         await _end_of_plan(executor, cycle, run, vault, {REPORT: report + _LINE})
 
     assert _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE) == []
+
+
+# =============================================================================
+# #3053: an earlier increment's scenario, replayed at delivery through the runtime's own port
+# =============================================================================
+
+
+def _scenario_catalog() -> dict:
+    """The fixture skillsets, the qa one supplying ``fixture.scenario`` with the fixture
+    provider's ``declared_scenario`` tool and keeping its reader's vocabulary (§17g)."""
+    skillsets = fixture_catalog()
+    qa = skillsets["fixture-qa"]
+    capabilities = tuple(
+        dataclasses.replace(c, tools=(ToolRequest(OPERATION, PROVIDER, "worker"),))
+        if c.contract == "fixture.scenario"
+        else c
+        for c in qa.capabilities
+    )
+    files = {
+        **qa.skill_files,
+        "play-scenario": {
+            **PLAY,
+            SCENARIO_VOCABULARY_FILE: json.dumps(VOCABULARY.to_document()),
+        },
+    }
+    skillsets["fixture-qa"] = skillset("fixture-qa", "qa", capabilities, files)
+    return skillsets
+
+
+async def test_an_earlier_increments_scenario_is_replayed_at_delivery_through_the_runtimes_port(  # noqa: F811
+    world, monkeypatch
+):
+    """#3053, entered where the live cycle is: the executor's end of plan delivers the candidate
+    and judges it. The campaign's launch pinned an earlier increment's scenario (C-2, the door
+    that opens); the candidate's world has the door open. Bugs caught: the executor's port never
+    handed to delivery; the operation found by anything but the cycle's record and the packaged
+    skillsets; the vocabulary read from anywhere but the cycle's kept copy; the scenario run as
+    a test; its reading not kept."""
+    catalog = _scenario_catalog()
+    record, document = built(requiring_config(monkeypatch), catalog)
+    monkeypatch.setattr(product_acceptance, "packaged_skillsets", lambda: catalog)
+    repo, vault, executor, cycle, run = _increment(world, frozen=True)
+    await keep_skillset_content(
+        vault, project_id=cycle.project_id, cycle_id=cycle.cycle_id, document=document
+    )
+    bundle = scenario_bundle("C-2", FileTree.of({SCENARIO_PATH: door_opens().document}))
+    ref = _stored(
+        vault,
+        cycle,
+        "run_prior",
+        "verifier_bundle",
+        "C-2.json",
+        json.dumps(
+            {
+                "criterion_id": "C-2",
+                "address": bundle.address,
+                "test_path": SCENARIO_PATH,
+                "invocation": [],
+                "files": {p: c.decode() for p, c in bundle.files.files},
+            }
+        ).encode(),
+    )
+    block = dict(cycle.execution_overrides["campaign_proposal"])
+    block["frozen_criteria"] = [
+        *block["frozen_criteria"],
+        {
+            "criterion_id": "C-2",
+            "test_path": SCENARIO_PATH,
+            "bundle_ref": ref,
+            "bundle_address": bundle.address,
+        },
+    ]
+    cycle = dataclasses.replace(
+        cycle,
+        skillset_record=record,
+        execution_overrides={**cycle.execution_overrides, "campaign_proposal": block},
+    )
+    port = _Port()
+    executor._remote_execution = port
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    await _end_of_plan(
+        executor,
+        cycle,
+        run,
+        vault,
+        {REPORT: report + _LINE, R1: _R1_TEST, WORLD_PATH: json.dumps(OPEN)},
+    )
+    [(_ref, raw)] = _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE)
+    evaluation = json.loads(raw)
+
+    held = {f["criterion_id"]: (f["held"], f["detail"]) for f in evaluation["frozen"]}
+    assert held["C-2"] == ("held", "")
+    [asked] = port.asked
+    assert (asked.provider, asked.operation, asked.contract, asked.mode) == (
+        PROVIDER,
+        OPERATION,
+        "fixture.scenario",
+        "play",
+    )
+    assert asked.task_id == f"campaign:cmp_tally00001:{evaluation['increment_id']}:C-2:candidate"
+    assert json.loads(asked.source_files[WORLD_PATH]) == OPEN
+    reading = evaluation["scenario_readings"]["C-2"]["candidate"]
+    assert (reading["side"], reading["skillset"], reading["status"]) == (
+        "candidate",
+        "fixture-qa",
+        "completed",
+    )
+    # Never run as a test: the sandbox ran F1's bundle and nothing of C-2.
+    assert [r["criterion_id"] for r in evaluation["runs"]] == ["F1"]
