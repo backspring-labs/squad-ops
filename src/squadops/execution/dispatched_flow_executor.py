@@ -169,6 +169,11 @@ from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
+from squadops.execution.scenario_baseline import (
+    baseline_ending,
+    judge_scenario_baselines,
+    scenario_criteria_of,
+)
 from squadops.execution.skill_supply import SkillSupply
 from squadops.execution.source_checkout import seed_checkout_artifacts, task_source_repository
 from squadops.execution.source_delivery import (
@@ -2238,6 +2243,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 state.produced.all_artifact_refs,
                 state.produced.stored_artifacts,
             )
+
+        # #3044 2b: each scenario the plan plays is read on the accepted baseline before any
+        # work starts. A resumed run read it before it stopped.
+        if not checkpoint:
+            await self._judge_scenario_baselines(cycle, run_id, plan)
 
         # #683 (SIP-0096 §14): wrap-up tasks consume the CycleOutcome — inject
         # the structured evidence ONCE per wrap-up run into state.produced.prior_outputs, so
@@ -5232,6 +5242,39 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             read_profile=self._derived_profile_for,
             repaired=repaired,
         )
+
+    async def _judge_scenario_baselines(
+        self, cycle: Cycle, run_id: str, plan: list[TaskEnvelope]
+    ) -> None:
+        """#3044 2b: the baseline step (``scenario_baseline``). Ends the run when a scenario is
+        refused on the baseline or can't be read there; returns for a plan that plays none."""
+        criteria = scenario_criteria_of(plan)
+        if not criteria:
+            return
+        try:
+            judgements = await judge_scenario_baselines(
+                cycle,
+                run_id,
+                criteria,
+                vault=self._artifact_vault,
+                remote_execution=self._remote_execution,
+                repository=self._source_repository,
+                registry=self._project_registry,
+                read_profile=self._derived_profile_for,
+            )
+        except (ValueError, SourceUnavailable) as e:
+            raise _ExecutionError(
+                f"the scenarios {', '.join(criteria)} can't be read on the accepted baseline: {e}",
+                terminal=RunTerminalDecision(kind=TerminalKind.INFRASTRUCTURE_FAILED),
+            ) from e
+        for judgement in judgements:
+            logger.info(
+                "scenario_baseline_read cycle=%s criterion=%s verdict=%s: %s",
+                cycle.cycle_id, judgement.criterion_id, judgement.verdict.value, judgement.why,
+            )  # fmt: skip
+        ending = baseline_ending(judgements)
+        if ending is not None:
+            raise ending
 
     async def _derived_profile_for(self, cycle: Any) -> Any:
         """SIP-0112 H.4: the derived profile recorded at the source a cycle pinned, or ``None``

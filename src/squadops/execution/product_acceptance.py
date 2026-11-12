@@ -203,7 +203,7 @@ async def evaluate_product_increment(
         # tests that import them are frozen with. The inputs name them only where one is placed.
         placed_support=tuple(inputs.get("increment_page_loaders") or ()),
         # #3053: a scenario criterion is played through the runtime's own remote execution.
-        scenarios=await _scenario_runs(
+        scenarios=await scenario_runs_for(
             cycle, run_id, increment_id, (*new, *replaced, *frozen), vault, remote_execution
         ),
         # Read only where a new scenario criterion holds its declaration to it.
@@ -277,7 +277,7 @@ def baseline_scenario_overlay(
     return candidate_verifier_overlay(accepted, bundle, surface).tree
 
 
-async def _scenario_runs(
+async def scenario_runs_for(
     cycle: Cycle,
     run_id: str,
     increment_id: str,
