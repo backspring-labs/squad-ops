@@ -179,7 +179,8 @@ phases are in its own ledger.
 | Phase 2d, the first slice: the Studio adapter's read side (the session, the tool check, identity as far as reading allows, paged read-back) and the isolation test (R3.6, R4.6, R5.11) | **shipped** | 2.8 (PR #3088; #3039 tracks the rest) |
 | Phase 2d, the sync: the harness's fixed programs (identity and sync), `PlaceId` 0 confirmed before any write, and the adapter's own sync with its whole read-back (R3.6, D5, D10, R5.15) | **shipped** | 2.8 (PR #3107; #3039 tracks the rest) |
 | Phase 2d, the place's state: the non-script baseline held through play, the synced scripts checked for attributes and tags, and play started and stopped (R3.6, R5.16) | **shipped** | 2.8 (PR #3112; #3039 tracks the rest) |
-| Phase 2d, the rest: the transaction under one lease, reset from the baseline file with Studio reopened, the `roblox-studio` provider's four operations served, editor edits returned as a revision, and the worker's configuration (R3.6, R4.3, R5.7, R5.11, R5.15, R5.16) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
+| Phase 2d, the reset: the place restored from its pinned baseline file and Studio reopened with no person involved, the reopened place confirmed unpublished and holding the pinned non-script baseline (R3.6, R5.17) | **shipped** | 2.8 (PR #PRNUM; #3039 tracks the rest) |
+| Phase 2d, the rest: the transaction under one lease, the `roblox-studio` provider's four operations served, editor edits returned as a revision, and the worker's configuration (R3.6, R4.3, R5.7, R5.11, R5.15, R5.16, R5.17) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
@@ -896,6 +897,64 @@ Nothing was saved and nothing was published.
 
 **Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" (2026-11-15) and their approval of writes to
 the local copy.
+
+## R5.17 Phase 2d, the reset as built: the place restored, and Studio reopened with no person involved (#3039, 2026-11-15)
+
+**`RobloxStudioRunner.reset()`** answers R3.6's open item: "reopening Studio on that file without a person is phase
+2d's to prove". The worker is configured with `PlaceFiles`:
+- the place file Studio opens;
+- the read-only baseline file;
+- the baseline file's pinned sha256;
+- the pinned non-script baseline digest (R5.16) the reopened place must hold.
+
+**The steps, each refusing when it can't be done safely:**
+1. **The baseline file must match its pin,** or nothing is touched.
+2. **Only its own Studio is quit.** That means exactly one Studio process, whose MCP server reports exactly the place
+   file. More than one, a Studio holding another file, or one whose server doesn't answer is refused, and a person is
+   needed. A Studio showing a save prompt ignores a quit, so the reset asks first and kills only when it won't go.
+3. **Studio's lock is removed only when the process it names is gone.** A lock held by a running process, or one
+   naming no process, is refused, since opening the place twice would let one save overwrite the other.
+4. **The baseline is copied in whole:** staged, made writable for Studio, and renamed into place, then checked against
+   its pin.
+5. **Studio is reopened** (`open -a`). The reopened place must come back as the place file, as an unpublished local
+   place in Edit, holding the pinned non-script baseline.
+
+**A runner given no place files refuses to reset.** The first slice's reset only confirmed identity, a no-op the
+worker would have read as a place ready for the next transaction.
+
+**`StudioApp`** is what the reset asks of the Mac: process ids, liveness, quit or kill, and open. `MacStudioApp`
+(`pgrep -x`, a signal, `open -a`) is the real one, and a test stands in for it. The module is `studio_app.py`, marked
+`# Platform: dev-mac`.
+
+**Found live, and fixed:** `StudioMCP` lists no Studio for its first seconds. A reset that read the first answer
+refused to quit the Studio it was resetting. `place.connected_studios` now polls, as `identity` did, and both use it.
+
+**Evidence on the real place** (Studio 0.747, with the owner's approval of 2026-11-15):
+- **The first live reset was done by hand:** SIGTERM was ignored, so it took SIGKILL. A stale lock was removed, the
+  pristine file copied in and Studio reopened. MCP saw the place in Edit within 2 s under a new Studio id, and no
+  dialog appeared.
+- **The adapter's reset:**
+  - **Setup:** the Baseplate was first moved 0.01 studs, so the baseline read `3ccc8c0f…`.
+  - **The run:** `scripts/dev/studio_reset.py` quit Studio, restored the file and reopened it, holding the pinned
+    `354636ad…`, in 27.0 s.
+- **On the restarted Studio:**
+  - the tool list was unchanged (38 tools, schema digest `1ba499d8…`);
+  - a read-back gave 0 differences against `src/`;
+  - a sync round trip wrote 2 and removed 1, then restored them;
+  - a play round held 22,852 instances.
+
+The place file overwritten by the first reset was kept: it was last saved during S1, and its sha256 is `afebe669…`.
+
+**Still #3039's:**
+- the transaction under one lease;
+- the four operations served, each with its worker configuration. The provider will be found the way the runtime finds
+  `eligibility.AUTHORITY` (R4.6);
+- editor edits returned as a revision.
+
+`play_scenario` serves once #3040's harness executes a scenario.
+
+**Who ruled.** The owner approved the force-quit and reopening on 2026-11-15 ("Yes, now"). The design is the
+MacBook lane's, under "go ahead with #3039".
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
