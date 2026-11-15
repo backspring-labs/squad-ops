@@ -168,3 +168,79 @@ def test_the_locks_agree_with_each_other():
         + "\n\nThe same framework code runs in both images. Re-run"
         "\nscripts/maintainer/update_deps.sh (which passes --upgrade) to reconcile."
     )
+
+
+# ---- #3010: a cap the refresh can't see ------------------------------------------------------
+
+#: The sources an install or a lock compile reads a requirement from, beside CI's own.
+CAPPED_SOURCES = (REPO / "pyproject.toml", *sorted((REPO / "requirements").glob("*.txt")))
+CI_REQUIREMENTS = REPO / "tests" / "requirements.txt"
+_UPPER = ("<", "<=", "==", "~=", "===")
+
+
+def _requirements(path: Path) -> list:
+    """Every requirement ``path`` declares: a requirements file's lines, or pyproject.toml's
+    dependencies and optional dependencies."""
+    import tomllib
+
+    from packaging.requirements import InvalidRequirement, Requirement
+
+    if path.suffix == ".toml":
+        project = tomllib.loads(path.read_text())["project"]
+        lines = [*project.get("dependencies", ())]
+        for extra in project.get("optional-dependencies", {}).values():
+            lines.extend(extra)
+    else:
+        lines = [line.split("#", 1)[0].strip() for line in path.read_text().splitlines()]
+    found = []
+    for line in lines:
+        if not line or line.startswith("-"):
+            continue
+        try:
+            found.append(Requirement(line))
+        except InvalidRequirement:
+            continue
+    return found
+
+
+def _missing_caps(sources: dict[str, list], ci: list) -> list[str]:
+    """Each upper bound a source places on a package that CI's requirements list without it.
+
+    CI's requirements are what the weekly refresh resolves its constraint from, with no constraint
+    of its own, and then every lock is compiled against that constraint. A cap only the locks'
+    sources carry lets the refresh pick a version the lock compile then refuses: tree-sitter
+    0.26.1 against agent.txt's ``<0.26``, every Monday from 2026-11-09 (#3010)."""
+    from packaging.utils import canonicalize_name
+
+    ci_specs = {canonicalize_name(r.name): {str(s) for s in r.specifier} for r in ci}
+    missing = []
+    for source, requirements in sources.items():
+        for requirement in requirements:
+            name = canonicalize_name(requirement.name)
+            if name not in ci_specs:
+                continue
+            for spec in requirement.specifier:
+                if spec.operator in _UPPER and str(spec) not in ci_specs[name]:
+                    missing.append(
+                        f"{requirement.name}{spec} ({source}), not in tests/requirements.txt"
+                    )
+    return sorted(set(missing))
+
+
+def test_every_cap_a_lock_source_carries_is_in_cis_requirements_too():
+    sources = {p.relative_to(REPO).as_posix(): _requirements(p) for p in CAPPED_SOURCES}
+
+    assert _missing_caps(sources, _requirements(CI_REQUIREMENTS)) == []
+
+
+def test_a_cap_missing_from_cis_requirements_is_named_and_a_matched_pair_passes():
+    from packaging.requirements import Requirement
+
+    capped = {"requirements/agent.txt": [Requirement("tree-sitter>=0.25,<0.26")]}
+
+    assert _missing_caps(capped, [Requirement("tree-sitter>=0.25")]) == [
+        "tree-sitter<0.26 (requirements/agent.txt), not in tests/requirements.txt"
+    ]
+    assert _missing_caps(capped, [Requirement("tree-sitter>=0.25,<0.26")]) == []
+    # A package CI doesn't list at all isn't CI's to cap.
+    assert _missing_caps(capped, [Requirement("httpx>=0.27")]) == []
