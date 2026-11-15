@@ -40,6 +40,14 @@ from squadops.api.routes.cycles.cycles import (
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.campaigns.campaign_branch import CampaignHead, NoCampaignHead, head
+from squadops.campaigns.equipment import (
+    EQUIPMENT_CHANGED_CODE,
+    EquipmentUnreadable,
+    changed_parts,
+    current_pin,
+    equipment,
+    equipment_digest,
+)
 from squadops.campaigns.launch_requests import bound_at_head, increment_id_of, scripted_launch
 from squadops.campaigns.launcher import (
     BeforeLaunch,
@@ -49,9 +57,11 @@ from squadops.campaigns.launcher import (
     LaunchUnavailable,
     unblocked,
 )
+from squadops.campaigns.lifecycle import LAUNCHER_ROLE
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
+    CampaignTransition,
     ControlOperation,
     CycleKind,
     LaunchIntent,
@@ -215,6 +225,9 @@ class CampaignLaunchService:
             if codes and all(code == AVAILABILITY_REFUSAL for code in codes):
                 raise LaunchUnavailable(f"{detail['error']['code']}: {e}") from e
             raise LaunchRefused(f"{detail['error']['code']}: {e}") from e
+        # SIP-0116 phase 5 (#3037): the cycle's equipment is held to the Campaign's pin before
+        # anything of it is stored; a changed one is refused with its parts named.
+        await self._hold_to_pin(campaign, intent, prepared.cycle)
         # #2178: the launch's task instructions are its cycle's admitted inputs, stored before
         # the launcher persists the cycle, so its first run reads them. A launch repeated by its
         # launch id stores the earlier cycle's; these then target an id that was never stored,
@@ -230,6 +243,85 @@ class CampaignLaunchService:
         await self._carry_instructions(intent, prepared.cycle)
         await self._bind_for_cycle(campaign, prepared.cycle)
         return prepared.cycle
+
+    async def _hold_to_pin(self, campaign: Campaign, intent: LaunchIntent, cycle: Cycle) -> None:
+        """SIP-0116 §10, phase 5: the cycle's equipment, held to the Campaign's pin.
+
+        The first launch pins its equipment (``EQUIPMENT_PINNED``). A later launch whose
+        equipment differs is refused, after an ``EQUIPMENT_CHANGED`` row naming each changed part
+        and the digest the owner's transition would accept, and escalates as any refused launch
+        does. A row that can't be written is a fault the next drain repeats: a launch never
+        proceeds unpinned."""
+        try:
+            found = equipment(cycle.skillset_record)
+        except EquipmentUnreadable as e:
+            raise LaunchRefused(f"{EQUIPMENT_CHANGED_CODE}: {e}") from e
+        digest = equipment_digest(found)
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        pin = current_pin(log)
+        if pin is None:
+            launched = any(e.operation is ControlOperation.MARK_LAUNCHED for e in log)
+            await self._record(
+                campaign,
+                ControlOperation.EQUIPMENT_PINNED,
+                intent,
+                reason=(
+                    "pinned at this launch: the Campaign launched cycles before equipment was "
+                    "pinned"
+                    if launched
+                    else "pinned at the Campaign's first launch"
+                ),
+                key=f"{intent.launch_id}:equipment_pinned",
+                binding={"digest": digest, "equipment": found, "cycle_id": cycle.cycle_id},
+            )
+            return
+        if pin.digest == digest:
+            return
+        parts = changed_parts(pin.held, found)
+        await self._record(
+            campaign,
+            ControlOperation.EQUIPMENT_CHANGED,
+            intent,
+            reason=f"launch {intent.launch_id}'s equipment differs from the pin: "
+            + "; ".join(parts),
+            key=f"{intent.launch_id}:equipment_changed:{digest}",
+            binding={
+                "launch_id": intent.launch_id,
+                "pinned_digest": pin.digest,
+                "found_digest": digest,
+                "equipment": found,
+                "parts": parts,
+            },
+        )
+        raise LaunchRefused(
+            f"{EQUIPMENT_CHANGED_CODE}: the equipment assigned to this Campaign's work changed "
+            f"since it was pinned: {'; '.join(parts)}. It continues through the owner's "
+            f"equipment transition to {digest}"
+        )
+
+    async def _record(
+        self,
+        campaign: Campaign,
+        operation: ControlOperation,
+        intent: LaunchIntent,
+        *,
+        reason: str,
+        key: str,
+        binding: dict[str, Any],
+    ) -> None:
+        await self._campaigns.transition(
+            campaign.campaign_id,
+            CampaignTransition(
+                operation=operation,
+                actor=LAUNCHER_ACTOR,
+                actor_role=LAUNCHER_ROLE,
+                reason=reason,
+                idempotency_key=key,
+                next_state=None,
+                target=intent.launch_id,
+                binding=binding,
+            ),
+        )
 
     async def _head(self, campaign: Campaign) -> CampaignHead | None:
         """The campaign branch's head (§24cd point 1), from the campaign's row and its control

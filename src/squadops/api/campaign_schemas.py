@@ -175,6 +175,17 @@ class GoalDelegationRequest(ControlRequest):
     source_ref: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
+class EquipmentTransitionRequest(BaseModel):
+    """The owner's transition to the equipment a refused launch found (SIP-0116 phase 5): its
+    digest, as the refusal named it, why, and under which key."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    to_digest: str = Field(min_length=1)
+    reason: str
+    idempotency_key: str
+
+
 class ContributionDismissalRequest(BaseModel):
     """The owner's "this work won't land" on a closed, unmerged contribution (SIP-0109 §24dg):
     why, under which key, and where the decision came from, when a conversation."""
