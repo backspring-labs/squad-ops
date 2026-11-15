@@ -893,3 +893,105 @@ class TestAFileEndsAsAFile:
         [record] = extract_fenced_files(f"```python:src/a.py\n{body}```\n")
 
         assert record["content"] == stored
+
+
+# ---------------------------------------------------------------- SIP-0118 S6: the Luau shapes
+
+#: S6 T2-1: a three-file Luau change with no fences, files separated by bare path comments.
+_S6_UNFENCED = """I'll add the signal and hook it into the bounty flow.
+
+-- path: src/Shared/Modules/Signal.luau
+local Signal = {}
+return Signal
+
+-- path: src/Server/Services/BountyService.luau
+local BountyService = {}
+\treturn BountyService
+-- path: src/Server/Services/EconomyService.luau
+return {}
+"""
+
+#: S6 T2-2: the path comment placed before each fence instead of inside it.
+_S6_PATH_BEFORE_FENCE = """-- path: src/Shared/Modules/Signal.luau
+```luau
+local Signal = {}
+return Signal
+```
+
+-- path: src/Server/Services/BountyService.luau
+
+```luau
+return {}
+```
+"""
+
+
+class TestS6LuauShapes:
+    def test_a_response_with_no_fences_is_read_by_its_path_comments(self):
+        """S6 T2-1. Bug caught: a correct three-file change dropped whole because it carries no
+        fence, so the task fails on format alone; or the prose before it written as a file."""
+        result = extract_fenced_files(_S6_UNFENCED)
+
+        assert [(f["filename"], f["content"]) for f in result] == [
+            ("src/Shared/Modules/Signal.luau", "local Signal = {}\nreturn Signal\n"),
+            (
+                "src/Server/Services/BountyService.luau",
+                "local BountyService = {}\n\treturn BountyService\n",
+            ),
+            ("src/Server/Services/EconomyService.luau", "return {}\n"),
+        ]
+        assert {f["language"] for f in result} == {"luau"}
+
+    def test_a_path_comment_before_its_fence_names_that_fence(self):
+        """S6 T2-2. Bug caught: each fence read as unlabelled and dropped, or the first
+        comment's path reused for the second fence."""
+        result = extract_fenced_files(_S6_PATH_BEFORE_FENCE)
+
+        assert [(f["filename"], f["content"]) for f in result] == [
+            ("src/Shared/Modules/Signal.luau", "local Signal = {}\nreturn Signal\n"),
+            ("src/Server/Services/BountyService.luau", "return {}\n"),
+        ]
+
+    def test_a_labelled_path_comment_inside_the_fence_is_read_and_stripped(self):
+        """The form a Luau prompt asks for. Bug caught: ``path`` read as the filename, so the
+        file is lost, or the comment kept as the file's first line."""
+        result = extract_fenced_files(
+            "```luau\n-- path: src/Client/UI/Theme.luau\nreturn {}\n```\n"
+        )
+
+        assert [(f["filename"], f["content"]) for f in result] == [
+            ("src/Client/UI/Theme.luau", "return {}\n")
+        ]
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            # A fence the first six strategies resolve: the comment above it changes nothing.
+            "-- path: src/other.luau\n```luau:src/Shared/Log.luau\nreturn 1\n```\n",
+            # A fenced response is never re-read as unfenced, even with path comments in prose.
+            "See -- path: notes\n-- path: src/a.luau\nlocal a = 1\n```luau:src/b.luau\nreturn 2\n```\n",
+        ],
+        ids=["strict wins", "fenced stays fenced"],
+    )
+    def test_a_response_that_resolves_today_is_read_as_it_was(self, response):
+        """Every existing stack's emissions. Bug caught: the new shapes outranking a fence's own
+        path, or an unfenced reading taken over a fenced response, so a file is renamed or
+        invented."""
+        result = extract_fenced_files(response)
+
+        assert len(result) == 1
+        assert result[0]["filename"] in ("src/Shared/Log.luau", "src/b.luau")
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            "-- mentions src/a.luau but labels nothing\nlocal a = 1\n",
+            "-- path: ../escape.luau\nlocal a = 1\n",
+            "-- path: src/empty.luau\n\n",
+        ],
+        ids=["unlabelled", "unsafe", "empty"],
+    )
+    def test_an_unfenced_response_names_a_file_only_by_a_safe_label_with_content(self, response):
+        """Bug caught: a comment that mentions a file read as one, a traversal path written, or
+        an empty file emitted for a label with nothing under it."""
+        assert extract_fenced_files(response) == []
