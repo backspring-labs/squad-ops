@@ -606,6 +606,33 @@ Campaign acceptance's runner side is the Spark lane's (#3053).
 **No proposal can carry a scenario criterion yet:** no skillset ships a vocabulary, so every one is refused as
 unverifiable until those land.
 
+## R5.10 An increment blocked only for want of a worker is retried, never repaired: #3045, part A as built (2026-11-15)
+
+**What changed.** A delivery that can't read a scenario because no worker took its operation used to read
+`blocked_unverified` like any other unread gap. The Campaign then repaired it (SIP-0109 §10 row 8), rebuilding a
+candidate nothing had faulted and spending the increment's repairs on an outage. Now:
+
+| Point | As built | Why |
+|---|---|---|
+| **Availability is a fact on the result, never prose.** `RemoteOperationResult.unavailable` means no worker took the operation. It is set only by a requester, from three structured facts: the registry's `NoWorker` (`RegistryRemoteExecution`); the route's `ERROR_NO_WORKER` (`RuntimeApiRemoteExecution`); and the requester's own wait, when its cancel settled an operation no worker had claimed (`waiting.await_result`). It is never set on a result a worker returned | the decision a hearing takes on it must not rest on a reason's words |
+| **Left out on purpose: a worker that claimed the operation and went silent.** Its lease lapsing reads `interrupted`, whether it ran is unknown, and it isn't flagged. So it still goes to repair. It is an outage too, but a different fact, and the conservative choice is to leave it with the work's routing | the MacBook lane's review of the plan, point 2 |
+| **Every reading's document carries the key** (`records_document`), so "not flagged" is read, not inferred. A reading kept before the key reads as not flagged (`reading_unavailable`), and keeps the routing it had then | the MacBook lane's review, point 1 |
+| **Delivery records one fact for the hearing.** A scenario's `Discrimination` or `FrozenResult` is flagged when it is unread only because a side's reading was taken by no worker. The evaluation's `blocked_only_by_availability` is true when it is `blocked_unverified` and every gap that blocks it is so flagged. A missing bundle, a route not rendered, or a runner with no test-id reader beside the outage leaves it false. A failure beside the outage rejects, as before | the shortcut is taken only when building again can change nothing |
+| **The hearing retries it** (`EndedCycle.blocked_only_by_availability`, read from the stored evaluation; absent reads false). It takes rows 10 and 11, the rows of a run that failed outside the work: a retry while `max_retry_cycles_per_increment` lasts, then escalation. The retries are counted on the increment across its launches (`derive_counters`), so nothing resets them | #3045's budget, persisted per logical increment. SIP-0109 §10's rows are unchanged; the input that reaches rows 10 and 11 is widened |
+| **At dispatch nothing changes.** #3036's `worker_unavailable` ends the run `infrastructure_failed`, which reads as the environment, so rows 10 and 11 already apply. So does the baseline step's blocked ending | |
+
+**The evidence.** `test_machinery_campaign`: a worker that is there at every launch and gone at every reading. The
+Campaign takes rows 5, 10 and 11, launches an increment and one retry, no repair, and escalates. Both evaluations
+read `blocked_only_by_availability`. Making the hearing ignore the flag, or the requester not set it, fails that
+test. The decisions on mixed gaps are `test_retry_for_want_of_a_worker`.
+
+**Who ruled it.** The shape was agreed with the MacBook lane on 2026-11-12 (relaunch only when every gap is
+availability, never read from prose). It was reviewed again on 2026-11-15, with the three points above.
+
+**What remains for #3045 (part B).** Before launch, a creation refused only for availability escalates at once
+today. It is to wait in `launch_blocked`, re-reading the worker through the registry's `no_worker_for` at each
+attempt, and escalate at `launch_blocked_attempts`.
+
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
