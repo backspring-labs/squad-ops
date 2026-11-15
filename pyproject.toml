@@ -92,7 +92,7 @@ auth = ["PyJWT[crypto]>=2.10"] # adapters/auth/keycloak (JWT validation, #2073)
 # profiles — the images sidestep it with `pip install -e .`, a bare install does not.
 squadops = ["**/*.yaml", "**/*.md", "**/*.json", "**/*.cjs"]
 # An adapter's fixed programs, read next to it (#3039: the Studio harness).
-adapters = ["**/*.luau"]
+adapters = ["**/*.luau", "**/*.json"]
 
 #######################################
 # Ruff - Linting & basic code hygiene #

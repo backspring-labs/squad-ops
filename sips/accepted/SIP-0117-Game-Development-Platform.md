@@ -181,7 +181,7 @@ phases are in its own ledger.
 | Phase 2d, the place's state: the non-script baseline held through play, the synced scripts checked for attributes and tags, and play started and stopped (R3.6, R5.16) | **shipped** | 2.8 (PR #3112; #3039 tracks the rest) |
 | Phase 2d, the reset: the place restored from its pinned baseline file and Studio reopened with no person involved, the reopened place confirmed unpublished and holding the pinned non-script baseline (R3.6, R5.17) | **shipped** | 2.8 (PR #3113; #3039 tracks the rest) |
 | Phase 2d, the rest: the transaction under one lease, the `roblox-studio` provider's four operations served, editor edits returned as a revision, and the worker's configuration (R3.6, R4.3, R5.7, R5.11, R5.15, R5.16, R5.17) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
-| Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
+| Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7, R5.18) | **shipped** | 2.8 (PR #PENDING, #3040) |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
 | A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **shipped** | 2.8 (PRs #3086 and #3087, closing #3045; R5.10 and R5.12) |
@@ -955,6 +955,56 @@ The place file overwritten by the first reset was kept: it was last saved during
 
 **Who ruled.** The owner approved the force-quit and reopening on 2026-11-15 ("Yes, now"). The design is the
 MacBook lane's, under "go ahead with #3039".
+
+## R5.18 Phase 2e as built: the scenario executor, its records, and Studio in front (#3040, 2026-11-15)
+
+**`RobloxStudioRunner.run` serves `roblox-studio/play_scenario`** as one transaction:
+1. the handed scenario checked against its frozen digest and the `roblox-studio/1` vocabulary;
+2. every candidate file checked as one the adapter places;
+3. Studio checked as the app in front;
+4. identity, sync and the script-marks check;
+5. the non-script baseline;
+6. play started, then the scenario's setup, steps and assertions;
+7. play stopped in a `finally`;
+8. the baseline read again.
+
+Anything before play ends `not_executed` with its reason, and so does a place whose non-script state moved through
+play. A session that fails after play began ends `interrupted`.
+
+**Where R3.7 is narrowed or changed, with the evidence:**
+
+| R3.7 says | As built | Evidence |
+|---|---|---|
+| the harness emits one structured record per assertion, and S1 showed the console as its channel | **The channel is the `observe` program's answer, never the console.** Each observation runs the fixed `observe` program (R5.15's mechanism, with a hex payload) in the context's datamodel, Server or Client. It answers exactly one of `value`, `absent`, `unsupported`, `unreadable` or `wrong_context`. The adapter builds the record from that answer. Console text is kept as evidence and never read for an outcome, so a line from an earlier session can't be read either | a value returned by a call can't be confused with another session's line. Printing and parsing console lines would add a channel and a nonce for nothing |
+| each record carries the play-session id and the source revision | **Each record carries its assertion id, outcome, observed and expected values, and context.** The play-session id (a fresh one per transaction) and the source revision are on the result's `ran_with` and in `play_log.json`, once per run | one transaction is one session and one revision |
+| the execution context: server or client, and which client | **One client:** `@player` names the session's one player, `LocalPlayer` on the client and the only player on the server. More than one player reads `missing` | Studio's play session has one client |
+| `wrong_context` | **The program checks `RunService` against the context it was sent for.** No correct declaration produces `wrong_context`, since the adapter maps each context to its datamodel. It is the guard against that mapping going wrong | produced live by swapping the two datamodels on the real path (below) |
+| a game with a title screen passes it in every scenario's setup | **The scenario's author declares it,** with `wait_until` and `click_gui`, and the reviewer sees it in `scenario_review.md` (R5.9). A setup that can't pass it makes every assertion read `setup_failed`. The executor doesn't require it of a scenario, since a game with no title screen has none | z_tower-ascension's scenarios pass `TA_Title` this way |
+| — | **The vocabulary as executed:** `click_gui` moves the mouse to the object and presses and releases it, in one call, after checking that the object is shown. `hold_key` holds a key down for its seconds. `move_to` navigates and waits until the character is within 1 stud. `wait_until` polls. A setup that can't be done, or a setup `wait_until` that isn't met, makes every assertion `setup_failed`. A step that can't be done does too. A step's `wait_until` that isn't met doesn't stop the scenario | Studio's one-step click never answered. A hidden button takes a click and does nothing, which would read as done |
+| — | **Studio must be the app in front.** A scenario with any input action (`click_gui`, `hold_key`, `move_to`) is refused before anything syncs unless a Studio process is in front (`StudioApp.frontmost`, `lsappinfo` on the Mac). The refusal also covers no app in front, and a front that can't be read | **found live:** with Terminal in front, the click hung three times at 60 s. With Studio clicked to the front, it passed at once, twice running. Keys and navigation answered with Studio behind, and whether they took effect wasn't established, so they're held to the same rule |
+| — | **The session player's account name is never returned.** It is read once per run and replaced by `@player` in every record and in the evidence. When it can't be read, the run ends `interrupted` with no records and no evidence | whoever is signed in to Studio is the player, and the console names them. The evidence goes into Releases |
+
+**Evidence on the real game.** Studio 0.747, `z_tower-ascension` at `0beaac09`, Studio in front, about 55 s per run
+(`scripts/dev/studio_play_scenario.py`):
+- **passed:** the title gone, Energy 50 on the server and the HUD shown on the client all passed, on two separate runs.
+- **failed:** the same scenario expecting Energy 49 failed only that assertion, observing 50.
+- **missing:** an assertion on `Nowhere.Thing`, a path that starts at no service.
+- **unsupported_input:** an assertion on `Player.NoSuchProperty`.
+- **setup_failed:** a click on a button that isn't there made all three assertions `setup_failed`, and the log names
+  the setup action.
+- **wrong_context:** every assertion, with the two datamodels swapped after setup on the real path.
+- **refused before play:** a `teleport` action was refused as outside `roblox-studio/1`, and Studio wasn't touched.
+
+No run printed the player's name. Each one left the place's non-script baseline unchanged.
+
+**Still to do:**
+- **R5.9's vocabulary source:** the vocabulary file ships as a skill's `scenario_vocabulary.json` in #3041's QA
+  skillset (#3105), held equal to the adapter's;
+- **#3039:** the worker's configuration, the provider found by discovery, and the run on the Mac's worker, where
+  Studio in front is part of the run window (#3046).
+
+**Who ruled.** The MacBook lane built it under the owner's "go ahead with #3040" (2026-11-15). The owner brought Studio
+to the front for the live check.
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile

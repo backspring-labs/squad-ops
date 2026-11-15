@@ -18,6 +18,14 @@ when given); ``baseline_stall`` answers a page that doesn't advance. ``script_ma
 world's ``marked``. ``start_stop_play`` moves the world's ``mode`` between Play and Edit, unless
 ``stuck`` holds it, and ``get_studio_state`` reports ``mode`` when the world has one.
 ``studios_late`` lists no Studio for that many of a session's first ``list_roblox_studios``.
+
+A play session (#3040): ``play`` holds, per context (``server``, ``client``), each instance path
+with its ``properties``, ``attributes``, ``gui`` states and ``value``, or ``unsupported`` /
+``unreadable`` reasons; ``observe`` reads it as the harness's program answers. ``clicks`` maps a
+clicked path to the instances it changes (``{context: {path: instance}}``, ``null`` removing
+one); ``character_navigation`` puts the character at its point; ``input_errors`` lists the input
+tools that answer an error; ``console`` is the output log. Each input call's arguments are
+appended to ``input_log`` when the world names one.
 """
 
 import json
@@ -139,6 +147,49 @@ def start_stop_play(args):
     return text("Game Started" if args["is_start"] else "Game Stopped")
 
 
+CONTEXTS = {"Server": "server", "Client": "client"}
+
+
+def observe(job, datamodel):
+    instances = world.get("play", {}).get(CONTEXTS[datamodel], {})
+    instance = instances.get(job["path"])
+    if instance is None:
+        return {"absent": True}
+    for why in ("unsupported", "unreadable", "wrong_context"):
+        if why in instance:
+            return {why: instance[why]}
+    if job["kind"] == "value":
+        return {"value": instance["value"]} if "value" in instance else {"absent": True}
+    section = {"property": "properties", "attribute": "attributes", "gui_state": "gui"}[job["kind"]]
+    key = job["state"] if job["kind"] == "gui_state" else job["name"]
+    held = instance.get(section, {})
+    return {"value": held[key]} if key in held else {"absent": True}
+
+
+def play_input(name, args):
+    if "input_log" in world:
+        with open(world["input_log"], "a") as f:
+            f.write(json.dumps({"tool": name, **args}) + "\n")
+    if name in world.get("input_errors", ()):
+        return text(f"{name}: the game view isn't ready", error=True)
+    if name == "user_mouse_input":
+        moved = next(a["instance_path"] for a in args["actions"] if a["action"] == "moveTo")
+        path = "@player" + moved[len("LocalPlayer") :] if moved.startswith("LocalPlayer") else moved
+        for context, changes in world.get("clicks", {}).get(path, {}).items():
+            for changed, instance in changes.items():
+                held = world.setdefault("play", {}).setdefault(context, {})
+                if instance is None:
+                    held.pop(changed, None)
+                else:
+                    held[changed] = instance
+    if name == "character_navigation":
+        root = "@player.Character.HumanoidRootPart"
+        world.setdefault("play", {}).setdefault("client", {})[root] = {
+            "properties": {"Position": f"{args['x']}, {args['y']}, {args['z']}"}
+        }
+    return text("Success")
+
+
 def execute_luau(args):
     found = program_of(args["code"])
     if found is None:
@@ -156,6 +207,8 @@ def execute_luau(args):
         return text(json.dumps(baseline_page(payload)))
     if name == "script_marks":
         return text(json.dumps({"marked": world.get("marked", [])}))
+    if name == "observe":
+        return text(json.dumps(observe(payload, args["datamodel_type"])))
     return text(json.dumps(sync(payload)))
 
 
@@ -174,6 +227,8 @@ def call(name, args):
         return text(world["state"])
     if name == "start_stop_play":
         return start_stop_play(args)
+    if name in ("user_mouse_input", "user_keyboard_input", "character_navigation"):
+        return play_input(name, args)
     if name == "search_game_tree":
         return text(json.dumps(world["trees"].get(args["path"], [])))
     if name == "script_read":
