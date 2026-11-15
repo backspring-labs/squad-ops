@@ -227,6 +227,7 @@ async def test_the_digest_lists_each_delegated_resume_and_each_refusal():
             [],
             outcomes=None,
             interventions=None,
+            assessments=None,
         )
     )
 
@@ -255,6 +256,7 @@ async def test_a_campaign_with_nothing_declared_says_so_and_lists_none():
         [],
         outcomes=None,
         interventions=None,
+        assessments=None,
     )
 
     assert "## Unattended resumes\n\nDeclared: nothing.\n0 delegated resume(s), 0 refused.\n" in (

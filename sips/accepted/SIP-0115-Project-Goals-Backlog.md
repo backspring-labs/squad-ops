@@ -705,3 +705,32 @@ row-8 repair, and nothing launched carries "already met" (`test_progress.py`).
 **Who ruled it.** The owner ruled R3 on 2026-11-08, before §24do showed it had nothing to act on. It was dropped
 under the owner's delegation of the line's judgement calls, the same day, and the owner is told.
 
+
+### 10g. An assessment reaches the digest and the next proposal (2026-11-15, §5.7; #2954; the Spark lane)
+
+**What changed.** §5.7 had one reader of an assessment, the owner in the console. On `cmp_6963834274e0`, assessment 1's
+finding became BT-16 through a candidate and a promotion, but only that revision's reason showed the path, in neither
+place a reader starts from. So the operator's assessments now reach two more readers, each through the standings
+§5.7 already derives:
+1. **The Campaign's evidence package and its digest.** The package (version 9) keeps each expected result's
+   standing and its latest assessment whole, or each one that disagrees while they conflict. The digest gives each
+   one a line under **Assessments**: its standing first, its reading, its cause and the squad-ops issue a framework
+   cause filed, who made it, the row and revision it read, and its reason up to 400 characters. A result nobody has
+   assessed is named as unassessed. A store that can't be read leaves the package written, saying why, and a
+   Campaign that reads a requirements source says it has nothing to assess.
+2. **The next proposal of a goal-set Campaign.** Its goal-set section is given the same lines, with the reason
+   up to 2,000 characters (the API's own limit), under a heading saying what `stale` and `conflicting` mean. A stale
+   assessment is shown as stale, never as current. A result nobody has assessed has no line, and a Campaign with no
+   assessment shows no heading.
+
+**What didn't change.** An assessment still decides nothing (§5.7): no gate, row or item status reads it, and the
+proposal is told so. §7 holds: the evidence an assessment cites is ids and counts, and its reason, the operator's
+own text, reaches the proposal task's records, where the held-out sweep already searches.
+
+**The evidence.** `test_product_proposal.py` enters at `RunProvisioning.prepare` and reads what the proposal is
+given: a stale, a conflicting pair, a superseded one and another Campaign's. `test_strategy_propose_product_increment.py`
+enters at `handle()` and reads the prompt. `test_evidence.py` enters at `materialize_package` and reads the package
+and the digest, with a held store, one that raises and none.
+
+**Who ruled it.** The owner moved #2954 to 2.8 by the 2.7 plan's R2 (2026-11-08), which records it as feature work
+because it changes what the next proposal receives, and adopted the 2.8 plan with it in the Spark lane.

@@ -484,3 +484,62 @@ async def campaign_assessments(
     return CampaignStandings(
         view.revision, _last_row(log), standings(held, revisions, view.revision, accepted)
     )
+
+
+# --- where it is read (#2954) ---
+
+
+def standings_document(read: CampaignStandings) -> dict[str, Any]:
+    """The standings as plain data: what a Campaign's evidence package keeps and its proposal is
+    given (#2954). An unassessed result is kept, with no assessment, so a reader sees what nobody
+    has judged yet."""
+    return {
+        "revision": read.revision,
+        "log_seq": read.log_seq,
+        "results": [
+            {
+                "expected_result": s.expected_result,
+                "standing": s.standing.value,
+                "assessments": [_assessment_document(a) for a in s.assessments],
+            }
+            for s in read.results
+        ],
+    }
+
+
+def _assessment_document(a: Assessment) -> dict[str, Any]:
+    return {
+        "sequence": a.sequence,
+        "reading": a.reading.value,
+        "cause": a.cause.value if a.cause else None,
+        "issue": a.issue,
+        "reason": a.reason,
+        "author": a.author,
+        "goals_revision": a.goals_revision,
+        "log_seq": a.log_seq,
+        "evidence": a.evidence.to_document(),
+        "source_ref": a.source_ref,
+        "supersedes": list(a.supersedes),
+        "created_at": a.created_at.isoformat(),
+    }
+
+
+def assessment_lines(document: Mapping[str, Any], reason_chars: int) -> list[str]:
+    """One line per assessment the standings hold: each assessed result's latest, or, while they
+    conflict, each one that disagrees. Its standing leads, so a stale one never reads as current
+    (§5.7). ``reason_chars`` bounds the operator's reason, which is its reader's to set."""
+    lines = []
+    for result in document["results"]:
+        for a in result["assessments"]:
+            cause = ""
+            if a["cause"]:
+                cause = f", cause {a['cause']}" + (
+                    f" (squad-ops #{a['issue']})" if a["issue"] else ""
+                )
+            reason = " ".join(str(a["reason"]).split())[:reason_chars]
+            lines.append(
+                f"`{result['expected_result']}` {result['standing']}: **{a['reading']}**{cause}; "
+                f"assessment {a['sequence']} by {a['author']}, read at row {a['log_seq']} of "
+                f"revision {a['goals_revision']}. {reason}"
+            )
+    return lines

@@ -233,7 +233,15 @@ async def test_the_digest_asks_for_the_ruling_and_says_which_bounds_it_has_passe
         await at_the_gate.get_campaign(CID), log, gate_opened_at(log) + timedelta(seconds=BOUND)
     )
     before = digest(
-        package(await at_the_gate.get_campaign(CID), log, [], [], outcomes=None, interventions=None)
+        package(
+            await at_the_gate.get_campaign(CID),
+            log,
+            [],
+            [],
+            outcomes=None,
+            interventions=None,
+            assessments=None,
+        )
     )
     await at_the_gate.transition(CID, row)
 
@@ -245,6 +253,7 @@ async def test_the_digest_asks_for_the_ruling_and_says_which_bounds_it_has_passe
             [],
             outcomes=None,
             interventions=None,
+            assessments=None,
         )
     )
 

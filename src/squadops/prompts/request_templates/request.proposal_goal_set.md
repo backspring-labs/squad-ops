@@ -1,6 +1,6 @@
 ---
 template_id: request.proposal_goal_set
-version: "2"
+version: "3"
 required_variables:
   - revision
   - goal
@@ -9,6 +9,7 @@ required_variables:
   - out_of_scope_lines
   - backlog_lines
   - latest_readings_section
+  - latest_assessments_section
   - next_item_section
 ---
 ### The product's goal set, revision {{revision}}
@@ -31,6 +32,8 @@ backlog in the owner's order, one item per increment.
 {{backlog_lines}}
 
 {{latest_readings_section}}
+
+{{latest_assessments_section}}
 
 {{next_item_section}}
 

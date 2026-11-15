@@ -608,6 +608,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.proposal_next_backlog_item",
             # SIP-0109 §24dk: the product's reading of the last accepted increment.
             "request.proposal_latest_readings",
+            # #2954: the operator's latest assessment of each expected result.
+            "request.proposal_latest_assessments",
             "request.proposal_product_tree",
             "request.proposal_approved_manifest",
             "request.source_repository_instructions_block",

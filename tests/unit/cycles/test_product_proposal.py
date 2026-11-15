@@ -416,6 +416,65 @@ async def test_a_goal_set_proposal_is_given_the_last_accepted_increments_reading
     assert given["goals"]["latest_readings"] == ['play: {"note": "' + "x" * 900 + '"}']
 
 
+async def test_a_goal_set_proposal_is_given_each_results_latest_assessment_with_its_standing(
+    tmp_path,
+):
+    """Wiring (anti-pattern 6a), entered at ``RunProvisioning.prepare`` (#2954). Bugs caught: an
+    assessment kept on the goal set and never composed, so the squad proposes blind to how the
+    operator judged its results; one made before an increment serving its result was accepted
+    shown as current (§5.7); two that disagree shown as the newer alone; a superseded one shown;
+    another Campaign's assessment shown in this one."""
+    from datetime import UTC, datetime
+
+    from squadops.projects.goal_set_assessments import (
+        Assessment,
+        AssessmentEvidence,
+        Cause,
+        Reading,
+    )
+    from tests.fixtures.goal_set import GoalSetStore, backlog_document
+    from tests.unit.campaigns.test_backlog import _Log
+
+    repo, clones = await _clone(tmp_path)
+    cycle = _goals_cycle(repo)
+    store = GoalSetStore()
+    store.write(cycle.project_id, backlog_document("B-1", "B-2"))
+    log = _Log().submit("B-1", "c1").rule("approved", "c1").promote("c1")
+    campaigns = _Campaigns(cycle.project_id, 1, log)
+    promoted = max(r.seq for r in log.rows)
+
+    async def assessed(result, reading, reason, *, at, campaign="cmp_tally00001", **fields):
+        await store.record_assessment(
+            Assessment(
+                project_id=cycle.project_id, campaign_id=campaign, expected_result=result,
+                goals_revision=1, reading=reading, evidence=AssessmentEvidence(cycles=("c1",)),
+                reason=reason, author="operator", log_seq=at,
+                created_at=datetime(2026, 11, 15, 9, 0, tzinfo=UTC), **fields,
+            ),
+            idempotency_key=f"k{at}{result}{reason}", request_hash=reason,
+        )  # fmt: skip
+
+    # ER-week, which B-1 serves: judged before B-1 was accepted, so stale.
+    await assessed("ER-week", Reading.NOT_MET, "no total yet", at=1, cause=Cause.APP_WORK)
+    # ER-log: one superseded, then two that disagree after the acceptance.
+    await assessed("ER-log", Reading.NOT_MET, "minutes dropped", at=1, cause=Cause.APP_WORK)
+    await assessed("ER-log", Reading.MET, "a session\nis kept", at=promoted, supersedes=(2,))
+    await assessed("ER-log", Reading.UNCLEAR, "minutes round", at=promoted)
+    # Another Campaign's.
+    await assessed("ER-calm", Reading.MET, "calm", at=1, campaign="cmp_other")
+
+    plan = await _prepared(cycle, clones, _Projects(), goal_sets=store, campaigns=campaigns)
+
+    [given] = [e.inputs[PRODUCT_PROPOSAL_INPUT] for e in plan if PRODUCT_PROPOSAL_INPUT in e.inputs]
+    row = f"read at row {promoted} of revision 1"
+    assert given["goals"]["assessments"] == [
+        f"`ER-log` conflicting: **unclear**; assessment 4 by operator, {row}. minutes round",
+        f"`ER-log` conflicting: **met**; assessment 3 by operator, {row}. a session is kept",
+        "`ER-week` stale: **not_met**, cause app_work; assessment 1 by operator, read at row 1 of "
+        "revision 1. no total yet",
+    ]
+
+
 @pytest.mark.parametrize(
     ("setup", "why"),
     [

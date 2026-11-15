@@ -137,6 +137,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_integrity import RunVerdict
+from squadops.projects.goal_set_assessments import campaign_assessments, standings_document
 
 if TYPE_CHECKING:
     from squadops.ports.projects.goal_sets import GoalSetRegistryPort
@@ -1610,6 +1611,7 @@ class CampaignProgress:
             records,
             outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records], log),
             interventions=await self._interventions(campaign_id, log),
+            assessments=await self._assessments(campaign),
         )
         for ref in await self._vault.list_artifacts(
             project_id=campaign.project_id, artifact_type=EVIDENCE_ARTIFACT_TYPE
@@ -1678,6 +1680,22 @@ class CampaignProgress:
             if document is not None and (goals := load_stored_change_request(document).moves_goals):
                 named[cycle_id] = goals
         return named
+
+    async def _assessments(self, campaign: Campaign) -> dict | None:
+        """SIP-0115 §5.7 (#2954): how the operator's assessments leave each expected result, for
+        the digest. A failure to read them is in the package with the reason, never a package
+        that isn't written; a campaign reading requirements has none."""
+        if campaign.objective.goals is None:
+            return None
+        if self._goal_sets is None:
+            return {"unreadable": "this runtime reads no goal-set store"}
+        try:
+            read = await campaign_assessments(
+                campaign, goal_sets=self._goal_sets, campaigns=self._campaigns
+            )
+        except Exception as e:  # noqa: BLE001 — the package says what it could not read
+            return {"unreadable": f"{type(e).__name__}: {e}"}
+        return standings_document(read)
 
     async def _interventions(self, campaign_id: str, log: list) -> dict | None:
         """SIP-0113 §4.3 (#2418): the package's intervention section, as ``_outcomes`` is read."""
