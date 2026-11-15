@@ -76,6 +76,10 @@ class EndedCycle:
     #: already meets — nothing blocked, nothing else unmet. A repair rebuilds the candidate, and
     #: those criteria's tests pass on the accepted tree whatever the candidate does.
     rejected_only_as_already_met: bool = False
+    #: #3045: its evaluation was blocked only by scenarios no worker took. A repair rebuilds a
+    #: candidate nothing faulted, and spends the increment's repairs on an outage, so it is
+    #: retried instead, as a run that failed outside the work is (rows 10 and 11).
+    blocked_only_by_availability: bool = False
 
 
 def cycle_verdict(latest: CycleAssessment, cycle: EndedCycle) -> RunVerdict | None:
@@ -366,7 +370,12 @@ def _pending(
     # #1824 (§24bg, §24bh): rows 10 and 11 read the attribution, not the verdict, and are asked
     # before rows 8 and 9. A run that failed outside the work verified nothing, so finalization
     # records it ``blocked_unverified``, and a repair would have no work to repair.
-    if environment:
+    # #3045: blocked only for want of a worker is the environment's too, so it is retried, never
+    # repaired. The retries are counted on the increment across its launches
+    # (``derive_counters``), so a worker that is there at every launch and gone at every reading
+    # spends them, then escalates.
+    unavailable = verdict is RunVerdict.BLOCKED_UNVERIFIED and cycle.blocked_only_by_availability
+    if environment or unavailable:
         return (10, PendingAction.RETRY) if retries_remain else (11, PendingAction.ESCALATE)
     if verdict is RunVerdict.BLOCKED_UNVERIFIED:
         return (8, PendingAction.REPAIR) if repairs_remain else (9, PendingAction.ESCALATE)

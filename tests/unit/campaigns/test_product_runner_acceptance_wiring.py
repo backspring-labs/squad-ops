@@ -219,6 +219,7 @@ async def test_a_branch_increment_is_judged_at_its_delivery_on_its_runner(world)
             "reason": "no_test_id_reader",
             "discriminating": [],
             "detail": "",
+            "unavailable": False,
         }
     ]
     [frozen] = document["frozen"]
