@@ -450,7 +450,7 @@ def _skill_problem(directory: Path) -> str:
     if missing:
         return f"{SKILL_FILE} front matter lacks {', '.join(missing)}"
     try:
-        _supersedes(header)
+        _promotion(header, _supersedes(header))
     except ValueError as exc:
         return f"{SKILL_FILE} front matter: {exc}"
     return ""
@@ -479,3 +479,47 @@ def _supersedes(header: Mapping[str, Any]) -> tuple[str, ...]:
             f"supersedes is a list of lesson pattern ids (pat_ and 16 hex digits), not {value!r}"
         )
     return tuple(value)
+
+
+#: A lesson revision's id, as ``memory.lessons.PatternRevision.revision_id`` writes it.
+_REVISION_ID = re.compile(r"(pat_[0-9a-f]{16})@[1-9][0-9]*")
+
+#: SIP-0116 §10a: what a promotion's review records beside its replay check: Q47's rule (owner-
+#: approved, replay-tested on the models that will run it) and the generalization and distribution
+#: review (it holds beyond its project, and carries nothing specific to one product across its
+#: owner's boundary).
+PROMOTION_REVIEW_FIELDS = ("approved_by", "approved_at", "generalization", "distribution")
+
+
+def _promotion(header: Mapping[str, Any], supersedes: tuple[str, ...]) -> None:
+    """SIP-0116 §10a: a skill promoted from lessons names each revision it came from
+    (``promoted_from``), carries its review (``promotion_review``), and supersedes each one's
+    pattern, since the skill now replaces the lesson. A review with no lesson is refused too."""
+    promoted, review = header.get("promoted_from"), header.get("promotion_review")
+    if promoted is None and review is None:
+        return
+    if promoted is None:
+        raise ValueError("promotion_review is given with no promoted_from")
+    if (
+        not isinstance(promoted, list)
+        or not promoted
+        or not all(isinstance(v, str) and _REVISION_ID.fullmatch(v) for v in promoted)
+    ):
+        raise ValueError(
+            f"promoted_from is a list of lesson revision ids (pat_…@N), not {promoted!r}"
+        )
+    if not isinstance(review, Mapping):
+        raise ValueError("a skill promoted from lessons carries its promotion_review")
+    missing = [k for k in PROMOTION_REVIEW_FIELDS if not str(review.get(k) or "").strip()]
+    check = review.get("replay_check")
+    if not isinstance(check, Mapping) or not all(
+        str(check.get(k) or "").strip() for k in ("reference", "result")
+    ):
+        missing.append("replay_check (reference and result)")
+    if missing:
+        raise ValueError(f"promotion_review lacks {', '.join(missing)}")
+    unsuperseded = sorted({v.split("@")[0] for v in promoted} - set(supersedes))
+    if unsuperseded:
+        raise ValueError(
+            f"a skill supersedes each lesson it was promoted from; supersedes lacks {unsuperseded}"
+        )

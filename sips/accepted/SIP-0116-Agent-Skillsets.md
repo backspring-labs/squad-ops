@@ -139,7 +139,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **shipped** | 2.8 (PR #3078, closing #3036) |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
 | Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
-| Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3038 |
+| Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1019,6 +1019,52 @@ supersedes: `supersedes: [pat_…]`, pattern ids as `memory.lessons.pattern_id_f
 
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-11); the design is
 on #3038.
+
+### 17j. Phase 6, part 2 as built: flagged lessons, and the promotion review (2026-11-14)
+
+**What a dispatch loaded.** Each exposure records the skills its task was handed, `<skillset>/<skill>` to the
+skill's digest (`skills`, read by `lesson_supply.loaded_skills_of`).
+- A task handed no skill records `{}`.
+- An exposure from before this records no `skills` key, and reads back as unrecorded rather than as none.
+- A handed skill with no digest raises at dispatch.
+
+**What a lesson was learned under.** Drafting a revision (`approval.draft_revision`, through the draft route)
+reads the exposures of its cited observations' runs. It records `learned_under`: every skill those dispatches
+loaded, with each digest seen. A held task's exposure is left out, since nothing reached the model. Each cited
+observation whose dispatch can't be read is named in `learned_under_unread` with its reason:
+- `no_task`: the observation names no one task, as a plan review's doesn't;
+- `no_exposure`: no dispatch of its task recorded an exposure;
+- `skills_unrecorded`: its exposure is from before skills were recorded.
+
+A revision drafted before this has neither key, and every snapshot already holding one is stored as it was.
+Revision and exposure bodies are JSON, so no migration is needed.
+
+**Flagged.** Recall flags a supplied lesson when the task loads a skill that the lesson's `learned_under` names,
+at a digest the lesson wasn't learned under.
+- The flag records the lesson, the skill, the loaded digest and the digests it was learned under, in the
+  exposure's `flagged`.
+- A flagged lesson is still supplied. §10a: a version change alone doesn't mean they conflict, so the flag is
+  for review.
+- A lesson learned under none of the loaded skills isn't flagged, since no earlier version of them shaped it.
+- When the task loads a skill, a supplied lesson with no `learned_under` couldn't be checked. It is named in
+  `learned_under_unrecorded`.
+- A task that loads no skill gets neither key, so its authoring envelope's `memory` block is unchanged.
+
+**The promotion review (Q65).** A skill's `SKILL.md` front matter may name the lesson revisions it was promoted
+from (`promoted_from: [pat_…@N]`), beside `supersedes`. The skillset's load then requires three things:
+- **its `promotion_review`:** `approved_by`, `approved_at`, `replay_check` (its `reference` and `result`),
+  `generalization` (why it holds beyond its project) and `distribution` (what was checked so that nothing
+  specific to one product crosses its owner's boundary, SIP-0112 B.5.1). These are Q47's rule and §10a's review,
+  in the skill's own record;
+- **`supersedes` naming each promoted revision's pattern,** since the skill now replaces the lesson and recall
+  omits it (§17i);
+- **a review only beside `promoted_from`.** A review given alone is refused.
+
+The review is in the front matter, which is part of the skill's digest and isn't shown to the model (§17f point
+4). The review travels with the skill, so editing it moves the digest the record pins.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on
+#3038.
 
 ## Appendix A. A paper compatibility matrix
 

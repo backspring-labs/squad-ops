@@ -540,3 +540,37 @@ async def test_each_memory_body_declares_every_field_its_record_carries(world):
         schemas.AssessmentResponse,
     }
     assert undeclared == {}
+
+
+async def test_a_draft_records_the_skills_its_cited_dispatch_loaded_from_the_stored_exposures(
+    world,
+):
+    """SIP-0116 §10a, entered at the draft route, which reads the cited runs' exposures from the
+    store. Bugs caught: the route drafting with no exposures, so every lesson reads as learned
+    under nothing and is never flagged; or an observation with no task left out unnamed."""
+    import dataclasses
+
+    from squadops.memory.exposures import Exposure
+    from squadops.memory.lessons import RecallDisposition, Recalled
+    from squadops.memory.recall import RecallQuery
+
+    [observed] = [
+        o for o in await world.store.list_observations("group_run") if o.source_id == world.cited
+    ]
+    dispatched = dataclasses.replace(
+        observed, source_id=f"{world.cited}:t", run_id="run_1", task_id="t1"
+    )
+    await world.store.record_observations([dispatched])
+    await world.store.record_exposure(
+        Exposure(
+            "run_1", "t1", "cyc_1", "nat", "strategy",
+            RecallQuery("group_run", "strategy.propose_increment",
+                        loaded_skills={"fixture-strat/propose": "d1"}),
+            Recalled("snp_1", RecallDisposition.NONE_ELIGIBLE).exposure(), T0,
+        )
+    )  # fmt: skip
+
+    drafted = world.draft(cited_observations=[dispatched.source_id, world.cited]).json()
+
+    assert drafted["learned_under"] == {"fixture-strat/propose": ["d1"]}
+    assert drafted["learned_under_unread"] == [{"source_id": world.cited, "reason": "no_task"}]

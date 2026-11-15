@@ -154,6 +154,10 @@ class LessonResponse(_Record):
     cited_observations: list[str]
     created_at: str
     approvals: list[ApprovalResponse]
+    #: SIP-0116 §10a: the skills it was learned under, by digest, and each cited observation whose
+    #: dispatch's skills couldn't be read. ``None`` on a revision drafted before they were recorded.
+    learned_under: dict[str, list[str]] | None = None
+    learned_under_unread: list[dict[str, str]] = []
 
 
 class SuppliedTogetherResponse(BaseModel):

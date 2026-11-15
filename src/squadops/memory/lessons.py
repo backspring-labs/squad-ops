@@ -39,6 +39,38 @@ ANY_STACK = "*"
 SUPERSEDED_BY_SKILL = "superseded_by_skill"
 
 
+class LearnedUnderUnread(StrEnum):
+    """Why a cited observation's dispatch gave no skills to a revision's ``learned_under``
+    (SIP-0116 §10a)."""
+
+    #: The observation names no task (a plan review's), so no one dispatch is its source.
+    NO_TASK = "no_task"
+    #: No dispatch of its task recorded an exposure.
+    NO_EXPOSURE = "no_exposure"
+    #: Its task's exposure was recorded before the skills a task loads were.
+    SKILLS_UNRECORDED = "skills_unrecorded"
+
+
+@dataclass(frozen=True)
+class Flag:
+    """A supplied lesson learned under another version of a skill the task loads, for review
+    (SIP-0116 §10a). It is still supplied: a version change alone doesn't mean they conflict."""
+
+    revision_id: str
+    #: ``<skillset>/<skill>``.
+    skill: str
+    loaded: str
+    learned_under: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "revision_id": self.revision_id,
+            "skill": self.skill,
+            "loaded": self.loaded,
+            "learned_under": list(self.learned_under),
+        }
+
+
 class RecallDisposition(StrEnum):
     """The outcomes recall keeps apart (§0.8)."""
 
@@ -138,6 +170,13 @@ class PatternRevision:
     drafter_version: str
     cited_observations: tuple[str, ...]
     created_at: datetime
+    #: SIP-0116 §10a: the skills the dispatches its observations came from loaded, ``<skillset>/
+    #: <skill>`` to every digest seen. ``None`` on a revision drafted before it was recorded, which
+    #: recall can't flag and names as unrecorded instead.
+    learned_under: Mapping[str, tuple[str, ...]] | None = None
+    #: Each cited observation whose dispatch's skills couldn't be read, with the reason
+    #: (``LearnedUnderUnread``), so a partial ``learned_under`` says it is partial.
+    learned_under_unread: tuple[tuple[str, str], ...] = ()
 
     @property
     def revision_id(self) -> str:
@@ -156,6 +195,18 @@ class PatternRevision:
             "drafter_version": self.drafter_version,
             "cited_observations": list(self.cited_observations),
             "created_at": self.created_at.isoformat(),
+            # SIP-0116 §10a: only where recorded, so a revision from before, and every snapshot
+            # holding it, is stored as it was.
+            **(
+                {
+                    "learned_under": {k: list(v) for k, v in sorted(self.learned_under.items())},
+                    "learned_under_unread": [
+                        {"source_id": s, "reason": r} for s, r in self.learned_under_unread
+                    ],
+                }
+                if self.learned_under is not None
+                else {}
+            ),
         }
 
     @classmethod
@@ -172,6 +223,17 @@ class PatternRevision:
             drafter_version=str(data["drafter_version"]),
             cited_observations=tuple(data.get("cited_observations") or ()),
             created_at=datetime.fromisoformat(str(data["created_at"])),
+            learned_under=(
+                {str(k): tuple(str(d) for d in v) for k, v in data["learned_under"].items()}
+                if "learned_under" in data
+                else None
+            ),
+            # Written together with ``learned_under``, so one without the other raises.
+            learned_under_unread=(
+                tuple((str(u["source_id"]), str(u["reason"])) for u in data["learned_under_unread"])
+                if "learned_under" in data
+                else ()
+            ),
         )
 
 
@@ -414,10 +476,16 @@ class Recalled:
     #: The effective lesson budget and what it was the smaller of, when the binding sections bounded it
     #: (``{"effective", "snapshot", "remaining"}``); ``None`` when the snapshot's budget stood alone.
     lesson_budget: Mapping[str, int] | None = None
+    #: SIP-0116 §10a: each supplied lesson learned under another version of a skill the task loads.
+    flagged: tuple[Flag, ...] = ()
+    #: Each supplied lesson whose revision records no skills it was learned under (drafted before
+    #: they were recorded), when the task loads a skill: it couldn't be checked, and says so.
+    learned_under_unrecorded: tuple[str, ...] = ()
 
     def exposure(self) -> dict[str, Any]:
         """What the authoring envelope's ``memory`` block records. The lesson budget only when the
-        binding sections bounded it, so an envelope with no instruction is what it was."""
+        binding sections bounded it, and the flags only when there are any, so an envelope with
+        no instruction and no skill is what it was."""
         return {
             "snapshot": self.snapshot_id,
             "disposition": self.disposition.value,
@@ -435,7 +503,36 @@ class Recalled:
                 if self.lesson_budget is not None
                 else {}
             ),
+            **({"flagged": [f.to_dict() for f in self.flagged]} if self.flagged else {}),
+            **(
+                {"learned_under_unrecorded": list(self.learned_under_unrecorded)}
+                if self.learned_under_unrecorded
+                else {}
+            ),
         }
+
+
+def flags(
+    supplied: Sequence[SnapshotEntry], loaded_skills: Mapping[str, str] | None
+) -> tuple[tuple[Flag, ...], tuple[str, ...]]:
+    """SIP-0116 §10a: each supplied lesson learned under another digest of a skill the task loads,
+    and each that records nothing it was learned under while the task loads a skill. A lesson
+    learned under none of the loaded skills isn't flagged: no earlier version of them shaped it."""
+    if not loaded_skills:
+        return (), ()
+    flagged: list[Flag] = []
+    unrecorded: list[str] = []
+    for entry in supplied:
+        learned = entry.revision.learned_under
+        if learned is None:
+            unrecorded.append(entry.revision.revision_id)
+            continue
+        flagged += [
+            Flag(entry.revision.revision_id, skill, digest, tuple(learned[skill]))
+            for skill, digest in sorted(loaded_skills.items())
+            if skill in learned and digest not in learned[skill]
+        ]
+    return tuple(flagged), tuple(unrecorded)
 
 
 def _tokens(text: str) -> int:
@@ -507,4 +604,8 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
             "remaining": available,
         }
     )
-    return Recalled(snapshot.snapshot_id, disposition, tuple(supplied), tuple(omitted), budget)
+    flagged, unrecorded = flags(supplied, query.loaded_skills)
+    return Recalled(
+        snapshot.snapshot_id, disposition, tuple(supplied), tuple(omitted), budget,
+        flagged=flagged, learned_under_unrecorded=unrecorded,
+    )  # fmt: skip

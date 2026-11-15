@@ -25,16 +25,21 @@ import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from squadops.memory.lessons import (
     ANY_STACK,
     Applicability,
     Approval,
+    LearnedUnderUnread,
     PatternRevision,
     Snapshot,
     pattern_id_for,
 )
+
+if TYPE_CHECKING:
+    from squadops.memory.exposures import Exposure
+    from squadops.memory.observations import Observation
 
 #: The combined check's two verdicts (§0.6).
 NO_CONFLICT = "no_conflict"
@@ -105,6 +110,50 @@ def supplied_together(
     )
 
 
+@dataclass(frozen=True)
+class LearnedUnder:
+    """The skills a draft was learned under (SIP-0116 §10a): ``<skillset>/<skill>`` to every
+    digest its cited observations' dispatches loaded, and each observation whose couldn't be read."""
+
+    skills: Mapping[str, tuple[str, ...]]
+    unread: tuple[tuple[str, str], ...] = ()
+
+
+def learned_under(
+    cited: Sequence[str], observations: Iterable[Observation], exposures: Iterable[Exposure]
+) -> LearnedUnder:
+    """What ``cited`` observations were learned under: the skills each one's task loaded, read
+    from every exposure its dispatches recorded (a held task's isn't a dispatch). ``exposures``
+    holds those of the observations' runs."""
+    by_source = {o.source_id: o for o in observations}
+    unrecorded = sorted(set(cited) - set(by_source))
+    if unrecorded:
+        raise LessonRefused(f"a draft cites only recorded observations; not recorded: {unrecorded}")
+    dispatched = [e for e in exposures if not e.held]
+    skills: dict[str, set[str]] = {}
+    unread: list[tuple[str, str]] = []
+    for source_id in cited:
+        observation = by_source[source_id]
+        if not (observation.run_id and observation.task_id):
+            unread.append((source_id, LearnedUnderUnread.NO_TASK.value))
+            continue
+        mine = [
+            e
+            for e in dispatched
+            if (e.run_id, e.task_id) == (observation.run_id, observation.task_id)
+        ]
+        if not mine:
+            unread.append((source_id, LearnedUnderUnread.NO_EXPOSURE.value))
+            continue
+        if any(e.query.loaded_skills is None for e in mine):
+            unread.append((source_id, LearnedUnderUnread.SKILLS_UNRECORDED.value))
+            continue
+        for e in mine:
+            for skill, digest in (e.query.loaded_skills or {}).items():
+                skills.setdefault(skill, set()).add(digest)
+    return LearnedUnder({k: tuple(sorted(v)) for k, v in sorted(skills.items())}, tuple(unread))
+
+
 def draft_revision(
     *,
     target_behavior: str,
@@ -117,12 +166,15 @@ def draft_revision(
     cited_observations: Sequence[str],
     citable_observations: Iterable[str],
     revisions: Iterable[PatternRevision],
+    observations: Iterable[Observation],
+    exposures: Iterable[Exposure],
     now: datetime,
 ) -> PatternRevision:
     """The auditor's draft, as the pattern's next revision. Its pattern is the project, the target
     behavior and the task types it covers. It cites only ``citable_observations``: recorded, and
     classified, originally or by a reviewed annotation (§0.4, #2160; ``annotation.citable``). An
-    ``unclassified`` observation produces no pattern."""
+    ``unclassified`` observation produces no pattern. It records the skills its observations were
+    learned under (SIP-0116 §10a), from ``exposures``: those of the cited observations' runs."""
     for name, value in (
         ("target_behavior", target_behavior),
         ("text", text),
@@ -141,6 +193,7 @@ def draft_revision(
             "a draft cites only recorded, classified observations (a return classified only in "
             f"prose enters through a reviewed annotation, §0.4); not citable: {uncitable}"
         )
+    learned = learned_under(cited_observations, observations, exposures)
     pattern_id = pattern_id_for(
         applicability.project_id, target_behavior, "|".join(sorted(applicability.task_types))
     )
@@ -157,6 +210,8 @@ def draft_revision(
         drafter_version=drafter_version,
         cited_observations=tuple(cited_observations),
         created_at=now,
+        learned_under=dict(learned.skills),
+        learned_under_unread=learned.unread,
     )
 
 

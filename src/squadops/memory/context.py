@@ -117,6 +117,8 @@ class TaskInvocation:
     #: supersede (pattern id to ``<skillset>/<skill>``).
     stack_source: str = ""
     superseded_by: Mapping[str, str] = field(default_factory=dict)
+    #: SIP-0116 §10a: each skill the task loads, ``<skillset>/<skill>`` to its digest.
+    loaded_skills: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -150,6 +150,13 @@ class Exposure:
                 if q.stack_source
                 else {}
             ),
+            # SIP-0116 §10a: the skills the task loaded, by digest, which a lesson drafted from this
+            # dispatch records as learned under. Absent on an exposure from before they were kept.
+            **(
+                {"skills": dict(sorted(q.loaded_skills.items()))}
+                if q.loaded_skills is not None
+                else {}
+            ),
             # Only when instructions were read, so an exposure from before #2178 is unchanged.
             **(
                 {"task_instructions": dict(self.task_instructions)}
@@ -170,6 +177,8 @@ class Exposure:
         identity = data.get("identity")
         if identity is not None:
             q["stack_source"] = str(identity["stack_source"])
+        if "skills" in data:
+            q["loaded_skills"] = {str(k): str(v) for k, v in dict(data["skills"]).items()}
         return cls(
             run_id=str(data["run_id"]),
             task_id=str(data["task_id"]),
