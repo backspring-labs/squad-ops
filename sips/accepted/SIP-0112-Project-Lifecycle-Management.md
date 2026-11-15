@@ -3556,3 +3556,25 @@ the revised design:
 at the point of use. The owner's outside review of PR #3002 ruled the four changes and the five answers above. The
 route's shape, its home on the supervisor's side, the fence's place in the registry and the answer's fields are the
 implementer's design under those rulings.
+
+## H.31 Contract 8 gains a `luau` runner (2026-11-15; H.6, H.7; #2906; SIP-0117 R5.13; the Spark lane)
+
+**What changed.** Contract 8's `test_runners[].runner` vocabulary (H.6) adds `luau`: `pytest`, `unittest`,
+`vitest`, `jest`, `luau` or `other`. This is an addition, so a profile written before it reads unchanged, and no
+version moves. The derivation (H.7) reads a check whose argv runs a Luau runner script under Lune, Zune or Lute
+(`lune run <script>`, `zune run <script>`, `lute <script>`) as a `luau` runner:
+- **Roots and files:** its roots are the script's directory, and its `file_pattern` is `*.spec.luau`.
+- **One file alone:** its one-file argv is `(*argv, "{path}")`.
+- **`covers`:** the `$path` folders a Rojo `default.project.json` maps, outside its root. Without a project file
+  (Roblox's Script Sync), it's the top-level folders holding `.luau` sources outside its root.
+- **The reader:** its test-id reader is `luau`, the Luau runner contract (SIP-0117 R5.13), unless the project
+  declares frktest, which gets none.
+
+`languages[]` gains `luau`, with `pesde` or `wally` as its package manager when one is declared. `*.spec.luau`
+files a `luau` runner owns are classed, so `test_files_unclassed` no longer blocks a Campaign on a Roblox game's
+logic tests. A product tested only by `luau` runners is shown its qa task's worked example in Luau (#2876's
+`suite_language`).
+
+**The evidence.** `tests/unit/projects/test_profile_derivation_luau.py` covers a Rojo layout and a Script Sync
+layout, the other runtimes, frktest, and Lune calls that run no script. `tests/unit/sandbox/test_findings_luau.py`
+covers the contract's reader and each tag's meaning at acceptance.
