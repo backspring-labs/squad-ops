@@ -288,6 +288,49 @@ The two largest files (about 28 KB and 31 KB) were left out on purpose.
 - **The copy's Studio place** (the owner's step, done 2026-11-08) is a local file downloaded from the game, and never
   the live place (S1). The copy's repository gained one local commit taking the game's 5 newer scripts.
 
+**Registered as a Project (phase 2g, #3042; the Spark, 2026-11-15).** The owner merged the copy's PR #1 at
+`0beaac09`. The PR added the headless runner (`tests/run.luau`, `tests/loader.luau`), 9 `LivesRules` specs, and the
+pushed `ddfd2cf`.
+- **The registration:** `prj-z-tower-ascension`, READY at `0beaac09`.
+  - Base ref `refs/heads/main`.
+  - Changes are contributed as review requests.
+  - Owner `jasonLadd`, with contribution delegated, as for battle-trainer.
+- **Development Configuration revision 1:**
+  - **Install (argv only):** one `python3 -c` step. It fetches `lune-0.11.1-linux-aarch64.zip`, refuses any digest
+    but `sha256:f8d7d633…aea66`, and writes `.tools/lune` with its execute bit. The sandbox image has no `unzip`.
+  - **The check:** `luau_tests`, `.tools/lune run tests/run.luau`, read by `luau`.
+- **The baseline:** `luau_tests` PASS, inherited. The `luau` reader read it as readable: 9 collected, 9 passed,
+  each by id.
+- **The derived profile:**
+  - One `luau` runner, rooted at `tests/`, on `*.spec.luau`, with a single-file form and test ids.
+  - Its toolchain, `lune`, is available.
+  - It covers `src/**` and `art/**`.
+  - It names python as a language, from `art/blender/*.py`, which are Blender scripts and not the game's.
+  - Two gaps are disclosed:
+    - no start declaration, so Outcome Evaluation reads a scenario as blocked_unverified until Studio's play
+      operations run;
+    - no development profile for luau, so the squad has no stack guidance.
+- **The comparison:**
+  - **With the real repository (read only):** its `main` is still `f2113a6` (last pushed 2026-11-05). The copy
+    differs from it by exactly:
+    - the sweep: the workflow and the two upload scripts removed, and the notice added;
+    - `ddfd2cf`'s 5 scripts: `EnemyService`, `MusicConfig`, `WeaponSoundConfig`, `CombatController`,
+      `MusicController`;
+    - the new `tests/`.
+  - **With the live game:** this can be read only in Studio, on the MacBook. S1's comparison (2026-11-08) is the
+    latest: 132 of 137 scripts matched, and the copy took the 5 that didn't. A publish of the live game after that
+    date wouldn't show in either repository, so the next refresh of the copy repeats the comparison in Studio.
+- **roblox-studio's eligibility rules (#3111) on the registered tree,** run directly on its 619 files:
+  - **Eligible:** with no footprint, and with the planned Campaign scope (`src/Server/**`, `src/Shared/**`,
+    `src/Client/**`, `tests/**/*.spec.luau`).
+  - **Refused:** a change carrying `tests/run.luau` (the product's runner), and one carrying `art/blender/Logo.py`
+    (outside the footprint).
+- **Still open for phase 2g's exit:**
+  - The goal set.
+  - A Campaign on the Project passing creation preflight. Preflight asks roblox-studio's authority only when a
+    cycle requests one of its tools. So it waits on the Roblox skillsets (#3041) and a registered Studio worker
+    (#3039).
+
 ## The gate (§3a): go, accepted by the owner with D1–D10 on 2026-11-08
 
 **S1 proves play, input and read-back, so the claim stands as written (§1).** Both of §2.6's checks run in full
