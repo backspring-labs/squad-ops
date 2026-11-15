@@ -17,6 +17,7 @@ code is refused, as a program the harness doesn't hold.
 when given); ``baseline_stall`` answers a page that doesn't advance. ``script_marks`` answers the
 world's ``marked``. ``start_stop_play`` moves the world's ``mode`` between Play and Edit, unless
 ``stuck`` holds it, and ``get_studio_state`` reports ``mode`` when the world has one.
+``studios_late`` lists no Studio for that many of a session's first ``list_roblox_studios``.
 """
 
 import json
@@ -162,7 +163,11 @@ def call(name, args):
     if name in world.get("errors_as_success", ()):
         return text("Error: Could not find any instances at path 'x'")
     if name == "list_roblox_studios":
-        return text(json.dumps({"studios": world["studios"]}))
+        # ``studios_late``: StudioMCP finds a running Studio a few seconds after it starts, so
+        # the first answers of a new session list none.
+        late = world.get("studios_late", 0)
+        world["studios_late"] = late - 1
+        return text(json.dumps({"studios": [] if late > 0 else world["studios"]}))
     if name == "get_studio_state":
         if "mode" in world:
             return text(f"- Current Studio Mode: {world['mode']}")

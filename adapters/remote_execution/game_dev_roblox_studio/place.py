@@ -114,12 +114,12 @@ class ScriptText:
     text: str
 
 
-async def identity(
+async def connected_studios(
     session: StudioMcpSession, *, discover_seconds: float = 20.0, poll_seconds: float = 0.5
-) -> StudioIdentity:
-    """The one connected Studio, in Edit mode, holding a place never saved to the cloud, or
-    :class:`PlaceReadError` saying which of those fails. ``StudioMCP`` finds a running Studio a
-    few seconds after it starts, so an empty list is asked again until ``discover_seconds``."""
+) -> list[dict]:
+    """The connected Studios as ``list_roblox_studios`` answers them. ``StudioMCP`` finds a
+    running Studio a few seconds after it starts, so an empty list is asked again until
+    ``discover_seconds``: an empty answer is believed only then."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + discover_seconds
     while True:
@@ -128,8 +128,19 @@ async def identity(
         if not isinstance(studios, list):
             raise PlaceReadError(f"list_roblox_studios answered no list: {listed!r:.200}")
         if studios or loop.time() >= deadline:
-            break
+            return studios
         await asyncio.sleep(poll_seconds)
+
+
+async def identity(
+    session: StudioMcpSession, *, discover_seconds: float = 20.0, poll_seconds: float = 0.5
+) -> StudioIdentity:
+    """The one connected Studio, in Edit mode, holding a place never saved to the cloud, or
+    :class:`PlaceReadError` saying which of those fails. ``StudioMCP`` finds a running Studio a
+    few seconds after it starts, so an empty list is asked again until ``discover_seconds``."""
+    studios = await connected_studios(
+        session, discover_seconds=discover_seconds, poll_seconds=poll_seconds
+    )
     if len(studios) != 1:
         raise PlaceReadError(f"exactly one connected Studio is required; {len(studios)} are")
     [studio] = studios
@@ -545,6 +556,7 @@ def _json(text: str, what: str) -> object:
 
 
 __all__ = [
+    "connected_studios",
     "PlaceStateError",
     "PlaceBaseline",
     "baseline",
