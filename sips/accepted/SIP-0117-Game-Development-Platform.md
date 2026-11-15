@@ -176,7 +176,8 @@ phases are in its own ledger.
 | Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **shipped** | 2.8 (PR #3027) |
 | Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4, R5.6) | **shipped** | 2.8 (PR #3052, closing #3023) |
 | Phase 2c: the Luau runner (#2906; core, R3.2), built by the Spark lane (the 2.8 plan's decision 4) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #2906 |
-| Phase 2d: the Studio adapter: the transaction, the adapter's own sync, read-back, the baseline, reset, the `roblox-studio` provider's four operations, and the isolation test (R3.6, R4.3, R4.6, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
+| Phase 2d, the first slice: the Studio adapter's read side (the session, the tool check, identity as far as reading allows, paged read-back) and the isolation test (R3.6, R4.6, R5.11) | **shipped** | 2.8 (PR #3088; #3039 tracks the rest) |
+| Phase 2d, the rest: the transaction, the adapter's own sync, the baseline, reset, `PlaceId` through the harness, the `roblox-studio` provider's four operations, and the worker's configuration (R3.6, R4.3, R5.7, R5.11) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
@@ -630,6 +631,63 @@ test. The decisions on mixed gaps are `test_retry_for_want_of_a_worker`.
 availability, never read from prose). It was reviewed again on 2026-11-15, with the three points above.
 
 **What remained for #3045 (part B)** is R5.12.
+
+## R5.11 The Studio first slice as built: the adapter's read side, and the isolation test (2026-11-14)
+
+The 2.8 plan §5 confirmed the first slice: read-only, on `z_tower-ascension` only, with nothing published, as an early
+read on the Studio gate. Its scope was posted on #3039 before the build.
+
+**What Studio 0.747 showed (read on `ta-copy.rbxl`, 2026-11-14):**
+- **The live `tools/list` has 38 tools,** as S1 recorded. 18 are marked read-only. `http_get` and `search_asset` are
+  among them, and both reach outside Studio, so the allow-list is named, never derived from the marks.
+- **`search_game_tree` stops three levels down by default** and summarizes the rest (`unexploredChildCount`).
+- **`inspect_instance` answers a miss as a success** (`isError: false`, text `Error: …`).
+- **`PlaceId` is out of the read-only tools' reach:** the DataModel can't be inspected through them.
+- **`script_read` returns the source exactly:** its numbered lines, rejoined with newlines, are the file byte for
+  byte. A range past the end carries a note giving the length, and a range starting past it is an error.
+
+**As built** (`adapters/remote_execution/game_dev_roblox_studio/`):
+
+| R3.6 / §2.6 says | the first slice |
+|---|---|
+| a deadline on every call | every JSON-RPC call to `StudioMCP` has one, and the adapter starts that program itself |
+| deny-by-default tools, counted against a live `tools/list` | the allow-list is `list_roblox_studios`, `get_studio_state`, `search_game_tree`, `script_read` and `get_console_output`. Each must be offered and marked read-only, and any other tool is refused before it is sent. An answer that is an error, however it is marked, raises |
+| exactly one connected Studio, `PlaceId` 0, its baseline digest matching the pin | **narrowed for reading:** exactly one Studio, in Edit mode, holding a place never saved to the cloud (`persistedToCloud: false`). `PlaceId` 0 and the baseline digest take `execute_luau`, which is the harness's (#3040) |
+| paged read-back of the three folders, pages under 90,000 characters, a truncated page refused | every script in `ServerScriptService.Server`, `ReplicatedStorage.Shared` and `StarterPlayer.StarterPlayerScripts.Client`. A tree read with anything unexplored, or that fills its limit, is refused. Pages are read in line ranges; one that reaches 90,000 characters is read again in halves, and a single line that does is refused. The comparison with a manifest names each missing, extra, re-classed or changed script, and each file under a synced folder the provider doesn't place |
+| the worker registers its provider version, its Studio version and its tool-schema digest | `tool_versions`: `roblox-studio` 1, Studio's version from the app bundle `StudioMCP` sits in, and `studio_tools` as the count and the schema digest |
+| the four operations | **none is served yet.** Each is served once it is proved on the worker (§R2.4), so `run` answers `not_executed` and says so |
+
+**The suffixes are the product's.** `z_tower-ascension` writes `.server.luau` for a Script, `.local.luau` for a
+LocalScript and `.luau` for a ModuleScript. A file with any other suffix under a synced folder is named, not placed.
+
+**The worker's configuration waits for the first served operation.** The registry refuses a worker that serves
+nothing (`leasing.registration_errors`), so `provider: roblox-studio` is added to `WorkerConfig` and the factory with
+the first operation. Until then the read side runs from `scripts/dev/studio_read_back.py`. The factory's line will be
+the composition point, which R4.6's list doesn't name; that addition is recorded when it lands.
+
+**The isolation test** (`tests/unit/architecture/test_platform_isolation.py`):
+- **The names it confines** are `roblox` and `studiomcp`, in any case, across `src/`, `adapters/` and `config/`.
+  `luau` is a language, so it isn't one of them.
+- **They may appear only in R4.6's five places,** each named in the test with its reason. Three existing mentions
+  were prose examples, and were rephrased neutrally.
+- **The adapter's imports:** beyond the standard library and itself, it may import only:
+  - its port (`squadops.ports.remote_execution`);
+  - the types the port speaks: `squadops.remote_execution.models`, `squadops.remote_execution.workers` and
+    `squadops.runtime.models`.
+
+  That is R4.6's first draft of a capability pack provider's interface.
+
+**The early read:** on the MacBook, against `ta-copy.rbxl`.
+- Identity held, and Studio 0.747.0.7471481 registered with 38 tools.
+- All 137 scripts read back in about 5 seconds, and match `z_tower-ascension`'s `src/` byte for byte.
+- A manifest changed five ways had each change named.
+
+**Left for the adapter's next parts:** the transaction under one lease; sync writes; play and capture; the baseline
+digest; reset from the read-only file, and reopening Studio; `PlaceId` through the harness; serving the four
+operations; the worker's configuration; and whether a non-empty `not_staged` blocks credit (R5.8).
+
+**Who ruled.** The owner confirmed the slice (2026-11-11). Its as-built narrowing is the MacBook lane's, under the
+owner's "go with your recommendations" (2026-11-12).
 
 ## R5.12 A launch refused only for want of a worker waits in `launch_blocked`: #3045, part B as built (2026-11-15)
 

@@ -23,7 +23,7 @@ _CONSTRAINT = re.compile(r"^(>=)?([1-9][0-9]*)$")
 
 @dataclass(frozen=True)
 class PlatformTarget:
-    """The engine or product a stack targets, and its form: ``roblox`` / ``studio-place``."""
+    """The engine or product a stack targets, and its form: a platform id and its variant."""
 
     id: str
     variant: str

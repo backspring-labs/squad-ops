@@ -59,7 +59,7 @@ def _declared(
 #: The declared contracts, by id.
 #:
 #: The four ``game.*`` contracts are SIP-0118 R4.2's: what the work is and the evidence it must
-#: produce, for any engine. A platform's skillsets specialize them (Roblox is the first), and a
+#: produce, for any engine. A platform's skillsets specialize them, and a
 #: platform adds no task type. Declaring a contract offers it to no one: a cycle is offered one
 #: only where its development profile requires it and its routed agent supplies it.
 CAPABILITY_CONTRACTS: Mapping[str, CapabilityContractDeclaration] = _declared(
