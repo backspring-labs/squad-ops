@@ -1,0 +1,9 @@
+
+ RUN  v2.1.9 /work/frontend
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  16:04:19
+   Duration  360ms (transform 10ms, setup 57ms, collect 0ms, tests 0ms, environment 153ms, prepare 25ms)
+

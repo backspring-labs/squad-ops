@@ -143,6 +143,16 @@ class ProductTestSurface:
         )
 
 
+def with_pass_ids(reader: str | None, argv: tuple[str, ...]) -> tuple[str, ...]:
+    """#3089: ``argv`` with what its test-id reader's run needs to name its passing tests
+    (``findings.PASS_ID_ARGS``), appended after the product's own arguments, so acceptance credits
+    a test by its id among the passes. The product's own command is unchanged everywhere else."""
+    # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
+    from squadops.sandbox.findings import PASS_ID_ARGS
+
+    return (*argv, *PASS_ID_ARGS.get(reader or "", ()))
+
+
 def single_file_argv(runner: Any, test_path: str) -> tuple[str, ...]:
     """The runner's one-file argv with ``test_path`` named in it (H.6): ``{path}`` is the file's
     repository-relative path, ``{name}`` its name. Raises ``ValueError`` for a runner that can't
@@ -185,7 +195,7 @@ def freeze_product_bundle(
         ValueError: ``runner`` can't be run on one file.
     """
     surface = surface.for_runner(runner)
-    argv = single_file_argv(runner, test_path)
+    argv = with_pass_ids(runner.test_ids, single_file_argv(runner, test_path))
     bundle = freeze_bundle(criterion_id, tree, test_path, surface, argv)
     markers = _package_markers(test_path, tree, surface)
     if not markers:

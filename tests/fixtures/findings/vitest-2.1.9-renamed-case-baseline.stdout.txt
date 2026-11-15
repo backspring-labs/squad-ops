@@ -1,0 +1,11 @@
+
+ RUN  v2.1.9 /work
+
+ × test/c1.test.js > C1: a rule the tally allows > rule cap is allowed
+   → expected false to be true // Object.is equality
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  16:04:59
+   Duration  128ms (transform 11ms, setup 0ms, collect 9ms, tests 4ms, environment 0ms, prepare 25ms)
+

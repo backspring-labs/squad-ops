@@ -1,0 +1,17 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________________________ test_rule_is_allowed[cap] ___________________________
+
+rule = 'cap'
+
+    @pytest.mark.parametrize("rule", tally.rules())
+    def test_rule_is_allowed(rule):
+>       assert tally.allows(rule)
+E       AssertionError: assert False
+E        +  where False = <function allows at 0xecf1d3f2b4c0>('cap')
+E        +    where <function allows at 0xecf1d3f2b4c0> = tally.allows
+
+tests/test_c1.py:8: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c1.py::test_rule_is_allowed[cap] - AssertionError: assert F...
+1 failed in 0.03s

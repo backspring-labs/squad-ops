@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ✓ src/__tests__/criterion_P2.test.jsx > P2: the trail search page > lists a trail matching the query
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  16:04:21
+   Duration  420ms (transform 34ms, setup 61ms, collect 58ms, tests 16ms, environment 157ms, prepare 32ms)
+

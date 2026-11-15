@@ -159,7 +159,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
-| a criterion's test credited on the candidate by its id among the passes, never by its absence from the failures: each test-id reader keeps its passing ids, and a baseline failure the candidate never collected reads `not_run` (§24ci (a)) | **placed** (the owner, 2026-11-15) | 2.8.0, #3089 |
+| a criterion's test credited on the candidate by its id among the passes, never by its absence from the failures: each test-id reader keeps its passing ids, and a baseline failure the candidate never collected reads `not_run` (§24ci (a); as built: §24dy) | **shipped** | 2.8.0, PR #3109, closes #3089 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
 | a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
@@ -7180,3 +7180,57 @@ records the roll as not counted, which is the only reading the rule leaves.
 
 **Who ruled.** The 2.8 plan, which the owner adopted on 2026-11-11: "Taking the lease during the counted run is an
 intervention, recorded under the pre-registration".
+
+### 24dy. A criterion's test is credited by its id among the candidate's passes (2026-11-15, §24ci (a); #3089; the Spark lane)
+
+**What changed.** §24ci (a) credited a test that failed on the baseline when it was absent from the candidate's failures.
+No reader kept the ids of the tests that passed. The frozen bundle runs on both sides, so a test renamed between the two
+runs can't occur. A test whose identity comes from the product's own data can: `parametrize` over `product.rules()`,
+vitest's `test.each`, a Luau spec looping over a module's entries. In that case:
+- the baseline fails `test_rule[cap]`;
+- the change renames the rule, so the candidate collects and passes `test_rule[limit]`;
+- the counts agree and `ran_every_test` holds;
+- yet `cap` was credited as discriminating, on a case the candidate never ran.
+
+Now:
+1. **Each test-id reader keeps the ids of the tests that passed** (`FindingsReading.passing`), keyed as its failures
+   are:
+   - pytest: its `PASSED <node id>` rows;
+   - vitest: its verbose reporter's `✓ <file> > <name path>` lines;
+   - Luau: the `PASS <file> > <name>` lines its contract already requires (SIP-0117 R5.13).
+
+   They must number exactly the summary's `passed`, with none twice, or the reading is unreadable. A run whose output
+   names no pass has `None`, never an empty set, and a run that passed none has an empty one. Like `passed`, this
+   changes no key and no readable rule, so there is no version bump, and a stored reading without it reads as before.
+2. **Acceptance's runs name their passes.** When a criterion's bundle is frozen, its one-file argv gets its reader's
+   `PASS_ID_ARGS`, appended after the product's own arguments:
+   - pytest gets `-rfEp`, which keeps the default `-r`'s `FAILED` and `ERROR` rows, and pytest's last `-r` wins;
+   - vitest gets `--reporter=verbose`, which prints the default reporter's summary and failure sections unchanged.
+
+   The derived profile's `single_file_argv` (SIP-0112 H.6) and the product's own command are unchanged everywhere
+   else: the QA suite, the retest and the head check run as before.
+3. **`discrimination_on_runner` credits a baseline failure only when its id is among the candidate's passes.**
+   - A candidate where it fails again reads `fails_on_candidate`, as before.
+   - Otherwise it reads `not_run`, whether the candidate collected the test under another id or its output names no
+     pass.
+
+**What didn't change.**
+- **Frozen criteria (§8.1):** they still hold on their file's whole run, so bundles frozen before this read as they did.
+- **Discrimination:** it happens only at the increment that freezes a bundle, which now carries the flags.
+
+**The evidence.** Every output below is real.
+- **The trigger case:** `pytest-renamed-case-*` and `vitest-2.1.9-renamed-case-*`, the case run on each runner, read
+  `not_run` through `discrimination_on_runner`. Under the old rule `cap` would have discriminated.
+- **The page-loader trees (#2799):** re-recorded under the verbose reporter (`vitest-2.1.9-page-*-verbose`), in an
+  environment whose default-reporter runs reproduce the committed recordings except for Vite's own stack frames.
+  P1 still discriminates through the loader.
+- **The real sandbox:** `test_runner_acceptance_sandbox.py` runs real pytest with `-rfEp` appended, and its criterion
+  still discriminates.
+- **Mutation:** five mutations each fail the tests:
+  - crediting by absence again;
+  - dropping the flags;
+  - dropping the add-up check;
+  - reading an unnamed pass as none passed;
+  - not storing the ids.
+
+**Who ruled.** The owner placed #3089 in 2.8's Spark lane on 2026-11-15. The shape is #3089's own "What closes it".

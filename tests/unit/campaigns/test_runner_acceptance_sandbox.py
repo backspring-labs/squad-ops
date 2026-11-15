@@ -246,7 +246,8 @@ async def test_a_criterion_that_asserts_the_change_discriminates_and_its_bundle_
         }
     ]
     bundle = document["new_bundles"]["C1"]
-    assert bundle["invocation"] == [PY, "-m", "pytest", CRITERION]
+    # The runner's one-file argv, then what names its passes (#3089).
+    assert bundle["invocation"] == [PY, "-m", "pytest", CRITERION, "-rfEp"]
     assert sorted(bundle["files"]) == ["tests/conftest.py", CRITERION]
     assert bundle["test_path"] == CRITERION
     # Each side ran the one file, on an overlay with no test file but the bundle's.
@@ -663,7 +664,9 @@ async def test_a_frozen_bundle_runs_by_its_own_invocation_after_the_profile_chan
     )
 
     assert [r.held for r in evaluation.frozen] == [Held.HELD]
-    assert [argv for _rev, argv, _seen in sandbox.backend.ran] == [(PY, "-m", "pytest", FROZEN)]
+    assert [argv for _rev, argv, _seen in sandbox.backend.ran] == [
+        (PY, "-m", "pytest", FROZEN, "-rfEp")
+    ]
     assert runs[0].reader == "pytest"
 
 
@@ -825,7 +828,7 @@ class _VitestSandbox:
         stdout, stderr, code = (
             (_out("vitest-2.1.9-asserting.stdout.txt"), _out("vitest-2.1.9-asserting.stderr.txt"), 1)
             if on_baseline
-            else (" Tests  6 passed (6)\n", "", 0)
+            else (_ASSERTING_ALL_PASS, "", 0)
         )  # fmt: skip
         return CommandResult(
             operation=OperationName.RUN_DECLARED_COMMAND,
@@ -837,6 +840,18 @@ class _VitestSandbox:
             exit_code=code,
             findings=read(findings_reader, stdout, stderr, code).as_dict(),
         )
+
+
+#: The asserting file's six tests passing, as the verbose reporter acceptance runs under prints it
+#: (#3089; ``vitest-2.1.9-renamed-case-candidate.stdout.txt`` is a real run of that shape).
+_ASSERTING_ALL_PASS = "".join(
+    f" ✓ src/__tests__/asserting.test.js > {name}\n"
+    for name in (
+        "Book form > refuses an empty title", "Book form > when saved > twice > names the duplicate",
+        "Book form > throws inside the app", "Setup that breaks > never reaches its body",
+        "Book form > saves a book", "Book form > lists the shelf",
+    )
+) + "      Tests  6 passed (6)\n"  # fmt: skip
 
 
 async def test_a_vitest_criterion_runs_by_its_name_in_its_package_and_reads_by_test_id():
@@ -867,7 +882,7 @@ async def test_a_vitest_criterion_runs_by_its_name_in_its_package_and_reads_by_t
     )  # fmt: skip
 
     assert [a["argv"] for a in sandbox.asked] == [
-        ("npm", "--prefix", "frontend", "test", "--", "criterion_C1.test.jsx")
+        ("npm", "--prefix", "frontend", "test", "--", "criterion_C1.test.jsx", "--reporter=verbose")
     ] * 2
     assert {(a["working_dir"], a["setup"], a["reader"]) for a in sandbox.asked} == {
         (".", (("npm", "--prefix", "frontend", "ci"),), "vitest")

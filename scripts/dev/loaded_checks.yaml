@@ -2519,3 +2519,17 @@ checks:
       from squadops.campaigns.box import LaunchRefusal, OPERATOR_LEASE_MAX_S
       print(sorted({r.path for r in router.routes}), Scope.BOX_OPERATE in ROLE_SCOPES[Role.ADMIN], LaunchRefusal.OPERATOR_HOLDS_THE_BOX.value, OPERATOR_LEASE_MAX_S)
     expect: "['/api/v1/box/lease', '/api/v1/box/lease/release'] True operator_holds_the_box 3600"
+  - id: "3089"
+    what: acceptance's runs are given what names their passes, and a criterion's test is credited by its id among them (SIP-0109 §24dy)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.runner_acceptance import with_pass_ids
+      print(with_pass_ids("pytest", ("pytest", "t.py")), with_pass_ids("vitest", ("npm", "test", "--", "a.test.js")), with_pass_ids("luau", ("lune", "run", "tests/run.luau")))
+    expect: "('pytest', 't.py', '-rfEp') ('npm', 'test', '--', 'a.test.js', '--reporter=verbose') ('lune', 'run', 'tests/run.luau')"
+  - id: "3089-reader"
+    what: the sandbox's test-id readers keep each passing test's id (SIP-0109 §24dy)
+    container: squadops-sandbox-service
+    code: |
+      from squadops.sandbox.findings import read
+      print(sorted(read("pytest", "PASSED t.py::test_a\n1 passed in 0.01s\n", "", 0).passing), read("pytest", "1 passed in 0.01s\n", "", 0).passing)
+    expect: "['t.py::test_a'] None"

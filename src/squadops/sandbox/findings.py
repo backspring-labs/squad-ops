@@ -38,6 +38,14 @@ FAILED, ERROR = "FAILED", "ERROR"
 #: More distinct findings than this is unreadable, never a partial count.
 MAX_KEYS = 10_000
 
+#: #3089: what each test-id reader's run is given so its output names its passing tests, which a
+#: product's own command needn't. Real emissions: pytest's ``-rfEp`` keeps the ``FAILED`` and
+#: ``ERROR`` rows of its default ``-r`` and adds a ``PASSED <node id>`` row per pass (pytest's
+#: last ``-r`` wins, so it follows the product's own); vitest 2's verbose reporter prints the
+#: default reporter's summary and failure sections unchanged, and a ``✓ <file> > <name path>``
+#: line per pass. The Luau contract's ``PASS`` lines are required already (SIP-0117 R5.13).
+PASS_ID_ARGS: Mapping[str, tuple[str, ...]] = {PYTEST: ("-rfEp",), VITEST: ("--reporter=verbose",)}
+
 #: A rule code, or a syntax error, which ruff names without one (``invalid-syntax``; older ruff,
 #: ``E999`` or ``SyntaxError``) and counts in its "Found" line all the same.
 _RUFF_CODE = r"(?P<code>[A-Z]+[0-9]+|invalid-syntax|SyntaxError)"
@@ -46,6 +54,8 @@ _RUFF_FULL_HEAD = re.compile(rf"^{_RUFF_CODE}[: ]")
 _RUFF_FULL_AT = re.compile(r"^\s*--> (?P<path>.+?):\d+:\d+\s*$")
 _RUFF_FOUND = re.compile(r"^Found (\d+) errors?\.")
 _PYTEST_ROW = re.compile(r"^(?P<kind>FAILED|ERROR) (?P<node>\S.*?)(?: - .*)?$")
+#: #3089: a passing test's row in pytest's short summary, printed under ``-rp`` (``PASS_ID_ARGS``).
+_PYTEST_PASSED = re.compile(r"^PASSED (?P<node>\S.*?)\s*$")
 _PYTEST_SUMMARY = re.compile(r"^=*\s*(?P<counts>\d+ [a-z]+(?:, \d+ [a-z]+)*) in [\d.]+s\b")
 _PYTEST_COUNT = re.compile(r"(\d+) ([a-z]+)")
 #: The outcomes a run's summary counts as tests it collected and ran.
@@ -71,6 +81,9 @@ _VITEST_SUITE_FILE = re.compile(r"^(?P<path>\S+) \[ (?P=path) \]$")
 _VITEST_TESTS = re.compile(r"^\s*Tests {2}(?P<counts>\S.*?)\s*$")
 _VITEST_ERRORS = re.compile(r"^\s*Errors {2}\d+ errors?\b")
 _VITEST_TOTAL = re.compile(r"\((?P<n>\d+)\)$")
+#: #3089: a passing test's line under vitest's verbose reporter: ``✓ <file> > <name path>``, with
+#: its duration when it was slow. A file's own line names no ``>`` path.
+_VITEST_PASSED = re.compile(r"^\s*✓ (?P<id>\S.*? > .+?)(?: \d+ms)?\s*$")
 _VITEST_CLASS = re.compile(r"^(?P<cls>[A-Za-z_$][\w$]*(?:\.[\w$]+)*)(?::\s|:$|$)")
 _DIGITS = re.compile(r"\d+")
 #: #2906 (SIP-0117 R5.13): the Luau runner contract's lines. A failure names its file, the test
@@ -109,6 +122,11 @@ class FindingsReading:
     collected: int | None = None
     classes: Mapping[str, str] = field(default_factory=dict)
     passed: int | None = None
+    #: #3089: the ids of the tests that ran and passed, as its failures name them (``<file> >
+    #: <name>``, pytest's node id), when the output names them; ``None`` when it doesn't (pytest
+    #: without ``-rp``, vitest's default reporter). A reading that has them names every pass: their
+    #: number is the summary's ``passed``, or the reading is unreadable.
+    passing: frozenset[str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +139,7 @@ class FindingsReading:
             # Only when there are any, so a reading with none is stored as it was before them.
             **({"classes": dict(sorted(self.classes.items()))} if self.classes else {}),
             **({"passed": self.passed} if self.passed is not None else {}),
+            **({"passing": sorted(self.passing)} if self.passing is not None else {}),
         }
 
     @classmethod
@@ -144,6 +163,11 @@ class FindingsReading:
             isinstance(passed, bool) or not isinstance(passed, int) or passed < 0
         ):
             raise ValueError("a reading's passed tests are a count, or absent")
+        passing = doc.get("passing")
+        if passing is not None and not (
+            isinstance(passing, list) and all(isinstance(i, str) and i for i in passing)
+        ):
+            raise ValueError("a reading's passing tests are ids, or absent")
         return cls(
             reader=reader,
             version=int(doc["version"]),
@@ -153,6 +177,7 @@ class FindingsReading:
             collected=collected,
             classes=dict(classes),
             passed=passed,
+            passing=frozenset(passing) if passing is not None else None,
         )
 
 
@@ -178,6 +203,10 @@ def read(reader: str, stdout: str, stderr: str, exit_code: int | None) -> Findin
         counts, reason, collected = _read_lines(stdout, stderr, exit_code)
     if reason is None and len(counts) > MAX_KEYS:
         reason = f"too many findings: {len(counts)} distinct, over {MAX_KEYS}"
+    passed = _passed(reader, stdout, stderr) if reason is None else None
+    passing: frozenset[str] | None = None
+    if reason is None:
+        passing, reason = _passing(reader, stdout, stderr, passed)
     if reason is not None:
         return FindingsReading(reader, version, readable=False, reason=reason)
     return FindingsReading(
@@ -187,8 +216,39 @@ def read(reader: str, stdout: str, stderr: str, exit_code: int | None) -> Findin
         counts=dict(counts),
         collected=collected,
         classes=classes,
-        passed=_passed(reader, stdout, stderr),
+        passed=passed,
+        passing=passing,
     )
+
+
+def _passing(
+    reader: str, stdout: str, stderr: str, passed: int | None
+) -> tuple[frozenset[str] | None, str | None]:
+    """#3089: the passing tests' ids a readable run's output names, and why it's unreadable when
+    they don't add up to its summary's ``passed``. ``None`` when the output names no pass and the
+    reader's rows need a flag it wasn't given; a run that passed none names none and is read so."""
+    if reader == PYTEST:
+        rows = [
+            m["node"] for m in map(_PYTEST_PASSED.match, (stdout + "\n" + stderr).splitlines()) if m
+        ]
+        word = "PASSED rows"
+    elif reader == VITEST:
+        rows = [m["id"] for m in map(_VITEST_PASSED.match, _ANSI.sub("", stdout).splitlines()) if m]
+        word = "passing lines"
+    elif reader == LUAU:
+        rows = [
+            f"{m['file']} > {m['name']}"
+            for m in map(_LUAU_PASS.match, (line.strip() for line in _lines(stdout, stderr)))
+            if m
+        ]
+        word = "PASS lines"
+    else:
+        return None, None
+    if not rows:
+        return (frozenset(), None) if passed == 0 else (None, None)
+    if passed is None or len(rows) != passed or len(set(rows)) != len(rows):
+        return None, f"{reader} printed {len(rows)} {word} for {passed} passed"
+    return frozenset(rows), None
 
 
 def _passed(reader: str, stdout: str, stderr: str) -> int | None:
