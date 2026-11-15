@@ -114,13 +114,14 @@ class Path:
         return _Line(self.world.app)
 
     def requester(
-        self, line: _Line | None = None, *, wait: int = WAIT
+        self, line: _Line | None = None, *, wait: int = WAIT, origin: dict | None = None
     ) -> RuntimeApiRemoteExecution:
-        """The agent's port, as the handler of ``qa.run_remote_operation`` is given it."""
+        """The agent's port, as the handler of ``qa.run_remote_operation`` is given it.
+        ``origin`` is who asks, as an agent's composition names itself."""
         return RuntimeApiRemoteExecution(
             BASE_URL,
             _token("agent"),
-            origin={"cycle_id": "cyc_path", "run_id": "run_path"},
+            origin=origin or {"cycle_id": "cyc_path", "run_id": "run_path"},
             wait=timedelta(seconds=wait),
             max_attempts=2,
             transport=line or self.line(),
