@@ -175,7 +175,7 @@ phases are in its own ledger.
 | Phase 2b, part 1: the runtime's side of remote execution: the worker registry and its migration, the claim, lease and fence rules, `/api/v1/workers`, and the worker's own identity (R3.3, R5.3, R5.4) | **shipped** | 2.8 (PR #3024) |
 | Phase 2b, part 2: the worker: its composition root, the claim loop, and a fixture adapter (R3.3, R5.4) | **shipped** | 2.8 (PR #3027) |
 | Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4, R5.6) | **shipped** | 2.8 (PR #3052, closing #3023) |
-| Phase 2c: the Luau runner (#2906; core, R3.2), built by the Spark lane (the 2.8 plan's decision 4) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #2906 |
+| Phase 2c: the Luau runner (#2906; core, R3.2), built by the Spark lane (the 2.8 plan's decision 4) | **shipped** | 2.8 (PR #3090, closing #2906; R5.13) |
 | Phase 2d, the first slice: the Studio adapter's read side (the session, the tool check, identity as far as reading allows, paged read-back) and the isolation test (R3.6, R4.6, R5.11) | **shipped** | 2.8 (PR #3088; #3039 tracks the rest) |
 | Phase 2d, the rest: the transaction, the adapter's own sync, the baseline, reset, `PlaceId` through the harness, the `roblox-studio` provider's four operations, and the worker's configuration (R3.6, R4.3, R5.7, R5.11) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
@@ -719,6 +719,62 @@ not resetting the count.
 with no increment spent (here). An operation no worker claims within its limit ends `not_executed`, and one
 interrupted after play began ends `interrupted` (R5.6, with R5.10's flag). A worker there at every launch and gone
 at every reading spends the retries and escalates (R5.10). No other gap is relaunched by this rule (R5.10).
+
+## R5.13 Phase 2c as built: the `luau` runner and the Luau runner contract (#2906, 2026-11-15)
+
+**What it is.** A Roblox game's headless Luau tests are run by a runner script in the product's own tree,
+under Lune, Zune or Lute: `lune run tests/run.luau`. Run with one spec file's path after the script, it runs
+that file alone. The derived profile reads such a check as a `luau` runner (contract 8, SIP-0112 H.31). Its
+output is read by the `luau` findings reader, which reads **the Luau runner contract** below, so any Luau
+product can conform.
+
+**The runner and its loader are the product's,** not a skillset's. A skillset's files are shown to the model
+(SIP-0116 §17f point 4), and the check must run the same with or without SquadOps. `z_tower-ascension` is synced
+by Roblox's Script Sync, not Rojo, with `src/Server`, `src/Shared` and `src/Client` and the suffixes
+`.server.luau`, `.local.luau` and `.luau`. #3042 adds its `tests/run.luau` and the instance-tree loader that maps
+those folders for `require(script.Parent.X)`. #3041's `test-loader` skill teaches the squad to write tests
+against that runner, as text. This replaces R4's table row that put the test loader in the skillset.
+
+**The contract**, one line each, matched on the whole line:
+
+| Line | Means | Read as |
+|---|---|---|
+| `PASS <file> > <name>` | the test ran and passed | counted. The summary's `passed` must equal the number of these lines |
+| `FAIL <file> > <name> [assertion] <message>` | the test's own assert failed | key `FAILED <file> > <name>`, class `assertion`: the test's own failure |
+| `FAIL <file> > <name> [error] <message>` | the test ran and something raised, the product's own code included | key `FAILED <file> > <name>`, class `error`: the test's own failure |
+| `FAIL <file> > <name> [setup] <message>` | loading what it tests failed: a require of the module under test, or a before hook | key `ERROR <file> > <name>`, class `setup`, a setup class: it never discriminates |
+| `FAIL <file> [setup] <message>` | the spec file itself failed to load | key `ERROR <file>`. None of its tests prints `PASS` |
+| `Tests: <p> passed, <f> failed, <e> errored, <s> setup, <t> total` | the summary, exactly one | `collected` = t, `passed` = p |
+
+- **Readable** at exit 0 and 1 when:
+  - the `PASS` lines and the `[assertion]`, `[error]` and `[setup]` lines equal p, f, e and s;
+  - p + f + e + s = t;
+  - the exit is 1 exactly when something failed.
+- **Anything else is unreadable, never clean.**
+- **A line the contract doesn't name is left unread.** A test mustn't print a line shaped like one of these.
+- **How a loader tells the three tags apart:** its `require` shim `pcall`s each module load and rethrows a
+  failure as `error({kind = "setup", …})`, as do a spec file's own load and any before hook. The assert helper
+  raises `{kind = "assertion", …}`. The runner `pcall`s each test: a table with a `kind` keeps it, and a string
+  error is `error`. Luau keeps an error table intact through `pcall`, under Lune too.
+- **`[error]` is the test's own failure,** as a non-setup exception is for pytest. A regression that makes the
+  product's code raise must discriminate, so only `[setup]` is a setup class (`SETUP_CLASSES["luau"]`).
+
+**What a `PASS` line does and doesn't give.** It makes the passed count honest: a summary whose passes no lines
+name is unreadable. It doesn't make acceptance credit a pass by its id. As for pytest and vitest, a reading keeps
+its failures by key and its counts, a criterion's test that fails on the baseline is credited on the candidate
+by its absence from the candidate's failures, and `ran_every_test` requires the candidate's passes and failures
+to cover every test it collected.
+
+**frktest** names neither a failure's kind nor a passing test. So a project that declares it, in `pesde.toml`,
+`wally.toml` or `.luaurc`, gets no reader. Its `no_test_id_reader` gap is disclosed, closed by a runner script
+that prints this contract.
+
+**Not built:** `lute check` and `lute lint` as a lint check with a findings reader (#2906's optional item 4).
+Nothing reads engine behaviour headless. That stays with the worker (R3.6).
+
+**Who ruled.** The contract was agreed between the lanes on 2026-11-15. The Spark lane proposed two tags. The
+MacBook lane added `setup` as the third, so product code raising still discriminates, and required the `PASS`
+lines. The placement is the 2.8 plan's decision 4.
 
 ---
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from squadops.projects.derived_profile import JAVASCRIPT_RUNNERS
+from squadops.projects.derived_profile import JAVASCRIPT_RUNNERS, LUAU_RUNNERS
 from squadops.stacks.development_profiles import (
     effective_development_profile,
     get_development_profile,
@@ -108,13 +108,15 @@ def _replaced_test_path(repository: Mapping[str, Any]) -> str | None:
 
 def suite_language(inputs: Mapping[str, Any]) -> str:
     """The language a run's worked suite examples are written in (#2876): ``"javascript"`` for a
-    source-backed run whose product tests only with JavaScript runners, else ``"python"``. A
-    sample application's run, a product with no runner, or one with any other runner keeps the
-    prompt it had."""
+    source-backed run whose product tests only with JavaScript runners, ``"luau"`` for one that
+    tests only with Luau runners (#2906), else ``"python"``. A sample application's run, a product
+    with no runner, or one with runners of more than one language keeps the prompt it had."""
     if source_backed(inputs):
         runners = {str(r.get("runner")) for r in inputs["source_repository"].get("runners") or ()}
         if runners and runners <= JAVASCRIPT_RUNNERS:
             return "javascript"
+        if runners and runners <= LUAU_RUNNERS:
+            return "luau"
     return "python"
 
 

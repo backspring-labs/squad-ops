@@ -28,10 +28,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-RUFF, PYTEST, LINES, VITEST = "ruff", "pytest", "lines", "vitest"
+RUFF, PYTEST, LINES, VITEST, LUAU = "ruff", "pytest", "lines", "vitest", "luau"
 #: The closed set a check's ``findings:`` declaration names, with each reader's version. A version
 #: changes whenever a key or the readable rule does, so readings of two versions never compare.
-READERS: Mapping[str, int] = {RUFF: 1, PYTEST: 1, LINES: 1, VITEST: 1}
+READERS: Mapping[str, int] = {RUFF: 1, PYTEST: 1, LINES: 1, VITEST: 1, LUAU: 1}
 #: A test's own failure, and one in its setup, collection or teardown: each key of a test-id
 #: reader (pytest, vitest) starts with one of the two.
 FAILED, ERROR = "FAILED", "ERROR"
@@ -73,6 +73,16 @@ _VITEST_ERRORS = re.compile(r"^\s*Errors {2}\d+ errors?\b")
 _VITEST_TOTAL = re.compile(r"\((?P<n>\d+)\)$")
 _VITEST_CLASS = re.compile(r"^(?P<cls>[A-Za-z_$][\w$]*(?:\.[\w$]+)*)(?::\s|:$|$)")
 _DIGITS = re.compile(r"\d+")
+#: #2906 (SIP-0117 R5.13): the Luau runner contract's lines. A failure names its file, the test
+#: (absent when the file itself failed to load), and its tag; the summary carries all four counts.
+_LUAU_PASS = re.compile(r"^PASS (?P<file>\S+) > (?P<name>.+)$")
+_LUAU_FAIL = re.compile(
+    r"^FAIL (?P<file>\S+?)(?: > (?P<name>.+?))? \[(?P<tag>assertion|error|setup)\](?: .*)?$"
+)
+_LUAU_TESTS = re.compile(
+    r"^Tests: (?P<passed>\d+) passed, (?P<failed>\d+) failed, (?P<errored>\d+) errored, "
+    r"(?P<setup>\d+) setup, (?P<total>\d+) total$"
+)
 
 
 class UnknownReader(ValueError):
@@ -162,6 +172,8 @@ def read(reader: str, stdout: str, stderr: str, exit_code: int | None) -> Findin
             classes = _pytest_classes(output, counts)
     elif reader == VITEST:
         counts, reason, collected, classes = _read_vitest(stdout, stderr, exit_code)
+    elif reader == LUAU:
+        counts, reason, collected, classes = _read_luau(stdout, stderr, exit_code)
     else:
         counts, reason, collected = _read_lines(stdout, stderr, exit_code)
     if reason is None and len(counts) > MAX_KEYS:
@@ -193,6 +205,10 @@ def _passed(reader: str, stdout: str, stderr: str) -> int | None:
             tests = _VITEST_TESTS.match(line)
             if tests:
                 summary = tests["counts"]
+    elif reader == LUAU:
+        summaries = [_LUAU_TESTS.match(line.strip()) for line in _lines(stdout, stderr)]
+        found = [m for m in summaries if m]
+        return int(found[-1]["passed"]) if found else None
     if summary is None:
         return None
     outcomes: Counter[str] = Counter()
@@ -393,6 +409,84 @@ def _vitest_failures(stderr: str) -> tuple[Counter[str], dict[str, str], dict[st
                     classes[key] = error["cls"].rsplit(".", 1)[-1]
             group = []
     return counts, classes, declared
+
+
+def _lines(stdout: str, stderr: str) -> list[str]:
+    return _ANSI.sub("", stdout + "\n" + stderr).splitlines()
+
+
+def _read_luau(stdout: str, stderr: str, exit_code: int | None):
+    """The Luau runner contract (#2906, SIP-0117 R5.13), a product's ``tests/run.luau`` under
+    Lune, Zune or Lute: one line per failure, tagged, and a ``Tests:`` summary.
+
+    - ``PASS <file> > <name>``: a test that ran and passed. Every passing test has one, and the
+      summary's ``passed`` must equal their number: a pass is never inferred from a test's
+      absence among the failures.
+    - ``FAIL <file> > <name> [assertion] …``: the test's own assert failed. Keyed
+      ``"FAILED <file> > <name>"``, class ``assertion``.
+    - ``FAIL <file> > <name> [error] …``: the test ran and something raised, the product's code
+      included. ``"FAILED <file> > <name>"``, class ``error``: the test's own failure too.
+    - ``FAIL <file> > <name> [setup] …``: loading what it tests failed (a require, a before hook).
+      ``"ERROR <file> > <name>"``, class ``setup``. ``FAIL <file> [setup] …``, with no name, is
+      the file itself failing to load: ``"ERROR <file>"``.
+
+    Readable at exit 0 and 1 when there is one summary to read; the ``PASS`` lines and the tagged
+    lines add up to its passed, failed, errored and setup counts; those add up to its total; and the
+    exit says the same as the counts. Anything else is unreadable, never clean. Each pattern is the
+    whole line's shape, so a line the contract doesn't name (a test's own print) is left unread;
+    a print shaped like a result line is one, and a test mustn't print one."""
+    if exit_code not in (0, 1):
+        return {}, f"the Luau runner exited {exit_code}: the run didn't finish its tests", None, {}
+    lines = [line.strip() for line in _lines(stdout, stderr)]
+    summaries = [m for m in (_LUAU_TESTS.match(line) for line in lines) if m]
+    if len(summaries) != 1:
+        return {}, f"the Luau runner printed {len(summaries)} Tests: summaries, not one", None, {}
+    summary = {k: int(v) for k, v in summaries[0].groupdict().items()}
+    counts: Counter[str] = Counter()
+    classes: dict[str, str] = {}
+    tags: Counter[str] = Counter()
+    for line in lines:
+        failed = _LUAU_FAIL.match(line)
+        if not failed:
+            continue
+        tag = failed["tag"]
+        tags[tag] += 1
+        kind = ERROR if tag == "setup" else FAILED
+        key = f"{kind} {failed['file']}" + (f" > {failed['name']}" if failed["name"] else "")
+        counts[key] += 1
+        classes[key] = tag
+    passes = sum(1 for line in lines if _LUAU_PASS.match(line) and not _LUAU_FAIL.match(line))
+    if passes != summary["passed"]:
+        return (
+            {},
+            f"the summary counts {summary['passed']} passed, and {passes} PASS lines",
+            None,
+            {},
+        )
+    expected = {
+        "assertion": summary["failed"],
+        "error": summary["errored"],
+        "setup": summary["setup"],
+    }
+    for tag, n in expected.items():
+        if tags[tag] != n:
+            return {}, f"the summary counts {n} {tag} failures, and {tags[tag]} lines", None, {}
+    ran = summary["passed"] + summary["failed"] + summary["errored"] + summary["setup"]
+    if ran != summary["total"]:
+        return (
+            {},
+            f"the summary's counts add up to {ran}, not its total {summary['total']}",
+            None,
+            {},
+        )
+    if (exit_code == 1) != bool(counts):
+        return (
+            {},
+            f"the Luau runner exited {exit_code}, and {sum(counts.values())} failures read",
+            None,
+            {},
+        )
+    return counts, None, summary["total"], classes
 
 
 def _read_lines(stdout: str, stderr: str, exit_code: int | None):

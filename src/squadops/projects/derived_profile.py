@@ -68,10 +68,12 @@ GAPS: Mapping[str, Mapping[str, str]] = {
     # Campaign's refusal when none can, since nothing could judge its increments.
     "stack_unmatched": {BLOCKING: "campaigns", DISCLOSED: "stack_guidance"},
 }
-RUNNERS = ("pytest", "unittest", "vitest", "jest", "other")
+RUNNERS = ("pytest", "unittest", "vitest", "jest", "luau", "other")
 #: The runners whose test files are JavaScript: a product tested only by these is shown its
 #: authoring examples in JavaScript (#2876).
 JAVASCRIPT_RUNNERS = frozenset({"vitest", "jest"})
+#: #2906: the runners whose test files are Luau, run by a product's own runner script.
+LUAU_RUNNERS = frozenset({"luau"})
 #: A public surface a criterion may assert on (§24bv point 5): a base URL the start declaration
 #: serves, a command-line entry point, or a package's public interface.
 SURFACES: Mapping[str, str] = {

@@ -591,13 +591,15 @@ def _product_inputs(*runners: str) -> dict:
         # pytest example onto a vitest product ("pytest suite", a Python-only check on .test.js).
         (_product_inputs("vitest"), "javascript"),
         (_product_inputs("jest"), "javascript"),
+        # #2906: a Roblox game tested by its Luau runner script is shown a Luau spec suite.
+        (_product_inputs("luau"), "luau"),
         # A product with a Python runner too (shelfnote: pytest and vitest) keeps the pytest one.
         (_product_inputs("pytest", "vitest"), "python"),
         # A product with no runner, and a sample application, keep it as well.
         (_product_inputs(), "python"),
         ({}, "python"),
     ],
-    ids=["vitest", "jest", "pytest-and-vitest", "no-runner", "sample-application"],
+    ids=["vitest", "jest", "luau", "pytest-and-vitest", "no-runner", "sample-application"],
 )
 async def test_the_qa_proposer_is_shown_its_products_runner_in_the_example(inputs, example):
     from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
