@@ -1189,6 +1189,49 @@ None is read as a task handed no skills.
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on #3037
 (comment 6891306034), and is built as posted. #3037 closes with this part.
 
+### 17n. A provider's authority is shown the product a cycle runs on (2026-11-15, §8; #3042; the Spark lane, agreed with the MacBook lane)
+
+**What changed.** §8's authority could rule on a tool, a project id and the cycle's config, and nothing else. The
+`roblox-studio` provider's compatibility checks are its product's eligibility rules (SIP-0117 R4.2, SIP-0118 phase
+2g), so they need the product. The port is now
+`async broken_rules(tool, *, project_id, config, product: ProductView | None)`:
+1. **The view.**
+   - **The tree:** creation reads the product at the cycle's pinned commit once, through `source_checkout.checkout_of`
+     and `seeded_files`, the read a run is seeded from. So the authority sees what the run would be handed, with the
+     same filter and limits, and there is no second tree read.
+   - **Laziness:** `paths` lists every seeded file, and `text(path)` decodes one only when asked. The view is built
+     only when some required tool's provider has a registered authority to ask.
+   - **The footprint:** the ruled change request's, read from the cycle's `plan_artifact_refs` (a repair's or a
+     retry's). It is `None` when the cycle holds no change request yet, which is an increment's own cycle at creation,
+     since its proposal run authors one.
+2. **Three cases, kept apart.**
+   - A cycle on no repository-backed product (a sample application) is shown `None`.
+   - A product whose tree, or whose carried change request, can't be read refuses creation as an authorization
+     finding, naming why. It is never shown as `None`, and never as a view of nothing.
+   - An authority decides what `None` means for its own provider. `roblox-studio`'s reads it as a broken rule.
+3. **Where an authority lives.** `adapters.remote_execution.factory.create_tool_authorities` registers the
+   `eligibility.AUTHORITY` of every provider package under `adapters/remote_execution`, by provider name, and the
+   runtime's root calls it. It finds providers rather than naming them, so a platform's name stays in its own directory
+   (SIP-0117 R4.6), and removing the platform removes its authority. The adapter's import allow-list adds
+   `squadops.ports.tool_authority`.
+
+**What didn't change.** A provider with no authority still has its tools refused at creation. The availability outcome
+is as it was. `tool_checks.authorization_findings` became async, and its one caller already was.
+
+**The evidence.**
+- **Wiring:** `test_machinery_campaign.py`'s two-increment Campaign runs through the real launch path. Each of its three
+  cycles' creation shows the fixture authority the cycle's pinned commit and the seeded tree, its text read from the
+  clone. The two increments carry no footprint, and the repair carries its ruled change request's.
+- **The refusals:** `test_tool_preflight.py` covers a source-backed cycle with no managed clone refusing creation,
+  naming why, with the authority never asked, and a sample application's cycle showing it `None`.
+- **The rules:** `test_roblox_studio_eligibility.py` holds `roblox-studio`'s rules, which go through the factory and
+  `authorization_findings`. Five mutations each fail the tests.
+
+**Who ruled.** The MacBook lane, owner of §8's port, agreed the shape on 2026-11-15, with its four conditions (the
+three cases apart, the footprint's absence explicit, the text read lazy and bounded, and a wiring test). The owner
+handed #3042's registration part to the Spark lane the same day, as the MacBook lane relayed it ("yes hand it to
+spark").
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each
