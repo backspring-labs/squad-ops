@@ -122,6 +122,9 @@ class Broker(QueuePort):
         self.published: list[tuple[str, dict]] = []
         self._subscriptions: dict[str, Any] = {}
         self._running: set[asyncio.Task] = set()
+        #: What the test does as each reply passes, before the runtime reads it: a fault it
+        #: injects at an exact point in the run (the worker leaving, say).
+        self.on_reply = None
 
     async def publish(self, queue_name: str, payload: str, delay_seconds: int | None = None):
         if delay_seconds:
@@ -140,6 +143,8 @@ class Broker(QueuePort):
             self._running.add(task)
             task.add_done_callback(self._running.discard)
         elif queue_name in self._subscriptions:
+            if self.on_reply is not None:
+                await self.on_reply(json.loads(payload)["payload"])
             result = self._subscriptions[queue_name](message)
             if asyncio.iscoroutine(result):
                 await result
@@ -387,9 +392,12 @@ class Machinery:
         return ref.artifact_id
 
     @contextlib.asynccontextmanager
-    async def worker(self):
-        """The fixture worker, registered and claiming, while the block runs."""
-        async with self.path.serving(self.path.worker()) as serving:
+    async def worker(self, worker_id: str = "spark-worker"):
+        """The fixture worker, registered and claiming, while the block runs. A worker that
+        comes back after leaving takes a new id, so its arrival is read from its own session,
+        not the one it left silent."""
+        worker = self.path.worker(worker_id=worker_id)
+        async with self.path.serving(worker, worker_id) as serving:
             yield serving
 
     def dispatched(self) -> list[str]:
