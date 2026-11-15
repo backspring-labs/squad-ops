@@ -19,6 +19,12 @@ again, so there is no interval to wait out: the campaign escalates on the first 
 intent still pending. The owner fixes what the refusal names and resumes without an action, which
 returns the campaign to the state the launch was written from and re-attempts it; or aborts.
 Before #1971 such an intent stayed pending and every drain refused it again, logged and unasked.
+
+**One create refusal is waited out instead (#3045):** no worker available for a tool the work
+requires, every blocking finding ``skillset_availability``. A worker comes back, so the campaign waits
+in ``launch_blocked`` as for the box, and each due attempt's create reads it afresh. Its attempts are
+counted on the launch since the owner last resumed (``unavailable_launch``), because each attempt's
+unblock ends the box's episode.
 """
 
 from __future__ import annotations
