@@ -1,0 +1,14 @@
+api_version: squadops.skillset/v1
+skillset:
+  id: roblox-studio-qa
+  version: 1
+  description: Writes a Roblox game's headless Luau tests for the product's own runner, for its plain-logic modules
+  roles: [qa]
+  platform: {id: roblox, variants: [studio-place]}
+  # The runner and Lune are the product's (SIP-0117 R5.13), installed by its own setup, so the unit
+  # tests need no provider. `roblox-studio` joins with the scenario capability (#3039).
+  prerequisites: []
+  capabilities:
+    - contract: game.unit_tests
+      modes: [headless]
+      skills: [luau-test-loader, shared/luau-conventions]
