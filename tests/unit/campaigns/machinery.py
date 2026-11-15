@@ -35,55 +35,63 @@ import json
 import subprocess
 import uuid
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
 
 import yaml
 
 from adapters.cycles.factory import create_flow_executor
 from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
+from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from adapters.llm.script_positions import InProcessScriptPositions
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
-from adapters.remote_execution.fixture_operation_runner import WORLD_PATH
+from adapters.remote_execution.fixture_operation_runner import PROVIDER, WORLD_PATH
 from adapters.remote_execution.registry_remote_execution import RegistryRemoteExecution
 from adapters.tools.git_source import GitSourceRepository
+from squadops.api.campaign_launch import CampaignLaunchService
+from squadops.api.routes.cycles.cycles import CreationPorts
+from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
-from squadops.capabilities import skillsets
+from squadops.campaigns.progress import CampaignProgress
+from squadops.capabilities import capability_contracts, skillsets
 from squadops.capabilities.handlers.cycle import run_remote_operation
 from squadops.comms.queue_message import QueueMessage
 from squadops.contracts.cycle_request_profiles import load_profile
+from squadops.cycles.cycle_assessment import AssessorIdentity
 from squadops.cycles.models import (
     AgentProfileEntry,
     ArtifactRef,
     Cycle,
-    Project,
     Run,
     SquadProfile,
     TaskFlowPolicy,
 )
 from squadops.cycles.skillset_content import keep_skillset_content
 from squadops.execution import dispatched_flow_executor, product_acceptance
+from squadops.execution.cycle_evidence import assess_cycle
 from squadops.execution.reply_router import ReplyRouter
 from squadops.llm.script import script_version
 from squadops.ports.comms.queue import AckPolicy, QueuePort, SubscriptionHandle
 from squadops.ports.comms.task_attempts import TaskAttemptsPort
-from squadops.projects.baseline import parse_baseline
-from squadops.projects.derived_profile import parse_profile
 from squadops.projects.development_configuration import parse_configuration
-from squadops.projects.models import ProjectSource
 from squadops.projects.registration import LocatorPolicy
 from squadops.projects.source_context import parse_source_context
+from squadops.projects.workspaces import capture_inherited_baseline
 from squadops.remote_execution.workers import QueuedOperation
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.service import SandboxService
 from squadops.sandbox.workspace import WorkspaceStore
 from tests.fixtures.shared_contract.repository import build_repository, recorded
+from tests.unit.api.test_campaign_calibration_record import _Projects, _tally
+from tests.unit.campaigns.builders import quiet_box
 from tests.unit.campaigns.test_product_runner_acceptance_wiring import _scenario_catalog
-from tests.unit.cycles.skillset_fixture import built, requiring_config
+from tests.unit.cycles.skillset_fixture import CONTRACTS, built, requiring_config
 from tests.unit.cycles.test_source_backed_run import _LocalBackend
+from tests.unit.projects.test_workspaces import _LocalSandbox
 from tests.unit.remote_execution.registry_contract import T0
 from tests.unit.remote_execution.remote_path import Path as RemotePath
 from tests.unit.remote_execution.scenario_fixture import SHUT
@@ -250,24 +258,25 @@ def door_product(root: Path) -> tuple[Path, str]:
     return repo, _git(repo, "rev-parse", "HEAD")
 
 
-def _projects(repo: Path, head: str) -> AsyncMock:
-    """The Project registry as the recorded contracts answer it, at the door product."""
-    registry = AsyncMock()
-    registry.get_project.return_value = Project(
-        project_id=PROJECT, name="Tally", description="", created_at=_now(),
-        source=ProjectSource(str(repo), "refs/heads/main", "review_request"),
-    )  # fmt: skip
-    registry.get_development_configuration.return_value = parse_configuration(
-        recorded("development_configuration", "valid")
+async def _projects(repo: Path, head: str, clones, root: Path) -> _Projects:
+    """The Project registry over real records, its baseline captured for real at the door's
+    commit: the product's own checks run there, and the profile is derived from that tree."""
+    projects = _Projects(
+        _tally(str(repo), development_baseline_commit=head),
+        dataclasses.replace(
+            parse_configuration(recorded("development_configuration", "valid")),
+            validated_at_commit=head,
+        ),
     )
-    # The checks' baseline, re-pinned to the door's commit: a candidate is compared only with the
-    # baseline of the tree it changed (FR-20).
-    registry.get_inherited_baseline.return_value = dataclasses.replace(
-        parse_baseline(recorded("inherited_baseline", "valid")), commit=head
+    await capture_inherited_baseline(
+        PROJECT,
+        registry=projects,
+        repository=clones,
+        sandbox=_LocalSandbox(root / "baseline"),
+        actor="owner",
+        idempotency_key="baseline",
     )
-    registry.get_derived_profile.return_value = parse_profile(recorded("derived_profile", "valid"))
-    registry.get_initialization.return_value = None
-    return registry
+    return projects
 
 
 def _now() -> datetime:
@@ -302,6 +311,13 @@ class Machinery:
     context: Any
     record: Any
     kept: Any
+    #: The Campaign's side, composed by ``compose(campaign=True)``: its registry, its progress
+    #: (the completion boundary's hearing) and its launch service.
+    campaigns: Any = None
+    progress: Any = None
+    launch: Any = None
+    #: The Project's managed clone, which each accepted increment is promoted in.
+    clones: Any = None
 
     async def increment(
         self,
@@ -435,10 +451,56 @@ async def _squad(monkeypatch, broker: Broker, path: RemotePath) -> None:
         broker.agents[agent_id] = agent
 
 
-async def compose(tmp_path: Path, monkeypatch) -> Machinery:
+#: The most one sleep on the path moves the test's clock. Every waiter's sleep moves the one
+#: clock, so over a Campaign's many waits their sum, not the longest, would be the time that
+#: passes: a worker that heartbeats every 15 s would read as silent past 45 s (``leasing``)
+#: between its own turns. Stepped, each waiter still takes its turn per sleep.
+CLOCK_STEP_SECONDS = 1.0
+
+
+def _stepping(clock):
+    async def sleep(seconds: float) -> None:
+        clock.advance(min(seconds, CLOCK_STEP_SECONDS))
+        await asyncio.sleep(0)
+
+    return sleep
+
+
+class _Allows:
+    """The fixture provider's authority over its operation (SIP-0116 §8): it allows every use.
+    Production registers none (§14), so a cycle requiring a worker tool is refused there."""
+
+    def broken_rules(self, tool, *, project_id, config) -> list:
+        return []
+
+
+async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Machinery:
+    """``campaign``: the executor's Campaign side wired as the runtime wires it, a cycle's end
+    heard by ``CampaignProgress`` and each launch built by ``CampaignLaunchService`` through the
+    cycle-create path."""
+    from squadops.api.routes.cycles import cycles as create_route
+    from squadops.stacks.development_profiles import ORIGIN_DERIVED, ProfileSelection
+
     catalog = _scenario_catalog()
-    for module in (skillsets, product_acceptance, run_remote_operation, dispatched_flow_executor):
+    for module in (
+        skillsets, product_acceptance, run_remote_operation, dispatched_flow_executor,
+        create_route,
+    ):  # fmt: skip
         monkeypatch.setattr(module, "packaged_skillsets", lambda: catalog)
+    # The product's derived profile selects the fixture development profile, which no deployed
+    # registry holds (§14): a cycle created on it requires the fixture skillsets.
+    monkeypatch.setattr(
+        create_route,
+        "select_development_profile",
+        lambda runners, stack: ProfileSelection("fixture_stack", ORIGIN_DERIVED),
+    )
+    monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
+    # The fixture contracts the skillsets specialize, which no deployed registry declares either.
+    monkeypatch.setattr(
+        capability_contracts,
+        "CAPABILITY_CONTRACTS",
+        MappingProxyType({**capability_contracts.CAPABILITY_CONTRACTS, **CONTRACTS}),
+    )
     record, kept = built(requiring_config(monkeypatch), catalog)
     scripts = tmp_path / "scripts"
     scripts.mkdir()
@@ -446,38 +508,65 @@ async def compose(tmp_path: Path, monkeypatch) -> Machinery:
 
     sources = tmp_path / "sources"
     repo, head = door_product(sources)
+    clones = GitSourceRepository(
+        tmp_path / "cache",
+        LocatorPolicy.of([], [str(sources)]),
+        timeout_seconds=60,
+        committer_name="SquadOps",
+        committer_email="squadops@squadops.invalid",
+    )
+    projects = await _projects(repo, head, clones, tmp_path)
     context = dataclasses.replace(
         parse_source_context(recorded("project_source_context", "valid")),
         repo_uri=str(repo),
         pinned_commit=head,
+        development_baseline_commit=head,
     )
     path = RemotePath()
+    path.sleep = _stepping(path.clock)
     broker = Broker()
     registry = MemoryCycleRegistry()
     vault = FilesystemArtifactVault(tmp_path / "vault")
     store = WorkspaceStore(tmp_path / "sandbox")
+    profiles = _Profiles(squad_profile())
+    campaigns = progress = None
+    launcher: dict[str, CampaignLaunchService] = {}
+    if campaign:
+        campaigns = MemoryCampaignRegistry()
+        progress = CampaignProgress(
+            campaigns=campaigns,
+            cycles=registry,
+            vault=vault,
+            assess=partial(
+                assess_cycle,
+                registry,
+                vault,
+                assessor=AssessorIdentity(framework_version="machinery", git_sha=None),
+            ),
+            launch=lambda: launcher["service"].drain(),
+            evaluate_outcome=None,
+            evaluate_baseline=None,
+            outcome_section=None,
+            intervention_section=None,
+            campaign_branch=CampaignBranch(projects=projects, repository=clones),
+            goal_sets=None,
+        )
     executor = create_flow_executor(
         "dispatched",
         cycle_registry=registry,
         artifact_vault=vault,
         queue=broker,
-        squad_profile=_Profiles(squad_profile()),
-        project_registry=_projects(repo, head),
-        campaign_registry=None,
-        campaign_progress=None,
-        box_verdict=None,
+        squad_profile=profiles,
+        project_registry=projects,
+        campaign_registry=campaigns,
+        campaign_progress=progress,
+        box_verdict=quiet_box if campaign else None,
         failure_recall=NoOpFailurePatternRecall(),
         proposal_evidence=NoOpProposalEvidence(),
         task_timeout=600.0,
         binding_fill=None,
         reply_router=ReplyRouter(broker),
-        source_repository=GitSourceRepository(
-            tmp_path / "cache",
-            LocatorPolicy.of([], [str(sources)]),
-            timeout_seconds=60,
-            committer_name="SquadOps",
-            committer_email="squadops@squadops.invalid",
-        ),
+        source_repository=clones,
         sandbox=SandboxService(
             store=store,
             journal=OperationEvidenceJournal(tmp_path / "sandbox"),
@@ -498,7 +587,24 @@ async def compose(tmp_path: Path, monkeypatch) -> Machinery:
     # The requester's routes read the executor's own router for the send that is current (R5.6).
     path.world.app.state.reply_router = executor._reply_router
     await _squad(monkeypatch, broker, path)
+    if campaign:
+        launcher["service"] = CampaignLaunchService(
+            campaigns=campaigns,
+            creation=CreationPorts(
+                project_registry=projects,
+                squad_profile=profiles,
+                cycle_registry=registry,
+                deploy_registry=MemoryDeployRegistry(),
+                artifact_vault=vault,
+                tool_authorities={PROVIDER: _Allows()},
+                worker_registry=path.registry,
+            ),
+            flow_executor=executor,
+            event_bus=executor._cycle_event_bus,
+            box_verdict=quiet_box,
+        )
     return Machinery(
         path=path, broker=broker, executor=executor, registry=registry, vault=vault,
-        scripts=scripts, context=context, record=record, kept=kept,
+        scripts=scripts, context=context, record=record, kept=kept, campaigns=campaigns,
+        progress=progress, launch=launcher.get("service"), clones=clones,
     )  # fmt: skip
