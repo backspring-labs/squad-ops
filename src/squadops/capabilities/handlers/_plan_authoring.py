@@ -90,6 +90,12 @@ INCREMENT_SURFACES = (
         "scope_lines",
         "increment_test_scope_index",
     ),
+    # #3081: the criteria a scenario checks, which no test asserts. Only on an increment holding one.
+    (
+        "request.increment_scenario_criteria_appendix",
+        "scenario_lines",
+        "increment_scenario_criteria_index",
+    ),
     # SIP-0109 §24cp: the pages a repository-backed change adds, and the anchor each view
     # renders, which acceptance reads the page for.
     ("request.increment_views_appendix", "view_lines", "increment_views_index"),

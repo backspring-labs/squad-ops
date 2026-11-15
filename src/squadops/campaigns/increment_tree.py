@@ -670,7 +670,22 @@ def increment_test_scope(resolved_config: Any, change_request: str | None) -> di
         "criteria": [
             {"id": c.id, "statement": c.statement, "observable": c.observable}
             for c in request.criteria
+            if c.surface_kind is not SurfaceKind.SCENARIO
         ],
+        # #3081: a scenario criterion is checked by the framework, which plays its scenario on a
+        # worker (SIP-0117 R5.9); no test asserts it. Named apart rather than left out, so the
+        # scope says it holds one. Only when it does, so every other scope is unchanged.
+        **(
+            {"scenario_criteria": scenarios}
+            if (
+                scenarios := [
+                    {"id": c.id, "statement": c.statement}
+                    for c in request.criteria
+                    if c.surface_kind is SurfaceKind.SCENARIO
+                ]
+            )
+            else {}
+        ),
         "frozen": [
             {"criterion_id": str(pin["criterion_id"]), "statement": str(pin.get("statement") or "")}
             for pin in block.get("frozen_criteria") or ()
@@ -704,6 +719,12 @@ def test_scope_lines(scope: Mapping[str, Any]) -> str:
         for f in scope.get("frozen") or ()
     ]
     return "\n".join(lines) or "- none"
+
+
+def scenario_criteria_lines(scope: Mapping[str, Any]) -> str:
+    """The scope's scenario criteria as ``request.increment_scenario_criteria_appendix``'s index,
+    one line each, or ``""`` when it holds none (#3081): data only, the prose the asset's."""
+    return "\n".join(f"- {c['id']}: {c['statement']}" for c in scope.get("scenario_criteria") or ())
 
 
 def page_views(request: Any) -> list[dict[str, Any]]:

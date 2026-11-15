@@ -272,3 +272,14 @@ def test_a_frozen_criterion_is_listed_with_its_statement_or_says_it_has_none(pin
 
     assert line in test_scope_lines(scope)
     assert scope["criteria"] == []
+
+
+async def test_an_increment_with_no_scenario_criterion_renders_exactly_as_before(monkeypatch):
+    """Every existing stack's increment. Bug caught: the scenario rule shown to an author whose
+    increment has no scenario, so every increment's prompt changes."""
+    [qa] = [e for e in _implementation(_increment_cycle(), STORED) if e.task_type == "qa.test"]
+
+    prompt = await _qa_prompt(qa, monkeypatch)
+
+    assert "scenario_criteria" not in qa.inputs["increment_test_scope"]
+    assert "scenarios check" not in prompt
