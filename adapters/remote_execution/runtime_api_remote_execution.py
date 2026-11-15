@@ -254,7 +254,9 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
             raise _SendNotCurrent()
         if status == 409 and error_code(body) == ERROR_NO_WORKER:
             details = as_object(field(error(body), "details"), "error.details")
-            return ended(request, OperationStatus.NOT_EXECUTED, text(details, "reason"))
+            return ended(
+                request, OperationStatus.NOT_EXECUTED, text(details, "reason"), unavailable=True
+            )
         if status not in (200, 201):
             raise self._calls.refusal(status, body, _OPERATIONS)
         return text(body, "operation_id"), _reading(body)

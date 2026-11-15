@@ -113,6 +113,10 @@ def box_quietness(declared: Iterable[Model], readings: Iterable[EngineReading]) 
 class LaunchRefusal(StrEnum):
     SUPERVISOR_HOLDS_THE_BOX = "supervisor_holds_the_box"
     BOX_NOT_QUIET = "box_not_quiet"
+    #: #3045: the cycle-create path refused the launch only because no worker is available for
+    #: a tool its work requires. Not the box's own refusal: its attempts are counted on the
+    #: launch (``launch_blocking.unavailable_launch``), and each is a fresh create.
+    WORKER_UNAVAILABLE = "worker_unavailable"
 
 
 @dataclass(frozen=True)

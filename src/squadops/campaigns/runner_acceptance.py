@@ -38,6 +38,7 @@ runtime-side, at its delivery (§24cd point 6). The decisions are the same modul
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import logging
@@ -81,7 +82,7 @@ from squadops.campaigns.scenario_runs import (
     is_scenario_criterion,
     scenario_bundle,
 )
-from squadops.remote_execution.models import ReadingSide
+from squadops.remote_execution.models import ReadingSide, reading_unavailable
 
 if TYPE_CHECKING:
     from squadops.sandbox.findings import FindingsReading
@@ -681,6 +682,11 @@ async def _scenario_discriminated(
         on_baseline.document,
         on_candidate.document,
     )
+    # #3045: unread only because a side's operation was taken by no worker.
+    if decided.reason is DiscriminationReason.NOT_RUN and any(
+        reading_unavailable(r.document) for r in (on_baseline, on_candidate)
+    ):
+        decided = dataclasses.replace(decided, unavailable=True)
     return decided, bundle, readings
 
 
@@ -697,11 +703,12 @@ async def _scenario_held(
     candidate = tree.file_tree
     bundle = criterion.bundle
 
-    def result(held: Held, detail: str) -> FrozenResult:
+    def result(held: Held, detail: str, unavailable: bool = False) -> FrozenResult:
         address = bundle.address if bundle is not None else None
         return FrozenResult(
-            subject_id, criterion.criterion_id, candidate.identity, address, held, detail
-        )
+            subject_id, criterion.criterion_id, candidate.identity, address, held, detail,
+            unavailable,
+        )  # fmt: skip
 
     if bundle is None:
         return result(Held.BLOCKED_UNVERIFIED, "the verifier bundle is missing"), {}
@@ -719,7 +726,8 @@ async def _scenario_held(
     if reading.document is None:
         return result(Held.BLOCKED_UNVERIFIED, reading.why), _readings(reading)
     held, detail = held_on_scenario(scenario, reading.revision, reading.document)
-    return result(held, detail), _readings(reading)
+    unavailable = held is Held.BLOCKED_UNVERIFIED and reading_unavailable(reading.document)
+    return result(held, detail, unavailable), _readings(reading)
 
 
 def increment_surface(

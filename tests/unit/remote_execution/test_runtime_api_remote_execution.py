@@ -303,6 +303,8 @@ async def test_with_no_worker_the_operation_is_not_executed_and_nothing_is_queue
         "no registered worker serves fixture-editor/play_scenario",
         "task-7",
     )
+    # #3045: from the route's structured refusal, never from its words.
+    assert result.unavailable
     assert [call[:3] for call in recording.calls] == [("POST", "/api/v1/remote-operations", 409)]
     assert await world.registry.claim(session.session_id) is None
 
@@ -316,7 +318,9 @@ async def test_an_operation_nobody_claims_within_the_wait_is_stopped_and_reads_n
 
     result = await port.run_operation(world.current(request(dispatch_id="task-7")))
 
-    assert (result.status, result.dispatch_id) == (OperationStatus.NOT_EXECUTED, "task-7")
+    assert (result.status, result.dispatch_id, result.unavailable) == (
+        OperationStatus.NOT_EXECUTED, "task-7", True
+    )  # fmt: skip
     assert result.reason == (
         f"{leasing.REASON_CANCELLED_UNCLAIMED} (its requester asked it to stop: no result "
         "within 30 s of asking)"

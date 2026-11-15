@@ -181,7 +181,7 @@ phases are in its own ledger.
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
-| A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3045 |
+| A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **shipped** | 2.8 (PRs #3086 and #3087, closing #3045; R5.10 and R5.12) |
 | The worker as a service on the MacBook: launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
 | The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **shipped** | 2.8 (PR #3059, closing #3047) |
 | Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3048 |
@@ -607,6 +607,31 @@ Campaign acceptance's runner side is the Spark lane's (#3053).
 **No proposal can carry a scenario criterion yet:** no skillset ships a vocabulary, so every one is refused as
 unverifiable until those land.
 
+## R5.10 An increment blocked only for want of a worker is retried, never repaired: #3045, part A as built (2026-11-15)
+
+**What changed.** A delivery that can't read a scenario because no worker took its operation used to read
+`blocked_unverified` like any other unread gap. The Campaign then repaired it (SIP-0109 §10 row 8), rebuilding a
+candidate nothing had faulted and spending the increment's repairs on an outage. Now:
+
+| Point | As built | Why |
+|---|---|---|
+| **Availability is a fact on the result, never prose.** `RemoteOperationResult.unavailable` means no worker took the operation. It is set only by a requester, from three structured facts: the registry's `NoWorker` (`RegistryRemoteExecution`); the route's `ERROR_NO_WORKER` (`RuntimeApiRemoteExecution`); and the requester's own wait, when its cancel settled an operation no worker had claimed (`waiting.await_result`). It is never set on a result a worker returned | the decision a hearing takes on it must not rest on a reason's words |
+| **Left out on purpose: a worker that claimed the operation and went silent.** Its lease lapsing reads `interrupted`, whether it ran is unknown, and it isn't flagged. So it still goes to repair. It is an outage too, but a different fact, and the conservative choice is to leave it with the work's routing | the MacBook lane's review of the plan, point 2 |
+| **Every reading's document carries the key** (`records_document`), so "not flagged" is read, not inferred. A reading kept before the key reads as not flagged (`reading_unavailable`), and keeps the routing it had then | the MacBook lane's review, point 1 |
+| **Delivery records one fact for the hearing.** A scenario's `Discrimination` or `FrozenResult` is flagged when it is unread only because a side's reading was taken by no worker. The evaluation's `blocked_only_by_availability` is true when it is `blocked_unverified` and every gap that blocks it is so flagged. A missing bundle, a route not rendered, or a runner with no test-id reader beside the outage leaves it false. A failure beside the outage rejects, as before | the shortcut is taken only when building again can change nothing |
+| **The hearing retries it** (`EndedCycle.blocked_only_by_availability`, read from the stored evaluation; absent reads false). It takes rows 10 and 11, the rows of a run that failed outside the work: a retry while `max_retry_cycles_per_increment` lasts, then escalation. The retries are counted on the increment across its launches (`derive_counters`), so nothing resets them | #3045's budget, persisted per logical increment. SIP-0109 §10's rows are unchanged; the input that reaches rows 10 and 11 is widened |
+| **At dispatch nothing changes.** #3036's `worker_unavailable` ends the run `infrastructure_failed`, which reads as the environment, so rows 10 and 11 already apply. So does the baseline step's blocked ending | |
+
+**The evidence.** `test_machinery_campaign`: a worker that is there at every launch and gone at every reading. The
+Campaign takes rows 5, 10 and 11, launches an increment and one retry, no repair, and escalates. Both evaluations
+read `blocked_only_by_availability`. Making the hearing ignore the flag, or the requester not set it, fails that
+test. The decisions on mixed gaps are `test_retry_for_want_of_a_worker`.
+
+**Who ruled it.** The shape was agreed with the MacBook lane on 2026-11-12 (relaunch only when every gap is
+availability, never read from prose). It was reviewed again on 2026-11-15, with the three points above.
+
+**What remained for #3045 (part B)** is R5.12.
+
 ## R5.11 The Studio first slice as built: the adapter's read side, and the isolation test (2026-11-14)
 
 The 2.8 plan §5 confirmed the first slice: read-only, on `z_tower-ascension` only, with nothing published, as an early
@@ -663,6 +688,37 @@ operations; the worker's configuration; and whether a non-empty `not_staged` blo
 
 **Who ruled.** The owner confirmed the slice (2026-11-11). Its as-built narrowing is the MacBook lane's, under the
 owner's "go with your recommendations" (2026-11-12).
+
+## R5.12 A launch refused only for want of a worker waits in `launch_blocked`: #3045, part B as built (2026-11-15)
+
+**What changed.** A Campaign's launch whose cycle the create path refused because no worker could run a tool its
+work requires escalated at once, like any other create refusal (SIP-0109 §24e item 5, #1971). That refusal is the
+one a create can outgrow: the MacBook sleeps, and wakes. Now it waits, as a busy box does, and escalates only at the
+policy's count:
+
+| Point | As built | Why |
+|---|---|---|
+| **The refusal is read from codes, never the message.** `PreflightRejectedError` carries its blocking findings' codes (`codes`). The launch reads a refusal as availability-only when every code is `skillset_availability` (`AVAILABILITY_REFUSAL`, single-sourced beside the finding kinds in `skillset_coverage`). It raises `LaunchUnavailable`, a `LaunchRefused`. Any other code beside it keeps the immediate escalation | the same rule as R5.10: the decision rests on a structured fact |
+| **The campaign waits in `launch_blocked`** with the intent pending. The row is the box's row shape, with refusal `worker_unavailable` (`LaunchRefusal.WORKER_UNAVAILABLE`), and its reason names the create path and the tool. The sweep's due attempt unblocks it, and the drain creates the cycle again, which reads the worker afresh through the create path's own availability check | no second reading of the registry beside the one creation already makes |
+| **Its attempts are counted on the launch, not the episode** (`launch_blocking.unavailable_launch`). Each attempt unblocks the campaign before the create that refuses it, which ends the box's episode, so an episode's count would restart at every attempt and never escalate. So every such row for the launch since the owner last resumed counts. The attempt that reaches `launch_blocked_attempts` escalates, and the owner's resume starts the count afresh | the issue's own warning: a count an unblock resets never escalates |
+
+The plan said each retry would re-read the worker through `no_worker_for`. As built, the create path's availability
+check (#3036) is that read, made at each attempt's create, so the launcher reads no registry of its own.
+
+**The evidence.** `test_machinery_campaign`, entered at the calibration record and the runtime's sweep
+(`CampaignLaunchService.retry_blocked`):
+- **A worker offline throughout:** attempts 1 and 2 wait in `launch_blocked`, attempt 3 escalates, and no cycle is
+  created, nothing is dispatched, and no `launch_refused` row is written. After the owner's resume, the next attempt
+  is 1 again.
+- **A worker that comes back during the wait:** the next attempt creates the cycle, and the increment is accepted.
+
+**These mutations fail those tests:** the launch escalating at once; the attempts counted per episode; the resume
+not resetting the count.
+
+**#3045 closes with this part.** Its done-when: a worker offline at launch waits in `launch_blocked` and escalates
+with no increment spent (here). An operation no worker claims within its limit ends `not_executed`, and one
+interrupted after play began ends `interrupted` (R5.6, with R5.10's flag). A worker there at every launch and gone
+at every reading spends the retries and escalates (R5.10). No other gap is relaunched by this rule (R5.10).
 
 ---
 

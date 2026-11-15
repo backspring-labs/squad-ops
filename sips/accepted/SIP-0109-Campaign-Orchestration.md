@@ -7061,3 +7061,34 @@ The soak's pre-registration places its restart where no task type straddles it
 
 **Who ruled.** The owner adopted the 2.7 plan's soak contract (§4.4) on 2026-11-08 and delegated the 2.7 judgement
 calls the same day. The field, its launch-order key and its refusal are the implementer's.
+
+### 24du. An increment blocked only for want of a worker reaches rows 10 and 11, not row 8 (2026-11-15, §10; #3045, part A; SIP-0117 R5.10)
+
+**What changed.** §10's rows 10 and 11 retry, then escalate, a cycle that failed outside the work. Their input is
+widened: an increment whose evaluation is `blocked_unverified` **only** because no worker took its scenarios'
+operations (`blocked_only_by_availability`, delivery's own structured fact) takes them too, and never row 8.
+Row 8 would repair a candidate nothing faulted and spend the increment's repairs on an outage. The rows, their
+actions and their counters are unchanged. The retries are counted on the increment across its launches, so a worker
+that is there at every launch and gone at every reading spends them and escalates. Any other gap beside the outage
+keeps row 8, and a failure beside it keeps the rejection's rows.
+
+**The evidence.** SIP-0117 R5.10 holds the table: how availability is set (structured, never prose), what is left out
+on purpose (a worker that claimed and went silent), and the tests. A live-shaped run in `test_machinery_campaign`
+decides rows 5, 10 and 11.
+
+**Who ruled.** #3045 was placed by the 2.8 plan, which the owner adopted on 2026-11-11. The shape was agreed with the
+MacBook lane on 2026-11-12 and reviewed by it again on 2026-11-15.
+
+### 24dv. A launch refused only for want of a worker waits in `launch_blocked` (2026-11-15, §9.3, §24e item 5; #3045, part B; SIP-0117 R5.12)
+
+**What changed.** §24e item 5 (#1971) escalates a launch the cycle-create path refuses at once, since creating the
+same intent again is refused the same way. One refusal is not like that: no worker available for a tool the work
+requires. When every blocking finding of the create's preflight is `skillset_availability`, read from the
+refusal's codes, the campaign waits in `launch_blocked` as §9.3 waits out a busy box. It writes the box's row shape
+with refusal `worker_unavailable`, and each due attempt unblocks it for the drain to create the cycle again. Its
+attempts are counted on the launch since the owner last resumed, not on the episode. Each attempt's unblock ends an
+episode, so an episode's count would never escalate. It escalates at `launch_blocked_attempts`. Every other create
+refusal still escalates at once.
+
+**The evidence and who ruled.** SIP-0117 R5.12. #3045 was placed by the 2.8 plan, adopted by the owner on
+2026-11-11, and its shape was agreed with the MacBook lane on 2026-11-12 and 2026-11-15.

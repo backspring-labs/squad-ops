@@ -46,6 +46,7 @@ from squadops.campaigns.launcher import (
     BoxVerdict,
     CampaignLauncher,
     LaunchRefused,
+    LaunchUnavailable,
     unblocked,
 )
 from squadops.campaigns.models import (
@@ -66,6 +67,7 @@ from squadops.cycles.models import (
     RunInitiator,
     RunStatus,
 )
+from squadops.cycles.skillset_coverage import AVAILABILITY_REFUSAL
 from squadops.events.types import EventType
 from squadops.memory.cycle_bindings import instructions_bound_for, missing_from, names_current
 from squadops.memory.lessons import UnitKind
@@ -207,6 +209,11 @@ class CampaignLaunchService:
             status, detail = cycle_error_envelope(e)
             if status >= 500:
                 raise
+            # #3045: refused only because no worker is available now: the same intent can be
+            # created once one is back, so the campaign waits for it instead of escalating.
+            codes = getattr(e, "codes", ())
+            if codes and all(code == AVAILABILITY_REFUSAL for code in codes):
+                raise LaunchUnavailable(f"{detail['error']['code']}: {e}") from e
             raise LaunchRefused(f"{detail['error']['code']}: {e}") from e
         # #2178: the launch's task instructions are its cycle's admitted inputs, stored before
         # the launcher persists the cycle, so its first run reads them. A launch repeated by its

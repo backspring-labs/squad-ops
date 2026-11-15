@@ -53,6 +53,15 @@ AUTHORIZATION = "authorization"
 AVAILABILITY = "availability"
 
 
+def finding_code(kind: str) -> str:
+    """The create preflight's code for a finding of ``kind`` (``skillset_<kind>``)."""
+    return f"skillset_{kind}"
+
+
+#: #3045: the code of a launch refused only for availability, which a Campaign waits out.
+AVAILABILITY_REFUSAL = finding_code(AVAILABILITY)
+
+
 @dataclass(frozen=True)
 class CoverageFinding:
     kind: str

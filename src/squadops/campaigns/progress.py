@@ -474,6 +474,17 @@ def increment_verdict(
         return RunVerdict.BLOCKED_UNVERIFIED
 
 
+def blocked_only_by_availability(evaluation: dict | None) -> bool:
+    """Whether an increment's evaluation was blocked only by scenarios no worker took (#3045),
+    as delivery recorded it. An evaluation written before the field carries no key and reads as
+    ``False``: it keeps the routing it had then, a repair (row 8)."""
+    return bool(
+        evaluation
+        and evaluation.get("verdict") == str(RunVerdict.BLOCKED_UNVERIFIED)
+        and evaluation.get("blocked_only_by_availability") is True
+    )
+
+
 def already_met(evaluation: dict | None) -> tuple[str, ...]:
     """The new criteria an increment's evaluation found the accepted application already meets
     (#2315): each unmet only because its test passes on the accepted tree (``no_baseline_failure``,
@@ -791,6 +802,7 @@ class CampaignProgress:
             ending,
             increment_verdict(kind, ending, evaluation),
             rejected_only_as_already_met(evaluation),
+            blocked_only_by_availability(evaluation),
         )
         verdict = cycle_verdict(latest, ended)
 

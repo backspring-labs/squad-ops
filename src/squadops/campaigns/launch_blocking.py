@@ -19,13 +19,19 @@ again, so there is no interval to wait out: the campaign escalates on the first 
 intent still pending. The owner fixes what the refusal names and resumes without an action, which
 returns the campaign to the state the launch was written from and re-attempts it; or aborts.
 Before #1971 such an intent stayed pending and every drain refused it again, logged and unasked.
+
+**One create refusal is waited out instead (#3045):** no worker available for a tool the work
+requires, every blocking finding ``skillset_availability``. A worker comes back, so the campaign waits
+in ``launch_blocked`` as for the box, and each due attempt's create reads it afresh. Its attempts are
+counted on the launch since the owner last resumed (``unavailable_launch``), because each attempt's
+unblock ends the box's episode.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from squadops.campaigns.box import LaunchVerdict
+from squadops.campaigns.box import LaunchRefusal, LaunchVerdict
 from squadops.campaigns.lifecycle import LAUNCHER_ROLE
 from squadops.campaigns.models import (
     Campaign,
@@ -72,6 +78,7 @@ def _blocked(
     attempt: int,
     actor: str,
     key_seq: int,
+    refused_by: str = "the box",
 ) -> CampaignTransition:
     escalates = attempt >= campaign.policy.launch_blocked_attempts
     return CampaignTransition(
@@ -79,7 +86,7 @@ def _blocked(
         actor=actor,
         actor_role=LAUNCHER_ROLE,
         reason=(
-            f"the box refused launch {launch_id} ({verdict.refusal}), attempt {attempt} of "
+            f"{refused_by} refused launch {launch_id} ({verdict.refusal}), attempt {attempt} of "
             f"{campaign.policy.launch_blocked_attempts}"
             + ("; escalated to the owner" if escalates else "")
         ),
@@ -163,6 +170,51 @@ def blocked_launch_step(
 #: A refusal recorded on its row is cut to this many characters: a preflight joins every
 #: blocking finding, and the row only has to say what to fix.
 REFUSAL_LIMIT = 500
+
+
+def unavailable_launch(
+    campaign: Campaign,
+    log: list[ControlLogEntry],
+    intent: LaunchIntent,
+    refusal: str,
+    *,
+    actor: str,
+) -> CampaignTransition:
+    """#3045: the cycle-create path refused ``intent``'s cycle only because no worker is
+    available for a tool its work requires. The campaign waits in ``launch_blocked``, as for a
+    box that refuses, and the sweep's due attempt unblocks it for the next drain to create the
+    cycle again, which reads the worker afresh.
+
+    **Its attempts are counted on the launch, not the episode.** Each attempt unblocks the
+    campaign before the create that refuses it, which ends the box's episode, so an episode's
+    count would restart at every attempt and never escalate. So every such row for this launch
+    since the owner last resumed the campaign counts, and the attempt that reaches the policy's
+    ``launch_blocked_attempts`` escalates. The owner's resume starts the count afresh, as it
+    does a box's."""
+    applied = _applied(log)
+    since = next(
+        (i for i in range(len(applied) - 1, -1, -1)
+         if applied[i].operation is ControlOperation.RESUME),
+        -1,
+    )  # fmt: skip
+    earlier = sum(
+        1
+        for e in applied[since + 1 :]
+        if e.operation is ControlOperation.LAUNCH_BLOCKED
+        and e.target == intent.launch_id
+        and e.binding.get("refusal") == str(LaunchRefusal.WORKER_UNAVAILABLE)
+    )
+    seq = sum(1 for e in applied if e.operation is ControlOperation.LAUNCH_BLOCKED) + 1
+    return _blocked(
+        campaign,
+        LaunchVerdict(LaunchRefusal.WORKER_UNAVAILABLE, (refusal[:REFUSAL_LIMIT],)),
+        launch_id=intent.launch_id,
+        blocked_from=campaign.state.value,
+        attempt=earlier + 1,
+        actor=actor,
+        key_seq=seq,
+        refused_by="the cycle-create path",
+    )
 
 
 def refused_launch(

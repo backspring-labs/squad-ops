@@ -25,11 +25,11 @@ from squadops.campaigns.campaign_branch import head
 from squadops.campaigns.gate import ruling_transition
 from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
 from squadops.campaigns.launch_requests import start_transition
-from squadops.campaigns.models import CampaignState
+from squadops.campaigns.models import CampaignState, ControlOperation
 from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.models import GateDecision, GateDecisionValue
 from squadops.llm.script import script_version
-from tests.unit.campaigns.builders import campaign, policy
+from tests.unit.campaigns.builders import campaign, move, policy
 from tests.unit.campaigns.machinery import PROJECT, answer, compose, emitted
 from tests.unit.remote_execution.scenario_fixture import DOOR_OPENS, OPEN, SHUT
 
@@ -244,7 +244,7 @@ def _pinned(scripts_dir) -> list[str]:
     return pinned
 
 
-async def _start(world) -> None:
+async def _start(world, *, increments: int = 2, **policy_overrides) -> None:
     draft = campaign(
         CID,
         project_id=PROJECT,
@@ -253,12 +253,14 @@ async def _start(world) -> None:
             statement="the door's world grows by scenario",
             allowed_scope=SCOPE,
             requirements="repo:file:README.md@current",
+            target_accepted_increments=increments,
         ),
         policy=policy(
             proposal_profile="campaign-increment-source",
             squad_profile="machinery",
             max_repair_cycles_per_increment=1,
             llm_scripts=_pinned(world.scripts),
+            **policy_overrides,
         ),
     )
     await world.campaigns.create_campaign(
@@ -430,18 +432,173 @@ async def test_a_campaign_refuses_a_candidate_that_breaks_an_earlier_scenario_an
     assert json.loads(world) == LIT_OPEN
 
 
-async def test_a_campaign_whose_worker_is_offline_launches_no_development(machinery):
-    """No worker serving when the Campaign starts. Bug caught: an increment whose work requires
-    a worker tool created anyway, so its squad's work is spent with nothing to judge it."""
-    await _start(machinery)
+def _waits(log) -> list[tuple[int, str]]:
+    """Each launch attempt refused for want of a worker: its number and where it left the
+    campaign."""
+    return [
+        (e.binding["attempt"], e.next_state.value)
+        for e in log
+        if e.operation.value == "launch_blocked" and e.binding["refusal"] == "worker_unavailable"
+    ]
+
+
+async def test_a_campaign_whose_worker_stays_offline_waits_then_escalates_creating_nothing(
+    machinery,
+):
+    """#3045: no worker serving when the Campaign starts, nor at any attempt after. Bugs caught:
+    an increment whose work requires a worker tool created anyway; the outage escalated at once,
+    as if no wait could fix it; or the attempts restarted by each unblock, so it never
+    escalates."""
+    await _start(machinery, launch_blocked_attempts=3, launch_blocked_interval_s=1)
+    assert (await machinery.campaigns.get_campaign(CID)).state is CampaignState.LAUNCH_BLOCKED
+
+    # The sweep's due attempts, a second apart (the policy's least interval): each unblocks, and
+    # the drain's create refuses it again.
+    for _ in range(2):
+        await asyncio.sleep(1.05)
+        await machinery.launch.retry_blocked()
 
     current = await machinery.campaigns.get_campaign(CID)
     assert current.state is CampaignState.ESCALATED
-    [refused] = [
-        e
-        for e in await machinery.campaigns.control_log(CID)
-        if e.operation.value == "launch_refused"
-    ]
-    assert "fixture/declared_scenario" in refused.reason
+    log = await machinery.campaigns.control_log(CID)
+    assert _waits(log) == [(1, "launch_blocked"), (2, "launch_blocked"), (3, "escalated")]
+    [last] = [e for e in log if e.operation.value == "launch_blocked"][-1:]
+    assert "fixture/declared_scenario" in last.binding["reasons"][0]
+    assert not [e for e in log if e.operation.value == "launch_refused"]
     assert await machinery.registry.list_cycles(PROJECT) == []
     assert machinery.dispatched() == []
+
+    # The owner's resume returns it to the wait, its attempts counted afresh (§9.3).
+    await machinery.campaigns.transition(
+        CID,
+        move(
+            CampaignState.LAUNCH_BLOCKED, "owner-resume", operation=ControlOperation.RESUME,
+            actor="owner", actor_role="admin", expected_state=CampaignState.ESCALATED,
+        ),
+    )  # fmt: skip
+    await machinery.launch.retry_blocked()
+    log = await machinery.campaigns.control_log(CID)
+    assert _waits(log)[-1] == (1, "launch_blocked")
+
+
+async def test_a_launch_refused_for_a_worker_and_anything_else_escalates_at_once(machinery):
+    """#3045: no worker, and no authority over the tool either, so creation refuses on both
+    codes. Bug caught: the wait keyed on any availability finding rather than every one, so a
+    refusal no worker's return can fix waits out the policy's attempts before the owner hears."""
+    machinery.launch._creation = dataclasses.replace(
+        machinery.launch._creation, tool_authorities={}
+    )
+    await _start(machinery, launch_blocked_interval_s=1)
+
+    current = await machinery.campaigns.get_campaign(CID)
+    assert current.state is CampaignState.ESCALATED
+    log = await machinery.campaigns.control_log(CID)
+    assert _waits(log) == []
+    [refused] = [e for e in log if e.operation.value == "launch_refused"]
+    # Both findings named on the row: the authority the deployment lacks, and the worker.
+    assert "is refused: no authority governs provider fixture" in refused.reason
+    assert "has no provider available" in refused.reason
+    assert await machinery.registry.list_cycles(PROJECT) == []
+
+
+async def test_a_campaign_launches_when_its_worker_comes_back_during_the_wait(machinery):
+    """#3045: the worker comes back while the Campaign waits. Bug caught: the wait read as the
+    box's, so the due attempt unblocks and nothing creates the cycle again."""
+    await _start(machinery, increments=1, launch_blocked_interval_s=1)
+    assert (await machinery.campaigns.get_campaign(CID)).state is CampaignState.LAUNCH_BLOCKED
+
+    async with machinery.worker():
+        await asyncio.sleep(1.05)
+        await machinery.launch.retry_blocked()
+        await _until_settled(machinery)
+
+    current = await machinery.campaigns.get_campaign(CID)
+    assert current.state is CampaignState.COMPLETED
+    log = await machinery.campaigns.control_log(CID)
+    assert _waits(log) == [(1, "launch_blocked")]
+    assert _rows(log) == ["row 5", "row 3"]
+    [cycle] = await machinery.registry.list_cycles(PROJECT)
+    assert (await _evaluation(machinery, cycle.cycle_id))["verdict"] == "accepted"
+
+
+class _Comes:
+    """A worker there at every launch and gone at every reading (#3045): it starts as each
+    launch is drained, so creation finds it, and leaves the moment qa's operation reports, before
+    the runtime reads the reply, so delivery's reading finds no one to take it."""
+
+    def __init__(self, world) -> None:
+        self.world = world
+        self.serving = None
+        self.arrivals = 0
+        launch = world.launch.drain
+
+        async def drain():
+            await self.arrive()
+            return await launch()
+
+        world.launch.drain = drain
+        world.broker.on_reply = self.reply
+
+    async def arrive(self) -> None:
+        if self.serving is None:
+            self.arrivals += 1
+            self.serving = self.world.worker(f"spark-worker-{self.arrivals}")
+            await self.serving.__aenter__()
+
+    async def leave(self) -> None:
+        if self.serving is not None:
+            serving, self.serving = self.serving, None
+            await serving.__aexit__(None, None, None)
+
+    async def reply(self, result: dict) -> None:
+        sent = [
+            m["payload"]["task_id"]
+            for q, m in self.world.broker.published
+            if q.endswith("_comms") and m["payload"]["task_type"] == "qa.run_remote_operation"
+        ]
+        if result["task_id"] in sent and result["status"] == "SUCCEEDED":
+            await self.leave()
+
+
+#: An increment's retry: framed and built again on its approved request, on the same answers.
+RETRY_SCRIPTS = {
+    "machinery-inc1": SCRIPTS["machinery-inc1"],
+    "machinery-retry": [
+        *_framing("open the door from its panel"),
+        *_implementation(OPEN, "Workspace.Door"),
+    ],
+}
+
+
+async def test_a_worker_there_at_every_launch_and_gone_at_every_reading_spends_the_retries(
+    machinery, monkeypatch
+):
+    """#3045's done-when: the increment is retried for want of a worker, never repaired, within
+    its retries, and the owner hears of it when they are spent. Bugs caught: the outage read as
+    the work's failure (a repair cycle launched); the retries reset by each launch, so it
+    relaunches for ever; or the retry launched without the scenario's reading flagged."""
+    monkeypatch.setitem(globals(), "SCRIPTS", RETRY_SCRIPTS)
+    comes = _Comes(machinery)
+    try:
+        await comes.arrive()
+        await _start(machinery)
+        await _until_settled(machinery)
+    finally:
+        await comes.leave()
+
+    current = await machinery.campaigns.get_campaign(CID)
+    assert current.state is CampaignState.ESCALATED
+    log = await machinery.campaigns.control_log(CID)
+    # The record proposes (5); the increment, blocked for want of a worker, is retried (10);
+    # the retry, blocked the same way, escalates with its retries spent (11).
+    assert _rows(log) == ["row 5", "row 10", "row 11"]
+    cycles = sorted(await machinery.registry.list_cycles(PROJECT), key=lambda c: c.created_at)
+    assert [c.kind for c in cycles] == ["increment", "retry"]
+    for cycle in cycles:
+        evaluation = await _evaluation(machinery, cycle.cycle_id)
+        assert evaluation["verdict"] == "blocked_unverified"
+        assert evaluation["blocked_only_by_availability"] is True
+        [judged] = evaluation["discriminations"]
+        assert (judged["criterion_id"], judged["reason"], judged["unavailable"]) == (
+            "C-2", "not_run", True
+        )  # fmt: skip
