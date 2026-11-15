@@ -57,7 +57,11 @@ class _Deploys:
 
 class _World:
     def __init__(
-        self, campaigns: MemoryCampaignRegistry | None = None, project_registry=None
+        self,
+        campaigns: MemoryCampaignRegistry | None = None,
+        project_registry=None,
+        squad_profiles=None,
+        artifact_vault=None,
     ) -> None:
         self.campaigns = campaigns or MemoryCampaignRegistry()
         self.cycles = MemoryCycleRegistry()
@@ -68,9 +72,11 @@ class _World:
             campaigns=self.campaigns,
             creation=CreationPorts(
                 project_registry=self.projects,
-                squad_profile=create_squad_profile_port("config"),
+                # One squad port too, so a start's preflight reads the squad its launch is built on.
+                squad_profile=squad_profiles or create_squad_profile_port("config"),
                 cycle_registry=self.cycles,
                 deploy_registry=_Deploys(),
+                artifact_vault=artifact_vault,
             ),
             flow_executor=self.executor,
             event_bus=MagicMock(),

@@ -138,7 +138,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 4, part 1: tools, checked at creation: the authorization outcome against each provider's registered authority (`ToolAuthorityPort`), and the availability outcome against the worker registry and the sandbox client (§8, §9, §17h) | **shipped** | 2.8 (PR #3077; #3036 tracks part 2) |
 | Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **shipped** | 2.8 (PR #3078, closing #3036) |
 | Phase 5, part 1: the Campaign's pinned equipment, a changed one refused at launch with its parts named, and the owner's recorded transition (§10, §17l) | **shipped** | 2.8 (PR #3095; #3037 tracks part 2) |
-| Phase 5, part 2: size preflight counts the skills a Campaign's start would assign (§17f point 6, §17l) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
+| Phase 5, part 2: size preflight counts the skills a Campaign's start would assign (§17f point 6, §17l, §17m) | **shipped** | 2.8 (PR #PRNUM, closing #3037) |
 | Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
 | Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 
@@ -1138,12 +1138,56 @@ untouched. The three operations join the control log's CHECK list (`2201_campaig
 
 The first three are entered through the machinery Campaign, and the last at the route.
 
-**Part 2, placed (#3037): size preflight counts skills** (§17f point 6). It runs at the Campaign's start, before the
+**Part 2, placed (#3037), built as §17m: size preflight counts skills** (§17f point 6). It runs at the Campaign's start, before the
 first launch has pinned anything. Counting the skills a start would assign needs the same record built at preflight
 from the configuration the first launch will resolve. That is part 2's design.
 
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on
 #3037. It changed from "at start" to "at the first launch" for the reason above.
+
+### 17m. Phase 5, part 2 as built: the size preflight counts each task's skills (2026-11-15)
+
+**One function names the development profile a launch pins** (`cycles/development_pin.py`,
+`development_profile_pin`). It was `_pin_development_profile` inside `prepare_cycle`. The size preflight, which runs
+at a Campaign's start, read the first increment's configuration without it. A record built from that configuration
+could hold another profile's requirements than the first launch's, and the preflight would count the wrong skills with
+nothing to say so. Both now call it, over the derived profile at the record's pin (`derived_profile_at_pin`, moved
+beside it).
+
+**The preflight builds the first launch's record** the way `prepare_cycle` does: `skillset_record_and_content` over
+the packaged catalog, the Campaign's squad and its snapshot hash (`resolve_snapshot`, as the launch resolves it), and
+the pinned configuration.
+
+**Each binding's envelope carries the skills dispatch would hand it.** `skill_supply.handed_skills` is the call
+`SkillSupply.hand` makes, factored out so that both make it. It runs `skills_for_dispatch` plus the check that only an
+authoring seam is offered skills. A task is measured with its own task type's skills: no planner names a contract
+today (§17k). The envelope names the binding's agent, since the record's offered rows are read by agent.
+
+**The measurement and the refusal:**
+- a binding's prompt is its floor with its skills;
+- `skills_tokens` is that floor less the floor without them;
+- a refusal (`PROMPT_OVER_WINDOW`) names each binding's skills and their share, and adds "or lighter skills" to what
+  closes it;
+- a binding handed no skill is documented with the same six keys as before. So a Campaign whose work requires no
+  skillset, which is every Campaign today, measures as it did.
+
+**Refused as `SIZE_UNMEASURED`, naming why:**
+- a record that can't be built: a squad that doesn't cover its work's requirements, or a skill the catalog holds no
+  text for;
+- a skill that can't be read for a task;
+- a development profile the request names that contradicts the product's runners, which the launch would refuse.
+
+None is read as a task handed no skills.
+
+**§14's proof** (`tests/unit/api/test_campaign_calibration_record.py`, entered at the start route):
+- a `qa.test` handed a skill of about 60,000 tokens on the 65,536-token window is refused, naming the skill and its
+  share, where without it the task fits;
+- an uncovered requirement refuses the start unmeasured;
+- with Tally's derived profile naming vitest, the launch pins `node_vitest`, which a cycle with no pin doesn't run. The
+  record the preflight counted from is the record the launched cycle was created with, digest for digest.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on #3037
+(comment 6891306034), and is built as posted. #3037 closes with this part.
 
 ## Appendix A. A paper compatibility matrix
 

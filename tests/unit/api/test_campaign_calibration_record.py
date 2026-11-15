@@ -208,11 +208,15 @@ async def _world(
     """``repository`` is the managed clone the start's size preflight reads (#2889): the fixture's
     product by default. A sample application's world is given none, so a start that reached the
     preflight for it would fail."""
-    world = _World(campaigns, project_registry=projects)
+    squad_profiles = squad_profiles or create_squad_profile_port("config")
+    vault = FilesystemArtifactVault(tmp_path / "vault")
+    world = _World(
+        campaigns, project_registry=projects, squad_profiles=squad_profiles, artifact_vault=vault
+    )
     world.progress = _progress(world, tmp_path / "vault", branch)
     world.client.app.state.campaign_progress = world.progress
-    world.client.app.state.artifact_vault = FilesystemArtifactVault(tmp_path / "vault")
-    world.client.app.state.squad_profile = squad_profiles or create_squad_profile_port("config")
+    world.client.app.state.artifact_vault = vault
+    world.client.app.state.squad_profile = squad_profiles
     repository_backed = isinstance(world.projects, _Projects)
     if repository_backed:
         world.client.app.state.source_repository = repository or _Clone(product_files())
@@ -238,19 +242,9 @@ async def _world(
     return world
 
 
-async def test_a_start_writes_the_record_and_row_5_launches_a_proposal_on_the_branch(tmp_path):
-    """§24bv point 1, the wiring: the start route over Tally with its baseline really captured.
-    Bugs caught: a repository-backed start that launches a calibration cycle (IR-2's, which fails
-    at provisioning for want of a plan); a record that names anything but the capture's commit,
-    revision, checks, disclosed gaps and the commit's own tree; an accepted tree that names a cycle,
-    or none; a campaign branch (§24bv point 2) not started at the record's commit, so the first
-    increment's capture has no head to follow; or a record never decided, so the campaign sits
-    calibrating with nothing to end it.
-    §24bv point 5: row 5's proposal launches, on the campaign branch, through the launcher's
-    drain and ``prepare_cycle``. Bugs caught: the record's proposal escalated as unbuilt; its block
-    carrying a manifest or a vault cycle a repository-backed tree has none of, or no basis, so
-    every increment seam reads it as no increment; its tree not the record's; its requirements
-    source dropped; its cycle not pinned at the head."""
+async def _captured(tmp_path):
+    """Tally in a real repository with its baseline really captured: the repository, the registry
+    holding what the capture recorded, and the managed clone."""
     repo = build_repository(tmp_path / "sources" / "tally")
     projects = _Projects(
         _tally(str(repo.path)), parse_configuration(recorded("development_configuration", "valid"))
@@ -270,6 +264,23 @@ async def test_a_start_writes_the_record_and_row_5_launches_a_proposal_on_the_br
         actor="owner",
         idempotency_key="b-1",
     )
+    return repo, projects, clones
+
+
+async def test_a_start_writes_the_record_and_row_5_launches_a_proposal_on_the_branch(tmp_path):
+    """§24bv point 1, the wiring: the start route over Tally with its baseline really captured.
+    Bugs caught: a repository-backed start that launches a calibration cycle (IR-2's, which fails
+    at provisioning for want of a plan); a record that names anything but the capture's commit,
+    revision, checks, disclosed gaps and the commit's own tree; an accepted tree that names a cycle,
+    or none; a campaign branch (§24bv point 2) not started at the record's commit, so the first
+    increment's capture has no head to follow; or a record never decided, so the campaign sits
+    calibrating with nothing to end it.
+    §24bv point 5: row 5's proposal launches, on the campaign branch, through the launcher's
+    drain and ``prepare_cycle``. Bugs caught: the record's proposal escalated as unbuilt; its block
+    carrying a manifest or a vault cycle a repository-backed tree has none of, or no basis, so
+    every increment seam reads it as no increment; its tree not the record's; its requirements
+    source dropped; its cycle not pinned at the head."""
+    repo, projects, clones = await _captured(tmp_path)
     world = await _world(
         projects,
         tmp_path,
@@ -660,6 +671,15 @@ async def test_a_task_that_cant_fit_on_the_product_is_a_blocking_gap_named_befor
         ["prompt_over_window"],
     )
     qa = over["qa.test"]
+    # SIP-0116 §17m: work that requires no skillset hands no skill, and reads as it did before.
+    assert set(qa) == {
+        "task_type",
+        "role",
+        "model",
+        "prompt_tokens",
+        "completion_reserve",
+        "window",
+    }
     assert (qa["role"], qa["model"], qa["window"]) == ("qa", "qwen3.8-27b-tf-nvfp4", 65_536)
     assert qa["prompt_tokens"] + qa["completion_reserve"] > 65_536
     assert qa["prompt_tokens"] > package_tokens  # the package, shown whole
@@ -684,6 +704,9 @@ class _Squads:
             for a in profile.agents
         ]
         return dataclasses.replace(profile, agents=type(profile.agents)(agents))
+
+    async def resolve_snapshot(self, profile_id):
+        return await self.get_profile(profile_id), "hash-of-the-changed-squad"
 
 
 @pytest.mark.parametrize(
@@ -739,3 +762,168 @@ async def test_a_size_nobody_could_measure_refuses_the_start(
     assert [e.operation for e in await world.campaigns.control_log(CID)] == [
         ControlOperation.CREATE
     ]
+
+
+# --- the skills each task is handed (#3037 part 2, SIP-0116 §17m) -------------------------------
+
+
+#: The skill the fixture's qa skillset loads for ``qa.test``: about ``tokens`` tokens of prose.
+def _skill(tokens: int) -> dict[str, str]:
+    line = "Write each spec as one assertion a reader can check against the product.\n"
+    return {"SKILL.md": "---\nname: test-writing\n---\n" + line * (tokens * 4 // len(line) + 1)}
+
+
+class _EquippedSquads:
+    """``full-38-tf`` with its qa agent carrying the fixture's qa skillset."""
+
+    async def get_profile(self, profile_id):
+        profile = await create_squad_profile_port("config").get_profile(profile_id)
+        agents = [
+            dataclasses.replace(a, skillsets=("fixture-qa",)) if a.agent_id == "eve" else a
+            for a in profile.agents
+        ]
+        return dataclasses.replace(profile, agents=type(profile.agents)(agents))
+
+    async def resolve_snapshot(self, profile_id):
+        return await self.get_profile(profile_id), f"hash-of-equipped-{profile_id}"
+
+
+def _equip(monkeypatch, profile: str, skill: dict[str, str]) -> None:
+    """Development profile ``profile`` requires the fixture's qa skillset for ``qa.test``, and the
+    deploy's catalog holds it with ``skill``. No registered profile requires a skillset yet, so
+    one is changed for the test, and the catalog is the fixture's at both the preflight and the
+    launch."""
+    from squadops.capabilities.capability_contracts import VerificationMode
+    from squadops.capabilities.skillsets import SkillsetCapability
+    from squadops.stacks import development_profiles
+    from squadops.stacks.requirements import (
+        ContractNeed,
+        PlatformTarget,
+        ResponsibilityRequirement,
+        SkillsetRequirement,
+    )
+    from tests.unit.cycles.skillset_fixture import skillset
+
+    requires = (
+        ResponsibilityRequirement(
+            "qa",
+            (
+                SkillsetRequirement(
+                    "fixture-qa", "", (ContractNeed("game.unit_tests", "headless"),)
+                ),
+            ),
+        ),
+    )
+    monkeypatch.setitem(
+        development_profiles.DEVELOPMENT_PROFILES,
+        profile,
+        dataclasses.replace(
+            development_profiles.DEVELOPMENT_PROFILES[profile],
+            platform=PlatformTarget("fixture", "local"),
+            requires=requires,
+        ),
+    )
+    catalog = {
+        "fixture-qa": skillset(
+            "fixture-qa",
+            "qa",
+            (
+                SkillsetCapability(
+                    "game.unit_tests", (VerificationMode.HEADLESS,), ("test-writing",)
+                ),
+            ),
+            {"test-writing": skill},
+        )
+    }
+    for module in ("squadops.execution.size_preflight", "squadops.api.routes.cycles.cycles"):
+        monkeypatch.setattr(f"{module}.packaged_skillsets", lambda: catalog)
+
+
+async def test_a_task_its_skills_push_over_the_window_is_refused_naming_them(tmp_path, monkeypatch):
+    """§17f point 6: a Campaign whose first launch hands ``qa.test`` a skill of about 60,000
+    tokens, on the 65,536-token window. Without the skill the task fits Tally; with it, it can't.
+    The start is refused as ``prompt_over_window`` naming the skill and its share of the prompt.
+    Bugs caught: a preflight that measures without the skills dispatch hands, so the Campaign
+    learns it at its first ``qa.test``; one that counts them and says nothing of them, so the
+    owner reads a product too large where the skill is; or a refusal that writes the start."""
+    _equip(monkeypatch, "python_cli", _skill(60_000))
+    world = await _world(
+        _recorded_projects(),
+        tmp_path,
+        squad_profile=_TF_SQUAD,
+        squad_profiles=_EquippedSquads(),
+    )
+
+    resp = world.start()
+
+    error = resp.json()["detail"]["error"]
+    over = {b["task_type"]: b for b in error["details"]["bindings"]}
+    qa = over["qa.test"]
+    assert (resp.status_code, error["details"]["gaps"]) == (409, ["prompt_over_window"])
+    assert qa["skills"] == ["fixture-qa/test-writing"]
+    assert qa["prompt_tokens"] + qa["completion_reserve"] > 65_536
+    assert qa["prompt_tokens"] - qa["skills_tokens"] + qa["completion_reserve"] <= 65_536
+    assert 60_000 <= qa["skills_tokens"] < qa["prompt_tokens"]
+    assert (
+        f"({qa['skills_tokens']} of them the skills it is handed: fixture-qa/test-writing)"
+        in error["message"]
+    )
+    assert "or lighter skills" in error["message"]
+    # Only qa.test is handed the skill: the developer's tasks still fit.
+    assert set(over) == {"qa.test", "qa.test_repair"}
+    assert [e.operation for e in await world.campaigns.control_log(CID)] == [
+        ControlOperation.CREATE
+    ]
+
+
+async def test_a_record_the_squad_cant_build_refuses_the_start_unmeasured(tmp_path, monkeypatch):
+    """A Campaign whose work requires a skillset its squad doesn't carry: the first launch's record
+    can't be built, so no task's skills can be counted. Refused as ``size_unmeasured``, naming the
+    uncovered requirement. Bug caught: the preflight measuring every task with no skills, the
+    reading a squad that carried them would never get."""
+    _equip(monkeypatch, "python_cli", _skill(10))
+    world = await _world(_recorded_projects(), tmp_path, squad_profile=_TF_SQUAD)
+
+    resp = world.start()
+
+    error = resp.json()["detail"]["error"]
+    assert (resp.status_code, error["details"]["cause"]) == (409, "size_unmeasured")
+    assert "can't build the skillset record" in error["message"]
+    assert "fixture-qa" in error["message"]
+
+
+async def test_the_preflight_counts_under_the_profile_the_first_launch_pins(
+    tmp_path, monkeypatch, caplog
+):
+    """The preflight and the first launch name the development profile through one call. Tally's
+    derived profile is changed to name vitest, so the launch pins ``node_vitest``, which isn't
+    the profile a cycle gets with none pinned; that profile requires the fixture's skillset. Entered
+    at the start route, which runs the preflight and launches the first cycle: the record the
+    preflight counted from is the record the launched cycle was created with, digest for digest.
+    Bugs caught: a preflight that reads the request's profile and not the pin, counting
+    ``python_cli``'s requirements (none) where the launch hands ``node_vitest``'s skills; or one
+    built over another squad, catalog or configuration than the launch's."""
+    _equip(monkeypatch, "node_vitest", _skill(10))
+    _repo, projects, clones = await _captured(tmp_path)
+    projects.profile = dataclasses.replace(
+        projects.profile,
+        runners=tuple(dataclasses.replace(r, runner="vitest") for r in projects.profile.runners),
+    )
+    world = await _world(
+        projects,
+        tmp_path,
+        branch=CampaignBranch(projects=projects, repository=clones),
+        repository=clones,
+        squad_profile=_TF_SQUAD,
+        squad_profiles=_EquippedSquads(),
+    )
+
+    with caplog.at_level("INFO", logger="squadops.execution.size_preflight"):
+        resp = world.start()
+
+    [counted] = [r.args for r in caplog.records if r.msg.startswith("size_preflight_equipment")]
+    [cycle] = await world.cycles.list_cycles(PROJECT)
+    assert resp.status_code == 200, resp.json()
+    assert cycle.execution_overrides["development_profile"] == "node_vitest"
+    assert counted[1:] == ("node_vitest", cycle.skillset_record["digest"])
+    assert cycle.skillset_record["content"]  # the launch was handed the skill the preflight counted

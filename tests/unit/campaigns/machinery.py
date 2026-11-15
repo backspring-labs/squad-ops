@@ -487,18 +487,21 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
     heard by ``CampaignProgress`` and each launch built by ``CampaignLaunchService`` through the
     cycle-create path."""
     from squadops.api.routes.cycles import cycles as create_route
+    from squadops.cycles import development_pin
+    from squadops.execution import size_preflight
     from squadops.stacks.development_profiles import ORIGIN_DERIVED, ProfileSelection
 
     catalog = _scenario_catalog()
     for module in (
         skillsets, product_acceptance, run_remote_operation, dispatched_flow_executor,
-        create_route,
+        create_route, size_preflight,
     ):  # fmt: skip
         monkeypatch.setattr(module, "packaged_skillsets", lambda: catalog)
     # The product's derived profile selects the fixture development profile, which no deployed
-    # registry holds (§14): a cycle created on it requires the fixture skillsets.
+    # registry holds (§14): a cycle created on it requires the fixture skillsets. The one call
+    # that names a launch's profile is patched, so a Campaign's size preflight reads it too.
     monkeypatch.setattr(
-        create_route,
+        development_pin,
         "select_development_profile",
         lambda runners, stack: ProfileSelection("fixture_stack", ORIGIN_DERIVED),
     )

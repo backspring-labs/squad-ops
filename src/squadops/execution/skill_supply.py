@@ -64,6 +64,25 @@ def skills_for_dispatch(
     )
 
 
+def handed_skills(
+    document: Mapping[str, Any], record: Mapping[str, Any], envelope: TaskEnvelope, *, of: str
+) -> tuple[LoadedSkill, ...]:
+    """The skills ``envelope``'s dispatch is handed (``skills_for_dispatch``), checked as every
+    dispatch checks them. A Campaign's size preflight counts them through this call too, so it
+    counts what dispatch would hand (SIP-0116 §17m). ``of`` names whose record it is.
+
+    Raises :class:`SkillsetContentError` for a record that offers skills to a step whose handler
+    has no place to show one: no handler but an authoring seam's does. Handing them would send
+    them nowhere, and the task would read as one that had them."""
+    skills = skills_for_dispatch(document, record, envelope)
+    if skills and authoring_seam_of(str(envelope.task_type)) is None:
+        raise SkillsetContentError(
+            f"{of}'s record offers {envelope.task_type} {len(skills)} skills, and that step's "
+            "handler shows a task none"
+        )
+    return skills
+
+
 class SkillSupply:
     """Hands each dispatch of a run its skills. One per executor, over the vault the cycles'
     copies are kept in."""
@@ -88,14 +107,7 @@ class SkillSupply:
         if record is not None:
             document = await self._document(cycle, record)
             if document is not None:
-                skills = skills_for_dispatch(document, record, held[0])
-        if skills and authoring_seam_of(str(held[0].task_type)) is None:
-            # No handler but an authoring seam's has a place for a skill. Handing these would
-            # send them nowhere, and the task would read as one that had them.
-            raise SkillsetContentError(
-                f"cycle {cycle.cycle_id}'s record offers {held[0].task_type} "
-                f"{len(skills)} skills, and that step's handler shows a task none"
-            )
+                skills = handed_skills(document, record, held[0], of=f"cycle {cycle.cycle_id}")
         for envelope in held:
             if skills:
                 envelope.inputs[SKILLS_INPUT] = skills_input(skills)
