@@ -47,10 +47,12 @@ squadops = "squadops.cli.main:app"
 # same guard test holds them equal). The images install the compiled locks; these are
 # the metadata view so `pip install squadops[api]` resolves the runtime API's imports.
 api = [
-  "fastapi>=0.104.1",
+  "fastapi>=0.104.1,<0.136",  # #3101: 0.136 stops flattening an included router in app.routes
+  "starlette<1.7",  # #3101: moves with FastAPI
   "uvicorn>=0.24.0",
   "python-multipart>=0.0.6",
-  "aio-pika>=9.3.1",
+  "aio-pika>=9.3.1,<10.1",  # #3101: 10.2 changes a returned publish
+  "aiormq<7.1",  # #3101: moves with aio-pika
   "asyncpg>=0.29.0",
   "redis>=5.0.0",
   "PyJWT[crypto]>=2.10",
@@ -60,7 +62,8 @@ api = [
   "opentelemetry-exporter-otlp-proto-grpc>=1.22.0",
 ]
 agent = [
-  "aio-pika>=9.3.1",
+  "aio-pika>=9.3.1,<10.1",  # #3101: 10.2 changes a returned publish
+  "aiormq<7.1",  # #3101: moves with aio-pika
   "redis>=5.0.0",
   "a2a-sdk[http-server]>=0.3.0",
   "uvicorn>=0.30.0",
@@ -68,7 +71,7 @@ agent = [
   "tree-sitter>=0.25,<0.26",  # #2814: 0.26.0 corrupts long files' trees
   "tree-sitter-javascript>=0.25",
   "tree-sitter-typescript>=0.23",
-  "ruff>=0.16",
+  "ruff>=0.16,<0.17",  # #3101: the evaluator image pins 0.16
   "opentelemetry-sdk>=1.22.0",
   "opentelemetry-exporter-otlp-proto-grpc>=1.22.0",
 ]

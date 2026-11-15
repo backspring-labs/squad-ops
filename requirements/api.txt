@@ -11,12 +11,14 @@
 -r base.txt
 
 # Web framework
-fastapi>=0.104.1
+fastapi>=0.104.1,<0.136
+starlette<1.7
 uvicorn>=0.24.0
 python-multipart>=0.0.6
 
 # Message queue
-aio-pika>=9.3.1
+aio-pika>=9.3.1,<10.1
+aiormq<7.1
 
 # Database
 asyncpg>=0.29.0

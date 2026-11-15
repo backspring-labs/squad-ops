@@ -26,7 +26,8 @@ psycopg-binary>=3.0.0  # Binary PostgreSQL adapter (includes libpq, no system de
 
 # Agent runtime dependencies (required for unit tests to import agent code)
 aiofiles>=23.0.0  # Async file I/O (used by base_agent)
-aio-pika>=9.3.0  # RabbitMQ async client
+aio-pika>=9.3.0,<10.1  # RabbitMQ async client; #3101: 10.2 changes a returned publish
+aiormq<7.1  # #3101: moves with aio-pika
 asyncpg>=0.29.0  # PostgreSQL async driver
 PyJWT[crypto]>=2.10  # JWT validation used by adapters/auth/keycloak (#191, #2073)
 tree-sitter>=0.25,<0.26  # the JSX structural resolver (SIP-0107 step 5); #2814: 0.26.0 corrupts long files' trees
@@ -42,7 +43,11 @@ tree-sitter-typescript>=0.23
 # tests that enumerated `app.routes` for an included router's paths, which 0.136 stopped
 # flattening. The console suite is green on 0.135.4 and on 0.141.1; `console-fastapi-next`
 # in CI holds it that way.
-fastapi>=0.104.0  # API framework
+# #3101 (2026-11-15): capped again, on our own readers this time. Our access-log quieting, the
+# worker-route wiring and the fill-slot router check enumerate app.routes for paths, which 0.136
+# stopped flattening (above). The cap holds until they read the new structure.
+fastapi>=0.104.0,<0.136  # API framework
+starlette<1.7  # #3101: moves with FastAPI
 python-multipart>=0.0.6  # Required by FastAPI for form/file uploads
 uvicorn>=0.24.0  # ASGI server
 aiohttp>=3.9.0  # HTTP client
@@ -91,7 +96,7 @@ pytest-benchmark>=4.0.0
 memory-profiler>=0.61.0
 
 # Code quality
-ruff>=0.1.0
+ruff>=0.1.0,<0.17  # #3101: the evaluator image pins 0.16, and test_evaluator_image holds them equal
 flake8>=6.0.0
 # Load-bearing, not a lint tool here: the `undefined_names` check (#689) runs
 # pyflakes in-process, so without it the whole typed-acceptance suite reports
