@@ -20,6 +20,12 @@ from squadops.memory.approval import (
     supplied_together,
 )
 from squadops.memory.lessons import ANY_STACK, pin
+from squadops.memory.observations import (
+    VOCABULARY_PROPOSAL,
+    Classification,
+    Observation,
+    ObservationSource,
+)
 from squadops.memory.recall import UnitKind
 from tests.unit.memory.test_lessons import T0, WHERE
 
@@ -27,6 +33,18 @@ pytestmark = [pytest.mark.domain_memory]
 
 OBS = ("proposal_ruling:cmp_c4b81554bd59:e14", "proposal_ruling:cmp_c4b81554bd59:e17")
 REPLAY = {"reference": "replay/2026-10-09/arm-a-vs-b", "result": "target absent 5/6 vs 1/6"}
+
+
+def _observed(source_id: str, *, run_id=None, task_id=None) -> Observation:
+    return Observation(
+        source=ObservationSource.PROPOSAL_RULING,
+        source_id=source_id,
+        project_id="group_run",
+        observed_at=T0,
+        classification=Classification(VOCABULARY_PROPOSAL, ("criteria_not_checkable",)),
+        run_id=run_id,
+        task_id=task_id,
+    )
 
 
 def _draft(target="criterion_already_satisfied", where=WHERE, revisions=(), now=T0, **kw):
@@ -41,6 +59,8 @@ def _draft(target="criterion_already_satisfied", where=WHERE, revisions=(), now=
         "cited_observations": OBS,
         "citable_observations": OBS,
         "revisions": revisions,
+        "observations": [_observed(o) for o in OBS],
+        "exposures": (),
         "now": now,
     }
     return draft_revision(**{**fields, **kw})

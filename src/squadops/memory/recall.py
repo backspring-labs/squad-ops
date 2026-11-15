@@ -51,3 +51,7 @@ class RecallQuery:
     #: (``<skillset>/<skill>``). Such a lesson isn't recalled for the task: the skill replaces it.
     #: Not part of a stored query; the exposure's omitted lessons name each one.
     superseded_by: Mapping[str, str] = field(default_factory=dict)
+    #: SIP-0116 §10a: each skill the task loads (``<skillset>/<skill>``) with its digest. A supplied
+    #: lesson learned under another digest of one of them is flagged for review. ``None`` on a query
+    #: recorded before the task's skills were; ``{}`` for a task that loads none.
+    loaded_skills: Mapping[str, str] | None = None

@@ -202,6 +202,20 @@ def superseded_by_skills(envelope: TaskEnvelope) -> dict[str, str]:
     return superseded
 
 
+def loaded_skills_of(envelope: TaskEnvelope) -> dict[str, str]:
+    """Each skill the task is handed, ``<skillset>/<skill>`` to its digest (SIP-0116 §10a). The
+    exposure records it, so a lesson drafted from this dispatch knows what it was learned under. A
+    handed skill always carries its digest (``SkillSupply.hand``); one without raises."""
+    loaded: dict[str, str] = {}
+    for skill in envelope.inputs.get(SKILLS_INPUT) or ():
+        name = f"{skill['skillset']}/{skill['skill']}"
+        digest = str(skill.get("digest") or "")
+        if not digest:
+            raise ValueError(f"the handed skill {name} carries no digest")
+        loaded[name] = digest
+    return loaded
+
+
 def request_for(
     envelope: TaskEnvelope,
     *,
@@ -231,6 +245,7 @@ def request_for(
             prompt_budget=prompt_budget(measured or envelope),
             stack_source=stack_source,
             superseded_by=superseded_by_skills(envelope),
+            loaded_skills=loaded_skills_of(envelope),
         ),
     )
 
@@ -251,6 +266,7 @@ def query_of(request: ContextRequest) -> RecallQuery:
         unit_id=task.snapshot_owner.unit_id,
         stack_source=task.stack_source,
         superseded_by=dict(task.superseded_by),
+        loaded_skills=dict(task.loaded_skills),
     )
 
 

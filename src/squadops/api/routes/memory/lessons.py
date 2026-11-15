@@ -89,7 +89,6 @@ def _error(status: int, code: str, message: str) -> HTTPException:
 
 
 def _store(request: Request):
-
     store = get_memory_store(request)
     if store is None:
         raise _error(
@@ -158,10 +157,15 @@ async def draft_lesson(
     owner approves it."""
     _actor(identity)
     store = _store(request)
-    allowed = citable(
-        await store.list_observations(project_id), await store.list_annotations(project_id)
-    )
+    observations = await store.list_observations(project_id)
+    allowed = citable(observations, await store.list_annotations(project_id))
     try:
+        # SIP-0116 §10a: the skills the cited observations' dispatches loaded, from their runs'
+        # exposures.
+        runs = {o.run_id for o in observations if o.source_id in body.cited_observations}
+        exposures = [
+            e for run in sorted(r for r in runs if r) for e in await store.list_exposures(run)
+        ]
         revision = draft_revision(
             target_behavior=body.target_behavior,
             text=body.text,
@@ -173,6 +177,8 @@ async def draft_lesson(
             cited_observations=body.cited_observations,
             citable_observations=allowed,
             revisions=await store.list_revisions(project_id),
+            observations=observations,
+            exposures=exposures,
             now=datetime.now(UTC),
         )
     except LessonRefused as e:

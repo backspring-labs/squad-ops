@@ -517,7 +517,7 @@ def test_a_conversational_claim_is_a_suggestion_note_that_can_never_become_a_les
             target_behavior="clock", text="Mock the clock.", applicability=WHERE,
             template_id="lesson.x", template_version="1", drafter_model="m", drafter_version="1",
             cited_observations=[saved["record_id"]], citable_observations=[], revisions=[],
-            now=datetime(2026, 10, 19, tzinfo=UTC),
+            observations=[], exposures=[], now=datetime(2026, 10, 19, tzinfo=UTC),
         )  # fmt: skip
     snapshot = _run(
         pin_unit(world.store, unit_kind=UnitKind.CYCLE, unit_id="cyc_t5", project_id="group_run",
