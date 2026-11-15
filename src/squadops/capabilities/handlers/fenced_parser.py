@@ -30,6 +30,13 @@ Recognized formats, in priority order (most explicit first):
    own line, then code. Same acceptance guard as #470 (contains ``/``, known
    source extension, or special name). A lone path line is not valid code in any
    emitted language, so stripping it never eats real content.
+7. A labelled path comment just before the fence (SIP-0118 S6) — ``-- path: x.luau``
+   (or ``//``/``#``) on its own line, within a few lines above a fence no other
+   strategy resolves. Tried last, so nothing that resolves today is read differently.
+
+**The unfenced form** (SIP-0118 S6): a response with no fence at all, whose files are
+separated by labelled path comments. Read only when no fence is present. A Luau model
+emitted both this and strategy 7's shape on a three-file change, and each dropped the task.
 
 Models naturally drift between these formats; the parser tolerates all of
 them so a one-character format slip doesn't drop the whole task on the floor.
@@ -106,9 +113,23 @@ _HEADING_RE = re.compile(
 )
 
 # First line of fence body containing a filename inside a comment. Recognizes
-# Python/shell ``#``, C/JS ``//``, SQL ``--``, and C-block ``/*`` openers.
+# Python/shell ``#``, C/JS ``//``, SQL and Luau ``--``, and C-block ``/*`` openers, with an
+# optional ``path:`` label (``-- path: src/Shared/Log.luau``, the form a Luau prompt asks for;
+# SIP-0118 S6). Without the label, ``path`` would be read as the filename and fail its shape.
 _FILENAME_COMMENT_RE = re.compile(
-    rf"^\s*(?:#|//|--|/\*)\s*(?P<path>[\w./-]+\.[a-zA-Z0-9]+|{_SPECIAL_NAMES_RE})\b",
+    r"^\s*(?:#|//|--|/\*)\s*(?:(?:path|file|filename|filepath)\s*:\s*)?"
+    rf"(?P<path>[\w./-]+\.[a-zA-Z0-9]+|{_SPECIAL_NAMES_RE})\b",
+    re.IGNORECASE,
+)
+
+# A comment line that labels a file outside any fence (SIP-0118 S6, a three-file Luau change):
+# ``-- path: src/Server/Services/BountyService.luau`` on its own line. The label is required, so a
+# comment that merely mentions a file never names one. Strategy 7 reads it just before a fence;
+# the unfenced form reads a response of nothing but these lines and the code under each.
+_LABELED_PATH_LINE_RE = re.compile(
+    r"^(?:--|//|#)\s*(?:path|file|filename|filepath)\s*:\s*"
+    rf"`?(?P<path>[\w./-]+\.[a-zA-Z0-9]+|{_SPECIAL_NAMES_RE})`?\s*$",
+    re.MULTILINE | re.IGNORECASE,
 )
 
 # First line of fence body as a bare ``path:code`` prefix (#470). No comment
@@ -158,6 +179,9 @@ _SOURCE_EXTENSIONS = frozenset(
         "sql",
         "xml",
         "svg",
+        # SIP-0118: a Luau product's sources.
+        "luau",
+        "lua",
     }
 )
 
@@ -392,8 +416,60 @@ def _resolve_block(
                     if bare_filename is not None:
                         filename = bare_filename
                         body = bare_body
+                    else:
+                        # Strategy 7 (SIP-0118 S6): a labelled path comment just before the
+                        # fence. Last, so nothing that resolves by the first six changes.
+                        filename, last_used_heading_pos = _resolve_filename_from_labeled_line(
+                            response, fence_start, last_used_heading_pos
+                        )
 
     return filename, language, body, last_used_heading_pos
+
+
+def _resolve_filename_from_labeled_line(
+    response: str, fence_start: int, last_used_pos: int
+) -> tuple[str | None, int]:
+    """Strategy 7: ``(filename, line_end)`` when a labelled path comment
+    (``-- path: x.luau``) sits within ``_HEADING_PROSE_DISTANCE_LINES`` lines before
+    ``fence_start`` and after the last one used. Otherwise ``(None, last_used_pos)``."""
+    window_start = max(last_used_pos + 1, max(0, fence_start - 500))
+    window = response[window_start:fence_start]
+    for match in reversed(list(_LABELED_PATH_LINE_RE.finditer(window))):
+        if window[match.end() :].count("\n") <= _HEADING_PROSE_DISTANCE_LINES:
+            logger.warning(
+                "read %s's path from a comment before its fence, not inside it (SIP-0118 S6)",
+                match.group("path"),
+            )
+            return match.group("path"), window_start + match.end()
+    return None, last_used_pos
+
+
+def _unfenced_files(response: str) -> list[dict]:
+    """SIP-0118 S6's unfenced form: a response with no fence at all, whose files are separated by
+    labelled path comments, each file being the lines up to the next. Read only when the response
+    holds no fence, so a fenced response is never re-read this way. Text before the first label
+    is prose and is left out; an unsafe path is left out, as a fenced one is."""
+    labels = list(_LABELED_PATH_LINE_RE.finditer(response))
+    files: list[dict] = []
+    for i, label in enumerate(labels):
+        end = labels[i + 1].start() if i + 1 < len(labels) else len(response)
+        path = label.group("path")
+        content = response[label.end() : end].lstrip("\n")
+        if not _path_is_safe(path) or not content.strip():
+            continue
+        files.append(
+            {
+                "filename": path,
+                "content": _as_file(content),
+                "language": path.rsplit(".", 1)[-1].lower() if "." in path else "text",
+            }
+        )
+    if files:
+        logger.warning(
+            "read %d file(s) from a response with no fences, by their path comments (SIP-0118 S6)",
+            len(files),
+        )
+    return files
 
 
 def cut_final_block(response: str) -> int | None:
@@ -536,6 +612,12 @@ def extract_fenced_files(
     # (false matches) or consume the response budget entirely; stripping them
     # first is what PR #128's JSON extractor already does for impl handlers.
     response = _strip_think_blocks(response)
+
+    if _OPEN_FENCE_RE.search(response) is None:
+        # SIP-0118 S6: no fence at all, files separated by labelled path comments.
+        unfenced = _unfenced_files(response)
+        if unfenced:
+            return _strip_placeholder_prefix(unfenced, expected_artifacts)
 
     results: list[dict] = []
     unlabeled: list[dict] = []  # #566 fallback candidates: no strategy resolved a name

@@ -2429,3 +2429,25 @@ class TestTheAssemblyNotesReachTheTestAuthor:
             {"assembly_notes": {"content": "   ", "artifact_id": "art_1"}},
         )
         assert "ASSEMBLY NOTES FROM THE BUILDER" not in prompt
+
+
+async def test_a_luau_develop_response_with_no_fences_produces_its_files(
+    mock_context, build_inputs
+):
+    """SIP-0118 S6, entered at ``DevelopmentDevelopHandler.handle``, the develop step's call. Bug
+    caught: the handler parsing with something other than the tolerant parser, so S6's unfenced
+    three-file change still fails the task on format."""
+    from tests.unit.capabilities.test_fenced_parser import _S6_UNFENCED
+
+    mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+        return_value=ChatMessage(role="assistant", content=_S6_UNFENCED),
+    )
+
+    result = await DevelopmentDevelopHandler().handle(mock_context, build_inputs)
+
+    assert result.success is True
+    assert [a["name"] for a in result.outputs["artifacts"]] == [
+        "src/Shared/Modules/Signal.luau",
+        "src/Server/Services/BountyService.luau",
+        "src/Server/Services/EconomyService.luau",
+    ]
