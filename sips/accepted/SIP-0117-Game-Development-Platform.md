@@ -629,9 +629,9 @@ test. The decisions on mixed gaps are `test_retry_for_want_of_a_worker`.
 **Who ruled it.** The shape was agreed with the MacBook lane on 2026-11-12 (relaunch only when every gap is
 availability, never read from prose). It was reviewed again on 2026-11-15, with the three points above.
 
-**What remained for #3045 (part B)** is R5.11.
+**What remained for #3045 (part B)** is R5.12.
 
-## R5.11 A launch refused only for want of a worker waits in `launch_blocked`: #3045, part B as built (2026-11-15)
+## R5.12 A launch refused only for want of a worker waits in `launch_blocked`: #3045, part B as built (2026-11-15)
 
 **What changed.** A Campaign's launch whose cycle the create path refused because no worker could run a tool its
 work requires escalated at once, like any other create refusal (SIP-0109 §24e item 5, #1971). That refusal is the
