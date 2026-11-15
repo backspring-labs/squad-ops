@@ -25,11 +25,11 @@ from squadops.campaigns.campaign_branch import head
 from squadops.campaigns.gate import ruling_transition
 from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
 from squadops.campaigns.launch_requests import start_transition
-from squadops.campaigns.models import CampaignState
+from squadops.campaigns.models import CampaignState, ControlOperation
 from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.models import GateDecision, GateDecisionValue
 from squadops.llm.script import script_version
-from tests.unit.campaigns.builders import campaign, policy
+from tests.unit.campaigns.builders import campaign, move, policy
 from tests.unit.campaigns.machinery import PROJECT, answer, compose, emitted
 from tests.unit.remote_execution.scenario_fixture import DOOR_OPENS, OPEN, SHUT
 
@@ -467,6 +467,18 @@ async def test_a_campaign_whose_worker_stays_offline_waits_then_escalates_creati
     assert not [e for e in log if e.operation.value == "launch_refused"]
     assert await machinery.registry.list_cycles(PROJECT) == []
     assert machinery.dispatched() == []
+
+    # The owner's resume returns it to the wait, its attempts counted afresh (§9.3).
+    await machinery.campaigns.transition(
+        CID,
+        move(
+            CampaignState.LAUNCH_BLOCKED, "owner-resume", operation=ControlOperation.RESUME,
+            actor="owner", actor_role="admin", expected_state=CampaignState.ESCALATED,
+        ),
+    )  # fmt: skip
+    await machinery.launch.retry_blocked()
+    log = await machinery.campaigns.control_log(CID)
+    assert _waits(log)[-1] == (1, "launch_blocked")
 
 
 async def test_a_campaign_launches_when_its_worker_comes_back_during_the_wait(machinery):
