@@ -154,7 +154,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
 | the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
 | the replay viewer showing a new version with no step by hand (§24dj) | **dropped** (§24dm): the viewer is the product's own tool | battle-trainer PR #3 |
-| the operator's box lease outside Campaigns (§9.3; as built: §24dw) | **shipped** | 2.8.0, PR #NNNN |
+| the operator's box lease outside Campaigns (§9.3; as built: §24dw) | **shipped** | 2.8.0, PR #3099 |
 | an operator lease taken while a pre-registered set is open, recorded as an intervention, which a pre-registration may forbid (#2287's last point; §24dw) | **placed** | 2.8.0, #2287 |
 | a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
