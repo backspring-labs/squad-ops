@@ -42,6 +42,8 @@ ADAPTER = REPO / "adapters" / "remote_execution" / "game_dev_roblox_studio"
 #: and vocabulary that port speaks.
 ADAPTER_IMPORTS = (
     "squadops.ports.remote_execution",
+    # SIP-0116 §17n (#3042): eligibility.py's port, the authority the root registers.
+    "squadops.ports.tool_authority",
     "squadops.remote_execution.models",
     "squadops.remote_execution.workers",
     "squadops.runtime.models",

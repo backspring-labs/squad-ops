@@ -21,6 +21,7 @@ from squadops.ports.remote_execution import (
 )
 
 if TYPE_CHECKING:
+    from squadops.ports.tool_authority import ToolAuthorityPort
     from squadops.remote_execution.registry import WorkerRegistry
 
 
@@ -101,6 +102,31 @@ def create_operation_runner(provider: str) -> OperationRunnerPort:
 
         return FixtureOperationRunner()
     raise ValueError(f"Unknown operation runner provider: {provider}")
+
+
+def create_tool_authorities() -> dict[str, ToolAuthorityPort]:
+    """Each provider's authority over its operations (SIP-0116 §8, §17n), by provider name: the
+    ``eligibility.AUTHORITY`` of every provider package under this one that governs its products.
+    Found rather than named, so a platform's name stays in its own directory (SIP-0117 R4.6):
+    removing the platform removes its authority, and a tool of a provider with none is refused at
+    creation. A package's eligibility module that fails to import raises: a provider that governs
+    its products never goes ungoverned in silence."""
+    import importlib
+    import importlib.util
+    import pkgutil
+
+    import adapters.remote_execution as package
+
+    authorities: dict[str, ToolAuthorityPort] = {}
+    for found in pkgutil.iter_modules(package.__path__):
+        if not found.ispkg:
+            continue
+        name = f"{package.__name__}.{found.name}.eligibility"
+        if importlib.util.find_spec(name) is None:
+            continue
+        authority = importlib.import_module(name).AUTHORITY
+        authorities[authority.provider] = authority
+    return authorities
 
 
 def create_worker_api(base_url: str, token: Callable[[], Awaitable[str]]) -> WorkerApiPort:

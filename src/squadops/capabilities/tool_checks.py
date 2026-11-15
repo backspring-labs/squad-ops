@@ -65,13 +65,16 @@ def required_tools(coverage: Coverage, catalog: Mapping[str, Skillset]) -> tuple
     return tuple(tools.values())
 
 
-def authorization_findings(
+async def authorization_findings(
     tools: tuple[RequiredTool, ...],
     authorities: Mapping[str, ToolAuthorityPort],
     *,
     project_id: str | None,
     config: Mapping[str, Any],
+    product: Any = None,
 ) -> list[CoverageFinding]:
+    """Each required tool's authorization finding. ``product`` is the cycle's ``ProductView``, or
+    ``None`` when it runs on no repository-backed product (SIP-0116 §17n)."""
     findings = []
     for required in tools:
         tool = required.tool
@@ -104,7 +107,9 @@ def authorization_findings(
                 f"{required.named} is refused by {tool.provider}'s rule {broken.rule}: "
                 f"{broken.why}",
             )
-            for broken in authority.broken_rules(tool, project_id=project_id, config=config)
+            for broken in await authority.broken_rules(
+                tool, project_id=project_id, config=config, product=product
+            )
         )
     return findings
 

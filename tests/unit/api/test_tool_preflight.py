@@ -29,14 +29,14 @@ TOOL = ToolRequest("play_scenario", "fixture-editor", "worker")
 
 
 class _Allows:
-    def broken_rules(self, tool, *, project_id, config) -> list[BrokenRule]:
+    async def broken_rules(self, tool, *, project_id, config, product) -> list[BrokenRule]:
         return []
 
 
 class _RefusesScripts:
     """A provider whose compatibility check refuses a product with tagged scripts."""
 
-    def broken_rules(self, tool, *, project_id, config) -> list[BrokenRule]:
+    async def broken_rules(self, tool, *, project_id, config, product) -> list[BrokenRule]:
         return [BrokenRule("no-tagged-scripts", f"{project_id} tags 3 of its scripts")]
 
 
@@ -267,3 +267,51 @@ async def test_a_task_that_runs_no_operation_is_never_asked_for_a_tool():
     executor = SimpleNamespace(_worker_registry=None, _sandbox=None)
 
     await executor_module.DispatchedFlowExecutor._require_tool_available(executor, develop)
+
+
+async def test_a_product_its_authority_cant_be_shown_refuses_creation_naming_why(config):
+    """SIP-0116 §17n (#3042). Bugs caught: a source-backed cycle whose tree can't be read (here,
+    a runtime with no managed clone) handed to its authority as a sample application's
+    ``None``, which a provider might pass; or the refusal not naming why."""
+    from types import SimpleNamespace
+
+    asked = _Records()
+    context = SimpleNamespace(project_id="prj-1", pinned_commit="c" * 40)
+
+    [refusal] = await _preflight(
+        config,
+        authorities={"fixture-editor": asked},
+        worker_registry=await _registry(online=True),
+        source_context=context,
+        source_repository=None,
+    )
+
+    assert refusal.startswith("skillset_authorization: the product's authorities can't be asked")
+    assert f"Project prj-1's tree at {'c' * 40} can't be read" in refusal
+    assert "no managed clone" in refusal
+    assert asked.shown == []
+
+
+async def test_a_cycle_on_no_repository_backed_product_shows_its_authority_none(config):
+    """§17n. Bug caught: a sample application's cycle given a view of an empty tree, which reads
+    as a product with nothing in it rather than none at all."""
+    asked = _Records()
+
+    assert (
+        await _preflight(
+            config,
+            authorities={"fixture-editor": asked},
+            worker_registry=await _registry(online=True),
+        )
+        == ()
+    )
+    assert asked.shown == [None]
+
+
+class _Records:
+    def __init__(self) -> None:
+        self.shown: list = []
+
+    async def broken_rules(self, tool, *, project_id, config, product) -> list[BrokenRule]:
+        self.shown.append(product)
+        return []

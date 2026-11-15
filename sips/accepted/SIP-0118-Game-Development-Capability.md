@@ -86,7 +86,8 @@ placed yet. SIP-0116's phases are in its own ledger.
 | Phase 2a: the game capability contracts, declared once in `squadops.capabilities` (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`; R4.2), proved with the companion's fixture provider | **shipped** | 2.8 (PR #3019) |
 | Phase 2f, the tolerant emission parser: S6's two broken formats read, every resolving response read as before (R3.4, R5.2) | **shipped** | 2.8 (PR #3091; #3041 tracks the rest) |
 | Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the squad profiles whose agents declare them (R4.1, R4.3, R5.2; replaces F2–F4). Its requirements are switched on only after SIP-0116's phases 2–6 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3041 |
-| Phase 2g: the product: `z_tower-ascension`'s eligibility, registration and goal set; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3042 |
+| Phase 2g, its eligibility rules: the `roblox-studio` authority over the product's Script Sync layout and a change's footprint, with "no attributes or tags on scripts" checked at the worker (R5.3) | **shipped** | 2.8, PR #3111 |
+| Phase 2g: the product: `z_tower-ascension`'s registration, Development Configuration, baseline and goal set, and the copy compared with the live game; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11; the registration part handed to the Spark lane on 2026-11-15) | 2.8, #3042 |
 | Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run (R3.5; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
 | F6: Unity, as the check that the contracts generalize across engines: a second set of skillsets and a provider, with no new core task type | **unplaced**, deliberately: after phase 3 | — |
 
@@ -146,6 +147,33 @@ and its one operation is appended by plan expansion (the companion's R5.9). The 
 #3041.
 
 ---
+
+### R5.3 Phase 2g's eligibility rules as built (2026-11-15; #3042; the Spark lane)
+
+**What was built.** `z_tower-ascension`'s eligibility rules (§2.10 of the game-dev plan) are the `roblox-studio`
+provider's authority (`adapters/remote_execution/game_dev_roblox_studio/eligibility.py`). Cycle creation asks it of
+every Studio tool a cycle's work requires, and shows it the product (SIP-0116 §17n). A product that breaks a rule is
+refused as an authorization outcome, naming the rule and each file or path that breaks it:
+- **`repository_backed`:** a cycle with no repository-backed product breaks it.
+- **`script_sync_layout`:** every file under `src/Server`, `src/Shared` and `src/Client` is a script the provider
+  places, by `place.manifest_scripts`'s own rules (the suffixes, `X/init.luau` as `X`, no init at a folder's root, no
+  `X.luau` beside `X/init.luau`, no other dot in a name). At least one script is placed.
+- **`footprint_scripts_only`:** a change's footprint names only scripts under the synced folders, or `*.spec.luau`
+  specs under `tests/`. A model, a `.rbxm`, a UI asset or a project file is refused by path.
+  - **The product's test runner is never a change's.** `tests/run.luau`, its loader and every other non-spec file
+    under `tests/` are refused by path, and so is a `tests/` glob whose tail isn't `.spec.luau`, such as a bare
+    `tests/**`. The runner prints the `PASS` lines acceptance credits a test by (R5.13 of SIP-0117; SIP-0109 §24dy),
+    so a change that could rewrite it could pass any criterion. This was found in the MacBook lane's review.
+  - **An increment's own cycle** has no change request at its creation, so the rule reads a repair's or a retry's.
+    The increment's proposal is held to the Campaign's `allowed_scope`, which for this product scopes the three
+    folders and `tests/**/*.spec.luau`.
+
+**Placed at the worker, not at creation:** "no attributes or tags on scripts". Script Sync files can't carry either,
+so the tree can't show them, and the runtime can't reach Studio. #3039's read-only harness reports any script in the
+three folders carrying attributes or CollectionService tags, and the transaction refuses it as `not_executed`, naming
+each script. The place's non-script instances are held unchanged by #3039's baseline digest.
+
+**Who ruled.** The split between creation and the worker was agreed with the MacBook lane on 2026-11-15.
 
 ## R4. Revision 4 (2026-11-09): the composition as requirements and supply
 

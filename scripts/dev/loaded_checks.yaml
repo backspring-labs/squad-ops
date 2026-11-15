@@ -2533,3 +2533,12 @@ checks:
       from squadops.sandbox.findings import read
       print(sorted(read("pytest", "PASSED t.py::test_a\n1 passed in 0.01s\n", "", 0).passing), read("pytest", "1 passed in 0.01s\n", "", 0).passing)
     expect: "['t.py::test_a'] None"
+  - id: "3042"
+    what: the runtime registers each provider's authority from its own package, and roblox-studio's checks a product's eligibility (SIP-0116 §17n, SIP-0118 R5.3)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.remote_execution.factory import create_tool_authorities
+      a = create_tool_authorities()
+      print(sorted(a), "product" in inspect.signature(a["roblox-studio"].broken_rules).parameters)
+    expect: "['roblox-studio'] True"
