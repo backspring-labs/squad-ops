@@ -1,9 +1,11 @@
-"""A plan task that names a contract, from the plan to the dispatched task (SIP-0116 §6.1,
-SIP-0117 R4.4): the plan checks at dispatch, and what the envelope carries to the handler."""
+"""A plan task that names a contract, from the plan to the dispatched task (SIP-0116 §6.1): the
+plan checks at dispatch, and what the envelope carries to the handler.
+
+In the first milestone an operation is the framework's step (SIP-0117 R5.14), so the contract a
+plan names here is one over a base-set type: ``game.unit_tests`` on ``qa.test``, in ``headless``."""
 
 from __future__ import annotations
 
-import dataclasses
 from datetime import UTC, datetime
 
 import pytest
@@ -44,9 +46,9 @@ PROFILE = SquadProfile(
     created_at=NOW,
 )
 OFFER = {
-    "contract": "game.scenario_verification",
-    "mode": "play",
-    "task_type": "qa.run_remote_operation",
+    "contract": "game.unit_tests",
+    "mode": "headless",
+    "task_type": "qa.test",
     "role": "qa",
     "agent_id": "eve",
     "skillset": "fixture-qa",
@@ -87,7 +89,9 @@ def _cycle(record) -> Cycle:
     )
 
 
-def _plan(**operation) -> ImplementationPlan:
+def _plan(*, planned_operation: bool = False, **named) -> ImplementationPlan:
+    """A develop task and a qa test task naming ``game.unit_tests`` (changed by ``named``), and,
+    when asked, an operation task the planner wrote itself."""
     tasks = [
         {
             "task_index": 0,
@@ -105,19 +109,22 @@ def _plan(**operation) -> ImplementationPlan:
             "description": "author the suite",
             "expected_artifacts": ["tests/test_map.py"],
             "depends_on": [0],
-        },
-        {
-            "task_index": 2,
-            "task_type": "qa.run_remote_operation",
-            "role": "qa",
-            "focus": "open the map",
-            "description": "play the frozen scenario",
-            "depends_on": [0],
-            "contract": "game.scenario_verification",
-            "mode": "play",
-            **operation,
+            "contract": "game.unit_tests",
+            "mode": "headless",
+            **named,
         },
     ]
+    if planned_operation:
+        tasks.append(
+            {
+                "task_index": 2,
+                "task_type": "qa.run_remote_operation",
+                "role": "qa",
+                "focus": "open the map",
+                "description": "play the scenario",
+                "depends_on": [0],
+            }
+        )
     return ImplementationPlan.from_yaml(
         yaml.safe_dump(
             {
@@ -126,14 +133,18 @@ def _plan(**operation) -> ImplementationPlan:
                 "cycle_id": "cyc_op",
                 "prd_hash": "h",
                 "tasks": tasks,
-                "summary": {"total_dev_tasks": 1, "total_qa_tasks": 2, "total_tasks": 3},
+                "summary": {
+                    "total_dev_tasks": 1,
+                    "total_qa_tasks": len(tasks) - 1,
+                    "total_tasks": len(tasks),
+                },
             }
         )
     )
 
 
-def _operation_envelope(envelopes):
-    (envelope,) = [e for e in envelopes if e.task_type == TaskType.QA_RUN_REMOTE_OPERATION]
+def _named_envelope(envelopes):
+    (envelope,) = [e for e in envelopes if e.task_type == TaskType.QA_TEST]
     return envelope
 
 
@@ -141,23 +152,21 @@ def test_the_dispatched_task_carries_its_contract_and_the_supplier_the_record_na
     """Enters at ``generate_task_plan``, the caller the live run uses. Bug caught: the plan
     naming a contract and the envelope dropping it, so the handler has nothing to say which
     skillset supplies the operation and would have to look one up."""
-    envelope = _operation_envelope(generate_task_plan(_cycle(RECORD), RUN, PROFILE, plan=_plan()))
+    envelope = _named_envelope(generate_task_plan(_cycle(RECORD), RUN, PROFILE, plan=_plan()))
 
     assert envelope.inputs["operation"] == {
-        "contract": "game.scenario_verification",
-        "mode": "play",
+        "contract": "game.unit_tests",
+        "mode": "headless",
         "role": "qa",
         "skillset": "fixture-qa",
         "skillset_digest": "digest-of-fixture-qa",
         "agent_id": "eve",
     }
     assert envelope.agent_id == "eve"
-    # The surface a failed assertion's repair is aimed at: the plan's implementation.
-    assert envelope.inputs["implementation_artifacts"] == ["src/map.py"]
     assert "operation" not in [
         key
         for e in generate_task_plan(_cycle(RECORD), RUN, PROFILE, plan=_plan())
-        if e.task_type != TaskType.QA_RUN_REMOTE_OPERATION
+        if e.task_type != TaskType.QA_TEST
         for key in e.inputs
     ]
 
@@ -171,14 +180,14 @@ def test_the_dispatched_task_carries_its_contract_and_the_supplier_the_record_na
             "isn't offered to this cycle",
         ),
         (None, {}, "isn't offered to this cycle"),
-        (RECORD, {"mode": "multiplayer"}, "in `multiplayer` mode"),
+        (RECORD, {"mode": "editor"}, "in `editor` mode"),
         (
             RECORD,
-            {"expected_artifacts": ["src/map.py"]},
-            "runs an operation and authors no file, so it declares no expected_artifacts",
+            {"planned_operation": True},
+            "runs an operation, which is the framework's step in this milestone",
         ),
     ],
-    ids=["not offered", "no record", "another mode", "claims a file"],
+    ids=["not offered", "no record", "another mode", "a planned operation"],
 )
 def test_dispatch_refuses_a_plan_the_gates_would_have_refused(record, plan_change, expected):
     """The raising backstop. Bug caught: a plan that reached dispatch without passing a gate
@@ -199,10 +208,9 @@ def test_an_offer_with_no_recorded_supplier_is_refused_rather_than_dispatched_wi
 
 
 def test_a_plan_of_base_set_tasks_dispatches_as_before():
-    plan = _plan()
-    base_only = dataclasses.replace(plan, tasks=plan.tasks[:2])
+    plan = _plan(contract="", mode="")
 
-    envelopes = generate_task_plan(_cycle(None), RUN, PROFILE, plan=base_only)
+    envelopes = generate_task_plan(_cycle(None), RUN, PROFILE, plan=plan)
 
     assert all("operation" not in e.inputs for e in envelopes)
     assert TaskType.QA_RUN_REMOTE_OPERATION not in {e.task_type for e in envelopes}

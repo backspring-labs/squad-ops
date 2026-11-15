@@ -143,7 +143,9 @@ def test_an_operation_with_no_implementation_surface_is_refused_rather_than_aime
         )
 
 
-def test_a_plan_that_runs_an_operation_and_authors_no_source_is_refused():
+def test_a_plan_that_runs_an_operation_itself_is_refused():
+    """SIP-0117 R5.14. Bug caught: a planner-written operation passing the gate and reaching
+    dispatch with no frozen scenario to play, failing there instead of at a free re-roll."""
     plan = ImplementationPlan.from_yaml(
         yaml.safe_dump(
             {
@@ -168,8 +170,9 @@ def test_a_plan_that_runs_an_operation_and_authors_no_source_is_refused():
     )
 
     assert plan.validate_operation_tasks() == [
-        "Task(s) 0: the plan runs an operation and no task authors source, so there is no "
-        "implementation for it to verify or for a repair to change"
+        "Task 0: `qa.run_remote_operation` runs an operation, which is the framework's step in "
+        "this milestone: plan expansion appends one for each scenario criterion, with its frozen "
+        "scenario (SIP-0117 R5.9). Plan none"
     ]
 
 

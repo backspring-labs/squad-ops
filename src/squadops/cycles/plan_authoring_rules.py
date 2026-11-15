@@ -98,11 +98,11 @@ NOT_AUTHOR_FACING: dict[str, str] = {
     # gate check is the net for an author that named a type or contract it wasn't offered.
     "validate_against_offered": "enforced-by-offer (SIP-0116 §6.3): a cycle's planner is "
     "offered only its base set and the contracts its requirements name",
-    # SIP-0117 R4.4: a planner isn't offered a remote operation until the prompt asset for
-    # offered contracts exists (SIP-0116 §17c point 1), and that asset is where "an operation
-    # task lists no expected_artifacts" is taught, with its worked example.
-    "validate_operation_tasks": "enforced-by-offer (SIP-0116 §17c): no planner is offered a "
-    "remote operation until the offered-contracts prompt asset teaches its shape",
+    # SIP-0117 R5.14: in the first milestone an operation is the framework's step, and no
+    # planner is shown one (SIP-0116 §17k re-places the offered-contracts fragment). The gate
+    # check is the net for a planner that wrote one anyway.
+    "validate_operation_tasks": "enforced-by-offer (SIP-0117 R5.14): no planner is shown an "
+    "operation; plan expansion appends each one with its frozen scenario",
     # #3044: a scenario criterion's declaration is left out of the footprint index a planner is
     # shown, so a compliant author never names it. The gate check is the net for one that did.
     "validate_increment_scenario_files": "enforced-by-offer (#3044): a scenario's declaration "

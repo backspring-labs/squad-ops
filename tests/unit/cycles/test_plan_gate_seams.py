@@ -125,8 +125,8 @@ def test_seam_error_channels_stay_distinct():
         ),
         (
             "validate_operation_tasks",
-            "an operation task claiming a file reaches implementation through that path, as a "
-            "step that authors nothing owning source (SIP-0117 R4.4)",
+            "a planner-written operation reaches dispatch through that path with no frozen "
+            "scenario to play (SIP-0117 R5.14)",
         ),
     ],
 )

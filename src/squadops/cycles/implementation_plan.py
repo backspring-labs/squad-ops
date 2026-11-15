@@ -53,7 +53,6 @@ from squadops.tasks.base_set import BASE_SET_VERSION, base_plannable_task_types
 from squadops.tasks.task_types import (
     TaskType,
     authors_qa_suite,
-    authors_source,
     plannable,
     runs_an_operation,
 )
@@ -560,31 +559,20 @@ class ImplementationPlan:
         return errors
 
     def validate_operation_tasks(self) -> list[str]:
-        """SIP-0117 R4.4: a task that runs an operation authors nothing. Its artifacts are the
-        operation's evidence, which the handler names, so the task declares no expected
-        artifacts. A claim on a file here would be a claim on source by a step that writes
-        none, and on an increment it would be judged against a footprint it can't be in.
+        """SIP-0117 R4.3 and R5.9: in the first milestone an operation is the framework's step,
+        never a planner's. Plan expansion appends one for each scenario criterion, carrying the
+        criterion's frozen scenario (``ScenarioOperationStep``), and ``sync_source``,
+        ``read_console`` and ``capture`` aren't planned on their own. A planned one would reach
+        dispatch with no scenario to play, so every task whose type runs an operation is
+        refused, by name.
         """
-        operations = [t for t in self.tasks if runs_an_operation(t.task_type)]
-        errors = [
-            f"Task {task.task_index}: `{task.task_type}` runs an operation and authors no "
-            f"file, so it declares no expected_artifacts (it lists "
-            f"{', '.join(task.expected_artifacts)})"
-            for task in operations
-            if task.expected_artifacts
+        return [
+            f"Task {task.task_index}: `{task.task_type}` runs an operation, which is the "
+            "framework's step in this milestone: plan expansion appends one for each scenario "
+            "criterion, with its frozen scenario (SIP-0117 R5.9). Plan none"
+            for task in self.tasks
+            if runs_an_operation(task.task_type)
         ]
-        if operations and not any(
-            authors_source(t.task_type) and t.expected_artifacts for t in self.tasks
-        ):
-            # What the operation verifies is this plan's implementation, and a failed
-            # assertion is repaired there. With none, there is nothing to verify and no file a
-            # repair could be aimed at.
-            errors.append(
-                f"Task(s) {', '.join(str(t.task_index) for t in operations)}: the plan runs an "
-                "operation and no task authors source, so there is no implementation for it "
-                "to verify or for a repair to change"
-            )
-        return errors
 
     def validate_build_config(self, resolved_config: dict) -> list[str]:
         """#426: builder tasks require a configured ``build_profile``.

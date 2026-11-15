@@ -84,7 +84,8 @@ placed yet. SIP-0116's phases are in its own ledger.
 | F2 and F3 as separate packs | **dropped** by Revision 3 (R3.2): one specialty, `game-dev-roblox`, until a second engine needs shared content | — |
 | Phase 2a as revision 3 cut it: the specialty table and declaration, the digest pin, both preflights, the isolation test, the profile's `specialties` field | **dropped** by Revision 4 (R4.1): SIP-0116's phases 1, 2 and 5 carry the declarations, the checks, the record and the pin, in its own ledger | — |
 | Phase 2a: the game capability contracts, declared once in `squadops.capabilities` (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`; R4.2), proved with the companion's fixture provider | **shipped** | 2.8 (PR #3019) |
-| Phase 2f: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the squad profiles whose agents declare them, the tolerant emission parser (R4.1, R4.3; replaces F2–F4). Its requirements are switched on only after SIP-0116's phases 2–6 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3041 |
+| Phase 2f, the tolerant emission parser: S6's two broken formats read, every resolving response read as before (R3.4, R5.2) | **shipped** | 2.8 (PR #3091; #3041 tracks the rest) |
+| Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the squad profiles whose agents declare them (R4.1, R4.3, R5.2; replaces F2–F4). Its requirements are switched on only after SIP-0116's phases 2–6 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3041 |
 | Phase 2g: the product: `z_tower-ascension`'s eligibility, registration and goal set; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3042 |
 | Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run (R3.5; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
 | F6: Unity, as the check that the contracts generalize across engines: a second set of skillsets and a provider, with no new core task type | **unplaced**, deliberately: after phase 3 | — |
@@ -116,6 +117,33 @@ adopted by its merge (#3051). The companion records the same additions in its R5
     one.
 
   It waits on Campaign delivery (the companion's #3053). Evidence: the outside review's answers to questions 1 and 7.
+
+
+### R5.2 Phase 2f: the parser as built, the offered-contracts item re-placed, and the done-when restated (2026-11-15)
+
+**The tolerant emission parser** (#3091) reads S6's two broken formats:
+- **a labelled path comment before a fence** (`-- path: x.luau`, or `//` or `#`): strategy 7, tried after the six
+  existing ones;
+- **a response with no fence at all**, split on labelled path comments. It is read only when no fence is present.
+
+The in-fence comment also takes a `path:` label. Every response that resolves today is read as before, and each new
+reading logs a warning.
+
+**"The planner's prompt shows the offered contracts" leaves phase 2f.** SIP-0116 §17k re-places it with the first
+contract a planner must name. The Roblox squad's development and qa tasks load their skills with no contract named,
+and its one operation is appended by plan expansion (the companion's R5.9). The plan gate refuses a planned operation
+(the companion's R5.14).
+
+**#3041's done-when, restated:**
+- the skills pass replay on the Spark's models;
+- a cycle on `game-dev-roblox` passes creation preflight;
+- **its plan's development and qa tasks load the Roblox skills with no contract named, plan expansion appends
+  `game.scenario_verification` in `play` mode for each scenario criterion, and the plan passes the plan gate.** This
+  replaces "its planner names `game.scenario_verification` in `play` mode";
+- a cycle on any other stack is offered exactly the base set, and its prompts are byte-identical.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The reading is on
+#3041.
 
 ---
 
