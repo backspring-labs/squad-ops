@@ -158,10 +158,15 @@ refused as an authorization outcome, naming the rule and each file or path that 
 - **`script_sync_layout`:** every file under `src/Server`, `src/Shared` and `src/Client` is a script the provider
   places, by `place.manifest_scripts`'s own rules (the suffixes, `X/init.luau` as `X`, no init at a folder's root, no
   `X.luau` beside `X/init.luau`, no other dot in a name). At least one script is placed.
-- **`footprint_scripts_only`:** a change's footprint names only scripts under the synced folders or files under
-  `tests/`. A model, a `.rbxm`, a UI asset or a project file is refused by path. An increment's own cycle has no
-  change request at its creation, so the rule reads a repair's or a retry's. The increment's proposal is held to the
-  Campaign's `allowed_scope`, which for this product scopes the three folders and `tests/`.
+- **`footprint_scripts_only`:** a change's footprint names only scripts under the synced folders, or `*.spec.luau`
+  specs under `tests/`. A model, a `.rbxm`, a UI asset or a project file is refused by path.
+  - **The product's test runner is never a change's.** `tests/run.luau`, its loader and every other non-spec file
+    under `tests/` are refused by path, and so is a `tests/` glob whose tail isn't `.spec.luau`, such as a bare
+    `tests/**`. The runner prints the `PASS` lines acceptance credits a test by (R5.13 of SIP-0117; SIP-0109 §24dy),
+    so a change that could rewrite it could pass any criterion. This was found in the MacBook lane's review.
+  - **An increment's own cycle** has no change request at its creation, so the rule reads a repair's or a retry's.
+    The increment's proposal is held to the Campaign's `allowed_scope`, which for this product scopes the three
+    folders and `tests/**/*.spec.luau`.
 
 **Placed at the worker, not at creation:** "no attributes or tags on scripts". Script Sync files can't carry either,
 so the tree can't show them, and the runtime can't reach Studio. #3039's read-only harness reports any script in the

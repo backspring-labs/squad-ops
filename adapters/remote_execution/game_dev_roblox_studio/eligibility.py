@@ -13,12 +13,16 @@ naming the rule and each file or path that breaks it. The rules:
   ``X``, never an ``init.luau`` at a folder's root nor ``X.luau`` beside ``X/init.luau``
   (``place.manifest_scripts``). At least one script is placed.
 - ``footprint_scripts_only``: every path the cycle's ruled change request lets it touch is a
-  script under a synced folder or a spec under ``tests/``. A model, a ``.rbxm`` or a UI asset
-  needs instances built in Studio, which a change can't carry. Instances made at run time are
-  code, so they pass as scripts. An increment's own cycle has no change request at its creation,
-  because its proposal run authors one, so the rule reads the footprint of the repair or retry
-  that carries it. The increment's proposal is held to the Campaign's ``allowed_scope``, so its
-  Campaign should scope ``src/Server/**``, ``src/Shared/**``, ``src/Client/**`` and ``tests/**``.
+  script under a synced folder or a spec (``*.spec.luau``) under ``tests/``. A model, a ``.rbxm``
+  or a UI asset needs instances built in Studio, which a change can't carry. Instances made at
+  run time are code, so they pass as scripts. **The product's test runner is never a change's:**
+  ``tests/run.luau``, its loader and any other non-spec file under ``tests/`` print the very
+  ``PASS`` lines acceptance credits a test by (SIP-0117 R5.13; SIP-0109 §24dy), so a change that
+  could rewrite them could pass anything. A glob under ``tests/`` is carried only when its tail
+  ends ``.spec.luau``. An increment's own cycle has no change request at its creation, because its
+  proposal run authors one, so the rule reads the footprint of the repair or retry that carries it.
+  The increment's proposal is held to the Campaign's ``allowed_scope``, so its Campaign should
+  scope ``src/Server/**``, ``src/Shared/**``, ``src/Client/**`` and ``tests/**/*.spec.luau``.
 - **Placed at the worker, not here:** "no attributes or tags on scripts". Script Sync files can't
   carry them, so the tree can't show them. The worker's read-only harness reports any script in the
   three folders carrying attributes or CollectionService tags, and the transaction refuses it as
@@ -99,31 +103,43 @@ async def _layout(product: ProductView) -> list[BrokenRule]:
 def _footprint(footprint: tuple[str, ...] | None) -> list[BrokenRule]:
     if footprint is None:
         return []
-    return [
-        BrokenRule(
-            "footprint_scripts_only",
-            f"{entry} is outside what a change may carry: a script under "
-            f"{', '.join(SYNCED_FOLDERS.values())} or a spec under {SPECS}",
-        )
-        for entry in footprint
-        if not _carried(entry)
-    ]
+    rules = []
+    for entry in footprint:
+        why = _not_carried(entry)
+        if why is not None:
+            rules.append(BrokenRule("footprint_scripts_only", f"{entry} is {why}"))
+    return rules
 
 
-def _carried(entry: str) -> bool:
-    """Whether a footprint entry, a path or a glob, names only what a change may carry."""
+def _not_carried(entry: str) -> str | None:
+    """Why a footprint entry, a path or a glob, names what a change can't carry, or ``None``."""
     literal = _GLOB.split(entry, maxsplit=1)[0]
-    in_synced = any(literal.startswith(d + "/") for d in SYNCED_FOLDERS.values())
-    in_specs = literal.startswith(SPECS)
-    if not (in_synced or in_specs):
-        return False
     tail = entry.rsplit("/", 1)[-1]
+    if literal.startswith(SPECS):
+        # Only specs: whatever else is under tests/ is the product's runner (R5.13).
+        if tail.endswith(SPEC_SUFFIX):
+            return None
+        return (
+            f"the product's test runner or its support, which a change can't carry: only "
+            f"{SPECS}…{SPEC_SUFFIX} specs are a change's"
+        )
+    if not any(literal.startswith(d + "/") for d in SYNCED_FOLDERS.values()):
+        return (
+            f"outside what a change may carry: a script under "
+            f"{', '.join(SYNCED_FOLDERS.values())} or a {SPEC_SUFFIX} spec under {SPECS}"
+        )
     if _GLOB.search(tail) is None:
-        # A file: a script in a synced folder, or a spec (and the runner's own files) under tests/.
-        return tail.endswith(".luau") if in_specs else tail.endswith(SCRIPT_SUFFIXES[-1][0])
-    # A glob: refused when what it names is plainly no script, such as ``*.rbxm``.
-    suffix = tail.rsplit(".", 1)[-1] if "." in tail else ""
-    return suffix in ("", "luau") or _GLOB.search(suffix) is not None
+        carried = tail.endswith(SCRIPT_SUFFIXES[-1][0])
+    else:
+        # A glob: refused when what it names is plainly no script, such as ``*.rbxm``.
+        suffix = tail.rsplit(".", 1)[-1] if "." in tail else ""
+        carried = suffix in ("", "luau") or _GLOB.search(suffix) is not None
+    if carried:
+        return None
+    return (
+        f"outside what a change may carry: a script under "
+        f"{', '.join(SYNCED_FOLDERS.values())} or a {SPEC_SUFFIX} spec under {SPECS}"
+    )
 
 
 #: What ``factory.create_tool_authorities`` registers for this package (SIP-0116 §17n).

@@ -78,8 +78,7 @@ async def test_a_product_with_no_script_in_the_synced_folders_is_refused():
 
 @pytest.mark.parametrize(
     "entry",
-    ["src/Shared/Tower.rbxm", "assets/**", "src/Client/*.rbxmx", "default.project.json",
-     "tests/fixtures/place.rbxl"],
+    ["src/Shared/Tower.rbxm", "assets/**", "src/Client/*.rbxmx", "default.project.json"],
 )  # fmt: skip
 async def test_a_footprint_naming_what_needs_studio_built_instances_is_refused_by_path(entry):
     """Bug caught: an increment allowed to touch a model, a UI asset or a project file, which the
@@ -88,6 +87,29 @@ async def test_a_footprint_naming_what_needs_studio_built_instances_is_refused_b
 
     assert rule == "footprint_scripts_only"
     assert why.startswith(f"{entry} is outside what a change may carry")
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "tests/run.luau",
+        "tests/loader.luau",
+        "tests/**",
+        "tests/*.luau",
+        "tests/fixtures/rules.json",
+    ],
+)
+async def test_a_footprint_naming_the_products_test_runner_is_refused_by_path(entry):
+    """Bug caught (the MacBook lane's review): a change allowed to rewrite ``tests/run.luau`` or
+    its loader, which print the ``PASS`` lines acceptance credits a test by (SIP-0117 R5.13,
+    SIP-0109 §24dy), so a repair could pass any criterion by printing it passed. A bare
+    ``tests/**`` names them too."""
+    footprint = ("src/Shared/LivesRules.luau", "tests/**/*.spec.luau", entry)
+
+    [(rule, why)] = await _broken(_view(*LAYOUT, footprint=footprint))
+
+    assert rule == "footprint_scripts_only"
+    assert why.startswith(f"{entry} is the product's test runner or its support, which a change")
 
 
 async def test_a_cycle_on_no_repository_backed_product_breaks_the_provider_never_passes():
