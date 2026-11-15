@@ -10,7 +10,10 @@ the read side the operations stand on:
   (R4.6);
 - ``reset`` confirms identity, and raises when it can't. This slice writes nothing, so there is
   nothing to reset;
-- ``read_back`` compares the place's three synced folders with a source manifest.
+- ``read_back`` compares the place's three synced folders with a source manifest;
+- ``sync`` writes a source manifest into those folders through the harness and reads it back
+  (D10). It is the write side ``sync_source`` will stand on, and isn't served until the operation
+  is proved on the worker, a Studio restart included.
 """
 
 from __future__ import annotations
@@ -61,12 +64,12 @@ class RobloxStudioRunner(OperationRunnerPort):
         self,
         studio_mcp: Path,
         *,
-        session_factory: Callable[[], StudioMcpSession] | None = None,
+        session_factory: Callable[..., StudioMcpSession] | None = None,
         studio_version_of: Callable[[Path], str] = studio_version,
         discover_seconds: float = 20.0,
     ) -> None:
         self._studio_mcp = studio_mcp
-        self._session = session_factory or (lambda: StudioMcpSession([str(studio_mcp)]))
+        self._session = session_factory or (lambda **kw: StudioMcpSession([str(studio_mcp)], **kw))
         self._studio_version_of = studio_version_of
         self._discover_seconds = discover_seconds
 
@@ -129,3 +132,22 @@ class RobloxStudioRunner(OperationRunnerPort):
         return [f"{f} isn't a script {PROVIDER} places" for f in unplaced] + place.differences(
             read, manifest
         )
+
+    async def sync(self, source_files: Mapping[str, str]) -> place.SyncResult:
+        """Write ``source_files``' scripts into the place's three synced folders and remove the
+        rest, then read them back (D10). Raises :class:`place.PlaceSyncError`: before anything is
+        written, for a file under a synced folder this provider can't place, or a place that
+        isn't an unpublished local one; after, naming each difference the read-back finds."""
+        manifest, unplaced = place.manifest_scripts(source_files)
+        if unplaced:
+            raise place.PlaceSyncError(
+                "nothing was written: "
+                + "; ".join(f"{f} isn't a script {PROVIDER} places" for f in unplaced)
+            )
+        session = self._session(harness=True)
+        try:
+            await session.open()
+            studio = await place.identity(session, discover_seconds=self._discover_seconds)
+            return await place.sync(session, studio.studio_id, manifest)
+        finally:
+            await session.close()

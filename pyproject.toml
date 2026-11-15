@@ -91,6 +91,8 @@ auth = ["PyJWT[crypto]>=2.10"] # adapters/auth/keycloak (JWT validation, #2073)
 # (any non-editable install) carries the .py files alone and `load_profile()` finds no
 # profiles — the images sidestep it with `pip install -e .`, a bare install does not.
 squadops = ["**/*.yaml", "**/*.md", "**/*.json", "**/*.cjs"]
+# An adapter's fixed programs, read next to it (#3039: the Studio harness).
+adapters = ["**/*.luau"]
 
 #######################################
 # Ruff - Linting & basic code hygiene #

@@ -177,7 +177,8 @@ phases are in its own ledger.
 | Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4, R5.6) | **shipped** | 2.8 (PR #3052, closing #3023) |
 | Phase 2c: the Luau runner (#2906; core, R3.2), built by the Spark lane (the 2.8 plan's decision 4) | **shipped** | 2.8 (PR #3090, closing #2906; R5.13) |
 | Phase 2d, the first slice: the Studio adapter's read side (the session, the tool check, identity as far as reading allows, paged read-back) and the isolation test (R3.6, R4.6, R5.11) | **shipped** | 2.8 (PR #3088; #3039 tracks the rest) |
-| Phase 2d, the rest: the transaction, the adapter's own sync, the baseline, reset, `PlaceId` through the harness, the `roblox-studio` provider's four operations, and the worker's configuration (R3.6, R4.3, R5.7, R5.11) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
+| Phase 2d, the sync: the harness's fixed programs (identity and sync), `PlaceId` 0 confirmed before any write, and the adapter's own sync with its whole read-back (R3.6, D5, D10, R5.15) | **shipped** | 2.8 (PR #3107; #3039 tracks the rest) |
+| Phase 2d, the rest: the transaction, the baseline, reset, the `roblox-studio` provider's four operations served, and the worker's configuration (R3.6, R4.3, R5.7, R5.11, R5.15) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
@@ -796,6 +797,49 @@ a planner its shape.
 **Who ruled.** The MacBook lane, with the Spark lane's agreement (2026-11-15), under the owner's "go with your
 recommendations" (2026-11-12).
 
+
+## R5.15 Phase 2d, the sync as built: the harness's fixed programs, and the adapter's own sync (#3039, 2026-11-15)
+
+**The harness's programs are files,** `adapters/remote_execution/game_dev_roblox_studio/harness/*.luau`, each named
+by its digest (`harness.digests()`). D5 holds: `execute_luau` is never on the session's allow-list, and a session
+opened for the harness reaches it only through `run_program`, which sends one of those files in the Edit datamodel.
+- **Input is data, never code.** A program that takes input holds one `{{PAYLOAD}}` token. A call puts its input
+  there as hex-encoded JSON, so the code sent is the file's text with only `0-9a-f` where the token was. A source
+  file holding `]]`, a quote or Luau is written as text.
+- **`identity`** reads `PlaceId`, `GameId`, Edit and running. R5.11 left `PlaceId` 0 to the harness, and this is
+  it: a sync refuses before writing unless `PlaceId` and `GameId` are 0, Studio is in Edit, and no play is running.
+- **`sync`** writes scripts with their classes and removes scripts. A script whose class changed becomes a new
+  instance of the new class and keeps its children. A missing folder is made.
+
+**The adapter's sync** (`place.sync`, `RobloxStudioRunner.sync`, D10):
+- **What it writes:** only what differs from a read of the place: a missing script, changed text, or a changed class.
+- **What it removes:** every script in the three folders the manifest doesn't hold.
+- **Ordering:** writes go parents first and removes children first, in calls of at most 200,000 bytes of source.
+- **Refused before anything is written:**
+  - a manifest that drops a script it keeps a script inside;
+  - a file under a synced folder the provider can't place;
+  - a place that isn't a local one in Edit.
+- **Confirmed by reading the place back whole.** A sync is done only when the read-back matches the manifest, and
+  any difference is named. The program's own count is checked, and never taken as the confirmation.
+- **Script Sync's `X/init.luau`** is the script `X`, and the other files in `X/` are its children. R5.11's mapping
+  placed it as a script named `init` inside a folder `X`, where the game's `require(script.Parent.X)` would find a
+  Folder. `X.luau` beside `X/init.luau` is two scripts with one name, and is refused.
+
+**Evidence on the real place** (Studio 0.747, `ta-copy.rbxl`, `scripts/dev/studio_sync.py --round-trip`):
+- **Identity** read `PlaceId` 0 and `GameId` 0, in Edit.
+- **A changed tree** was synced in 12.0 s: one Shared module edited, one added (with `é`, `]]` and backslashes in its
+  text), and one client module removed. It wrote 2, removed 1, and matched on read-back.
+- **The repository's own `src/`** was synced back in 12.9 s, and `studio_read_back.py` then read 137 scripts with 0
+  differences.
+
+Nothing was saved and nothing was published.
+
+**Not served yet.** `serves()` is still empty: `sync_source` is served once it is proved on the worker, a Studio
+restart included (R2.4). The transaction, the non-script baseline, reset and reopening Studio, and play are #3039's
+rest. The owner approved writing into the local `ta-copy.rbxl` on 2026-11-15.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12) and their approval of
+writes to the local copy (2026-11-15).
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
