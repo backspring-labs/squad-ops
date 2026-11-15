@@ -134,3 +134,35 @@ async def test_tensorfold_is_quiet_while_it_serves_its_declared_model(running, q
         assert any(said in reason for reason in quietness.reasons), quietness.reasons
     else:
         assert quietness.reasons == ()
+
+
+async def test_the_operators_acquire_reads_queued_runs_and_the_supervisors_doesnt():
+    """§24dw (#2287), over the memory cycle registry. Bugs caught: the operator taking the box
+    under a queued run, which starts the moment the lease ends; or a paused or ended run read as
+    on the box, which would refuse every acquire after a gate."""
+    import dataclasses
+    from types import SimpleNamespace
+
+    from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+    from squadops.campaigns.box_reading import BoxReader
+    from squadops.cycles.models import Run
+    from tests.unit.campaigns.builders import cycle_for
+
+    cycles = MemoryCycleRegistry()
+    for n, status in enumerate(("queued", "running", "paused", "completed"), start=1):
+        intent = SimpleNamespace(campaign_id=None, cycle_kind=SimpleNamespace(value=None))
+        cycle = dataclasses.replace(cycle_for(intent), cycle_id=f"cyc_{status}")
+        await cycles.create_cycle(cycle)
+        await cycles.create_run(Run(f"run_{status}", cycle.cycle_id, n, status, "system", "cfg"))
+
+    class _Projects:
+        async def list_projects(self):
+            return [SimpleNamespace(project_id=cycle.project_id)]
+
+    reader = BoxReader(
+        campaigns=None, deploy_registry=None, engines={}, project_registry=_Projects(),
+        cycle_registry=cycles,
+    )  # fmt: skip
+
+    assert await reader.runs_in_flight() == ("run_running",)
+    assert sorted(await reader.runs_running_or_queued()) == ["run_queued", "run_running"]
