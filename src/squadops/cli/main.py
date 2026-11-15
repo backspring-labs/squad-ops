@@ -26,6 +26,7 @@ from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.assignment import app as assignment_app
 from squadops.cli.commands.auth import auth_app, login, logout
 from squadops.cli.commands.bootstrap import bootstrap
+from squadops.cli.commands.box import app as box_app
 from squadops.cli.commands.campaigns import app as campaigns_app
 from squadops.cli.commands.cycles import app as cycles_app
 from squadops.cli.commands.doctor import doctor
@@ -116,3 +117,4 @@ app.add_typer(snapshots_app, name="snapshots")  # Appendix A §3.7: a unit's sna
 app.add_typer(instructions_app, name="instructions")  # Appendix A §3.5: task instructions
 app.add_typer(scenarios_app, name="scenarios")  # SIP-0113 §4.1: held-out scenario suites
 app.add_typer(workers_app, name="workers")  # #3047: the worker registry, read
+app.add_typer(box_app, name="box")  # SIP-0109 §24dw (#2287): the operator's lease on the box

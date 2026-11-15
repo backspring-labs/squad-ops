@@ -1251,7 +1251,7 @@ async def get_lease(
     every campaign reads the same lease; the campaign must exist."""
     await _registry(request).get_campaign(campaign_id)
     lease = await _registry(request).box_lease()
-    return _lease(lease) if lease is not None else None
+    return LeaseResponse.of(lease, datetime.now(UTC)) if lease is not None else None
 
 
 @router.post("/{campaign_id}/lease")
@@ -1337,20 +1337,9 @@ async def _change_lease(
     _project(request, result, identity)
     lease = await registry.box_lease()
     return LeaseResultResponse(
-        entry=_entry(result.entry), replayed=result.replayed, lease=_lease(lease)
-    )
-
-
-def _lease(lease) -> LeaseResponse:
-    from datetime import UTC, datetime
-
-    return LeaseResponse(
-        holder=str(lease.holder),
-        held_by=lease.held_by,
-        campaign_id=lease.campaign_id,
-        acquired_at=lease.acquired_at,
-        expires_at=lease.expires_at,
-        supervisor_holds=lease.supervisor_holds(datetime.now(UTC)),
+        entry=_entry(result.entry),
+        replayed=result.replayed,
+        lease=LeaseResponse.of(lease, datetime.now(UTC)),
     )
 
 

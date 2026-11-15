@@ -2217,6 +2217,73 @@ class TestARunStartsOnlyWhenALaunchCould:
         assert "waited 60s for the box, one full lease of its campaign" in failure
         assert reason in failure
 
+    @staticmethod
+    async def _operator_holds(reg, seconds: int):
+        from squadops.campaigns.box import OperatorLeaseChange, OperatorLeaseOperation
+
+        await reg.change_operator_lease(
+            OperatorLeaseChange(
+                operation=OperatorLeaseOperation.ACQUIRE, actor="ada", actor_role="admin",
+                reason="local model", idempotency_key=f"op{seconds}", expires_in_s=seconds,
+            ),
+            runs_in_flight=(),
+        )  # fmt: skip
+
+    @pytest.mark.parametrize(
+        ("renewed", "started"),
+        [(False, False), (True, True)],
+        ids=["the lease runs out first", "a renewal extends the wait"],
+    )
+    async def test_a_run_waits_out_the_operators_lease_and_a_renewal_extends_the_wait(
+        self, executor, mock_registry, mock_queue, cycle, renewed, started
+    ):
+        """§24dw (#2287), outside every campaign, where a run has no lease of its own to wait.
+        Bugs caught: a queued run refused at once though the operator said when it gives the box
+        back; a wait bound read once, so the operator's renewal fails a run that would start."""
+        from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
+        from squadops.campaigns.box import OperatorLeaseChange, OperatorLeaseOperation
+
+        reg = MemoryCampaignRegistry()
+        await self._operator_holds(reg, 120)
+        executor._campaign_registry = reg
+        executor._box_verdict = self._verdict(reg, [])
+        self._in_campaign(mock_registry, cycle, None)
+        run = self._enforcing_transitions(mock_registry)
+        TestSequentialHappyPath._wire_canned_replies(mock_queue)
+        polls = []
+
+        async def sleep(_seconds):
+            lease = await reg.box_lease()
+            if not lease.operator_holds(datetime.now(UTC)):
+                return  # another sleeper
+            polls.append(1)
+            if renewed and len(polls) == 1:
+                await self._operator_holds(reg, 600)  # renewed at the first poll
+            elif renewed and len(polls) == 3:
+                await reg.change_operator_lease(
+                    OperatorLeaseChange(
+                        operation=OperatorLeaseOperation.RELEASE, actor="ada", actor_role="admin",
+                        reason="done", idempotency_key="rel",
+                    ),
+                    runs_in_flight=(),
+                )  # fmt: skip
+
+        with (
+            patch("squadops.execution.run_admission.datetime", self._clock()),
+            patch("squadops.execution.run_admission.asyncio.sleep", side_effect=sleep),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        if started:
+            assert (statuses[0], statuses[-1]) == (RunStatus.RUNNING, RunStatus.COMPLETED)
+            return
+        assert RunStatus.RUNNING not in statuses
+        assert run["status"] is RunStatus.FAILED
+        failure = mock_registry.update_run_status.call_args_list[-1].kwargs["failure_reason"]
+        assert "what the operator's lease held it for" in failure
+        assert "the operator (ada) holds the box until" in failure
+
     async def test_a_run_outside_every_campaign_is_refused_at_once_on_a_box_not_quiet(
         self, executor, mock_registry, cycle
     ):

@@ -154,7 +154,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a product's declared reading of an accepted increment, kept on the run and its promotion and shown in the digest and the gate's evidence (§24dj) | **shipped** | 2.6.0, PR #2942 |
 | the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
 | the replay viewer showing a new version with no step by hand (§24dj) | **dropped** (§24dm): the viewer is the product's own tool | battle-trainer PR #3 |
-| the operator's box lease outside Campaigns (§9.3) | **placed** (re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): a new capability) | 2.8.0, #2287 |
+| the operator's box lease outside Campaigns (§9.3; as built: §24dw) | **shipped** | 2.8.0, PR #NNNN |
+| an operator lease taken while a pre-registered set is open, recorded as an intervention, which a pre-registration may forbid (#2287's last point; §24dw) | **placed** | 2.8.0, #2287 |
 | a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
@@ -7092,3 +7093,64 @@ refusal still escalates at once.
 
 **The evidence and who ruled.** SIP-0117 R5.12. #3045 was placed by the 2.8 plan, adopted by the owner on
 2026-11-11, and its shape was agreed with the MacBook lane on 2026-11-12 and 2026-11-15.
+
+### 24dw. The operator's lease on the box, outside every campaign (2026-11-15, §9.3; #2287, part 1; the Spark lane)
+
+**What changed.** §9.3 records one owner of the box at a time, but its lease could be taken only inside a campaign, by
+the supervisor at an increment gate. Between campaigns, an operator wanting the box for its own inference had no way to
+say so. A campaign launch that met that work went `launch_blocked` against a busy engine, spent its attempts (6 × 300 s
+in the 2.0 set's policy) and escalated, with nothing recording that the box had been handed over. So the box's one lease
+may now be held by the operator:
+1. **Taking it.** `POST /api/v1/box/lease` (`squadops box lease acquire --for 30m --reason …`), under the new scope
+   `box:operate`, which admin holds. It isn't `campaigns:supervise`, because this lease belongs to no campaign. It is
+   refused while:
+   - the supervisor or another operator holds the box (`box_held`);
+   - a run is running or queued (`run_in_flight`);
+   - a campaign is live (`campaign_live`). Every campaign must be a draft, paused, escalated or completed, the states
+     a campaign launches nothing from by itself.
+
+   It lasts at most an hour (`OPERATOR_LEASE_MAX_S`). The same operator asking again renews it from then and keeps its
+   first acquisition time.
+2. **Giving it back.** `POST /api/v1/box/lease/release`. Only the operator holding it may (`not_lease_holder`). A lease
+   past its expiry holds nothing, and anyone may record its return.
+3. **The record.** Every change is a row of the operator lease's own log (`box_lease_log`, migration 2005), applied or
+   refused, with what a refusal read. The rows go to the security audit. A key replays its row, and a key reused for
+   another change is refused. The lease sits outside every campaign's control log, so no `ControlOperation` was added.
+   `GET /api/v1/box/lease` (`squadops box lease show`) reads who holds the box and the latest rows, so an operator can
+   check before starting.
+4. **While the operator holds it:**
+   - a cycle create is refused with 409 `operator_holds_the_box`, as `supervisor_holds_the_box` is;
+   - a campaign's launch waits in `launch_blocked` with one row saying so. It counts no attempt and never escalates.
+     Each sweep reads the box, so a release resumes it within one sweep;
+   - a run start waits queued for what remains of the lease, re-read at each poll so a renewal extends the wait, and
+     then for its own campaign's one lease (§24an's wait, extended).
+
+   A model left resident after the release still fails the quiet-box check, as the box's first counted attempt.
+5. **The engine switch.** `engine_switch.py` reads a held lease, the operator's or the supervisor's, as work on the
+   box and refuses to move an engine under it. The other direction is not built: the switch's hold is a host file
+   lock (#2288) the runtime can't read. An acquire during a switch finds Ollama stopped, and the launches it would
+   protect are refused anyway (§24an).
+
+**What didn't change.** The supervisor's lease and its route are as they were. It is now refused (`box_held`) while
+the operator holds the box, as it already was while another supervisor did. The quiet-box check reads exactly what it
+read.
+
+**Not built in this part.** #2287's last point is an operator lease taken while a pre-registered set is open: it is an
+intervention, recorded as one, and a pre-registration may forbid it. It is the verification-set driver's to read, and
+it stays placed on #2287.
+
+**The evidence.**
+- `test_box_lease_routes.py` enters at the HTTP surface with the real authorization adapter. It covers the refusals,
+  the renewal, the replay, the conflicting key, the holder rule, the scope and the audit.
+- `test_launch_blocking.py` enters at the launcher. It covers a held launch writing one row and spending no attempt
+  through two attempts' worth of sweeps, a resident model still counting, and the release resuming the launch.
+- `test_dispatched_flow_executor.py` enters at `execute_run`. It covers a run outside every campaign waiting out the
+  lease, and a renewal extending the wait.
+- `test_postgres_campaign_registry_integration.py`, on real Postgres, covers two operators racing, the live campaign
+  read inside the lease's transaction, and 2005's constraints.
+- `test_engine_switch.py` covers the switch reading a held lease.
+
+**Who ruled.** #2287 was placed in 2.8.0 by the 2.7 plan's R1 (the owner, 2026-11-08), and the 2.8 plan, which the
+owner adopted on 2026-11-11, has it in the Spark lane. The shape is #2287's own proposal. The cuts named here, the
+switch's one direction and the intervention left for part 2, are the implementer's, named here for the owner's
+review.

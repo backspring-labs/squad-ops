@@ -2510,3 +2510,12 @@ checks:
       from squadops.tasks.task_types import TaskType
       print("request.proposal_latest_assessments" in CONTEXT_CONTRACTS[TaskType.STRATEGY_PROPOSE_INCREMENT].prompt_templates)
     expect: "True"
+  - id: "2287"
+    what: the operator's lease on the box outside every campaign, its routes, and a launch that waits on it without counting (SIP-0109 §24dw)
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.routes.box import router
+      from squadops.auth.models import ROLE_SCOPES, Role, Scope
+      from squadops.campaigns.box import LaunchRefusal, OPERATOR_LEASE_MAX_S
+      print(sorted({r.path for r in router.routes}), Scope.BOX_OPERATE in ROLE_SCOPES[Role.ADMIN], LaunchRefusal.OPERATOR_HOLDS_THE_BOX.value, OPERATOR_LEASE_MAX_S)
+    expect: "['/api/v1/box/lease', '/api/v1/box/lease/release'] True operator_holds_the_box 3600"

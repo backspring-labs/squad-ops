@@ -109,7 +109,15 @@ class BoxReader:
     async def runs_in_flight(self) -> tuple[str, ...]:
         """Every run executing on the box now, by id. A run waiting at a gate or queued to start
         is not in flight: a queued run's start waits on the lease."""
+        return await self._runs((RunStatus.RUNNING.value,))
 
+    async def runs_running_or_queued(self) -> tuple[str, ...]:
+        """§24dw (#2287): every run executing or queued to start, by id. The operator's lease is
+        taken only with none: a queued run would start the moment the lease ended, and the
+        operator's acquire says the box is free now."""
+        return await self._runs((RunStatus.RUNNING.value, RunStatus.QUEUED.value))
+
+    async def _runs(self, statuses: tuple[str, ...]) -> tuple[str, ...]:
         running: list[str] = []
         for project in await self._projects.list_projects():
             for cycle in await self._cycles.list_cycles(
@@ -118,6 +126,6 @@ class BoxReader:
                 running.extend(
                     r.run_id
                     for r in await self._cycles.list_runs(cycle.cycle_id)
-                    if r.status == RunStatus.RUNNING.value
+                    if r.status in statuses
                 )
         return tuple(running)

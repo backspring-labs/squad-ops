@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from squadops.campaigns.box import LeaseHolder
+from squadops.campaigns.box import LeaseHolder, OperatorLeaseOperation, OperatorLeaseRefusal
 from squadops.campaigns.models import (
     CampaignOutcome,
     CampaignState,
@@ -54,7 +54,11 @@ def _check_values(sql: str, column: str) -> set[str]:
         ("2000_campaign_branch_rebased.sql", "state", LaunchIntentState),
         # Replaced whole by 2002 (a resume not delegated to the operator's supervisor, §24da).
         ("2002_campaign_resume_not_delegated.sql", "refusal", RefusalReason),
-        ("1690_box_lease.sql", "holder", LeaseHolder),
+        # Replaced by 2005 (the operator's lease outside every campaign, §24dw).
+        ("2005_box_operator_lease.sql", "holder", LeaseHolder),
+        ("2005_box_operator_lease.sql", "operation", OperatorLeaseOperation),
+        ("2005_box_operator_lease.sql", "outcome", ControlOutcome),
+        ("2005_box_operator_lease.sql", "refusal", OperatorLeaseRefusal),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),
         ("1610_cycle_campaign_columns.sql", "kind", CycleKind),
     ],

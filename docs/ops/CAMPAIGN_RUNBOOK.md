@@ -116,6 +116,21 @@ squadops campaigns lease release <campaign_id> --reason "ruled; models unloaded"
 The lease is taken only at an open increment gate, only with no run in flight, and only from the
 squad. It expires on its own, so a supervisor that crashes cannot hold the box.
 
+**Between campaigns, the operator takes the box the same way** (§24dw, #2287). It needs `box:operate`,
+which admin holds. It is taken only while nobody else holds the box, no run is running or queued, and every
+campaign is a draft, paused, escalated or completed. It lasts at most an hour, and asking again renews it:
+
+```bash
+squadops box lease show                                    # who holds it, and the latest handovers
+squadops box lease acquire --for 30m --reason "local model session"
+squadops box lease release --reason "session over; models unloaded"
+```
+
+While it's held, a CLI cycle create is refused (409 `operator_holds_the_box`). A campaign that is resumed
+or launches waits in `launch_blocked` without spending its attempts, and it resumes within one sweep of the
+release. Give the box back after the last request you sent has finished: an engine still serving it reads
+as not quiet.
+
 **A run starts only when a launch could** (§24an, #1928). If the lease comes back, released or expired,
 with a model the deploy does not declare still resident, the next run keeps waiting, queued, until the
 model is unloaded. Usually that is the framing run your ruling approved. Past one full lease

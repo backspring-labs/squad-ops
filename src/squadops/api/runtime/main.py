@@ -39,6 +39,7 @@ from squadops.api.routes.agent_status import HEARTBEAT_PATH
 from squadops.api.routes.agent_status import router as agent_status_router
 from squadops.api.routes.assignments import router as assignments_router
 from squadops.api.routes.auth import router as auth_router
+from squadops.api.routes.box import router as box_router
 from squadops.api.routes.campaigns import campaigns_router
 from squadops.api.routes.chat import agents_router as chat_agents_router
 from squadops.api.routes.chat import chat_router
@@ -184,6 +185,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(workers_router)  # SIP-0117 R3.3: a remote-execution worker's calls
     app.include_router(worker_readings_router)  # #3047: the registry, as an operator reads it
     app.include_router(remote_operations_router)  # SIP-0117 R5.6: a requester's calls
+    app.include_router(box_router)  # SIP-0109 §24dw (#2287): the operator's lease on the box
 
 
 #: Connection and process objects live on ``app.state`` (FastAPI's per-app holder), so an

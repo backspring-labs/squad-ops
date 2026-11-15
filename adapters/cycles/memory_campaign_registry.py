@@ -46,6 +46,7 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
         self._log: dict[str, list[ControlLogEntry]] = {}
         self._intents: dict[str, LaunchIntent] = {}
         self._lease: BoxLease | None = None
+        self._operator_log: list[box.OperatorLeaseEntry] = []
         self._lock = asyncio.Lock()
         #: ``transitions_held``'s, per Project. Apart from ``_lock``, which the body's reads take.
         self._held: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -75,6 +76,41 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
 
     async def box_lease(self) -> BoxLease | None:
         return self._lease
+
+    async def operator_lease_log(self, *, limit: int = 50) -> list[box.OperatorLeaseEntry]:
+        return list(reversed(self._operator_log))[:limit]
+
+    async def change_operator_lease(
+        self, change: box.OperatorLeaseChange, *, runs_in_flight: tuple[str, ...]
+    ) -> box.OperatorLeaseResult:
+        async with self._lock:
+            now = _now()
+            prior = next(
+                (e for e in self._operator_log if e.idempotency_key == change.idempotency_key),
+                None,
+            )
+            if prior is not None:
+                if not box.replays(prior, change):
+                    raise box.OperatorLeaseRefused(
+                        box.operator_lease_entry(
+                            change, 0, now, box.OperatorLeaseRefusal.CONFLICTING_IDEMPOTENCY_KEY
+                        )
+                    )
+                if prior.refusal is not None:
+                    raise box.OperatorLeaseRefused(prior)
+                return box.OperatorLeaseResult(prior, True, self._lease)
+            live = tuple((c.campaign_id, c.state) for c in self._campaigns.values())
+            refusal, reasons = box.operator_lease_refusal(
+                change, self._lease, now, runs_in_flight=runs_in_flight, live_campaigns=live
+            )
+            entry = box.operator_lease_entry(
+                change, len(self._operator_log) + 1, now, refusal, reasons
+            )
+            self._operator_log.append(entry)
+            if refusal is not None:
+                raise box.OperatorLeaseRefused(entry)
+            self._lease = box.operator_leased(change, self._lease, now)
+            return box.OperatorLeaseResult(entry, False, self._lease)
 
     async def pending_launch_intents(self) -> list[LaunchIntent]:
         pending = [

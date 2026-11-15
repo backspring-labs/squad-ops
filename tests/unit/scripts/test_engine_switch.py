@@ -644,3 +644,27 @@ def test_a_switch_waits_for_the_one_in_progress_and_touches_nothing_past_the_wai
         code, steps = _main(monkeypatch, tmp_path, *argv)
 
     assert (code, steps) == (5, ["busy"])
+
+
+@pytest.mark.parametrize(
+    ("lease", "held"),
+    [
+        (
+            "operator (ada) until 10:30:00Z",
+            ["the operator (ada) until 10:30:00Z holds the box's lease"],
+        ),
+        ("", []),
+    ],
+    ids=["the operator holds the box", "the squad holds it"],
+)
+def test_the_switch_reads_a_held_lease_as_work_on_the_box(monkeypatch, lease, held):
+    """SIP-0109 §24dw (#2287). Bug caught: a switch moving the engine an operator's lease holds
+    the box for, mid-session, because only runs and campaigns were read."""
+    answers = {"cycle_runs": "0", "campaigns": "0", "box_lease": lease}
+
+    def psql(sql):
+        return next(v for table, v in answers.items() if f"from {table}" in sql)
+
+    monkeypatch.setattr(es, "psql", psql)
+
+    assert es.box_work() == held

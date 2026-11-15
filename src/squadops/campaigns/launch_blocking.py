@@ -20,6 +20,12 @@ intent still pending. The owner fixes what the refusal names and resumes without
 returns the campaign to the state the launch was written from and re-attempts it; or aborts.
 Before #1971 such an intent stayed pending and every drain refused it again, logged and unasked.
 
+**The operator's lease is waited out without counting (§24dw, #2287).** The operator took the box
+between campaigns and said for how long, so a launch that meets it is a handover, not a fault: the
+campaign waits in ``launch_blocked`` with one row saying so, spends none of its attempts, never
+escalates for it, and each sweep reads the box until the lease is released or expires. A refusal
+after that (a model the operator left resident) is the box's first counted attempt.
+
 **One create refusal is waited out instead (#3045):** no worker available for a tool the work
 requires, every blocking finding ``skillset_availability``. A worker comes back, so the campaign waits
 in ``launch_blocked`` as for the box, and each due attempt's create reads it afresh. Its attempts are
@@ -62,6 +68,15 @@ def _episode(log: list[ControlLogEntry]) -> list[ControlLogEntry]:
     return list(reversed(rows))
 
 
+def _held(entry: ControlLogEntry) -> bool:
+    """A row recording a launch that waits on the operator's lease, which counts no attempt."""
+    return entry.binding.get("refusal") == str(LaunchRefusal.OPERATOR_HOLDS_THE_BOX)
+
+
+def _counted(rows: list[ControlLogEntry]) -> int:
+    return sum(1 for e in rows if not _held(e))
+
+
 def _last_blocked(log: list[ControlLogEntry]) -> ControlLogEntry | None:
     return next(
         (e for e in reversed(_applied(log)) if e.operation is ControlOperation.LAUNCH_BLOCKED),
@@ -80,16 +95,21 @@ def _blocked(
     key_seq: int,
     refused_by: str = "the box",
 ) -> CampaignTransition:
-    escalates = attempt >= campaign.policy.launch_blocked_attempts
+    held = verdict.refusal is LaunchRefusal.OPERATOR_HOLDS_THE_BOX
+    escalates = not held and attempt >= campaign.policy.launch_blocked_attempts
+    reason = (
+        f"launch {launch_id} waits for the operator's lease to be released or expire; it "
+        f"counts no attempt ({attempt} of {campaign.policy.launch_blocked_attempts} spent)"
+        if held
+        else f"{refused_by} refused launch {launch_id} ({verdict.refusal}), attempt {attempt} of "
+        f"{campaign.policy.launch_blocked_attempts}"
+        + ("; escalated to the owner" if escalates else "")
+    )
     return CampaignTransition(
         operation=ControlOperation.LAUNCH_BLOCKED,
         actor=actor,
         actor_role=LAUNCHER_ROLE,
-        reason=(
-            f"{refused_by} refused launch {launch_id} ({verdict.refusal}), attempt {attempt} of "
-            f"{campaign.policy.launch_blocked_attempts}"
-            + ("; escalated to the owner" if escalates else "")
-        ),
+        reason=reason,
         idempotency_key=f"{launch_id}:blocked:{key_seq}",
         next_state=CampaignState.ESCALATED if escalates else CampaignState.LAUNCH_BLOCKED,
         expected_state=campaign.state,
@@ -107,7 +127,8 @@ def _blocked(
 def first_refusal(
     campaign: Campaign, intent: LaunchIntent, verdict: LaunchVerdict, *, actor: str
 ) -> CampaignTransition:
-    """The box refused a pending intent's launch: attempt 1, from the state that wrote it."""
+    """The box refused a pending intent's launch: attempt 1, from the state that wrote it, or,
+    when the operator holds the box, a wait that counts none (§24dw)."""
     if verdict.allowed:
         raise ValueError("an allowed launch is not blocked")
     return _blocked(
@@ -115,19 +136,20 @@ def first_refusal(
         verdict,
         launch_id=intent.launch_id,
         blocked_from=campaign.state.value,
-        attempt=1,
+        attempt=0 if verdict.refusal is LaunchRefusal.OPERATOR_HOLDS_THE_BOX else 1,
         actor=actor,
         key_seq=1,
     )
 
 
 def retry_due(campaign: Campaign, log: list[ControlLogEntry], now: datetime) -> bool:
-    """A blocked campaign's next attempt is due: at once after the owner's resume, otherwise
+    """A blocked campaign's next attempt is due: at once after the owner's resume, at every
+    sweep while it waits on the operator's lease (a release resumes it within one), otherwise
     ``launch_blocked_interval_s`` after the last attempt."""
     if campaign.state is not CampaignState.LAUNCH_BLOCKED:
         return False
     episode = _episode(log)
-    if not episode:
+    if not episode or _held(episode[-1]):
         return True
     elapsed = (now - episode[-1].committed_at).total_seconds()
     return elapsed >= campaign.policy.launch_blocked_interval_s
@@ -135,9 +157,11 @@ def retry_due(campaign: Campaign, log: list[ControlLogEntry], now: datetime) -> 
 
 def blocked_launch_step(
     campaign: Campaign, log: list[ControlLogEntry], verdict: LaunchVerdict, *, actor: str
-) -> CampaignTransition:
+) -> CampaignTransition | None:
     """The due attempt's row: the unblock when the box now allows the launch, otherwise the
-    next refused attempt, which escalates at the policy's count."""
+    next refused attempt, which escalates at the policy's count. ``None`` while it still waits
+    on the operator's lease and its last row already says so: a wait is one row, not one a
+    sweep (§24dw)."""
     last = _last_blocked(log)
     if last is None:
         raise ValueError(f"campaign {campaign.campaign_id} is blocked with no blocked launch")
@@ -156,12 +180,19 @@ def blocked_launch_step(
             target=launch_id,
             binding={"launch_id": launch_id, "blocked_from": blocked_from},
         )
+    episode = _episode(log)
+    if verdict.refusal is LaunchRefusal.OPERATOR_HOLDS_THE_BOX:
+        if episode and _held(episode[-1]):
+            return None
+        attempt = _counted(episode)
+    else:
+        attempt = _counted(episode) + 1
     return _blocked(
         campaign,
         verdict,
         launch_id=launch_id,
         blocked_from=blocked_from,
-        attempt=len(_episode(log)) + 1,
+        attempt=attempt,
         actor=actor,
         key_seq=seq,
     )
