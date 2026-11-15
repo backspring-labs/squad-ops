@@ -1066,6 +1066,26 @@ The review is in the front matter, which is part of the skill's digest and isn't
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on
 #3038.
 
+
+### 17k. The offered-contracts fragment waits for the first contract a planner names (2026-11-15)
+
+§17c point 1 placed the planner's offered-contracts prompt fragment with "the first planned contract" (the Game
+Development Platform SIP's phase 2a). The first milestone has none:
+- **a base-set task needs no contract named.** A task that names none loads the skills of every required contract that
+  runs as its task type (`skillset_content.skills_for`), and the plan gate accepts a base-set task with no contract. The
+  Roblox squad's `development.develop` and `qa.test` tasks load `game.gameplay_implementation`'s and
+  `game.unit_tests`'s skills with nothing named;
+- **the one contract over a non-base type is the framework's.** `game.scenario_verification` runs as
+  `qa.run_remote_operation`, and plan expansion appends it for each scenario criterion (SIP-0117 R5.9). The plan gate
+  refuses a planned one (SIP-0117 R5.14).
+
+So the fragment would add prompt text and change no plan. **It lands with the first contract a planner itself must
+name.** Until then the plan-authoring prompt lists the base set's task types, as it does today, and every stack's
+prompts are byte-identical.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The reading is on
+#3041.
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each

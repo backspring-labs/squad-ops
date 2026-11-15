@@ -776,6 +776,26 @@ Nothing reads engine behaviour headless. That stays with the worker (R3.6).
 MacBook lane added `setup` as the third, so product code raising still discriminates, and required the `PASS`
 lines. The placement is the 2.8 plan's decision 4.
 
+
+## R5.14 In the first milestone an operation is the framework's step, and the plan gate refuses a planned one (2026-11-15)
+
+**What changed.** `ImplementationPlan.validate_operation_tasks` refuses every plan task whose type runs an operation,
+naming it: "runs an operation, which is the framework's step in this milestone: plan expansion appends one for each
+scenario criterion, with its frozen scenario (SIP-0117 R5.9). Plan none". Both plan-gate seams already call it. It
+replaces R4.4's two checks on a planned operation: no expected artifacts, and some task authoring source.
+
+**Evidence.** R5.9 made a scenario criterion's operation the framework's step: plan expansion appends it with the
+frozen scenario it plays. R4.3 says `sync_source`, `read_console` and `capture` aren't planned on their own in the
+first milestone. A planned operation would reach dispatch with no scenario to play. Nothing planned one: the Spark
+lane's harnesses use only the appended step (its reply, 2026-11-15). And no planner is shown an operation, since
+SIP-0116 §17k re-places the offered-contracts fragment.
+
+**When it changes again:** with the first milestone that plans an operation, together with the fragment that teaches
+a planner its shape.
+
+**Who ruled.** The MacBook lane, with the Spark lane's agreement (2026-11-15), under the owner's "go with your
+recommendations" (2026-11-12).
+
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
