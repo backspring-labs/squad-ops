@@ -37,6 +37,10 @@ READ_ONLY_TOOLS = frozenset(
 #: The tool the harness's programs run through. Only :meth:`StudioMcpSession.run_program` sends it.
 HARNESS_TOOL = "execute_luau"
 
+#: Studio's own controls a harness session may call: starting and stopping play. Neither is marked
+#: read-only, so they are named here and allowed only to a session opened for the harness.
+CONTROL_TOOLS = frozenset({"start_stop_play"})
+
 #: The MCP protocol version this session speaks.
 PROTOCOL_VERSION = "2025-06-18"
 
@@ -79,8 +83,12 @@ def tool_check(
         if name not in by_name
         or (by_name[name].get("annotations") or {}).get("readOnlyHint") is not True
     ]
-    if harness and HARNESS_TOOL not in by_name:
-        problems.append(f"{HARNESS_TOOL}, which the harness runs through, is not offered")
+    if harness:
+        problems += [
+            f"{name}, which the harness needs, is not offered"
+            for name in sorted({HARNESS_TOOL, *CONTROL_TOOLS})
+            if name not in by_name
+        ]
     if problems:
         raise StudioSessionError("Studio's tool list fails the allow-list: " + "; ".join(problems))
     canonical = json.dumps(sorted(tools, key=lambda t: str(t.get("name"))), sort_keys=True)
@@ -154,7 +162,7 @@ class StudioMcpSession:
     async def call(self, tool: str, arguments: Mapping[str, Any]) -> str:
         """The text ``tool`` answered with, or :class:`StudioToolError`. A tool outside the
         allow-list raises :class:`ToolDenied` before anything is sent."""
-        if tool not in self._allowed:
+        if tool not in self._allowed and not (self._harness and tool in CONTROL_TOOLS):
             raise ToolDenied(f"{tool} is not on the allow-list; it was not sent")
         result = await self._request(
             "tools/call", {"name": tool, "arguments": dict(arguments)}, self._call_seconds

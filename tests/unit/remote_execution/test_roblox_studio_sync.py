@@ -195,7 +195,7 @@ async def test_a_session_for_the_harness_requires_its_tool_offered(tmp_path):
     world = _world(tmp_path, tools=tools)
     session = StudioMcpSession([sys.executable, str(STANDIN), str(world)], harness=True)
 
-    with pytest.raises(StudioSessionError, match="execute_luau, which the harness runs through"):
+    with pytest.raises(StudioSessionError, match="execute_luau, which the harness needs"):
         await session.open()
     await session.close()
 

@@ -36,6 +36,7 @@ def _tools(**changes) -> list[dict]:
     """The live tool list: the allowed tools, read-only, and a write tool beside them."""
     tools = [{"name": n, "annotations": {"readOnlyHint": True}} for n in sorted(READ_ONLY_TOOLS)]
     tools.append({"name": "execute_luau", "annotations": {"readOnlyHint": False}})
+    tools.append({"name": "start_stop_play", "annotations": {}})
     for name, marks in changes.items():
         tools = [t for t in tools if t["name"] != name]
         if marks is not None:

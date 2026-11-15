@@ -12,6 +12,11 @@ payload token is, as the adapter's ``harness`` builds them: ``identity`` answers
 paths in ``ignore_writes``, and saves the world back to its file. Each program run is logged as
 ``execute_luau:<name>``, and its code appended to ``code_log`` when the world names one. Any other
 code is refused, as a program the harness doesn't hold.
+
+``baseline`` pages the world's ``baseline`` lines (``baseline_after_play`` once play has stopped,
+when given); ``baseline_stall`` answers a page that doesn't advance. ``script_marks`` answers the
+world's ``marked``. ``start_stop_play`` moves the world's ``mode`` between Play and Edit, unless
+``stuck`` holds it, and ``get_studio_state`` reports ``mode`` when the world has one.
 """
 
 import json
@@ -107,6 +112,32 @@ def sync(job):
     return {"written": len(job["writes"]), "replaced": 0, "removed": removed}
 
 
+def baseline_page(job):
+    played = world.get("played") and "baseline_after_play" in world
+    lines = world["baseline_after_play"] if played else world.get("baseline", [])
+    if job["release"]:
+        return {"total": len(lines), "next": 0, "lines": []}
+    out, used, index = [], 0, job["offset"]
+    while index < len(lines):
+        size = len(lines[index]) + 1
+        if out and used + size > job["max_chars"]:
+            break
+        out.append(lines[index])
+        used += size
+        index += 1
+    if world.get("baseline_stall"):
+        index = job["offset"]
+    return {"total": len(lines), "next": index, "lines": out}
+
+
+def start_stop_play(args):
+    if not world.get("stuck"):
+        world["mode"] = "Play" if args["is_start"] else "Edit"
+        if not args["is_start"]:
+            world["played"] = True
+    return text("Game Started" if args["is_start"] else "Game Stopped")
+
+
 def execute_luau(args):
     found = program_of(args["code"])
     if found is None:
@@ -120,6 +151,10 @@ def execute_luau(args):
             f.write(json.dumps(args["code"]) + "\n")
     if name == "identity":
         return text(json.dumps(world.get("identity", IDENTITY)))
+    if name == "baseline":
+        return text(json.dumps(baseline_page(payload)))
+    if name == "script_marks":
+        return text(json.dumps({"marked": world.get("marked", [])}))
     return text(json.dumps(sync(payload)))
 
 
@@ -129,7 +164,11 @@ def call(name, args):
     if name == "list_roblox_studios":
         return text(json.dumps({"studios": world["studios"]}))
     if name == "get_studio_state":
+        if "mode" in world:
+            return text(f"- Current Studio Mode: {world['mode']}")
         return text(world["state"])
+    if name == "start_stop_play":
+        return start_stop_play(args)
     if name == "search_game_tree":
         return text(json.dumps(world["trees"].get(args["path"], [])))
     if name == "script_read":

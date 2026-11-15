@@ -19,7 +19,7 @@ from typing import Any
 PAYLOAD_TOKEN = "{{PAYLOAD}}"
 
 #: The programs, by name: their files are ``harness/<name>.luau``.
-PROGRAMS = ("identity", "sync")
+PROGRAMS = ("baseline", "identity", "script_marks", "sync")
 
 _HEX = re.compile(r"[0-9a-f]*")
 
