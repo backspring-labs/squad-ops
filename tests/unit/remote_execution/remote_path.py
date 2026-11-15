@@ -185,12 +185,16 @@ class Path:
             return await tx.unsettled_operations_of(TASK)
 
 
-async def _until(predicate, turns: int = 5000) -> None:
-    for _ in range(turns):
-        if await predicate():
-            return
-        await asyncio.sleep(0)
-    raise AssertionError(f"not reached in {turns} turns")
+async def _until(check, *args, seconds: float = 30.0, poll: float = 0.01) -> None:
+    """Wait for ``check(*args)`` by the clock (#3096). A bound in event-loop turns ran out on
+    Postgres, where each check is a network round trip that ``asyncio.sleep(0)`` doesn't wait
+    for, so a slower database failed a correct path. A failure names the check."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while not await check(*args):
+        if loop.time() >= deadline:
+            raise AssertionError(f"{check.__name__} not reached within {seconds:g}s")
+        await asyncio.sleep(poll)
 
 
 class RemotePathContract:
@@ -252,7 +256,7 @@ class RemotePathContract:
         waiting = None
         async with path.serving(path.worker(stuck, worker_id="first", line=first_line), "first"):
             waiting = asyncio.ensure_future(path.requester().run_operation(asked))
-            await _until(lambda: _running(stuck))
+            await _until(_running, stuck)
             first_line.down = True  # gone mid-run: nothing it does reaches the runtime again
         async with path.serving(path.worker(worker_id="second"), "second"):
             result = await waiting
@@ -267,7 +271,7 @@ class RemotePathContract:
         asked = path.ask()
         early_session = await path.registry.register(_registration("first"))
         waiting = asyncio.ensure_future(path.requester().run_operation(asked))
-        await _until(lambda: _queued(path, asked))
+        await _until(_queued, path, asked)
         early = await path.registry.claim(early_session.session_id)
         path.clock.advance(leasing.LEASE_SECONDS + 1)
         async with path.serving(path.worker(worker_id="second"), "second"):
@@ -292,7 +296,7 @@ class RemotePathContract:
         first_line = path.line()
         first_line.drop_answer_to = ("POST", "/api/v1/remote-operations")
         stored = asyncio.ensure_future(path.requester(first_line).run_operation(asked))
-        await _until(lambda: _answer_lost(first_line))
+        await _until(_answer_lost, first_line)
         first_line.down = True  # the process is gone: nothing it says reaches the runtime
         stored.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -325,7 +329,7 @@ class RemotePathContract:
         await path.registry.register(_registration("idle"))  # a worker is there, not claiming
         older = path.ask("send-1")
         waiting = asyncio.ensure_future(path.requester().run_operation(older))
-        await _until(lambda: _queued(path, older))
+        await _until(_queued, path, older)
         newer = path.ask("send-2")  # the runtime now waits on send-2
         runner = FixtureOperationRunner(sleep=path.sleep)
         ran = []
