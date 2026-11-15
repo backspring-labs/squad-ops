@@ -317,6 +317,8 @@ effects outside the scenario vocabulary, and any Studio version the worker wasn'
 | #950 | the review packet at the plan gate | **moves to the next feature line** | 2.8 already changes the plan gate (offered contracts), and a second change there makes a regression unattributable |
 | #2781 | a change request that adds a parameterized page | **moves to the next feature line** | a design change that needs its own outside review. The refusal stands, as designed |
 | #2782 | a route anchor hidden by a stylesheet | **stays deferred** to the next evaluator cut that is explicitly placed (2.7's R5) | unchanged |
+| #3089 | Campaign acceptance credits a criterion's test by its absence from the candidate's failures, not by its id among the passes | **in, Spark lane** (placed by the owner, 2026-11-15) | a correctness gap in the acceptance the headline's Campaigns rely on: a test generated from product data reads discriminating on a case that never ran |
+| #3101 | take FastAPI 0.163/Starlette 1.10, aio-pika 10.2 and ruff 0.17, capped after the 2026-11-15 refresh | **moves to 2.9** (placed by the owner, 2026-11-15) | it changes two live paths (the `app.routes` readers and the publisher's return handling), which is a stabilization release's work. Ruff moves with the evaluator image, at an explicitly placed evaluator cut |
 
 **Patches, outside the feature count:**
 - **#3009, first, and the owner's:** from 2026-12-02 GitHub blocks `pull_request_target` in public repositories,
