@@ -29,7 +29,7 @@ aiofiles>=23.0.0  # Async file I/O (used by base_agent)
 aio-pika>=9.3.0  # RabbitMQ async client
 asyncpg>=0.29.0  # PostgreSQL async driver
 PyJWT[crypto]>=2.10  # JWT validation used by adapters/auth/keycloak (#191, #2073)
-tree-sitter>=0.25  # the JSX structural resolver (SIP-0107 step 5)
+tree-sitter>=0.25,<0.26  # the JSX structural resolver (SIP-0107 step 5); #2814: 0.26.0 corrupts long files' trees
 tree-sitter-javascript>=0.25
 tree-sitter-typescript>=0.23
 # Upper bound pins the test env to the FastAPI the project actually runs (0.135.x).
@@ -98,7 +98,9 @@ flake8>=6.0.0
 # `error: missing_analyzer`. The harness has only ever had it transitively via
 # flake8 above — which is a live risk, since ruff's F rules ARE pyflakes and
 # retiring flake8 is on the table. Runtime images pin it in requirements/base.txt.
-pyflakes>=3.4.0
+# Pinned exactly, as the images pin it (requirements/base.txt): its verdicts gate task acceptance,
+# so CI tests the version that ships. Its cap was only flake8's, transitively (#3010).
+pyflakes==3.4.0
 black>=23.0.0
 isort>=5.12.0
 mypy>=1.5.0
