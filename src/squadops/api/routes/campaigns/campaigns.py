@@ -42,6 +42,7 @@ from squadops.api.campaign_schemas import (
     ControlLogEntryResponse,
     ControlRequest,
     ControlResultResponse,
+    EquipmentTransitionRequest,
     EscalationAnswerRequest,
     EscalationResponse,
     GateGoalEvidenceResponse,
@@ -98,6 +99,7 @@ from squadops.campaigns.calibration_record import (
 )
 from squadops.campaigns.continuation import PendingAction
 from squadops.campaigns.contribution_dismissal import dismissal_refusal, dismissal_transition
+from squadops.campaigns.equipment import TransitionRefused, equipment_transition
 from squadops.campaigns.escalation import (
     DelegatedMove,
     Escalation,
@@ -1044,6 +1046,55 @@ async def grant_goal_delegation(
     except ValueError as e:
         raise HTTPException(422, _validation(str(e))) from e
     return _result(await apply_control(request, campaign_id, transition, identity))
+
+
+@router.post("/{campaign_id}/equipment-transitions", status_code=201)
+async def transition_campaign_equipment(
+    request: Request,
+    campaign_id: str,
+    body: EquipmentTransitionRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_CONTROL)),
+) -> ControlResultResponse:
+    """The owner's recorded transition to the equipment a refused launch found (SIP-0116 §10,
+    phase 5; #3037): an ``equipment_transition`` row naming the pin it replaces, the digest it
+    accepts, the changed parts and why. ``campaigns:control``, the owner's alone. It moves no
+    state, and launches are held while it is written, as a re-binding holds them. Earlier
+    cycles' records, frozen verifier bundles and the lesson snapshot are untouched. The owner
+    then resumes, which retries the refused launch. No launch found other equipment since the
+    pin: 409 ``EQUIPMENT_NOT_CHANGED``; another digest than it found: 409
+    ``EQUIPMENT_DIGEST_MISMATCH``; a completed campaign: 409 ``CONTROL_OPERATION_REFUSED``. A retry
+    with its key replays."""
+    registry = _registry(request)
+    async with get_campaign_launch(request).launches_held():
+        campaign = await registry.get_campaign(campaign_id)
+        log = await registry.control_log(campaign_id)
+        replay = next(
+            (
+                e
+                for e in log
+                if e.operation is ControlOperation.EQUIPMENT_TRANSITION
+                and e.idempotency_key == body.idempotency_key
+            ),
+            None,
+        )
+        actor, role = actor_from(identity)
+        if replay is not None:
+            log = [e for e in log if e.seq < replay.seq]
+        try:
+            transition = equipment_transition(
+                campaign,
+                log,
+                body.to_digest,
+                actor=actor,
+                actor_role=role,
+                reason=body.reason,
+                idempotency_key=body.idempotency_key,
+            )
+        except TransitionRefused as e:
+            raise http_error(409, e.code, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(422, _validation(str(e))) from e
+        return _result(await apply_control(request, campaign_id, transition, identity))
 
 
 @router.post("/{campaign_id}/pause")

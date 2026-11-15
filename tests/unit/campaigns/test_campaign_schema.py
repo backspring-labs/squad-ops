@@ -47,8 +47,9 @@ def _check_values(sql: str, column: str) -> set[str]:
         # re-binding and instruction) and 2000 (a campaign branch's rebase, §24cd point 2).
         # Replaced whole again by 2001 (the Campaign's review request pushed, §24ci (b)), 2004 (a
         # closed Campaign's contribution that couldn't be opened, §24dc) and 2102 (the owner's
-        # goal delegation, SIP-0115 §10c).
-        ("2104_campaign_contribution_dismissed.sql", "operation", ControlOperation),
+        # goal delegation, SIP-0115 §10c), 2104 (a dismissed contribution, §24dg) and 2201 (a
+        # Campaign's pinned equipment and the owner's transition, SIP-0116 phase 5).
+        ("2201_campaign_equipment_operations.sql", "operation", ControlOperation),
         # Replaced whole by 2000 (a superseded repair or retry, §24cd point 2).
         ("2000_campaign_branch_rebased.sql", "state", LaunchIntentState),
         # Replaced whole by 2002 (a resume not delegated to the operator's supervisor, §24da).

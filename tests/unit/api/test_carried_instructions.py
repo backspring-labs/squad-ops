@@ -19,7 +19,7 @@ import pytest
 
 from adapters.memory.records import InMemoryMemoryRecords
 from squadops.campaigns.launcher import LaunchRefused
-from squadops.campaigns.models import ControlOperation, CycleKind
+from squadops.campaigns.models import ControlOperation, ControlOutcome, CycleKind
 from squadops.memory.records import (
     LESSON_CITED,
     Revision,
@@ -70,10 +70,12 @@ async def _repair_intent(w, *, continues: str | None = CONTINUED, decided: str |
     request = {**intent.cycle_request, "body": {**body, "execution_overrides": overrides}}
     resume = SimpleNamespace(
         entry_id="ctl_resume", operation=ControlOperation.RESUME, target=None,
+        outcome=ControlOutcome.APPLIED,
         binding={"action": "repair", "executes": "held"},
     )  # fmt: skip
     decision = SimpleNamespace(
         entry_id="ctl_decide", operation=ControlOperation.DECIDE, target=decided,
+        outcome=ControlOutcome.APPLIED,
         binding={"cycle_id": decided, "action": "escalate"},
     )  # fmt: skip
     log = w.campaigns.control_log

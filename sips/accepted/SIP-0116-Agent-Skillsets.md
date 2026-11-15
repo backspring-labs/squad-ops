@@ -137,7 +137,8 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 3, part 2: skills, loaded: a task is handed its skills from the kept copy at dispatch, a repair loads the skills of the step it revises, the prompt budget counts them, and where they render (§7, §7.1, §17e) | **shipped** | 2.8 (PR #3033, closing #3028) |
 | Phase 4, part 1: tools, checked at creation: the authorization outcome against each provider's registered authority (`ToolAuthorityPort`), and the availability outcome against the worker registry and the sandbox client (§8, §9, §17h) | **shipped** | 2.8 (PR #3077; #3036 tracks part 2) |
 | Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **shipped** | 2.8 (PR #3078, closing #3036) |
-| Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
+| Phase 5, part 1: the Campaign's pinned equipment, a changed one refused at launch with its parts named, and the owner's recorded transition (§10, §17l) | **shipped** | 2.8 (PR #PRNUM; #3037 tracks part 2) |
+| Phase 5, part 2: size preflight counts the skills a Campaign's start would assign (§17f point 6, §17l) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
 | Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
 | Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 
@@ -1085,6 +1086,64 @@ prompts are byte-identical.
 
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The reading is on
 #3041.
+
+
+### 17l. Phase 5, part 1 as built: the Campaign's pinned equipment and the owner's transition (2026-11-15)
+
+**What is pinned is the equipment,** read from a cycle's record (`campaigns/equipment.py`):
+- the base set's version;
+- the requirements;
+- the assignment: each requirement's agent, and the skillset's id, version and digest;
+- the offered contracts;
+- each kept skill's digest.
+
+The squad's roster hash covers models and agents with no assignment, and the development profile's fingerprint
+changes no equipment that the requirements don't already carry. So neither is compared.
+
+**The pin is the Campaign's first launched cycle's equipment,** not one taken at creation:
+- **Why not at creation:** a cycle's record is built from that launch's resolved configuration, including the
+  development profile pinned for it. A pin computed apart from a launch would rebuild that resolution beside
+  `prepare_cycle`, and could disagree with it.
+- **Where it lives:** the Campaign's control log, as a records-only `equipment_pinned` row with the equipment and its
+  digest. No new column. A Campaign that launched cycles before this shipped pins at its next launch, and the row says
+  so.
+
+**Each later launch is held to it** (`CampaignLaunchService._hold_to_pin`, after the cycle is prepared and before
+anything of it is stored):
+- **equal digests:** the launch proceeds. Its kept skills are the pinned ones digest for digest, since content is part
+  of the equipment, so "its cycles load from the Campaign's kept copy" holds without a copy kept apart. Each cycle
+  keeps its own copy, as before;
+- **a difference:** an `equipment_changed` row names each changed part (a revised skillset, a reassigned agent, a
+  skill whose digest moved, a different base set) and the digest found. The launch is refused
+  (`SKILLSET_EQUIPMENT_CHANGED`), and the Campaign escalates as for any refused launch.
+
+**The owner's recorded transition:** `POST /api/v1/campaigns/{id}/equipment-transitions`, `campaigns:control`.
+- It accepts exactly the digest the refused launch found. A catalog that moved again since is refused again at the
+  retry, not accepted unseen.
+- It needs a reason, and holds launches while it is written, as a rebind does.
+- It refuses a completed Campaign.
+- It writes a records-only `equipment_transition` row: the pin it replaces, the digest it accepts, and the changed
+  parts.
+- The owner then resumes, which retries the refused launch.
+
+Earlier cycles' records, the frozen verifier bundles (`promote` rows and the vault) and the lesson snapshot are
+untouched. The three operations join the control log's CHECK list (`2201_campaign_equipment_operations.sql`).
+
+**§14's proof:**
+- an unrelated catalog addition leaves a running Campaign completing as before;
+- a revised required skill stops the next launch, naming the skill;
+- after the transition and a resume, the Campaign completes, with the first increment's record and its frozen
+  verifiers unchanged;
+- the lesson snapshot is unchanged across a transition.
+
+The first three are entered through the machinery Campaign, and the last at the route.
+
+**Part 2, placed (#3037): size preflight counts skills** (§17f point 6). It runs at the Campaign's start, before the
+first launch has pinned anything. Counting the skills a start would assign needs the same record built at preflight
+from the configuration the first launch will resolve. That is part 2's design.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on
+#3037. It changed from "at start" to "at the first launch" for the reason above.
 
 ## Appendix A. A paper compatibility matrix
 

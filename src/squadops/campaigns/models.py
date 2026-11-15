@@ -149,6 +149,17 @@ class ControlOperation(StrEnum):
     #: the commit and review request it names. A record, accepted on a completed campaign, since a
     #: contribution exists only after the close. It clears the unintegrated set's row.
     CONTRIBUTION_DISMISSED = "contribution_dismissed"
+    #: The equipment of the Campaign's first launched cycle, pinned (SIP-0116 §10, phase 5;
+    #: #3037): the base set, requirements, assignment, offered contracts and skill digests its
+    #: later launches are held to. A record.
+    EQUIPMENT_PINNED = "equipment_pinned"
+    #: A launch whose cycle's equipment differs from the pin, refused with each changed part
+    #: named (phase 5). A record; the refusal's own ``launch_refused`` row escalates.
+    EQUIPMENT_CHANGED = "equipment_changed"
+    #: The owner's recorded transition to the equipment a refused launch found, by its digest,
+    #: with why (phase 5; SIP-0110's rebind is the precedent). A record: earlier evidence, frozen
+    #: verifier content and the lesson snapshot are untouched.
+    EQUIPMENT_TRANSITION = "equipment_transition"
 
     @property
     def records_only(self) -> bool:
@@ -174,12 +185,19 @@ class ControlOperation(StrEnum):
             ControlOperation.CONTRIBUTION_FAILED,
             ControlOperation.GOAL_DELEGATION_GRANTED,
             ControlOperation.CONTRIBUTION_DISMISSED,
+            ControlOperation.EQUIPMENT_PINNED,
+            ControlOperation.EQUIPMENT_CHANGED,
+            ControlOperation.EQUIPMENT_TRANSITION,
         )
 
     @property
     def needs_a_live_campaign(self) -> bool:
         """A record-only operation a completed campaign refuses, as it refuses a move."""
-        return self is ControlOperation.GOAL_DELEGATION_GRANTED
+        return self in (
+            ControlOperation.GOAL_DELEGATION_GRANTED,
+            # A transition re-pins equipment for launches a completed campaign has none of.
+            ControlOperation.EQUIPMENT_TRANSITION,
+        )
 
     @property
     def changes_the_lease(self) -> bool:

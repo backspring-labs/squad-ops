@@ -280,7 +280,7 @@ async def test_a_start_writes_the_record_and_row_5_launches_a_proposal_on_the_br
     resp = world.start()
 
     log = await world.campaigns.control_log(CID)
-    [start, promote, decide, launched] = [
+    [start, promote, decide, pinned, launched] = [
         e for e in log if e.operation is not ControlOperation.CREATE
     ]
     record = start.binding[BINDING_KEY]
@@ -291,6 +291,7 @@ async def test_a_start_writes_the_record_and_row_5_launches_a_proposal_on_the_br
         ControlOperation.START,
         ControlOperation.PROMOTE,
         ControlOperation.DECIDE,
+        ControlOperation.EQUIPMENT_PINNED,  # SIP-0116 phase 5: the first launch's equipment
         ControlOperation.MARK_LAUNCHED,
     ]
     assert (record["commit"], record["development_configuration_revision"]) == (
@@ -504,6 +505,7 @@ async def test_a_record_a_restart_left_undecided_is_heard_once_at_startup(tmp_pa
         ControlOperation.START,
         ControlOperation.PROMOTE,
         ControlOperation.DECIDE,
+        ControlOperation.EQUIPMENT_PINNED,  # SIP-0116 phase 5: the first launch's equipment
         ControlOperation.MARK_LAUNCHED,  # §24bv point 5: row 5's proposal, launched once
     ]
     assert stored.accepted is not None and stored.accepted.calibration_record_id is not None
