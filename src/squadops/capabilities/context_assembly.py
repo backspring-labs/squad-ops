@@ -329,6 +329,7 @@ _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_increment_frozen_appendix",
     "request.plan_increment_regenerated_appendix",
     "request.increment_test_scope_appendix",
+    "request.increment_scenario_criteria_appendix",
     "request.increment_views_appendix",
     *_SHARED_CONTEXT_TEMPLATES,
 )
@@ -433,6 +434,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.cycle_repair_anchored_edit_appendix",
             "request.cycle_repair_current_files",
             "request.increment_test_scope_appendix",
+            "request.increment_scenario_criteria_appendix",
             "request.increment_views_appendix",
             # #2799: a page criterion's test on a vitest product, from its test scope.
             "request.increment_page_loader_appendix",

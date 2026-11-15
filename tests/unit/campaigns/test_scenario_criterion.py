@@ -324,3 +324,57 @@ def test_a_scenario_no_one_can_run_stops_plan_expansion_by_name(monkeypatch):
             plan=plan("tally/report.py"),
             change_request=_stored_with_a_suite_criterion(),
         )
+
+
+async def test_a_scenario_criterion_is_left_to_its_scenario_and_no_test_is_asked_for_it(
+    monkeypatch,
+):
+    """#3081, entered at ``generate_task_plan`` for the implementation run, then through the
+    ``qa.test`` handler's real render. Bugs caught: the suite's author asked to assert a scenario
+    criterion, so it writes a unit test for what only the worker observes and the gate holds the
+    build to it; or the criterion dropped from the scope unnamed, so nothing tells the author it
+    is checked elsewhere."""
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.campaigns.test_increment_test_scope import _qa_prompt
+    from tests.unit.cycles._product_increment import plan, run, squad
+
+    cycle, _ = _equipped(monkeypatch)
+    envelopes = generate_task_plan(
+        cycle, run("implementation"), squad(), plan=plan("tally/report.py"),
+        change_request=_stored_with_a_suite_criterion(),
+    )  # fmt: skip
+    [qa] = [e for e in envelopes if e.task_type == "qa.test"]
+
+    prompt = await _qa_prompt(qa, monkeypatch)
+
+    scope = qa.inputs["increment_test_scope"]
+    assert [c["id"] for c in scope["criteria"]] == ["R1"]
+    assert scope["scenario_criteria"] == [
+        {"id": "C-2", "statement": "Clicking the panel's button opens the door"}
+    ]
+    assert "- R1 (this change): The report's last line is the total." in prompt
+    assert "- C-2 (this change)" not in prompt
+    assert "## The criteria this increment's scenarios check" in prompt
+    assert "- C-2: Clicking the panel's button opens the door" in prompt
+
+
+async def test_a_scenario_criterions_plan_authors_are_told_it_is_left_to_its_scenario(monkeypatch):
+    """#3081, entered at ``generate_task_plan`` (framing), then the plan authors' real render of
+    the increment surfaces (``render_surfaces``). Bug caught: the plan given a qa task to test a
+    scenario criterion, which the suite's author then can't write, or writes against nothing."""
+    from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES, render_surfaces
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.campaigns.test_product_increment_seams import _renderer
+    from tests.unit.cycles._product_increment import run, squad
+
+    cycle, _ = _equipped(monkeypatch)
+    envelopes = generate_task_plan(
+        cycle, run("framing"), squad(), change_request=_stored_with_a_suite_criterion()
+    )
+    [merge] = [e for e in envelopes if e.task_type == "governance.merge_plan"]
+
+    rendered = await render_surfaces(_renderer(), merge.inputs, INCREMENT_SURFACES)
+
+    assert "## The criteria this increment's scenarios check" in rendered
+    assert "- C-2: Clicking the panel's button opens the door" in rendered
+    assert "- C-2 (this change)" not in rendered

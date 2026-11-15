@@ -800,6 +800,12 @@ def _inject_increment_indexes(
         from squadops.campaigns.increment_tree import test_scope_lines
 
         inputs["increment_test_scope_index"] = test_scope_lines(test_scope)
+        # #3081: the criteria a scenario checks, so the plan gives none of them a test.
+        if test_scope.get("scenario_criteria"):
+            # deferred (cycle): campaigns.increment_tree loads this module
+            from squadops.campaigns.increment_tree import scenario_criteria_lines
+
+            inputs["increment_scenario_criteria_index"] = scenario_criteria_lines(test_scope)
         # SIP-0109 §24cp: the pages the change adds and the anchor each view renders, so the plan
         # gives the view's task the anchor acceptance reads the page for.
         if test_scope.get("views"):

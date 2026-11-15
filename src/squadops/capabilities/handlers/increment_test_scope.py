@@ -35,6 +35,10 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
     )
     stack = str(scope.get("stack") or "")
     sections = [rendered.content]
+    # #3081: the criteria a scenario checks, which no test asserts. Only when there are any.
+    scenarios = await scenario_criteria_section(renderer, scope)
+    if scenarios:
+        sections.append(scenarios)
     # SIP-0109 §24cp: the pages the change adds, whose tests find each view by its anchor.
     views = await increment_views_section(renderer, scope.get("views"))
     if views:
@@ -83,6 +87,21 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
         )
         sections.append(how.content)
     return "\n\n".join(sections)
+
+
+async def scenario_criteria_section(renderer: Any, scope: Any) -> str:
+    """The increment's scenario criteria, through ``request.increment_scenario_criteria_appendix``
+    (#3081), or ``""`` when its scope holds none."""
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import scenario_criteria_lines
+
+    lines = scenario_criteria_lines(scope) if isinstance(scope, dict) else ""
+    if renderer is None or not lines:
+        return ""
+    rendered = await renderer.render(
+        "request.increment_scenario_criteria_appendix", {"scenario_lines": lines}
+    )
+    return rendered.content
 
 
 async def increment_views_section(renderer: Any, views: Any) -> str:
