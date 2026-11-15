@@ -481,6 +481,26 @@ async def test_a_campaign_whose_worker_stays_offline_waits_then_escalates_creati
     assert _waits(log)[-1] == (1, "launch_blocked")
 
 
+async def test_a_launch_refused_for_a_worker_and_anything_else_escalates_at_once(machinery):
+    """#3045: no worker, and no authority over the tool either, so creation refuses on both
+    codes. Bug caught: the wait keyed on any availability finding rather than every one, so a
+    refusal no worker's return can fix waits out the policy's attempts before the owner hears."""
+    machinery.launch._creation = dataclasses.replace(
+        machinery.launch._creation, tool_authorities={}
+    )
+    await _start(machinery, launch_blocked_interval_s=1)
+
+    current = await machinery.campaigns.get_campaign(CID)
+    assert current.state is CampaignState.ESCALATED
+    log = await machinery.campaigns.control_log(CID)
+    assert _waits(log) == []
+    [refused] = [e for e in log if e.operation.value == "launch_refused"]
+    # Both findings named on the row: the authority the deployment lacks, and the worker.
+    assert "is refused: no authority governs provider fixture" in refused.reason
+    assert "has no provider available" in refused.reason
+    assert await machinery.registry.list_cycles(PROJECT) == []
+
+
 async def test_a_campaign_launches_when_its_worker_comes_back_during_the_wait(machinery):
     """#3045: the worker comes back while the Campaign waits. Bug caught: the wait read as the
     box's, so the due attempt unblocks and nothing creates the cycle again."""
