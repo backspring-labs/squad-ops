@@ -181,6 +181,7 @@ async def test_the_digest_asks_for_the_answer_until_the_campaign_moves_on():
                 [],
                 outcomes=None,
                 interventions=None,
+                assessments=None,
             )
         )
 

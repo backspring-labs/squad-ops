@@ -502,6 +502,30 @@ async def test_a_goal_set_proposal_is_shown_the_products_latest_reading(readings
 
 
 @pytest.mark.parametrize(
+    ("assessments", "shown"),
+    [
+        (["`ER-1` stale: **not_met**, cause app_work; assessment 2 by op. the sum is off"], True),
+        ([], False),
+    ],
+    ids=["an assessment", "none assessed yet"],
+)
+async def test_a_goal_set_proposal_is_shown_the_operators_latest_assessments(assessments, shown):
+    """#2954, entered at ``handle()``. Bugs caught: the assessments composed and not rendered, so
+    the squad never sees how its results were judged; a heading with nothing under it before
+    anything was assessed."""
+    ctx = _ctx(_naming("B-3"))
+    inputs = _on_goals()
+    inputs["product_proposal"]["goals"] = {**_GOALS, "assessments": assessments}
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert result.success, result.error
+    [prompt] = _prompts(ctx)
+    assert ("How the operator judged each expected result" in prompt) is shown
+    assert ("- `ER-1` stale: **not_met**, cause app_work; assessment 2" in prompt) is shown
+
+
+@pytest.mark.parametrize(
     ("named", "why"),
     [
         (None, "names no backlog item"),

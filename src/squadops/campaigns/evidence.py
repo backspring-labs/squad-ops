@@ -36,7 +36,12 @@ from squadops.campaigns.scorecard import scorecard_lines
 #:    reading (SIP-0113 §10l), and each increment's ``vs_baseline`` says when there is none.
 #: 8: an evaluation whose start failed carries why, its detail and the app's last lines
 #:    (``start_failure``, SIP-0113 §10ae, #2793).
-PACKAGE_VERSION = 8
+#: 9: a goal-set Campaign's assessments, each expected result's latest with its standing (#2954).
+PACKAGE_VERSION = 9
+
+#: An assessment's reason in the digest: one line of a morning read, as a reading is (#2954). The
+#: package keeps it whole.
+ASSESSMENT_REASON_CHARS = 400
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -87,10 +92,13 @@ def package(
     *,
     outcomes: dict | None,
     interventions: dict | None,
+    assessments: dict | None,
 ) -> dict:
     """The package document, with its identity. ``outcomes`` is SIP-0113's section (version 4,
     #2418): each cycle's scenario results by id, contribution and quality, or ``None`` for a
-    campaign with no suite pinned."""
+    campaign with no suite pinned. ``assessments`` is SIP-0115 §5.7's standings
+    (``standings_document``, #2954), why they couldn't be read (``unreadable``), or ``None`` for a
+    campaign that reads requirements."""
     decisions = {
         e.target: e.binding
         for e in log
@@ -115,6 +123,7 @@ def package(
         ],
         "outcomes": outcomes,
         "interventions": interventions,
+        "assessments": assessments,
     }
     return {**body, "identity": package_identity(body)}
 
@@ -175,6 +184,7 @@ def digest(doc: dict) -> str:
             f"{d.get('verdict') or '—'} | {decided} | {_primary(cyc['assessment'])} |"
         )
     lines += ["", "## Outcomes", ""] + _outcome_lines(doc.get("outcomes"))
+    lines += ["", "## Assessments", ""] + _assessment_section(doc.get("assessments"))
     lines += ["", "## Safety guarantees", ""] + _guarantee_lines(doc)
     lines += ["", "## Autonomy", ""] + _autonomy_lines(doc)
     lines += ["", "## Escalations", ""] + (
@@ -184,6 +194,33 @@ def digest(doc: dict) -> str:
     asks = _questions(c, rows) + _escalation_asks(c, rows) + _over_bound(doc)
     lines += ["", "## For the owner", ""] + ([f"- {q}" for q in asks] or ["- nothing is waiting"])
     return "\n".join(lines) + "\n"
+
+
+def _assessment_section(assessments: dict | None) -> list[str]:
+    """SIP-0115 §5.7 (#2954): the operator's latest assessment of each expected result, with its
+    standing, and the results nobody has assessed. It decides nothing."""
+    if assessments is None:
+        return [
+            "- this campaign reads a requirements source, so it has no expected result to assess"
+        ]
+    if "unreadable" in assessments:
+        return [f"- the assessments could not be read: {assessments['unreadable']}"]
+    # deferred (pair): squadops.projects.goal_set_assessments imports squadops.campaigns at load
+    from squadops.projects.goal_set_assessments import Standing, assessment_lines
+
+    unassessed = [
+        r["expected_result"]
+        for r in assessments["results"]
+        if r["standing"] == Standing.UNASSESSED.value
+    ]
+    lines = [
+        f"At goal-set revision {assessments['revision']}, read at row {assessments['log_seq']}.",
+        "",
+    ]
+    lines += [f"- {line}" for line in assessment_lines(assessments, ASSESSMENT_REASON_CHARS)]
+    if unassessed:
+        lines.append(f"- unassessed: {', '.join(f'`{r}`' for r in unassessed)}")
+    return lines
 
 
 def _escalations_of(campaign: dict, rows: list[dict]):

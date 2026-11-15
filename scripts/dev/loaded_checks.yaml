@@ -2494,3 +2494,19 @@ checks:
       from squadops.comms.task_delivery import dispatch_of
       print("dispatch_id" in ExecutionContext.__dataclass_fields__, dispatch_of({"dispatch_id": "d1"}), dispatch_of({}))
     expect: "True d1 None"
+  - id: "2954"
+    what: a goal-set Campaign's package and digest carry the operator's latest assessment of each expected result, and its next proposal is given them (SIP-0115 §5.7)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.evidence import PACKAGE_VERSION, _assessment_section
+      from squadops.execution.product_proposal import ASSESSMENT_REASON_CHARS_SHOWN
+      print(PACKAGE_VERSION >= 9, ASSESSMENT_REASON_CHARS_SHOWN, _assessment_section(None)[0])
+    expect: "True 2000 - this campaign reads a requirements source, so it has no expected result to assess"
+  - id: "2954-prompt"
+    what: the strategy role renders the operator's latest assessments into its proposal (#2954)
+    container: squadops-nat
+    code: |
+      from squadops.capabilities.context_assembly import CONTEXT_CONTRACTS
+      from squadops.tasks.task_types import TaskType
+      print("request.proposal_latest_assessments" in CONTEXT_CONTRACTS[TaskType.STRATEGY_PROPOSE_INCREMENT].prompt_templates)
+    expect: "True"

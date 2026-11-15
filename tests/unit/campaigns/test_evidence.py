@@ -207,7 +207,7 @@ async def test_the_package_carries_each_runs_lint_reading_from_its_persisted_sum
     assert after["cycles"][0]["lint_findings"] == [
         {"run_id": "run_impl", "workload_type": "implementation", "findings": found}
     ]
-    assert after["package_version"] == 8
+    assert after["package_version"] == 9
 
 
 async def test_the_digest_says_how_the_campaign_ended_and_what_failed(closed):
@@ -238,6 +238,7 @@ def test_the_identity_is_the_records_and_moves_with_them():
         [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())],
         outcomes=None,
         interventions=None,
+        assessments=None,
     )
     same = package(
         c,
@@ -246,6 +247,7 @@ def test_the_identity_is_the_records_and_moves_with_them():
         [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())],
         outcomes=None,
         interventions=None,
+        assessments=None,
     )
     other = package(
         c,
@@ -254,6 +256,7 @@ def test_the_identity_is_the_records_and_moves_with_them():
         [CycleRecords("cyc_1", "calibration", {"verdict": "rejected"}, ())],
         outcomes=None,
         interventions=None,
+        assessments=None,
     )
 
     assert one["identity"] == same["identity"] != other["identity"]
@@ -285,6 +288,7 @@ async def test_an_escalated_campaign_tells_the_owner_what_to_rule():
             [],
             outcomes=None,
             interventions=None,
+            assessments=None,
         )
     )
 
@@ -451,7 +455,7 @@ async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(close
     doc = json.loads(vault.stored[package_id][1])
     text = vault.stored[digest_id][1].decode()
     [cal] = doc["outcomes"]["cycles"]
-    assert (doc["package_version"], cal["contribution"]["reading"]) == (8, "contributed")
+    assert (doc["package_version"], cal["contribution"]["reading"]) == (9, "contributed")
     assert "- `cyc_cal`: **contributed**; 1 passed" in text
     assert "  - newly passing: capacity" in text
     assert GOAL not in vault.stored[package_id][1].decode() and GOAL not in text
@@ -556,3 +560,99 @@ async def test_the_package_reads_the_goals_each_cycle_named_and_the_digest_lists
     assert cal["named_goals"] == {"capacity": "not evaluated"}
     assert "  - named goals: capacity not evaluated" in text
     assert GOAL not in vault.stored[package_id][1].decode() and GOAL not in text
+
+
+class _Unreadable:
+    async def list_assessments(self, *_args, **_kwargs):
+        raise ConnectionError("the goal-set store is down")
+
+
+@pytest.mark.parametrize("store", ["held", "unreadable", "absent"])
+async def test_the_package_and_digest_carry_each_expected_results_latest_assessment(store):
+    """#2954 (SIP-0115 §5.7), entered at ``materialize_package`` over a goal-set Campaign whose
+    store holds the operator's assessments. Bugs caught: an assessment kept on the goal set and
+    never reaching the record a reader starts from; a framework cause shown without the issue it
+    filed; a result nobody assessed left out, so it reads as judged; a store that can't be read
+    leaving no package at all, or a package that says nothing of why."""
+    from squadops.projects.goal_set_assessments import (
+        Assessment,
+        AssessmentEvidence,
+        Cause,
+        Reading,
+    )
+    from tests.fixtures.goal_set import GoalSetStore, campaign_on, goal_set_document
+
+    campaigns, vault, goal_sets = MemoryCampaignRegistry(), _Vault(), GoalSetStore()
+    await campaigns.create_campaign(
+        campaign_on("prj-lantern", CID), actor="owner", actor_role="admin", reason="r",
+        idempotency_key="create",
+    )  # fmt: skip
+    goal_sets.write("prj-lantern", goal_set_document())
+    for n, (result, reading, cause, issue, reason) in enumerate(
+        [
+            ("ER-log", Reading.MET, None, None, "a session is kept with its minutes"),
+            ("ER-week", Reading.NOT_MET, Cause.FRAMEWORK_GAP, 3101, "the page is never read " * 30),
+        ]
+    ):
+        await goal_sets.record_assessment(
+            Assessment(
+                project_id="prj-lantern", campaign_id=CID, expected_result=result,
+                goals_revision=1, reading=reading, evidence=AssessmentEvidence(cycles=("cyc_1",)),
+                reason=reason, author="operator", created_at=NOW, cause=cause, issue=issue,
+                log_seq=1,
+            ),
+            idempotency_key=f"a{n}", request_hash=str(n),
+        )  # fmt: skip
+    progress = CampaignProgress(
+        campaigns=campaigns, cycles=MemoryCycleRegistry(), vault=vault,
+        assess=AsyncMock(side_effect=_assessment), launch=AsyncMock(), evaluate_outcome=None,
+        evaluate_baseline=None, outcome_section=None, intervention_section=None,
+        campaign_branch=None,
+        goal_sets={"held": goal_sets, "unreadable": _Unreadable(), "absent": None}[store],
+        clock=lambda: NOW,
+    )  # fmt: skip
+
+    _identity, package_id, digest_id = await progress.materialize_package(CID)
+
+    doc = json.loads(vault.stored[package_id][1])
+    text = vault.stored[digest_id][1].decode()
+    section = text.split("## Assessments\n\n")[1].split("\n\n## ")[0].splitlines()
+    assert doc["package_version"] == 9
+    if store == "unreadable":
+        assert doc["assessments"] == {"unreadable": "ConnectionError: the goal-set store is down"}
+        assert section == [
+            "- the assessments could not be read: ConnectionError: the goal-set store is down"
+        ]
+        return
+    if store == "absent":
+        assert section == [
+            "- the assessments could not be read: this runtime reads no goal-set store"
+        ]
+        return
+    # The package keeps the reason whole; the digest bounds it.
+    [week] = [r for r in doc["assessments"]["results"] if r["expected_result"] == "ER-week"]
+    assert week["assessments"][0]["reason"] == "the page is never read " * 30
+    cut = " ".join(("the page is never read " * 30).split())[:400]
+    assert section == [
+        "At goal-set revision 1, read at row 1.",
+        "",
+        "- `ER-log` current: **met**; assessment 1 by operator, read at row 1 of revision 1. "
+        "a session is kept with its minutes",
+        "- `ER-week` current: **not_met**, cause framework_gap (squad-ops #3101); assessment 2 by "
+        f"operator, read at row 1 of revision 1. {cut}",
+        "- unassessed: `ER-calm`",
+    ]
+
+
+async def test_a_campaign_reading_requirements_says_it_has_nothing_to_assess(closed):
+    """#2954. Bug caught: a requirements Campaign's digest reading as if its results went
+    unjudged, or its package failing for want of a goal set."""
+    progress, _campaigns, vault = closed
+
+    _identity, package_id, digest_id = await progress.materialize_package(CID)
+
+    assert json.loads(vault.stored[package_id][1])["assessments"] is None
+    assert (
+        "## Assessments\n\n- this campaign reads a requirements source, so it has no expected "
+        "result to assess\n" in vault.stored[digest_id][1].decode()
+    )

@@ -6,6 +6,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The operator's assessments reach the digest and the next proposal** (#2954; SIP-0115 §10g): a goal-set
+  Campaign's evidence package (version 9) and its digest carry each expected result's latest assessment with its
+  standing, and name the results nobody has assessed. The next proposal is given the same lines. A stale assessment
+  reads as stale, and an assessment still decides nothing.
 - **A repository-backed cycle recalls lessons under its development profile, and a skill can supersede a
   lesson** (#3038, part 1; SIP-0116 §17i): a cycle with no `build_profile` recalls under the development
   profile it pinned, and every exposure records which identity recall used. A cycle with a `build_profile`

@@ -369,6 +369,7 @@ async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_i
                 [],
                 outcomes=None,
                 interventions=None,
+                assessments=None,
             )
         )
 
@@ -451,6 +452,7 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
             [],
             outcomes=None,
             interventions=None,
+            assessments=None,
         )
     )
 

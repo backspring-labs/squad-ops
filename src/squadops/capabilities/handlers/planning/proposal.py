@@ -617,6 +617,16 @@ async def goal_set_section(renderer: Any, goals: dict[str, Any]) -> str:
                 {"reading_lines": "\n".join(f"- {r}" for r in readings)},
             )
         ).content
+    assessments_section = ""
+    assessments = goals.get("assessments") or ()
+    if assessments:
+        # #2954: the operator's latest assessment of each expected result, with its standing.
+        assessments_section = (
+            await renderer.render(
+                "request.proposal_latest_assessments",
+                {"assessment_lines": "\n".join(f"- {a}" for a in assessments)},
+            )
+        ).content
     rendered = await renderer.render(
         "request.proposal_goal_set",
         {
@@ -633,6 +643,7 @@ async def goal_set_section(renderer: Any, goals: dict[str, Any]) -> str:
             )
             or "- empty",
             "latest_readings_section": readings_section,
+            "latest_assessments_section": assessments_section,
             "next_item_section": next_section,
         },
     )

@@ -55,6 +55,11 @@ from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.source_delivery import SourceDeliveryRefused, regression_baseline
 from squadops.projects.derived_profile import DISCLOSED, DerivedProfile
+from squadops.projects.goal_set_assessments import (
+    assessment_lines,
+    campaign_assessments,
+    standings_document,
+)
 from squadops.projects.models import SourceUnavailable
 from squadops.remote_execution.scenario import ScenarioVocabulary
 from squadops.tasks.models import TaskEnvelope
@@ -68,6 +73,9 @@ __all__ = ["PRODUCT_PROPOSAL_INPUT", "product_proposal_input", "with_product_pro
 FINDING_KEYS_SHOWN = 20
 #: A reading is one line of the proposer's request, so it has a bound of its own (§24dk).
 READING_CHARS_SHOWN = 2000
+#: An assessment's reason is the operator's text, one line of the request too (#2954). The API takes
+#: up to 2,000 characters, so this shows it whole.
+ASSESSMENT_REASON_CHARS_SHOWN = 2000
 
 
 async def with_product_proposal(
@@ -312,6 +320,13 @@ async def _goals(cycle: Cycle, goal_sets: Any, campaigns: Any) -> dict[str, Any]
             f"{r['id']}: {reading_line(r, READING_CHARS_SHOWN)}"
             for r in latest_readings(await campaigns.control_log(campaign.campaign_id))
         ],
+        # #2954: how the operator judged each expected result, latest first, with its standing.
+        "assessments": assessment_lines(
+            standings_document(
+                await campaign_assessments(campaign, goal_sets=goal_sets, campaigns=campaigns)
+            ),
+            ASSESSMENT_REASON_CHARS_SHOWN,
+        ),
     }
 
 
