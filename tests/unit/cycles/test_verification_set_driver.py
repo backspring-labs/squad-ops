@@ -3983,6 +3983,7 @@ class TestASoloRollProvesTheAbsences:
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
         monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "operator_leases", lambda *a, **k: [])
         monkeypatch.setattr(driver, "instruction_interventions", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "")
@@ -5720,6 +5721,7 @@ class TestRecordsHaveOneHome:
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
         monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "operator_leases", lambda *a, **k: [])
         monkeypatch.setattr(driver, "instruction_interventions", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "md")
@@ -5908,6 +5910,7 @@ class TestTheChainRunsUnattended:
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
         monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "operator_leases", lambda *a, **k: [])
         monkeypatch.setattr(driver, "instruction_interventions", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "cycle_run_states", lambda cycle_id: [])
@@ -7626,3 +7629,117 @@ class TestACountedRollRecordsTheInstructionsItPinned:
             )
 
         assert driver.instruction_set_change(cfg, pinned) is None
+
+
+class TestAnOperatorLeaseWhileARollRanIsAnIntervention:
+    """SIP-0109 §24dw (#2287, part 2); the 2.8 plan: "Taking the lease during the counted run is
+    an intervention, recorded under the pre-registration"."""
+
+    @pytest.mark.parametrize(
+        ("has_log", "rows", "read"),
+        [
+            (
+                "t",
+                "7|ada|2026-11-15T09:10:00Z|1800\n9|ada|2026-11-15T09:50:00Z|600",
+                [
+                    {"seq": 7, "by": "ada", "at": "2026-11-15T09:10:00Z", "expires_in_s": 1800},
+                    {"seq": 9, "by": "ada", "at": "2026-11-15T09:50:00Z", "expires_in_s": 600},
+                ],
+            ),
+            ("t", "", []),
+            ("f", "unread", []),
+        ],
+        ids=["two leases in the window", "none", "a deploy from before migration 2005"],
+    )
+    def test_the_leases_taken_in_the_cycles_window_are_read(
+        self, driver, monkeypatch, has_log, rows, read
+    ):
+        """Bugs caught: a lease outside the window, a refused acquire or a release read as one;
+        a deploy with no lease log failing the record, or reading as leased."""
+        asked: list[str] = []
+
+        def psql(query: str) -> str:
+            asked.append(query)
+            return has_log if "to_regclass" in query else rows
+
+        monkeypatch.setattr(driver, "psql", psql)
+
+        assert driver.operator_leases("2026-11-15T09:00:00Z", "2026-11-15T10:00:00Z") == read
+        if has_log == "t":
+            window = asked[-1]
+            assert "operation = 'acquire' and outcome = 'applied'" in window
+            assert ">= '2026-11-15T09:00:00Z'" in window and "<= '2026-11-15T10:00:00Z'" in window
+        else:
+            assert len(asked) == 1
+
+    def test_the_record_says_the_roll_isnt_counted_and_names_each_lease(self, driver, tmp_path):
+        """Bug caught: a roll an operator took the box beside rendering as any other, so a
+        counted result carries an intervention no reader sees."""
+        base = TestTheRecordNamesTheDeployItObserved()
+        cfg = base._cfg(driver, tmp_path)
+        leased = base._rec(
+            operator_leases=[
+                {"seq": 7, "by": "ada", "at": "2026-11-15T09:10:00Z", "expires_in_s": 1800}
+            ]
+        )
+
+        out = driver.render(cfg, "roll 1", leased)
+        clean = driver.render(cfg, "roll 1", base._rec())
+
+        assert (
+            "- **The operator took the box while it ran**: lease row 7 by ada at "
+            "2026-11-15T09:10:00Z for 1800s. An operator's lease beside a counted roll is an "
+            "intervention, recorded under the pre-registration (SIP-0109 §24dw): this roll is "
+            "not counted."
+        ) in out
+        assert "The operator took the box" not in clean
+
+
+def test_a_roll_the_operator_took_the_box_beside_is_recorded_as_not_counted(
+    driver, tmp_path, monkeypatch
+):
+    """§24dw (#2287, part 2). Wiring, entered at ``_run_cycle``, the call that drives a roll and
+    writes its record. Bug caught: an operator's lease taken while a roll sat at a gate (a paused
+    run doesn't refuse the acquire) recorded as an ordinary roll; or read over a window other
+    than the cycle's own, from its launch to its record."""
+    cfg = TestACountedRollRecordsTheInstructionsItPinned()._cfg(driver, tmp_path, monkeypatch)
+    snapshot = _psql_answering({"instructions": []})
+    asked: list[str] = []
+
+    def psql(q: str) -> str:
+        if "to_regclass('public.box_lease_log')" in q:
+            return "t"
+        if "from box_lease_log" in q:
+            asked.append(q)
+            return "4|ada|2026-11-15T09:10:00Z|1800"
+        return snapshot(q)
+
+    times = iter(["2026-11-15T09:00:00Z", "2026-11-15T11:00:00Z"])
+    captured: dict = {}
+    monkeypatch.setattr(driver, "log_since", lambda *_a, **_k: next(times))
+    monkeypatch.setattr(driver, "launch", lambda *a, **k: ("cyc_1", "run_1", "hash"))
+    monkeypatch.setattr(driver, "drive", lambda *a, **k: None)
+    monkeypatch.setattr(
+        driver,
+        "collect",
+        lambda *a, **k: {"impl_run_id": "run_1", "squad_profile_snapshot_ref": "s"},
+    )
+    monkeypatch.setattr(driver, "psql", psql)
+    monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
+    for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
+        monkeypatch.setattr(driver, name, lambda *a, **k: {})
+    monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
+    monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
+    monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
+    monkeypatch.setattr(driver, "render", lambda *a, **k: "")
+    monkeypatch.setattr(driver, "_write_record", lambda _c, _s, rec, _md: captured.update(rec))
+
+    driver._run_cycle(
+        cfg, "nextjs_ts", "notes", title="t", stem="roll-03", assert_hash=False, identity={}
+    )
+
+    assert captured["operator_leases"] == [
+        {"seq": 4, "by": "ada", "at": "2026-11-15T09:10:00Z", "expires_in_s": 1800}
+    ]
+    [window] = asked
+    assert ">= '2026-11-15T09:00:00Z' and committed_at <= '2026-11-15T11:00:00Z'" in window

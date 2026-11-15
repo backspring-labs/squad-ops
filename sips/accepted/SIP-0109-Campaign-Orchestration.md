@@ -155,7 +155,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the squad's next proposal shown the product's reading of the last accepted increment (§24dk) | **shipped** | 2.6.0, PR #2945 |
 | the replay viewer showing a new version with no step by hand (§24dj) | **dropped** (§24dm): the viewer is the product's own tool | battle-trainer PR #3 |
 | the operator's box lease outside Campaigns (§9.3; as built: §24dw) | **shipped** | 2.8.0, PR #3099 |
-| an operator lease taken while a pre-registered set is open, recorded as an intervention, which a pre-registration may forbid (#2287's last point; §24dw) | **placed** | 2.8.0, #2287 |
+| an operator lease taken while a pre-registered set is open, recorded as an intervention, which a pre-registration may forbid (#2287's last point; as built: §24dx) | **shipped** | 2.8.0, PR #3100, closes #2287 |
 | a Campaign's close records what contribution is due, and the supervisor opens it with its own token, through E.4.3's path, its moved criteria run on the product's runner first (§24dc items 1–6) | **shipped** (§24dc), narrowed by the owner's ruling of 2026-11-04: no close opens anything (§24ci (b) stands) | 2.6.0, PR #2920, closes #2861 |
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
@@ -7154,3 +7154,28 @@ it stays placed on #2287.
 owner adopted on 2026-11-11, has it in the Spark lane. The shape is #2287's own proposal. The cuts named here, the
 switch's one direction and the intervention left for part 2, are the implementer's, named here for the owner's
 review.
+
+### 24dx. An operator lease beside a roll is an intervention (2026-11-15, §24dw; #2287, part 2; the Spark lane)
+
+**What changed.** §24dw left #2287's last point to the verification-set driver. A counted roll's cycle can sit at a gate with
+its run paused. A paused run doesn't refuse the operator's acquire, and neither does a cycle outside every campaign. So the
+operator can take the box beside a roll in progress. The driver now reads the operator lease's log over the cycle's window,
+from its launch to its record:
+- **Each applied acquire in that window** is recorded on the roll (`operator_leases`: the row, who, when, for how long).
+- **The driver logs it** as an intervention.
+- **The roll's record says** "this roll is not counted", as it does for a re-binding (SIP-0110 Appendix A §3.7) and an
+  instruction after admission (§3.5). A refused acquire or a release isn't an intervention.
+
+A deploy from before migration 2005 has no lease log, so no operator could have taken the box, and nothing is read.
+
+**"A pre-registration may forbid it."** This needs no separate flag: a counted roll refuses every intervention, so an
+operator's lease beside one is forbidden by the pre-registration the set already has. A set that wants to allow one
+records the roll as not counted, which is the only reading the rule leaves.
+
+**The evidence.** `test_verification_set_driver.py`:
+- entered at `_run_cycle`, the cycle's window is read and an applied acquire reaches the record;
+- the read covers only applied acquires within the window, and a deploy with no lease log reads none;
+- the record's line says the roll isn't counted, and a clean roll has no such line.
+
+**Who ruled.** The 2.8 plan, which the owner adopted on 2026-11-11: "Taking the lease during the counted run is an
+intervention, recorded under the pre-registration".

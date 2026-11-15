@@ -6,6 +6,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **An operator lease beside a roll is an intervention** (#2287, part 2; SIP-0109 §24dx): the verification-set
+  driver reads the operator lease's log over each cycle's window, records each applied acquire on the roll, and says
+  the roll isn't counted.
 - **The operator can take the box between campaigns** (#2287, part 1; SIP-0109 §24dw):
   - `squadops box lease acquire|release|show`, over `/api/v1/box/lease`, under the new `box:operate` scope.
   - It holds the box for at most an hour. It is refused while the supervisor holds the box, a run is running or

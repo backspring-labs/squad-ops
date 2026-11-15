@@ -5780,6 +5780,19 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         ),
         *(
             [
+                "- **The operator took the box while it ran**: "
+                + ", ".join(
+                    f"lease row {o['seq']} by {o['by']} at {o['at']} for {o['expires_in_s']}s"
+                    for o in rec["operator_leases"]
+                )
+                + ". An operator's lease beside a counted roll is an intervention, recorded under "
+                "the pre-registration (SIP-0109 §24dw): this roll is not counted."
+            ]
+            if rec.get("operator_leases")
+            else []
+        ),
+        *(
+            [
                 "- **Instructed after admission**: "
                 + ", ".join(
                     f"`{i['record_id']}` withdrawn"
@@ -6039,6 +6052,28 @@ def snapshot_rebindings(cycle_id: str) -> list[dict]:
     ]
 
 
+def operator_leases(since: str, until: str) -> list[dict]:
+    """SIP-0109 §24dw (#2287): each operator lease on the box taken from ``since`` to ``until``,
+    the cycle's window. The operator takes the box for its own inference, which a counted roll
+    can't have beside it: an acquire while the roll ran is an intervention, recorded, and the roll
+    isn't counted (the 2.8 plan: "Taking the lease during the counted run is an intervention,
+    recorded under the pre-registration"). A deploy from before migration 2005 has no lease log,
+    so no operator could take the box, and nothing is read."""
+    if psql("select to_regclass('public.box_lease_log') is not null;") != "t":
+        return []
+    rows = psql(
+        "select seq || '|' || actor || '|' || to_char(committed_at at time zone 'UTC', "
+        "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') || '|' || expires_in_s from box_lease_log "
+        "where operation = 'acquire' and outcome = 'applied' "
+        f"and committed_at >= '{since}' and committed_at <= '{until}' order by seq;"
+    )
+    leases = []
+    for line in (rows or "").splitlines():
+        seq, actor, at, expires_in_s = line.split("|")
+        leases.append({"seq": int(seq), "by": actor, "at": at, "expires_in_s": int(expires_in_s)})
+    return leases
+
+
 def instruction_interventions(cycle_id: str) -> list[dict]:
     """§3.5, §3.8: each task instruction revision written for the cycle after its admission, by
     record and revision, and each of its task instructions withdrawn. One given in the cycle's
@@ -6097,6 +6132,32 @@ def _write_record(cfg: SetConfig, stem: str, rec: dict, md: str) -> None:
     (cfg.records_path / f"{stem}-{stamp}.md").write_text(md)
 
 
+def _record_interventions(rec: dict, cyc: str, launched_at: str) -> None:
+    """What was done to the cycle, or beside it, while it ran: each one an intervention, so the
+    roll is not counted. Recorded on ``rec`` and logged."""
+    interventions = instruction_interventions(cyc)
+    if interventions:
+        rec["instruction_interventions"] = interventions
+        log(
+            f"!! the cycle was given {len(interventions)} task instruction revision(s) after its "
+            "admission: an intervention, so the roll is not counted (SIP-0110 Appendix A §3.5)"
+        )
+    leases = operator_leases(launched_at, log_since(datetime.now(UTC)))
+    if leases:
+        rec["operator_leases"] = leases
+        log(
+            f"!! the operator took the box while the cycle ran ({len(leases)}): an intervention, "
+            "so the roll is not counted (SIP-0109 §24dw)"
+        )
+    rebindings = snapshot_rebindings(cyc)
+    if rebindings:
+        rec["rebindings"] = rebindings
+        log(
+            f"!! the cycle was re-bound while it ran ({len(rebindings)}): an intervention, so the "
+            "roll is not counted (SIP-0110 Appendix A §3.7)"
+        )
+
+
 def _run_cycle(
     cfg: SetConfig,
     stack: str,
@@ -6141,20 +6202,7 @@ def _run_cycle(
                 "a listed input moved (SIP-0110 §0.12)"
             )
             rec["instruction_set_change"] = change
-    interventions = instruction_interventions(cyc)
-    if interventions:
-        rec["instruction_interventions"] = interventions
-        log(
-            f"!! the cycle was given {len(interventions)} task instruction revision(s) after its "
-            "admission: an intervention, so the roll is not counted (SIP-0110 Appendix A §3.5)"
-        )
-    rebindings = snapshot_rebindings(cyc)
-    if rebindings:
-        rec["rebindings"] = rebindings
-        log(
-            f"!! the cycle was re-bound while it ran ({len(rebindings)}): an intervention, so the "
-            "roll is not counted (SIP-0110 Appendix A §3.7)"
-        )
+    _record_interventions(rec, cyc, launched_at)
     if identity_mismatch(cfg.expected_squad_snapshot_prefix, rec["squad_profile_snapshot_ref"]):
         log(
             f"!! squad-profile snapshot {rec['squad_profile_snapshot_ref'][:16]} != the set's "
