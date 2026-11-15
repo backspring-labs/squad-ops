@@ -1,38 +1,45 @@
-"""``RobloxStudioRunner``: the ``roblox-studio`` provider behind ``OperationRunnerPort`` (#3039).
+"""``RobloxStudioRunner``: the ``roblox-studio`` provider behind ``OperationRunnerPort`` (#3039,
+#3040).
 
-The first slice serves no operation. Each of the four (``sync_source``, ``play_scenario``,
-``read_console``, ``capture``) is served once it is proved on the worker (SIP-0117 §R2.4: a mode
-not proved reads not executed), so ``run`` answers ``not_executed`` and says so. What it does is
-the read side the operations stand on:
+It serves one operation, **``play_scenario``**: a frozen scenario played on the candidate, as one
+transaction (R3.6):
+1. The scenario is checked as frozen, under ``roblox-studio/1``.
+2. The place is confirmed as an unpublished local one.
+3. The candidate's scripts are synced and read back.
+4. The synced scripts are checked for attributes and tags, and the non-script baseline is taken.
+5. Play starts, the scenario runs (``play``), and play stops however it ends.
+6. The baseline is taken again and held equal.
 
+Sync, the console and the capture are steps of that transaction, never operations of their own:
+every request carries a scenario. The rest stands beside it:
 - ``health`` reads identity and the tool check;
-- ``tool_versions`` registers the provider's version, Studio's version and the tool-schema digest
-  (R4.6);
-- ``reset`` restores the place from its read-only baseline file and reopens Studio on it, with
-  no person involved (R3.6): Studio quit, its stale lock cleared, the baseline copied in, Studio
-  opened, and the reopened place confirmed unpublished and holding the pinned non-script baseline.
-  A runner given no place files refuses to reset;
-- ``read_back`` compares the place's three synced folders with a source manifest;
-- ``sync`` writes a source manifest into those folders through the harness and reads it back
-  (D10). It is the write side ``sync_source`` will stand on, and isn't served until the operation
-  is proved on the worker, a Studio restart included;
-- ``play_round`` is the transaction's frame around play: the synced scripts checked unmarked, the
-  non-script baseline taken, play started and stopped, and the baseline taken again and held
-  equal (R3.6). ``play_scenario`` will run its scenario inside it.
+- ``tool_versions`` registers the provider's version, Studio's version, the tool-schema digest,
+  the harness's program digests and the vocabulary's reader (R4.6);
+- ``reset`` restores the place from its read-only baseline file and reopens Studio (R5.17). A
+  runner given no place files refuses to reset;
+- ``read_back``, ``sync`` and ``play_round`` are the transaction's parts, run by hand from
+  ``scripts/dev``.
+
+**The player is a person's account.** A play session's player is whoever is signed in to Studio.
+Its name and id are replaced by ``@player`` in every record, log and console line the operation
+returns.
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import hashlib
+import json
 import os
 import plistlib
+import re
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from adapters.remote_execution.game_dev_roblox_studio import place
+from adapters.remote_execution.game_dev_roblox_studio import harness, place, play
 from adapters.remote_execution.game_dev_roblox_studio.session import (
     StudioMcpSession,
     StudioSessionError,
@@ -42,18 +49,27 @@ from adapters.remote_execution.game_dev_roblox_studio.studio_app import (
     PlaceFiles,
     StudioApp,
 )
+from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
 from squadops.ports.remote_execution import OperationRunnerPort
 from squadops.remote_execution.models import (
+    AssertionRecord,
+    EvidenceItem,
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
 )
+from squadops.remote_execution.scenario import Observation, handed_scenario_defects
 from squadops.remote_execution.workers import ServedOperation
 from squadops.runtime.models import RuntimeStatus
 
 PROVIDER = "roblox-studio"
 #: This provider's version: what each operation's evidence records it ran with (R4.6).
 PROVIDER_VERSION = "1"
+OPERATION = "play_scenario"
+RUN_LOG_NAME = "play_log.json"
+CONSOLE_NAME = "console.txt"
+#: The console's tail kept as evidence: the end is where a run's errors are.
+CONSOLE_CHARS = 20_000
 
 
 def studio_version(studio_mcp: Path) -> str:
@@ -107,7 +123,7 @@ class RobloxStudioRunner(OperationRunnerPort):
         self._discover_seconds = discover_seconds
 
     def serves(self) -> tuple[ServedOperation, ...]:
-        return ()
+        return (ServedOperation(PROVIDER, OPERATION),)
 
     async def tool_versions(self) -> Mapping[str, str]:
         session = self._session()
@@ -119,6 +135,8 @@ class RobloxStudioRunner(OperationRunnerPort):
             PROVIDER: PROVIDER_VERSION,
             "studio": self._studio_version_of(self._studio_mcp),
             "studio_tools": f"{check.count}:{check.schema_digest}",
+            "reader": VOCABULARY.reader,
+            **{f"harness.{name}": digest[:16] for name, digest in harness.digests().items()},
         }
 
     async def health(self) -> RuntimeStatus:
@@ -133,12 +151,119 @@ class RobloxStudioRunner(OperationRunnerPort):
         return "online"
 
     async def run(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+        """``play_scenario``, as one transaction. ``not_executed`` names why, for anything before
+        play starts, and for a place whose state play changed. ``interrupted`` is for a session
+        that failed after play began. ``completed`` carries one record per declared assertion."""
+        if (request.provider, request.operation) != (PROVIDER, OPERATION):
+            return self._ended(request, OperationStatus.NOT_EXECUTED,
+                               f"{PROVIDER} runs {PROVIDER}/{OPERATION}, and was asked for "
+                               f"{request.provider}/{request.operation}")  # fmt: skip
+        declaration, defects = handed_scenario_defects(request.scenario, VOCABULARY)
+        if declaration is None:
+            return self._ended(request, OperationStatus.NOT_EXECUTED,
+                               "the scenario can't be run: " + "; ".join(defects))  # fmt: skip
+        manifest, unplaced = place.manifest_scripts(request.source_files)
+        if unplaced:
+            return self._ended(request, OperationStatus.NOT_EXECUTED, "nothing was run: " + "; ".join(
+                f"{f} isn't a script {PROVIDER} places" for f in unplaced))  # fmt: skip
+        if any(a.action in play.STUDIO_INPUT_ACTIONS for a in (*declaration.setup,
+                                                                *declaration.steps)):  # fmt: skip
+            behind = self._studio_behind()
+            if behind:
+                return self._ended(request, OperationStatus.NOT_EXECUTED,
+                                   "nothing was run: the scenario acts through Studio's input, "
+                                   f"which acts only on a Studio in front, and {behind}")  # fmt: skip
+        session = self._session(harness=True)
+        playing = False
+        try:
+            await session.open()
+            studio = await place.identity(session, discover_seconds=self._discover_seconds)
+            sid = studio.studio_id
+            await place.sync(session, sid, manifest)
+            marked = await place.marked_scripts(session, sid)
+            if marked:
+                raise place.PlaceStateError(
+                    "synced scripts carry attributes or tags: " + "; ".join(marked)
+                )
+            before = await place.baseline(session, sid)
+            await place.start_play(session, sid)
+            playing = True
+            try:
+                records, log = await play.run_scenario(session, sid, declaration)
+                player = await play.observe(
+                    session,
+                    sid,
+                    Observation("property", "client", {"path": "@player", "name": "Name"}),
+                )
+                console = await place.console(session, sid)
+            finally:
+                await place.stop_play(session, sid)
+            playing = False
+            after = await place.baseline(session, sid)
+        except (place.PlaceReadError, place.PlaceSyncError, place.PlaceStateError,
+                StudioSessionError) as e:  # fmt: skip
+            status = OperationStatus.INTERRUPTED if playing else OperationStatus.NOT_EXECUTED
+            return self._ended(request, status, f"{type(e).__name__}: {e}")
+        finally:
+            await session.close()
+        changes = place.baseline_changes(before, after)
+        if changes:
+            return self._ended(request, OperationStatus.NOT_EXECUTED,
+                               "the place's non-script state changed through play, so the run "
+                               "proves nothing: " + "; ".join(changes))  # fmt: skip
+        if not (player.read and isinstance(player.value, str) and player.value):
+            return self._ended(request, OperationStatus.INTERRUPTED,
+                               "the session's player name couldn't be read, so its records and "
+                               "evidence can't be redacted, and none are returned "
+                               f"({play.why_not(player)})")  # fmt: skip
+        redact = _redactor(player.value)
         return RemoteOperationResult(
-            status=OperationStatus.NOT_EXECUTED,
-            reason=(
-                f"{PROVIDER} serves no operation yet: {request.operation!r} is served once it is "
-                "proved on the worker (SIP-0117 R2.4)"
-            ),
+            status=OperationStatus.COMPLETED,
+            records=tuple(_redacted_record(r, redact) for r in records),
+            evidence=(
+                EvidenceItem(
+                    RUN_LOG_NAME,
+                    redact(json.dumps(log.to_document(), indent=2)),
+                    "application/json",
+                ),
+                EvidenceItem(CONSOLE_NAME, redact(console[-CONSOLE_CHARS:])),
+            ),  # fmt: skip
+            provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
+            ran_with={
+                **self._ran_with(before.digest, request.source_revision),
+                "play_session": log.session_id,
+            },
+            dispatch_id=request.dispatch_id,
+        )
+
+    def _ran_with(self, baseline_digest: str, source_revision: str) -> dict[str, str]:
+        return {
+            PROVIDER: PROVIDER_VERSION,
+            "reader": VOCABULARY.reader,
+            "place_baseline": baseline_digest[:16],
+            "source_revision": source_revision,
+            **{f"harness.{name}": digest[:16] for name, digest in harness.digests().items()},
+        }
+
+    def _studio_behind(self) -> str:
+        """``""`` when a Studio is the app in front, or what is in front instead."""
+        try:
+            front, studios = self._app.frontmost(), self._app.pids()
+        except OSError as e:
+            return f"which app is in front couldn't be read: {e}"
+        if front is None:
+            return "no app is in front"
+        if front not in studios:
+            return f"process {front} is in front, and Studio's are {studios or 'none'}"
+        return ""
+
+    def _ended(
+        self, request: RemoteOperationRequest, status: OperationStatus, reason: str
+    ) -> RemoteOperationResult:
+        return RemoteOperationResult(
+            status=status,
+            reason=reason,
+            provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
             dispatch_id=request.dispatch_id,
         )
 
@@ -318,3 +443,15 @@ class RobloxStudioRunner(OperationRunnerPort):
             return PlayRound(before.digest, len(before.lines))
         finally:
             await session.close()
+
+
+def _redactor(name: str) -> Callable[[str], str]:
+    """Replaces the session player's account name with ``@player``."""
+    pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])")
+    return lambda text: pattern.sub("@player", text)
+
+
+def _redacted_record(record: AssertionRecord, redact: Callable[[str], str]) -> AssertionRecord:
+    return dataclasses.replace(
+        record, observed=redact(record.observed), expected=redact(record.expected)
+    )

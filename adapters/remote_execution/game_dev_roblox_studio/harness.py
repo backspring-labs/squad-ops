@@ -19,7 +19,20 @@ from typing import Any
 PAYLOAD_TOKEN = "{{PAYLOAD}}"
 
 #: The programs, by name: their files are ``harness/<name>.luau``.
-PROGRAMS = ("baseline", "identity", "script_marks", "sync")
+PROGRAMS = ("baseline", "identity", "observe", "script_marks", "sync")
+
+#: Where each program may run. Every program reads or writes the edit place, except ``observe``,
+#: which reads a play session: its server or its client.
+DATAMODELS: dict[str, frozenset[str]] = {
+    "observe": frozenset({"Server", "Client"}),
+}
+EDIT_ONLY = frozenset({"Edit"})
+
+
+def datamodels_of(name: str) -> frozenset[str]:
+    """The datamodels the program ``name`` may run in."""
+    return DATAMODELS.get(name, EDIT_ONLY)
+
 
 _HEX = re.compile(r"[0-9a-f]*")
 

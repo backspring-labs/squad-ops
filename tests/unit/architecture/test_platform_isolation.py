@@ -45,6 +45,8 @@ ADAPTER_IMPORTS = (
     # SIP-0116 §17n (#3042): eligibility.py's port, the authority the root registers.
     "squadops.ports.tool_authority",
     "squadops.remote_execution.models",
+    # #3040: the frozen scenario's schema and the vocabulary type the provider ships its own as.
+    "squadops.remote_execution.scenario",
     "squadops.remote_execution.workers",
     "squadops.runtime.models",
 )

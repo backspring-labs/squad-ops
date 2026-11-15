@@ -4,14 +4,17 @@
 # Platform: dev-mac (Roblox Studio runs only on the worker's Mac)
 
 The reset quits Studio, puts the baseline file in the place file's stead, and opens it again, with
-no person involved. These are the three things it asks of the Mac, behind :class:`StudioApp` so a
-test can stand in for them. :class:`MacStudioApp` is the real one: ``pgrep``, a signal, and
-``open -a``.
+no person involved. ``play_scenario`` asks one more thing: which app is in front, since Studio's
+input tools act only on a Studio in front (#3040, found live: a click with Terminal in front never
+answered). These are what the adapter asks of the Mac, behind :class:`StudioApp` so a test can
+stand in for them. :class:`MacStudioApp` is the real one: ``pgrep``, a signal, ``open -a`` and
+``lsappinfo``.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import signal
 import subprocess
 from dataclasses import dataclass
@@ -56,6 +59,10 @@ class StudioApp(Protocol):
         """Open ``place`` in Studio, starting it."""
         ...
 
+    def frontmost(self) -> int | None:
+        """The process id of the app in front, or ``None`` when no app is."""
+        ...
+
 
 class MacStudioApp:
     """Studio on macOS, at ``app`` (``/Applications/RobloxStudio.app``)."""
@@ -88,3 +95,22 @@ class MacStudioApp:
 
     def open(self, place: Path) -> None:
         subprocess.run(["open", "-a", str(self._app), str(place)], check=True, timeout=30)
+
+    def frontmost(self) -> int | None:
+        front = _lsappinfo("front")
+        if not front or "NULL" in front:
+            return None
+        info = _lsappinfo("info", "-only", "pid", front)
+        match = re.search(r'"pid"=(\d+)', info)
+        if match is None:
+            raise OSError(f"lsappinfo named no pid for the app in front ({front}): {info!r:.200}")
+        return int(match.group(1))
+
+
+def _lsappinfo(*args: str) -> str:
+    done = subprocess.run(
+        ["lsappinfo", *args], capture_output=True, text=True, timeout=10, check=False
+    )
+    if done.returncode != 0:
+        raise OSError(f"lsappinfo {' '.join(args)} failed: {done.stderr.strip()}")
+    return done.stdout.strip()

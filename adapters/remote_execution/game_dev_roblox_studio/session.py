@@ -37,9 +37,12 @@ READ_ONLY_TOOLS = frozenset(
 #: The tool the harness's programs run through. Only :meth:`StudioMcpSession.run_program` sends it.
 HARNESS_TOOL = "execute_luau"
 
-#: Studio's own controls a harness session may call: starting and stopping play. Neither is marked
-#: read-only, so they are named here and allowed only to a session opened for the harness.
-CONTROL_TOOLS = frozenset({"start_stop_play"})
+#: Studio's own controls a harness session may call: starting and stopping play, and the play
+#: session's input (#3040). None is marked read-only, so they are named here and allowed only to a
+#: session opened for the harness.
+CONTROL_TOOLS = frozenset(
+    {"start_stop_play", "user_mouse_input", "user_keyboard_input", "character_navigation"}
+)
 
 #: The MCP protocol version this session speaks.
 PROTOCOL_VERSION = "2025-06-18"
@@ -169,18 +172,23 @@ class StudioMcpSession:
         )
         return _text(tool, result)
 
-    async def run_program(self, name: str, studio_id: str, payload: Any = None) -> Any:
-        """Run the harness's program ``name`` in Studio's Edit datamodel, with ``payload`` as its
-        input, and return its answer decoded from JSON. A session not opened for the harness
-        raises :class:`ToolDenied` before anything is sent."""
+    async def run_program(
+        self, name: str, studio_id: str, payload: Any = None, *, datamodel: str = "Edit"
+    ) -> Any:
+        """Run the harness's program ``name`` in ``datamodel`` (the edit place, or a play
+        session's ``Server`` or ``Client``), with ``payload`` as its input, and return its answer
+        decoded from JSON. A session not opened for the harness, or a program asked for in a
+        datamodel it doesn't run in, raises :class:`ToolDenied` before anything is sent."""
         if not self._harness:
             raise ToolDenied(f"this session doesn't run the harness; {name} was not sent")
+        if datamodel not in _harness.datamodels_of(name):
+            raise ToolDenied(f"the {name} program doesn't run in {datamodel}; it was not sent")
         code = _harness.program(name).code(payload)
         result = await self._request(
             "tools/call",
             {
                 "name": HARNESS_TOOL,
-                "arguments": {"studio_id": studio_id, "datamodel_type": "Edit", "code": code},
+                "arguments": {"studio_id": studio_id, "datamodel_type": datamodel, "code": code},
             },
             self._call_seconds,
         )
