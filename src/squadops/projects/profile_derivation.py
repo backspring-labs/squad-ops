@@ -593,9 +593,9 @@ def _covers(kind: str, root: str, tree: _Tree, patterns: tuple[str, ...]) -> tup
 
 def _luau_covers(root: str, tree: _Tree) -> tuple[str, ...]:
     """#2906: a Luau runner's product paths. A Rojo project names them: every ``$path`` its
-    ``default.project.json`` maps, outside the runner's own root. A tree synced another way (Roblox's
-    Script Sync maps ``src/<Container>`` folders by name) names none, so they are the top-level
-    folders holding ``.luau`` sources outside the runner's root."""
+    ``default.project.json`` maps, outside the runner's own root. A tree its editor syncs by folder
+    name instead (``src/<Container>``) names none, so they are the top-level folders holding
+    ``.luau`` sources outside the runner's root."""
     mapped = _rojo_paths(tree)
     if mapped is None:
         mapped = sorted(
