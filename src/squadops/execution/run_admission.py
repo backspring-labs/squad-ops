@@ -16,6 +16,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from squadops.campaigns.box import LaunchRefusal
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.execution.execution_errors import _ExecutionError, _RecruitmentRejectedError
@@ -64,8 +65,10 @@ class RunAdmission:
         would be allowed. A wait, not a failure (§24l), so an approval granted while the
         supervisor held the box, or before its model was unloaded, does not become a dead
         increment. Its ceiling is one full lease (``lease_expiry_s``) of the campaign whose box
-        it waits on: the holding campaign while the lease is held, else the run's own. Past it
-        the run fails unstarted, with the reasons. A run outside every campaign has no lease to
+        it waits on: the holding campaign while the lease is held, else the run's own. While the
+        operator holds the box (§24dw), the ceiling is what remains of the operator's lease,
+        re-read each poll so a renewal extends it, and then the run's own campaign's lease.
+        Past it the run fails unstarted, with the reasons. A run outside every campaign has no lease to
         wait out, and on a box that is not quiet it is refused at once, as its launch is (the
         create route's 409). An executor with no box reader has no box to read.
         """
@@ -88,6 +91,7 @@ class RunAdmission:
                 started = now
                 campaign_id = await self._waited_on(cycle_id, now)
                 bound_s = await self._one_lease_s(campaign_id)
+                own_s = bound_s
                 logger.warning(
                     "run_start_waiting_for_box run=%s refusal=%s campaign=%s bound_s=%.0f: %s",
                     run_id,
@@ -96,6 +100,8 @@ class RunAdmission:
                     bound_s,
                     "; ".join(verdict.reasons),
                 )
+            if verdict.refusal is LaunchRefusal.OPERATOR_HOLDS_THE_BOX:
+                bound_s = max(bound_s, await self._operator_remaining_s(now, started) + own_s)
             if (now - started).total_seconds() >= bound_s:
                 raise _ExecutionError(
                     _box_refused(run_id, verdict, bound_s),
@@ -112,6 +118,15 @@ class RunAdmission:
             if lease is not None and lease.supervisor_holds(now) and lease.campaign_id:
                 return lease.campaign_id
         return (await self._cycle_registry.get_cycle(cycle_id)).campaign_id
+
+    async def _operator_remaining_s(self, now: datetime, started: datetime) -> float:
+        """How long from ``started`` the operator's lease holds the box (§24dw), or 0."""
+        if self._campaign_registry is None:
+            return 0.0
+        lease = await self._campaign_registry.box_lease()
+        if lease is None or not lease.operator_holds(now):
+            return 0.0
+        return (lease.expires_at - started).total_seconds()
 
     async def _one_lease_s(self, campaign_id: str | None) -> float:
         if campaign_id is None or self._campaign_registry is None:
@@ -190,7 +205,12 @@ def _box_refused(run_id: str, verdict: Any, bound_s: float) -> str:
             f"run {run_id} is refused: {why}. A run outside every campaign has no lease to wait "
             "out, and is refused at once, as its launch is (SIP-0109 §9.3, #1928)"
         )
+    waited = (
+        "what the operator's lease held it for and one full lease of its campaign"
+        if verdict.refusal is LaunchRefusal.OPERATOR_HOLDS_THE_BOX
+        else "one full lease of its campaign"
+    )
     return (
-        f"run {run_id} waited {bound_s:.0f}s for the box, one full lease of its campaign, and a "
-        f"launch is still refused: {why} (SIP-0109 §9.3, #1928)"
+        f"run {run_id} waited {bound_s:.0f}s for the box, {waited}, and a launch is still "
+        f"refused: {why} (SIP-0109 §9.3, §24dw, #1928)"
     )

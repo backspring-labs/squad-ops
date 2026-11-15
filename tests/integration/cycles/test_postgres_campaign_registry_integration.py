@@ -83,7 +83,8 @@ async def pool():
     await apply_migrations(pool, Path(__file__).parents[3] / "infra" / "migrations")
     async with pool.acquire() as conn:
         await conn.execute(
-            "TRUNCATE TABLE campaign_launch_intents, campaign_control_log, campaigns CASCADE"
+            "TRUNCATE TABLE campaign_launch_intents, campaign_control_log, campaigns, "
+            "box_lease_log CASCADE"
         )
         await conn.execute("DELETE FROM cycle_registry WHERE project_id = $1", PROJECT)
     yield pool
@@ -711,6 +712,102 @@ async def test_the_holder_gives_the_box_back_and_the_lease_reads_back_as_the_squ
     )
     lease = await PostgresCampaignRegistry(pool=pool).box_lease()
     assert (lease.holder, lease.held_by, lease.expires_at) == (LeaseHolder.SQUAD, "squadops", None)
+
+
+# --- the operator's lease, outside every campaign (SIP-0109 §24dw; #2287, migration 2005) -------
+
+
+def _operator_change(op: str, actor: str, key: str, *, reason: str = "local model session"):
+    from squadops.campaigns.box import OperatorLeaseChange, OperatorLeaseOperation
+
+    operation = OperatorLeaseOperation(op)
+    return OperatorLeaseChange(
+        operation=operation,
+        actor=actor,
+        actor_role="admin",
+        reason=reason,
+        idempotency_key=key,
+        expires_in_s=1800 if operation is OperatorLeaseOperation.ACQUIRE else None,
+    )
+
+
+async def _squad_holds(pool) -> PostgresCampaignRegistry:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO box_lease (box_id, holder, held_by, acquired_at) "
+            "VALUES ('box', 'squad', 'squadops', now()) ON CONFLICT (box_id) DO NOTHING"
+        )
+    return PostgresCampaignRegistry(pool=pool)
+
+
+async def test_two_operators_racing_for_the_box_leave_one_holding_it_and_both_rows_kept(pool):
+    """Bugs caught: two acquires that both read a free box and both commit; a refused acquire
+    leaving no row; the operator's lease refused by 2005's constraints (an expiry with no
+    campaign), so every acquire fails at the database with the memory twin green."""
+    from squadops.campaigns.box import LeaseHolder, OperatorLeaseRefused
+
+    reg = await _squad_holds(pool)
+    outcomes = await asyncio.gather(
+        reg.change_operator_lease(_operator_change("acquire", "ada", "a"), runs_in_flight=()),
+        PostgresCampaignRegistry(pool=pool).change_operator_lease(
+            _operator_change("acquire", "grace", "g"), runs_in_flight=()
+        ),
+        return_exceptions=True,
+    )
+
+    refused = [o for o in outcomes if isinstance(o, OperatorLeaseRefused)]
+    assert [str(r.entry.refusal) for r in refused] == ["box_held"]
+    lease = await reg.box_lease()
+    assert (lease.holder, lease.campaign_id) == (LeaseHolder.OPERATOR, None)
+    log = await reg.operator_lease_log()
+    [loser] = {"ada", "grace"} - {lease.held_by}
+    assert sorted((e.actor, e.outcome.value) for e in log) == sorted(
+        [(lease.held_by, "applied"), (loser, "refused")]
+    )
+    assert [e.seq for e in log] == [2, 1]
+
+
+async def test_a_live_campaign_refuses_the_operator_and_a_release_returns_the_box(pool):
+    """Bugs caught: the campaigns read outside the lease's transaction, or not at all, so the
+    operator takes the box beside a calibrating campaign; a retry under the same key acting
+    twice; a key reused for another change taken as a retry; a release that records its row and
+    leaves the lease as it was."""
+    from squadops.campaigns.box import LeaseHolder, OperatorLeaseRefused
+
+    reg = await _squad_holds(pool)
+    await reg.create_campaign(
+        campaign(CID, project_id=PROJECT), actor="o", actor_role="o", reason="r",
+        idempotency_key="c",
+    )  # fmt: skip
+    await reg.transition(CID, move(S.CALIBRATING, "cal"))
+
+    with pytest.raises(OperatorLeaseRefused) as live:
+        await reg.change_operator_lease(_operator_change("acquire", "ada", "a1"), runs_in_flight=())
+    await reg.transition(CID, move(S.PAUSED, "pause"))
+    taken = await reg.change_operator_lease(
+        _operator_change("acquire", "ada", "a2"), runs_in_flight=()
+    )
+    again = await reg.change_operator_lease(
+        _operator_change("acquire", "ada", "a2"), runs_in_flight=()
+    )
+    with pytest.raises(OperatorLeaseRefused) as reused:
+        await reg.change_operator_lease(
+            _operator_change("acquire", "ada", "a2", reason="another"), runs_in_flight=()
+        )
+    await reg.change_operator_lease(_operator_change("release", "ada", "r1"), runs_in_flight=())
+
+    assert (str(live.value.entry.refusal), live.value.entry.reasons) == (
+        "campaign_live", (f"campaign {CID} is calibrating",)
+    )  # fmt: skip
+    assert (taken.replayed, again.replayed, again.entry.seq) == (False, True, taken.entry.seq)
+    assert str(reused.value.entry.refusal) == "conflicting_idempotency_key"
+    lease = await PostgresCampaignRegistry(pool=pool).box_lease()
+    assert (lease.holder, lease.held_by, lease.expires_at) == (LeaseHolder.SQUAD, "squadops", None)
+    assert [(e.operation.value, e.outcome.value) for e in await reg.operator_lease_log()] == [
+        ("release", "applied"),
+        ("acquire", "applied"),
+        ("acquire", "refused"),
+    ]
 
 
 async def test_a_page_of_campaigns_is_newest_first_on_postgres(pool):

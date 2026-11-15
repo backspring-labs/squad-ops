@@ -201,6 +201,14 @@ def box_work() -> list[str]:
     campaigns = psql("select count(*) from campaigns where state <> 'completed'")
     if campaigns != "0":
         held.append(f"{campaigns} campaign(s) open")
+    # SIP-0109 §24dw (#2287): the operator's lease, or the supervisor's, holds the box for its
+    # holder's inference, so the engine it runs on isn't the switch's to move.
+    lease = psql(
+        "select holder || ' (' || held_by || ') until ' || to_char(expires_at at time zone 'UTC', "
+        "'HH24:MI:SS') || 'Z' from box_lease where holder <> 'squad' and expires_at > now()"
+    )
+    if lease:
+        held.append(f"the {lease} holds the box's lease")
     return held
 
 

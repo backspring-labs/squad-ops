@@ -244,6 +244,8 @@ class CampaignLauncher:
                 transition = launch_blocking.blocked_launch_step(
                     campaign, log, await self._box_verdict(), actor=self._actor
                 )
+                if transition is None:
+                    continue  # §24dw: still waiting on the operator's lease, already recorded
                 result = await self._campaigns.transition(campaign.campaign_id, transition)
                 if not result.replayed:
                     written.append(result.entry)

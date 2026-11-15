@@ -11,7 +11,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from contextlib import AbstractAsyncContextManager
 
-from squadops.campaigns.box import BoxLease
+from squadops.campaigns.box import (
+    BoxLease,
+    OperatorLeaseChange,
+    OperatorLeaseEntry,
+    OperatorLeaseResult,
+)
 from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
@@ -127,6 +132,27 @@ class CampaignRegistryPort(ABC):
             ControlOperationRefused: If the change is refused, recorded as a row first.
             ValueError: If the operation is not a lease change.
         """
+
+    @abstractmethod
+    async def change_operator_lease(
+        self, change: OperatorLeaseChange, *, runs_in_flight: tuple[str, ...]
+    ) -> OperatorLeaseResult:
+        """Acquire or release the operator's lease on the box, outside every campaign, with its
+        row in the operator lease's log, in one transaction that holds the lease's lock (§24dw;
+        #2287). The campaigns are read inside it: an acquire is refused while any is live.
+
+        ``runs_in_flight`` is what the caller read of the box's running and queued runs. The
+        rules are ``box.operator_lease_refusal``'s. A key already used replays its row when the
+        change is the same.
+
+        Raises:
+            OperatorLeaseRefused: If the change is refused, recorded as a row first; or its key
+                was used for a different change, with no row.
+        """
+
+    @abstractmethod
+    async def operator_lease_log(self, *, limit: int = 50) -> list[OperatorLeaseEntry]:
+        """The operator lease's log, newest first (§24dw)."""
 
     @abstractmethod
     async def control_log(self, campaign_id: str) -> list[ControlLogEntry]:

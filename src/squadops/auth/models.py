@@ -90,6 +90,10 @@ class Scope:
     # this is how its request reaches the queue. A worker's role doesn't hold it, so a worker
     # can't queue work for itself, and no person's role does.
     OPERATIONS_REQUEST = "operations:request"
+    # SIP-0109 §24dw (#2287): take and give back the box's lease outside every campaign, for the
+    # operator's own inference. Not campaigns:supervise, which is a campaign's: this lease is held
+    # by none. Held by admin; grantable to a dedicated operator role.
+    BOX_OPERATE = "box:operate"
 
 
 # Role → implied scopes (#270). Keycloak is role-centric — it issues realm roles
@@ -122,6 +126,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.SCENARIOS_DRAFT,
             Scope.SCENARIOS_APPROVE,
             Scope.WORKERS_READ,
+            Scope.BOX_OPERATE,
         }
     ),
     Role.OPERATOR: frozenset(

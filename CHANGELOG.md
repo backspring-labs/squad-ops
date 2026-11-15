@@ -6,6 +6,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The operator can take the box between campaigns** (#2287, part 1; SIP-0109 §24dw):
+  - `squadops box lease acquire|release|show`, over `/api/v1/box/lease`, under the new `box:operate` scope.
+  - It holds the box for at most an hour. It is refused while the supervisor holds the box, a run is running or
+    queued, or a campaign is live.
+  - While it's held, a cycle create is refused with `operator_holds_the_box`. A campaign's launch waits without
+    spending attempts, and a run start waits out the lease.
+  - Every change is a row of the lease's own log and goes to the security audit. `engine_switch.py` won't move an
+    engine under a held lease.
 - **The operator's assessments reach the digest and the next proposal** (#2954; SIP-0115 §10g): a goal-set
   Campaign's evidence package (version 9) and its digest carry each expected result's latest assessment with its
   standing, and name the results nobody has assessed. The next proposal is given the same lines. A stale assessment

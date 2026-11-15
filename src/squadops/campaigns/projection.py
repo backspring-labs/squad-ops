@@ -162,6 +162,13 @@ class ProjectingCampaignRegistry(CampaignRegistryPort):
     async def box_lease(self):
         return await self._inner.box_lease()
 
+    async def change_operator_lease(self, change, *, runs_in_flight: tuple[str, ...]):
+        """§24dw: the operator lease's rows are no campaign's, so its route audits them."""
+        return await self._inner.change_operator_lease(change, runs_in_flight=runs_in_flight)
+
+    async def operator_lease_log(self, *, limit: int = 50):
+        return await self._inner.operator_lease_log(limit=limit)
+
     async def create_campaign(self, campaign: Campaign, **kwargs) -> TransitionResult:
         return await self._projected(self._inner.create_campaign(campaign, **kwargs))
 

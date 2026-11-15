@@ -129,3 +129,50 @@ async def test_a_launch_still_refused_at_the_policys_count_escalates_and_launche
     assert await launcher.retry_blocked(_later(900)) == []
     assert await launcher.drain() == []
     assert await cycles.list_cycles("group_run") == []
+
+
+HELD = LaunchVerdict(
+    LaunchRefusal.OPERATOR_HOLDS_THE_BOX, ("the operator (ada) holds the box until 10:30:00Z",)
+)
+
+
+async def test_a_launch_meeting_the_operators_lease_waits_without_spending_its_attempts():
+    """§24dw (#2287). Bugs caught: a campaign that meets the operator's local-model session
+    spending its launch-blocked attempts and escalating, though the box was handed over on the
+    record; a row written at every sweep while it waits; a release never resuming it; and the
+    wait hiding a model the operator left resident, which still counts."""
+    campaigns, cycles, box, launcher, intent = await _world(attempts=2)
+    box.now = HELD
+    await launcher.drain()
+
+    # Past the interval and past two attempts' worth: no row, no escalation.
+    assert await launcher.retry_blocked(_later(10)) == []
+    assert await launcher.retry_blocked(_later(3000)) == []
+    box.now = LOUD
+    [loud] = await launcher.retry_blocked(_later(3010))
+    box.now = HELD
+    [held_again] = await launcher.retry_blocked(_later(3020))
+    box.now = LaunchVerdict(None)
+    [unblock] = await launcher.retry_blocked(_later(3030))
+    [launched] = await launcher.drain()
+
+    blocked = [
+        (e.binding["refusal"], e.binding["attempt"], e.next_state)
+        for e in await campaigns.control_log(CID)
+        if e.operation is ControlOperation.LAUNCH_BLOCKED
+    ]
+    assert blocked == [
+        ("operator_holds_the_box", 0, S.LAUNCH_BLOCKED),
+        ("box_not_quiet", 1, S.LAUNCH_BLOCKED),
+        ("operator_holds_the_box", 1, S.LAUNCH_BLOCKED),
+    ]
+    assert (loud.binding["attempt"], held_again.reason) == (
+        1,
+        f"launch {intent.launch_id} waits for the operator's lease to be released or expire; it "
+        "counts no attempt (1 of 2 spent)",
+    )
+    assert (unblock.operation, unblock.next_state) == (
+        ControlOperation.LAUNCH_UNBLOCKED,
+        S.AT_PROPOSAL,
+    )
+    assert [c.cycle_id for c in await cycles.list_cycles("group_run")] == [launched.cycle_id]

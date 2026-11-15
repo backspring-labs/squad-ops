@@ -155,6 +155,20 @@ class LeaseResponse(BaseModel):
     expires_at: datetime | None
     #: Whether the supervisor holds the box now (a supervisor's lease past its expiry does not).
     supervisor_holds: bool
+    #: §24dw: whether the operator holds it now, outside every campaign.
+    operator_holds: bool
+
+    @classmethod
+    def of(cls, lease: Any, now: datetime) -> LeaseResponse:
+        return cls(
+            holder=str(lease.holder),
+            held_by=lease.held_by,
+            campaign_id=lease.campaign_id,
+            acquired_at=lease.acquired_at,
+            expires_at=lease.expires_at,
+            supervisor_holds=lease.supervisor_holds(now),
+            operator_holds=lease.operator_holds(now),
+        )
 
 
 class LeaseResultResponse(BaseModel):

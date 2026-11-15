@@ -9,6 +9,7 @@ is ``squadops.campaigns.lifecycle``'s; this adapter only stores.
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -277,6 +278,71 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
                 )
         return _result_or_raise(outcome)
 
+    async def operator_lease_log(self, *, limit: int = 50) -> list[box.OperatorLeaseEntry]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_OPERATOR_LOG_COLUMNS} FROM box_lease_log ORDER BY seq DESC LIMIT $1",
+                limit,
+            )
+        return [_row_to_operator_entry(r) for r in rows]
+
+    async def change_operator_lease(
+        self, change: box.OperatorLeaseChange, *, runs_in_flight: tuple[str, ...]
+    ) -> box.OperatorLeaseResult:
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                # The lease's lock first: its one row is seeded by 1690, so FOR UPDATE always
+                # locks, and every change of the lease, a campaign's or the operator's, takes it.
+                row = await conn.fetchrow(
+                    f"SELECT {_LEASE_COLUMNS} FROM box_lease WHERE box_id = 'box' FOR UPDATE"
+                )
+                current = _row_to_lease(row) if row else None
+                now = _now()
+                prior_row = await conn.fetchrow(
+                    f"SELECT {_OPERATOR_LOG_COLUMNS} FROM box_lease_log WHERE idempotency_key = $1",
+                    change.idempotency_key,
+                )
+                if prior_row is not None:
+                    prior = _row_to_operator_entry(prior_row)
+                    if not box.replays(prior, change):
+                        raise box.OperatorLeaseRefused(
+                            box.operator_lease_entry(
+                                change, 0, now, box.OperatorLeaseRefusal.CONFLICTING_IDEMPOTENCY_KEY
+                            )
+                        )
+                    replayed = box.OperatorLeaseResult(prior, True, current)
+                else:
+                    replayed = None
+                    live = tuple(
+                        (r["campaign_id"], CampaignState(r["state"]))
+                        for r in await conn.fetch(
+                            "SELECT campaign_id, state FROM campaigns WHERE state <> ALL($1::text[])",
+                            [s.value for s in box.QUIESCENT_CAMPAIGN_STATES],
+                        )
+                    )
+                    refusal, reasons = box.operator_lease_refusal(
+                        change, current, now, runs_in_flight=runs_in_flight, live_campaigns=live
+                    )
+                    seq = await conn.fetchval("SELECT coalesce(max(seq), 0) + 1 FROM box_lease_log")
+                    entry = box.operator_lease_entry(change, seq, now, refusal, reasons)
+                    await conn.execute(
+                        f"INSERT INTO box_lease_log ({_OPERATOR_LOG_COLUMNS}) "
+                        f"VALUES ({_placeholders(_OPERATOR_LOG_COLUMNS)})",
+                        *_operator_entry_args(entry),
+                    )
+                    lease = None
+                    if refusal is None:
+                        lease = box.operator_leased(change, current, now)
+                        await _write_lease(conn, lease)
+        # A refusal is raised only after its row's transaction has committed.
+        if replayed is not None:
+            if replayed.entry.refusal is not None:
+                raise box.OperatorLeaseRefused(replayed.entry)
+            return replayed
+        if lease is None:
+            raise box.OperatorLeaseRefused(entry)
+        return box.OperatorLeaseResult(entry, False, lease)
+
     async def mark_launch_intent_launched(
         self, launch_id: str, cycle_id: str, *, actor: str
     ) -> TransitionResult:
@@ -460,20 +526,7 @@ async def _commit(
         )
     await _mark_superseded(conn, superseded)
     if lease is not None:
-        # An upsert, not an update: a lease row that went missing (a truncated campaigns table
-        # cascades to it) must not turn a committed change into one that wrote nothing.
-        await conn.execute(
-            "INSERT INTO box_lease (box_id, holder, held_by, campaign_id, acquired_at, expires_at) "
-            "VALUES ('box', $1, $2, $3, $4, $5) ON CONFLICT (box_id) DO UPDATE SET "
-            "holder = EXCLUDED.holder, held_by = EXCLUDED.held_by, "
-            "campaign_id = EXCLUDED.campaign_id, acquired_at = EXCLUDED.acquired_at, "
-            "expires_at = EXCLUDED.expires_at",
-            lease.holder.value,
-            lease.held_by,
-            lease.campaign_id,
-            lease.acquired_at,
-            lease.expires_at,
-        )
+        await _write_lease(conn, lease)
     return TransitionResult(entry=entry, campaign=updated, intent=intent, replayed=False)
 
 
@@ -504,6 +557,62 @@ async def _mark_superseded(conn: asyncpg.Connection, superseded: LaunchIntent | 
 
 
 _LEASE_COLUMNS = "holder, held_by, campaign_id, acquired_at, expires_at"
+
+
+async def _write_lease(conn: asyncpg.Connection, lease: BoxLease) -> None:
+    # An upsert, not an update: a lease row that went missing (a truncated campaigns table
+    # cascades to it) must not turn a committed change into one that wrote nothing.
+    await conn.execute(
+        "INSERT INTO box_lease (box_id, holder, held_by, campaign_id, acquired_at, expires_at) "
+        "VALUES ('box', $1, $2, $3, $4, $5) ON CONFLICT (box_id) DO UPDATE SET "
+        "holder = EXCLUDED.holder, held_by = EXCLUDED.held_by, "
+        "campaign_id = EXCLUDED.campaign_id, acquired_at = EXCLUDED.acquired_at, "
+        "expires_at = EXCLUDED.expires_at",
+        lease.holder.value,
+        lease.held_by,
+        lease.campaign_id,
+        lease.acquired_at,
+        lease.expires_at,
+    )
+
+
+_OPERATOR_LOG_COLUMNS = (
+    "seq, operation, outcome, actor, actor_role, reason, idempotency_key, committed_at, "
+    "expires_in_s, refusal, reasons"
+)
+
+
+def _operator_entry_args(e: box.OperatorLeaseEntry) -> tuple:
+    return (
+        e.seq,
+        e.operation.value,
+        e.outcome.value,
+        e.actor,
+        e.actor_role,
+        e.reason,
+        e.idempotency_key,
+        e.committed_at,
+        e.expires_in_s,
+        e.refusal.value if e.refusal else None,
+        json.dumps(list(e.reasons)),
+    )
+
+
+def _row_to_operator_entry(row: asyncpg.Record) -> box.OperatorLeaseEntry:
+    reasons = row["reasons"]
+    return box.OperatorLeaseEntry(
+        seq=row["seq"],
+        operation=box.OperatorLeaseOperation(row["operation"]),
+        outcome=ControlOutcome(row["outcome"]),
+        actor=row["actor"],
+        actor_role=row["actor_role"],
+        reason=row["reason"],
+        idempotency_key=row["idempotency_key"],
+        committed_at=row["committed_at"],
+        expires_in_s=row["expires_in_s"],
+        refusal=box.OperatorLeaseRefusal(row["refusal"]) if row["refusal"] else None,
+        reasons=tuple(json.loads(reasons) if isinstance(reasons, str) else reasons or ()),
+    )
 
 
 def _row_to_lease(row: asyncpg.Record) -> BoxLease:
