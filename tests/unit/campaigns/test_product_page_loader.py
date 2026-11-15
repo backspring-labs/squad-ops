@@ -338,14 +338,18 @@ def test_a_typescript_test_takes_a_typescript_loader_told_not_to_type_check():
 # --- the readings, from real vitest 2.1.9 output ---------------------------------------------
 
 
-def _recording(name: str) -> tuple[str, str, int]:
-    out = (FIXTURES / f"vitest-2.1.9-{name}.stdout.txt").read_text()
-    err = (FIXTURES / f"vitest-2.1.9-{name}.stderr.txt").read_text()
+def _recording(name: str, *, verbose: bool = False) -> tuple[str, str, int]:
+    """A recording, and the verbose reporter's (``-verbose``) where the run was given acceptance's
+    ``--reporter=verbose`` (#3089): the same trees and command, re-recorded in ``node:20-slim``,
+    whose default-reporter runs reproduce these files but for Vite's own stack frames."""
+    stem = f"vitest-2.1.9-{name}" + ("-verbose" if verbose else "")
+    out = (FIXTURES / f"{stem}.stdout.txt").read_text()
+    err = (FIXTURES / f"{stem}.stderr.txt").read_text()
     return out, err, 0 if name.endswith("present-view") else 1
 
 
-def _reading(name: str):
-    return read("vitest", *_recording(name))
+def _reading(name: str, *, verbose: bool = False):
+    return read("vitest", *_recording(name, verbose=verbose))
 
 
 @pytest.mark.parametrize(
@@ -365,7 +369,7 @@ def test_what_vitest_reports_on_each_tree_reads_by_section_24ci_a(baseline, cand
     would let a broken baseline read as discriminating; a tree without the loader read as
     anything but setup."""
     assert discrimination_on_runner(
-        "P", "vitest", _reading(baseline), _reading(candidate)
+        "P", "vitest", _reading(baseline), _reading(candidate, verbose=True)
     ).reason is (reason)
 
 
@@ -412,8 +416,9 @@ class _VitestReplay:
                 str(p.relative_to(copy)): p.read_bytes() for p in copy.rglob("*") if p.is_file()
             }
         self.ran.append(files)
-        name = _recorded_as(files, command[-1])
-        out, err, code = _recording(name)
+        verbose = "--reporter=verbose" in command
+        [test] = [a for a in command if a.endswith(".test.jsx")]
+        out, err, code = _recording(_recorded_as(files, test), verbose=verbose)
         return CommandResult(
             operation=OperationName.RUN_DECLARED_COMMAND,
             workspace_revision_id=revision.revision_id,
@@ -576,7 +581,8 @@ async def test_through_the_loader_a_page_the_change_adds_discriminates_and_an_im
         [P1, LOADER, "frontend/vite.config.js", "frontend/src/test-setup.js"]
     )
     assert bundle["files"][LOADER] == page_loader_source(LOADER)
-    assert bundle["invocation"][-1] == "criterion_P1.test.jsx"
+    # The product's own one-file command, then what names its passes (#3089).
+    assert bundle["invocation"][-2:] == ["criterion_P1.test.jsx", "--reporter=verbose"]
     on_baseline = sandbox.backend.ran[0]
     assert LOADER in on_baseline and VIEW not in on_baseline
     # The product's own tests never run beside a criterion's.

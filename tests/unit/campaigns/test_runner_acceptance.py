@@ -26,6 +26,7 @@ from squadops.campaigns.acceptance import (
     discrimination_on_runner,
     held_on_runner,
     increment_acceptance,
+    ran_every_test,
 )
 from squadops.sandbox.findings import FindingsReading, read
 
@@ -48,8 +49,25 @@ def _vitest(name: str, exit_code: int) -> FindingsReading:
     )  # fmt: skip
 
 
-_ALL_PASS = read("pytest", "10 passed in 0.10s\n", "", 0)
 _P = "tests/test_probe.py::"
+
+
+def _pytest_passes(*nodes: str) -> FindingsReading:
+    """A candidate run under acceptance's ``-rfEp`` (#3089), in pytest's own row shape
+    (``tests/fixtures/findings/pytest-renamed-case-candidate.txt`` is a real one): a ``PASSED``
+    row per node, and its summary."""
+    rows = "".join(f"PASSED {_P}{n}\n" for n in nodes)
+    return read("pytest", f"{rows}{len(nodes)} passed in 0.10s\n", "", 0)
+
+
+#: Every test of ``pytest-classes.txt``'s file passing: its seven failures, its error, and two more.
+_ALL_PASS = _pytest_passes(
+    "test_asserts_a_value", "test_asserts_with_a_message", "test_raises_inside_the_app",
+    "test_imports_what_only_the_candidate_has",
+    "test_a_test_whose_name_is_long_enough_to_push_the_short_summary_past_eighty_columns_of_width",
+    "test_fails_explicitly", "TestShelfList::test_counts[2]", "test_needs_a_broken_fixture",
+    "test_lists_the_shelf", "TestShelfList::test_counts[1]",
+)  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -82,6 +100,12 @@ _P = "tests/test_probe.py::"
          Discrimination("c1", False, R.NOT_RUN)),
         ("vitest", _pytest("pytest-classes.txt"), _ALL_PASS,
          Discrimination("c1", False, R.NOT_RUN)),
+        # #3089: a pass is its id among the candidate's passes. A candidate that names none shows
+        # nothing ran; one that passed only another test shows the failing one never did.
+        ("pytest", _pytest("pytest-classes.txt"), read("pytest", "10 passed in 0.10s\n", "", 0),
+         Discrimination("c1", False, R.NOT_RUN)),
+        ("pytest", _pytest("pytest-classes.txt"), _pytest_passes(*[f"test_other_{i}" for i in range(10)]),
+         Discrimination("c1", False, R.NOT_RUN)),
     ],
     ids=[
         "assertions-and-the-apps-errors-discriminate-imports-and-fixtures-dont",
@@ -93,6 +117,8 @@ _P = "tests/test_probe.py::"
         "the-candidate-ran-fewer-tests",
         "the-candidate-unreadable",
         "read-by-another-reader",
+        "the-candidate-names-no-pass",
+        "the-candidate-passed-other-tests",
     ],
 )  # fmt: skip
 def test_a_criterion_discriminates_on_a_products_runner_only_for_the_intended_reason(
@@ -107,7 +133,17 @@ def test_a_vitest_criterion_discriminates_by_its_assertions_and_not_by_a_referen
     Bug caught: vitest's classes read from the wrong line, so every failure reads as setup, or
     none does."""
     baseline = _vitest("asserting", 1)
-    passed = read("vitest", " Tests  5 passed (5)\n", "", 0)
+    # The candidate under acceptance's verbose reporter (#3089), in vitest's own line shape.
+    file = "src/__tests__/asserting.test.js"
+    passed = read(
+        "vitest",
+        "".join(f" ✓ {file} > {name}\n" for name in (
+            "Book form > refuses an empty title", "Book form > when saved > twice > names the duplicate",
+            "Book form > throws inside the app", "Setup that breaks > never reaches its body",
+            "Book form > saves a book",
+        )) + "      Tests  5 passed (5)\n",
+        "", 0,
+    )  # fmt: skip
     referenced = FindingsReading(
         "vitest", 1, True, None,
         {"FAILED src/a.test.js > shows the shelf": 1}, 1,
@@ -174,3 +210,27 @@ def test_a_frozen_criterion_holds_on_a_products_runner_only_on_a_run_that_was_re
     address, test_ids, exit_code, reading, held
 ):
     assert held_on_runner(address, test_ids, exit_code, reading) == held
+
+
+@pytest.mark.parametrize(
+    ("test_ids", "baseline", "candidate"),
+    [
+        ("pytest", _pytest("pytest-renamed-case-baseline.txt"),
+         read("pytest", _out("pytest-renamed-case-candidate.txt"), "", 0)),
+        ("vitest", _vitest("renamed-case-baseline", 1), _vitest("renamed-case-candidate", 0)),
+    ],
+    ids=["pytest", "vitest"],
+)  # fmt: skip
+def test_a_case_generated_from_the_product_and_renamed_by_the_change_never_ran(
+    test_ids, baseline, candidate
+):
+    """#3089, on real runs of each runner: a criterion's test generated from the product's data
+    (``parametrize`` over ``tally.rules()``, vitest's ``test.each``). The baseline's product has
+    the rule ``cap``, which fails; the candidate's change renamed it ``limit``, which passes. One
+    test ran on each side, so the counts agree and ``ran_every_test`` holds. Bug caught: ``cap``
+    credited as discriminating for its absence among the candidate's failures, though it never
+    ran on the candidate."""
+    found = discrimination_on_runner("c1", test_ids, baseline, candidate)
+
+    assert ran_every_test(candidate) and candidate.passing
+    assert (found.met, found.reason, found.discriminating) == (False, R.NOT_RUN, ())

@@ -1,0 +1,21 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/c1.test.js > C1: a rule the tally allows > rule cap is allowed
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ test/c1.test.js:5:73
+      3| 
+      4| describe("C1: a rule the tally allows", () => {
+      5|   test.each(rules)("rule %s is allowed", (rule) => expect(allows(rule)…
+       |                                                                         ^
+      6| })
+      7| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
