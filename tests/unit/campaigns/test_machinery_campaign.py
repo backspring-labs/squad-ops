@@ -445,3 +445,86 @@ async def test_a_campaign_whose_worker_is_offline_launches_no_development(machin
     assert "fixture/declared_scenario" in refused.reason
     assert await machinery.registry.list_cycles(PROJECT) == []
     assert machinery.dispatched() == []
+
+
+class _Comes:
+    """A worker there at every launch and gone at every reading (#3045): it starts as each
+    launch is drained, so creation finds it, and leaves the moment qa's operation reports, before
+    the runtime reads the reply, so delivery's reading finds no one to take it."""
+
+    def __init__(self, world) -> None:
+        self.world = world
+        self.serving = None
+        self.arrivals = 0
+        launch = world.launch.drain
+
+        async def drain():
+            await self.arrive()
+            return await launch()
+
+        world.launch.drain = drain
+        world.broker.on_reply = self.reply
+
+    async def arrive(self) -> None:
+        if self.serving is None:
+            self.arrivals += 1
+            self.serving = self.world.worker(f"spark-worker-{self.arrivals}")
+            await self.serving.__aenter__()
+
+    async def leave(self) -> None:
+        if self.serving is not None:
+            serving, self.serving = self.serving, None
+            await serving.__aexit__(None, None, None)
+
+    async def reply(self, result: dict) -> None:
+        sent = [
+            m["payload"]["task_id"]
+            for q, m in self.world.broker.published
+            if q.endswith("_comms") and m["payload"]["task_type"] == "qa.run_remote_operation"
+        ]
+        if result["task_id"] in sent and result["status"] == "SUCCEEDED":
+            await self.leave()
+
+
+#: An increment's retry: framed and built again on its approved request, on the same answers.
+RETRY_SCRIPTS = {
+    "machinery-inc1": SCRIPTS["machinery-inc1"],
+    "machinery-retry": [
+        *_framing("open the door from its panel"),
+        *_implementation(OPEN, "Workspace.Door"),
+    ],
+}
+
+
+async def test_a_worker_there_at_every_launch_and_gone_at_every_reading_spends_the_retries(
+    machinery, monkeypatch
+):
+    """#3045's done-when: the increment is retried for want of a worker, never repaired, within
+    its retries, and the owner hears of it when they are spent. Bugs caught: the outage read as
+    the work's failure (a repair cycle launched); the retries reset by each launch, so it
+    relaunches for ever; or the retry launched without the scenario's reading flagged."""
+    monkeypatch.setitem(globals(), "SCRIPTS", RETRY_SCRIPTS)
+    comes = _Comes(machinery)
+    try:
+        await comes.arrive()
+        await _start(machinery)
+        await _until_settled(machinery)
+    finally:
+        await comes.leave()
+
+    current = await machinery.campaigns.get_campaign(CID)
+    assert current.state is CampaignState.ESCALATED
+    log = await machinery.campaigns.control_log(CID)
+    # The record proposes (5); the increment, blocked for want of a worker, is retried (10);
+    # the retry, blocked the same way, escalates with its retries spent (11).
+    assert _rows(log) == ["row 5", "row 10", "row 11"]
+    cycles = sorted(await machinery.registry.list_cycles(PROJECT), key=lambda c: c.created_at)
+    assert [c.kind for c in cycles] == ["increment", "retry"]
+    for cycle in cycles:
+        evaluation = await _evaluation(machinery, cycle.cycle_id)
+        assert evaluation["verdict"] == "blocked_unverified"
+        assert evaluation["blocked_only_by_availability"] is True
+        [judged] = evaluation["discriminations"]
+        assert (judged["criterion_id"], judged["reason"], judged["unavailable"]) == (
+            "C-2", "not_run", True
+        )  # fmt: skip

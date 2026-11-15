@@ -41,11 +41,17 @@ class OperationReading:
 
 
 def ended(
-    request: RemoteOperationRequest, status: OperationStatus, reason: str
+    request: RemoteOperationRequest,
+    status: OperationStatus,
+    reason: str,
+    *,
+    unavailable: bool = False,
 ) -> RemoteOperationResult:
     """A result the requester writes itself, for an operation that didn't run or whose end is
-    unknown: never a pass."""
-    return RemoteOperationResult(status=status, reason=reason, dispatch_id=request.dispatch_id)
+    unknown: never a pass. ``unavailable``: no worker took it (#3045)."""
+    return RemoteOperationResult(
+        status=status, reason=reason, dispatch_id=request.dispatch_id, unavailable=unavailable
+    )
 
 
 async def await_result(
@@ -81,6 +87,12 @@ async def await_result(
             f"{waited}, and operation {operation_id} couldn't be asked to stop: whether it ran "
             f"is unknown ({e})",
         )
+    # #3045: an operation no worker ever claimed is settled ``not_executed`` by the cancel
+    # itself. One a worker had claimed stays claimed, and its result is the worker's, whatever
+    # it says: only the first is for want of a worker.
+    never_claimed = (
+        reading.result is not None and reading.result.status is OperationStatus.NOT_EXECUTED
+    )
     grace = reading.lease_seconds
     grace_ends = clock() + grace
     while reading.result is None and clock() < grace_ends:
@@ -99,4 +111,5 @@ async def await_result(
     return replace(
         reading.result,
         reason=f"{reading.result.reason} (its requester asked it to stop: {waited})",
+        unavailable=never_claimed,
     )

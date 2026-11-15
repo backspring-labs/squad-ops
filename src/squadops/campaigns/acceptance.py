@@ -116,6 +116,9 @@ class Discrimination:
     candidate_passed: bool = False
     #: Why, in words, when it isn't met: which reading was unread and why (#3053).
     detail: str = ""
+    #: #3045: ``not_run`` only because no worker took a scenario reading's operation, as the
+    #: reading says (``reading_unavailable``). A fact about the workers, never about the work.
+    unavailable: bool = False
 
 
 def discrimination(
@@ -258,6 +261,8 @@ class FrozenResult:
     bundle_address: str | None
     held: Held
     detail: str = ""
+    #: #3045: ``blocked_unverified`` only because no worker took the scenario's operation.
+    unavailable: bool = False
 
 
 def accumulated_acceptance(
@@ -556,6 +561,10 @@ class IncrementAcceptance:
     #: #2849: new criteria the accepted tree already met and the candidate still meets, kept as
     #: preservation checks beside criteria that discriminate, rather than rejecting the increment.
     preserved: tuple[str, ...] = field(default_factory=tuple)
+    #: #3045: blocked, and every gap that blocks it is a scenario no worker took. Nothing failed
+    #: and nothing else is unread, so building again changes nothing: the increment waits for a
+    #: worker (a retry), and is never repaired for it.
+    blocked_only_by_availability: bool = False
 
 
 def preserved_criteria(discriminations: tuple[Discrimination, ...]) -> tuple[str, ...]:
@@ -594,23 +603,32 @@ def increment_acceptance(
         for d in discriminations
         if d.reason in _UNREAD
     ]
+    # #3045: whether each gap that blocks is one no worker took.
+    for_want_of_a_worker = [d.unavailable for d in discriminations if d.reason in _UNREAD]
     for r in frozen:
         if r.held is Held.BROKEN:
             unmet.append(f"frozen {r.criterion_id}: {r.detail}")
         elif r.held is Held.BLOCKED_UNVERIFIED:
             blocked.append(f"frozen {r.criterion_id}: {r.detail}")
+            for_want_of_a_worker.append(r.unavailable)
     for route in routes:
         if route.held is Held.BROKEN:
             unmet.append(f"route {route.path}: missing {', '.join(route.missing)}")
         elif route.unseeded:
             blocked.append(f"route {route.path}: not read, no seed brings its page into being")
+            for_want_of_a_worker.append(False)
         elif route.held is Held.BLOCKED_UNVERIFIED:
             why = f": {route.detail}" if route.detail else ""
             blocked.append(f"route {route.path}: not rendered{why}")
+            for_want_of_a_worker.append(False)
     if unmet:
         return IncrementAcceptance(IncrementVerdict.REJECTED, tuple(unmet), tuple(blocked))
     if blocked:
         return IncrementAcceptance(
-            IncrementVerdict.BLOCKED_UNVERIFIED, (), tuple(blocked), preserved=preserved
+            IncrementVerdict.BLOCKED_UNVERIFIED,
+            (),
+            tuple(blocked),
+            preserved=preserved,
+            blocked_only_by_availability=all(for_want_of_a_worker),
         )
     return IncrementAcceptance(IncrementVerdict.ACCEPTED, preserved=preserved)

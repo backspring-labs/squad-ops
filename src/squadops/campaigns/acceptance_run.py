@@ -226,6 +226,8 @@ def evaluation_document(
         # #2849: new criteria kept as preservation checks, already met and still met.
         "preserved": list(acceptance.preserved),
         "blocked": list(acceptance.blocked),
+        # #3045: every blocking gap is a scenario no worker took; the hearing retries it.
+        "blocked_only_by_availability": acceptance.blocked_only_by_availability,
         "discriminations": [
             {
                 "criterion_id": d.criterion_id,
@@ -233,6 +235,7 @@ def evaluation_document(
                 "reason": str(d.reason),
                 "discriminating": list(d.discriminating),
                 "detail": d.detail,
+                "unavailable": d.unavailable,
             }
             for d in evaluation.discriminations
         ],
@@ -242,6 +245,7 @@ def evaluation_document(
                 "bundle_address": f.bundle_address,
                 "held": str(f.held),
                 "detail": f.detail,
+                "unavailable": f.unavailable,
             }
             for f in evaluation.frozen
         ],

@@ -73,7 +73,7 @@ class RegistryRemoteExecution(RemoteExecutionPort):
             request, self._origin, max_attempts=self._max_attempts, only_with_worker=True
         )
         if isinstance(queued, NoWorker):
-            return ended(request, OperationStatus.NOT_EXECUTED, queued.reason)
+            return ended(request, OperationStatus.NOT_EXECUTED, queued.reason, unavailable=True)
         operation_id = queued.operation.operation_id
         try:
             return await await_result(

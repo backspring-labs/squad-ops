@@ -11,6 +11,9 @@ What bugs would these catch?
 - A worker that claims and goes silent leaving acceptance waiting for ever, or its silence read
   as a pass or a failure instead of ``interrupted``.
 - Two criteria's asks stopping each other because they shared a task.
+- #3045: a reading flagged as taken by no worker when a worker did take it (claimed and went
+  silent, or played it), so an outage's routing is given to the work's own failure; or one no
+  worker took left unflagged, so the Campaign spends a repair on it.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from squadops.remote_execution.models import (
     ReadingSide,
     RemoteOperationRequest,
     acceptance_task_id,
+    reading_unavailable,
     records_document,
 )
 from squadops.remote_execution.registry import WorkerRegistry
@@ -165,6 +169,41 @@ async def _then_play(h: Harness) -> None:
     """Let both asks queue before the worker starts playing them."""
     await asyncio.sleep(0)
     h.worker_does = "play"
+
+
+@pytest.mark.parametrize(
+    ("worker", "does", "status", "unavailable"),
+    [
+        (False, None, OperationStatus.NOT_EXECUTED, True),  # no worker serves it
+        (True, None, OperationStatus.NOT_EXECUTED, True),  # served, never claimed in the wait
+        (True, "hold", OperationStatus.INTERRUPTED, False),  # claimed, then silent
+        (True, "play", OperationStatus.COMPLETED, False),
+    ],
+)
+def test_a_reading_is_flagged_unavailable_only_when_no_worker_took_it(
+    worker, does, status, unavailable
+):
+    h = Harness(worker=worker)
+    h.worker_does = does
+    request = ask(OPEN)
+
+    result = asyncio.run(h.adapter.run_operation(request))
+    document = records_document(request, result, ReadingSide.CANDIDATE, not_staged=())
+
+    assert (result.status, result.unavailable) == (status, unavailable)
+    assert document["unavailable"] is unavailable
+    assert reading_unavailable(document) is unavailable
+
+
+def test_a_reading_kept_before_the_flag_reads_as_taken_by_a_worker():
+    """#3045: a stored reading with no ``unavailable`` key keeps the routing it had then."""
+    request = ask(OPEN)
+    result = asyncio.run(Harness(worker=False).adapter.run_operation(request))
+    document = records_document(request, result, ReadingSide.CANDIDATE, not_staged=())
+    del document["unavailable"]
+
+    assert reading_unavailable(document) is False
+    assert reading_unavailable(None) is False
 
 
 @pytest.mark.parametrize(("wait", "attempts"), [(timedelta(0), 1), (WAIT, 0)])

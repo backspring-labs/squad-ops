@@ -160,6 +160,12 @@ class RemoteOperationResult:
     ran_with: Mapping[str, str] = field(default_factory=dict)
     #: The request's ``dispatch_id``, echoed. A result that echoes another is stale.
     dispatch_id: str = ""
+    #: #3045: no worker took it. None served or reached the operation when it was asked for,
+    #: or none claimed it before its requester's wait ran out. A fact about the workers, never
+    #: about the work: set only by a requester, from the registry's ``NoWorker`` or its own
+    #: wait, and never on a result a worker returned. A worker that claimed it and then went
+    #: silent is not this (its lease lapsing is ``interrupted``; whether it ran is unknown).
+    unavailable: bool = False
 
 
 def result_defects(request: RemoteOperationRequest, result: RemoteOperationResult) -> list[str]:
@@ -210,6 +216,13 @@ def outcomes_by_assertion(
     }
 
 
+def reading_unavailable(reading: Mapping | None) -> bool:
+    """Whether a stored reading's operation was taken by no worker (#3045). A reading kept
+    before the field was written carries no key, and reads as not flagged: it keeps the routing
+    it had then (a delivery gap it leaves is repaired, not retried)."""
+    return reading is not None and reading.get("unavailable") is True
+
+
 def records_document(
     request: RemoteOperationRequest,
     result: RemoteOperationResult,
@@ -248,6 +261,8 @@ def records_document(
         "named_assertion": request.scenario.named_assertion,
         "status": result.status.value,
         "reason": result.reason,
+        # #3045: written on every reading, so "not flagged" is read, never inferred.
+        "unavailable": result.unavailable,
         "provider_version": result.provider_version,
         "ran_with": dict(result.ran_with),
         "assertions": [
