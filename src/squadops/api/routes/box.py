@@ -129,7 +129,7 @@ async def _change(
     return OperatorLeaseResultResponse(
         entry=OperatorLeaseEntryResponse.of(result.entry),
         replayed=result.replayed,
-        lease=LeaseResponse.of(result.lease, datetime.now(UTC)),
+        lease=LeaseResponse.of(result.lease, datetime.now(UTC)) if result.lease else None,
     )
 
 

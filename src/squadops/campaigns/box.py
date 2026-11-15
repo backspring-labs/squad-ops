@@ -194,12 +194,13 @@ def lease_refusal(
     - **Release:** only the holder of a live supervisor lease gives it back. A lease that has
       expired, or the squad's own, is released by anyone: it holds nothing.
     """
-    holds = current is not None and current.holds(now)
+    held = current if current is not None and current.holds(now) else None
+    holds = held is not None
     mine = (
-        holds
-        and current.holder is LeaseHolder.SUPERVISOR
-        and current.campaign_id == campaign.campaign_id
-        and current.held_by == held_by
+        held is not None
+        and held.holder is LeaseHolder.SUPERVISOR
+        and held.campaign_id == campaign.campaign_id
+        and held.held_by == held_by
     )
     if operation is ControlOperation.LEASE_ACQUIRE:
         if campaign.state is not CampaignState.AWAITING_RULING:
@@ -225,15 +226,17 @@ def leased(
     now; a renewal keeps its first acquisition time. A release returns the box to the squad."""
     if operation is ControlOperation.LEASE_ACQUIRE:
         renewing = (
-            current is not None
+            current
+            if current is not None
             and current.supervisor_holds(now)
             and current.campaign_id == campaign_id
             and current.held_by == binding["held_by"]
+            else None
         )
         return BoxLease(
             holder=LeaseHolder.SUPERVISOR,
             held_by=binding["held_by"],
-            acquired_at=current.acquired_at if renewing else now,
+            acquired_at=renewing.acquired_at if renewing is not None else now,
             expires_at=now + timedelta(seconds=int(binding["expires_in_s"])),
             campaign_id=campaign_id,
         )
@@ -289,7 +292,7 @@ class OperatorLeaseChange:
         acquiring = self.operation is OperatorLeaseOperation.ACQUIRE
         if acquiring != (self.expires_in_s is not None):
             raise ValueError("an acquire, and only an acquire, says how long it holds the box")
-        if acquiring and not 0 < self.expires_in_s <= OPERATOR_LEASE_MAX_S:
+        if self.expires_in_s is not None and not 0 < self.expires_in_s <= OPERATOR_LEASE_MAX_S:
             raise ValueError(
                 f"expires_in_s is 1 to {OPERATOR_LEASE_MAX_S}, not {self.expires_in_s}"
             )
@@ -332,16 +335,16 @@ def operator_lease_refusal(
     - **Release:** only the operator holding a live lease gives it back. A lease that has
       expired, or the squad's own, is released by anyone: it holds nothing.
     """
-    holds = current is not None and current.holds(now)
-    mine = holds and current.holder is LeaseHolder.OPERATOR and current.held_by == change.actor
+    held = current if current is not None and current.holds(now) else None
+    mine = held is not None and held.holder is LeaseHolder.OPERATOR and held.held_by == change.actor
     if change.operation is OperatorLeaseOperation.RELEASE:
-        if holds and not mine:
-            return OperatorLeaseRefusal.NOT_LEASE_HOLDER, (_holder_line(current),)
+        if held is not None and not mine:
+            return OperatorLeaseRefusal.NOT_LEASE_HOLDER, (_holder_line(held),)
         return None, ()
     if mine:
         return None, ()
-    if holds:
-        return OperatorLeaseRefusal.BOX_HELD, (_holder_line(current),)
+    if held is not None:
+        return OperatorLeaseRefusal.BOX_HELD, (_holder_line(held),)
     if runs_in_flight:
         return OperatorLeaseRefusal.RUN_IN_FLIGHT, tuple(f"run {r}" for r in runs_in_flight)
     live = [(c, state) for c, state in live_campaigns if state not in QUIESCENT_CAMPAIGN_STATES]
@@ -361,24 +364,29 @@ def operator_leased(
     now; a renewal keeps its first acquisition time. A release returns the box to the squad."""
     if change.operation is OperatorLeaseOperation.RELEASE:
         return BoxLease(holder=LeaseHolder.SQUAD, held_by=SQUAD_HOLDER_ID, acquired_at=now)
+    if change.expires_in_s is None:
+        raise ValueError("an acquire says how long it holds the box")
     renewing = (
-        current is not None and current.operator_holds(now) and current.held_by == change.actor
+        current
+        if current is not None and current.operator_holds(now) and current.held_by == change.actor
+        else None
     )
     return BoxLease(
         holder=LeaseHolder.OPERATOR,
         held_by=change.actor,
-        acquired_at=current.acquired_at if renewing else now,
-        expires_at=now + timedelta(seconds=int(change.expires_in_s)),
+        acquired_at=renewing.acquired_at if renewing is not None else now,
+        expires_at=now + timedelta(seconds=change.expires_in_s),
     )
 
 
 @dataclass(frozen=True)
 class OperatorLeaseResult:
-    """An applied, or replayed, change: its row and the lease it left."""
+    """An applied, or replayed, change: its row and the lease it left (``None`` only for a
+    replay on a box whose lease row has gone, as a truncated table would leave it)."""
 
     entry: OperatorLeaseEntry
     replayed: bool
-    lease: BoxLease
+    lease: BoxLease | None
 
 
 class OperatorLeaseRefused(Exception):

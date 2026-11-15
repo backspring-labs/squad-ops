@@ -76,4 +76,4 @@ class OperatorLeaseResultResponse(BaseModel):
 
     entry: OperatorLeaseEntryResponse
     replayed: bool
-    lease: LeaseResponse
+    lease: LeaseResponse | None
