@@ -133,6 +133,9 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # #3044 made "scenario" a SurfaceKind value. These test for a criterion's ``scenario`` KEY in
     # its authored mapping, the declaration's field name, not a surface kind.
     ("src/squadops/campaigns/change_request.py", "scenario"),
+    # #3039: an MCP tool result's content part type (the Model Context Protocol's own ``"text"``),
+    # read from Studio's MCP server; not a scenario argument kind.
+    ("adapters/remote_execution/game_dev_roblox_studio/session.py", "text"),
 }
 
 # Enum values this short/common that they produce coincidental matches are not

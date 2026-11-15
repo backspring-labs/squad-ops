@@ -75,7 +75,7 @@ def declared_skillsets(profile_id: str, agent: Mapping[str, Any]) -> tuple[str, 
 
     An absent key means the agent carries none, which is every entry written before skillsets
     existed. Anything else that isn't a list of non-empty strings raises: read leniently, a
-    bare ``skillsets: roblox-studio-qa`` becomes one skillset per character, and the squad is
+    bare ``skillsets: game-qa`` becomes one skillset per character, and the squad is
     then refused for lacking a skillset its profile visibly names.
     """
     value = agent.get("skillsets")
@@ -87,7 +87,7 @@ def declared_skillsets(profile_id: str, agent: Mapping[str, Any]) -> tuple[str, 
         raise ValueError(
             f"squad profile {profile_id!r}: agent {agent.get('agent_id')!r} declares "
             f"`skillsets` as {value!r}. It is a list of skillset ids, for example "
-            "`skillsets: [roblox-studio-qa]`."
+            "`skillsets: [game-qa]`."
         )
     return tuple(value)
 
