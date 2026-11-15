@@ -137,7 +137,6 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.cycles.verification_integrity import RunVerdict
-from squadops.projects.goal_set_assessments import campaign_assessments, standings_document
 
 if TYPE_CHECKING:
     from squadops.ports.projects.goal_sets import GoalSetRegistryPort
@@ -1689,6 +1688,9 @@ class CampaignProgress:
             return None
         if self._goal_sets is None:
             return {"unreadable": "this runtime reads no goal-set store"}
+        # deferred (pair): squadops.projects.goal_set_assessments imports squadops.campaigns at load
+        from squadops.projects.goal_set_assessments import campaign_assessments, standings_document
+
         try:
             read = await campaign_assessments(
                 campaign, goal_sets=self._goal_sets, campaigns=self._campaigns

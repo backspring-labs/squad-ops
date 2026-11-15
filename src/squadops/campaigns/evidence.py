@@ -206,10 +206,12 @@ def _assessment_section(assessments: dict | None) -> list[str]:
     if "unreadable" in assessments:
         return [f"- the assessments could not be read: {assessments['unreadable']}"]
     # deferred (pair): squadops.projects.goal_set_assessments imports squadops.campaigns at load
-    from squadops.projects.goal_set_assessments import assessment_lines
+    from squadops.projects.goal_set_assessments import Standing, assessment_lines
 
     unassessed = [
-        r["expected_result"] for r in assessments["results"] if r["standing"] == "unassessed"
+        r["expected_result"]
+        for r in assessments["results"]
+        if r["standing"] == Standing.UNASSESSED.value
     ]
     lines = [
         f"At goal-set revision {assessments['revision']}, read at row {assessments['log_seq']}.",
