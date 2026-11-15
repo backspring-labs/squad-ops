@@ -178,7 +178,8 @@ phases are in its own ledger.
 | Phase 2c: the Luau runner (#2906; core, R3.2), built by the Spark lane (the 2.8 plan's decision 4) | **shipped** | 2.8 (PR #3090, closing #2906; R5.13) |
 | Phase 2d, the first slice: the Studio adapter's read side (the session, the tool check, identity as far as reading allows, paged read-back) and the isolation test (R3.6, R4.6, R5.11) | **shipped** | 2.8 (PR #3088; #3039 tracks the rest) |
 | Phase 2d, the sync: the harness's fixed programs (identity and sync), `PlaceId` 0 confirmed before any write, and the adapter's own sync with its whole read-back (R3.6, D5, D10, R5.15) | **shipped** | 2.8 (PR #3107; #3039 tracks the rest) |
-| Phase 2d, the rest: the transaction, the baseline, reset, the `roblox-studio` provider's four operations served, and the worker's configuration (R3.6, R4.3, R5.7, R5.11, R5.15) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
+| Phase 2d, the place's state: the non-script baseline held through play, the synced scripts checked for attributes and tags, and play started and stopped (R3.6, R5.16) | **shipped** | 2.8 (PR #3112; #3039 tracks the rest) |
+| Phase 2d, the rest: the transaction under one lease, reset from the baseline file with Studio reopened, the `roblox-studio` provider's four operations served, editor edits returned as a revision, and the worker's configuration (R3.6, R4.3, R5.7, R5.11, R5.15, R5.16) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
@@ -840,6 +841,61 @@ rest. The owner approved writing into the local `ta-copy.rbxl` on 2026-11-15.
 
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12) and their approval of
 writes to the local copy (2026-11-15).
+
+## R5.16 Phase 2d, the place's state as built: the baseline, the script marks and the frame around play (#3039, 2026-11-15)
+
+**The non-script baseline is the harness's `baseline` program.** It reads only.
+- **The lines:** it walks the place's services and writes one line per instance: its path, its class, its attributes,
+  its CollectionService tags, and the properties a stated set names for the classes it is. Examples are a part's
+  `CFrame`, `Size` and `Material`; a light's `Brightness`; a joint's `Part0` and `Part1` as paths; a `ValueBase`'s
+  `Value`; a GUI object's layout; and a sound's id. Numbers are written to nine significant digits.
+- **Exclusions,** each for its reason:
+  - Scripts outside the three synced folders carry their whole source.
+  - The synced folders' contents are left to the script read-back, which covers them whole.
+  - Camera instances are left out, because Studio moves the camera with the viewport.
+  - Terrain's voxels are left out, because no property reads them.
+- **Pages:** the lines are sorted, kept in `_G` under a snapshot id, and paged back in pages of at most 40,000
+  characters. The worker digests them. A total that moves between pages, or a page that doesn't advance, is
+  refused. The snapshot is released however the read ends.
+- **`baseline_changes`** names each instance that appeared, went or changed, with each changed field's old and new
+  value. "The place changed" alone isn't enough to act on.
+
+**The script marks are the harness's `script_marks` program.** It names every script in the three synced folders
+that carries attributes or tags. This is #3042's eligibility rule, placed at the worker: Script Sync's files can't
+carry either, so the tree read at creation can't show them (SIP-0118 R5.3).
+
+**Play:**
+- `start_stop_play` is a control tool, not marked read-only. So it is named in the session's `CONTROL_TOOLS` and
+  allowed only to a session opened for the harness. A harness session requires both it and `execute_luau` offered.
+- Each start and stop waits, under a deadline, until Studio reports Play or Edit.
+
+**`RobloxStudioRunner.play_round`** is the frame `play_scenario` will run inside:
+1. Confirm an unpublished local place in Edit.
+2. Refuse marked scripts before play.
+3. Take the baseline.
+4. Start play, then stop it.
+5. Take the baseline again.
+6. Refuse any change, naming it.
+
+**Evidence on the real place** (Studio 0.747, `ta-copy.rbxl`):
+- **Stable:** the baseline read 22,852 instances (S1 counted 22,840) and 10.5 million characters, in 266 pages of
+  about 19 s. Two reads gave the same digest, and no property was unreadable.
+- **Sensitive:** a scratch program moved `Workspace/Baseplate` by 0.01 studs. The comparison named that one instance
+  and its `CFrame`. Moving it back restored the original baseline exactly.
+- **A whole round held:** `scripts/dev/studio_play_round.py` started play (about 4 s), stopped it, and held 22,852
+  instances with one digest before and after. It took 42.8 s.
+
+Nothing was saved and nothing was published.
+
+**Still #3039's:**
+- the transaction under one lease;
+- reset from `ta-copy.pristine.rbxl` with Studio reopened and no person involved;
+- the four operations served, once each is proved across a Studio restart;
+- editor edits returned as a revision;
+- the worker's configuration, with its provider found the way the runtime finds `eligibility.AUTHORITY` (R4.6).
+
+**Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" (2026-11-15) and their approval of writes to
+the local copy.
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile

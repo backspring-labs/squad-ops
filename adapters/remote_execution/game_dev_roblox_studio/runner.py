@@ -13,13 +13,17 @@ the read side the operations stand on:
 - ``read_back`` compares the place's three synced folders with a source manifest;
 - ``sync`` writes a source manifest into those folders through the harness and reads it back
   (D10). It is the write side ``sync_source`` will stand on, and isn't served until the operation
-  is proved on the worker, a Studio restart included.
+  is proved on the worker, a Studio restart included;
+- ``play_round`` is the transaction's frame around play: the synced scripts checked unmarked, the
+  non-script baseline taken, play started and stopped, and the baseline taken again and held
+  equal (R3.6). ``play_scenario`` will run its scenario inside it.
 """
 
 from __future__ import annotations
 
 import plistlib
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from adapters.remote_execution.game_dev_roblox_studio import place
@@ -55,6 +59,15 @@ def studio_version(studio_mcp: Path) -> str:
     if not isinstance(version, str) or not version.strip():
         raise ValueError(f"{info} names no CFBundleShortVersionString")
     return version
+
+
+@dataclass(frozen=True)
+class PlayRound:
+    """A play round that held: the place's non-script baseline, equal before play and after
+    stop."""
+
+    baseline_digest: str
+    instances: int
 
 
 class RobloxStudioRunner(OperationRunnerPort):
@@ -149,5 +162,36 @@ class RobloxStudioRunner(OperationRunnerPort):
             await session.open()
             studio = await place.identity(session, discover_seconds=self._discover_seconds)
             return await place.sync(session, studio.studio_id, manifest)
+        finally:
+            await session.close()
+
+    async def play_round(self) -> PlayRound:
+        """Play the place once and stop, holding its state (R3.6). Raises
+        :class:`place.PlaceSyncError` for a place that isn't a local one in Edit, and
+        :class:`place.PlaceStateError` before play for a synced script carrying attributes or
+        tags, or after stop naming each instance whose state changed."""
+        session = self._session(harness=True)
+        try:
+            await session.open()
+            studio = await place.identity(session, discover_seconds=self._discover_seconds)
+            await place.confirm_unpublished(session, studio.studio_id)
+            marked = await place.marked_scripts(session, studio.studio_id)
+            if marked:
+                raise place.PlaceStateError(
+                    "Script Sync's files can't carry attributes or tags, so these scripts are ones "
+                    "the repository can't describe: " + "; ".join(marked)
+                )
+            before = await place.baseline(session, studio.studio_id)
+            await place.start_play(session, studio.studio_id)
+            # ``play_scenario`` will run its scenario here (#3040), inside a ``try`` whose
+            # ``finally`` stops play.
+            await place.stop_play(session, studio.studio_id)
+            after = await place.baseline(session, studio.studio_id)
+            changes = place.baseline_changes(before, after)
+            if changes:
+                raise place.PlaceStateError(
+                    "the place's non-script state changed through play: " + "; ".join(changes)
+                )
+            return PlayRound(before.digest, len(before.lines))
         finally:
             await session.close()
