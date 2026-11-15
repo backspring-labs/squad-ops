@@ -113,7 +113,7 @@ from squadops.cycles.preflight import (
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
 from squadops.cycles.skillset_content import keep_skillset_content
-from squadops.cycles.skillset_coverage import cycle_coverage
+from squadops.cycles.skillset_coverage import cycle_coverage, finding_code
 from squadops.cycles.skillset_record import skillset_record_and_content
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
@@ -246,7 +246,7 @@ async def _tool_preflight_decision(
     )
     return PreflightDecision(
         blocking=tuple(
-            Finding(code=f"skillset_{f.kind}", severity="block", message=f.message)
+            Finding(code=finding_code(f.kind), severity="block", message=f.message)
             for f in findings
         )
     )
@@ -324,7 +324,9 @@ async def _run_create_preflight(
         memory_declaration_decision(config, campaign_cycle=campaign_cycle),
     )
     if decision.rejected:
-        raise PreflightRejectedError(decision.summary())
+        raise PreflightRejectedError(
+            decision.summary(), codes=tuple(f.code for f in decision.blocking)
+        )
     for w in decision.warnings:
         logger.warning(
             "cycle_create_preflight_warning", extra={"code": w.code, "detail": w.message}

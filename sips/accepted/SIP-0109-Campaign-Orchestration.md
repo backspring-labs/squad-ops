@@ -7078,3 +7078,17 @@ decides rows 5, 10 and 11.
 
 **Who ruled.** #3045 was placed by the 2.8 plan, which the owner adopted on 2026-11-11. The shape was agreed with the
 MacBook lane on 2026-11-12 and reviewed by it again on 2026-11-15.
+
+### 24dv. A launch refused only for want of a worker waits in `launch_blocked` (2026-11-15, §9.3, §24e item 5; #3045, part B; SIP-0117 R5.12)
+
+**What changed.** §24e item 5 (#1971) escalates a launch the cycle-create path refuses at once, since creating the
+same intent again is refused the same way. One refusal is not like that: no worker available for a tool the work
+requires. When every blocking finding of the create's preflight is `skillset_availability`, read from the
+refusal's codes, the campaign waits in `launch_blocked` as §9.3 waits out a busy box. It writes the box's row shape
+with refusal `worker_unavailable`, and each due attempt unblocks it for the drain to create the cycle again. Its
+attempts are counted on the launch since the owner last resumed, not on the episode. Each attempt's unblock ends an
+episode, so an episode's count would never escalate. It escalates at `launch_blocked_attempts`. Every other create
+refusal still escalates at once.
+
+**The evidence and who ruled.** SIP-0117 R5.12. #3045 was placed by the 2.8 plan, adopted by the owner on
+2026-11-11, and its shape was agreed with the MacBook lane on 2026-11-12 and 2026-11-15.

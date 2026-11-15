@@ -282,7 +282,16 @@ class PreflightRejectedError(CycleError):
     Carries the joined blocking-finding messages: the requested workloads' roles the
     squad can't satisfy and/or models definitively not pulled. Maps to HTTP 422 —
     fail fast before the cycle is persisted or dispatched.
+
+    ``codes`` are the blocking findings' codes, where the raise has them (the create
+    preflight's decision): what a caller reads to tell one kind of refusal from another, never
+    the message (#3045: a Campaign's launch refused only because no worker is available now
+    waits for one).
     """
+
+    def __init__(self, message: str = "", *, codes: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.codes = codes
 
 
 # Allowed keys in AgentProfileEntry.config_overrides (SIP-0075 §5.5.1).

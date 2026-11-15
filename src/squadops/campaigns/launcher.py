@@ -73,6 +73,13 @@ class LaunchRefused(Exception):
         super().__init__(refusal)
 
 
+class LaunchUnavailable(LaunchRefused):
+    """#3045: the cycle-create path refused the launch only because no worker is available now
+    for a tool its work requires (every blocking finding is availability). Unlike any other
+    refusal, the same intent can be created later, once a worker is back: the campaign waits in
+    ``launch_blocked`` and escalates at its policy's count, never at once."""
+
+
 @dataclass(frozen=True)
 class Launched:
     """One intent's launch: its cycle, whether this call created it, and whether an abort that
@@ -157,6 +164,9 @@ class CampaignLauncher:
                     intent = prepared
                     campaign = await self._campaigns.get_campaign(intent.campaign_id)
             return await self.launch(intent)
+        except LaunchUnavailable as unavailable:
+            await self._wait_for_a_worker(campaign, intent, unavailable)
+            return None
         except LaunchRefused as refused:
             await self._escalate_refused(campaign, intent, refused)
             return None
@@ -177,6 +187,25 @@ class CampaignLauncher:
             )
         logger.warning(
             "campaign_launch_refused campaign=%s launch=%s refusal=%s",
+            campaign.campaign_id,
+            intent.launch_id,
+            refused.refusal,
+        )
+
+    async def _wait_for_a_worker(self, campaign, intent: LaunchIntent, refused: LaunchUnavailable):
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        transition = launch_blocking.unavailable_launch(
+            campaign, log, intent, refused.refusal, actor=self._actor
+        )
+        try:
+            await self._campaigns.transition(campaign.campaign_id, transition)
+        except ControlOperationRefused as stale:
+            logger.info(
+                "campaign_launch_wait_not_recorded",
+                extra={"campaign_id": campaign.campaign_id, "refusal": stale.entry.refusal},
+            )
+        logger.warning(
+            "campaign_launch_waits_for_a_worker campaign=%s launch=%s refusal=%s",
             campaign.campaign_id,
             intent.launch_id,
             refused.refusal,

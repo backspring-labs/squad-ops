@@ -47,7 +47,7 @@ from squadops.cycles.models import (
     WORKLOAD_REQUIRED_ROLES,
     WorkloadType,
 )
-from squadops.cycles.skillset_coverage import cycle_coverage
+from squadops.cycles.skillset_coverage import cycle_coverage, finding_code
 from squadops.cycles.task_plan import builder_assembles
 from squadops.llm.model_registry import get_model_spec
 from squadops.llm.script import (
@@ -165,7 +165,7 @@ def skillset_coverage_decision(
     coverage = cycle_coverage(profile, config, catalog, contracts)
     return PreflightDecision(
         blocking=tuple(
-            Finding(code=f"skillset_{f.kind}", severity="block", message=f.message)
+            Finding(code=finding_code(f.kind), severity="block", message=f.message)
             for f in coverage.findings
         )
     )
