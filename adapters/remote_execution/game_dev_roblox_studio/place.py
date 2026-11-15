@@ -7,6 +7,10 @@
   pages each under 90,000 characters. A tree read that leaves part of the tree unexplored, or that
   fills its result limit, is refused rather than read as the whole tree.
 - **The comparison** with a source manifest, file by file.
+- **Sync** (D10): the manifest's scripts written into the three folders through the harness's
+  sync program, the place's other scripts removed, and the result read back whole. Before it
+  writes, the harness's identity program confirms ``PlaceId`` 0 and ``GameId`` 0: a place that
+  isn't Roblox's is never written.
 """
 
 from __future__ import annotations
@@ -54,6 +58,23 @@ _STARTS_PAST_END = re.compile(r"exceeds file length \((\d+)\)")
 
 class PlaceReadError(RuntimeError):
     """The place couldn't be read as the read side requires; the message says why."""
+
+
+class PlaceSyncError(RuntimeError):
+    """A sync was refused before it wrote, or its read-back doesn't match the manifest. The
+    message names why, or each difference."""
+
+
+#: The most source text one sync call carries. A call's code is its payload in hex, twice the
+#: bytes, and R3.6 found Studio's tools answer large results slowly; the bound keeps each call
+#: well inside its deadline.
+SYNC_BATCH_BYTES = 200_000
+
+
+@dataclass(frozen=True)
+class SyncResult:
+    written: tuple[str, ...]
+    removed: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -215,8 +236,18 @@ def manifest_scripts(source_files: Mapping[str, str]) -> tuple[dict[str, ScriptT
         if suffix is None or "." in relative[: -len(suffix[0])]:
             unplaced.append(file_path)
             continue
-        name = relative[: -len(suffix[0])].replace("/", ".")
-        placed[f"{folder}.{name}"] = ScriptText(suffix[1], text)
+        parts = relative[: -len(suffix[0])].split("/")
+        if parts[-1] == "init":
+            # Script Sync: ``X/init.luau`` is the script ``X``, its siblings in ``X/`` its children.
+            parts = parts[:-1]
+            if not parts:
+                unplaced.append(file_path)  # an init file at a folder's root names no script
+                continue
+        path = f"{folder}.{'.'.join(parts)}"
+        if path in placed:
+            unplaced.append(file_path)  # ``X.luau`` beside ``X/init.luau``: two scripts, one name
+            continue
+        placed[path] = ScriptText(suffix[1], text)
     return placed, unplaced
 
 
@@ -238,6 +269,106 @@ def differences(read: Mapping[str, ScriptText], manifest: Mapping[str, ScriptTex
     return found
 
 
+async def confirm_unpublished(session: StudioMcpSession, studio_id: str) -> None:
+    """Raises :class:`PlaceSyncError` unless the harness's identity program reads ``PlaceId`` 0
+    and ``GameId`` 0 in Edit, with no play running: a local place that was never published."""
+    held = await session.run_program("identity", studio_id)
+    if not isinstance(held, dict):
+        raise PlaceSyncError(f"the identity program answered {held!r:.200}")
+    wrong = [
+        f"{key} is {held.get(key)!r}"
+        for key, want in (("placeId", 0), ("gameId", 0), ("edit", True), ("running", False))
+        if held.get(key) != want
+    ]
+    if wrong:
+        raise PlaceSyncError(
+            "the place in Studio isn't an unpublished local place in Edit, so nothing is written: "
+            + "; ".join(wrong)
+        )
+
+
+async def sync(
+    session: StudioMcpSession, studio_id: str, manifest: Mapping[str, ScriptText]
+) -> SyncResult:
+    """Make the three folders hold exactly ``manifest``'s scripts, and confirm it by reading
+    them back. Only what differs is written: a missing or changed script, or one whose class
+    changed. A script the manifest doesn't hold is removed, unless the manifest keeps a script
+    inside it, which is refused before anything is written. Raises :class:`PlaceSyncError`
+    naming each difference the read-back finds."""
+    await confirm_unpublished(session, studio_id)
+    held = await read_scripts(session, studio_id)
+    writes = sorted(
+        (path for path, script in manifest.items() if held.get(path) != script), key=_depth
+    )
+    removes = sorted(set(held) - set(manifest), key=_depth, reverse=True)
+    kept_inside = [
+        f"{gone} holds {kept}"
+        for gone in removes
+        for kept in manifest
+        if kept.startswith(gone + ".")
+    ]
+    if kept_inside:
+        raise PlaceSyncError(
+            "the manifest drops a script it keeps a script inside, and removing it would remove "
+            "both: " + "; ".join(kept_inside)
+        )
+    for batch in _batches(writes, manifest):
+        await _run_sync(session, studio_id, writes=batch, removes=[])
+    if removes:
+        await _run_sync(session, studio_id, writes=[], removes=[_slashed(p) for p in removes])
+    found = differences(await read_scripts(session, studio_id), manifest)
+    if found:
+        raise PlaceSyncError(
+            "the read-back after sync differs from the manifest: " + "; ".join(found)
+        )
+    return SyncResult(tuple(writes), tuple(removes))
+
+
+def _depth(path: str) -> tuple[int, str]:
+    return (path.count("."), path)
+
+
+def _slashed(path: str) -> str:
+    """An instance path as the sync program takes it, from its service down. Names hold no dot
+    (``_tree`` refuses one), so the dots are the separators."""
+    return path.replace(".", "/")
+
+
+def _batches(paths: list[str], manifest: Mapping[str, ScriptText]) -> list[list[dict]]:
+    """The writes, in order, cut into calls of at most :data:`SYNC_BATCH_BYTES` of source. A
+    script larger than that goes alone."""
+    batches: list[list[dict]] = []
+    current: list[dict] = []
+    size = 0
+    for path in paths:
+        script = manifest[path]
+        weight = len(script.text.encode())
+        if current and size + weight > SYNC_BATCH_BYTES:
+            batches.append(current)
+            current, size = [], 0
+        current.append(
+            {"path": _slashed(path), "class": script.script_class, "source": script.text}
+        )
+        size += weight
+    if current:
+        batches.append(current)
+    return batches
+
+
+async def _run_sync(
+    session: StudioMcpSession, studio_id: str, *, writes: list[dict], removes: list[str]
+) -> None:
+    answer = await session.run_program("sync", studio_id, {"writes": writes, "removes": removes})
+    if not isinstance(answer, dict) or (answer.get("written"), answer.get("removed")) != (
+        len(writes),
+        len(removes),
+    ):
+        raise PlaceSyncError(
+            f"the sync program answered {answer!r:.200} for {len(writes)} writes and "
+            f"{len(removes)} removes"
+        )
+
+
 async def console(session: StudioMcpSession, studio_id: str) -> str:
     """Studio's output log as ``get_console_output`` answers it."""
     return await session.call("get_console_output", {"studio_id": studio_id})
@@ -252,6 +383,10 @@ def _json(text: str, what: str) -> object:
 
 __all__ = [
     "PlaceReadError",
+    "PlaceSyncError",
+    "SyncResult",
+    "confirm_unpublished",
+    "sync",
     "ScriptText",
     "StudioIdentity",
     "StudioSessionError",
