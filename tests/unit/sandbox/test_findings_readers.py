@@ -192,7 +192,7 @@ def test_a_reading_round_trips_and_one_with_an_undeclared_reader_is_refused():
             FindingsReading.from_dict({**reading.as_dict(), "collected": bad})
     with pytest.raises(ValueError, match="classes"):
         FindingsReading.from_dict({**reading.as_dict(), "classes": {"FAILED uncounted": "Error"}})
-    assert set(READERS) == {"ruff", "pytest", "lines", "vitest"}
+    assert set(READERS) == {"ruff", "pytest", "lines", "vitest", "luau"}
 
 
 # ---- SIP-0109 §24ci (a): each failure's exception class, and a vitest reader (#2757) ----------

@@ -37,7 +37,7 @@ from squadops.projects.derived_profile import (
     Surface,
     Toolchain,
 )
-from squadops.sandbox.findings import PYTEST, VITEST
+from squadops.sandbox.findings import LUAU, PYTEST, VITEST
 from squadops.stacks.development_profiles import select_development_profile
 from squadops.stacks.scaffold import InterfaceManifest
 
@@ -56,7 +56,7 @@ _LINT_TOOLS = ("ruff", "flake8", "pylint", "mypy", "eslint", "tsc", "svelte-chec
 _PYTEST_FILES = ("test_*.py", "*_test.py")
 #: The findings reader that names each runner's tests one by one (H.6's ``test_ids``): #2609's
 #: pytest reader and #2757's vitest reader (SIP-0109 §24ci (a)). unittest and jest have none.
-_TEST_ID_READERS = {"pytest": PYTEST, "vitest": VITEST}
+_TEST_ID_READERS = {"pytest": PYTEST, "vitest": VITEST, "luau": LUAU}
 _JS_FILES = ("*.test.*", "*.spec.*")
 #: #2757's reader reads vitest 2's default reporter on stdout, the one major it was validated on
 #: (SIP-0112 H.10). Another major, another reporter or stderr merged in prints what it never read,
@@ -87,6 +87,14 @@ _CONFIG_UNREADABLE = (
 )  # fmt: skip
 _JS_SETUP = ("setupTests.", "vitest.setup.", "jest.setup.", "test-setup.")
 #: A file named like a test by any runner this recognises, so one no runner owns is unclassed.
+#: #2906: the Luau runtimes a product's runner script runs under, and the subcommand each takes
+#: before the script (``lune run tests/run.luau``; ``lute tests/run.luau``). Each passes the
+#: arguments after the script to it, so a runner script given one suite file runs that file alone.
+_LUAU_RUNTIMES: Mapping[str, str | None] = {"lune": "run", "zune": "run", "lute": None}
+_LUAU_FILES = ("*.spec.luau",)
+#: A Rojo project's tree, and the package managers a Luau product may pin its packages with.
+_ROJO_PROJECT = "default.project.json"
+_LUAU_MANAGERS = {"pesde.toml": "pesde", "wally.toml": "wally"}
 _TEST_LOOKING = (*_PYTEST_FILES, *_JS_FILES)
 #: pytest's options that take their value as the next argument, so it's never read as a path.
 _PYTEST_VALUED = frozenset(
@@ -242,6 +250,9 @@ def _runner_of(check: Check, tree: _Tree, wd: str) -> _Found | None:
         return _unittest(argv, wd)
     if module == "pytest" or "pytest" in names:
         return _pytest(argv, tree, wd)
+    luau = _luau(argv, names, wd)
+    if luau is not None:
+        return luau
     script = _package_script(argv, tree, wd)
     if script is not None:
         prefix, text = script
@@ -260,6 +271,26 @@ def _runner_of(check: Check, tree: _Tree, wd: str) -> _Found | None:
         if kind in names:
             unread = _vitest_unread(wd, " ".join(argv), tree) if kind == "vitest" else None
             return _Found(kind, wd, _JS_FILES, argv, (*argv, "{path}"), unread=unread)
+    return None
+
+
+def _luau(argv: tuple[str, ...], names: list[str], wd: str) -> _Found | None:
+    """#2906: a Luau runner script run under Lune, Zune or Lute: its tests are the
+    ``*.spec.luau`` files beside the script, and one runs alone with its path after the script
+    (the 2.6 spike's runner, and frktest's, each take one suite file so)."""
+    for at, name in enumerate(names):
+        if name not in _LUAU_RUNTIMES:
+            continue
+        rest = argv[at + 1 :]
+        subcommand = _LUAU_RUNTIMES[name]
+        if subcommand is not None:
+            if not rest or rest[0] != subcommand:
+                return None
+            rest = rest[1:]
+        if not rest or rest[0].startswith("-"):
+            return None
+        root = _parent(_join(wd, rest[0]))
+        return _Found("luau", root, _LUAU_FILES, argv, (*argv, "{path}"))
     return None
 
 
@@ -444,11 +475,30 @@ def _runners(found: list[tuple[Check, _Found]], tree: _Tree) -> tuple[Runner, ..
                     file_pattern=pattern,
                     suite_argv=suite,
                     single_file_argv=single,
-                    test_ids=None if _unread(members) else _TEST_ID_READERS.get(kind),
+                    test_ids=None if _unread(members) else _test_ids(kind, tree),
                     support_files=_support(kind, root, tree),
                 )
             )
     return tuple(runners)
+
+
+def _test_ids(kind: str, tree: _Tree) -> str | None:
+    """The runner's test-id reader. A Luau runner's is the Luau runner contract (SIP-0117 R5.13)
+    unless the project runs frktest, whose output names no failure's kind and no passing test: it
+    has none, which is disclosed (``no_test_id_reader``), never guessed."""
+    if kind == "luau" and _declares_frktest(tree):
+        return None
+    return _TEST_ID_READERS.get(kind)
+
+
+def _declares_frktest(tree: _Tree) -> bool:
+    """Whether the project pins frktest: a dependency in its pesde or wally manifest, or a
+    ``.luaurc`` alias."""
+    for manifest in (*_LUAU_MANAGERS, ".luaurc"):
+        text = tree.text(manifest)
+        if text is not None and "frktest" in text:
+            return True
+    return False
 
 
 def _unread(members: Sequence[tuple[Check, _Found]]) -> str | None:
@@ -476,7 +526,12 @@ def _unread_gaps(runners: Sequence[Runner], unread: Mapping[tuple[str, str], str
             fix = "vitest 2 run with its default reporter, its stderr apart"
         else:
             paths, reason = ("**",), f"no findings reader names {r.runner}'s tests one by one"
-            fix = f"a {r.runner} reader in squadops.sandbox.findings"
+            fix = (
+                "a runner script printing the Luau runner contract (SIP-0117 R5.13) in place of "
+                "frktest's reporter"
+                if r.runner == "luau"
+                else f"a {r.runner} reader in squadops.sandbox.findings"
+            )
         gaps.append(Gap("no_test_id_reader", DISCLOSED, r.runner, paths, reason + tail, fix))
     return gaps
 
@@ -509,6 +564,8 @@ def _common(names: Sequence[str]) -> str:
 def _covers(kind: str, root: str, tree: _Tree, patterns: tuple[str, ...]) -> tuple[str, ...]:
     """The product paths a runner's tests exercise: a JavaScript runner's package, or the Python
     packages outside its test files."""
+    if kind == "luau":
+        return _luau_covers(root, tree)
     if kind not in ("pytest", "unittest"):
         return ("**",) if root == "." else (f"{root}/**",)
 
@@ -532,6 +589,49 @@ def _covers(kind: str, root: str, tree: _Tree, patterns: tuple[str, ...]) -> tup
             d for d in tops if any(p.endswith(".py") for p in tree.under(d)) and not tests_only(d)
         ]
     return tuple(f"{d}/**" for d in product) or ("**",)
+
+
+def _luau_covers(root: str, tree: _Tree) -> tuple[str, ...]:
+    """#2906: a Luau runner's product paths. A Rojo project names them: every ``$path`` its
+    ``default.project.json`` maps, outside the runner's own root. A tree synced another way (Roblox's
+    Script Sync maps ``src/<Container>`` folders by name) names none, so they are the top-level
+    folders holding ``.luau`` sources outside the runner's root."""
+    mapped = _rojo_paths(tree)
+    if mapped is None:
+        mapped = sorted(
+            {
+                PurePosixPath(p).parts[0]
+                for p in tree.paths
+                if p.endswith(".luau") and "/" in p and not _within(p, root)
+            }
+        )
+    product = [m for m in mapped if m != root and not _within(m, root)]
+    return tuple(f"{m.rstrip('/')}/**" for m in product) or ("**",)
+
+
+def _rojo_paths(tree: _Tree) -> list[str] | None:
+    """Every ``$path`` a Rojo project's ``default.project.json`` maps, or ``None`` when the tree has
+    no project file or it can't be read."""
+    raw = tree.files.get(_ROJO_PROJECT)
+    if raw is None:
+        return None
+    try:
+        project = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, Mapping):
+            path = node.get("$path")
+            if isinstance(path, str) and path.strip():
+                found.append(path.strip().removeprefix("./"))
+            for key, child in node.items():
+                if not key.startswith("$"):
+                    walk(child)
+
+    walk(project.get("tree") if isinstance(project, Mapping) else None)
+    return sorted(set(found))
 
 
 def _support(kind: str, root: str, tree: _Tree) -> tuple[str, ...]:
@@ -620,6 +720,10 @@ def _languages(tree: _Tree) -> tuple[Language, ...]:
                 "typescript" if typed else "javascript", locks[0] if locks else "npm", tuple(node)
             )
         )
+    if any(p.endswith(".luau") for p in tree.paths):
+        manifests = [m for m in (_ROJO_PROJECT, *_LUAU_MANAGERS) if m in tree.files]
+        managers = [m for f, m in _LUAU_MANAGERS.items() if f in tree.files]
+        languages.append(Language("luau", managers[0] if managers else None, tuple(manifests)))
     for manifest, (language, manager) in _OTHER_MANIFESTS.items():
         if tree.named(manifest):
             languages.append(Language(language, manager, tuple(tree.named(manifest))))

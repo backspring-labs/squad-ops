@@ -168,6 +168,9 @@ def discrimination(
 SETUP_CLASSES: Mapping[str, frozenset[str]] = {
     "pytest": frozenset({"ImportError", "ModuleNotFoundError", "SyntaxError", "NameError"}),
     "vitest": frozenset({"SyntaxError", "ReferenceError"}),
+    # #2906 (SIP-0117 R5.13): the Luau runner contract tags a failure to load what a test tests
+    # ``setup``; an ``error`` (the product's own code raising included) is the test's own.
+    "luau": frozenset({"setup"}),
 }
 
 
