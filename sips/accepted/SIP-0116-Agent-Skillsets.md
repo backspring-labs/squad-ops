@@ -139,7 +139,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **shipped** | 2.8 (PR #3078, closing #3036) |
 | Phase 5: the Campaign's pin and recorded transitions (§10) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
 | Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
-| Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #PRNUM, closing #3038) |
+| Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
