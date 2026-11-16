@@ -136,8 +136,17 @@ def test_a_handed_skill_whose_front_matter_cant_be_read_raises():
             "be run",
             "luau-test-loader",
         ),
+        (
+            "roblox-luau-dev",
+            "dev",
+            "neo",
+            "game.gameplay_implementation",
+            "development.develop",
+            "saved data: coins would be renamed to gold",
+            "luau-gameplay",
+        ),
     ],
-    ids=["strategy", "qa"],
+    ids=["strategy", "qa", "dev"],
 )
 def test_a_packaged_skills_own_stop_line_is_read_from_what_a_task_is_handed(
     skillset, role, agent, contract, task_type, line, skill

@@ -1286,13 +1286,19 @@ and recorded as any other, and before any parser reads the answer.
   handler refuses every time, and a stop is the model's judgement under its equipment.
 - The cycle's stop reason is `skill_stopped`, read from the terminal decision as `criteria_not_checkable` is.
 
-**The packaged skills.** `play-scenario-authoring` declares `no scenario:` and `luau-test-loader` declares
-`no tests/run.luau:`. The front matter is shown to no model (§7), so what each model reads is unchanged.
+- A cycle's ending is stored under a CHECK list of the stop reasons, so migration `2202` replaces that list with
+  `skill_stopped` in it. The guard that holds the list equal to `CycleStopReason` found it.
+
+**The packaged skills.**
+- `play-scenario-authoring` declares `no scenario:` and `luau-test-loader` declares `no tests/run.luau:`. The front
+  matter is shown to no model (§7), so what each of those two models reads is unchanged.
+- **`luau-gameplay`'s stop gains a fixed opening,** `saved data:`, and declares it. Its text asked for the saved
+  field "in one line" with no fixed form, so there was nothing a reader could match. The line is now
+  `saved data: <field> would be <renamed, moved or removed>`, with "Write no file" before it, as the other two
+  skills say. This edits a skill the owner approved, and the owner approved the edit (2026-11-16: "yes to the dev
+  skill recommendaiton"). Its replay on the Spark's models reads the new wording.
 
 **Not built here, deliberately:**
-- **`luau-gameplay`'s stop.** Its text asks for the saved field "in one line" with no fixed opening, so there is
-  nothing to declare. A fixed opening is an edit to a skill the owner approved, and it is the owner's to approve
-  (#3041).
 - **What a Campaign does with a run that ended this way.** It is the Spark lane's, with a numbered amendment to
   SIP-0109's continuation table: abandoned before a verdict, uncounted against the repair budget, and the next
   proposal shown the stop's line. Until it is built, a stopped proposal run reads `proposal_failed` and a stopped
@@ -1309,11 +1315,15 @@ and recorded as any other, and before any parser reads the answer.
   proposal handler's `handle()` with two attempts allowed, and the model is called once.
 - **The run:** `test_a_task_stopped_by_its_skill_ends_the_run_carrying_the_stop` enters at `execute_run`. One
   dispatch, the run failed naming the stop, and the terminal decision carries it.
-- **The packaged skills:** each one's own stop line is read from what a task is handed through the cycle's supply
-  (`kept_document`, `skills_for`, `skills_input`).
+- **The packaged skills:** each of the three's own stop line is read from what a task is handed through the cycle's
+  supply (`kept_document`, `skills_for`, `skills_input`).
+- **The stored forms:** the run-ending characterization's golden gains `"skill_stop": null` on its two terminal
+  decisions and nothing else. It records the decision's every field, and a stored decision writes the key only when
+  it has a stop.
 
 **Who ruled.** The MacBook lane, under the owner's delegation, after the outside review's call c. The shape and the
-split with the Campaign's side were agreed with the Spark lane on 2026-11-16 (#3041).
+split with the Campaign's side were agreed with the Spark lane on 2026-11-16 (#3041). The owner approved
+`luau-gameplay`'s new wording the same day.
 
 ## Appendix A. A paper compatibility matrix
 
