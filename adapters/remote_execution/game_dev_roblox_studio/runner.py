@@ -2,13 +2,16 @@
 #3040).
 
 It serves one operation, **``play_scenario``**: a frozen scenario played on the candidate, as one
-transaction (R3.6):
-1. The scenario is checked as frozen, under ``roblox-studio/1``.
-2. The place is confirmed as an unpublished local one.
-3. The candidate's scripts are synced and read back.
-4. The synced scripts are checked for attributes and tags, and the non-script baseline is taken.
-5. Play starts, the scenario runs (``play``), and play stops however it ends.
-6. The baseline is taken again and held equal.
+transaction (R3.6), under the one lease the worker holds for the call:
+1. The scenario is checked as frozen, under ``roblox-studio/1``, and Studio as the app in front.
+2. Studio is held to what the operation was proved on: its version and its tool list (R2.4).
+3. The place's non-script baseline is held to its pin. A place that drifted is reset from its
+   baseline file (R5.17) and the transaction begun again, once.
+4. The candidate's scripts are synced, the place confirmed unpublished, and the scripts read back.
+5. The synced scripts are checked for attributes and tags, and the non-script baseline is taken.
+6. Play starts, the scenario runs (``play``), and play stops however it ends.
+7. The baseline is taken again and held equal, and the scripts are read back again: one changed
+   in Studio while the scenario ran fails the run (R3.6).
 
 Sync, the console and the capture are steps of that transaction, never operations of their own:
 every request carries a scenario. The rest stands beside it:
@@ -43,6 +46,7 @@ from adapters.remote_execution.game_dev_roblox_studio import harness, place, pla
 from adapters.remote_execution.game_dev_roblox_studio.session import (
     StudioMcpSession,
     StudioSessionError,
+    ToolCheck,
 )
 from adapters.remote_execution.game_dev_roblox_studio.studio_app import (
     MacStudioApp,
@@ -58,7 +62,11 @@ from squadops.remote_execution.models import (
     RemoteOperationRequest,
     RemoteOperationResult,
 )
-from squadops.remote_execution.scenario import Observation, handed_scenario_defects
+from squadops.remote_execution.scenario import (
+    Observation,
+    ScenarioDeclaration,
+    handed_scenario_defects,
+)
 from squadops.remote_execution.workers import ServedOperation
 from squadops.runtime.models import RuntimeStatus
 
@@ -89,6 +97,23 @@ def studio_version(studio_mcp: Path) -> str:
 
 
 @dataclass(frozen=True)
+class ProvedOn:
+    """What the operation was proved on (R2.4): Studio's version, and its tool list as
+    ``<count>:<schema digest>``. A Studio that differs from either reads ``not_executed``."""
+
+    studio_version: str
+    studio_tools: str
+
+
+class NotProved(RuntimeError):
+    """The Studio a run would use isn't the one the operation was proved on."""
+
+
+class _Drifted(RuntimeError):
+    """The place's non-script state isn't its pinned baseline."""
+
+
+@dataclass(frozen=True)
 class PlayRound:
     """A play round that held: the place's non-script baseline, equal before play and after
     stop."""
@@ -108,12 +133,14 @@ class RobloxStudioRunner(OperationRunnerPort):
         studio_version_of: Callable[[Path], str] = studio_version,
         discover_seconds: float = 20.0,
         place_files: PlaceFiles | None = None,
+        proved_on: ProvedOn | None = None,
         app: StudioApp | None = None,
         quit_seconds: float = 20.0,
         reopen_seconds: float = 120.0,
     ) -> None:
         self._studio_mcp = studio_mcp
         self._files = place_files
+        self._proved = proved_on
         # ``StudioMCP`` sits at ``…/RobloxStudio.app/Contents/MacOS/StudioMCP``.
         self._app = app or MacStudioApp(studio_mcp.parents[2])
         self._quit_seconds = quit_seconds
@@ -152,8 +179,12 @@ class RobloxStudioRunner(OperationRunnerPort):
 
     async def run(self, request: RemoteOperationRequest) -> RemoteOperationResult:
         """``play_scenario``, as one transaction. ``not_executed`` names why, for anything before
-        play starts, and for a place whose state play changed. ``interrupted`` is for a session
-        that failed after play began. ``completed`` carries one record per declared assertion."""
+        play starts, for a place whose state play changed, and for a script changed in Studio
+        while it ran. ``interrupted`` is for a session that failed after play began.
+        ``completed`` carries one record per declared assertion.
+
+        A place whose non-script state isn't its pinned baseline is reset (R5.17) and the
+        transaction begun again, once."""
         if (request.provider, request.operation) != (PROVIDER, OPERATION):
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                f"{PROVIDER} runs {PROVIDER}/{OPERATION}, and was asked for "
@@ -166,6 +197,38 @@ class RobloxStudioRunner(OperationRunnerPort):
         if unplaced:
             return self._ended(request, OperationStatus.NOT_EXECUTED, "nothing was run: " + "; ".join(
                 f"{f} isn't a script {PROVIDER} places" for f in unplaced))  # fmt: skip
+        files, proved = self._files, self._proved
+        if files is None or proved is None:
+            return self._ended(request, OperationStatus.NOT_EXECUTED,
+                               f"nothing was run: {PROVIDER} was given no place files and "
+                               "proved-on pins, so the place can't be confirmed as the one the "
+                               "operation was proved on (R2.4)")  # fmt: skip
+        try:
+            return await self._transaction(request, declaration, manifest, files, proved)
+        except _Drifted as drifted:
+            try:
+                await self.reset()
+            except (place.PlaceStateError, place.PlaceReadError, StudioSessionError,
+                    OSError) as e:  # fmt: skip
+                return self._ended(request, OperationStatus.NOT_EXECUTED,
+                                   f"nothing was run: {drifted}, and the reset failed: "
+                                   f"{type(e).__name__}: {e}")  # fmt: skip
+        try:
+            return await self._transaction(request, declaration, manifest, files, proved)
+        except _Drifted as drifted:
+            return self._ended(request, OperationStatus.NOT_EXECUTED,
+                               f"nothing was run: {drifted}, after a reset")  # fmt: skip
+
+    async def _transaction(
+        self,
+        request: RemoteOperationRequest,
+        declaration: ScenarioDeclaration,
+        manifest: Mapping[str, place.ScriptText],
+        files: PlaceFiles,
+        proved: ProvedOn,
+    ) -> RemoteOperationResult:
+        """One attempt at the transaction. Raises :class:`_Drifted`, before anything is
+        written, when the place isn't its pinned baseline."""
         if any(a.action in play.STUDIO_INPUT_ACTIONS for a in (*declaration.setup,
                                                                 *declaration.steps)):  # fmt: skip
             behind = self._studio_behind()
@@ -176,9 +239,16 @@ class RobloxStudioRunner(OperationRunnerPort):
         session = self._session(harness=True)
         playing = False
         try:
-            await session.open()
+            check = await session.open()
+            self._held_to_proof(check, proved)
             studio = await place.identity(session, discover_seconds=self._discover_seconds)
             sid = studio.studio_id
+            pinned = await place.baseline(session, sid)
+            if pinned.digest != files.baseline_digest:
+                raise _Drifted(
+                    f"the place holds non-script baseline {pinned.digest[:16]}…, not the pinned "
+                    f"{files.baseline_digest[:16]}…"
+                )
             await place.sync(session, sid, manifest)
             marked = await place.marked_scripts(session, sid)
             if marked:
@@ -200,8 +270,9 @@ class RobloxStudioRunner(OperationRunnerPort):
                 await place.stop_play(session, sid)
             playing = False
             after = await place.baseline(session, sid)
+            scripts_after = place.differences(await place.read_scripts(session, sid), manifest)
         except (place.PlaceReadError, place.PlaceSyncError, place.PlaceStateError,
-                StudioSessionError) as e:  # fmt: skip
+                StudioSessionError, NotProved) as e:  # fmt: skip
             status = OperationStatus.INTERRUPTED if playing else OperationStatus.NOT_EXECUTED
             return self._ended(request, status, f"{type(e).__name__}: {e}")
         finally:
@@ -211,6 +282,10 @@ class RobloxStudioRunner(OperationRunnerPort):
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                "the place's non-script state changed through play, so the run "
                                "proves nothing: " + "; ".join(changes))  # fmt: skip
+        if scripts_after:
+            return self._ended(request, OperationStatus.NOT_EXECUTED,
+                               "scripts changed in Studio while the scenario ran, so the run "
+                               "proves nothing about the candidate: " + "; ".join(scripts_after))  # fmt: skip
         if not (player.read and isinstance(player.value, str) and player.value):
             return self._ended(request, OperationStatus.INTERRUPTED,
                                "the session's player name couldn't be read, so its records and "
@@ -235,6 +310,21 @@ class RobloxStudioRunner(OperationRunnerPort):
             },
             dispatch_id=request.dispatch_id,
         )
+
+    def _held_to_proof(self, check: ToolCheck, proved: ProvedOn) -> None:
+        """Raises :class:`NotProved` naming each way Studio differs from what the operation was
+        proved on."""
+        version = self._studio_version_of(self._studio_mcp)
+        tools = f"{check.count}:{check.schema_digest}"
+        differs = []
+        if version != proved.studio_version:
+            differs.append(f"Studio is {version}, and the operation was proved on "
+                           f"{proved.studio_version}")  # fmt: skip
+        if tools != proved.studio_tools:
+            differs.append(f"Studio's tools read {tools[:24]}…, and the operation was proved on "
+                           f"{proved.studio_tools[:24]}…")  # fmt: skip
+        if differs:
+            raise NotProved("; ".join(differs) + " (R2.4: a mode not proved reads not executed)")
 
     def _ran_with(self, baseline_digest: str, source_revision: str) -> dict[str, str]:
         return {

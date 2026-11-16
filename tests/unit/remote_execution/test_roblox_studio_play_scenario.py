@@ -9,6 +9,7 @@ character's navigation and the console. The live runs on the real game are in th
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -19,9 +20,15 @@ from adapters.remote_execution.game_dev_roblox_studio import harness
 from adapters.remote_execution.game_dev_roblox_studio.runner import (
     OPERATION,
     PROVIDER,
+    ProvedOn,
     RobloxStudioRunner,
 )
-from adapters.remote_execution.game_dev_roblox_studio.session import StudioMcpSession, ToolDenied
+from adapters.remote_execution.game_dev_roblox_studio.session import (
+    StudioMcpSession,
+    ToolDenied,
+    tool_check,
+)
+from adapters.remote_execution.game_dev_roblox_studio.studio_app import PlaceFiles
 from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
 from squadops.remote_execution.models import (
     AssertionOutcome,
@@ -31,7 +38,13 @@ from squadops.remote_execution.models import (
 )
 from squadops.remote_execution.scenario import frozen_scenario
 from tests.unit.remote_execution.test_roblox_studio_place_state import BASELINE
-from tests.unit.remote_execution.test_roblox_studio_read_side import MAIN, STANDIN, _world
+from tests.unit.remote_execution.test_roblox_studio_read_side import (
+    MAIN,
+    SERVER,
+    STANDIN,
+    _tools,
+    _world,
+)
 
 PLAY_BUTTON = "@player.PlayerGui.Title.Play"
 TITLE = "@player.PlayerGui.Title"
@@ -120,10 +133,14 @@ def _played(tmp_path: Path, **changes) -> Path:
 
 
 class _Mac:
-    """The Mac, as ``play_scenario`` asks of it: which app is in front, and Studio's process."""
+    """The Mac, as ``play_scenario`` asks of it: which app is in front, and Studio's process.
+    A reset's reopening puts the pinned baseline back in the world, unless ``reopens_drifted``."""
 
-    def __init__(self, front: int | None | OSError = 4242) -> None:
-        self.front = front
+    def __init__(self, front: int | None | OSError = 4242, *, world: Path | None = None,
+                 reopens_drifted: bool = False) -> None:  # fmt: skip
+        self.front, self.world, self.reopens_drifted = front, world, reopens_drifted
+        self.pid: int | None = 4242
+        self.done: list[str] = []
 
     def frontmost(self) -> int | None:
         if isinstance(self.front, OSError):
@@ -131,10 +148,47 @@ class _Mac:
         return self.front
 
     def pids(self) -> list[int]:
-        return [4242]
+        return [self.pid] if self.pid else []
+
+    def alive(self, pid: int) -> bool:
+        return pid == self.pid
+
+    def quit(self, pid: int, *, force: bool) -> None:
+        self.done.append("quit")
+        self.pid = None
+
+    def open(self, place_file: Path) -> None:
+        self.done.append(f"open {place_file.name}")
+        self.pid = 4242
+        doc = json.loads(self.world.read_text())
+        doc["studios"] = [{**doc["studios"][0], "id": "s-2"}]
+        if not self.reopens_drifted:
+            doc["baseline"] = BASELINE
+        self.world.write_text(json.dumps(doc))
 
 
-def _runner(world: Path, mac: _Mac | None = None, **session) -> RobloxStudioRunner:
+PRISTINE = b"<roblox place, as downloaded>"
+#: What the operation was proved on: the stand-in's Studio and its tool list.
+PROVED = ProvedOn(
+    "0.747.0", "{0.count}:{0.schema_digest}".format(tool_check(_tools(), frozenset()))
+)
+
+
+def _files(tmp_path: Path) -> PlaceFiles:
+    baseline = tmp_path / "ta-copy.pristine.rbxl"
+    baseline.write_bytes(PRISTINE)
+    place_file = tmp_path / "ta-copy.rbxl"
+    place_file.write_bytes(b"<the place as an earlier transaction left it>")
+    return PlaceFiles(
+        place=place_file,
+        baseline=baseline,
+        baseline_sha256=hashlib.sha256(PRISTINE).hexdigest(),
+        baseline_digest=hashlib.sha256("\n".join(BASELINE).encode()).hexdigest(),
+    )
+
+
+def _runner(world: Path, mac: _Mac | None = None, *, proved_on: ProvedOn | None = PROVED,
+            pinned: bool = True, **session) -> RobloxStudioRunner:  # fmt: skip
     return RobloxStudioRunner(
         Path("/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP"),
         session_factory=lambda **kw: StudioMcpSession(
@@ -142,7 +196,10 @@ def _runner(world: Path, mac: _Mac | None = None, **session) -> RobloxStudioRunn
         ),
         studio_version_of=lambda _: "0.747.0",
         discover_seconds=0.2,
-        app=mac or _Mac(),
+        reopen_seconds=1.0,
+        place_files=_files(world.parent) if pinned else None,
+        proved_on=proved_on,
+        app=mac or _Mac(world=world),
     )
 
 
@@ -241,7 +298,7 @@ async def test_a_scenario_using_studios_input_needs_studio_in_front(tmp_path, fr
     that can't act; or an unreadable front read as Studio's."""
     world = _played(tmp_path)
 
-    result = await _runner(world, _Mac(front)).run(_request())
+    result = await _runner(world, _Mac(front, world=world)).run(_request())
 
     assert result.status is OperationStatus.NOT_EXECUTED
     assert says in result.reason
@@ -367,3 +424,96 @@ async def test_the_observe_program_runs_only_in_a_play_session(tmp_path):
             await session.run_program("observe", "s-1", {"kind": "value", "path": "Workspace.X"})
     finally:
         await session.close()
+
+
+@pytest.mark.parametrize(
+    ("proved_on", "says"),
+    [
+        (ProvedOn("0.746.0", PROVED.studio_tools), "Studio is 0.747.0, and the operation was proved on 0.746.0"),
+        (ProvedOn("0.747.0", "37:" + "0" * 64), "Studio's tools read"),
+    ],
+    ids=["another-studio-version", "another-tool-list"],
+)  # fmt: skip
+async def test_a_studio_other_than_the_one_proved_on_runs_nothing(tmp_path, proved_on, says):
+    """R2.4: a mode not proved reads not executed. Bug caught: Studio updated itself (it does,
+    unasked) or its tools changed, and the worker kept passing scenarios on a Studio nothing was
+    proved on."""
+    world = _played(tmp_path)
+
+    result = await _runner(world, proved_on=proved_on).run(_request())
+
+    assert result.status is OperationStatus.NOT_EXECUTED
+    assert says in result.reason and "R2.4" in result.reason
+    assert not (tmp_path / "calls.log").exists()  # not a tool was called
+
+
+async def test_a_runner_with_nothing_pinned_runs_nothing(tmp_path):
+    """Bug caught: a worker configured without its place files or proved-on pins playing on
+    whatever place Studio has open, unconfirmed."""
+    result = await _runner(_played(tmp_path), pinned=False).run(_request())
+
+    assert result.status is OperationStatus.NOT_EXECUTED
+    assert "no place files and proved-on pins" in result.reason
+    assert not (tmp_path / "calls.log").exists()
+
+
+DRIFTED = [BASELINE[0], BASELINE[1], BASELINE[2].replace("CFrame(0,-8", "CFrame(1,-8")]
+
+
+async def test_a_place_that_drifted_from_its_pin_is_reset_and_then_played(tmp_path):
+    """R3.6: the Studio is confirmed by its baseline digest at every claim. Bugs caught: a
+    scenario played on a place someone moved a part in, so a pass rests on a world the baseline
+    doesn't have; or a worker that refuses every claim from then on, since it resets only after
+    an interrupted run."""
+    world = _played(tmp_path, baseline=DRIFTED)
+    mac = _Mac(world=world)
+
+    result = await _runner(world, mac).run(_request())
+
+    assert result.status is OperationStatus.COMPLETED, result.reason
+    assert mac.done == ["quit", "open ta-copy.rbxl"]
+    calls = (tmp_path / "calls.log").read_text().split()
+    assert calls.count("execute_luau:sync") == 1  # nothing was written before the reset
+
+
+@pytest.mark.parametrize(
+    ("mac", "says"),
+    [
+        ({"reopens_drifted": True}, "the reset failed: PlaceStateError: the reopened place holds"),
+        ({"front": None}, "no app is in front"),
+    ],
+    ids=["still-drifted-after-the-reset", "studio-not-in-front-after-the-reset"],
+)
+async def test_a_drifted_place_the_reset_doesnt_restore_runs_nothing(tmp_path, mac, says):
+    """Bugs caught: a reset tried forever; or the second attempt skipping the checks the first
+    one made, so a reopened Studio behind Terminal hangs on its first click."""
+    world = _played(tmp_path, baseline=DRIFTED)
+    front = mac.pop("front", 4242)
+    machine = _Mac(4242, world=world, **mac)
+    if front is None:
+        original = machine.open
+
+        def open_behind(place_file):
+            original(place_file)
+            machine.front = None
+
+        machine.open = open_behind
+
+    result = await _runner(world, machine).run(_request())
+
+    assert result.status is OperationStatus.NOT_EXECUTED
+    assert says in result.reason
+    assert "execute_luau:sync" not in (tmp_path / "calls.log").read_text()
+
+
+async def test_a_script_changed_in_studio_while_the_scenario_ran_proves_nothing(tmp_path):
+    """R3.6: a script that changes during a QA transaction fails it. Bug caught: records returned
+    for a candidate that isn't what was played, since someone edited it in Studio mid-run."""
+    world = _played(tmp_path, scripts_after_play={f"{SERVER}.Main": "-- edited in Studio\n"})
+
+    result = await _runner(world).run(_request())
+
+    assert result.status is OperationStatus.NOT_EXECUTED
+    assert "scripts changed in Studio while the scenario ran" in result.reason
+    assert "ServerScriptService.Server.Main's text differs" in result.reason
+    assert result.records == ()

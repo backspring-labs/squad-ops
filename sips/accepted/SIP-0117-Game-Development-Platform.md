@@ -180,7 +180,8 @@ phases are in its own ledger.
 | Phase 2d, the sync: the harness's fixed programs (identity and sync), `PlaceId` 0 confirmed before any write, and the adapter's own sync with its whole read-back (R3.6, D5, D10, R5.15) | **shipped** | 2.8 (PR #3107; #3039 tracks the rest) |
 | Phase 2d, the place's state: the non-script baseline held through play, the synced scripts checked for attributes and tags, and play started and stopped (R3.6, R5.16) | **shipped** | 2.8 (PR #3112; #3039 tracks the rest) |
 | Phase 2d, the reset: the place restored from its pinned baseline file and Studio reopened with no person involved, the reopened place confirmed unpublished and holding the pinned non-script baseline (R3.6, R5.17) | **shipped** | 2.8 (PR #3113; #3039 tracks the rest) |
-| Phase 2d, the rest: the transaction under one lease, the `roblox-studio` provider's four operations served, editor edits returned as a revision, and the worker's configuration (R3.6, R4.3, R5.7, R5.11, R5.15, R5.16, R5.17) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
+| Phase 2d, the worker's side: the provider's settings in the worker's section, the runner found in its package, each claim held to the Studio it was proved on and the place's pinned baseline (a drifted place reset once), scripts held through play, and `play_scenario` the one operation served (R3.6, R4.3, R5.19) | **shipped** | 2.8 (PR #3116; #3039 tracks the rest) |
+| Phase 2d, the rest: the live run on the Mac's worker, registered with the runtime and claiming `play_scenario`, across a Studio restart with no person involved (R2.4, R5.19) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7, R5.18) | **shipped** | 2.8 (PR #3115, #3040) |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
@@ -1005,6 +1006,64 @@ No run printed the player's name. Each one left the place's non-script baseline 
 
 **Who ruled.** The MacBook lane built it under the owner's "go ahead with #3040" (2026-11-15). The owner brought Studio
 to the front for the live check.
+
+## R5.19 Phase 2d, the worker's side as built: settings, discovery, the proved-on pins and one operation (#3039, 2026-11-15)
+
+**The worker creates the `roblox-studio` runner from its own section.** `WorkerConfig` takes `provider:
+roblox-studio` and the provider's seven settings, `SQUADOPS__WORKER__ROBLOX_STUDIO_*`:
+- `MCP`, `PLACE_FILE` and `BASELINE_FILE`;
+- `BASELINE_SHA256` and `BASELINE_DIGEST` (R5.17's pins);
+- `PROVED_VERSION` and `PROVED_TOOLS`.
+
+Each is required for that provider and refused for any other (`PROVIDER_SETTINGS`), so a setting the worker would
+ignore can't read as configured. A file that isn't there stops the worker before it registers.
+
+**The provider is found, never named, outside its directory (R4.6).** `create_operation_runner` takes the provider
+and its settings, and finds the one provider package whose `worker.PROVIDER` matches. That package's
+`worker.create_runner(settings)` builds the runner. This is the way `create_tool_authorities` finds
+`eligibility.AUTHORITY`. None, or two, is refused, naming the providers found. A test holds the adapter's list of
+settings equal to the schema's.
+
+**What each claim confirms, beyond R5.18's transaction:**
+
+| check | as built | why |
+|---|---|---|
+| **the Studio it was proved on (R2.4)** | Studio's version and its tool list (`<count>:<schema digest>`) are held to `PROVED_VERSION` and `PROVED_TOOLS`. Another reads `not_executed` before any write. A runner given no pins runs nothing | Studio updates itself unasked. `ToolCheck` was built for this comparison, and nothing made it until now |
+| **the place's pinned baseline (R3.6's bindings)** | before sync, the place's non-script baseline is read and held to its pin. A place that drifted is reset (R5.17) and the transaction begun again once, with every check run again, Studio in front included. A reset that fails, or a place still drifted, reads `not_executed` with both reasons | the worker resets its tool only after an `interrupted` run or an unknown state. Without this, a drifted place would refuse every claim until a person stepped in |
+| **the scripts after play (R3.6)** | after stop, the synced folders are read back and held to the manifest. A script changed in Studio during the run fails it as `not_executed`, naming the script | "a script that changes during a QA transaction fails it" |
+
+**The lease.** The worker's loop already holds one lease across the runner's `run` and renews it while the call runs
+(R5.5). A cancel stops the call, play is stopped in the transaction's `finally`, and the tool is reset. So the
+transaction is under one lease because it is one call.
+
+**One operation is served: `play_scenario`.** This narrows R3.6's four typed operations and withdraws R5.15's "`sync_source`
+is served once it is proved":
+- **`sync_source` and `read_console` are steps of `play_scenario`** (R4.3), and every request carries a scenario;
+- **nothing dispatches an operation on its own** in the first milestone: R5.14's plan gate refuses a planned one;
+- **`capture`** is supplementary evidence (R3.6), and #3049 keeps captures out of 2.8's acceptance evidence.
+
+Serving an operation nothing can ask for would register a mode with no proof behind it. **When it changes:** with the
+first milestone that plans an operation of its own (R5.14).
+
+**Editor edits returned as a revision (R2.7) wait for an operation that edits.** In this milestone `execute_luau` runs
+only the harness's fixed programs, so nothing SquadOps runs makes an editor edit. Any edit found is someone else's,
+and it fails the run (above). Returning edits as revision B, through `apply_workspace_patch`, belongs with the first
+operation that edits in Studio.
+
+**R3.6's "unattended, including with Studio behind other windows" is narrowed** by R5.18. Observations, sync and
+play run with Studio behind other windows. Studio's input tools act only on a Studio in front.
+
+**Evidence on the real Studio** (0.747.0.7471481, `z_tower-ascension`, the runner built from the worker's settings by
+`scripts/dev/studio_play_scenario.py`):
+- a click scenario with another app in front was refused in 0.0 s, naming the process in front;
+- an input-free scenario passed both its assertions, through the proof check, the pinned baseline and the read-back
+  after play, in 78 s;
+- a wrong `PROVED_VERSION` was refused in 0.5 s, before any write.
+
+**Still #3039's:** the live run on the Mac's worker, registered with the Spark and claiming `play_scenario`,
+including after a Studio restart with no person involved (its done-when).
+
+**Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" and their "yes" to this piece (2026-11-15).
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile

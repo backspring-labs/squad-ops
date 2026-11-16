@@ -16,6 +16,10 @@ It runs on the machine that hosts the tool, and connects outward. Nothing connec
     SQUADOPS__WORKER__CLIENT_SECRET=<the deploy's SQUADOPS_WORKER_CLIENT_SECRET> \\
     SQUADOPS__WORKER__PROVIDER=fixture \\
     python -m squadops.remote_execution.worker_main
+
+A provider with settings of its own takes them in the same section, each required for it and
+refused for any other. ``schema.PROVIDER_SETTINGS`` lists them, and its ``WorkerConfig`` fields
+describe them. Its runner is created by its own package (``create_operation_runner`` finds it).
 """
 
 from __future__ import annotations
@@ -72,7 +76,7 @@ def build_worker(
         client_secret=client_secret(config, secret_manager),
     )
     api = create_worker_api(config.runtime_api_url, tokens.get_token)
-    runner = create_operation_runner(config.provider)
+    runner = create_operation_runner(config.provider, config.provider_settings())
     worker = Worker(
         api,
         runner,

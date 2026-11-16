@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 import platform
+import typing
 
 import pytest
 from pydantic import ValidationError
 
+from squadops.config.schema import PROVIDER_SETTINGS, WorkerConfig
 from squadops.remote_execution.worker_main import (
     build_worker,
     client_secret,
@@ -53,7 +55,7 @@ def test_the_section_is_read_from_its_variables(env):
         "client_id": "squadops-worker",
         "client_secret": "a-literal-secret",
         "provider": "fixture",
-    }
+    } | {name: None for name in PROVIDER_SETTINGS["roblox-studio"]}
 
 
 @pytest.mark.parametrize("key", sorted(SECTION))
@@ -133,3 +135,86 @@ async def test_the_root_builds_a_worker_that_registers_as_configured(env, monkey
     assert registration.tool_versions == {"fixture": "2", "reader": "fixture/1"}
     assert registration.platform == f"{platform.system().lower()}-{platform.machine().lower()}"
     assert bound == ["http://spark.test:8001", "closed"]
+
+
+def _studio_section(tmp_path) -> dict[str, str]:
+    for name in ("StudioMCP", "ta-copy.rbxl", "ta-copy.pristine.rbxl"):
+        (tmp_path / name).write_bytes(b"x")
+    return {
+        "SQUADOPS__WORKER__PROVIDER": "roblox-studio",
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_MCP": str(tmp_path / "StudioMCP"),
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_PLACE_FILE": str(tmp_path / "ta-copy.rbxl"),
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_BASELINE_FILE": str(tmp_path / "ta-copy.pristine.rbxl"),
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_BASELINE_SHA256": "49157df1" * 8,
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_BASELINE_DIGEST": "354636ad" * 8,
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_PROVED_VERSION": "0.747.0",
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_PROVED_TOOLS": "38:" + "1ba499d8" * 8,
+    }
+
+
+def test_a_studio_worker_is_built_with_the_runner_its_package_creates(env, tmp_path):
+    """The wiring, entered at ``build_worker``: the provider found in its package, not named in
+    the factory (R4.6). Bug caught: a setting dropped between the config and the runner, so the
+    worker resets from, or pins, something other than what it was configured with."""
+    for key, value in _studio_section(tmp_path).items():
+        env.setenv(key, value)
+
+    worker, _ = build_worker(worker_config_from_env(), _secret_manager())
+
+    runner = worker._runner
+    assert [(o.provider, o.operation) for o in runner.serves()] == [
+        ("roblox-studio", "play_scenario")
+    ]
+    assert (runner._files.place, runner._files.baseline_digest) == (
+        tmp_path / "ta-copy.rbxl",
+        "354636ad" * 8,
+    )
+    assert (runner._proved.studio_version, runner._proved.studio_tools) == (
+        "0.747.0",
+        "38:" + "1ba499d8" * 8,
+    )
+
+
+@pytest.mark.parametrize("dropped", sorted(PROVIDER_SETTINGS["roblox-studio"]))
+def test_a_studio_worker_needs_every_one_of_its_settings(env, tmp_path, dropped):
+    """Bug caught: a Studio worker started without its baseline pin or proved-on version, so a
+    drifted place or an updated Studio goes unnoticed."""
+    for key, value in _studio_section(tmp_path).items():
+        env.setenv(key, value)
+    env.delenv(f"SQUADOPS__WORKER__{dropped.upper()}")
+
+    with pytest.raises(
+        ValidationError, match=f"roblox-studio needs SQUADOPS__WORKER__{dropped.upper()}"
+    ):
+        worker_config_from_env()
+
+
+def test_a_setting_the_provider_doesnt_read_is_refused(env, tmp_path):
+    """Bug caught: a fixture worker given Studio's place file, which it ignores, so the person
+    configuring it believes Studio is served."""
+    env.setenv("SQUADOPS__WORKER__ROBLOX_STUDIO_PLACE_FILE", str(tmp_path / "ta-copy.rbxl"))
+
+    with pytest.raises(
+        ValidationError, match="fixture doesn't read SQUADOPS__WORKER__ROBLOX_STUDIO_PLACE_FILE"
+    ):
+        worker_config_from_env()
+
+
+def test_a_studio_file_that_isnt_there_stops_the_worker_before_it_registers(env, tmp_path):
+    """Bug caught: a worker on a mistyped path registering as serving, and failing every claim."""
+    for key, value in _studio_section(tmp_path).items():
+        env.setenv(key, value)
+    (tmp_path / "ta-copy.pristine.rbxl").unlink()
+
+    with pytest.raises(ValueError, match="files aren't there: roblox_studio_baseline_file"):
+        build_worker(worker_config_from_env(), _secret_manager())
+
+
+def test_each_provider_has_its_settings_listed_and_its_package_reads_the_same_ones():
+    """Bug caught: a provider added to the vocabulary with no settings entry, failing at start
+    with a KeyError; or the schema and the adapter disagreeing about a setting's name."""
+    from adapters.remote_execution.game_dev_roblox_studio import worker
+
+    provider = typing.get_args(WorkerConfig.model_fields["provider"].annotation)
+    assert set(PROVIDER_SETTINGS) == set(provider)
+    assert worker.SETTINGS == PROVIDER_SETTINGS["roblox-studio"]
