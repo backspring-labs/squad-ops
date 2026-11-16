@@ -6,6 +6,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A Campaign cycle a skill stopped is abandoned for a proposal shown the skill's line** (#3041; SIP-0109 §24dz):
+  a cycle that ends `skill_stopped`, a proposal run's included, is its own ending. Row 20 abandons the increment,
+  counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the
+  run's terminal decision, under its own heading. Before this a stopped proposal read as `proposal_failed` and was
+  proposed again unexplained, and a stopped increment was repaired into the same stop.
 - **A skill's stop is read, and it ends the run** (#3041; SIP-0116 §17o): a skill declares the opening words of
   the line it tells the model to refuse a task with (`stops:` in its `SKILL.md` front matter). Every authoring
   answer is read against the stops its task's skills declare. A task answered with one is not asked again or
