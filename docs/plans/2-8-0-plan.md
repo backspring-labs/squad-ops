@@ -63,6 +63,13 @@ the adoption PR (§9).
   - The MacBook lane confirmed revision 3 with no objection (issuecomment-6798562647).
   - The owner released the MacBook lane's hold, and that lane is building §11.2's three changes on #3052.
 - **The Studio first slice, confirmed** (2026-11-11: "confirm the studio first slice, merge 3051"): read-only, `z_tower-ascension` only, nothing published. The MacBook lane reported it as approved that morning, and the owner confirmed it here. It is an early read on §5's gate (below). The plan is adopted by this PR's merge.
+- **Revision 4** (2026-11-16): the Studio gate's reading, and every remaining cycle on the Spark.
+  - **The Studio gate reads go** (§5), at the adapter's exit and before any skill is replay-tested.
+  - **Every cycle the line still needs runs on the Spark** (the owner, 2026-11-16: "yes, cycles on the spark. go.").
+    The MacBook keeps Studio, the worker and the building. §2's rows for the squad, the product and the
+    demonstration change, and so do §11.1's rows for #3041, #3042 and #3043. SIP-0118 R5.4 drops the
+    `game-dev-roblox-lite-14b` squad profile and moves the rehearsal and the repair diagnostic.
+  - **#3046 is closed** on the owner's ruling after one restart check (SIP-0117 R5.24).
 
 ## What 2.8 is
 
@@ -188,14 +195,14 @@ Sizes are the SIPs' own where they give one (S, M, L). A size marked * is this p
 | **Skills:** kept with the cycle, handed at dispatch with repair lineage, budgeted (in flight as #3032, #3033) | #3028 (SIP-0116 phase 3) | MacBook | M–L |
 | **The Campaign's pin** on the equipment assigned to its work | #3037 (SIP-0116 phase 5) | MacBook | M |
 | **Lessons** under the development profile's recall identity | #3038 (SIP-0116 phase 6) | MacBook | M |
-| **The squad:** the `game_dev_roblox` profile, three skillsets and their replay-tested skills (strategy's writes declarative scenarios), the squad profiles, the tolerant emission parser, and the planner's contract fragment as a managed prompt asset | #3041 (SIP-0118 phase 2f) | MacBook | M |
-| **The product:** `z_tower-ascension`'s eligibility rules, registration and goal set, and a recorded comparison with the live game | #3042 (SIP-0118 phase 2g) | MacBook | S |
+| **The squad:** the `game_dev_roblox` profile, three skillsets and their replay-tested skills (strategy's writes declarative scenarios), the squad profile, the tolerant emission parser, and the planner's contract fragment as a managed prompt asset | #3041 (SIP-0118 phase 2f) | MacBook builds; the Spark runs the replay and the cycle (revision 4) | M |
+| **The product:** `z_tower-ascension`'s eligibility rules, registration and goal set, and a recorded comparison with the live game | #3042 (SIP-0118 phase 2g) | MacBook drafts the goal set; the Spark registers it and runs the preflight (revision 4) | S |
 
 ### The demonstration
 
 | item | issue | lane | size |
 |---|---|---|---|
-| the pre-registration, the full-path gate, a rehearsal on `game-dev-roblox-lite-14b`, the repair diagnostic, and the counted two-increment run on the Spark with the MacBook worker, in an attended window | #3043 (SIP-0118 phase 3) | MacBook, then Spark | M |
+| the pre-registration, the full-path gate, a rehearsal on `game-dev-roblox`, the repair diagnostic, and the counted two-increment run, each on the Spark with the MacBook worker; the counted run in an attended window | #3043 (SIP-0118 phase 3) | Spark (revision 4) | M |
 
 ## 3. The work no ledger row carries
 
@@ -265,6 +272,26 @@ quietly stretch to fit the claim. It is read at the adapter's exit, and §6 give
 | **go** | each operation is qualified on the worker, unattended, including after a Studio restart with no person involved | the claim stands as written, and the `game_dev_roblox` profile is switched on |
 | **narrow** | sync, read-back and reset are proved, but play or the harness isn't reliable unattended | **the play-requiring profile stays switched off.** The claim narrows, by a revision of this plan before the cut, to the engine-neutral path proved end to end, the headless Luau checks, and Studio sync, read-back and reset demonstrated. The release notes state the reduced claim |
 | **stop** | the tested state can't be confirmed inside Studio, or the place can't be reset reliably | **the play-requiring profile stays switched off.** The line ships the engine-neutral path and the Luau runner once their gates pass, and the plan returns to the owner with what was found |
+
+**The reading (2026-11-16): go.** Read at the adapter's exit (#3039, closed by #3117), before any skill is
+replay-tested.
+- **The evidence:**
+  - the worker serves one operation, `play_scenario` (SIP-0117 R5.19 withdrew the other three);
+  - it ran on the worker's own loop against the real Studio for three rounds. The second was cancelled, the place
+    was reset and Studio restarted with no person involved, and the third round's click passed on the reopened
+    Studio (R5.20);
+  - sync, read-back and reset are each proved on the adapter and run inside every round (R5.15 to R5.17);
+  - qualification is a recorded run on the installed Studio, and the newest passing record is the pin (R5.21).
+- **What "unattended" carries on this machine:**
+  - a click acts only while Studio is the front window, so a run window holds the MacBook awake and unlocked
+    (R5.18, R5.23);
+  - after a restart of the MacBook, the worker is back once the owner has logged in and the tailnet is connected
+    (R5.23, R5.24).
+- **Not yet read:** an operation claimed from the Spark's runtime by the MacBook's worker. The first is in #3041's
+  cycle. If it fails for a reason inside Studio, the gate is read again.
+- **What it switches on:** the `game_dev_roblox` profile is built with its requirements (#3041). SIP-0116's phases
+  2–6 have shipped (its ledger).
+- **Who read it:** the MacBook lane, and the owner approved recording it (2026-11-16: "go").
 
 **The Studio first slice** (confirmed by the owner, 2026-11-11):
 - read-only, on `z_tower-ascension` only, with nothing published;
@@ -439,8 +466,8 @@ build check, agent image and deploy are the Spark lane's. Where a ruling assigns
 | MacBook | #3046, #3048, #3049 | the worker service, re-qualification, payload limits | they need the MacBook and Studio |
 | MacBook | #3118 | the product carried whole | the executor and the checkout are the MacBook lane's; built with #3049 (the owner, 2026-11-16) |
 | MacBook | #3120 | a failed vault retrieval named, never dropped | the executor's resolution; placed by the owner (2026-11-16) |
-| MacBook | #3041, #3042 | the squad and the product | the game plan |
-| MacBook, then Spark | #3043 | the demonstration: the rehearsal and the diagnostic on the MacBook; the counted run on the Spark | the game plan §5 |
+| MacBook builds, the Spark runs | #3041, #3042 | the squad and the product. The MacBook lane builds the profile, the squad profile and the skills' replay cases, and drafts the goal set. The Spark lane runs the replay, the registration (handed over 2026-11-15), the preflight and every cycle | the game plan; the owner, 2026-11-16 (revision 4) |
+| Spark | #3043 | the demonstration: the pre-registration, the full-path gate, the rehearsal, the diagnostic and the counted run. The MacBook lane keeps Studio and the worker up for each window, and reads the pre-registration against what the worker and the vocabulary can do | the owner, 2026-11-16 (revision 4). The game plan §5 had the rehearsal and the diagnostic on the MacBook |
 | Spark | #3053 | Campaign delivery | `campaigns/` acceptance and the product runner |
 | Spark | #3050 | the end-to-end machinery Campaign | CI and the scripted squad |
 | Spark | #3005, #3020 | the scripted squad's two defects | the scripted provider |
