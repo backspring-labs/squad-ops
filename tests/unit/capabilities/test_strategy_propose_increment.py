@@ -158,6 +158,32 @@ async def test_a_proposal_after_an_abandoned_increment_is_shown_why_it_was_aband
     assert "abandoned" not in _prompts(first)[0]
 
 
+async def test_a_proposal_after_a_skill_stopped_increment_is_shown_the_stop_not_a_failed_build():
+    """SIP-0109 §24dz, row 20, through the real render. Bugs caught: the stop shown under the
+    abandoned increment's heading, which says the change was built and failed when the skill
+    stopped it first; or the skill's line not reaching the prompt."""
+    abandoned = {
+        "cycle_id": "cyc_inc",
+        "skill_stop": {
+            "skillset": "roblox-increment-design",
+            "skill": "play-scenario-authoring",
+            "opening": "no scenario:",
+            "line": "no scenario: the criterion names a value no player can see in play",
+        },
+    }
+    inputs = _inputs()
+    inputs["resolved_config"]["campaign_proposal"]["abandoned_increment"] = abandoned
+    ctx = _ctx(_fenced(_REFERENCE))
+
+    await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    [prompt] = _prompts(ctx)
+    assert "### The last increment was stopped by a skill" in prompt
+    assert "### The last increment was abandoned" not in prompt
+    assert "`roblox-increment-design/play-scenario-authoring`:" in prompt
+    assert "no scenario: the criterion names a value no player can see in play" in prompt
+
+
 async def test_a_fresh_proposal_is_shown_each_proposal_the_campaign_never_approved():
     """#2593, through the real render: the launch carries each unapproved proposal by its last
     ruling, and the proposal shows the reason and what it proposed. Bugs caught: the block

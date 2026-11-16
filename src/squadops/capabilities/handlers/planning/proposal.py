@@ -295,12 +295,18 @@ async def _context_sections(
             {"proposed_lines": proposal_lines(proposed)},
         )
         out["qa_proposed_behaviours_section"] = section.content
-    abandoned = brief_lines(block.get("abandoned_increment"))
+    brief = block.get("abandoned_increment")
+    abandoned = brief_lines(brief)
     if abandoned:
         # SIP-0109 §7, row 13 (#1692): a fresh proposal is shown why the last increment was
-        # abandoned, so it does not propose the same failure again unchanged.
+        # abandoned, so it does not propose the same failure again unchanged. §24dz, row 20: one
+        # a skill stopped is shown as stopped, with the skill's line, since nothing was built.
+        stopped = isinstance(brief, dict) and bool(brief.get("skill_stop"))
         section = await renderer.render(
-            "request.proposal_abandoned_increment", {"brief_lines": abandoned}
+            "request.proposal_stopped_by_skill"
+            if stopped
+            else "request.proposal_abandoned_increment",
+            {"brief_lines": abandoned},
         )
         out["abandoned_increment_section"] = section.content
     return out

@@ -635,6 +635,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.proposal_outcome_goals",
             "request.proposal_quality_moves",
             "request.proposal_abandoned_increment",
+            # SIP-0109 §24dz: the same section, for an increment a skill stopped.
+            "request.proposal_stopped_by_skill",
             "request.proposal_frozen_conventions",
             "request.proposal_prd_section",
             "request.proposal_qa_proposed_behaviours",
