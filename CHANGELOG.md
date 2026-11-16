@@ -6,6 +6,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The Roblox squad profile, `game-dev-roblox`** (#3041; SIP-0118 R4.3, R5.4): `full-38-tf`'s roster with no
+  builder, with `roblox-increment-design` on Nat, `roblox-luau-dev` on Neo and `roblox-studio-qa` on Eve. Its skills
+  load only on a cycle whose development profile requires them, and no profile does yet. It is the one Roblox
+  squad: every cycle of the game line runs on the Spark.
 - **A provider's authority is shown the product a cycle runs on, and Roblox Studio's checks its eligibility**
   (#3042; SIP-0116 §17n, SIP-0118 R5.3): at creation, an authority's `broken_rules` gets a `ProductView`: the
   seeded tree at the pinned commit and the ruled change request's footprint. An unreadable product refuses creation,

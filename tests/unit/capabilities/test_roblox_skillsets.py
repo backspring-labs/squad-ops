@@ -11,18 +11,58 @@ the vocabulary, and ``tool_request`` for the tool a scenario's operation runs.
 from __future__ import annotations
 
 from importlib import resources
+from pathlib import Path
 
 import pytest
 
+from adapters.cycles.config_squad_profile import ConfigSquadProfile
 from adapters.remote_execution.game_dev_roblox_studio import vocabulary as studio_vocabulary
 from adapters.remote_execution.game_dev_roblox_studio.runner import OPERATION, PROVIDER
 from squadops.capabilities.operation_supply import OperationSupplyError, tool_request
 from squadops.capabilities.skillsets import SCENARIO_VOCABULARY_FILE, load_skillsets
 from squadops.cycles.skillset_content import scenario_vocabulary_for
-from squadops.cycles.skillset_coverage import Assignment
+from squadops.cycles.skillset_coverage import Assignment, resolve_coverage
+from squadops.stacks.requirements import (
+    ContractNeed,
+    PlatformTarget,
+    ResponsibilityRequirement,
+    SkillsetRequirement,
+)
 
 QA = "roblox-studio-qa"
 SCENARIO = "game.scenario_verification"
+SQUAD = "game-dev-roblox"
+SQUAD_PROFILES = Path(__file__).resolve().parents[3] / "config" / "squad-profiles.yaml"
+
+#: What the first milestone requires of a Roblox squad (SIP-0118 R4.3): each responsibility's
+#: skillset, and the contracts and modes the work needs from it.
+ROBLOX_REQUIRES = (
+    ResponsibilityRequirement(
+        "strat",
+        (
+            SkillsetRequirement(
+                "roblox-increment-design", needs=(ContractNeed("game.increment_design"),)
+            ),
+        ),
+    ),
+    ResponsibilityRequirement(
+        "dev",
+        (
+            SkillsetRequirement(
+                "roblox-luau-dev", needs=(ContractNeed("game.gameplay_implementation"),)
+            ),
+        ),
+    ),
+    ResponsibilityRequirement(
+        "qa",
+        (
+            SkillsetRequirement(
+                QA,
+                needs=(ContractNeed("game.unit_tests", "headless"), ContractNeed(SCENARIO, "play")),
+            ),
+        ),
+    ),
+)
 
 
 @pytest.fixture(scope="module")
@@ -117,3 +157,63 @@ def test_the_strategy_skills_worked_example_is_one_the_rails_accept(catalog):
     assert criterion["surface_kind"] == "scenario"
     assert declaration.scenario_id == criterion["id"]
     assert named.observe.arguments["path"] == criterion["surface"]
+
+
+async def test_the_roblox_squad_covers_what_the_first_milestone_requires(catalog):
+    """Entered at the comparison cycle creation makes (``resolve_coverage``), on the squad as the
+    deploy seeds it. Bug caught: a skillset id misspelt, or declared on an agent of another
+    role. A squad profile seeds once and an edit never reaches the deploy, so either would refuse
+    every Roblox cycle until a new profile is cloned."""
+    squad = await ConfigSquadProfile(yaml_path=SQUAD_PROFILES).get_profile(SQUAD)
+
+    coverage = resolve_coverage(
+        squad, PlatformTarget("roblox", "studio-place"), ROBLOX_REQUIRES, catalog
+    )
+
+    assert coverage.findings == ()
+    assert [(a.role, a.agent_id, a.skillset) for a in coverage.assignments] == [
+        ("strat", "nat", "roblox-increment-design"),
+        ("dev", "neo", "roblox-luau-dev"),
+        ("qa", "eve", QA),
+    ]
+    assert [(o.contract, o.mode, o.agent_id) for o in coverage.offered] == [
+        ("game.increment_design", "", "nat"),
+        ("game.gameplay_implementation", "", "neo"),
+        ("game.unit_tests", "headless", "eve"),
+        (SCENARIO, "play", "eve"),
+    ]
+
+
+async def test_a_squad_without_the_roblox_skillsets_is_refused_by_name(catalog):
+    """The edge the squad exists for. Bug caught: coverage reading a squad that carries none of
+    the skillsets as covered, so a Roblox cycle on the wrong squad would author with no skills."""
+    plain = await ConfigSquadProfile(yaml_path=SQUAD_PROFILES).get_profile("full-38-tf")
+
+    coverage = resolve_coverage(
+        plain, PlatformTarget("roblox", "studio-place"), ROBLOX_REQUIRES, catalog
+    )
+
+    assert coverage.assignments == ()
+    (finding,) = coverage.findings
+    assert "Selected squad: `full-38-tf`" in finding.message
+    for skillset in ("roblox-increment-design", "roblox-luau-dev", QA):
+        assert skillset in finding.message
+
+
+async def test_the_roblox_squad_is_the_tensorfold_roster_without_its_builder():
+    """Bug caught: the squad drifting from the roster the Spark serves (a model id TensorFold
+    doesn't serve, or a completion budget of its own), which would make its cycles a different
+    experiment from every other cycle on that box."""
+    provider = ConfigSquadProfile(yaml_path=SQUAD_PROFILES)
+    squad = await provider.get_profile(SQUAD)
+    served = await provider.get_profile("full-38-tf")
+
+    def roster(profile):
+        return [
+            (a.agent_id, a.role, a.model, a.enabled, a.config_overrides, a.serves_roles)
+            for a in profile.agents
+            if a.role != "builder"
+        ]
+
+    assert roster(squad) == roster(served)
+    assert [a.agent_id for a in squad.agents if a.role == "builder"] == []
