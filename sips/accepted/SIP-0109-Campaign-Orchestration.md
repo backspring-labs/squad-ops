@@ -160,6 +160,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a criterion's test credited on the candidate by its id among the passes, never by its absence from the failures: each test-id reader keeps its passing ids, and a baseline failure the candidate never collected reads `not_run` (§24ci (a); as built: §24dy) | **shipped** | 2.8.0, PR #3109, closes #3089 |
+| a cycle a skill stopped (SIP-0116 §17o), a proposal run's included, abandoned at row 20, counted toward no unaccepted limit, for a proposal shown the skill's line from the run's terminal decision (§24dz) | **shipped** | 2.8.0, PR #3133, refs #3041 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
 | a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
@@ -7234,3 +7235,63 @@ Now:
   - not storing the ids.
 
 **Who ruled.** The owner placed #3089 in 2.8's Spark lane on 2026-11-15. The shape is #3089's own "What closes it".
+
+### 24dz. A cycle a skill stopped is abandoned at row 20, uncounted, for a proposal shown the skill's line (2026-11-16, §7, §10 rows 2, 6, 8 and 16, §24cz; SIP-0116 §17o; #3041; the Spark lane)
+
+**What changed.** SIP-0116 §17o ends a run when a task's model answers with a stop one of its skills declares. The
+run's terminal kind is `skill_stopped`, and its terminal decision carries the stop. The completion boundary records
+the cycle's stop reason as `skill_stopped`. Before this, the campaign read that cycle as one of two things:
+- **a proposal run:** `proposal_failed`, since the run's status is failed. Row 6 proposed again with no brief, from
+  the same inputs, and each failure counted toward `max_proposal_run_retries`'s pause;
+- **an increment, repair or retry:** an assessed run, `blocked_unverified`, attributed `criteria_or_contract_failure`.
+  That isn't the environment's, so row 8 repaired the same work, the same skill stopped it again, and row 9 escalated
+  once the repairs were spent.
+
+Now:
+1. **The ending.** `skill_stopped` is a cycle ending of its own. It is read from the recorded stop reason before the
+   proposal's endings, so a stopped proposal run reads as the stop. The stop reasons a run declares for its cycle are
+   one table (`_ENDING_DECLARED_BY_STOP`), beside `criteria_not_checkable`.
+2. **Row 20.** It is asked before row 6, beside rows 15, 18 and 19, for an increment, a repair or a retry:
+   `abandon_and_propose`. A calibration a skill stopped wasn't accepted, so row 2 ends the campaign first.
+3. **Uncounted.** Row 20's abandonment counts toward no unaccepted limit (`UNCOUNTED_ABANDONMENT_ROWS`), as rows 16
+   and 19's do: what was asked crosses the skill's rule, and the work wasn't at fault.
+   - It still counts toward the cycles and the budget (row 4), so stops can't continue past them.
+   - A stopped proposal isn't a failed one, so it ends a run of failed proposals.
+4. **The next proposal is shown the line.** The brief carries the stop from the run's terminal decision: the
+   skillset, the skill, the opening words and the line, bounded as a reason is. It is never read from the failure
+   reason's text.
+   - The proposal shows it under its own heading, `request.proposal_stopped_by_skill`, in place of
+     `request.proposal_abandoned_increment`. That one says the increment was built and failed, which a stop isn't.
+   - The two are alternatives in the proposal's prompt contract, so the composer counts the larger.
+5. **A goal-set Campaign** abandons the item on row 20 as on any `abandon_and_propose` (SIP-0115 §5.3), with no
+   change here. It is skipped until a revision changes the item.
+
+**What didn't change.** A repair task's stop inside a correction chain ends that repair, and the correction runner
+reads it as a failed repair (SIP-0116 §17o). Only a run that ends `skill_stopped` reaches row 20.
+
+**The evidence.**
+- **`test_continuation.py`:** row 20 for an increment, a repair and a retry, with repairs left and at the unaccepted
+  limit's edge, and row 2 for a calibration.
+- **`test_progress.py`:**
+  - the ending, read from a stopped proposal, framing or implementation run;
+  - row 20, counted toward no limit;
+  - a stop ending a run of failed proposals;
+  - entered at the completion boundary as the executor ends a stopped proposal run: the recorded end, row 20's
+    decision and the launch's brief carrying the stop.
+- **`test_prior_cycle.py` and `test_strategy_propose_increment.py`:**
+  - the last run's stop, carried and shown fenced;
+  - no stop for any other failure;
+  - the proposal rendered through the real handler under the new heading.
+- **Mutation:** five mutations each fail the tests:
+  - the ending left unmapped;
+  - row 20 counted;
+  - row 20 removed;
+  - the stop not carried;
+  - the old heading used.
+- **The render:** the section is 764 characters, about 190 tokens, on the reference proposal.
+- **Not yet read live:** no stop has happened in a live run. The replay's stop cases on the Spark come first
+  (#3041).
+
+**Who ruled.** The MacBook lane proposed the question on #3041 (issuecomment-6925771589) and the Spark lane answered
+with this shape (issuecomment-6925831386), under the 2.8 plan the owner adopted on 2026-11-11. The MacBook lane built
+the terminal kind first (PR #3132).

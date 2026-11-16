@@ -447,3 +447,37 @@ def test_a_cycle_ended_for_criteria_already_met_on_the_head_is_abandoned_uncount
     )
 
     assert shape(decision) == expected
+
+
+_ROW_20 = (20, PendingAction.ABANDON_AND_PROPOSE, _GO, None)
+
+
+@pytest.mark.parametrize(
+    ("kind", "count_overrides", "expected"),
+    [
+        (CycleKind.INCREMENT, {}, _ROW_20),
+        # Never row 8's repair, with repairs left: the same work meets the same skill again.
+        (CycleKind.REPAIR, {}, _ROW_20),
+        (CycleKind.RETRY, {}, _ROW_20),
+        # Counted toward no unaccepted limit: one more at the limit's edge proposes again rather
+        # than ending the campaign at row 4. What was asked crosses the skill's rule; the work
+        # wasn't at fault.
+        (CycleKind.INCREMENT, dict(unaccepted_increments=1), _ROW_20),
+        # A calibration a skill stopped was not accepted: row 2 ends the campaign first.
+        (CycleKind.CALIBRATION, {}, (2, CampaignOutcome.FAILURE, None, None)),
+    ],
+    ids=["increment", "repair", "retry", "at-the-unaccepted-limit", "calibration"],
+)
+def test_a_cycle_a_skill_stopped_is_abandoned_uncounted(kind, count_overrides, expected):
+    """§24dz (row 20, SIP-0116 §17o). Bugs caught: the stop read as a failed build, so row 8
+    repairs the same work, the same skill stops it again and the repairs are spent before row 9
+    escalates; or its abandonment counted toward ``max_unaccepted_increments``, so two stopped
+    increments end the campaign at row 4 though nothing the squad built failed."""
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        counters(**count_overrides),
+        EndedCycle(CYCLE, kind, CycleEnding.SKILL_STOPPED),
+        assessment(None),
+    )
+
+    assert shape(decision) == expected

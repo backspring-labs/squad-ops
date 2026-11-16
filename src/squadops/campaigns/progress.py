@@ -184,6 +184,16 @@ _RUNNING_STATES = frozenset(
 )
 
 
+#: The cycle endings a run declares in its terminal decision, by the stop reason the completion
+#: boundary records for it (``cycle_end.STOP_REASON_FOR_TERMINAL_KIND``). Each is asked before the
+#: proposal's endings, so a proposal run a skill stopped reads as the stop, never as a failed
+#: proposal that row 6 proposes again unexplained.
+_ENDING_DECLARED_BY_STOP: dict[CycleStopReason, CycleEnding] = {
+    CycleStopReason.CRITERIA_NOT_CHECKABLE: CycleEnding.CRITERIA_NOT_CHECKABLE,
+    CycleStopReason.SKILL_STOPPED: CycleEnding.SKILL_STOPPED,
+}
+
+
 def cycle_ending(
     stopped_because: CycleStopReason,
     last_run: Run,
@@ -201,8 +211,9 @@ def cycle_ending(
     ``binding_hold.held_expiry``); a framing run stopped at its plan gate is
     ``stopped_at_plan_gate`` (§24cb, #2704); an implementation run that ended at its qa task
     because a criterion's test already passes on the head is ``criteria_not_checkable`` (§24cz,
-    #2890; the completion boundary reads it from the run's terminal decision); everything else
-    reached its assessment."""
+    #2890; the completion boundary reads it from the run's terminal decision); any run, a
+    proposal's included, that a task's skill stopped is ``skill_stopped`` (§24dz, SIP-0116 §17o;
+    read the same way); everything else reached its assessment."""
     if parked and last_run.status == RunStatus.CANCELLED.value:
         return CycleEnding.PARKED
     if held is not None and last_run.status == RunStatus.CANCELLED.value:
@@ -211,8 +222,9 @@ def cycle_ending(
             if held is binding_hold.HoldClass.STORE
             else CycleEnding.HELD_INPUT
         )
-    if stopped_because is CycleStopReason.CRITERIA_NOT_CHECKABLE:
-        return CycleEnding.CRITERIA_NOT_CHECKABLE
+    declared = _ENDING_DECLARED_BY_STOP.get(stopped_because)
+    if declared is not None:
+        return declared
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE

@@ -2542,3 +2542,18 @@ checks:
       a = create_tool_authorities()
       print(sorted(a), "product" in inspect.signature(a["roblox-studio"].broken_rules).parameters)
     expect: "['roblox-studio'] True"
+  - id: "3041-skill-stopped-row"
+    what: a Campaign cycle a skill stopped is abandoned at row 20, counted toward no unaccepted limit (SIP-0109 §24dz)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.continuation import _ABANDONED_BEFORE_VERDICT, UNCOUNTED_ABANDONMENT_ROWS, CycleEnding
+      print(_ABANDONED_BEFORE_VERDICT[CycleEnding.SKILL_STOPPED], 20 in UNCOUNTED_ABANDONMENT_ROWS)
+    expect: "20 True"
+  - id: "3041-skill-stopped-brief"
+    what: the next proposal is shown the stopped increment's skill line (SIP-0109 §24dz)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.prior_cycle import brief_lines
+      stop = {"skillset": "s", "skill": "k", "opening": "o:", "line": "o: why"}
+      print("Stopped by a skill, with this line:" in brief_lines({"cycle_id": "c", "skill_stop": stop}))
+    expect: "True"
