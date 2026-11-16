@@ -320,6 +320,7 @@ effects outside the scenario vocabulary, and any Studio version the worker wasn'
 | #2782 | a route anchor hidden by a stylesheet | **stays deferred** to the next evaluator cut that is explicitly placed (2.7's R5) | unchanged |
 | #3089 | Campaign acceptance credits a criterion's test by its absence from the candidate's failures, not by its id among the passes | **in, Spark lane** (placed by the owner, 2026-11-15) | a correctness gap in the acceptance the headline's Campaigns rely on: a test generated from product data reads discriminating on a case that never ran |
 | #3101 | take FastAPI 0.163/Starlette 1.10, aio-pika 10.2 and ruff 0.17, capped after the 2026-11-15 refresh | **moves to 2.9** (placed by the owner, 2026-11-15) | it changes two live paths (the `app.routes` readers and the publisher's return handling), which is a stabilization release's work. Ruff moves with the evaluator image, at an explicitly placed evaluator cut |
+| #3120 | an artifact the vault fails to return is left out of a task's tree, with only a warning logged | **in, MacBook lane, after #3041 and #3042** (placed by the owner, 2026-11-16) | the same kind of silent fallback #3118 removed from the resolution's limit. The counted run shouldn't rest on a tree that can lose a file without a word. It changes behaviour only when the vault fails, and the cut's shakeout pair covers it |
 
 **Patches, outside the feature count:**
 - **#3009, first, and the owner's:** from 2026-12-02 GitHub blocks `pull_request_target` in public repositories,
@@ -437,6 +438,7 @@ build check, agent image and deploy are the Spark lane's. Where a ruling assigns
 | MacBook | #3039, #3040 | the Studio adapter and the harness | the game plan; they need Studio |
 | MacBook | #3046, #3048, #3049 | the worker service, re-qualification, payload limits | they need the MacBook and Studio |
 | MacBook | #3118 | the product carried whole | the executor and the checkout are the MacBook lane's; built with #3049 (the owner, 2026-11-16) |
+| MacBook | #3120 | a failed vault retrieval named, never dropped | the executor's resolution; placed by the owner (2026-11-16) |
 | MacBook | #3041, #3042 | the squad and the product | the game plan |
 | MacBook, then Spark | #3043 | the demonstration: the rehearsal and the diagnostic on the MacBook; the counted run on the Spark | the game plan §5 |
 | Spark | #3053 | Campaign delivery | `campaigns/` acceptance and the product runner |
