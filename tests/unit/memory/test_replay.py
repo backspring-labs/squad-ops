@@ -22,6 +22,7 @@ from squadops.memory.replay import (
     arm_inputs,
     manifest,
     schedule,
+    swapped_inputs,
     temporal_validity,
     validity,
 )
@@ -172,3 +173,152 @@ def test_an_experiments_identity_moves_with_its_inputs_and_not_with_its_clock():
     assert first.digest() == build("Name it.", CUTOFF + timedelta(days=1)).digest()
     assert first.digest() != build("Name it, edited.", CUTOFF).digest()
     assert first.to_dict()["model_settings"] == [{"model": "qwen3.8:27b", "temperature": 0.2}]
+
+
+_SKILL = {"skillset": "fixture-dev", "skill": "gameplay", "digest": "d", "files": {"SKILL.md": "x"}}
+
+
+def test_the_skills_arm_adds_its_equipment_and_nothing_else():
+    """SIP-0116 §17p. Bug caught: the skills arm changing an input beside its equipment, so a
+    difference in outcome isn't the skill's; or the equipment sharing state with the case's
+    inputs, so one generation's handler changes what the next is handed."""
+    own = {"prd": "p", "product_proposal": {"head": {"commit": "c"}}}
+    vocabulary = {"reader": "fixture/1"}
+    equipment = [(("skills",), [_SKILL]), (("product_proposal", "scenario_vocabulary"), vocabulary)]
+
+    skills = arm_inputs(own, Arm.SKILLS, experiment_id="x", equipment=equipment)
+
+    assert skills == {
+        "prd": "p",
+        "skills": [_SKILL],
+        "product_proposal": {"head": {"commit": "c"}, "scenario_vocabulary": vocabulary},
+    }
+    assert own == {"prd": "p", "product_proposal": {"head": {"commit": "c"}}}
+    skills["skills"][0]["files"]["SKILL.md"] = "changed"
+    assert _SKILL["files"]["SKILL.md"] == "x"
+    assert arm_inputs(own, Arm.BASELINE, experiment_id="x", equipment=equipment) == own
+
+
+@pytest.mark.parametrize(
+    ("own", "equipment", "says"),
+    [
+        ({"prd": "p"}, [], "no equipment to hand"),
+        ({"prd": "p", "skills": [_SKILL]}, [(("skills",), [_SKILL])], "already hold skills"),
+        (
+            {"prd": "p"},
+            [(("product_proposal", "scenario_vocabulary"), {})],
+            "hold no product_proposal",
+        ),
+    ],
+    ids=["none", "captured-with-it", "nowhere-to-put-it"],
+)
+def test_the_skills_arm_refuses_equipment_it_cant_hand_as_an_intervention(own, equipment, says):
+    """Bug caught: a capture taken from a cycle that already had the skills replayed as their
+    baseline (skills against skills), or a vocabulary dropped because its input isn't there."""
+    with pytest.raises(ValueError, match=says):
+        arm_inputs(own, Arm.SKILLS, experiment_id="x", equipment=equipment)
+
+
+def test_a_swapped_case_changes_the_named_inputs_and_leaves_the_capture_as_it_was():
+    own = {
+        "config": {"objective": {"statement": "show the potions left"}},
+        "tree": {"map": "- `tests/run.luau`\n- `src/A.luau`", "files": ["a", "b"]},
+        "note": "n",
+    }
+
+    swapped = swapped_inputs(
+        own,
+        [
+            {"path": ["config", "objective", "statement"], "value": "play a chime on pickup"},
+            {"path": ["tree", "map"], "replace": ["- `tests/run.luau`\n", ""]},
+            {"path": ["tree", "files", 0], "delete": True},
+            {"path": ["note"], "delete": True},
+        ],
+    )
+
+    assert swapped == {
+        "config": {"objective": {"statement": "play a chime on pickup"}},
+        "tree": {"map": "- `src/A.luau`", "files": ["b"]},
+    }
+    assert own["config"]["objective"]["statement"] == "show the potions left"
+
+
+@pytest.mark.parametrize(
+    ("swap", "says"),
+    [
+        ({"path": ["goal"], "value": "g"}, "already holds the value"),
+        ({"path": ["absent"], "value": "g"}, "hold no absent to swap"),
+        ({"path": ["tree", "absent", "x"], "value": "g"}, "hold no tree.absent"),
+        ({"path": ["goal"], "replace": ["zzz", "y"]}, "holds no 'zzz' to replace"),
+        ({"path": ["tree"], "replace": ["a", "b"]}, "holds no 'a' to replace"),
+        ({"path": ["goal"], "value": "x", "delete": True}, "exactly one of"),
+        ({"path": ["goal"]}, "exactly one of"),
+        ({"path": ["goal"], "delete": "yes"}, "delete is true"),
+        ({"path": [], "value": "x"}, "at least one key"),
+    ],
+    ids=[
+        "changes-nothing",
+        "absent",
+        "absent-parent",
+        "text-not-there",
+        "not-text",
+        "two-things",
+        "nothing",
+        "delete-not-true",
+        "no-path",
+    ],
+)
+def test_a_swap_that_cant_be_made_as_written_is_refused(swap, says):
+    """Bug caught: a swap that silently changed nothing (a mistyped path, text that isn't
+    there), leaving the capture's own task in front of the model under the case's name."""
+    with pytest.raises(ValueError, match=says):
+        swapped_inputs({"goal": "g", "tree": {"map": "m"}}, [swap])
+
+
+def test_a_cases_notes_are_frozen_with_it_and_a_case_with_none_is_written_as_before():
+    """Bug caught: a skills case's swaps or skill digests edited between scored runs under one
+    experiment name; or the new notes changing an earlier experiment's manifest, which its own
+    rerun would then be refused against."""
+    envelope = {
+        "envelope_id": "env_1",
+        "task_type": "strategy.propose_increment",
+        "seam": "proposal_writing",
+        "messages_sha256": "abc",
+        "captured_at": CUTOFF.isoformat(),
+        "chat_kwargs": {"model": "m"},
+    }
+
+    def build(notes):
+        return manifest(
+            experiment_id="e",
+            created_at=CUTOFF,
+            envelopes=[envelope],
+            arms=[Arm.BASELINE, Arm.SKILLS],
+            generations=3,
+            seed=7,
+            lessons=[],
+            static_guidance="",
+            rubric="r@1",
+            rubric_text=None,
+            framework_git_sha="f3c1e81a",
+            case_notes=notes,
+        )
+
+    plain = build(None)
+    noted = build({"env_1": {"case": "strategy-unobservable", "skills": {"a/b": "d1"}}})
+
+    assert plain.to_dict()["cases"] == [
+        {
+            "envelope_id": "env_1",
+            "task_type": "strategy.propose_increment",
+            "seam": "proposal_writing",
+            "messages_sha256": "abc",
+            "captured_at": CUTOFF.isoformat(),
+        }
+    ]
+    assert noted.to_dict()["cases"][0]["skills"] == {"a/b": "d1"}
+    assert noted.digest() != plain.digest()
+    assert (
+        noted.digest()
+        != build({"env_1": {"case": "strategy-unobservable", "skills": {"a/b": "d2"}}}).digest()
+    )
