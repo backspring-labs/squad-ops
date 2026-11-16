@@ -20,6 +20,7 @@
 #   block (pyarrow, pandas, sentence-transformers), by hand: the 46 pins neither CI install set
 #   resolves to any more (pip's resolver on both sets against this file), torch's stack among them.
 # Re-resolved by .github/workflows/deps-refresh.yml on 2026-11-15 (#1204).
+# Re-resolved by .github/workflows/deps-refresh.yml on 2026-11-16 (#1204).
 a2a-sdk==0.3.26
 aio-pika==10.0.4
 aiofiles==25.1.0
@@ -138,7 +139,7 @@ pytest-redis==5.0.1
 pytest-xdist==3.8.0
 python-dateutil==4.0.0
 python-dotenv==1.2.4
-python-multipart==0.0.33
+python-multipart==0.0.34
 pytokens==0.4.1
 PyYAML==6.0.3
 redis==8.1.0
