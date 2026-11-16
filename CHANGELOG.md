@@ -6,6 +6,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A product declares its package roots where its tree names none** (#3134; SIP-0112 H.33): the Development
+  Configuration's optional `technical.package_roots` lists repository directories. The derived profile reads each
+  as a `package` surface named by its folder, so a Luau product under Script Sync (`src/Shared`, `src/Server`,
+  `src/Client` on z_tower-ascension) offers surfaces a criterion can name. A root that isn't a directory at the
+  baseline commit is refused as submitted, and one a later tree lacks is disclosed as `package_root_missing`.
+  Before this a Luau product offered no surface, and a Campaign refused every criterion but a scenario.
 - **A Campaign cycle a skill stopped is abandoned for a proposal shown the skill's line** (#3041; SIP-0109 §24dz):
   a cycle that ends `skill_stopped`, a proposal run's included, is its own ending. Row 20 abandons the increment,
   counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the

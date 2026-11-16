@@ -2557,3 +2557,11 @@ checks:
       stop = {"skillset": "s", "skill": "k", "opening": "o:", "line": "o: why"}
       print("Stopped by a skill, with this line:" in brief_lines({"cycle_id": "c", "skill_stop": stop}))
     expect: "True"
+  - id: "3134-package-roots"
+    what: a product's declared package roots are its package surfaces (SIP-0112 H.33)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.development_configuration import parse_package_roots
+      from squadops.projects.derived_profile import GAPS
+      print(parse_package_roots({"package_roots": ["src/Shared"]}), "package_root_missing" in GAPS)
+    expect: "('src/Shared',) True"

@@ -139,3 +139,73 @@ async def test_the_request_hash_covers_the_expected_revision(fixture_tree):
 
     assert first.recorded[1]["request_hash"] != second.recorded[1]["request_hash"]
     assert second.recorded[0].revision == 2
+
+
+async def _configure_with_roots(registry, clone, roots):
+    submission = _submission()
+    submission["technical"]["package_roots"] = roots
+    return await configure_project(
+        "prj-tally",
+        submission,
+        expected_revision=0,
+        registry=registry,
+        repository=clone,
+        actor="owner",
+        idempotency_key="c-roots",
+    )
+
+
+async def test_declared_package_roots_are_recorded_and_read_back(fixture_tree):
+    """SIP-0112 H.33 (#3134). Bugs caught: the roots dropped between the submission and the
+    stored document, or not read back by ``parse_configuration``, so the derivation never sees
+    them and a Luau product still offers no surface."""
+    from squadops.projects.development_configuration import parse_configuration
+
+    registry = _Registry(commit=fixture_tree.commit)
+
+    await _configure_with_roots(registry, _Clone(fixture_tree), ["tally", "checks"])
+
+    configuration, _ = registry.recorded
+    document = configuration.to_document()
+    assert document["configuration"]["technical"]["package_roots"] == ["tally", "checks"]
+    assert parse_configuration(document).package_roots == ("tally", "checks")
+
+
+@pytest.mark.parametrize(
+    ("roots", "field", "says"),
+    [
+        (["gone"], "technical.package_roots[0]", "no directory at the baseline commit"),
+        # A file, not a directory: nothing is under it.
+        (["README.md"], "technical.package_roots[0]", "no directory at the baseline commit"),
+        (["/tally"], "technical.package_roots[0]", "not a directory inside the repository"),
+        (["../tally"], "technical.package_roots[0]", "not a directory inside the repository"),
+        (["tally/"], "technical.package_roots[0]", "a repository directory"),
+        ("tally", "technical.package_roots", "a list of repository directories"),
+        (["tally", "tools/tally"], "technical.package_roots", "two roots name one package"),
+    ],
+    ids=[
+        "absent",
+        "a-file",
+        "absolute",
+        "leaves",
+        "trailing-slash",
+        "not-a-list",
+        "one-name-twice",
+    ],
+)
+async def test_a_package_root_nothing_could_import_is_refused_naming_the_entry(
+    fixture_tree, roots, field, says
+):
+    """H.33, require, don't default. Bugs caught: a root that isn't in the tree recorded, so a
+    criterion is admitted on a package that can't be required; a path leaving the repository;
+    or two roots one name, so a criterion's package is ambiguous."""
+    from squadops.projects.development_configuration import ConfigurationInvalid
+
+    registry = _Registry(commit=fixture_tree.commit)
+
+    with pytest.raises(ConfigurationInvalid) as raised:
+        await _configure_with_roots(registry, _Clone(fixture_tree), roots)
+
+    assert raised.value.field == field
+    assert says in str(raised.value)
+    assert registry.recorded is None

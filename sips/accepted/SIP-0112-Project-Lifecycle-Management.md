@@ -138,6 +138,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
 | a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #3002, closes #2862 |
 | a product the size of z_tower-ascension carried whole: the checkout cap and the resolution's limit raised together, a tree past either refused by name and never cut short, and the steps that render no prompt counted as none (H.32) | **shipped** | 2.8 (PR #3121, closing #3118) |
+| a product's package roots declared in its Development Configuration where its tree names none (a Luau product under Script Sync), read by the derivation as package surfaces, with `package_root_missing` for one the tree lacks (H.33) | **shipped** | 2.8 (PR #3135, closing #3134) |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect; then re-placed from 2.8 by the 2.8 plan's decision 9 (the owner, 2026-11-11): the MacBook lane holds the 2.8 headline, and its files are that lane's) | 2.10.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
@@ -3645,3 +3646,66 @@ its own silent fallback, recorded as #3120 for the owner to place.
 **Who ruled.** The owner placed #3118 in 2.8 with #3049 (2026-11-16: "put 3118 in 2.8 with 3049"). The design is
 the MacBook lane's, under that ruling.
 
+
+## H.33 A product declares its package roots where its tree names none (2026-11-16; §B.5, H.6, H.7, H.31; SIP-0109 §24bv point 5; #3134; the Spark lane)
+
+**What changed.** A criterion names one of the product's public surfaces (SIP-0109 §24bv point 5). The derivation
+(H.7) finds those surfaces in three places only:
+- the start declaration's base URLs;
+- `pyproject.toml`'s scripts and the Python packages;
+- `package.json`'s `bin` and `name`.
+
+A Luau product under Roblox's Script Sync has none of them: its folders are mapped in Studio by hand, and no file in
+the repository says so. So it offered no surface, and a Campaign refused every criterion but a scenario.
+
+The capture Campaign `cmp_b7df13549e3d` on z_tower-ascension found this. Two proposal runs, three attempts each,
+were refused `[unknown_surface] … (it declares none of that kind)`.
+
+Now:
+1. **The configuration declares them.** `technical.package_roots` is optional in the Development Configuration
+   (§B.5): a list of repository directories, each a package named by its last part, as a Python package is.
+   - **Refused as submitted, naming the entry:**
+     - anything but a list of paths;
+     - a path that is absolute, leaves the repository or ends in `/`;
+     - two roots whose last parts are one name;
+     - a root that holds no files at the baseline commit.
+   - **The stored document** carries `package_roots` only when roots are declared, so every earlier revision's
+     document, and its digest, is unchanged. No version moves.
+2. **The derivation reads them** (H.7): each declared root the tree holds is a `package` surface named by its
+   folder.
+   - A criterion on `Shared.Modules.ShopRules`, or on a new `Shared.Modules.Pricing`, passes by prefix, as a name
+     inside a Python package does.
+   - A root the tree no longer holds is no surface. A new disclosed gap, `package_root_missing` (stops
+     `criterion_surfaces`), names it.
+3. **Nothing is guessed.** A product that declares no roots has no package surface from them, and the refusal
+   already says so.
+   - A rule of "every top-level folder holding Luau" would name z_tower's `art/blender` and `art/studio-bridge`,
+     Studio tooling that is never synced.
+   - A fixed `src/` happens to be right on z_tower and wrong on any other layout.
+
+**z_tower's roots** are `src/Shared`, `src/Server` and `src/Client`. Each is one instance named for its folder
+(`ReplicatedStorage.Shared`, `ServerScriptService.Server`, `StarterPlayer.StarterPlayerScripts.Client`), and a spec
+requires a module by that path (`require(Shared.Modules.LivesRules)`). This is the MacBook lane's read of the
+product at `0beaac0`. `X/init.luau` is the module `X`.
+
+**Not changed here:**
+- H.31's `covers` for a Script Sync product is still "the top-level folders holding `.luau` sources", so z_tower's
+  luau runner covers `art/**` beside `src/**`. Recorded on #3134.
+- A consistency check on the adapter's side, the `roblox-studio` authority's Script Sync layout rule refusing
+  declared roots it doesn't sync, is recorded on #3134 for later.
+
+**The evidence.**
+- **`test_profile_derivation_luau.py`:**
+  - z_tower's layout, with art/'s tooling, under declared roots: three package surfaces, and the gap for a missing
+    root;
+  - no roots declared: no surface and no gap;
+  - wiring: the profile's document read by the proposal's rails (`planning.proposal.product_context`), admitting
+    `Shared.Modules.ShopRules`, `Shared.Modules.Pricing` and `Shared`, and refusing `blender.studio_pull` and
+    `SharedModules.X`.
+- **`test_configuration.py`:** entered at `configure_project`:
+  - the roots recorded and read back by `parse_configuration`;
+  - each refusal, naming its entry, with nothing recorded.
+
+**Who ruled.** #3134 is the 2.8 capture's blocker under #3041, in the plan the owner adopted on 2026-11-11. The
+MacBook lane, which holds the Roblox layout, recommended the declaration over a derivation (2026-11-16). The
+mechanics are the Spark lane's.
