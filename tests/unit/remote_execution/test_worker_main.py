@@ -140,6 +140,7 @@ async def test_the_root_builds_a_worker_that_registers_as_configured(env, monkey
 def _studio_section(tmp_path) -> dict[str, str]:
     for name in ("StudioMCP", "ta-copy.rbxl", "ta-copy.pristine.rbxl"):
         (tmp_path / name).write_bytes(b"x")
+    (tmp_path / "qualifications").mkdir(exist_ok=True)
     return {
         "SQUADOPS__WORKER__PROVIDER": "roblox-studio",
         "SQUADOPS__WORKER__ROBLOX_STUDIO_MCP": str(tmp_path / "StudioMCP"),
@@ -147,8 +148,7 @@ def _studio_section(tmp_path) -> dict[str, str]:
         "SQUADOPS__WORKER__ROBLOX_STUDIO_BASELINE_FILE": str(tmp_path / "ta-copy.pristine.rbxl"),
         "SQUADOPS__WORKER__ROBLOX_STUDIO_BASELINE_SHA256": "49157df1" * 8,
         "SQUADOPS__WORKER__ROBLOX_STUDIO_BASELINE_DIGEST": "354636ad" * 8,
-        "SQUADOPS__WORKER__ROBLOX_STUDIO_PROVED_VERSION": "0.747.0",
-        "SQUADOPS__WORKER__ROBLOX_STUDIO_PROVED_TOOLS": "38:" + "1ba499d8" * 8,
+        "SQUADOPS__WORKER__ROBLOX_STUDIO_QUALIFICATIONS": str(tmp_path / "qualifications"),
     }
 
 
@@ -169,16 +169,13 @@ def test_a_studio_worker_is_built_with_the_runner_its_package_creates(env, tmp_p
         tmp_path / "ta-copy.rbxl",
         "354636ad" * 8,
     )
-    assert (runner._proved.studio_version, runner._proved.studio_tools) == (
-        "0.747.0",
-        "38:" + "1ba499d8" * 8,
-    )
+    assert runner._proved.directory == tmp_path / "qualifications"
 
 
 @pytest.mark.parametrize("dropped", sorted(PROVIDER_SETTINGS["roblox-studio"]))
 def test_a_studio_worker_needs_every_one_of_its_settings(env, tmp_path, dropped):
-    """Bug caught: a Studio worker started without its baseline pin or proved-on version, so a
-    drifted place or an updated Studio goes unnoticed."""
+    """Bug caught: a Studio worker started without its baseline pin or its qualification records,
+    so a drifted place or an updated Studio goes unnoticed."""
     for key, value in _studio_section(tmp_path).items():
         env.setenv(key, value)
     env.delenv(f"SQUADOPS__WORKER__{dropped.upper()}")

@@ -4,7 +4,9 @@
 It serves one operation, **``play_scenario``**: a frozen scenario played on the candidate, as one
 transaction (R3.6), under the one lease the worker holds for the call:
 1. The scenario is checked as frozen, under ``roblox-studio/1``, and Studio as the app in front.
-2. Studio is held to what the operation was proved on: its version and its tool list (R2.4).
+2. Studio is held to what the operation was proved on: its version and its tool list (R2.4). The
+   worker reads them, at each claim, from the newest passing qualification record (#3048), and a
+   re-qualification holds Studio while it runs, so the two never use it at once.
 3. The place's non-script baseline is held to its pin. A place that drifted is reset from its
    baseline file (R5.17) and the transaction begun again, once.
 4. The candidate's scripts are synced, the place confirmed unpublished, and the scripts read back.
@@ -39,8 +41,10 @@ import plistlib
 import re
 import shutil
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from adapters.remote_execution.game_dev_roblox_studio import harness, place, play
 from adapters.remote_execution.game_dev_roblox_studio.session import (
@@ -103,10 +107,30 @@ class ProvedOn:
 
     studio_version: str
     studio_tools: str
+    #: The digest of the qualification record these pins came from (#3048), recorded with
+    #: every result. Empty only for pins handed in directly: a qualification's own runs.
+    record: str = ""
 
 
 class NotProved(RuntimeError):
-    """The Studio a run would use isn't the one the operation was proved on."""
+    """The Studio a run would use isn't the one the operation was proved on, or nothing says
+    what it was proved on."""
+
+
+class StudioBusy(place.PlaceStateError):
+    """Another process holds Studio: a re-qualification, or a worker's claim (#3048)."""
+
+
+class Pins(Protocol):
+    """Where a worker's pins come from (#3048): its qualification records."""
+
+    def current(self) -> ProvedOn:
+        """The pins of the newest passing record. Raises :class:`NotProved` naming why there
+        are none."""
+
+    def exclusive(self) -> AbstractContextManager[None]:
+        """Studio, held for one transaction or reset. Raises :class:`StudioBusy` when another
+        process holds it."""
 
 
 class _Drifted(RuntimeError):
@@ -133,7 +157,7 @@ class RobloxStudioRunner(OperationRunnerPort):
         studio_version_of: Callable[[Path], str] = studio_version,
         discover_seconds: float = 20.0,
         place_files: PlaceFiles | None = None,
-        proved_on: ProvedOn | None = None,
+        proved_on: ProvedOn | Pins | None = None,
         app: StudioApp | None = None,
         quit_seconds: float = 20.0,
         reopen_seconds: float = 120.0,
@@ -197,17 +221,35 @@ class RobloxStudioRunner(OperationRunnerPort):
         if unplaced:
             return self._ended(request, OperationStatus.NOT_EXECUTED, "nothing was run: " + "; ".join(
                 f"{f} isn't a script {PROVIDER} places" for f in unplaced))  # fmt: skip
-        files, proved = self._files, self._proved
-        if files is None or proved is None:
+        files, pins = self._files, self._proved
+        if files is None or pins is None:
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                f"nothing was run: {PROVIDER} was given no place files and "
                                "proved-on pins, so the place can't be confirmed as the one the "
                                "operation was proved on (R2.4)")  # fmt: skip
+        if isinstance(pins, ProvedOn):
+            return await self._played(request, declaration, manifest, files, pins)
+        try:
+            proved = pins.current()
+            with pins.exclusive():
+                return await self._played(request, declaration, manifest, files, proved)
+        except (NotProved, StudioBusy) as e:
+            return self._ended(request, OperationStatus.NOT_EXECUTED, f"nothing was run: {e}")
+
+    async def _played(
+        self,
+        request: RemoteOperationRequest,
+        declaration: ScenarioDeclaration,
+        manifest: Mapping[str, place.ScriptText],
+        files: PlaceFiles,
+        proved: ProvedOn,
+    ) -> RemoteOperationResult:
+        """The transaction, begun again once after a reset when the place drifted."""
         try:
             return await self._transaction(request, declaration, manifest, files, proved)
         except _Drifted as drifted:
             try:
-                await self.reset()
+                await self._reset_held()
             except (place.PlaceStateError, place.PlaceReadError, StudioSessionError,
                     OSError) as e:  # fmt: skip
                 return self._ended(request, OperationStatus.NOT_EXECUTED,
@@ -307,6 +349,7 @@ class RobloxStudioRunner(OperationRunnerPort):
             ran_with={
                 **self._ran_with(before.digest, request.source_revision),
                 "play_session": log.session_id,
+                **({"qualified_by": proved.record[:16]} if proved.record else {}),
             },
             dispatch_id=request.dispatch_id,
         )
@@ -357,7 +400,27 @@ class RobloxStudioRunner(OperationRunnerPort):
             dispatch_id=request.dispatch_id,
         )
 
+    async def live_studio(self) -> tuple[str, ToolCheck]:
+        """The running Studio's version and its live tool check, as a harness session reads it:
+        what a re-qualification would pin (#3048)."""
+        session = self._session(harness=True)
+        try:
+            check = await session.open()
+        finally:
+            await session.close()
+        return self._studio_version_of(self._studio_mcp), check
+
     async def reset(self) -> None:
+        """:meth:`_reset_held`, with Studio held against a re-qualification (#3048). Raises
+        :class:`StudioBusy` while one runs, and the worker tries again at its next claim."""
+        pins = self._proved
+        if pins is None or isinstance(pins, ProvedOn):
+            await self._reset_held()
+            return
+        with pins.exclusive():
+            await self._reset_held()
+
+    async def _reset_held(self) -> None:
         """Restore the place from its baseline file and reopen Studio on it (R3.6). Raises
         :class:`place.PlaceStateError`, naming why, when it can't do so safely, and then a person
         is needed:
