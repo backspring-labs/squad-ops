@@ -126,24 +126,15 @@ def _require_private_secret(values: dict[str, str], reference: str) -> None:
 
 def _resolves(values: dict[str, str], reference: str, manager_from_env) -> None:
     """The reference resolves under the env file's secrets provider. The value isn't kept."""
-    saved = {k: os.environ.get(k) for k in values if k.startswith("SQUADOPS__SECRETS__")}
+    manager = manager_from_env(values)
+    if manager is None:
+        raise SystemExit("the env file selects no secrets provider for the reference")
     try:
-        os.environ.update({k: v for k, v in values.items() if k in saved})
-        manager = manager_from_env()
-        if manager is None:
-            raise SystemExit("the env file selects no secrets provider for the reference")
-        try:
-            resolved = manager.resolve(reference)
-        except SecretNotFoundError as e:
-            raise SystemExit(f"{reference} doesn't resolve: {e}") from e
-        if not resolved:
-            raise SystemExit(f"{reference} resolves to an empty secret")
-    finally:
-        for key, value in saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        resolved = manager.resolve(reference)
+    except SecretNotFoundError as e:
+        raise SystemExit(f"{reference} doesn't resolve: {e}") from e
+    if not resolved:
+        raise SystemExit(f"{reference} resolves to an empty secret")
 
 
 def uninstall(paths: ServicePaths) -> int:

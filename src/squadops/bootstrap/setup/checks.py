@@ -28,6 +28,7 @@ from squadops.bootstrap.database_isolation import (
     TEST_DB_ROLE,
     test_role_dsn,
 )
+from squadops.bootstrap.secrets import secret_manager_from_env
 from squadops.bootstrap.setup.credentials import (
     REPO,
     load_registry,
@@ -47,6 +48,13 @@ from squadops.cycles.check_registry import FRAMEWORK_CHECKS
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.models import ProfileNotFoundError
 from squadops.cycles.preflight import model_availability_decision
+from squadops.remote_execution.host_service import (
+    LABEL,
+    ServicePaths,
+    installed_settings,
+    worker_config,
+)
+from squadops.remote_execution.registry import cadence
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.preflight import sandbox_environment_decision
 
@@ -1525,15 +1533,17 @@ def _worker_result(name: str, passed: bool, message: str, fix: str | None = None
     )
 
 
+#: launchd's own word for a job whose process is up, named for the reason ``_SYSTEMD_ACTIVE`` is:
+#: "running" also spells run and task statuses, an unrelated vocabulary (#380).
+_LAUNCHD_RUNNING = "running"
+
+
 def check_worker_service(home: Path | None = None) -> list[CheckResult]:
     """The worker's service, on a Mac that installed it (#3046). A Mac that didn't is asked
     nothing, as a profile with no memory containment is. Reads only what is on this Mac: the
     agent, its settings, the provider's own checks of its tool, and the status the worker
     records. The runtime is never called from here: the worker connects outward, and its host
     reads what the worker says the runtime last answered."""
-    # deferred (cycle): the worker's modules aren't needed by a Mac without the service
-    from squadops.remote_execution.host_service import LABEL, ServicePaths, installed_settings
-
     paths = ServicePaths(home or Path.home())
     try:
         settings = installed_settings(paths)
@@ -1569,7 +1579,7 @@ def _worker_service_state(label: str) -> CheckResult:
         if " = " in line and line.startswith("\t") and not line.startswith("\t\t")
     )
     state, pid = fields.get("state", "unknown"), fields.get("pid")
-    if state != "running":
+    if state != _LAUNCHD_RUNNING:
         why = fields.get("last exit code", "unknown")
         return _worker_result(
             "service", False, f"{label} is {state}, and its last exit was {why}", _WORKER_FIX
@@ -1580,19 +1590,12 @@ def _worker_service_state(label: str) -> CheckResult:
 def _worker_config(settings: dict[str, str]):
     """The worker's config as the agent will start it, its secret's reference resolved (the
     value is never kept), or the failed check."""
-    from squadops.remote_execution.host_service import worker_config
-
     try:
         config = worker_config(settings)
     except ValueError as e:
         return _worker_result("config", False, str(e), _WORKER_FIX)
-    secrets = {k: v for k, v in settings.items() if k.startswith("SQUADOPS__SECRETS__")}
-    saved = {k: os.environ.get(k) for k in secrets}
     try:
-        os.environ.update(secrets)
-        from squadops.bootstrap.secrets import secret_manager_from_env
-
-        manager = secret_manager_from_env()
+        manager = secret_manager_from_env(settings)
         if manager is None or not manager.resolve(config.client_secret):
             return _worker_result(
                 "config", False, "the client's secret reference resolves to nothing", _WORKER_FIX
@@ -1601,12 +1604,6 @@ def _worker_config(settings: dict[str, str]):
         return _worker_result(
             "config", False, f"the client's secret reference doesn't resolve: {e}", _WORKER_FIX
         )
-    finally:
-        for key, value in saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
     return config
 
 
@@ -1623,8 +1620,6 @@ def _worker_provider_checks(config) -> list[CheckResult]:
 def _worker_registered(config, now: datetime | None = None) -> CheckResult:
     """Registered with the runtime, and answered by it within one lease: the worker's own
     record of both."""
-    from squadops.remote_execution.registry import cadence
-
     path = Path(config.status_file).expanduser()
     try:
         status = json.loads(path.read_text(encoding="utf-8"))
