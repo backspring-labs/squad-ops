@@ -11,6 +11,9 @@ is handed:
   assertion's record.
 
 It writes the candidate's scripts into the place, never saves the place and never publishes.
+The runner is created as the worker creates it, from the worker's own ``roblox-studio``
+settings (``SQUADOPS__WORKER__ROBLOX_STUDIO_*``: StudioMCP, the place and baseline files, their
+pins and the proved-on Studio), so a hand run and the worker are held to the same pins.
 
     python scripts/dev/studio_play_scenario.py ~/Code/z_tower-ascension scenario.json
 """
@@ -20,15 +23,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
-from adapters.remote_execution.game_dev_roblox_studio.runner import (
-    OPERATION,
-    PROVIDER,
-    RobloxStudioRunner,
-)
+from adapters.remote_execution.game_dev_roblox_studio import worker
+from adapters.remote_execution.game_dev_roblox_studio.runner import OPERATION, PROVIDER
 from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
 from squadops.remote_execution.models import RemoteOperationRequest
 from squadops.remote_execution.scenario import (
@@ -37,10 +38,13 @@ from squadops.remote_execution.scenario import (
     staged_revision,
 )
 
-STUDIO_MCP = Path("/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP")
+_PREFIX = "SQUADOPS__WORKER__"
 
 
-async def _main(repo: Path, scenario_file: Path, studio_mcp: Path) -> int:
+async def _main(repo: Path, scenario_file: Path) -> int:
+    runner = worker.create_runner(
+        {name: os.environ.get(_PREFIX + name.upper(), "") for name in worker.SETTINGS}
+    )
     files = {
         p.relative_to(repo).as_posix(): p.read_text(encoding="utf-8")
         for p in sorted((repo / "src").rglob("*"))
@@ -58,7 +62,7 @@ async def _main(repo: Path, scenario_file: Path, studio_mcp: Path) -> int:
         dispatch_id="by-hand",
     )  # fmt: skip
     started = time.monotonic()
-    result = await RobloxStudioRunner(studio_mcp).run(request)
+    result = await runner.run(request)
     print(f"{result.status.value} in {time.monotonic() - started:.1f}s {result.reason}")
     for record in result.records:
         print(f"  {record.assertion_id}: {record.outcome.value} ({record.context}) "
@@ -74,9 +78,8 @@ def main() -> int:
         "repo", type=Path, help="the product repository whose src/ is the candidate"
     )
     parser.add_argument("scenario", type=Path, help="a squadops.scenario/1 declaration (JSON)")
-    parser.add_argument("--studio-mcp", type=Path, default=STUDIO_MCP, help="StudioMCP's path")
     args = parser.parse_args()
-    return asyncio.run(_main(args.repo.expanduser(), args.scenario, args.studio_mcp))
+    return asyncio.run(_main(args.repo.expanduser(), args.scenario))
 
 
 if __name__ == "__main__":

@@ -16,7 +16,9 @@ code is refused, as a program the harness doesn't hold.
 ``baseline`` pages the world's ``baseline`` lines (``baseline_after_play`` once play has stopped,
 when given); ``baseline_stall`` answers a page that doesn't advance. ``script_marks`` answers the
 world's ``marked``. ``start_stop_play`` moves the world's ``mode`` between Play and Edit, unless
-``stuck`` holds it, and ``get_studio_state`` reports ``mode`` when the world has one.
+``stuck`` holds it, and ``get_studio_state`` reports ``mode`` when the world has one. Stopping
+play applies ``scripts_after_play`` (path to text) to ``scripts``: an edit made in Studio while
+the scenario ran.
 ``studios_late`` lists no Studio for that many of a session's first ``list_roblox_studios``.
 
 A play session (#3040): ``play`` holds, per context (``server``, ``client``), each instance path
@@ -144,6 +146,7 @@ def start_stop_play(args):
         world["mode"] = "Play" if args["is_start"] else "Edit"
         if not args["is_start"]:
             world["played"] = True
+            world["scripts"].update(world.get("scripts_after_play", {}))
     return text("Game Started" if args["is_start"] else "Game Stopped")
 
 

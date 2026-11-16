@@ -95,13 +95,49 @@ def create_worker_registry_store(provider: str, **kwargs) -> WorkerRegistryStore
     raise ValueError(f"Unknown worker registry store provider: {provider}")
 
 
-def create_operation_runner(provider: str) -> OperationRunnerPort:
-    """The runner for the provider a worker's config names."""
+def create_operation_runner(provider: str, settings: Mapping[str, str]) -> OperationRunnerPort:
+    """The runner for the provider a worker's config names, created with that provider's own
+    settings. ``fixture`` is this package's. Every other provider is found as the
+    ``worker.PROVIDER`` of a provider package under this one, and created by its
+    ``worker.create_runner(settings)``, as ``create_tool_authorities`` finds authorities: a
+    platform's name stays in its own directory (SIP-0117 R4.6). A provider no package serves, or
+    one two packages serve, raises."""
     if provider == "fixture":
         from adapters.remote_execution.fixture_operation_runner import FixtureOperationRunner
 
+        if settings:
+            raise ValueError(
+                f"the fixture provider takes no settings, and was given {sorted(settings)}"
+            )
         return FixtureOperationRunner()
-    raise ValueError(f"Unknown operation runner provider: {provider}")
+    found = _provider_packages("worker")
+    serving = [module for module in found if module.PROVIDER == provider]
+    if len(serving) != 1:
+        known = sorted({"fixture", *(module.PROVIDER for module in found)})
+        raise ValueError(
+            f"{len(serving)} provider packages serve {provider!r}, and exactly one must "
+            f"(the providers found: {known})"
+        )
+    return serving[0].create_runner(settings)
+
+
+def _provider_packages(module: str) -> list:
+    """Every provider package's ``module``, imported. A package without one is skipped, and one
+    that fails to import raises."""
+    import importlib
+    import importlib.util
+    import pkgutil
+
+    import adapters.remote_execution as package
+
+    modules = []
+    for found in pkgutil.iter_modules(package.__path__):
+        if not found.ispkg:
+            continue
+        name = f"{package.__name__}.{found.name}.{module}"
+        if importlib.util.find_spec(name) is not None:
+            modules.append(importlib.import_module(name))
+    return modules
 
 
 def create_tool_authorities() -> dict[str, ToolAuthorityPort]:
@@ -111,21 +147,9 @@ def create_tool_authorities() -> dict[str, ToolAuthorityPort]:
     removing the platform removes its authority, and a tool of a provider with none is refused at
     creation. A package's eligibility module that fails to import raises: a provider that governs
     its products never goes ungoverned in silence."""
-    import importlib
-    import importlib.util
-    import pkgutil
-
-    import adapters.remote_execution as package
-
     authorities: dict[str, ToolAuthorityPort] = {}
-    for found in pkgutil.iter_modules(package.__path__):
-        if not found.ispkg:
-            continue
-        name = f"{package.__name__}.{found.name}.eligibility"
-        if importlib.util.find_spec(name) is None:
-            continue
-        authority = importlib.import_module(name).AUTHORITY
-        authorities[authority.provider] = authority
+    for module in _provider_packages("eligibility"):
+        authorities[module.AUTHORITY.provider] = module.AUTHORITY
     return authorities
 
 
