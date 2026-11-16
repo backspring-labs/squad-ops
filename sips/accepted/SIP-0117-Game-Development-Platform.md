@@ -187,7 +187,7 @@ phases are in its own ledger.
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
 | A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **shipped** | 2.8 (PRs #3086 and #3087, closing #3045; R5.10 and R5.12) |
 | The worker as a service on the MacBook: a per-user LaunchAgent started at login and again on exit, its tool reset (Studio opened on the place) before it registers, its own status recorded, a recorded run window, `doctor dev-mac`'s worker checks and an optional bootstrap step (R5.7, R5.23) | **shipped** | 2.8 (PR #3123; #3046 tracks the rest) |
-| The worker service, the rest: back after a restart of the MacBook and the owner's login, as the owner ruled (R5.23). Registered with the Spark's runtime on 2026-11-16 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
+| The worker service, the rest: registered with the Spark's runtime, and back after a restart of the MacBook and the owner's login, read once on 2026-11-16 and closed on the owner's ruling (R5.23, R5.24) | **shipped** | 2.8 (PR #3130, closing #3046) |
 | The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **shipped** | 2.8 (PR #3059, closing #3047) |
 | Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7, R5.21) | **shipped** | 2.8 (PR #3119, closing #3048) |
 | Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7, R5.22) | **shipped** | 2.8 (PR #3121, closing #3049) |
@@ -1306,6 +1306,50 @@ nothing (#3122, fixed in the same PR).
 
 **Who ruled.** The owner: "go ahead with #3046" (2026-11-16), after the service's label was named. The reading of
 the done-when for FileVault is the owner's too, the same day ("I'm good with your recommendations").
+
+## R5.24 The worker service after a restart: read once, and closed on the owner's ruling (#3046, 2026-11-16)
+
+**What changed.** R5.23 left one check: after a restart of the MacBook and the owner's login, the worker comes back
+and serves with nothing more to do. It was read once, on 2026-11-16. The worker came back by itself. Its
+registration waited on the MacBook's tailnet connection, which the owner started by hand. The owner then set the
+connection to start at login and ruled that the check is not repeated. #3046 closes on that ruling, and the ledger
+row is shipped.
+
+**The reading** (the MacBook restarted and the owner logged in at about 18:00 UTC):
+- **The service:** launchd started the worker at 18:00:21 (`runs = 1`, never exited).
+- **The tool:** the reset at start succeeded at 18:00:45. Studio was reopened on the place, and the worker's status
+  reads `tool_ready: true` with an empty note.
+- **Registration:** from 18:00:46 to 18:06:20 each attempt, one every 3 s, failed at the token endpoint, because
+  `spark` resolves only on the tailnet and the MacBook's Tailscale had come up stopped. None of those attempts reached
+  the Spark. The owner started Tailscale, and the next attempt registered, at 18:06:23, as session `wks-5a21e237…`.
+  The worker was not restarted.
+- **`doctor dev-mac --check worker`** at 18:15: 7 of 7 (`service`, `config`, `studio`, `studio_mcp`, `place`,
+  `qualified`, `registered`).
+- **The Spark's side:** the old session was last heard at 17:55:22. The new one is online, serving
+  `roblox-studio/play_scenario` on Studio 0.747.0.7471481 with the tool list it was qualified on, its heartbeats
+  answered and no refusals.
+- **One claims poll failed** at 18:06:47 with an empty read error. The Spark's log shows claims paused from 18:06:41
+  to 18:06:50 and resumed on a new connection. The session was kept.
+
+**What needed a person, and what was done about it.** Tailscale was not a login item on the MacBook, so after the
+restart the app was not running. The owner added it as a macOS login item the same day. It is a setting on the
+owner's machine, outside the repository, and `bootstrap dev-mac --with-worker` does not set it.
+
+**What this reading leaves unshown:**
+- **Tailscale connecting by itself after it launches at login.** The owner ruled that no second restart is run for it.
+  If it fails, the worker's status file and its log name the cause, as they did here, and the worker registers once
+  the name resolves.
+- **A `play_scenario` claimed from the Spark's runtime by this worker.** R5.23 named an input-free `play_scenario` as
+  the check after a restart. The runtime queues an operation only for a cycle's task (R5.6), and no cycle requests
+  one until the `game_dev_roblox` profile exists (#3041). The reading above is registration, heartbeats, `doctor` and
+  the worker's status. The first operation claimed from the Spark's runtime is read in #3041's cycle on the Spark,
+  and that reading is recorded there. `play_scenario` on the worker's own loop against the real Studio is R5.20's.
+
+**A restart during a run window** now has two conditions before the worker is back: the owner's login (R5.23) and
+the tailnet connection. No request is queued for an offline worker (R5.10, R5.12).
+
+**Who ruled.** The owner, 2026-11-16: "we don't need another restart test", after adding the login item, and "go" on
+the MacBook lane's proposal to close #3046 on that ruling.
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile

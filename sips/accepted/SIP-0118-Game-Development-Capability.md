@@ -85,10 +85,10 @@ placed yet. SIP-0116's phases are in its own ledger.
 | Phase 2a as revision 3 cut it: the specialty table and declaration, the digest pin, both preflights, the isolation test, the profile's `specialties` field | **dropped** by Revision 4 (R4.1): SIP-0116's phases 1, 2 and 5 carry the declarations, the checks, the record and the pin, in its own ledger | — |
 | Phase 2a: the game capability contracts, declared once in `squadops.capabilities` (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`; R4.2), proved with the companion's fixture provider | **shipped** | 2.8 (PR #3019) |
 | Phase 2f, the tolerant emission parser: S6's two broken formats read, every resolving response read as before (R3.4, R5.2) | **shipped** | 2.8 (PR #3091; #3041 tracks the rest) |
-| Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the squad profiles whose agents declare them (R4.1, R4.3, R5.2; replaces F2–F4). Its requirements are switched on only after SIP-0116's phases 2–6 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3041 |
+| Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the `game-dev-roblox` squad profile whose agents declare them (R4.1, R4.3, R5.2, R5.4; replaces F2–F4). The MacBook's `game-dev-roblox-lite-14b` profile is dropped by R5.4. Its requirements are switched on only after SIP-0116's phases 2–6 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3041 |
 | Phase 2g, its eligibility rules: the `roblox-studio` authority over the product's Script Sync layout and a change's footprint, with "no attributes or tags on scripts" checked at the worker (R5.3) | **shipped** | 2.8, PR #3111 |
 | Phase 2g: the product: `z_tower-ascension`'s registration, Development Configuration, baseline and goal set, and the copy compared with the live game; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11; the registration part handed to the Spark lane on 2026-11-15) | 2.8, #3042 |
-| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run (R3.5; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
+| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run, each on the Spark with the MacBook's worker serving play (R3.5, R5.4; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
 | F6: Unity, as the check that the contracts generalize across engines: a second set of skillsets and a provider, with no new core task type | **unplaced**, deliberately: after phase 3 | — |
 
 **What closes this SIP:** phases 2a, 2f, 2g and 3 shipped, with §8's "the squad can build and improve a playable
@@ -174,6 +174,40 @@ three folders carrying attributes or CollectionService tags, and the transaction
 each script. The place's non-script instances are held unchanged by #3039's baseline digest.
 
 **Who ruled.** The split between creation and the worker was agreed with the MacBook lane on 2026-11-15.
+
+---
+
+### R5.4 Every cycle of the game line runs on the Spark (2026-11-16)
+
+**What changed.** R4.1's table names two squad profiles: `game-dev-roblox` for the Spark, and
+`game-dev-roblox-lite-14b` for a machinery check on the MacBook. R3.5 puts the machinery rehearsal on the second. The
+owner ruled on 2026-11-16 that the game line's cycles run on the Spark. So:
+- **`game-dev-roblox-lite-14b` is dropped.** It was never built. Phase 2f builds one squad profile, `game-dev-roblox`.
+- **Phase 3's rehearsal runs on `game-dev-roblox`, on the Spark.** The full-path gate, the repair diagnostic and the
+  counted run are on the Spark too. R3.5's "then a machinery rehearsal on `game-dev-roblox-lite-14b`" reads as a
+  machinery rehearsal on `game-dev-roblox`.
+- **Phase 2f's replay tests and its cycle run on the Spark,** as the done-when already says (R5.2).
+
+**What stays on the MacBook:**
+- Studio, the place and the worker, which serves `play_scenario` for the Spark's cycles (the companion's R5.19 to
+  R5.24);
+- the building: the development profile, the squad profile, the skills' replay cases and the goal set's draft;
+- a plumbing cycle on the MacBook's own deploy before a runtime change merges (the `smoke` squad's self-test). It
+  loads no Roblox skillset and runs no operation.
+
+**Evidence.**
+- The MacBook is the less powerful machine, and it already carries Studio and the worker during a cycle. A click
+  acts only while Studio is the front window (the companion's R5.18), so a squad's models running beside it compete
+  with the one thing only this machine can do.
+- The machinery the dropped profile would have checked is read elsewhere: the machinery Campaign runs the
+  engine-neutral path with a scripted squad and a fixture worker in CI (the companion's ledger, #3050), and the
+  rehearsal on the Spark reads the rest on the real squad.
+
+**What this costs.** A defect in the Roblox profile's wiring is first seen on the Spark, in the rehearsal or in
+phase 2f's cycle, where a MacBook check would have found it earlier.
+
+**Who ruled.** The owner, 2026-11-16: "yes, cycles on the spark. go." Of the plumbing cycles: "small plumbing cycles
+are fine here".
 
 ## R4. Revision 4 (2026-11-09): the composition as requirements and supply
 
