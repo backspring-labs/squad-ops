@@ -181,12 +181,12 @@ phases are in its own ledger.
 | Phase 2d, the place's state: the non-script baseline held through play, the synced scripts checked for attributes and tags, and play started and stopped (R3.6, R5.16) | **shipped** | 2.8 (PR #3112; #3039 tracks the rest) |
 | Phase 2d, the reset: the place restored from its pinned baseline file and Studio reopened with no person involved, the reopened place confirmed unpublished and holding the pinned non-script baseline (R3.6, R5.17) | **shipped** | 2.8 (PR #3113; #3039 tracks the rest) |
 | Phase 2d, the worker's side: the provider's settings in the worker's section, the runner found in its package, each claim held to the Studio it was proved on and the place's pinned baseline (a drifted place reset once), scripts held through play, and `play_scenario` the one operation served (R3.6, R4.3, R5.19) | **shipped** | 2.8 (PR #3116; #3039 tracks the rest) |
-| Phase 2d, the rest: the live run on the Mac's worker, registered with the runtime and claiming `play_scenario`, across a Studio restart with no person involved (R2.4, R5.19) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
+| Phase 2d, the rest: `play_scenario` proved on the worker's own loop against the real Studio, including after a Studio restart with no person involved (R2.4, R5.19, R5.20) | **shipped** | 2.8 (PR #3117, closing #3039) |
 | Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7, R5.18) | **shipped** | 2.8 (PR #3115, #3040) |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
 | A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **shipped** | 2.8 (PRs #3086 and #3087, closing #3045; R5.10 and R5.12) |
-| The worker as a service on the MacBook: launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
+| The worker as a service on the MacBook: launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step, and the worker registered with the Spark's runtime serving `roblox-studio` (R5.7, R5.20) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
 | The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **shipped** | 2.8 (PR #3059, closing #3047) |
 | Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3048 |
 | Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3049 |
@@ -1064,6 +1064,43 @@ play run with Studio behind other windows. Studio's input tools act only on a St
 including after a Studio restart with no person involved (its done-when).
 
 **Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" and their "yes" to this piece (2026-11-15).
+
+## R5.20 Phase 2d proved on the worker, across a Studio restart with no person involved (#3039, 2026-11-16)
+
+**What changed.** #3039's done-when ("each operation is proved on the worker, including after a Studio restart with no
+person involved", R2.4) is met for the one operation R5.19 serves, `play_scenario`. The worker's registration with the
+Spark's runtime moves to #3046, the worker as a service on the MacBook, which already registers with the target
+runtime as its done-when.
+
+**The proof:** `scripts/dev/studio_worker_proof.py`.
+- **The worker's own loop** (`Worker.serve`, the call `worker_main` makes) runs the runner its package creates from the
+  worker's settings (`SQUADOPS__WORKER__ROBLOX_STUDIO_*`).
+- **The runtime** is the real `WorkerRegistry` over its memory store, in the same process. It is called as the worker's
+  HTTP client calls the routes, so the enqueue, claim, lease, cancel and fenced submit are the registry's own.
+
+**Evidence on the real Studio** (0.747.0.7471481, `z_tower-ascension`, 2026-11-16). The scenario clicks the title
+screen's Play button, then reads three assertions: the title gone (client), Energy 50 (server) and the HUD shown
+(client).
+- **Registration:** the worker registered `roblox-studio/play_scenario`, its Studio version and its tool-list digest.
+- **Round 1:** the operation was claimed in 2 s and completed in 85 s, and each of the three assertions passed.
+- **Round 2:** the operation was cancelled after 20 s of play.
+  - The worker saw the cancel at its next lease renewal, 30 s after the claim. It stopped the run and reset its tool.
+    Studio was quit, the place restored from its baseline file and Studio reopened, in 32 s, with no person involved.
+  - The operation was submitted `interrupted` and accepted.
+  - Studio's process changed from 31620 to 87522, and the place file's sha256 equals the baseline's again.
+- **Round 3, on the reopened Studio:** the operation was claimed in 3 s and completed in 82 s, and each of the three
+  assertions passed.
+  - The reopened Studio came to the front by itself, so the click's front check (R5.18) passed with nobody at the Mac.
+
+**What this evidence leaves to other rows:**
+- **#3046:** the worker against the Spark's runtime, over its HTTP client and the tailnet. PR #3027's wiring test runs
+  the same loop over HTTP against the real routes, on one machine.
+- **#3041 and #3105:** an operation queued by a cycle. Only an agent's own task can queue one
+  (`operations:request`), so it needs a cycle on the Roblox development profile with a scenario criterion.
+- **#3046:** the worker running as a service.
+
+**Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" and their go-ahead for this proof, including
+the Studio restart (2026-11-15).
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
