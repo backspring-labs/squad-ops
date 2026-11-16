@@ -7,6 +7,7 @@ case is refused first, and the test fails if launchctl is asked.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -81,3 +82,38 @@ def test_install_refuses_a_secret_that_doesnt_resolve(tmp_path):
         service.install(env_file, Path("/p"), paths)
 
     assert not paths.agent.exists()
+
+
+def test_a_reinstall_waits_for_the_old_agent_to_unload_before_loading_the_new(monkeypatch):
+    """#3046's reinstall from the main checkout failed live: ``bootout`` returned while the old
+    job was still loaded, ``bootstrap`` answered "Input/output error", and the Mac was left with
+    no agent at all. Bug caught: loading before launchd has let go of the old job."""
+    asked = []
+    still_loaded = iter([0, 0, 113])  # print finds the job twice, then not
+
+    def launchctl(*args):
+        asked.append(args[0])
+        code = next(still_loaded) if args[0] == "print" else 0
+        return subprocess.CompletedProcess(["launchctl", *args], code, "", "")
+
+    monkeypatch.setattr(service, "_launchctl", launchctl)
+    monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
+
+    service._unload()
+
+    assert asked == ["bootout", "print", "print", "print"]
+
+
+def test_an_agent_that_wont_unload_stops_the_reinstall(monkeypatch):
+    """Bug caught: a reinstall that goes on to load a second copy over a job that never left."""
+    monkeypatch.setattr(
+        service,
+        "_launchctl",
+        lambda *args: subprocess.CompletedProcess(["launchctl", *args], 0, "", ""),
+    )
+    clock = iter([0.0, 10.0, 40.0])
+    monkeypatch.setattr(service.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
+
+    with pytest.raises(SystemExit, match="still loaded after 30s"):
+        service._unload()
