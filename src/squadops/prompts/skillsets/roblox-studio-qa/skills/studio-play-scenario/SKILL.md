@@ -29,8 +29,10 @@ Only `passed` and `failed` ran. A record that didn't run is never a failure of t
 pass. Report it as not executed, with its reason.
 
 The play as a whole can also end without records:
-- `not_executed` means nothing was played. Examples: Studio isn't the version the worker was proved
-  on, the place isn't its pinned baseline, or another app is in front for a scenario that clicks;
+- `not_executed` means no valid evidence came back. Either the play was refused before it started
+  (Studio isn't the version the worker was proved on, the place isn't its pinned baseline, another
+  app is in front for a scenario that clicks), or it ran and its evidence was discarded because the
+  place's state or its scripts changed during it;
 - `interrupted` means it was cut off once play had begun, so whatever ran is unknown.
 
 Each completed play names the source revision it played and the scenario's digest. So a record

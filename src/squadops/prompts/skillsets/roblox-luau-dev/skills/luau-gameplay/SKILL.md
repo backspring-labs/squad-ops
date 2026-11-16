@@ -46,9 +46,15 @@ The client sends an aim direction, never a target or a damage number. When you a
 ## Rules in a module of their own
 
 Logic that only computes (a rule, a formula, a state transition over plain tables) goes in a
-`src/Shared/Modules/*Rules.luau` or similar module that asks for no service. The service calls it.
-Such a module loads in the headless tests. A module that calls `game:GetService` can only be tested
-by playing it.
+`src/Shared/Modules/*Rules.luau` or similar module, and the service calls it. Such a module loads in
+the headless tests, and it may find the game's other modules the way the game's code does:
+- `require(script.Parent.X)`;
+- `game:GetService("ReplicatedStorage"):WaitForChild("Shared")`, and the same for
+  `ServerScriptService` and `StarterPlayer`, the containers Script Sync fills from `src/`.
+
+What only runs in a live game loads only in Studio, and is tested by playing it: `Players`,
+`RunService` and the engine's other services, `Instance.new`, `task`, remotes and saved data. Keep
+those in the service, and pass what the rule needs in as plain values.
 
 ## Saved data
 

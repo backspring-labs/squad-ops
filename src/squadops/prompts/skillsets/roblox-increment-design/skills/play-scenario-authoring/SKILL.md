@@ -25,10 +25,10 @@ A scenario that can't read its effect would pass or fail on something else.
 ```yaml
 criteria:
   - id: S1
-    statement: The HUD shows the player's energy as "50 / 50"
+    statement: The HUD's energy label reads "50 / 50"
     surface_kind: scenario
     surface: "@player.PlayerGui.TA_HUD.EnergyLabel"   # the path the named assertion observes
-    observable: "after Play, the HUD's EnergyLabel reads 50 / 50"
+    observable: "after Play, the HUD's EnergyLabel's text is exactly 50 / 50"
     scenario:
       schema: squadops.scenario/1
       scenario_id: S1                                 # the criterion's id
@@ -55,16 +55,30 @@ criteria:
         - id: energy-full
           observe: {kind: attribute, path: "@player", name: Energy, context: server}
           expect: {op: equals, value: 50}
-        - id: energy-shown
+        - id: energy-text
           observe: {kind: gui_state, path: "@player.PlayerGui.TA_HUD.EnergyLabel", state: text, context: client}
-          expect: {op: contains, value: "50 / 50"}
-      named_assertion: energy-shown                   # the one the criterion is about
+          expect: {op: equals, value: "50 / 50"}
+      named_assertion: energy-text                    # the one the criterion is about
 ```
 
 The setup is this game's own title screen: it opens on `TA_Title`, and pressing Play removes it and
 shows `TA_HUD`, with the player's `Energy` at 50 on the server. On today's game `hud-shown` and
-`energy-full` pass, and `energy-shown` fails, because the `EnergyLabel` the example change adds
-isn't there yet. Its `surface` is the named assertion's path, and its `scenario_id` is the
+`energy-full` pass, and `energy-text` fails, because the `EnergyLabel` the example change adds
+isn't there yet. `equals` holds the text to exactly what the criterion promises, where `contains`
+would also accept `150 / 500`.
+
+This criterion is about the label's text, and reading text doesn't check that the label is shown.
+That the player sees it is a criterion of its own, beside this one in the same change request, whose
+named assertion is the label's visibility:
+
+```yaml
+        - id: energy-label-shown
+          observe: {kind: gui_state, path: "@player.PlayerGui.TA_HUD.EnergyLabel", state: visible, context: client}
+          expect: {op: equals, value: true}
+```
+
+Visibility can't be a precondition of the text criterion instead. On today's game the label isn't
+there, so the precondition would fail and set the increment aside. Its `surface` is the named assertion's path, and its `scenario_id` is the
 criterion's `id`. A scenario that breaks either is refused.
 
 ## What `roblox-studio/1` reads
@@ -92,9 +106,16 @@ Every observation names its `context`: `client` for what the player's device sho
 `@player`, a part in `Workspace`).
 
 An instance that isn't there observes absent: it meets `{op: absent}` and `not_equals`, and fails
-every other `op`. So never make a `not_equals` the named assertion on something the change adds,
-since it passes on today's game where the thing is missing. A path that doesn't start at a service or
-`@player` can't be read at all, and its assertion reads as not run.
+every other `op`. So expect the value the effect has, with `equals`, `greater_than`, `less_than` or
+`contains`, which a missing instance fails. A `not_equals` passes wherever the thing is missing:
+- **on today's game,** for something the change adds, so it can't be the named assertion there;
+- **on the change,** for something the change deleted. A button's `Active` `not_equals false` fails
+  correctly today, then passes if development removes the button.
+
+So when only `not_equals` says it, add an assertion that the thing is there (`{kind: gui_state,
+state: visible}` with `equals: true`, or a property it always has), which passes on both. Leave that
+out only when the effect is the thing's absence, and then say it with `{op: absent}`. A path that
+doesn't start at a service or `@player` can't be read at all, and its assertion reads as not run.
 
 An `expect` is `{op, value}`, with `op` one of `equals`, `not_equals`, `greater_than`, `less_than`
 or `contains`, or `{op: absent}`, which takes no value. A deadline is at most 60 seconds. A
