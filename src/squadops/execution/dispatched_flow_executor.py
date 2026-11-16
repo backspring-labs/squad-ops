@@ -41,6 +41,7 @@ from squadops.capabilities.context_assembly import (
     RETAKE_CURRENT_FILES_KEY,
     ArtifactFilter,
     ContentsOverLimit,
+    ContentsUnavailable,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
@@ -77,6 +78,9 @@ from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EmissionStatus, banked_as
 from squadops.cycles.failure_attribution import (
+    ARTIFACT_MISSING,
+    ARTIFACT_UNREADABLE,
+    ARTIFACT_UNRETRIEVED,
     CONTENTS_OVER_LIMIT,
     WORKER_UNAVAILABLE,
     TerminalKind,
@@ -93,7 +97,9 @@ from squadops.cycles.manifest_authoring import (
 )
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
+    ArtifactNotFoundError,
     ArtifactRef,
+    ArtifactUnreadableError,
     Cycle,
     DerivedProfileNotFoundError,
     FlowMode,
@@ -864,6 +870,30 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
         increment_id=cycle.increment_id,
         kind=cycle.kind,
         replay_of=replay.source_run_id if replay else None,
+    )
+
+
+def _unavailable_kind(error: Exception) -> str:
+    """How a retrieval failed (#3120): a missing artifact and a damaged one are facts about the
+    vault's contents, and anything else is the vault not answering, or failing otherwise."""
+    if isinstance(error, ArtifactNotFoundError):
+        return ARTIFACT_MISSING
+    if isinstance(error, ArtifactUnreadableError):
+        return ARTIFACT_UNREADABLE
+    return ARTIFACT_UNRETRIEVED
+
+
+def _contents_unavailable(envelope: TaskEnvelope, missing: ContentsUnavailable) -> _ExecutionError:
+    """#3120: the run ends ``infrastructure_failed``, a fault outside the work, when a file of a
+    task's tree can't be read from the vault, classified by how the retrieval failed."""
+    return _ExecutionError(
+        f"task {envelope.task_id} ({envelope.task_type}) can't be handed its tree: {missing}",
+        terminal=RunTerminalDecision(
+            kind=TerminalKind.INFRASTRUCTURE_FAILED,
+            termination_reason=str(missing),
+            failure_classification=missing.kind,
+            task_id=envelope.task_id,
+        ),
     )
 
 
@@ -2022,6 +2052,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return await self._resolve_artifact_contents(envelope.task_type, stored_artifacts)
         except ContentsOverLimit as e:
             raise _contents_refused(envelope, e) from e
+        except ContentsUnavailable as e:
+            raise _contents_unavailable(envelope, e) from e
 
     async def _resolve_artifact_contents(
         self,
@@ -2100,17 +2132,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         sizes: dict[str, int] = {}
         seeded_holder: set[str] = set()
 
+        selected_refs = dict(stored_artifacts)
         for art_id in selected_ids:
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(art_id)
-            except Exception:
-                logger.warning(
-                    "Failed to retrieve artifact %s for build task %s",
-                    art_id,
+            except Exception as e:  # noqa: BLE001 - every way it failed is named, never skipped
+                # #3120: a task handed the tree without this file reads the rest as the whole.
+                raise ContentsUnavailable(
                     task_type,
-                    exc_info=True,
-                )
-                continue
+                    art_id,
+                    getattr(selected_refs.get(art_id), "filename", "an unnamed file"),
+                    _unavailable_kind(e),
+                    e,
+                ) from e
             is_seeded = bool(ref.metadata.get("scaffold_seeded"))
             if is_seeded and ref.filename in contents and ref.filename not in seeded_holder:
                 continue
@@ -3458,6 +3492,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
         except ContentsOverLimit as e:
             raise _contents_refused(envelope, e) from e
+        except ContentsUnavailable as e:
+            raise _contents_unavailable(envelope, e) from e
 
     async def _enriched_envelope(
         self,
