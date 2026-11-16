@@ -1,0 +1,12 @@
+api_version: squadops.skillset/v1
+skillset:
+  id: roblox-luau-dev
+  version: 1
+  description: Writes gameplay changes in Luau for a Roblox game synced by Script Sync
+  roles: [dev]
+  platform: {id: roblox, variants: [studio-place]}
+  prerequisites: []
+  capabilities:
+    - contract: game.gameplay_implementation
+      modes: []
+      skills: [luau-gameplay, shared/luau-conventions]

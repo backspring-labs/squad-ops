@@ -273,9 +273,24 @@ def test_one_invalid_skillset_fails_the_catalog_rather_than_vanishing_from_it(ro
         load_skillsets(root, contracts=CONTRACTS)
 
 
-def test_no_skillset_is_shipped_and_a_missing_directory_is_an_empty_catalog(tmp_path):
+def test_the_packaged_skillsets_load_and_no_profile_requires_one_yet(tmp_path):
+    """The packaged catalog is SIP-0118 phase 2f's Roblox drafts (#3041): every one loads (the
+    loader refuses an invalid one whole), and no registered development profile requires one, so
+    no cycle is offered them until the owner approves them and the profile is switched on. Bugs
+    caught: a draft that doesn't load breaking every cycle's catalog read; a profile requiring a
+    skillset before its skills are approved and replay-tested."""
+    from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+
     assert load_skillsets(tmp_path / "absent") == {}
-    assert load_skillsets() == {}, f"phase 1 ships none; found one under {PACKAGED_SKILLSETS_DIR}"
+    packaged = load_skillsets()
+    required = {
+        r.skillset
+        for profile in DEVELOPMENT_PROFILES.values()
+        for entry in profile.requires
+        for r in entry.any_of
+    }
+    assert packaged, f"no skillset under {PACKAGED_SKILLSETS_DIR}"
+    assert required & set(packaged) == set()
 
 
 def test_a_planned_task_type_resolves_as_its_own_contract_and_others_dont():

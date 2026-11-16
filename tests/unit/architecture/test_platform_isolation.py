@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from squadops.capabilities.skillsets import PACKAGED_SKILLSETS_DIR
+
 REPO = Path(__file__).resolve().parents[3]
 
 #: The names R4.6 confines: the platform's and its provider's (Studio's own MCP server's name with
@@ -29,7 +31,8 @@ SCANNED = ("src", "adapters", "config")
 
 #: R4.6's places, each with the reason it may name the platform.
 ALLOWED = {
-    "src/squadops/skillsets": "the skillset directories",
+    # Where the catalog is read from, so the allowance moves with it.
+    PACKAGED_SKILLSETS_DIR.resolve().relative_to(REPO).as_posix(): "the skillset directories",
     "src/squadops/stacks/development_profiles.py": "the development profile's entry",
     "config/squad-profiles.yaml": "the squad profiles",
     "adapters/remote_execution/game_dev_roblox_studio": "the adapter directory",
