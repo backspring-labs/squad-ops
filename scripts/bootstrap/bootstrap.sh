@@ -10,6 +10,8 @@
 #   --skip-models   Skip Ollama model pulls
 #   --dry-run       Print commands without executing
 #   --yes / -y      Skip confirmation prompts
+#   --with-worker   dev-mac only: install the remote-execution worker as a service, from
+#                   ~/.config/squadops/worker.env (SIP-0117 R5.7, #3046)
 #
 # Example (DGX Spark accessed via Tailscale):
 #   ./scripts/bootstrap/bootstrap.sh local-spark --host spark
@@ -35,6 +37,7 @@ export SKIP_DOCKER=0
 export SKIP_MODELS=0
 export SQUADOPS_HOST="localhost"
 export SQUADOPS_BOOTSTRAP_YES="${SQUADOPS_BOOTSTRAP_YES:-0}"
+WITH_WORKER=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -42,6 +45,7 @@ while [[ $# -gt 0 ]]; do
         --skip-models) SKIP_MODELS=1; shift ;;
         --dry-run)     DRY_RUN=1; shift ;;
         --yes|-y)      SQUADOPS_BOOTSTRAP_YES=1; shift ;;
+        --with-worker) WITH_WORKER=1; shift ;;
         --host)        SQUADOPS_HOST="$2"; shift 2 ;;
         --host=*)      SQUADOPS_HOST="${1#*=}"; shift ;;
         -*)            echo "Unknown option: $1" >&2; exit 1 ;;
@@ -58,6 +62,12 @@ done
 if [[ -z "$PROFILE" ]]; then
     echo "Usage: $0 <profile> [--skip-docker] [--skip-models] [--dry-run] [--yes] [--host <hostname>]"
     echo "Profiles: dev-mac, dev-pc, local-spark"
+    exit 1
+fi
+
+# The worker service is a LaunchAgent: the MacBook's, and no other profile's (#3046).
+if [[ "$WITH_WORKER" == "1" && "$PROFILE" != "dev-mac" ]]; then
+    echo "--with-worker is dev-mac's: the worker service is a per-user LaunchAgent" >&2
     exit 1
 fi
 
@@ -135,6 +145,18 @@ if [[ "$SKIP_DOCKER" != "1" && "$DOCKER_OK" == "1" ]]; then
     info "Provisioning the integration-test database role..."
     bash "${PROJECT_ROOT}/scripts/dev/ops/ensure_test_database.sh" \
         || warn "Test-database provisioning failed — 'squadops doctor ${PROFILE} --check database' will say what is missing (#1180)"
+fi
+
+# ---------------------------------------------------------------------------
+# The remote-execution worker as a service (dev-mac, --with-worker; #3046)
+# ---------------------------------------------------------------------------
+# Optional, and only when asked. install refuses a settings file it can't run whole, so a
+# failure here names what is wrong and leaves no agent half-installed.
+if [[ "$WITH_WORKER" == "1" ]]; then
+    info "Installing the remote-execution worker as a service..."
+    run_or_dry .venv/bin/python scripts/dev/worker_service.py install \
+        --env-file "${HOME}/.config/squadops/worker.env" \
+        || warn "The worker service was not installed — see above; 'squadops doctor dev-mac --check worker' says what is missing"
 fi
 
 # ---------------------------------------------------------------------------

@@ -49,11 +49,12 @@ GENERATED_LOCKFILES = frozenset(
 #: The artifact types an acceptance workspace selects, whatever produced them.
 WORKSPACE_TYPES = ("source", "config")
 
-#: 2.4's limits on a product a source-backed run takes on. The workspace cap is the seeded source
-#: and config text, which every acceptance workspace (one 512 KB resolution) carries whole, with
-#: room left for the squad's own files, so no task works from a truncated tree.
+#: The limits on a product a source-backed run takes on (2.4's, the workspace cap raised by #3118,
+#: SIP-0112 H.32). The workspace cap is the seeded source and config text, which every acceptance
+#: workspace carries whole in one resolution (``context_assembly.ARTIFACT_CONTENTS_LIMIT_BYTES``,
+#: 4 MiB), with 1 MiB left for the squad's own files. A test holds the two apart by that room.
 MAX_FILES = 2000
-MAX_WORKSPACE_BYTES = 384 * 1024
+MAX_WORKSPACE_BYTES = 3 * 1024 * 1024
 #: How much current file content one task is shown in full.
 FOCUS_BUDGET_BYTES = 96 * 1024
 #: Beyond this many paths the map lists directories, with their file counts.

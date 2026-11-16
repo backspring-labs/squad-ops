@@ -57,6 +57,7 @@ from squadops.remote_execution.models import (
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
+    request_size_defect,
 )
 from squadops.remote_execution.waiting import (
     POLL_SECONDS,
@@ -123,6 +124,9 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         self._sleep = sleep
 
     async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+        too_large = request_size_defect(request)
+        if too_large is not None:
+            return ended(request, OperationStatus.NOT_EXECUTED, too_large)
         try:
             return await self._run(request)
         except _SendNotCurrent:

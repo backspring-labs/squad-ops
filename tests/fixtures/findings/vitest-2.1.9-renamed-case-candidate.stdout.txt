@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /work
+
+ ✓ test/c1.test.js > C1: a rule the tally allows > rule limit is allowed
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  16:05:00
+   Duration  136ms (transform 12ms, setup 0ms, collect 9ms, tests 1ms, environment 0ms, prepare 26ms)
+

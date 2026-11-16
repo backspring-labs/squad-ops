@@ -207,8 +207,13 @@ def discrimination_on_runner(
     - **A candidate run that doesn't show its tests ran** (SIP-0096: only executed-and-passed
       credits; SIP-0109 §24cl item 13): a test it skipped, or one expected to fail, isn't failing,
       and isn't passing either. A reading that names no pass count shows nothing: not run.
+    - **A candidate run that doesn't name its passing tests** (#3089): not run, unless the test
+      fails there too. Nothing else shows a baseline failure ran on the candidate at all.
     - **Otherwise** it discriminates when a test fails on the baseline for the intended reason
-      (``_intended``) and doesn't fail on the candidate."""
+      (``_intended``) and its id is among the candidate's passes. A pass is never credited by a
+      test's absence among the failures: a test generated from the product's data
+      (``parametrize`` over ``product.rules()``) the candidate's change renamed is collected under
+      another id, and the one the baseline failed never ran. It reads not run."""
     # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
     from squadops.sandbox.findings import FAILED, comparable
 
@@ -232,9 +237,15 @@ def discrimination_on_runner(
     intended = _intended(baseline)
     if not intended:
         return Discrimination(criterion_id, False, DiscriminationReason.ONLY_SETUP_FAILURES)
-    passing = intended - set(candidate.counts)
+    passes = candidate.passing or frozenset()
+    passing = {key for key in intended if key.removeprefix(f"{FAILED} ") in passes}
     if not passing:
-        return Discrimination(criterion_id, False, DiscriminationReason.FAILS_ON_CANDIDATE)
+        reason = (
+            DiscriminationReason.FAILS_ON_CANDIDATE
+            if intended & set(candidate.counts)
+            else DiscriminationReason.NOT_RUN
+        )
+        return Discrimination(criterion_id, False, reason)
     tests = tuple(sorted(key.removeprefix(f"{FAILED} ") for key in passing))
     return Discrimination(criterion_id, True, DiscriminationReason.DISCRIMINATES, tests)
 

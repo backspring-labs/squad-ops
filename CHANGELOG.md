@@ -6,6 +6,16 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A provider's authority is shown the product a cycle runs on, and Roblox Studio's checks its eligibility**
+  (#3042; SIP-0116 §17n, SIP-0118 R5.3): at creation, an authority's `broken_rules` gets a `ProductView`: the
+  seeded tree at the pinned commit and the ruled change request's footprint. An unreadable product refuses creation,
+  naming why. The `roblox-studio` authority refuses a product whose files break the Script Sync layout, or a change
+  whose footprint names anything but scripts and specs. It is found by `create_tool_authorities` in its own package.
+- **Campaign acceptance credits a criterion's test by its id among the candidate's passes** (#3089; SIP-0109
+  §24dy): each test-id reader keeps its passing ids (pytest's `-rfEp` rows, vitest's verbose `✓` lines, the Luau
+  contract's `PASS` lines), and acceptance's runs are given those flags. A baseline failure the candidate collected
+  under another id (a test generated from the product's data, renamed by the change) reads `not_run`, never
+  discriminating.
 - **An operator lease beside a roll is an intervention** (#2287, part 2; SIP-0109 §24dx): the verification-set
   driver reads the operator lease's log over each cycle's window, records each applied acquire on the roll, and says
   the roll isn't counted.

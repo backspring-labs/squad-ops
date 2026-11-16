@@ -176,6 +176,7 @@ Sizes are the SIPs' own where they give one (S, M, L). A size marked * is this p
 | **The Studio adapter:** the transaction under one lease, the adapter's own sync, paged read-back, the full baseline before and after play, reset (including reopening Studio), deadlines, the deny list, returned edits as revisions, four operations, and the isolation test SIP-0117 R4.6 commits to | #3039 (SIP-0117 phase 2d) | MacBook | L |
 | **The assertion harness and reader:** the harness is the scenario executor over a validated declaration; one structured record per assertion; every outcome produced on purpose | #3040 (SIP-0117 phase 2e) | MacBook | M |
 | **Payload limits:** measure the request, claim and row sizes on the real tree (about 1.7 MB), then set explicit limits from the measurements; captures stay outside 2.8's acceptance evidence | #3049 | MacBook | S* |
+| **The product carried whole** (added by the owner, 2026-11-16: "put 3118 in 2.8 with 3049"): the checkout cap refused z_tower-ascension (2,298 KB against 384 KB). The cap and the resolution's limit are raised together, and a tree past either is refused by name, never cut short. Built with #3049, from the same measurement | #3118 (SIP-0112 H.32) | MacBook | M |
 | **Re-qualification after a Studio update:** a recorded run moves the pin, never a hand edit | #3048 | MacBook | S* |
 | **The worker as a service on the MacBook:** launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step | #3046 | MacBook | M* |
 | **The operator's view of the registry:** a read-only route and `squadops workers list` / `show` | #3047 | **Spark** (ruled, §11.1) | S* |
@@ -317,6 +318,8 @@ effects outside the scenario vocabulary, and any Studio version the worker wasn'
 | #950 | the review packet at the plan gate | **moves to the next feature line** | 2.8 already changes the plan gate (offered contracts), and a second change there makes a regression unattributable |
 | #2781 | a change request that adds a parameterized page | **moves to the next feature line** | a design change that needs its own outside review. The refusal stands, as designed |
 | #2782 | a route anchor hidden by a stylesheet | **stays deferred** to the next evaluator cut that is explicitly placed (2.7's R5) | unchanged |
+| #3089 | Campaign acceptance credits a criterion's test by its absence from the candidate's failures, not by its id among the passes | **in, Spark lane** (placed by the owner, 2026-11-15) | a correctness gap in the acceptance the headline's Campaigns rely on: a test generated from product data reads discriminating on a case that never ran |
+| #3101 | take FastAPI 0.163/Starlette 1.10, aio-pika 10.2 and ruff 0.17, capped after the 2026-11-15 refresh | **moves to 2.9** (placed by the owner, 2026-11-15) | it changes two live paths (the `app.routes` readers and the publisher's return handling), which is a stabilization release's work. Ruff moves with the evaluator image, at an explicitly placed evaluator cut |
 
 **Patches, outside the feature count:**
 - **#3009, first, and the owner's:** from 2026-12-02 GitHub blocks `pull_request_target` in public repositories,
@@ -433,6 +436,7 @@ build check, agent image and deploy are the Spark lane's. Where a ruling assigns
 | MacBook | #3044 | the frozen scenario, declarative | the handler and plan expansion |
 | MacBook | #3039, #3040 | the Studio adapter and the harness | the game plan; they need Studio |
 | MacBook | #3046, #3048, #3049 | the worker service, re-qualification, payload limits | they need the MacBook and Studio |
+| MacBook | #3118 | the product carried whole | the executor and the checkout are the MacBook lane's; built with #3049 (the owner, 2026-11-16) |
 | MacBook | #3041, #3042 | the squad and the product | the game plan |
 | MacBook, then Spark | #3043 | the demonstration: the rehearsal and the diagnostic on the MacBook; the counted run on the Spark | the game plan §5 |
 | Spark | #3053 | Campaign delivery | `campaigns/` acceptance and the product runner |

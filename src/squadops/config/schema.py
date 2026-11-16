@@ -395,12 +395,90 @@ class WorkerConfig(BaseModel):
         min_length=1,
         description="The service client's secret (supports a secret:// reference)",
     )
-    provider: Literal["fixture"] = Field(
+    status_file: str = Field(
+        min_length=1,
+        description=(
+            "Where the worker records its own status (#3046): its tool's reset at start, the "
+            "session it registered as and when the runtime last answered. Its host's doctor "
+            "reads it, since the host never calls the runtime itself"
+        ),
+    )
+    provider: Literal["fixture", "roblox-studio"] = Field(
         description=(
             "The provider whose operations this worker runs (required; the vocabulary is the "
-            "schema's, R2). 'fixture' checks the files a request stages and drives no tool"
+            "schema's, R2). 'fixture' checks the files a request stages and drives no tool. "
+            "'roblox-studio' drives Roblox Studio on this machine (SIP-0117 R3.6, #3039)"
         )
     )
+
+    # The roblox-studio provider's settings (SIP-0117 R3.6, R5.17; #3039). This section is the
+    # one R4.6 lets name a provider. Each is required when it is the provider, and refused when
+    # it isn't: a setting the worker ignores would read as configured.
+    roblox_studio_mcp: str | None = Field(
+        default=None,
+        description="StudioMCP's path (…/RobloxStudio.app/Contents/MacOS/StudioMCP)",
+    )
+    roblox_studio_place_file: str | None = Field(
+        default=None, description="The local place file Studio holds open"
+    )
+    roblox_studio_baseline_file: str | None = Field(
+        default=None, description="The read-only place file a reset restores from"
+    )
+    roblox_studio_baseline_sha256: str | None = Field(
+        default=None, description="The baseline file's pinned sha256"
+    )
+    roblox_studio_baseline_digest: str | None = Field(
+        default=None, description="The pinned digest of the place's non-script baseline"
+    )
+    roblox_studio_qualifications: str | None = Field(
+        default=None,
+        description=(
+            "The directory of the worker's re-qualification records (#3048). The newest passing "
+            "one names the Studio version and tool list the operation was proved on, and another "
+            "Studio reads not executed"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _the_providers_settings_and_no_others(self) -> "WorkerConfig":
+        own = PROVIDER_SETTINGS[self.provider]
+        missing = [name for name in own if not getattr(self, name)]
+        if missing:
+            raise ValueError(
+                f"provider {self.provider} needs "
+                + ", ".join(f"SQUADOPS__WORKER__{n.upper()}" for n in missing)  # fmt: skip
+            )
+        foreign = [
+            name
+            for provider, names in PROVIDER_SETTINGS.items()
+            if provider != self.provider
+            for name in names
+            if getattr(self, name) is not None
+        ]
+        if foreign:
+            raise ValueError(
+                f"provider {self.provider} doesn't read "
+                + ", ".join(f"SQUADOPS__WORKER__{n.upper()}" for n in foreign)
+            )
+        return self
+
+    def provider_settings(self) -> dict[str, str]:
+        """The provider's own settings, by field name, as its runner is created with them."""
+        return {name: getattr(self, name) for name in PROVIDER_SETTINGS[self.provider]}
+
+
+#: Each provider's own settings in :class:`WorkerConfig`.
+PROVIDER_SETTINGS: dict[str, tuple[str, ...]] = {
+    "fixture": (),
+    "roblox-studio": (
+        "roblox_studio_mcp",
+        "roblox_studio_place_file",
+        "roblox_studio_baseline_file",
+        "roblox_studio_baseline_sha256",
+        "roblox_studio_baseline_digest",
+        "roblox_studio_qualifications",
+    ),
+}
 
 
 class SandboxConfig(BaseModel):

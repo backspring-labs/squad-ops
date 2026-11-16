@@ -71,7 +71,7 @@ agent = [
   "tree-sitter>=0.25,<0.26",  # #2814: 0.26.0 corrupts long files' trees
   "tree-sitter-javascript>=0.25",
   "tree-sitter-typescript>=0.23",
-  "ruff>=0.16,<0.17",  # #3101: the evaluator image pins 0.16
+  "ruff==0.16.6",  # #3101: exactly the evaluator image's ruff, which test_evaluator_image holds equal
   "opentelemetry-sdk>=1.22.0",
   "opentelemetry-exporter-otlp-proto-grpc>=1.22.0",
 ]
@@ -91,6 +91,8 @@ auth = ["PyJWT[crypto]>=2.10"] # adapters/auth/keycloak (JWT validation, #2073)
 # (any non-editable install) carries the .py files alone and `load_profile()` finds no
 # profiles — the images sidestep it with `pip install -e .`, a bare install does not.
 squadops = ["**/*.yaml", "**/*.md", "**/*.json", "**/*.cjs"]
+# An adapter's fixed programs, read next to it (#3039: the Studio harness).
+adapters = ["**/*.luau", "**/*.json"]
 
 #######################################
 # Ruff - Linting & basic code hygiene #

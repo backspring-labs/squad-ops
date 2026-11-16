@@ -135,9 +135,26 @@ class ArtifactFilter:
         return artifact_type in self.by_type
 
 
-#: D3: how many bytes of stored content an ``artifact_contents`` resolution reads before it stops.
-#: The executor's resolution and the size preflight's (#2889) both stop here.
-ARTIFACT_CONTENTS_LIMIT_BYTES = 512 * 1024
+#: D3, raised by #3118 (SIP-0112 H.32): the most stored content one ``artifact_contents`` resolution
+#: carries, the evaluation tree's and the curated context's alike. A resolution past it is refused
+#: by name, never cut short (:class:`ContentsOverLimit`): a task given part of a tree reads it as
+#: the whole. The executor and the size preflight (#2889) both refuse here. What a prompt shows is
+#: bounded by the composer's budget, never by this. It was 512 KB, and z_tower-ascension's 2.3 MB of
+#: source and config is the measured product (2026-11-16); the checkout cap leaves room under it for
+#: the squad's own files (``projects.checkout.MAX_WORKSPACE_BYTES``).
+ARTIFACT_CONTENTS_LIMIT_BYTES = 4 * 1024 * 1024
+
+
+class ContentsOverLimit(ValueError):
+    """A resolution would carry more than :data:`ARTIFACT_CONTENTS_LIMIT_BYTES` (#3118)."""
+
+    def __init__(self, task_type: str, total: int, files: int) -> None:
+        self.task_type, self.total, self.files = task_type, total, files
+        super().__init__(
+            f"{task_type}'s context would carry {total:,} bytes over {files} files, past the "
+            f"{ARTIFACT_CONTENTS_LIMIT_BYTES:,}-byte limit, and a task is never handed part of "
+            "a tree"
+        )
 
 
 @dataclass(frozen=True)
@@ -568,12 +585,18 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # injection fires when any planned task carries the flag.
     # --- SIP-0109 §8: an increment's acceptance judges the candidate against the accepted
     # tree, so it is handed both.
+    # #3118: neither renders a prompt, so the trees they're handed are counted as none.
     TaskType.QA_EVALUATE_INCREMENT: ContextAssemblyContract(
-        acceptance_workspace=True, increment_evaluation=True
+        acceptance_workspace=True,
+        increment_evaluation=True,
+        unrendered_inputs=_EVALUATION_ONLY_INPUTS
+        | {"accepted_tree_files", "frozen_bundles", "resolved_config"},
     ),
     # --- SIP-0117 R4.4: the operation runs against the candidate tree at its revision, which
     # the handler stages for the provider. It reads nothing else through this registry.
-    TaskType.QA_RUN_REMOTE_OPERATION: ContextAssemblyContract(acceptance_workspace=True),
+    TaskType.QA_RUN_REMOTE_OPERATION: ContextAssemblyContract(
+        acceptance_workspace=True, unrendered_inputs=_EVALUATION_ONLY_INPUTS
+    ),
     # --- SIP-0110 §0.9: the proposal and the pulse-check repair are authoring seams. Neither
     # threads other context through this registry: the proposal's arrives on its launch
     # (SIP-0109 §9.1), and the pulse repair chain composes its own (SIP-0070).

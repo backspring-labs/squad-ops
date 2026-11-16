@@ -431,6 +431,23 @@ async def test_a_campaign_refuses_a_candidate_that_breaks_an_earlier_scenario_an
     world = await machinery.clones.file_at(PROJECT, final.commit, WORLD_PATH)
     assert json.loads(world) == LIT_OPEN
 
+    # SIP-0116 §17n (#3042), wiring: each cycle's creation showed the fixture tool's authority the
+    # product the cycle is seeded with, at its pinned commit. An increment's own cycle carries no
+    # change request yet (its proposal authors one); the repair carries the ruled one's footprint.
+    from squadops.campaigns.increment_tree import approved_footprint, forwarded_change_request
+
+    shown = machinery.authority.shown
+    assert [project for project, _view in shown] == [PROJECT] * 3
+    for cycle, (_project, view) in zip(cycles, shown, strict=True):
+        assert view.commit == cycle.source_context.pinned_commit
+        assert WORLD_PATH in view.paths
+        assert json.loads(await view.text(WORLD_PATH)) == json.loads(
+            await machinery.clones.file_at(PROJECT, view.commit, WORLD_PATH)
+        )
+    ruled = await forwarded_change_request(machinery.vault, repair)
+    assert [view.footprint for _p, view in shown] == [None, None, approved_footprint(ruled)]
+    assert shown[2][1].footprint
+
 
 def _waits(log) -> list[tuple[int, str]]:
     """Each launch attempt refused for want of a worker: its number and where it left the

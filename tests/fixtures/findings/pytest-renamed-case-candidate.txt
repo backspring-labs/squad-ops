@@ -1,0 +1,4 @@
+.                                                                        [100%]
+=========================== short test summary info ============================
+PASSED tests/test_c1.py::test_rule_is_allowed[limit]
+1 passed in 0.01s

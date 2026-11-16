@@ -18,8 +18,9 @@ The two prompt paths show different files, chosen as the handler chooses its pat
   a ``conftest.py`` or an ``index.html``, never a file the stack names a test. A source file
   whose name carries the plan's is shown twice, as the plan and as a source, and counted twice.
 
-**A known limit** (#2809): when the executor's 512 KB resolution limit stops before the plan, the
-handler loads it from the vault (D3), and no estimate of ``artifact_contents`` sees it. ``qa.test``'s
+**A known limit** (#2809): when the plan isn't in ``artifact_contents``, the handler loads it from
+the vault (D3), and no estimate of ``artifact_contents`` sees it. Since #3118 a resolution is
+refused past its limit rather than stopped short, so that is a plan the filter didn't select. ``qa.test``'s
 own prompt guard (``prompt_guard._guard_prompt_size``) still refuses a prompt over the window by
 name.
 

@@ -108,7 +108,7 @@ async def test_a_queued_operation_is_run_and_settled_with_the_tools_result(w):
     assert session.operations == (PLAY,)
     assert session.tool_versions == {"scripted-editor": "7.2"}
     assert w.runner.runs == [queued.request]
-    assert w.runner.resets == 0
+    assert w.runner.resets == 1  # at start (#3046), and none for a run that ended cleanly
 
 
 async def test_a_cancel_stops_the_tool_resets_it_and_settles_the_operation_interrupted(w):
@@ -130,7 +130,7 @@ async def test_a_cancel_stops_the_tool_resets_it_and_settles_the_operation_inter
     )
     assert operation.result.dispatch_id == "dispatch-1"
     assert len(w.runner.stopped_at) == 1
-    assert w.runner.resets == 1
+    assert w.runner.resets == 2  # at start (#3046), then after the cancel
     assert await w.attempts() == [(1, "accepted")]
 
 
@@ -148,7 +148,7 @@ async def test_a_lease_that_runs_out_unrenewed_stops_the_tool_and_the_next_attem
         w.api.down = {"renew", "claim", "heartbeat", "submit_result"}
 
         async def stopped_and_reset() -> bool:
-            return w.runner.resets == 1
+            return w.runner.resets == 2  # the start's (#3046), then the lease's end
 
         await serving.until(stopped_and_reset)
         assert len(w.runner.stopped_at) == 1
@@ -163,7 +163,7 @@ async def test_a_lease_that_runs_out_unrenewed_stops_the_tool_and_the_next_attem
     assert await w.attempts() == [(1, "expired"), (2, "accepted")]
     assert await w.registry.refusals(queued.operation_id) == []
     assert len(w.runner.runs) == 2
-    assert w.runner.resets == 1
+    assert w.runner.resets == 2
 
 
 async def test_what_the_tool_raises_settles_the_operation_interrupted_with_it(w):
@@ -181,7 +181,7 @@ async def test_what_the_tool_raises_settles_the_operation_interrupted_with_it(w)
         "the tool raised while the operation ran: RuntimeError: the place file is locked"
     )
     assert result.records == ()
-    assert w.runner.resets == 1
+    assert w.runner.resets == 2  # at start (#3046), then after the crash
 
 
 async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
@@ -190,10 +190,10 @@ async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
     the tool; once the tool resets, the one after runs."""
     first = await w.enqueue(dispatch_id="dispatch-1")
     w.runner.run_seconds = None
-    w.runner.reset_raises = ConnectionError("the editor is not answering")
 
     async with Serving(w.worker) as serving:
         await serving.until(w.claimed(first.operation_id))
+        w.runner.reset_raises = ConnectionError("the editor is not answering")
         await w.registry.cancel(first.operation_id)
         await serving.until(w.settled(first.operation_id))
 
@@ -219,7 +219,7 @@ async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
     assert refused.dispatch_id == "dispatch-2"
     assert (await w.stored(third.operation_id)).result == passing("dispatch-3")
     assert [r.dispatch_id for r in w.runner.runs] == ["dispatch-1", "dispatch-3"]
-    assert w.runner.resets == 1
+    assert w.runner.resets == 2  # at start (#3046), and the one that held before the third
 
 
 async def test_a_worker_whose_session_was_ended_stops_its_tool_and_registers_again(w):
@@ -244,7 +244,7 @@ async def test_a_worker_whose_session_was_ended_stops_its_tool_and_registers_aga
     assert session.session_id not in (first.session_id, intruder.session_id)
     assert (await w.stored(queued.operation_id)).result == passing("dispatch-1")
     assert await w.attempts() == [(1, "expired"), (2, "accepted")]
-    assert w.runner.resets == 1
+    assert w.runner.resets == 2  # at start (#3046), then for the session it lost
 
 
 async def test_a_worker_told_to_stop_while_it_is_stopping_its_tool_stops(w):
@@ -263,7 +263,7 @@ async def test_a_worker_told_to_stop_while_it_is_stopping_its_tool_stops(w):
 
         await serving.until(being_stopped)
 
-    assert w.runner.resets == 0
+    assert w.runner.resets == 1  # at start (#3046) only: a worker being stopped resets nothing
     assert (await w.stored(queued.operation_id)).state is OperationState.CLAIMED
 
 
@@ -357,3 +357,91 @@ async def test_a_worker_the_runtime_refuses_stops_and_leaves_nothing_running(w, 
 
     assert ended is refusal
     assert len(w.runner.stopped_at) == 1
+
+
+async def test_a_result_with_evidence_past_its_limit_is_settled_not_executed_naming_it(w):
+    """#3049, entered at ``Worker.serve()``. Bugs caught: a provider's oversized console stored
+    in the operation's row and sent on every reading of it; the item cut to fit, so the evidence
+    reads as complete; or the records credited without the evidence they rest on."""
+    from dataclasses import replace
+
+    from squadops.remote_execution.models import EVIDENCE_ITEM_LIMIT_BYTES, EvidenceItem
+
+    queued = await w.enqueue()
+    w.runner.result = replace(
+        passing("dispatch-1"),
+        evidence=(
+            EvidenceItem("play_log.json", "{}"),
+            EvidenceItem("console.txt", "x" * (EVIDENCE_ITEM_LIMIT_BYTES + 1)),
+        ),
+    )
+
+    async with Serving(w.worker) as serving:
+        await serving.until(w.settled(queued.operation_id))
+
+    result = (await w.stored(queued.operation_id)).result
+    assert (result.status, result.records, result.evidence) == (
+        OperationStatus.NOT_EXECUTED,
+        (),
+        (),
+    )
+    assert result.reason == (
+        "the provider's result can't be returned: evidence item 'console.txt' is 262,145 "
+        "bytes, past the 262,144-byte limit"
+    )
+    assert result.ran_with == {"worker": "worker"}
+
+
+async def test_a_worker_resets_its_tool_before_it_registers_and_records_what_it_knows(w):
+    """#3046, entered at ``Worker.serve()``. Bugs caught:
+    - a worker started after a reboot registering with its tool closed, so its health reads
+      offline and nothing is ever queued for it (an offline worker is handed nothing);
+    - a status that never says the worker registered, or when the runtime last answered, so its
+      host can't tell a worker that serves from one that is cut off."""
+    reports = []
+    worker = Worker(
+        w.api,
+        w.runner,
+        worker_id="macbook",
+        platform="darwin-arm64",
+        clock=w.clock,
+        sleep=sleeping_on(w.clock),
+        runtime_api_url="http://spark.test:8001",
+        report=reports.append,
+    )
+    queued = await w.enqueue()
+
+    async with Serving(worker) as serving:
+        await serving.until(w.settled(queued.operation_id))
+
+    first, last = reports[0], reports[-1]
+    assert (first.tool_ready, first.session_id, w.runner.resets) == (True, None, 1)
+    ((session, _),) = await w.registry.sessions()
+    assert (last.session_id, last.runtime_api_url) == (session.session_id, "http://spark.test:8001")
+    assert last.registered_at is not None and last.last_answer_at >= last.registered_at
+    assert last.to_document()["session_id"] == session.session_id
+
+
+async def test_a_worker_whose_tool_wont_reset_at_start_registers_and_says_why(w):
+    """#3046. Bugs caught: a worker that dies at start when its tool is closed (so the service
+    restarts it in a loop and never registers), or one that registers and runs claims on a tool
+    whose state is unknown."""
+    reports = []
+    w.runner.reset_raises = ConnectionError("Studio is not answering")
+    worker = Worker(
+        w.api, w.runner, worker_id="macbook", platform="darwin-arm64", clock=w.clock,
+        sleep=sleeping_on(w.clock), report=reports.append,
+    )  # fmt: skip
+    queued = await w.enqueue()
+
+    async with Serving(worker) as serving:
+        await serving.until(w.settled(queued.operation_id))
+
+    result = (await w.stored(queued.operation_id)).result
+    assert (reports[0].tool_ready, reports[0].tool_note) == (
+        False,
+        "ConnectionError: Studio is not answering",
+    )
+    assert result.status is OperationStatus.NOT_EXECUTED
+    assert "its tool's state is unknown" in result.reason
+    assert w.runner.runs == []

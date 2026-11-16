@@ -30,6 +30,11 @@ def bootstrap(
     skip_models: bool = typer.Option(False, "--skip-models", help="Skip Ollama model pulls"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be done"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+    with_worker: bool = typer.Option(
+        False,
+        "--with-worker",
+        help="dev-mac only: install the remote-execution worker as a service (#3046)",
+    ),
 ) -> None:
     """Bootstrap the local environment for a given profile."""
     # 1. Validate profile schema before any install (fail fast)
@@ -60,6 +65,8 @@ def bootstrap(
         cmd.append("--dry-run")
     if yes:
         cmd.append("--yes")
+    if with_worker:
+        cmd.append("--with-worker")
 
     # 4. Shell out to bootstrap.sh (R2 — CLI wraps shell)
     result = subprocess.run(cmd, cwd=_BOOTSTRAP_SCRIPT.parents[1].parent)

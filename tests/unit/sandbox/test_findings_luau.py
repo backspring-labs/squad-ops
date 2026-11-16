@@ -56,6 +56,8 @@ def test_each_failure_is_keyed_by_its_tag_and_the_summary_is_read():
         f"{ERROR} tests/Round.spec.luau": "setup",
     }
     assert (reading.collected, reading.passed) == (5, 1)
+    # #3089: each pass by its id, as its failures are keyed, so acceptance credits it by name.
+    assert reading.passing == {f"{SPEC} > award clamps at the cap"}
 
 
 def test_a_clean_run_reads_its_passes_and_no_failures():

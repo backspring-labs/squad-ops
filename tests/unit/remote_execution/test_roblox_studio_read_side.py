@@ -36,6 +36,13 @@ def _tools(**changes) -> list[dict]:
     """The live tool list: the allowed tools, read-only, and a write tool beside them."""
     tools = [{"name": n, "annotations": {"readOnlyHint": True}} for n in sorted(READ_ONLY_TOOLS)]
     tools.append({"name": "execute_luau", "annotations": {"readOnlyHint": False}})
+    for control in (
+        "start_stop_play",
+        "user_mouse_input",
+        "user_keyboard_input",
+        "character_navigation",
+    ):
+        tools.append({"name": control, "annotations": {}})
     for name, marks in changes.items():
         tools = [t for t in tools if t["name"] != name]
         if marks is not None:
@@ -241,17 +248,22 @@ async def test_read_back_names_each_way_the_place_differs_from_the_manifest(tmp_
     assert await _runner(_world(tmp_path)).read_back(exact) == []
 
 
-async def test_the_runner_registers_what_it_runs_with_and_serves_no_operation_yet(tmp_path):
-    """R4.6 and R2.4. Bugs caught: a worker registered without Studio's version or the tool
-    digest, so a changed Studio runs unnoticed; or an operation not yet proved answered as run."""
+async def test_the_runner_registers_what_it_runs_with_and_serves_play_scenario_alone(tmp_path):
+    """R4.6 and R2.4. Bugs caught: a worker registered without Studio's version, the tool digest,
+    the harness's programs or the vocabulary's reader, so a changed Studio or harness runs
+    unnoticed; or an operation it doesn't run answered as run."""
     runner = _runner(_world(tmp_path))
 
     versions = await runner.tool_versions()
-    result = await runner.run(request(ServedOperation("roblox-studio", "play_scenario")))
+    result = await runner.run(request(ServedOperation("roblox-studio", "capture")))
 
     assert versions["roblox-studio"] == "1" and versions["studio"] == "0.747.0"
     assert versions["studio_tools"].startswith(f"{len(_tools())}:")
-    assert (runner.serves(), result.status) == ((), OperationStatus.NOT_EXECUTED)
-    assert "serves no operation yet" in result.reason
+    assert (versions["reader"], len(versions["harness.observe"])) == ("roblox-studio/1", 16)
+    assert runner.serves() == (ServedOperation("roblox-studio", "play_scenario"),)
+    assert result.status is OperationStatus.NOT_EXECUTED
+    assert (
+        "runs roblox-studio/play_scenario, and was asked for roblox-studio/capture" in result.reason
+    )
     assert await runner.health() == "online"
     assert await _runner(_world(tmp_path, studios=[])).health() == "offline"

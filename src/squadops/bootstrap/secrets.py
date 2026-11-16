@@ -9,6 +9,8 @@ the framework config (the runtime API and the agent entrypoint) pass it in.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from squadops.config.env_section import section_from_env
 from squadops.config.schema import SecretsConfig
 from squadops.core.secrets import SecretManager
@@ -28,15 +30,18 @@ def secret_provider_for(secrets_config: SecretsConfig) -> SecretProvider:
     )
 
 
-def secret_manager_from_env() -> SecretManager | None:
+def secret_manager_from_env(
+    variables: Mapping[str, str] | None = None,
+) -> SecretManager | None:
     """The manager for the provider the ``SQUADOPS__SECRETS__*`` variables select, or ``None``
     when they select none (#1982).
 
     For a root that loads only its own config section (the sandbox service, the
     remote-execution worker). Only the provider's selection is read, so such a process resolves
-    the references it is given and holds no other platform secret.
+    the references it is given and holds no other platform secret. ``variables``, when given, are
+    read in place of the environment: the worker service's agent settings (#3046).
     """
-    values = section_from_env(_SECRETS_PREFIX, SecretsConfig.model_fields)
+    values = section_from_env(_SECRETS_PREFIX, SecretsConfig.model_fields, variables)
     if not values:
         return None
     secrets = SecretsConfig.model_validate(values)

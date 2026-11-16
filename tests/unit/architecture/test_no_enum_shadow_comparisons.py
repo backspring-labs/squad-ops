@@ -136,6 +136,9 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # #3039: an MCP tool result's content part type (the Model Context Protocol's own ``"text"``),
     # read from Studio's MCP server; not a scenario argument kind.
     ("adapters/remote_execution/game_dev_roblox_studio/session.py", "text"),
+    # #3040: a KEY of the harness's observe program's JSON answer, which the executor maps to
+    # AssertionOutcome.WRONG_CONTEXT itself; not an outcome compared as a string.
+    ("adapters/remote_execution/game_dev_roblox_studio/play.py", "wrong_context"),
 }
 
 # Enum values this short/common that they produce coincidental matches are not

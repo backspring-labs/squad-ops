@@ -3,6 +3,10 @@
 JSON-RPC, one request per line. Every call has a deadline, and a tool outside the allow-list is
 refused before it is sent (deny by default). Studio answers some errors as a successful result
 (``isError`` false, text ``Error: …``), so an answer is an error whichever way it is marked.
+
+``execute_luau`` is never on the allow-list. A session opened with ``harness=True`` reaches it
+only through :meth:`StudioMcpSession.run_program`, which sends one of the harness's fixed programs
+(``harness``) in the Edit datamodel (D5).
 """
 
 from __future__ import annotations
@@ -15,6 +19,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from adapters.remote_execution.game_dev_roblox_studio import harness as _harness
+
 #: The read-only slice's allow-list (#3039): what the read side calls, and nothing else. Each must
 #: be in the live ``tools/list`` and marked read-only there. ``http_get`` and ``search_asset`` are
 #: marked read-only too, and reach outside Studio, so the allow-list is named, never derived.
@@ -26,6 +32,16 @@ READ_ONLY_TOOLS = frozenset(
         "script_read",
         "get_console_output",
     }
+)
+
+#: The tool the harness's programs run through. Only :meth:`StudioMcpSession.run_program` sends it.
+HARNESS_TOOL = "execute_luau"
+
+#: Studio's own controls a harness session may call: starting and stopping play, and the play
+#: session's input (#3040). None is marked read-only, so they are named here and allowed only to a
+#: session opened for the harness.
+CONTROL_TOOLS = frozenset(
+    {"start_stop_play", "user_mouse_input", "user_keyboard_input", "character_navigation"}
 )
 
 #: The MCP protocol version this session speaks.
@@ -51,15 +67,20 @@ class StudioToolError(StudioSessionError):
 @dataclass(frozen=True)
 class ToolCheck:
     """The live ``tools/list``, as the worker registers it (R4.6): how many tools, and the digest
-    of their schemas, so an operation can read ``not_executed`` when Studio changed under it."""
+    of their schemas, so an operation can read ``not_executed`` when Studio changed under it. The
+    names, sorted, let a re-qualification name the tools an update added or removed (#3048)."""
 
     count: int
     schema_digest: str
+    names: tuple[str, ...]
 
 
-def tool_check(tools: Sequence[Mapping[str, Any]], allowed: frozenset[str]) -> ToolCheck:
+def tool_check(
+    tools: Sequence[Mapping[str, Any]], allowed: frozenset[str], *, harness: bool = False
+) -> ToolCheck:
     """The check of a live ``tools/list`` against ``allowed``, or :class:`StudioSessionError`
-    naming every allowed tool that is missing or isn't marked read-only."""
+    naming every allowed tool that is missing or isn't marked read-only, and, for a session that
+    runs the harness, :data:`HARNESS_TOOL` when it isn't offered."""
     by_name = {str(t.get("name")): t for t in tools}
     problems = [
         f"{name} is not offered" if name not in by_name else f"{name} is not marked read-only"
@@ -67,10 +88,18 @@ def tool_check(tools: Sequence[Mapping[str, Any]], allowed: frozenset[str]) -> T
         if name not in by_name
         or (by_name[name].get("annotations") or {}).get("readOnlyHint") is not True
     ]
+    if harness:
+        problems += [
+            f"{name}, which the harness needs, is not offered"
+            for name in sorted({HARNESS_TOOL, *CONTROL_TOOLS})
+            if name not in by_name
+        ]
     if problems:
         raise StudioSessionError("Studio's tool list fails the allow-list: " + "; ".join(problems))
     canonical = json.dumps(sorted(tools, key=lambda t: str(t.get("name"))), sort_keys=True)
-    return ToolCheck(len(tools), hashlib.sha256(canonical.encode()).hexdigest())
+    return ToolCheck(
+        len(tools), hashlib.sha256(canonical.encode()).hexdigest(), tuple(sorted(by_name))
+    )
 
 
 class StudioMcpSession:
@@ -81,11 +110,17 @@ class StudioMcpSession:
         command: Sequence[str],
         *,
         allowed: frozenset[str] = READ_ONLY_TOOLS,
+        harness: bool = False,
         call_seconds: float = 60.0,
         start_seconds: float = 20.0,
     ) -> None:
         if not command:
             raise ValueError("the StudioMCP command is empty")
+        if HARNESS_TOOL in allowed:
+            raise ValueError(
+                f"{HARNESS_TOOL} runs only the harness's programs, never a direct call"
+            )
+        self._harness = harness
         self._command = tuple(command)
         self._allowed = allowed
         self._call_seconds = call_seconds
@@ -117,7 +152,7 @@ class StudioMcpSession:
         tools = listed.get("tools")
         if not isinstance(tools, list):
             raise StudioSessionError(f"tools/list answered no tool list: {listed!r:.200}")
-        self.tools = tool_check(tools, self._allowed)
+        self.tools = tool_check(tools, self._allowed, harness=self._harness)
         return self.tools
 
     async def close(self) -> None:
@@ -134,18 +169,38 @@ class StudioMcpSession:
     async def call(self, tool: str, arguments: Mapping[str, Any]) -> str:
         """The text ``tool`` answered with, or :class:`StudioToolError`. A tool outside the
         allow-list raises :class:`ToolDenied` before anything is sent."""
-        if tool not in self._allowed:
+        if tool not in self._allowed and not (self._harness and tool in CONTROL_TOOLS):
             raise ToolDenied(f"{tool} is not on the allow-list; it was not sent")
         result = await self._request(
             "tools/call", {"name": tool, "arguments": dict(arguments)}, self._call_seconds
         )
-        content = result.get("content")
-        if not isinstance(content, list):
-            raise StudioSessionError(f"{tool} answered no content: {result!r:.200}")
-        text = "".join(str(c.get("text", "")) for c in content if c.get("type") == "text")
-        if result.get("isError") is True or text.startswith("Error:"):
-            raise StudioToolError(f"{tool}: {text}")
-        return text
+        return _text(tool, result)
+
+    async def run_program(
+        self, name: str, studio_id: str, payload: Any = None, *, datamodel: str = "Edit"
+    ) -> Any:
+        """Run the harness's program ``name`` in ``datamodel`` (the edit place, or a play
+        session's ``Server`` or ``Client``), with ``payload`` as its input, and return its answer
+        decoded from JSON. A session not opened for the harness, or a program asked for in a
+        datamodel it doesn't run in, raises :class:`ToolDenied` before anything is sent."""
+        if not self._harness:
+            raise ToolDenied(f"this session doesn't run the harness; {name} was not sent")
+        if datamodel not in _harness.datamodels_of(name):
+            raise ToolDenied(f"the {name} program doesn't run in {datamodel}; it was not sent")
+        code = _harness.program(name).code(payload)
+        result = await self._request(
+            "tools/call",
+            {
+                "name": HARNESS_TOOL,
+                "arguments": {"studio_id": studio_id, "datamodel_type": datamodel, "code": code},
+            },
+            self._call_seconds,
+        )
+        text = _text(HARNESS_TOOL, result)
+        try:
+            return json.loads(text)
+        except ValueError:
+            raise StudioToolError(f"the {name} program answered no JSON: {text!r:.300}") from None
 
     async def _send(self, message: Mapping[str, Any]) -> None:
         process = self._open_process()
@@ -184,3 +239,15 @@ class StudioMcpSession:
         if self._process is None:
             raise StudioSessionError("the session isn't open")
         return self._process
+
+
+def _text(tool: str, result: Mapping[str, Any]) -> str:
+    """A tool's answer as text, or :class:`StudioToolError` when it is an error, marked as one or
+    not."""
+    content = result.get("content")
+    if not isinstance(content, list):
+        raise StudioSessionError(f"{tool} answered no content: {result!r:.200}")
+    text = "".join(str(c.get("text", "")) for c in content if c.get("type") == "text")
+    if result.get("isError") is True or text.startswith("Error:"):
+        raise StudioToolError(f"{tool}: {text}")
+    return text

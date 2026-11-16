@@ -9,16 +9,19 @@ hold. Same variable convention (``SQUADOPS__<SECTION>__<FIELD>``), one section.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 
-def section_from_env(prefix: str, fields: Iterable[str]) -> dict[str, str]:
-    """The section's variables, keyed by field. A variable under ``prefix`` that names no
-    field raises: a typo would otherwise deploy as an unconfigured default."""
+def section_from_env(
+    prefix: str, fields: Iterable[str], variables: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """The section's variables, keyed by field: from the process's environment, or from
+    ``variables`` when a caller reads a section that isn't its own process's (the worker
+    service's agent, #3046). A variable under ``prefix`` that names no field raises: a typo
+    would otherwise deploy as an unconfigured default."""
+    source = os.environ if variables is None else variables
     values = {
-        key[len(prefix) :].lower(): value
-        for key, value in os.environ.items()
-        if key.startswith(prefix)
+        key[len(prefix) :].lower(): value for key, value in source.items() if key.startswith(prefix)
     }
     unknown = set(values) - set(fields)
     if unknown:

@@ -2003,8 +2003,8 @@ class QATestHandler(_CycleTaskHandler):
         else:
             # Legacy monolithic prompt path (unchanged)
 
-            # The plan the budget counted (#2809), else the vault's when the executor's 512 KB
-            # limit stopped before it (D3).
+            # The plan the budget counted (#2809), else the vault's when the resolution didn't
+            # select it (D3).
             val_plan = validation_plan(inputs.get("artifact_contents") or {})
             if val_plan is None:
                 val_plan = await self._resolve_with_vault_fallback(inputs, VALIDATION_PLAN)

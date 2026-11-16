@@ -79,7 +79,7 @@ def product_tree(
     *, named: tuple[str, ...] = (NAMED,), named_chars: int = 8_000, modules: int = 78
 ) -> dict:
     """The invented product: ``modules`` package modules of 4,400 characters each (78 make about
-    98,000 tokens of source and config, near the checkout's 384 KB limit), its own checks, its
+    98,000 tokens of source and config, inside the checkout's limit), its own checks, its
     instruction file and requirements, and the files a task names, ``named_chars`` each."""
     files = {f"tally/ledger_{i:02d}.py": module(f"ledger_{i:02d}", 4_400) for i in range(modules)}
     files |= {f"checks/check_area_{i}.py": module(f"check_area_{i}", 1_800) for i in range(4)}

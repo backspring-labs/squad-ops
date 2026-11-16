@@ -14,25 +14,39 @@ It runs on the machine that hosts the tool, and connects outward. Nothing connec
     SQUADOPS__WORKER__TOKEN_ENDPOINT=http://<the identity provider>/realms/<realm>/protocol/openid-connect/token \\
     SQUADOPS__WORKER__CLIENT_ID=squadops-worker \\
     SQUADOPS__WORKER__CLIENT_SECRET=<the deploy's SQUADOPS_WORKER_CLIENT_SECRET> \\
+    SQUADOPS__WORKER__STATUS_FILE=<where the worker records its status> \\
     SQUADOPS__WORKER__PROVIDER=fixture \\
     python -m squadops.remote_execution.worker_main
+
+On the MacBook it runs as a per-user service (``scripts/dev/worker_service.py``, #3046).
+
+A provider with settings of its own takes them in the same section, each required for it and
+refused for any other. ``schema.PROVIDER_SETTINGS`` lists them, and its ``WorkerConfig`` fields
+describe them. Its runner is created by its own package (``create_operation_runner`` finds it).
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import platform
 import signal
 import sys
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from squadops.auth.client_credentials import ServiceTokenClient
 from squadops.config.env_section import section_from_env
 from squadops.config.schema import WorkerConfig
 from squadops.core.secrets import SecretManager
 from squadops.remote_execution.serving import Worker
-from squadops.remote_execution.workers import RuntimeAnswerUnreadable, WorkerRefused
+from squadops.remote_execution.workers import (
+    RuntimeAnswerUnreadable,
+    WorkerRefused,
+    WorkerStatus,
+)
 
 _ENV_PREFIX = "SQUADOPS__WORKER__"
 
@@ -59,6 +73,20 @@ def client_secret(config: WorkerConfig, secret_manager: SecretManager | None) ->
     return secret_manager.resolve(secret)
 
 
+def status_writer(path: Path) -> Callable[[WorkerStatus], None]:
+    """Writes the worker's status to ``path`` whole, so a reader never sees half of one. The
+    file is the worker's own: readable by its user alone."""
+
+    def write(status: WorkerStatus) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        partial = path.with_name(path.name + ".partial")
+        partial.write_text(json.dumps(status.to_document(), indent=2) + "\n", encoding="utf-8")
+        os.chmod(partial, 0o600)
+        os.replace(partial, path)
+
+    return write
+
+
 def build_worker(
     config: WorkerConfig, secret_manager: SecretManager | None
 ) -> tuple[Worker, Callable[[], Awaitable[None]]]:
@@ -72,12 +100,14 @@ def build_worker(
         client_secret=client_secret(config, secret_manager),
     )
     api = create_worker_api(config.runtime_api_url, tokens.get_token)
-    runner = create_operation_runner(config.provider)
+    runner = create_operation_runner(config.provider, config.provider_settings())
     worker = Worker(
         api,
         runner,
         worker_id=config.worker_id,
         platform=f"{platform.system().lower()}-{platform.machine().lower()}",
+        runtime_api_url=config.runtime_api_url,
+        report=status_writer(Path(config.status_file).expanduser()),
     )
 
     async def close() -> None:

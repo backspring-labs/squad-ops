@@ -96,7 +96,7 @@ pytest-benchmark>=4.0.0
 memory-profiler>=0.61.0
 
 # Code quality
-ruff>=0.1.0,<0.17  # #3101: the evaluator image pins 0.16, and test_evaluator_image holds them equal
+ruff==0.16.6  # #3101: exactly the evaluator image's (ghcr.io/astral-sh/ruff:0.16.6); test_evaluator_image holds them equal
 flake8>=6.0.0
 # Load-bearing, not a lint tool here: the `undefined_names` check (#689) runs
 # pyflakes in-process, so without it the whole typed-acceptance suite reports

@@ -808,9 +808,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.sandbox_client = sandbox_client
     state.scenario_store = scenario_store
     state.worker_registry = worker_registry
-    # SIP-0116 §8: no provider registers an authority yet (Studio's is #3039), so a cycle whose
-    # work requires a worker tool is refused at creation, naming the provider.
-    state.tool_authorities = {}
+    # SIP-0116 §8, §17n: each provider's authority over its operations, by provider name, found in
+    # its own package (#3042). A worker tool of a provider with none is refused at creation.
+    from adapters.remote_execution.factory import create_tool_authorities
+
+    state.tool_authorities = create_tool_authorities()
     state.campaign_progress = campaign_progress
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault
@@ -872,6 +874,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         tool_authorities=state.tool_authorities,
         worker_registry=worker_registry,
         sandbox_client=sandbox_client,
+        source_repository=state.source_repository,
     )
     branch_rebase = _branch_rebase(
         state, campaigns=projected_campaigns, projects=project_registry, vault=artifact_vault,

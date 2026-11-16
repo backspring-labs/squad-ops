@@ -212,8 +212,13 @@ def test_the_frozen_fixture_is_the_canonical_text_of_its_declaration():
 def test_a_provider_the_factory_doesnt_know_is_refused_by_name():
     """Bug caught: an unknown provider answered with the fixture, so a worker meant for a real
     tool serves the fixture's operation under its name."""
-    with pytest.raises(ValueError, match="Unknown operation runner provider: roblox-studio"):
-        create_operation_runner("roblox-studio")
-    assert [(o.provider, o.operation) for o in create_operation_runner("fixture").serves()] == [
+    with pytest.raises(
+        ValueError,
+        match=r"0 provider packages serve 'unity-editor'.*\['fixture', 'roblox-studio'\]",
+    ):
+        create_operation_runner("unity-editor", {})
+    with pytest.raises(ValueError, match="the fixture provider takes no settings"):
+        create_operation_runner("fixture", {"roblox_studio_mcp": "/x"})
+    assert [(o.provider, o.operation) for o in create_operation_runner("fixture", {}).serves()] == [
         (PROVIDER, OPERATION)
     ]

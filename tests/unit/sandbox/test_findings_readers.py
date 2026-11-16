@@ -383,3 +383,66 @@ def test_a_stored_pass_count_that_isnt_one_is_refused_and_one_stored_before_read
     assert read("ruff", "", "", 0).passed is None
     with pytest.raises(ValueError, match="passed tests are a count"):
         FindingsReading.from_dict({**old, "passed": bad})
+
+
+# --- each pass by its id (#3089) ---------------------------------------------------------------
+
+
+def _page(name: str, exit_code: int, *, verbose: bool) -> FindingsReading:
+    stem = f"vitest-2.1.9-{name}" + ("-verbose" if verbose else "")
+    return read("vitest", _out(f"{stem}.stdout.txt"), _out(f"{stem}.stderr.txt"), exit_code)
+
+
+_P1 = "src/__tests__/criterion_P1.test.jsx > P1: the trail search page > lists a trail matching the query"
+
+
+@pytest.mark.parametrize(
+    ("reading", "passing"),
+    [
+        # Real runs under acceptance's flags: pytest's -rfEp, vitest 2.1.9's verbose reporter.
+        (lambda: read("pytest", _out("pytest-renamed-case-candidate.txt"), "", 0),
+         {"tests/test_c1.py::test_rule_is_allowed[limit]"}),
+        (lambda: _page("page-loader-present-view", 0, verbose=True), {_P1}),
+        # A run that passed nothing names nothing, and says so: none, not unread.
+        (lambda: _page("page-loader-absent-view", 1, verbose=True), set()),
+        (lambda: read("pytest", _out("pytest-renamed-case-baseline.txt"), "", 1), set()),
+        # The same runs as a product's own command prints them name no pass: unread, never empty.
+        (lambda: _page("page-loader-present-view", 0, verbose=False), None),
+        (lambda: read("pytest", "1 passed in 0.01s\n", "", 0), None),
+    ],
+    ids=[
+        "pytest-rp", "vitest-verbose", "vitest-none-passed", "pytest-none-passed",
+        "vitest-default-reporter", "pytest-without-rp",
+    ],
+)  # fmt: skip
+def test_a_runs_passing_tests_are_read_by_their_ids_as_its_failures_are(reading, passing):
+    """Bugs caught: a pass id keyed otherwise than the failure it would credit (vitest's ``✓``
+    line and ``FAIL`` header name one ``<file> > <path>``); a reporter that names no pass read
+    as one that passed none, so every test reads not run, or none does; the stored reading
+    losing them."""
+    found = reading()
+
+    assert found.readable, found.reason
+    assert (None if found.passing is None else set(found.passing)) == passing
+    assert FindingsReading.from_dict(found.as_dict()) == found
+
+
+@pytest.mark.parametrize(
+    ("reader", "stdout", "says"),
+    [
+        ("pytest", "PASSED tests/t.py::test_a\n2 passed in 0.01s\n", "printed 1 PASSED rows for 2 passed"),
+        ("pytest", "PASSED tests/t.py::test_a\nPASSED tests/t.py::test_a\n2 passed in 0.01s\n",
+         "printed 2 PASSED rows for 2 passed"),
+        ("vitest", " ✓ a.test.js > one\n ✓ a.test.js > two\n      Tests  1 passed (1)\n",
+         "printed 2 passing lines for 1 passed"),
+    ],
+    ids=["a-pass-unnamed", "a-pass-named-twice", "more-passes-than-the-summary"],
+)  # fmt: skip
+def test_passes_that_dont_add_up_to_the_summary_are_unreadable_never_credited(reader, stdout, says):
+    """Bug caught: a run whose passing rows the summary doesn't account for (output cut, a test's
+    own print shaped like one) read as naming every pass, so a test it never names could be
+    taken for one that never ran, or a printed line for a pass."""
+    found = read(reader, stdout, "", 0)
+
+    assert (found.readable, found.passing) == (False, None)
+    assert says in found.reason

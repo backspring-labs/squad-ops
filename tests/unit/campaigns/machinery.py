@@ -323,6 +323,8 @@ class Machinery:
     launch: Any = None
     #: The Project's managed clone, which each accepted increment is promoted in.
     clones: Any = None
+    #: The fixture provider's authority, with each product view creation showed it (§17n).
+    authority: Any = None
 
     async def increment(
         self,
@@ -475,10 +477,15 @@ def _stepping(clock):
 
 
 class _Allows:
-    """The fixture provider's authority over its operation (SIP-0116 §8): it allows every use.
-    Production registers none (§14), so a cycle requiring a worker tool is refused there."""
+    """The fixture provider's authority over its operation (SIP-0116 §8): it allows every use,
+    and keeps each product view it is shown (§17n), so a test can read what creation handed it.
+    Production registers only the providers whose packages carry one (§14, §17n)."""
 
-    def broken_rules(self, tool, *, project_id, config) -> list:
+    def __init__(self) -> None:
+        self.shown: list = []
+
+    async def broken_rules(self, tool, *, project_id, config, product) -> list:
+        self.shown.append((project_id, product))
         return []
 
 
@@ -487,18 +494,21 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
     heard by ``CampaignProgress`` and each launch built by ``CampaignLaunchService`` through the
     cycle-create path."""
     from squadops.api.routes.cycles import cycles as create_route
+    from squadops.cycles import development_pin
+    from squadops.execution import size_preflight
     from squadops.stacks.development_profiles import ORIGIN_DERIVED, ProfileSelection
 
     catalog = _scenario_catalog()
     for module in (
         skillsets, product_acceptance, run_remote_operation, dispatched_flow_executor,
-        create_route,
+        create_route, size_preflight,
     ):  # fmt: skip
         monkeypatch.setattr(module, "packaged_skillsets", lambda: catalog)
     # The product's derived profile selects the fixture development profile, which no deployed
-    # registry holds (§14): a cycle created on it requires the fixture skillsets.
+    # registry holds (§14): a cycle created on it requires the fixture skillsets. The one call
+    # that names a launch's profile is patched, so a Campaign's size preflight reads it too.
     monkeypatch.setattr(
-        create_route,
+        development_pin,
         "select_development_profile",
         lambda runners, stack: ProfileSelection("fixture_stack", ORIGIN_DERIVED),
     )
@@ -595,6 +605,7 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
     # The requester's routes read the executor's own router for the send that is current (R5.6).
     path.world.app.state.reply_router = executor._reply_router
     await _squad(monkeypatch, broker, path)
+    authority = _Allows()
     if campaign:
         launcher["service"] = CampaignLaunchService(
             campaigns=campaigns,
@@ -604,8 +615,10 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
                 cycle_registry=registry,
                 deploy_registry=MemoryDeployRegistry(),
                 artifact_vault=vault,
-                tool_authorities={PROVIDER: _Allows()},
+                tool_authorities={PROVIDER: authority},
                 worker_registry=path.registry,
+                # §17n: the managed clone the fixture tool's authority is shown the product from.
+                source_repository=clones,
             ),
             flow_executor=executor,
             event_bus=executor._cycle_event_bus,
@@ -614,5 +627,5 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
     return Machinery(
         path=path, broker=broker, executor=executor, registry=registry, vault=vault,
         scripts=scripts, context=context, record=record, kept=kept, campaigns=campaigns,
-        progress=progress, launch=launcher.get("service"), clones=clones,
+        progress=progress, launch=launcher.get("service"), clones=clones, authority=authority,
     )  # fmt: skip

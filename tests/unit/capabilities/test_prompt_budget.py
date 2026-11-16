@@ -198,3 +198,29 @@ def test_every_template_a_seams_handler_names_is_declared(seams):
     }
 
     assert sorted(named - declared - memory) == []
+
+
+@pytest.mark.parametrize(
+    ("task_type", "handed"),
+    [
+        ("qa.run_remote_operation", ("acceptance_workspace_files",)),
+        ("qa.evaluate_increment", ("acceptance_workspace_files", "accepted_tree_files")),
+    ],
+)
+def test_a_step_that_renders_no_prompt_counts_none_of_the_trees_it_is_handed(task_type, handed):
+    """#3118. Bug caught: the size preflight counting the candidate tree a framework step is
+    handed as prompt, so a product larger than a model's window is refused for a step that
+    never calls the model (z_tower-ascension measured 642,350 tokens against 131,072)."""
+    from squadops.tasks.models import TaskEnvelope
+
+    def envelope(**inputs):
+        return TaskEnvelope(
+            task_id="t", agent_id="eve", cycle_id="c", pulse_id="p", project_id="proj",
+            task_type=task_type, correlation_id="x", causation_id="x", trace_id="x",
+            span_id="x", inputs=inputs,
+        )  # fmt: skip
+
+    tree = {f"src/file{n}.luau": "local x = 1\n" * 20_000 for n in range(10)}
+    with_trees = envelope(workspace_revision_id="ws_1", **{key: tree for key in handed})
+
+    assert prompt_without_memory_tokens(with_trees) == prompt_without_memory_tokens(envelope())

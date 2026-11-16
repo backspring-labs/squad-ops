@@ -138,7 +138,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 4, part 1: tools, checked at creation: the authorization outcome against each provider's registered authority (`ToolAuthorityPort`), and the availability outcome against the worker registry and the sandbox client (§8, §9, §17h) | **shipped** | 2.8 (PR #3077; #3036 tracks part 2) |
 | Phase 4, part 2: availability checked again when an operation task is dispatched, its ending classified `worker_unavailable` (§8, §17h) | **shipped** | 2.8 (PR #3078, closing #3036) |
 | Phase 5, part 1: the Campaign's pinned equipment, a changed one refused at launch with its parts named, and the owner's recorded transition (§10, §17l) | **shipped** | 2.8 (PR #3095; #3037 tracks part 2) |
-| Phase 5, part 2: size preflight counts the skills a Campaign's start would assign (§17f point 6, §17l) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3037 |
+| Phase 5, part 2: size preflight counts the skills a Campaign's start would assign (§17f point 6, §17l, §17m) | **shipped** | 2.8 (PR #3104, closing #3037) |
 | Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
 | Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 
@@ -1138,12 +1138,99 @@ untouched. The three operations join the control log's CHECK list (`2201_campaig
 
 The first three are entered through the machinery Campaign, and the last at the route.
 
-**Part 2, placed (#3037): size preflight counts skills** (§17f point 6). It runs at the Campaign's start, before the
+**Part 2, placed (#3037), built as §17m: size preflight counts skills** (§17f point 6). It runs at the Campaign's start, before the
 first launch has pinned anything. Counting the skills a start would assign needs the same record built at preflight
 from the configuration the first launch will resolve. That is part 2's design.
 
 **Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on
 #3037. It changed from "at start" to "at the first launch" for the reason above.
+
+### 17m. Phase 5, part 2 as built: the size preflight counts each task's skills (2026-11-15)
+
+**One function names the development profile a launch pins** (`cycles/development_pin.py`,
+`development_profile_pin`). It was `_pin_development_profile` inside `prepare_cycle`. The size preflight, which runs
+at a Campaign's start, read the first increment's configuration without it. A record built from that configuration
+could hold another profile's requirements than the first launch's, and the preflight would count the wrong skills with
+nothing to say so. Both now call it, over the derived profile at the record's pin (`derived_profile_at_pin`, moved
+beside it).
+
+**The preflight builds the first launch's record** the way `prepare_cycle` does: `skillset_record_and_content` over
+the packaged catalog, the Campaign's squad and its snapshot hash (`resolve_snapshot`, as the launch resolves it), and
+the pinned configuration.
+
+**Each binding's envelope carries the skills dispatch would hand it.** `skill_supply.handed_skills` is the call
+`SkillSupply.hand` makes, factored out so that both make it. It runs `skills_for_dispatch` plus the check that only an
+authoring seam is offered skills. A task is measured with its own task type's skills: no planner names a contract
+today (§17k). The envelope names the binding's agent, since the record's offered rows are read by agent.
+
+**The measurement and the refusal:**
+- a binding's prompt is its floor with its skills;
+- `skills_tokens` is that floor less the floor without them;
+- a refusal (`PROMPT_OVER_WINDOW`) names each binding's skills and their share, and adds "or lighter skills" to what
+  closes it;
+- a binding handed no skill is documented with the same six keys as before. So a Campaign whose work requires no
+  skillset, which is every Campaign today, measures as it did.
+
+**Refused as `SIZE_UNMEASURED`, naming why:**
+- a record that can't be built: a squad that doesn't cover its work's requirements, or a skill the catalog holds no
+  text for;
+- a skill that can't be read for a task;
+- a development profile the request names that contradicts the product's runners, which the launch would refuse.
+
+None is read as a task handed no skills.
+
+**§14's proof** (`tests/unit/api/test_campaign_calibration_record.py`, entered at the start route):
+- a `qa.test` handed a skill of about 60,000 tokens on the 65,536-token window is refused, naming the skill and its
+  share, where without it the task fits;
+- an uncovered requirement refuses the start unmeasured;
+- with Tally's derived profile naming vitest, the launch pins `node_vitest`, which a cycle with no pin doesn't run. The
+  record the preflight counted from is the record the launched cycle was created with, digest for digest.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12). The design is on #3037
+(comment 6891306034), and is built as posted. #3037 closes with this part.
+
+### 17n. A provider's authority is shown the product a cycle runs on (2026-11-15, §8; #3042; the Spark lane, agreed with the MacBook lane)
+
+**What changed.** §8's authority could rule on a tool, a project id and the cycle's config, and nothing else. The
+`roblox-studio` provider's compatibility checks are its product's eligibility rules (SIP-0117 R4.2, SIP-0118 phase
+2g), so they need the product. The port is now
+`async broken_rules(tool, *, project_id, config, product: ProductView | None)`:
+1. **The view.**
+   - **The tree:** creation reads the product at the cycle's pinned commit once, through `source_checkout.checkout_of`
+     and `seeded_files`, the read a run is seeded from. So the authority sees what the run would be handed, with the
+     same filter and limits, and there is no second tree read.
+   - **Laziness:** `paths` lists every seeded file, and `text(path)` decodes one only when asked. The view is built
+     only when some required tool's provider has a registered authority to ask.
+   - **The footprint:** the ruled change request's, read from the cycle's `plan_artifact_refs` (a repair's or a
+     retry's). It is `None` when the cycle holds no change request yet, which is an increment's own cycle at creation,
+     since its proposal run authors one.
+2. **Three cases, kept apart.**
+   - A cycle on no repository-backed product (a sample application) is shown `None`.
+   - A product whose tree, or whose carried change request, can't be read refuses creation as an authorization
+     finding, naming why. It is never shown as `None`, and never as a view of nothing.
+   - An authority decides what `None` means for its own provider. `roblox-studio`'s reads it as a broken rule.
+3. **Where an authority lives.** `adapters.remote_execution.factory.create_tool_authorities` registers the
+   `eligibility.AUTHORITY` of every provider package under `adapters/remote_execution`, by provider name, and the
+   runtime's root calls it. It finds providers rather than naming them, so a platform's name stays in its own directory
+   (SIP-0117 R4.6), and removing the platform removes its authority. The adapter's import allow-list adds
+   `squadops.ports.tool_authority`.
+
+**What didn't change.** A provider with no authority still has its tools refused at creation. The availability outcome
+is as it was. `tool_checks.authorization_findings` became async, and its one caller already was.
+
+**The evidence.**
+- **Wiring:** `test_machinery_campaign.py`'s two-increment Campaign runs through the real launch path. Each of its three
+  cycles' creation shows the fixture authority the cycle's pinned commit and the seeded tree, its text read from the
+  clone. The two increments carry no footprint, and the repair carries its ruled change request's.
+- **The refusals:** `test_tool_preflight.py` covers a source-backed cycle with no managed clone refusing creation,
+  naming why, with the authority never asked, and a sample application's cycle showing it `None`.
+- **The rules:** `test_roblox_studio_eligibility.py` holds `roblox-studio`'s rules, which go through the factory and
+  `authorization_findings`. Five mutations each fail the tests.
+
+**Who ruled.** The MacBook lane, owner of §8's port, agreed the shape on 2026-11-15, with its four conditions (the
+three cases apart, the footprint's absence explicit, the text read lazy and bounded, and a wiring test). The owner
+handed #3042's registration part to the Spark lane the same day, as the MacBook lane relayed it ("yes hand it to
+spark").
 
 ## Appendix A. A paper compatibility matrix
 

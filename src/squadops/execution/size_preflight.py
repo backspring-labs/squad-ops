@@ -16,13 +16,22 @@ application's Campaign has no record and no product tree, and is never read here
 (``task_plan.dispatched_task_steps``, the reading the #2810 guard reads), on the model its squad
 binds the type's role to:
 - the envelope the increment's run composes from the product: the tree at the calibration record's
-  commit and its manifest (``source_checkout.checkout_of``, ``seeded_files``), selected and capped
+  commit and its manifest (``source_checkout.checkout_of``, ``seeded_files``), selected and held to the limit
   by the executor's own rule (``ArtifactFilter.selects``, ``ARTIFACT_CONTENTS_LIMIT_BYTES``), its
   ``source_repository`` view (``checkout.source_repository_input``), and a repair's forwarded tree
   and failed files (``repair_forwarded_inputs``), with the first increment's resolved config
   (``launch_requests.increment_launch``);
 - counted by the composer's own estimate (``prompt_without_memory_tokens``) with its completion
   reserve (``completion_reserve``), against the model's window (``get_model_spec``).
+
+**With the skills each task is handed (SIP-0116 §17m).** The first launch's skillset record is
+built here as ``prepare_cycle`` builds it (``skillset_record_and_content``, over the packaged
+catalog), under the development profile that launch pins (``development_profile_pin``, the same
+call), and each binding's envelope carries the skills dispatch would hand it
+(``skill_supply.handed_skills``, the same call). A task is measured with the skills of its own
+task type: a planner names no contract today (§17k). A refusal says how many of a binding's
+tokens are its skills, and names them. A Campaign whose work requires no skillset is handed none,
+and measures as before.
 
 **A floor, so it refuses only what can't fit.** The composer's estimate is an upper bound of what
 the handler renders, and it is what holds a task live, so the preflight reads it. What it can't know
@@ -40,7 +49,10 @@ here can still be held live by a larger plan, and the composer still holds it th
 **Require, don't default.** A binding whose model has no window the registry knows, a squad or
 proposal profile that can't be read, and a tree that can't be read (unreachable, refused, past
 2.4's limits on what a run takes on, ``CheckoutTooLarge``, or one a run can't carry) each refuse the
-start as ``SIZE_UNMEASURED``, naming why. None is read as fitting.
+start as ``SIZE_UNMEASURED``, naming why. So does a record that can't be built (a squad that
+doesn't cover its work's requirements, a skill the catalog holds no text for) and a development
+profile the request names that contradicts the product's runners. None is read as fitting, or as a
+task handed no skills.
 """
 
 from __future__ import annotations
@@ -69,14 +81,28 @@ from squadops.capabilities.context_assembly import (
     repair_forwarded_inputs,
 )
 from squadops.capabilities.prompt_budget import completion_reserve, prompt_without_memory_tokens
+from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.cycles.agent_config import UnservedRoleError, resolve_agent_config
-from squadops.cycles.models import CycleError, resolve_config
+from squadops.cycles.development_pin import (
+    derived_profile_at_pin,
+    development_profile_pin,
+    pinned_overrides,
+)
+from squadops.cycles.models import CycleError, PreflightRejectedError, resolve_config
+from squadops.cycles.skillset_content import (
+    SKILLS_INPUT,
+    LoadedSkill,
+    SkillsetContentError,
+    skills_input,
+)
+from squadops.cycles.skillset_record import skillset_record_and_content
 from squadops.cycles.task_plan import (
     DISPATCHED_BY_REPAIR,
     DISPATCHED_BY_WORKLOAD,
     DispatchedStep,
     dispatched_task_steps,
 )
+from squadops.execution.skill_supply import handed_skills
 from squadops.execution.source_checkout import (
     SourceCheckoutRefused,
     checkout_of,
@@ -98,6 +124,7 @@ if TYPE_CHECKING:
     from squadops.cycles.models import Project, SquadProfile
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.cycles.squad_profile import SquadProfilePort
+    from squadops.projects.derived_profile import DerivedProfile
 
 logger = logging.getLogger(__name__)
 
@@ -116,13 +143,19 @@ class BindingSize:
     prompt_tokens: int
     completion_reserve: int
     window: int
+    #: The skills dispatch hands it, as ``skillset/skill``, and how many of ``prompt_tokens`` they
+    #: are: the floor with them, less the floor without them.
+    skills: tuple[str, ...] = ()
+    skills_tokens: int = 0
 
     @property
     def fits(self) -> bool:
         return self.prompt_tokens + self.completion_reserve <= self.window
 
     def to_document(self) -> dict[str, Any]:
-        return {
+        """The binding as a refusal names it. A binding handed skills names them and their
+        tokens; one handed none reads as it did before skills were counted."""
+        document: dict[str, Any] = {
             "task_type": self.task_type,
             "role": self.role,
             "model": self.model,
@@ -130,12 +163,21 @@ class BindingSize:
             "completion_reserve": self.completion_reserve,
             "window": self.window,
         }
+        if self.skills:
+            document.update(skills=list(self.skills), skills_tokens=self.skills_tokens)
+        return document
 
     def named(self) -> str:
+        over = self.prompt_tokens + self.completion_reserve - self.window
+        handed = (
+            f" ({self.skills_tokens} of them the skills it is handed: {', '.join(self.skills)})"
+            if self.skills
+            else ""
+        )
         return (
             f"{self.task_type} ({self.role}, on {self.model}): its prompt is {self.prompt_tokens} "
-            f"tokens and its completion reserve {self.completion_reserve}, over the "
-            f"{self.window}-token window by {self.prompt_tokens + self.completion_reserve - self.window}"
+            f"tokens{handed} and its completion reserve {self.completion_reserve}, over the "
+            f"{self.window}-token window by {over}"
         )
 
 
@@ -152,14 +194,23 @@ async def size_preflight(
     commit, or :class:`CalibrationRecordRefused`: ``BLOCKING_GAP`` naming each binding over its
     window (``PROMPT_OVER_WINDOW``), or ``SIZE_UNMEASURED`` naming what couldn't be measured.
     Reads only; writes nothing."""
-    roster = await _squad(squad_profiles, campaign.policy.squad_profile)
-    resolved = _first_increment_config(campaign, record)
+    roster, roster_hash = await _squad(squad_profiles, campaign.policy.squad_profile)
+    context = _context(project, record)
+    resolved = _pinned(
+        _first_increment_request(campaign, record),
+        await derived_profile_at_pin(registry, context),
+    )
+    equipped = _equipped(campaign, roster, roster_hash, resolved)
     bindings = _bindings(resolved, roster)
-    files, manifest = await _product(project, record, registry=registry, repository=repository)
+    files, manifest = await _product(project, context, registry=registry, repository=repository)
     sizes = tuple(
-        _measured(task_type, step, binding, resolved, files, manifest)
+        _measured(task_type, step, binding, resolved, files, manifest, equipped)
         for task_type, (step, binding) in bindings.items()
     )
+    logger.info(
+        "size_preflight_equipment campaign=%s development_profile=%s skillset_record=%s",
+        campaign.campaign_id, equipped.development_profile, equipped.record["digest"],
+    )  # fmt: skip
     for size in sizes:
         logger.info(
             "size_preflight campaign=%s %s prompt=%d reserve=%d window=%d",
@@ -175,16 +226,19 @@ async def size_preflight(
             "at the least its prompt can be on this tree: "
             + "; ".join(s.named() for s in over)
             + f" ({PROMPT_OVER_WINDOW}; closes by binding the role to a model with a larger "
-            "window, or a smaller product)",
+            "window, or a smaller product"
+            + (", or lighter skills" if any(s.skills for s in over) else "")
+            + ")",
             gaps=[PROMPT_OVER_WINDOW],
             bindings=[s.to_document() for s in over],
         )
     return sizes
 
 
-async def _squad(squad_profiles: SquadProfilePort, profile_id: str) -> SquadProfile:
+async def _squad(squad_profiles: SquadProfilePort, profile_id: str) -> tuple[SquadProfile, str]:
+    """The squad and its snapshot hash, as ``prepare_cycle`` resolves them for the launch."""
     try:
-        return await squad_profiles.get_profile(profile_id)
+        return await squad_profiles.resolve_snapshot(profile_id)
     except CycleError as e:
         raise CalibrationRecordRefused(
             RefusalCause.SIZE_UNMEASURED,
@@ -193,23 +247,72 @@ async def _squad(squad_profiles: SquadProfilePort, profile_id: str) -> SquadProf
         ) from e
 
 
-def _first_increment_config(campaign: Campaign, record: CalibrationRecord) -> dict[str, Any]:
-    """The resolved config of the Campaign's first increment: the request ``increment_launch``
-    builds once the record is promoted, so the tree it proposes on is the record's commit."""
+def _first_increment_request(campaign: Campaign, record: CalibrationRecord) -> dict[str, Any]:
+    """The request body of the Campaign's first increment: the one ``increment_launch`` builds
+    once the record is promoted, so the tree it proposes on is the record's commit."""
     promoted = dataclasses.replace(campaign, accepted=record.accepted_tree)
     try:
-        body = increment_launch(promoted, None).cycle_request["body"]
+        return increment_launch(promoted, None).cycle_request["body"]
     except FileNotFoundError as e:
         raise CalibrationRecordRefused(
             RefusalCause.SIZE_UNMEASURED,
             f"the size preflight can't load proposal profile "
             f"{campaign.policy.proposal_profile!r}, whose tasks it measures: {e}",
         ) from e
-    return resolve_config(body["applied_defaults"], body["execution_overrides"])
+
+
+def _pinned(body: Mapping[str, Any], derived: DerivedProfile | None) -> dict[str, Any]:
+    """The first increment's resolved config with the development profile its launch pins, by
+    the call ``prepare_cycle`` makes. A profile the request names that contradicts the product's
+    runners refuses the launch there, and refuses the start here."""
+    defaults, overrides = body["applied_defaults"], body["execution_overrides"]
+    try:
+        selection = development_profile_pin(resolve_config(defaults, overrides), derived)
+    except PreflightRejectedError as e:
+        raise CalibrationRecordRefused(
+            RefusalCause.SIZE_UNMEASURED,
+            f"the size preflight can't name the development profile the first launch runs "
+            f"under, which the launch would refuse: {e}",
+        ) from e
+    if selection is not None:
+        overrides = pinned_overrides(overrides, selection)
+    return resolve_config(defaults, overrides)
+
+
+@dataclass(frozen=True)
+class _Equipped:
+    """The first launch's skillset record and the kept copy its skills are read from: ``None``
+    when its skillsets load no skill."""
+
+    record: Mapping[str, Any]
+    document: Mapping[str, Any] | None
+
+    @property
+    def development_profile(self) -> str:
+        return str(self.record["development_profile"]["name"])
+
+
+def _equipped(
+    campaign: Campaign, roster: SquadProfile, roster_hash: str, resolved: Mapping[str, Any]
+) -> _Equipped:
+    """The record ``prepare_cycle`` builds for the first launch, or refused naming why."""
+    try:
+        record, document = skillset_record_and_content(
+            roster, roster_hash, resolved, packaged_skillsets()
+        )
+    except (ValueError, SkillsetContentError) as e:
+        raise CalibrationRecordRefused(
+            RefusalCause.SIZE_UNMEASURED,
+            f"the size preflight can't build the skillset record Campaign "
+            f"{campaign.campaign_id}'s first launch is created with, so it can't count the skills "
+            f"each task is handed: {e}",
+        ) from e
+    return _Equipped(record, document)
 
 
 @dataclass(frozen=True)
 class _Binding:
+    agent_id: str
     model: str
     overrides: Mapping[str, Any]
     window: int
@@ -238,7 +341,10 @@ def _bindings(
         if spec is None:
             unknown.append(f"{task_type} ({step.role}, on {agent.model or 'no model'})")
             continue
-        bound[task_type] = (step, _Binding(spec.name, agent.config_overrides, spec.context_window))
+        bound[task_type] = (
+            step,
+            _Binding(agent.agent_id, spec.name, agent.config_overrides, spec.context_window),
+        )
     if unknown:
         raise CalibrationRecordRefused(
             RefusalCause.SIZE_UNMEASURED,
@@ -250,14 +356,12 @@ def _bindings(
     return bound
 
 
-async def _product(
-    project: Project, record: CalibrationRecord, *, registry: ProjectRegistryPort, repository: Any
-) -> tuple[list[_File], CheckoutManifest]:
-    """The checkout at the record's commit, as a run is seeded with it, or refused naming why."""
+def _context(project: Project, record: CalibrationRecord) -> ProjectSourceContext:
+    """The Project pinned at the record's commit and revision."""
     source = project.source
     if source is None:  # a sample application's start has no record, and never reaches here
         raise ValueError(f"Project {project.project_id} has no source to measure")
-    context = ProjectSourceContext(
+    return ProjectSourceContext(
         project_id=project.project_id,
         record_version=project.record_version,
         development_configuration_revision=record.development_configuration_revision,
@@ -268,6 +372,17 @@ async def _product(
         pinned_from=PROJECT_BASELINE,
         previous_verification_ref=None,
     )
+
+
+async def _product(
+    project: Project,
+    context: ProjectSourceContext,
+    *,
+    registry: ProjectRegistryPort,
+    repository: Any,
+) -> tuple[list[_File], CheckoutManifest]:
+    """The checkout at the context's commit, as a run is seeded with it, or refused naming why."""
+    commit = context.pinned_commit
     try:
         tree, manifest = await checkout_of(
             project.project_id, context, repository=repository, registry=registry
@@ -281,7 +396,7 @@ async def _product(
         raise CalibrationRecordRefused(
             RefusalCause.SIZE_UNMEASURED,
             f"the size preflight can't read Project {project.project_id}'s tree at "
-            f"{record.commit} ({reason}): {e}",
+            f"{commit} ({reason}): {e}",
             reason=reason,
         ) from e
     files = [
@@ -298,21 +413,33 @@ def _measured(
     resolved: Mapping[str, Any],
     files: Sequence[_File],
     manifest: CheckoutManifest,
+    equipped: _Equipped,
 ) -> BindingSize:
-    """The binding's prompt at its floor: the least over the files a plan may name (none, for a
-    task that names none)."""
+    """The binding's prompt at its floor, with the skills it is handed: the least over the files
+    a plan may name (none, for a task that names none)."""
     base = {
         "resolved_config": dict(resolved),
         "agent_model": binding.model,
         "agent_config_overrides": dict(binding.overrides),
     }
+    skills = _skills(task_type, binding, base, equipped)
     choices: list[tuple[str, ...]] = (
         [(path,) for path in _least_per_directory(files)] if step.names_files else []
     ) or [()]
-    prompt = min(
-        prompt_without_memory_tokens(_envelope(task_type, {**base, **inputs}))
+    envelopes = [
+        {**base, **inputs}
         for named in choices
         for inputs in _product_inputs(step, task_type, named, files, manifest)
+    ]
+    handed = {SKILLS_INPUT: skills_input(skills)} if skills else {}
+    prompt = min(
+        prompt_without_memory_tokens(_envelope(task_type, binding, {**inputs, **handed}))
+        for inputs in envelopes
+    )
+    without = (
+        min(prompt_without_memory_tokens(_envelope(task_type, binding, i)) for i in envelopes)
+        if skills
+        else prompt
     )
     reserve = completion_reserve(
         task_type,
@@ -320,7 +447,37 @@ def _measured(
         agent_model=binding.model,
         agent_overrides=binding.overrides,
     )
-    return BindingSize(task_type, step.role, binding.model, prompt, reserve or 0, binding.window)
+    return BindingSize(
+        task_type,
+        step.role,
+        binding.model,
+        prompt,
+        reserve or 0,
+        binding.window,
+        skills=tuple(f"{s.skillset}/{s.skill}" for s in skills),
+        skills_tokens=prompt - without,
+    )
+
+
+def _skills(
+    task_type: str, binding: _Binding, base: Mapping[str, Any], equipped: _Equipped
+) -> tuple[LoadedSkill, ...]:
+    """What dispatch hands the binding's task: none when the record's skillsets load no skill."""
+    if equipped.document is None:
+        return ()
+    try:
+        return handed_skills(
+            equipped.document,
+            equipped.record,
+            _envelope(task_type, binding, dict(base)),
+            of="the first launch",
+        )
+    except SkillsetContentError as e:
+        raise CalibrationRecordRefused(
+            RefusalCause.SIZE_UNMEASURED,
+            f"the size preflight can't read the skills {task_type} ({binding.agent_id}) is "
+            f"handed: {e}",
+        ) from e
 
 
 def _least_per_directory(files: Iterable[_File]) -> list[str]:
@@ -402,25 +559,31 @@ def _enriched(
 
 
 def _resolved(files: Sequence[_File], selection: ArtifactFilter) -> dict[str, str]:
-    """The checkout's files a resolution selects, in the run's order, stopping where the
-    executor's does: at the file that takes it past ``ARTIFACT_CONTENTS_LIMIT_BYTES``."""
-    contents: dict[str, str] = {}
-    total = 0
-    for path, text, artifact_type, size in files:
-        if not selection.selects(SOURCE_CHECKOUT, artifact_type):
-            continue
-        total += size
-        if total > ARTIFACT_CONTENTS_LIMIT_BYTES:
-            break
-        contents[path] = text
+    """The checkout's files a resolution selects, refused where the executor's is (#3118): past
+    ``ARTIFACT_CONTENTS_LIMIT_BYTES``, by name, never cut short. The checkout cap keeps a product's
+    own tree under it."""
+    contents = {
+        path: text
+        for path, text, artifact_type, _size in files
+        if selection.selects(SOURCE_CHECKOUT, artifact_type)
+    }
+    total = sum(size for path, _text, _type, size in files if path in contents)
+    if total > ARTIFACT_CONTENTS_LIMIT_BYTES:
+        raise CalibrationRecordRefused(
+            RefusalCause.SIZE_UNMEASURED,
+            f"the size preflight can't hand a task this product's tree: {total:,} bytes over "
+            f"{len(contents)} files, past the {ARTIFACT_CONTENTS_LIMIT_BYTES:,}-byte limit of "
+            "one resolution",
+        )
     return contents
 
 
-def _envelope(task_type: str, inputs: dict[str, Any]) -> TaskEnvelope:
-    """A measurement envelope: the composer reads only its task type and inputs."""
+def _envelope(task_type: str, binding: _Binding, inputs: dict[str, Any]) -> TaskEnvelope:
+    """A measurement envelope: the composer reads only its task type and inputs, and the skills a
+    dispatch is handed are read by its task type and agent."""
     return TaskEnvelope(
         task_id="size-preflight",
-        agent_id="size-preflight",
+        agent_id=binding.agent_id,
         cycle_id="size-preflight",
         pulse_id="size-preflight",
         project_id="size-preflight",

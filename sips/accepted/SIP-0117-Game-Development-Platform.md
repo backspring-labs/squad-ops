@@ -177,15 +177,20 @@ phases are in its own ledger.
 | Phase 2b, part 3: the squad's side: the adapter behind the remote-execution port, its selector on every service that loads the configuration, and how an agent's request reaches the queue (R3.3, R5.3, R5.4, R5.6) | **shipped** | 2.8 (PR #3052, closing #3023) |
 | Phase 2c: the Luau runner (#2906; core, R3.2), built by the Spark lane (the 2.8 plan's decision 4) | **shipped** | 2.8 (PR #3090, closing #2906; R5.13) |
 | Phase 2d, the first slice: the Studio adapter's read side (the session, the tool check, identity as far as reading allows, paged read-back) and the isolation test (R3.6, R4.6, R5.11) | **shipped** | 2.8 (PR #3088; #3039 tracks the rest) |
-| Phase 2d, the rest: the transaction, the adapter's own sync, the baseline, reset, `PlaceId` through the harness, the `roblox-studio` provider's four operations, and the worker's configuration (R3.6, R4.3, R5.7, R5.11) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3039 |
-| Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3040 |
+| Phase 2d, the sync: the harness's fixed programs (identity and sync), `PlaceId` 0 confirmed before any write, and the adapter's own sync with its whole read-back (R3.6, D5, D10, R5.15) | **shipped** | 2.8 (PR #3107; #3039 tracks the rest) |
+| Phase 2d, the place's state: the non-script baseline held through play, the synced scripts checked for attributes and tags, and play started and stopped (R3.6, R5.16) | **shipped** | 2.8 (PR #3112; #3039 tracks the rest) |
+| Phase 2d, the reset: the place restored from its pinned baseline file and Studio reopened with no person involved, the reopened place confirmed unpublished and holding the pinned non-script baseline (R3.6, R5.17) | **shipped** | 2.8 (PR #3113; #3039 tracks the rest) |
+| Phase 2d, the worker's side: the provider's settings in the worker's section, the runner found in its package, each claim held to the Studio it was proved on and the place's pinned baseline (a drifted place reset once), scripts held through play, and `play_scenario` the one operation served (R3.6, R4.3, R5.19) | **shipped** | 2.8 (PR #3116; #3039 tracks the rest) |
+| Phase 2d, the rest: `play_scenario` proved on the worker's own loop against the real Studio, including after a Studio restart with no person involved (R2.4, R5.19, R5.20) | **shipped** | 2.8 (PR #3117, closing #3039) |
+| Phase 2e: the assertion harness and reader: the harness executes a declarative scenario (R3.7, R5.7, R5.18) | **shipped** | 2.8 (PR #3115, #3040) |
 | The frozen scenario, part 1: the declaration read strictly against a vocabulary handed in, its digest, the request carrying its text, the provider's check, one reading shape, the baseline rule, and the fixture's declared-scenario operation (R5.8) | **shipped** | 2.8 (PR #3058; #3044 tracks part 2) |
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
 | A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **shipped** | 2.8 (PRs #3086 and #3087, closing #3045; R5.10 and R5.12) |
-| The worker as a service on the MacBook: launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
+| The worker as a service on the MacBook: a per-user LaunchAgent started at login and again on exit, its tool reset (Studio opened on the place) before it registers, its own status recorded, a recorded run window, `doctor dev-mac`'s worker checks and an optional bootstrap step (R5.7, R5.23) | **shipped** | 2.8 (PR #3123; #3046 tracks the rest) |
+| The worker service, the rest: registered with the Spark's runtime serving `roblox-studio`, and back after a restart of the MacBook and the owner's login (R5.20, R5.23) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
 | The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **shipped** | 2.8 (PR #3059, closing #3047) |
-| Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3048 |
-| Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3049 |
+| Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7, R5.21) | **shipped** | 2.8 (PR #3119, closing #3048) |
+| Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7, R5.22) | **shipped** | 2.8 (PR #3121, closing #3049) |
 | The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **shipped** | 2.8 (PRs #3074, #3080 and #3084, closing #3050). The faults are read on the remote-execution path, on Postgres in the integration job (#3074). The two-increment Campaign runs in the unit regression job, as it needs no service (#3084) |
 | Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
@@ -796,6 +801,498 @@ a planner its shape.
 **Who ruled.** The MacBook lane, with the Spark lane's agreement (2026-11-15), under the owner's "go with your
 recommendations" (2026-11-12).
 
+
+## R5.15 Phase 2d, the sync as built: the harness's fixed programs, and the adapter's own sync (#3039, 2026-11-15)
+
+**The harness's programs are files,** `adapters/remote_execution/game_dev_roblox_studio/harness/*.luau`, each named
+by its digest (`harness.digests()`). D5 holds: `execute_luau` is never on the session's allow-list, and a session
+opened for the harness reaches it only through `run_program`, which sends one of those files in the Edit datamodel.
+- **Input is data, never code.** A program that takes input holds one `{{PAYLOAD}}` token. A call puts its input
+  there as hex-encoded JSON, so the code sent is the file's text with only `0-9a-f` where the token was. A source
+  file holding `]]`, a quote or Luau is written as text.
+- **`identity`** reads `PlaceId`, `GameId`, Edit and running. R5.11 left `PlaceId` 0 to the harness, and this is
+  it: a sync refuses before writing unless `PlaceId` and `GameId` are 0, Studio is in Edit, and no play is running.
+- **`sync`** writes scripts with their classes and removes scripts. A script whose class changed becomes a new
+  instance of the new class and keeps its children. A missing folder is made.
+
+**The adapter's sync** (`place.sync`, `RobloxStudioRunner.sync`, D10):
+- **What it writes:** only what differs from a read of the place: a missing script, changed text, or a changed class.
+- **What it removes:** every script in the three folders the manifest doesn't hold.
+- **Ordering:** writes go parents first and removes children first, in calls of at most 200,000 bytes of source.
+- **Refused before anything is written:**
+  - a manifest that drops a script it keeps a script inside;
+  - a file under a synced folder the provider can't place;
+  - a place that isn't a local one in Edit.
+- **Confirmed by reading the place back whole.** A sync is done only when the read-back matches the manifest, and
+  any difference is named. The program's own count is checked, and never taken as the confirmation.
+- **Script Sync's `X/init.luau`** is the script `X`, and the other files in `X/` are its children. R5.11's mapping
+  placed it as a script named `init` inside a folder `X`, where the game's `require(script.Parent.X)` would find a
+  Folder. `X.luau` beside `X/init.luau` is two scripts with one name, and is refused.
+
+**Evidence on the real place** (Studio 0.747, `ta-copy.rbxl`, `scripts/dev/studio_sync.py --round-trip`):
+- **Identity** read `PlaceId` 0 and `GameId` 0, in Edit.
+- **A changed tree** was synced in 12.0 s: one Shared module edited, one added (with `é`, `]]` and backslashes in its
+  text), and one client module removed. It wrote 2, removed 1, and matched on read-back.
+- **The repository's own `src/`** was synced back in 12.9 s, and `studio_read_back.py` then read 137 scripts with 0
+  differences.
+
+Nothing was saved and nothing was published.
+
+**Not served yet.** `serves()` is still empty: `sync_source` is served once it is proved on the worker, a Studio
+restart included (R2.4). The transaction, the non-script baseline, reset and reopening Studio, and play are #3039's
+rest. The owner approved writing into the local `ta-copy.rbxl` on 2026-11-15.
+
+**Who ruled.** The MacBook lane, under the owner's "go with your recommendations" (2026-11-12) and their approval of
+writes to the local copy (2026-11-15).
+
+## R5.16 Phase 2d, the place's state as built: the baseline, the script marks and the frame around play (#3039, 2026-11-15)
+
+**The non-script baseline is the harness's `baseline` program.** It reads only.
+- **The lines:** it walks the place's services and writes one line per instance: its path, its class, its attributes,
+  its CollectionService tags, and the properties a stated set names for the classes it is. Examples are a part's
+  `CFrame`, `Size` and `Material`; a light's `Brightness`; a joint's `Part0` and `Part1` as paths; a `ValueBase`'s
+  `Value`; a GUI object's layout; and a sound's id. Numbers are written to nine significant digits.
+- **Exclusions,** each for its reason:
+  - Scripts outside the three synced folders carry their whole source.
+  - The synced folders' contents are left to the script read-back, which covers them whole.
+  - Camera instances are left out, because Studio moves the camera with the viewport.
+  - Terrain's voxels are left out, because no property reads them.
+- **Pages:** the lines are sorted, kept in `_G` under a snapshot id, and paged back in pages of at most 40,000
+  characters. The worker digests them. A total that moves between pages, or a page that doesn't advance, is
+  refused. The snapshot is released however the read ends.
+- **`baseline_changes`** names each instance that appeared, went or changed, with each changed field's old and new
+  value. "The place changed" alone isn't enough to act on.
+
+**The script marks are the harness's `script_marks` program.** It names every script in the three synced folders
+that carries attributes or tags. This is #3042's eligibility rule, placed at the worker: Script Sync's files can't
+carry either, so the tree read at creation can't show them (SIP-0118 R5.3).
+
+**Play:**
+- `start_stop_play` is a control tool, not marked read-only. So it is named in the session's `CONTROL_TOOLS` and
+  allowed only to a session opened for the harness. A harness session requires both it and `execute_luau` offered.
+- Each start and stop waits, under a deadline, until Studio reports Play or Edit.
+
+**`RobloxStudioRunner.play_round`** is the frame `play_scenario` will run inside:
+1. Confirm an unpublished local place in Edit.
+2. Refuse marked scripts before play.
+3. Take the baseline.
+4. Start play, then stop it.
+5. Take the baseline again.
+6. Refuse any change, naming it.
+
+**Evidence on the real place** (Studio 0.747, `ta-copy.rbxl`):
+- **Stable:** the baseline read 22,852 instances (S1 counted 22,840) and 10.5 million characters, in 266 pages of
+  about 19 s. Two reads gave the same digest, and no property was unreadable.
+- **Sensitive:** a scratch program moved `Workspace/Baseplate` by 0.01 studs. The comparison named that one instance
+  and its `CFrame`. Moving it back restored the original baseline exactly.
+- **A whole round held:** `scripts/dev/studio_play_round.py` started play (about 4 s), stopped it, and held 22,852
+  instances with one digest before and after. It took 42.8 s.
+
+Nothing was saved and nothing was published.
+
+**Still #3039's:**
+- the transaction under one lease;
+- reset from `ta-copy.pristine.rbxl` with Studio reopened and no person involved;
+- the four operations served, once each is proved across a Studio restart;
+- editor edits returned as a revision;
+- the worker's configuration, with its provider found the way the runtime finds `eligibility.AUTHORITY` (R4.6).
+
+**Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" (2026-11-15) and their approval of writes to
+the local copy.
+
+## R5.17 Phase 2d, the reset as built: the place restored, and Studio reopened with no person involved (#3039, 2026-11-15)
+
+**`RobloxStudioRunner.reset()`** answers R3.6's open item: "reopening Studio on that file without a person is phase
+2d's to prove". The worker is configured with `PlaceFiles`:
+- the place file Studio opens;
+- the read-only baseline file;
+- the baseline file's pinned sha256;
+- the pinned non-script baseline digest (R5.16) the reopened place must hold.
+
+**The steps, each refusing when it can't be done safely:**
+1. **The baseline file must match its pin,** or nothing is touched.
+2. **Only its own Studio is quit.** That means exactly one Studio process, whose MCP server reports exactly the place
+   file. More than one, a Studio holding another file, or one whose server doesn't answer is refused, and a person is
+   needed. A Studio showing a save prompt ignores a quit, so the reset asks first and kills only when it won't go.
+3. **Studio's lock is removed only when the process it names is gone.** A lock held by a running process, or one
+   naming no process, is refused, since opening the place twice would let one save overwrite the other.
+4. **The baseline is copied in whole:** staged, made writable for Studio, and renamed into place, then checked against
+   its pin.
+5. **Studio is reopened** (`open -a`). The reopened place must come back as the place file, as an unpublished local
+   place in Edit, holding the pinned non-script baseline.
+
+**A runner given no place files refuses to reset.** The first slice's reset only confirmed identity, a no-op the
+worker would have read as a place ready for the next transaction.
+
+**`StudioApp`** is what the reset asks of the Mac: process ids, liveness, quit or kill, and open. `MacStudioApp`
+(`pgrep -x`, a signal, `open -a`) is the real one, and a test stands in for it. The module is `studio_app.py`, marked
+`# Platform: dev-mac`.
+
+**Found live, and fixed:** `StudioMCP` lists no Studio for its first seconds. A reset that read the first answer
+refused to quit the Studio it was resetting. `place.connected_studios` now polls, as `identity` did, and both use it.
+
+**Evidence on the real place** (Studio 0.747, with the owner's approval of 2026-11-15):
+- **The first live reset was done by hand:** SIGTERM was ignored, so it took SIGKILL. A stale lock was removed, the
+  pristine file copied in and Studio reopened. MCP saw the place in Edit within 2 s under a new Studio id, and no
+  dialog appeared.
+- **The adapter's reset:**
+  - **Setup:** the Baseplate was first moved 0.01 studs, so the baseline read `3ccc8c0f…`.
+  - **The run:** `scripts/dev/studio_reset.py` quit Studio, restored the file and reopened it, holding the pinned
+    `354636ad…`, in 27.0 s.
+- **On the restarted Studio:**
+  - the tool list was unchanged (38 tools, schema digest `1ba499d8…`);
+  - a read-back gave 0 differences against `src/`;
+  - a sync round trip wrote 2 and removed 1, then restored them;
+  - a play round held 22,852 instances.
+
+The place file overwritten by the first reset was kept: it was last saved during S1, and its sha256 is `afebe669…`.
+
+**Still #3039's:**
+- the transaction under one lease;
+- the four operations served, each with its worker configuration. The provider will be found the way the runtime finds
+  `eligibility.AUTHORITY` (R4.6);
+- editor edits returned as a revision.
+
+`play_scenario` serves once #3040's harness executes a scenario.
+
+**Who ruled.** The owner approved the force-quit and reopening on 2026-11-15 ("Yes, now"). The design is the
+MacBook lane's, under "go ahead with #3039".
+
+## R5.18 Phase 2e as built: the scenario executor, its records, and Studio in front (#3040, 2026-11-15)
+
+**`RobloxStudioRunner.run` serves `roblox-studio/play_scenario`** as one transaction:
+1. the handed scenario checked against its frozen digest and the `roblox-studio/1` vocabulary;
+2. every candidate file checked as one the adapter places;
+3. Studio checked as the app in front;
+4. identity, sync and the script-marks check;
+5. the non-script baseline;
+6. play started, then the scenario's setup, steps and assertions;
+7. play stopped in a `finally`;
+8. the baseline read again.
+
+Anything before play ends `not_executed` with its reason, and so does a place whose non-script state moved through
+play. A session that fails after play began ends `interrupted`.
+
+**Where R3.7 is narrowed or changed, with the evidence:**
+
+| R3.7 says | As built | Evidence |
+|---|---|---|
+| the harness emits one structured record per assertion, and S1 showed the console as its channel | **The channel is the `observe` program's answer, never the console.** Each observation runs the fixed `observe` program (R5.15's mechanism, with a hex payload) in the context's datamodel, Server or Client. It answers exactly one of `value`, `absent`, `unsupported`, `unreadable` or `wrong_context`. The adapter builds the record from that answer. Console text is kept as evidence and never read for an outcome, so a line from an earlier session can't be read either | a value returned by a call can't be confused with another session's line. Printing and parsing console lines would add a channel and a nonce for nothing |
+| each record carries the play-session id and the source revision | **Each record carries its assertion id, outcome, observed and expected values, and context.** The play-session id (a fresh one per transaction) and the source revision are on the result's `ran_with` and in `play_log.json`, once per run | one transaction is one session and one revision |
+| the execution context: server or client, and which client | **One client:** `@player` names the session's one player, `LocalPlayer` on the client and the only player on the server. More than one player reads `missing` | Studio's play session has one client |
+| `wrong_context` | **The program checks `RunService` against the context it was sent for.** No correct declaration produces `wrong_context`, since the adapter maps each context to its datamodel. It is the guard against that mapping going wrong | produced live by swapping the two datamodels on the real path (below) |
+| a game with a title screen passes it in every scenario's setup | **The scenario's author declares it,** with `wait_until` and `click_gui`, and the reviewer sees it in `scenario_review.md` (R5.9). A setup that can't pass it makes every assertion read `setup_failed`. The executor doesn't require it of a scenario, since a game with no title screen has none | z_tower-ascension's scenarios pass `TA_Title` this way |
+| — | **The vocabulary as executed:** `click_gui` moves the mouse to the object and presses and releases it, in one call, after checking that the object is shown. `hold_key` holds a key down for its seconds. `move_to` navigates and waits until the character is within 1 stud. `wait_until` polls. A setup that can't be done, or a setup `wait_until` that isn't met, makes every assertion `setup_failed`. A step that can't be done does too. A step's `wait_until` that isn't met doesn't stop the scenario | Studio's one-step click never answered. A hidden button takes a click and does nothing, which would read as done |
+| — | **Studio must be the app in front.** A scenario with any input action (`click_gui`, `hold_key`, `move_to`) is refused before anything syncs unless a Studio process is in front (`StudioApp.frontmost`, `lsappinfo` on the Mac). The refusal also covers no app in front, and a front that can't be read | **found live:** with Terminal in front, the click hung three times at 60 s. With Studio clicked to the front, it passed at once, twice running. Keys and navigation answered with Studio behind, and whether they took effect wasn't established, so they're held to the same rule |
+| — | **The session player's account name is never returned.** It is read once per run and replaced by `@player` in every record and in the evidence. When it can't be read, the run ends `interrupted` with no records and no evidence | whoever is signed in to Studio is the player, and the console names them. The evidence goes into Releases |
+
+**Evidence on the real game.** Studio 0.747, `z_tower-ascension` at `0beaac09`, Studio in front, about 55 s per run
+(`scripts/dev/studio_play_scenario.py`):
+- **passed:** the title gone, Energy 50 on the server and the HUD shown on the client all passed, on two separate runs.
+- **failed:** the same scenario expecting Energy 49 failed only that assertion, observing 50.
+- **missing:** an assertion on `Nowhere.Thing`, a path that starts at no service.
+- **unsupported_input:** an assertion on `Player.NoSuchProperty`.
+- **setup_failed:** a click on a button that isn't there made all three assertions `setup_failed`, and the log names
+  the setup action.
+- **wrong_context:** every assertion, with the two datamodels swapped after setup on the real path.
+- **refused before play:** a `teleport` action was refused as outside `roblox-studio/1`, and Studio wasn't touched.
+
+No run printed the player's name. Each one left the place's non-script baseline unchanged.
+
+**Still to do:**
+- **R5.9's vocabulary source:** the vocabulary file ships as a skill's `scenario_vocabulary.json` in #3041's QA
+  skillset (#3105), held equal to the adapter's;
+- **#3039:** the worker's configuration, the provider found by discovery, and the run on the Mac's worker, where
+  Studio in front is part of the run window (#3046).
+
+**Who ruled.** The MacBook lane built it under the owner's "go ahead with #3040" (2026-11-15). The owner brought Studio
+to the front for the live check.
+
+## R5.19 Phase 2d, the worker's side as built: settings, discovery, the proved-on pins and one operation (#3039, 2026-11-15)
+
+**The worker creates the `roblox-studio` runner from its own section.** `WorkerConfig` takes `provider:
+roblox-studio` and the provider's seven settings, `SQUADOPS__WORKER__ROBLOX_STUDIO_*`:
+- `MCP`, `PLACE_FILE` and `BASELINE_FILE`;
+- `BASELINE_SHA256` and `BASELINE_DIGEST` (R5.17's pins);
+- `PROVED_VERSION` and `PROVED_TOOLS`.
+
+Each is required for that provider and refused for any other (`PROVIDER_SETTINGS`), so a setting the worker would
+ignore can't read as configured. A file that isn't there stops the worker before it registers.
+
+**The provider is found, never named, outside its directory (R4.6).** `create_operation_runner` takes the provider
+and its settings, and finds the one provider package whose `worker.PROVIDER` matches. That package's
+`worker.create_runner(settings)` builds the runner. This is the way `create_tool_authorities` finds
+`eligibility.AUTHORITY`. None, or two, is refused, naming the providers found. A test holds the adapter's list of
+settings equal to the schema's.
+
+**What each claim confirms, beyond R5.18's transaction:**
+
+| check | as built | why |
+|---|---|---|
+| **the Studio it was proved on (R2.4)** | Studio's version and its tool list (`<count>:<schema digest>`) are held to `PROVED_VERSION` and `PROVED_TOOLS`. Another reads `not_executed` before any write. A runner given no pins runs nothing | Studio updates itself unasked. `ToolCheck` was built for this comparison, and nothing made it until now |
+| **the place's pinned baseline (R3.6's bindings)** | before sync, the place's non-script baseline is read and held to its pin. A place that drifted is reset (R5.17) and the transaction begun again once, with every check run again, Studio in front included. A reset that fails, or a place still drifted, reads `not_executed` with both reasons | the worker resets its tool only after an `interrupted` run or an unknown state. Without this, a drifted place would refuse every claim until a person stepped in |
+| **the scripts after play (R3.6)** | after stop, the synced folders are read back and held to the manifest. A script changed in Studio during the run fails it as `not_executed`, naming the script | "a script that changes during a QA transaction fails it" |
+
+**The lease.** The worker's loop already holds one lease across the runner's `run` and renews it while the call runs
+(R5.5). A cancel stops the call, play is stopped in the transaction's `finally`, and the tool is reset. So the
+transaction is under one lease because it is one call.
+
+**One operation is served: `play_scenario`.** This narrows R3.6's four typed operations and withdraws R5.15's "`sync_source`
+is served once it is proved":
+- **`sync_source` and `read_console` are steps of `play_scenario`** (R4.3), and every request carries a scenario;
+- **nothing dispatches an operation on its own** in the first milestone: R5.14's plan gate refuses a planned one;
+- **`capture`** is supplementary evidence (R3.6), and #3049 keeps captures out of 2.8's acceptance evidence.
+
+Serving an operation nothing can ask for would register a mode with no proof behind it. **When it changes:** with the
+first milestone that plans an operation of its own (R5.14).
+
+**Editor edits returned as a revision (R2.7) wait for an operation that edits.** In this milestone `execute_luau` runs
+only the harness's fixed programs, so nothing SquadOps runs makes an editor edit. Any edit found is someone else's,
+and it fails the run (above). Returning edits as revision B, through `apply_workspace_patch`, belongs with the first
+operation that edits in Studio.
+
+**R3.6's "unattended, including with Studio behind other windows" is narrowed** by R5.18. Observations, sync and
+play run with Studio behind other windows. Studio's input tools act only on a Studio in front.
+
+**Evidence on the real Studio** (0.747.0.7471481, `z_tower-ascension`, the runner built from the worker's settings by
+`scripts/dev/studio_play_scenario.py`):
+- a click scenario with another app in front was refused in 0.0 s, naming the process in front;
+- an input-free scenario passed both its assertions, through the proof check, the pinned baseline and the read-back
+  after play, in 78 s;
+- a wrong `PROVED_VERSION` was refused in 0.5 s, before any write.
+
+**Still #3039's:** the live run on the Mac's worker, registered with the Spark and claiming `play_scenario`,
+including after a Studio restart with no person involved (its done-when).
+
+**Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" and their "yes" to this piece (2026-11-15).
+
+## R5.20 Phase 2d proved on the worker, across a Studio restart with no person involved (#3039, 2026-11-16)
+
+**What changed.** #3039's done-when ("each operation is proved on the worker, including after a Studio restart with no
+person involved", R2.4) is met for the one operation R5.19 serves, `play_scenario`. The worker's registration with the
+Spark's runtime moves to #3046, the worker as a service on the MacBook, which already registers with the target
+runtime as its done-when.
+
+**The proof:** `scripts/dev/studio_worker_proof.py`.
+- **The worker's own loop** (`Worker.serve`, the call `worker_main` makes) runs the runner its package creates from the
+  worker's settings (`SQUADOPS__WORKER__ROBLOX_STUDIO_*`).
+- **The runtime** is the real `WorkerRegistry` over its memory store, in the same process. It is called as the worker's
+  HTTP client calls the routes, so the enqueue, claim, lease, cancel and fenced submit are the registry's own.
+
+**Evidence on the real Studio** (0.747.0.7471481, `z_tower-ascension`, 2026-11-16). The scenario clicks the title
+screen's Play button, then reads three assertions: the title gone (client), Energy 50 (server) and the HUD shown
+(client).
+- **Registration:** the worker registered `roblox-studio/play_scenario`, its Studio version and its tool-list digest.
+- **Round 1:** the operation was claimed in 2 s and completed in 85 s, and each of the three assertions passed.
+- **Round 2:** the operation was cancelled after 20 s of play.
+  - The worker saw the cancel at its next lease renewal, 30 s after the claim. It stopped the run and reset its tool.
+    Studio was quit, the place restored from its baseline file and Studio reopened, in 32 s, with no person involved.
+  - The operation was submitted `interrupted` and accepted.
+  - Studio's process changed from 31620 to 87522, and the place file's sha256 equals the baseline's again.
+- **Round 3, on the reopened Studio:** the operation was claimed in 3 s and completed in 82 s, and each of the three
+  assertions passed.
+  - The reopened Studio came to the front by itself, so the click's front check (R5.18) passed with nobody at the Mac.
+
+**What this evidence leaves to other rows:**
+- **#3046:** the worker against the Spark's runtime, over its HTTP client and the tailnet. PR #3027's wiring test runs
+  the same loop over HTTP against the real routes, on one machine.
+- **#3041 and #3105:** an operation queued by a cycle. Only an agent's own task can queue one
+  (`operations:request`), so it needs a cycle on the Roblox development profile with a scenario criterion.
+- **#3046:** the worker running as a service.
+
+**Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" and their go-ahead for this proof, including
+the Studio restart (2026-11-15).
+
+## R5.21 Re-qualification after a Studio update as built: the record is the pin (#3048, 2026-11-16)
+
+**What changed.** R5.19 pinned the worker to the Studio it was proved on with two settings, `PROVED_VERSION` and
+`PROVED_TOOLS`. Studio updates itself, so after an update every claim read `not_executed` (R2.4) until someone edited
+those settings by hand. R5.7 rules that a recorded run moves the pin, never a hand edit. So the two settings are
+replaced by one, `SQUADOPS__WORKER__ROBLOX_STUDIO_QUALIFICATIONS`: the directory of the worker's qualification
+records.
+
+**The run** (`scripts/dev/studio_requalify.py`, `qualification.requalify`), on the Studio the Mac runs now:
+1. The live Studio's version and its tool list are read.
+2. The qualification scenario is played with Studio held to exactly those.
+3. The place is reset: Studio is quit, the place restored and Studio reopened (R5.17).
+4. The scenario is played again.
+
+It passes when both plays complete with every assertion passed and the reset succeeds. A step that fails ends the run.
+
+**The record** is one JSON document per run, passed or failed. It names:
+- the Studio version, the tool list (`<count>:<schema digest>`) and the tool names;
+- the record it would replace, and the tools added and removed since then;
+- the scenario's digest and the source revision played;
+- each step's outcome, and the first failing step by name.
+
+Records carry assertion ids and outcomes only, so the player's account appears in none.
+
+**The pin.**
+- **Which record:** the newest passing record for this provider version. A failed run leaves the pin where it was.
+- **When it's read:** at each claim, so the claim after a passing re-qualification runs with no restart.
+- **Recorded with each result:** each result's `ran_with` names the record (`qualified_by`).
+
+**What is refused, by name, before any tool is called:**
+- no passing record;
+- a record that can't be read. Skipping it could pin an older record over a newer one;
+- a record whose body doesn't match its own digest, because it was edited after it was recorded.
+
+**Studio is used by one process at a time.** A re-qualification holds a lock file in the same directory for its
+whole run.
+- **A claim that finds it held** reads `not_executed`.
+- **A worker's reset that finds it held** raises, and the worker tries again at its next claim (R5.5).
+- **A re-qualification started during a claim** is refused, and nothing is recorded.
+
+**R5.7's "the provider's four operations" is read as the operation R5.19 serves:** `play_scenario`, whose transaction
+includes the sync and the console read, plus the reset.
+
+**Evidence on the real Studio** (0.747.0.7471481, `z_tower-ascension`, 2026-11-16, with an input-free scenario while
+the Mac was locked):
+- **No record yet:** a play was refused in 0.0 s: "no passing qualification of roblox-studio 1 is recorded …
+  re-qualify".
+- **The re-qualification passed in 191 s.** Both plays passed both assertions. The reset quit and reopened Studio,
+  and its process changed from 87522 to 4514. The record pins `38:1ba499d8…`, the tool list R5.19 was proved on.
+- **The next play read its pin from that record** and passed both assertions, in 76.5 s.
+
+**What it doesn't show live.** Studio didn't update during the run, so the version-mismatch refusal after an update
+is shown by the tests over the stand-in. R5.19 showed that refusal live, for a wrong pinned version, in 0.5 s.
+
+**Who ruled.** The MacBook lane, under the owner's "go on 3049 and 3048" (2026-11-16).
+
+## R5.22 Payload limits as built: measured on the real tree, and set with the product's own (#3049, 2026-11-16)
+
+**What prompted the change in plan.** Measuring for #3049 found that a source-backed run refuses z_tower-ascension
+at checkout, before any request is built: 2,298 KB of source and config against a 384 KB cap (#3118). A request
+limit set below whatever cap replaced it would refuse at the worker's port a tree the run carries whole. The owner
+placed #3118 in 2.8 with #3049 (2026-11-16: "put 3118 in 2.8 with 3049"). SIP-0112 H.32 records the cap and the
+resolution's limit.
+
+**The measurements** (z_tower-ascension at `0beaac0`, 2026-11-16):
+
+| what | size |
+|---|---|
+| the whole tree as staged: 234 text files, as a request on the wire | 3,059,816 bytes |
+| the same request stored as JSONB in Postgres, after compression | 1,255,666 bytes |
+| `src/` alone: 137 files, as a request on the wire | 1,855,801 bytes |
+| `src/` alone, stored in Postgres | 696,552 bytes |
+
+The registry rewrites an operation's row, request included, at each lease renewal (every 15 s).
+
+On the real Studio, a play's evidence items were 197 bytes (`play_log.json`) and 6,936 bytes (`console.txt`), and
+the whole result 8,216 bytes on the wire. The runner keeps at most 20,000 characters of console.
+
+**The limits:**
+- **The request:** its staged tree may hold up to 4 MiB in UTF-8 (`REQUEST_TREE_LIMIT_BYTES`). That is the
+  resolution's limit, held equal by a test. The executor holds the tree it stages, with the scenario's file in it,
+  to the same limit, so a tree it passes is never refused at the port.
+- **Each evidence item:** up to 256 KiB (`EVIDENCE_ITEM_LIMIT_BYTES`), about three times the console's largest
+  possible tail.
+
+**Refused by name, and nothing truncated:**
+- **At the port.** Both ports refuse a request past the limit before anything is queued or sent. It reads
+  `not_executed` with its size, the limit and its three largest files, and it isn't flagged as no worker being
+  available.
+- **At the worker.** A result with an item past the limit is settled `not_executed`, naming the item. Its
+  records aren't returned without the evidence they rest on, and the item never reaches the operation's row.
+- **When the handler reads a result,** `result_defects` names an item past the limit, for a provider that isn't
+  this worker's.
+
+**Captures stay outside 2.8's acceptance evidence**, as ruled. No binary evidence path is built.
+
+**Not measured here:** a claim's time over the tailnet. That needs the worker registered with the Spark, which is
+#3046's.
+
+**Who ruled.** The owner: "go on 3049 and 3048", then "put 3118 in 2.8 with 3049" (2026-11-16). The limits are the
+MacBook lane's, from the measurements.
+
+## R5.23 The worker as a service on the MacBook as built, and what a restart needs (#3046, 2026-11-16)
+
+**The service.** The worker runs as the per-user LaunchAgent `xyz.backspring.squadops.worker`, named to the owner
+before it was installed. It is a user agent, not a system daemon, because Studio needs the user's session.
+- **When it runs:** launchd starts it at login, and again 30 s after it exits.
+- **The network:** it connects outward only and opens no listener.
+- **Installing it:** `scripts/dev/worker_service.py install --env-file <file>` reads the worker's settings from one
+  env file, strictly. It refuses:
+  - a setting outside the worker's section and the secrets provider's;
+  - a key given twice;
+  - a quoted value;
+  - a client secret written in, since the agent's document is plain text under `~/Library/LaunchAgents`;
+  - any secrets provider but `file`;
+  - a secret file others can read;
+  - a reference that doesn't resolve;
+  - a provider setting naming a file that isn't there.
+
+  Only then is the agent written and loaded.
+- **The other commands:**
+  - `status` reports the agent's state, the worker's status and any run window;
+  - `run-window --hours N` holds `caffeinate -d -i` for that long, so a click scenario finds Studio unlocked and in
+    front, and records the window;
+  - `uninstall` removes the agent.
+- **`bootstrap dev-mac --with-worker`** runs the install. Every other profile refuses the flag.
+
+**The worker resets its tool before it registers.** What an earlier process left in the tool is unknown, and a
+worker whose tool is closed reads offline, so no request would be queued for it.
+- For Studio, the reset is R5.17's: quit, restore, reopen. So Studio opens on the place by itself when the service
+  starts, with no step of its own.
+- A reset that fails leaves the worker registered, with each claim answered `not_executed` and the reset tried
+  again, as after any unknown state (R5.5).
+
+**The worker records its own status** in `SQUADOPS__WORKER__STATUS_FILE`, a new required setting, written whole and
+readable by its user alone. It holds:
+- whether the tool reset at start, and why not;
+- the session it registered as;
+- when the runtime last answered a registration, heartbeat or renewal;
+- when it last couldn't be reached, and why.
+
+The Mac never calls the runtime itself (the owner's rule of 2026-11-10), so its doctor reads this instead.
+
+**`squadops doctor dev-mac`'s `worker` checks** run only on a Mac with the agent installed. Each is named:
+- `service`: running, from launchctl;
+- `config`: valid, with its secret reference resolving;
+- the provider's own checks, found in its package as `worker.host_checks` (R4.6). For Studio:
+  - `studio`: installed, with a version that reads;
+  - `studio_mcp`: present and executable;
+  - `place`: the place file there, and the baseline equal to its pin;
+  - `qualified`: a passing re-qualification of the Studio installed now;
+- `registered`: a session, and the runtime answering within one lease.
+
+**What a restart needs: the owner's login.** This MacBook has FileVault on and no automatic login. After a restart,
+nothing of the user's runs until the password is typed at startup, and a LaunchAgent can't start before then.
+
+#3046's done-when ("after a reboot of the MacBook, the worker registers and serves … with no person involved") can't
+be met on this Mac without turning FileVault off. That is a security setting, and the owner's alone. So the
+done-when is read, as proposed here, as **after a restart and the owner's login, the worker comes back and serves
+with nothing more to do.** That holds for 2.8's counted run, which is attended (decision 7). An overnight run,
+unattended, would need the owner's ruling on FileVault first.
+
+**Also narrowed: "serves a fixture operation".** That was written before the Studio provider existed. A
+`roblox-studio` worker serves `play_scenario` only (R5.19), so the check after a restart is an input-free
+`play_scenario`.
+
+**Evidence on the MacBook** (2026-11-16). The worker is registered with this Mac's own deploy, standing in for the
+Spark's until the owner carries the worker's secret across.
+- **Install:**
+  - the agent loaded, and the worker started;
+  - Studio was quit, the place restored and Studio reopened, in 32 s;
+  - the worker registered and recorded its session.
+- **`doctor dev-mac --check worker`:** 7 of 7, each named.
+- **The worker killed:** launchd started it again (`runs = 2`). It reset Studio again and registered as a new session,
+  32 s after the kill.
+- **A run window of 36 s:** held both assertions, and `status` and its record showed it.
+- **The Spark, read from the Mac:** `spark` resolves by MagicDNS to its tailnet address, and its runtime answers
+  `/health`.
+  - The Spark session confirmed the `squadops-worker` client issues tokens with the `worker` role.
+  - The token endpoint must be addressed as `http://spark:8180/...`, because the runtime accepts only that issuer.
+
+**Still #3046's:**
+- the worker registered with the Spark's runtime, once the owner carries the secret across;
+- the check after a restart and the owner's login.
+
+**Found here:** `python -m squadops.cli.main` ran no command, so the doctor run that ends every bootstrap checked
+nothing (#3122, fixed in the same PR).
+
+**Who ruled.** The owner: "go ahead with #3046" (2026-11-16), after the service's label was named. The reading of
+the done-when for FileVault is proposed here, for the owner to rule.
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile

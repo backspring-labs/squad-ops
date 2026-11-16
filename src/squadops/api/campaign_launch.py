@@ -29,7 +29,6 @@ import pydantic
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import (
     CreationPorts,
-    derived_profile_at_pin,
     first_run,
     pin_source_context,
     prepare_cycle,
@@ -67,6 +66,7 @@ from squadops.campaigns.models import (
     LaunchIntent,
     LaunchIntentState,
 )
+from squadops.cycles.development_pin import derived_profile_at_pin
 from squadops.cycles.models import (
     Cycle,
     CycleError,
