@@ -1232,6 +1232,88 @@ three cases apart, the footprint's absence explicit, the text read lazy and boun
 handed #3042's registration part to the Spark lane the same day, as the MacBook lane relayed it ("yes hand it to
 spark").
 
+### 17o. A skill declares its stops, and a stopped task ends its run (2026-11-16, §7; #3041)
+
+**What changed.** §7 says what a skill is and how it is loaded. It says nothing of a skill that tells the model to
+refuse a task. The three Roblox skills each do: a criterion whose effect the scenario reader can't observe, a product
+with no test runner, a change that would rename a saved field. Each asks for the reason in one line. A skill may now
+declare those lines, one reader finds them in an answer, and a task whose model answers with one ends its run there.
+
+**The evidence.**
+- **Nothing read the lines.** The prompt standard's rule 7 holds that a line inviting the model to object is a
+  contract, and a lie when nothing consumes it. The outside review of #3105 named it for the proposal (call c).
+- **What each stop became, read in the code:**
+  - a proposal with no `change_request.yaml` block was asked again, then failed as "refused after its revision
+    budget", with the model's reason lost;
+  - a dev or QA answer with no file read as an empty emission and went to correction.
+
+  So the model was asked again for what its skill told it to refuse.
+
+**The declaration.** A skill's `SKILL.md` front matter may carry `stops`, a list. Each entry is the opening words of
+the one line, ending in a colon: `stops: ["no scenario:"]`. A skillset's load refuses:
+- a value that isn't a list of strings;
+- an entry with no colon at its end, or with a backtick or a line break in it;
+- an entry declared twice, without regard to case;
+- an entry the skill's own text never shows, since the text is how the model learns the line.
+
+Core holds no skill's words (the companion's R4.6). It reads what a task's handed skills declare.
+
+**The reader** (`capabilities/skill_stops.read_stop`) takes a task's handed skills and an answer:
+- a line is compared without the decoration around it (a list marker, a quote mark, inline code, bold) and without
+  regard to case, since a model shown the line in inline code may write it in a list or with a capital;
+- the opening words must open the line. A mention of them inside a sentence is no stop;
+- an opening with nothing after it is no stop, because the line exists to carry a reason;
+- the first such line in the answer is the one read.
+
+**A stop line is the stop, with or without an emission beside it.** An answer that says its effect can't be observed
+and also writes the scenario has told the reader not to trust the scenario.
+
+**Where it is read: the one call every authoring answer passes** (`_llm_call`), after the call is accounted, logged
+and recorded as any other, and before any parser reads the answer.
+- The stop is set on the task's context, and the call raises `SkillStopped`, an `LLMError`. So each seam's own
+  `except LLMError` ends its task, as it does for a failed call.
+- A seam whose own loop asks again (the proposal's revision loop) is refused before the model is called.
+- **The handler executor ends the task with the stop,** whatever the handler returned or raised: the result fails,
+  its error names the skill and the line, and its evidence carries the stop under `SKILL_STOP_EVIDENCE`.
+
+**The run ends at once,** as it does for a refused input (#2553): no retry, no correction.
+- Its terminal decision is a kind of its own, `skill_stopped`, carrying the stop (`RunTerminalDecision.skill_stop`:
+  the skillset, the skill, the opening words and the line). Whoever continues from the run reads the line from the
+  decision, never from the failure reason's text. A decision with no stop is stored as it was before.
+- It is attributed `criteria_or_contract_failure`: what was asked is at fault, as an uncheckable criterion is
+  (`criteria_not_checkable`), not the work. `input_refused` would misread it, since that names an envelope its
+  handler refuses every time, and a stop is the model's judgement under its equipment.
+- The cycle's stop reason is `skill_stopped`, read from the terminal decision as `criteria_not_checkable` is.
+
+**The packaged skills.** `play-scenario-authoring` declares `no scenario:` and `luau-test-loader` declares
+`no tests/run.luau:`. The front matter is shown to no model (§7), so what each model reads is unchanged.
+
+**Not built here, deliberately:**
+- **`luau-gameplay`'s stop.** Its text asks for the saved field "in one line" with no fixed opening, so there is
+  nothing to declare. A fixed opening is an edit to a skill the owner approved, and it is the owner's to approve
+  (#3041).
+- **What a Campaign does with a run that ended this way.** It is the Spark lane's, with a numbered amendment to
+  SIP-0109's continuation table: abandoned before a verdict, uncounted against the repair budget, and the next
+  proposal shown the stop's line. Until it is built, a stopped proposal run reads `proposal_failed` and a stopped
+  increment run reaches its assessment, as before, with the run's ending naming the stop.
+- **A repair task's stop.** The repair's task ends naming the stop, and the correction runner reads a failed repair
+  as it did. It reads no refused input there either.
+
+**The evidence it works.**
+- **Wiring:** `test_skill_stop_ends_the_task.py` enters at `HandlerExecutor.execute`, with the real develop and dev
+  repair handlers and prompt assets. One model call, the task failed, the skill and line named, the stop in its
+  evidence. The same words from a task handed no such skill are no stop, and a task handed the skill that does its
+  work is not stopped.
+- **The proposal's loop:** `test_a_proposal_answered_with_its_skills_stop_is_not_asked_to_revise` enters at the
+  proposal handler's `handle()` with two attempts allowed, and the model is called once.
+- **The run:** `test_a_task_stopped_by_its_skill_ends_the_run_carrying_the_stop` enters at `execute_run`. One
+  dispatch, the run failed naming the stop, and the terminal decision carries it.
+- **The packaged skills:** each one's own stop line is read from what a task is handed through the cycle's supply
+  (`kept_document`, `skills_for`, `skills_input`).
+
+**Who ruled.** The MacBook lane, under the owner's delegation, after the outside review's call c. The shape and the
+split with the Campaign's side were agreed with the Spark lane on 2026-11-16 (#3041).
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each

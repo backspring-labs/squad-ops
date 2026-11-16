@@ -44,6 +44,41 @@ class TestTheStoredShape:
         assert read == summary
         assert read.terminal.kind is TerminalKind.CORRECTION_TERMINATED
 
+    def test_a_skill_stop_survives_the_row_and_no_other_decision_gains_a_key(self):
+        """SIP-0116 §17o. Bugs caught: the stop's line dropped between the run and whoever
+        continues from it; and the new key entering every stored decision, which would change
+        the stored form of runs that have no stop."""
+        stop = {
+            "skillset": "roblox-increment-design",
+            "skill": "play-scenario-authoring",
+            "opening": "no scenario:",
+            "line": "no scenario: the chime shows itself as a sound",
+        }
+        decision = RunTerminalDecision(
+            kind=TerminalKind.SKILL_STOPPED, task_id="task-strat-1", skill_stop=stop
+        )
+
+        assert RunTerminalDecision.from_dict(decision.to_dict()) == decision
+        assert RunTerminalDecision(kind=TerminalKind.INPUT_REFUSED, task_id="t").to_dict() == {
+            "kind": "input_refused",
+            "termination_reason": None,
+            "failure_classification": None,
+            "task_id": "t",
+            "refused_validators": [],
+            "contested_checks": [],
+        }
+
+    @pytest.mark.parametrize(
+        "stored",
+        ["a sound", {"skillset": "s", "skill": "k", "opening": "no scenario:"}],
+        ids=["not a mapping", "no line"],
+    )
+    def test_a_stored_stop_missing_a_part_is_refused(self, stored):
+        """Bug caught: a ``skill_stopped`` decision read back with no line, so the next
+        proposal is shown that a skill stopped the work and not what it said."""
+        with pytest.raises(ValueError, match="skill_stop"):
+            RunTerminalDecision.from_dict({"kind": "skill_stopped", "skill_stop": stored})
+
     @pytest.mark.parametrize(
         ("stored", "expected"),
         [

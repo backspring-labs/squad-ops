@@ -2511,6 +2511,7 @@ class TestEveryWayACycleEndsMeetsCycleCompletion:
         ("kind", "reason"),
         [
             (TerminalKind.CRITERIA_NOT_CHECKABLE, "criteria_not_checkable"),
+            (TerminalKind.SKILL_STOPPED, "skill_stopped"),
             (TerminalKind.OTHER, "single_workload_ended"),
         ],
     )

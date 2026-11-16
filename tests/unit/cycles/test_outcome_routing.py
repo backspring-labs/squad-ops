@@ -27,7 +27,7 @@ from squadops.cycles.models import (
 from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.execution.execution_errors import _ExecutionError
-from squadops.tasks.models import INPUT_REFUSAL_EVIDENCE, TaskResult
+from squadops.tasks.models import INPUT_REFUSAL_EVIDENCE, SKILL_STOP_EVIDENCE, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
@@ -512,6 +512,51 @@ class TestInputRefusal:
         _, summary = mock_registry.record_run_loop_summary.await_args.args
         assert summary.terminal == RunTerminalDecision(
             kind=TerminalKind.INPUT_REFUSED, task_id=refused_ids[0]
+        )
+
+    async def test_a_task_stopped_by_its_skill_ends_the_run_carrying_the_stop(
+        self, executor, mock_queue, mock_registry
+    ):
+        """SIP-0116 §17o. Bug caught: a stopped task retried (the model asked again for what its
+        skill refused) or sent to correction (a repair with no defect to mend), and a run whose
+        ending doesn't say which skill stopped it or with what line."""
+        stop = {
+            "skillset": "roblox-luau-dev",
+            "skill": "luau-gameplay",
+            "opening": "saved data:",
+            "line": "saved data: coins would be renamed",
+        }
+        stopped_ids: list[str] = []
+
+        def responder(env):
+            stopped_ids.append(env["task_id"])
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED",
+                error="stopped by the skill roblox-luau-dev/luau-gameplay: " + stop["line"],
+                execution_evidence={SKILL_STOP_EVIDENCE: stop},
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert mock_queue.publish.call_count == 1
+        [failed] = [
+            c for c in mock_registry.update_run_status.call_args_list
+            if c.args[1] == RunStatus.FAILED
+        ]  # fmt: skip
+        assert (
+            "was stopped by the skill roblox-luau-dev/luau-gameplay: saved data: coins would be "
+            "renamed" in failed.kwargs["failure_reason"]
+        )
+        _, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert summary.terminal == RunTerminalDecision(
+            kind=TerminalKind.SKILL_STOPPED, task_id=stopped_ids[0], skill_stop=stop
         )
 
     async def test_a_failure_without_a_refusal_still_retries(

@@ -52,6 +52,7 @@ from squadops.capabilities.context_assembly import (
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.lesson_supply import supply_the_dispatch
 from squadops.capabilities.operation_supply import OperationSupplyError, tool_request
+from squadops.capabilities.skill_stops import describe_stop
 from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.capabilities.tool_checks import unavailable
 from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
@@ -224,6 +225,7 @@ from squadops.stacks.verification_scaffold_emission import (
 from squadops.stacks.verification_scaffold_gate import validate_execution_readiness
 from squadops.tasks.models import (
     INPUT_REFUSAL_EVIDENCE,
+    SKILL_STOP_EVIDENCE,
     TaskEnvelope,
     TaskResult,
     TaskResultStatus,
@@ -3911,6 +3913,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 + "; ".join(str(e) for e in refused),
                 terminal=RunTerminalDecision(
                     kind=TerminalKind.INPUT_REFUSED, task_id=envelope.task_id
+                ),
+            )
+        # SIP-0116 §17o: the task's model answered with a stop one of its skills declares. A
+        # retry asks for the refused thing again and a repair has no defect to mend, so the
+        # run ends here, carrying the stop for whoever continues from it.
+        stopped = (result.execution_evidence or {}).get(SKILL_STOP_EVIDENCE)
+        if stopped:
+            raise _ExecutionError(
+                f"Task {envelope.task_id} ({envelope.task_type}) was {describe_stop(stopped)}",
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.SKILL_STOPPED,
+                    task_id=envelope.task_id,
+                    skill_stop=dict(stopped),
                 ),
             )
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None

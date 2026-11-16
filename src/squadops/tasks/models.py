@@ -105,6 +105,12 @@ class TaskResultStatus(StrEnum):
 #: A refusal is deterministic: the same envelope is refused again, so no retry or repair can help.
 INPUT_REFUSAL_EVIDENCE = "validation_errors"
 
+#: The evidence key under which a task names the skill's stop its model answered with (SIP-0116
+#: §17o; ``capabilities.skill_stops``): the skillset, the skill, the declared opening words and
+#: the line. The model refused the task as its equipment told it to, so the run ends there: a
+#: re-ask or a repair would ask it to do what its skill told it to refuse.
+SKILL_STOP_EVIDENCE = "skill_stop"
+
 
 @dataclass(frozen=True)
 class TaskResult:

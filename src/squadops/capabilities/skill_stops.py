@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from squadops.capabilities.skillsets import SKILL_FILE, skill_stops
+from squadops.llm.exceptions import LLMError
 
 #: What a model puts around a line it was shown in inline code or a list: stripped from both
 #: ends before the line is compared, and never from inside it.
@@ -40,7 +41,32 @@ class SkillStop:
         return self.line[len(self.opening) :].strip()
 
     def describe(self) -> str:
-        return f"stopped by the skill {self.skillset}/{self.skill}: {self.line}"
+        return describe_stop(self.to_dict())
+
+    def to_dict(self) -> dict[str, str]:
+        """The stop as a task's context and its result's evidence carry it."""
+        return {
+            "skillset": self.skillset,
+            "skill": self.skill,
+            "opening": self.opening,
+            "line": self.line,
+        }
+
+
+def describe_stop(stop: Mapping[str, str]) -> str:
+    """One sentence naming a carried stop (``SkillStop.to_dict``), for a task's or a run's
+    failure reason."""
+    return f"stopped by the skill {stop['skillset']}/{stop['skill']}: {stop['line']}"
+
+
+class SkillStopped(LLMError):
+    """The model answered with a stop one of the task's skills declares. Raised by
+    ``_llm_call``, as a failed call is, so every seam's own ``except LLMError`` ends its task
+    without parsing the answer or asking again."""
+
+    def __init__(self, stop: SkillStop) -> None:
+        super().__init__(stop.describe())
+        self.stop = stop
 
 
 def read_stop(handed: Sequence[Mapping[str, Any]] | None, response: str | None) -> SkillStop | None:
