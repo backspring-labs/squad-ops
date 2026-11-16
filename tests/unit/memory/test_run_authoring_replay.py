@@ -380,3 +380,69 @@ def test_only_the_skills_arm_is_held_to_its_cases_expectation():
     assert [j.get("verdict") for j in judged] == [None, "met", "met"]
     assert ran == ["qa"]
     assert judged[2]["specs"]["passed"] == ["tests/Shop.spec.luau > pays the bonus"]
+
+
+#: The captured inputs' shape, by task type, as far as the packaged cases reach into it: the keys
+#: the Spark lane read from the capture's envelopes (#3041). A case of a task type with no shape
+#: here can't be checked before it is run.
+_CAPTURED_SHAPES = {
+    "strategy.propose_increment": {
+        "resolved_config": {
+            "campaign_proposal": {
+                "objective": {
+                    "statement": "A merchant buying ten or more of one item pays a bulk bonus.",
+                    "measurement": "one accepted increment",
+                    "allowed_scope": ["src/Shared/**", "tests/**/*.spec.luau"],
+                    "requirements": "repo:file:docs/GAME_CONTEXT.md@current",
+                }
+            }
+        },
+        "product_proposal": {
+            "head": {"commit": "c" * 40, "tree": "t" * 64},
+            "profile": {"public_surfaces": [], "test_files": ["tests/*.spec.luau"]},
+            "requirements": {"content": "# The game", "ref": "repo:file:docs/GAME_CONTEXT.md"},
+        },
+        "source_repository": {"map": "- `src/` (137 files)", "paths": ["tests/run.luau"]},
+    },
+}
+
+
+def test_every_packaged_case_can_be_built_on_the_captures_shape():
+    """The packaged Roblox cases against the packaged skillsets and the capture's recorded shape.
+    Bug caught: a case naming a skillset the catalog doesn't hold, one that loads no skill for
+    its task, or a swap whose path the capture doesn't have. Each would be found only on the
+    Spark, after the run was scheduled."""
+    from squadops.capabilities.skillsets import load_skillsets
+    from squadops.cycles.skillset_replay import task_equipment
+    from squadops.memory.replay import Arm, arm_inputs, swapped_inputs
+
+    catalog = load_skillsets()
+    cases, _text = runner.skill_cases_text("roblox-skills@1")
+
+    built = {}
+    for case in cases.cases:
+        assert case.task_type in _CAPTURED_SHAPES, f"no captured shape recorded for {case.id}"
+        own = swapped_inputs(_CAPTURED_SHAPES[case.task_type], case.swaps)
+        equipment = task_equipment(
+            catalog,
+            skillset=case.skillset,
+            role=catalog[case.skillset].roles[0],
+            agent_id="agent",
+            task_type=case.task_type,
+            vocabulary_skillset=case.vocabulary_skillset,
+        )
+        handed = [(("skills",), equipment.skills)]
+        if equipment.scenario_vocabulary is not None:
+            handed.append(
+                (("product_proposal", "scenario_vocabulary"), equipment.scenario_vocabulary)
+            )
+        skilled = arm_inputs(own, Arm.SKILLS, experiment_id="x", equipment=handed)
+        built[case.id] = (len(skilled["skills"]), bool(case.swaps), case.why != "")
+
+    assert built == {
+        "strategy-capture": (1, False, True),
+        "strategy-hud-text": (1, True, True),
+        "strategy-title-screen": (1, True, True),
+        "strategy-unobservable": (1, True, True),
+        "strategy-saved-state": (1, True, True),
+    }

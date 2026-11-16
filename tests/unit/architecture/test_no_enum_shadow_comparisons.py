@@ -55,6 +55,10 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # above), and the second tests for an acceptance row's "passed" KEY, not a status value.
     ("src/squadops/execution/patch_acceptance.py", "passed"),
     ("src/squadops/cycles/verification_normalize.py", "passed"),
+    # SIP-0116 §17p's replay arm (``memory.replay.Arm.SKILLS``) made "skills" an enum value. This
+    # tests for a stored exposure record's "skills" KEY (the skill digests a task was handed),
+    # not for an arm.
+    ("src/squadops/memory/exposures.py", "skills"),
     # SIP-0116's VerificationMode (#3011) made "build" an enum value. This is the name of an npm
     # script, looked up in a product's package.json to choose its build command.
     ("src/squadops/capabilities/handlers/test_runner.py", "build"),

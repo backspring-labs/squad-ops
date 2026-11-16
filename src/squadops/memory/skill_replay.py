@@ -19,6 +19,8 @@ from typing import Any
 
 import yaml
 
+from squadops.campaigns.change_request import SurfaceKind
+
 #: The cases file's first line names it and its version, as a rubric's does (#2313), so an
 #: experiment's manifest pins the text it was run with.
 _HEADER = re.compile(r"# Skill cases `(?P<name>[^`@]+)@(?P<version>[^`]+)`")
@@ -26,9 +28,20 @@ _CASE_ID = re.compile(r"[a-z0-9][a-z0-9-]*")
 _CASE_FIELDS = frozenset(
     {"id", "task_type", "skillset", "vocabulary_skillset", "swaps", "expect", "why"}
 )
-#: What a skills arm's answer may be expected to be. ``stop`` stands alone: a stopped task
-#: emits nothing.
-EXPECTATIONS = ("stop", "accepted", "emits", "scenario_criterion", "specs_pass")
+#: What a skills arm's answer may be expected to be, by the cases file's key. A stop stands
+#: alone: a stopped task emits nothing.
+EXPECT_STOP = "stop"
+EXPECT_ACCEPTED = "accepted"
+EXPECT_EMITS = "emits"
+EXPECT_SCENARIO_CRITERION = "scenario_criterion"
+EXPECT_SPECS_PASS = "specs_pass"
+EXPECTATIONS = (
+    EXPECT_STOP,
+    EXPECT_ACCEPTED,
+    EXPECT_EMITS,
+    EXPECT_SCENARIO_CRITERION,
+    EXPECT_SPECS_PASS,
+)
 CHANGE_REQUEST = "change_request.yaml"
 
 MET = "met"
@@ -134,18 +147,18 @@ def expectation_errors(expect: Any) -> list[str]:
     if not isinstance(expect, dict) or not expect:
         return [f"expect names at least one of {', '.join(EXPECTATIONS)}"]
     errors = [f"expect: unknown {k}" for k in sorted(set(expect) - set(EXPECTATIONS))]
-    if "stop" in expect:
-        if not isinstance(expect["stop"], str) or not expect["stop"].endswith(":"):
+    if EXPECT_STOP in expect:
+        if not isinstance(expect[EXPECT_STOP], str) or not expect[EXPECT_STOP].endswith(":"):
             errors.append("expect: stop is a declared stop's opening words, ending in a colon")
         if len(expect) > 1:
             errors.append("expect: stop stands alone, since a stopped task emits nothing")
-    for key in ("accepted", "scenario_criterion", "specs_pass"):
+    for key in (EXPECT_ACCEPTED, EXPECT_SCENARIO_CRITERION, EXPECT_SPECS_PASS):
         if key in expect and expect[key] is not True:
             errors.append(f"expect: {key} is true, or left out")
-    if "emits" in expect and (
-        not isinstance(expect["emits"], list)
-        or not expect["emits"]
-        or not all(isinstance(g, str) and g for g in expect["emits"])
+    if EXPECT_EMITS in expect and (
+        not isinstance(expect[EXPECT_EMITS], list)
+        or not expect[EXPECT_EMITS]
+        or not all(isinstance(g, str) and g for g in expect[EXPECT_EMITS])
     ):
         errors.append("expect: emits is a list of path patterns")
     return errors
@@ -169,19 +182,19 @@ def judge(
     findings = _stop_findings(expect, record)
     unjudged: list[str] = []
     artifacts = [str(a.get("name") or "") for a in record.get("artifacts") or ()]
-    if any(k in expect for k in ("accepted", "emits", "scenario_criterion", "specs_pass")):
+    if any(k in expect for k in EXPECTATIONS if k != EXPECT_STOP):
         if not record.get("success"):
             findings.append(f"the handler refused the answer: {record.get('error')}")
-    for pattern in expect.get("emits") or ():
+    for pattern in expect.get(EXPECT_EMITS) or ():
         if not any(fnmatch.fnmatchcase(name, pattern) for name in artifacts):
             findings.append(
                 f"no emitted file matches {pattern} (emitted: {', '.join(artifacts) or 'none'})"
             )
-    if expect.get("scenario_criterion"):
+    if expect.get(EXPECT_SCENARIO_CRITERION):
         findings.extend(_scenario_findings(record))
-    if expect.get("specs_pass"):
+    if expect.get(EXPECT_SPECS_PASS):
         if specs is None:
-            unjudged.append("specs_pass: the emitted specs were not run on the product")
+            unjudged.append(f"{EXPECT_SPECS_PASS}: the emitted specs were not run on the product")
         else:
             findings.extend(_spec_findings(specs))
     verdict = NOT_MET if findings else NOT_JUDGED if unjudged else MET
@@ -191,15 +204,13 @@ def judge(
 def _stop_findings(expect: Mapping[str, Any], record: Mapping[str, Any]) -> list[str]:
     """The declared stop the answer was, against the one expected, or against none."""
     stop = record.get("skill_stop")
-    if "stop" not in expect:
+    if EXPECT_STOP not in expect:
         return [f"the task was stopped by its skill: {stop.get('line')}"] if stop else []
+    wanted = str(expect[EXPECT_STOP])
     if not stop:
-        return [f"no declared stop was read; expected one opening {expect['stop']!r}"]
-    if str(stop.get("opening")).casefold() != str(expect["stop"]).casefold():
-        return [
-            f"the stop read opens {stop.get('opening')!r}, not {expect['stop']!r}: "
-            f"{stop.get('line')}"
-        ]
+        return [f"no declared stop was read; expected one opening {wanted!r}"]
+    if str(stop.get("opening")).casefold() != wanted.casefold():
+        return [f"the stop read opens {stop.get('opening')!r}, not {wanted!r}: {stop.get('line')}"]
     return []
 
 
@@ -232,6 +243,6 @@ def _scenario_findings(record: Mapping[str, Any]) -> list[str]:
         return [f"the accepted {CHANGE_REQUEST} doesn't read as YAML: {exc}"]
     criteria: Sequence[Any] = request.get("criteria") or () if isinstance(request, dict) else ()
     kinds = [str(c.get("surface_kind")) for c in criteria if isinstance(c, dict)]
-    if "scenario" not in kinds:
+    if SurfaceKind.SCENARIO not in kinds:
         return [f"no criterion is a scenario (kinds: {', '.join(kinds) or 'none'})"]
     return []

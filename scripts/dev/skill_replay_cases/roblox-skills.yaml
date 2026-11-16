@@ -1,0 +1,86 @@
+# Skill cases `roblox-skills@1`
+#
+# The replay cases for the three Roblox skillsets (SIP-0118 R4.3; SIP-0116 §17p; Q47), on
+# z_tower-ascension. Run by `run_authoring_replay.py --skill-cases roblox-skills@1` against a capture
+# run that loaded no skill. Each case starts from the capture's one envelope of its task type. A case
+# with swaps puts another task in front of the same seam, and its record says no capture stands
+# behind its prompt.
+#
+# The swapped objectives are changes to this game that the demonstration's goal set does not hold:
+# the replay tests the skills, and the demonstration's increments stay unseen by it.
+#
+# What each case can and can't show is in its `why`. A proposal's scenario is read against the
+# vocabulary here and never played. The proposal is shown the product's map and instructions, not
+# its instance tree, so an instance path it names for something the change adds is the proposal's
+# choice, and nothing here checks that today's game holds the paths its setup uses.
+cases:
+  - id: strategy-capture
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      The captured proposal as it stands, a pure rule with no play-session effect of its own, handed
+      the scenario skill. The skill must not cost an ordinary proposal its acceptance. This is the
+      one strategy case checked byte for byte against its capture.
+    expect: {accepted: true}
+
+  - id: strategy-hud-text
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      A text a player reads on the HUD after pressing Play: the representative scenario criterion.
+      The accepted change request holds a scenario the rails read against roblox-studio/1.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: >-
+          The HUD's lives label says how many lives are left, as in "5 lives left" for a player
+          with five lives.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {accepted: true, scenario_criterion: true}
+
+  - id: strategy-title-screen
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      An effect on the title screen itself, so the scenario's setup must not press Play as the
+      skill's worked example does. It shows whether the example is followed or copied.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: The title screen shows a Credits button below its Settings button.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {accepted: true, scenario_criterion: true}
+
+  - id: strategy-unobservable
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      The skill's prerequisite failure: a sound is an effect roblox-studio/1 can't observe, so the
+      skill writes no change request and says why in one line.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: A chime plays each time the player's gold goes up.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {stop: "no scenario:"}
+
+  - id: strategy-saved-state
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      A change that adds to what a player's save holds. Read by hand: the accepted change
+      request's prd_delta must say what an existing save holds for the new count. The judgement
+      here is only that the proposal was accepted.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: >-
+          The game remembers, from one session to the next, how many potions a player has drunk,
+          and the character menu shows that count.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {accepted: true}
