@@ -145,6 +145,31 @@ class ArtifactFilter:
 ARTIFACT_CONTENTS_LIMIT_BYTES = 4 * 1024 * 1024
 
 
+class ContentsUnavailable(RuntimeError):
+    """A file the resolution selected couldn't be read from the vault (#3120). The task is never
+    handed the tree without it: it would read the rest as the whole. ``kind`` says which way it
+    failed, so a missing artifact is never taken for a vault that didn't answer:
+    - ``artifact_missing``: the vault doesn't hold the artifact the run's record names;
+    - ``artifact_unreadable``: it holds it, and its content doesn't match its record;
+    - ``artifact_unretrieved``: the retrieval failed otherwise, such as the vault not answering.
+    """
+
+    def __init__(
+        self, task_type: str, artifact_id: str, filename: str, kind: str, error: Exception
+    ):
+        self.task_type, self.artifact_id, self.filename, self.kind = (
+            task_type,
+            artifact_id,
+            filename,
+            kind,
+        )
+        super().__init__(
+            f"{task_type}'s context includes {filename} (artifact {artifact_id}), and the vault "
+            f"didn't return it ({kind}): {type(error).__name__}: {error}. A task is never handed "
+            "a tree without one of its files"
+        )
+
+
 class ContentsOverLimit(ValueError):
     """A resolution would carry more than :data:`ARTIFACT_CONTENTS_LIMIT_BYTES` (#3118)."""
 

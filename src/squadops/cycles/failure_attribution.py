@@ -545,6 +545,11 @@ WORKER_UNAVAILABLE = "worker_unavailable"
 #: #3118 (SIP-0112 H.32): the ``failure_classification`` of an ``input_refused`` run ended at
 #: dispatch because a task's tree would carry more than a resolution's limit. It would every time.
 CONTENTS_OVER_LIMIT = "contents_over_limit"
+#: #3120: the ``failure_classification``s of an ``infrastructure_failed`` run ended at dispatch
+#: because a file of a task's tree couldn't be read from the vault, by how it failed.
+ARTIFACT_MISSING = "artifact_missing"
+ARTIFACT_UNREADABLE = "artifact_unreadable"
+ARTIFACT_UNRETRIEVED = "artifact_unretrieved"
 
 
 @dataclass(frozen=True, kw_only=True)
