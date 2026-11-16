@@ -187,7 +187,7 @@ phases are in its own ledger.
 | The frozen scenario, part 2: the change request's scenario criterion and its placement, the operation task at plan expansion, and the named assertion executed and failing on the accepted baseline before development starts (R5.7, R5.8) | **shipped** | 2.8 (PRs #3063, #3066, #3067, #3068, #3070, #3073 and #3075, closing #3044) |
 | A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **shipped** | 2.8 (PRs #3086 and #3087, closing #3045; R5.10 and R5.12) |
 | The worker as a service on the MacBook: a per-user LaunchAgent started at login and again on exit, its tool reset (Studio opened on the place) before it registers, its own status recorded, a recorded run window, `doctor dev-mac`'s worker checks and an optional bootstrap step (R5.7, R5.23) | **shipped** | 2.8 (PR #3123; #3046 tracks the rest) |
-| The worker service, the rest: registered with the Spark's runtime serving `roblox-studio`, and back after a restart of the MacBook and the owner's login (R5.20, R5.23) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
+| The worker service, the rest: back after a restart of the MacBook and the owner's login, as the owner ruled (R5.23). Registered with the Spark's runtime on 2026-11-16 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
 | The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **shipped** | 2.8 (PR #3059, closing #3047) |
 | Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7, R5.21) | **shipped** | 2.8 (PR #3119, closing #3048) |
 | Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7, R5.22) | **shipped** | 2.8 (PR #3121, closing #3049) |
@@ -1260,10 +1260,14 @@ The Mac never calls the runtime itself (the owner's rule of 2026-11-10), so its 
 nothing of the user's runs until the password is typed at startup, and a LaunchAgent can't start before then.
 
 #3046's done-when ("after a reboot of the MacBook, the worker registers and serves … with no person involved") can't
-be met on this Mac without turning FileVault off. That is a security setting, and the owner's alone. So the
-done-when is read, as proposed here, as **after a restart and the owner's login, the worker comes back and serves
-with nothing more to do.** That holds for 2.8's counted run, which is attended (decision 7). An overnight run,
-unattended, would need the owner's ruling on FileVault first.
+be met on this Mac without turning FileVault off. That is a security setting, and the owner's alone, and FileVault
+stays on. So the done-when is read, as the owner ruled (2026-11-16), as **after a restart and the owner's login, the
+worker comes back and serves with nothing more to do.** That holds for 2.8's counted run, which is attended
+(decision 7).
+
+An unattended overnight run needs no change for this, as long as the Mac doesn't restart: a run window keeps it
+awake. A restart during one, such as a macOS update, leaves the worker offline until the owner next logs in, and no
+request is queued for an offline worker (R5.10, R5.12).
 
 **Also narrowed: "serves a fixture operation".** That was written before the Studio provider existed. A
 `roblox-studio` worker serves `play_scenario` only (R5.19), so the check after a restart is an input-free
@@ -1284,15 +1288,24 @@ Spark's until the owner carries the worker's secret across.
   - The Spark session confirmed the `squadops-worker` client issues tokens with the `worker` role.
   - The token endpoint must be addressed as `http://spark:8180/...`, because the runtime accepts only that issuer.
 
-**Still #3046's:**
-- the worker registered with the Spark's runtime, once the owner carries the secret across;
-- the check after a restart and the owner's login.
+**Registered with the Spark's runtime** (2026-11-16, 15:46 UTC). The owner carried the worker's secret to the Mac by
+hand. The service, reinstalled from the main checkout at `912a922b`:
+- reset Studio and registered as session `wks-c4655eb7…`;
+- has its heartbeats answered;
+- reads 7 of 7 in `doctor`.
+
+The Spark session's `squadops workers list` shows `macbook` online, serving `roblox-studio/play_scenario`, with Studio
+0.747.0.7471481 and the tool-list digest it was qualified on.
+
+#3124 fixed a race this reinstall found: `launchctl bootout` returns before the old agent is gone.
+
+**Still #3046's:** the check after a restart and the owner's login.
 
 **Found here:** `python -m squadops.cli.main` ran no command, so the doctor run that ends every bootstrap checked
 nothing (#3122, fixed in the same PR).
 
 **Who ruled.** The owner: "go ahead with #3046" (2026-11-16), after the service's label was named. The reading of
-the done-when for FileVault is proposed here, for the owner to rule.
+the done-when for FileVault is the owner's too, the same day ("I'm good with your recommendations").
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
