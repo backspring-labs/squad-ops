@@ -185,16 +185,23 @@ class Path:
             return await tx.unsettled_operations_of(TASK)
 
 
-async def _until(check, *args, seconds: float = 30.0, poll: float = 0.01) -> None:
-    """Wait for ``check(*args)`` by the clock (#3096). A bound in event-loop turns ran out on
-    Postgres, where each check is a network round trip that ``asyncio.sleep(0)`` doesn't wait
-    for, so a slower database failed a correct path. A failure names the check."""
+async def _until(check, *args, seconds: float = 30.0) -> None:
+    """Wait for ``check(*args)``, asking again after every turn of the event loop. A failure
+    names the check.
+
+    It asks at every turn, never after a real-time sleep (#3110). The path's actors pass the
+    test's clock on each round they take, so a real-time sleep let them take as many rounds as
+    the machine's speed allowed: a worker cut off mid-lease had already spent about 220 s of its
+    requester's 300 s wait by the time the test saw it running. Asked at every turn, the check
+    is seen at the first round where it holds, whatever the machine's speed. The bound is still
+    in real seconds, not turns (#3096): on Postgres each check is a network round trip that a
+    turn doesn't wait for."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + seconds
     while not await check(*args):
         if loop.time() >= deadline:
             raise AssertionError(f"{check.__name__} not reached within {seconds:g}s")
-        await asyncio.sleep(poll)
+        await asyncio.sleep(0)
 
 
 class RemotePathContract:
@@ -257,6 +264,9 @@ class RemotePathContract:
         async with path.serving(path.worker(stuck, worker_id="first", line=first_line), "first"):
             waiting = asyncio.ensure_future(path.requester().run_operation(asked))
             await _until(_running, stuck)
+            # Most of the requester's wait is still left: whether the case holds is decided by
+            # the lease running out, never by how fast the machine took the path's rounds (#3110).
+            assert path.clock.now - T0 < timedelta(seconds=leasing.LEASE_SECONDS)
             first_line.down = True  # gone mid-run: nothing it does reaches the runtime again
         async with path.serving(path.worker(worker_id="second"), "second"):
             result = await waiting
