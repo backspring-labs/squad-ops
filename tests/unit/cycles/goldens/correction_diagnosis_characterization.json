@@ -25,6 +25,7 @@
         "failure_classification": "work_product",
         "kind": "correction_terminated",
         "refused_validators": [],
+        "skill_stop": null,
         "task_id": "task-run_abcdef12-m001-development.develop",
         "termination_reason": "contested_check"
       }
@@ -1758,6 +1759,7 @@
         "failure_classification": null,
         "kind": "correction_terminated",
         "refused_validators": [],
+        "skill_stop": null,
         "task_id": "task-run_abcdef12-m001-development.develop",
         "termination_reason": "reserved_for_required"
       }

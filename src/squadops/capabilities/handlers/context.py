@@ -15,6 +15,7 @@ from squadops.cycles.llm_usage import UsageLedger
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
+    from squadops.capabilities.skill_stops import SkillStop
     from squadops.telemetry.models import CorrelationContext
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,10 @@ class ExecutionContext:
     #: ``_llm_call`` with the error's evidence. The handler executor holds a failed task with it
     #: (``TaskOutcome.BLOCKED``) instead of leaving it to retry or correction.
     infrastructure_block: dict[str, Any] | None = None
+    #: SIP-0116 §17o: the declared stop this task's model answered with, set by ``_llm_call``.
+    #: No later call of the task reaches the model, and the handler executor ends the task
+    #: with it whatever the handler made of the answer.
+    skill_stop: SkillStop | None = None
 
     @classmethod
     def create(

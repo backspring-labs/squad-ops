@@ -1,6 +1,7 @@
 ---
 name: play-scenario-authoring
 description: Writes a Roblox game's player-facing criterion as a play scenario the Studio harness runs, in the squadops.scenario/1 form roblox-studio/1 reads, and says what a change does to a player's saved state.
+stops: ["no scenario:"]
 ---
 
 # Play scenarios for a Roblox game

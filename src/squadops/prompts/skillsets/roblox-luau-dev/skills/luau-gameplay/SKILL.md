@@ -1,6 +1,7 @@
 ---
 name: luau-gameplay
 description: Writes gameplay changes in a Roblox game synced by Script Sync, keeping the server's authority, the client and server split, and the game's own module layout.
+stops: ["saved data:"]
 ---
 
 # Gameplay changes in a Script Sync game
@@ -61,6 +62,8 @@ those in the service, and pass what the rule needs in as plain values.
 A player's saved profile outlives any one version of the game. A change that adds a field to the
 saved profile adds its default where the game builds a fresh profile, which is also where loading
 an old save fills in missing fields, so an old save never reads `nil`. A change that renames,
-moves or removes a saved field is outside a gameplay change: **stop, and say in one line which
-saved field the change would rename, move or remove.** Where the product's instructions ask that
-changes to saved data be raised first, every change to the saved profile stops this way.
+moves or removes a saved field is outside a gameplay change: **stop.** Write no file, and say in
+one line:
+`saved data: <field> would be <renamed, moved or removed>`.
+Where the product's instructions ask that changes to saved data be raised first, every change to
+the saved profile stops this way, saying what it would do to the field.

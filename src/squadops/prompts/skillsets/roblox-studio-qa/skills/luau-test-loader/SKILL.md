@@ -1,6 +1,7 @@
 ---
 name: luau-test-loader
 description: Writes a Roblox game's headless Luau tests as tests/*.spec.luau files for the product's own runner (tests/run.luau under Lune), testing the plain-logic modules that load outside Studio.
+stops: ["no tests/run.luau:"]
 ---
 
 # Headless Luau tests

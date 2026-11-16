@@ -84,6 +84,8 @@ from squadops.capabilities.handlers.fenced_parser import (
     extract_fenced_deletions,
     extract_fenced_files,
 )
+from squadops.capabilities.skill_stops import SkillStop, SkillStopped, read_stop
+from squadops.capabilities.skillsets import SKILLS_INPUT
 from squadops.cycles.deletions import DELETIONS_KEY, DELETIONS_REFUSED_KEY
 from squadops.cycles.emission_integrity import (
     SIGNATURE_CAP_EXHAUSTED,
@@ -1510,6 +1512,10 @@ class _CycleTaskHandler(CapabilityHandler):
         # D12 (#2253): a step declared ``first_call_keeps_reasoning_short`` is sent the note on its
         # first call, after the caller's messages. A self-evaluation pass is a later call. The
         # envelope captures what the model is sent, note included.
+        if isinstance(context.skill_stop, SkillStop):
+            # SIP-0116 §17o: an earlier answer of this task was a declared stop. A seam whose
+            # own loop asks again is ended here, before the model is called.
+            raise SkillStopped(context.skill_stop)
         first_messages = (
             messages if self_eval_pass else await self._first_call_messages(context, messages)
         )
@@ -1618,6 +1624,28 @@ class _CycleTaskHandler(CapabilityHandler):
                     attempt=attempt,
                 )
             if retry_fact is None:
+                # SIP-0116 §17o: an answer that is a stop one of the task's skills declares
+                # ends the task here, after the call was accounted, logged and recorded as any
+                # other, and before any parser reads it.
+                stop = read_stop(inputs.get(SKILLS_INPUT), content)
+                if stop is not None:
+                    context.skill_stop = stop
+                    if not record:
+                        # The one caller that records after its validator rules (#1172) never
+                        # gets that far with a stop, so the generation is recorded here.
+                        self._record_generation(
+                            context,
+                            call_messages[-1].content if retried else messages[-1].content,
+                            content,
+                            (time.perf_counter() - started) * 1000,
+                            chat_kwargs.get("model"),
+                            rendered=rendered,
+                            chat_response=response,
+                            reasoning=chat_kwargs.get("reasoning"),
+                            layers=layers,
+                            attempt=attempt,
+                        )
+                    raise SkillStopped(stop)
                 return response, content
             retried = True
             call_messages = [*first_messages, ChatMessage(role="user", content=retry_fact)]

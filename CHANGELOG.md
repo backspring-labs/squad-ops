@@ -6,6 +6,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A skill's stop is read, and it ends the run** (#3041; SIP-0116 §17o): a skill declares the opening words of
+  the line it tells the model to refuse a task with (`stops:` in its `SKILL.md` front matter). Every authoring
+  answer is read against the stops its task's skills declare. A task answered with one is not asked again or
+  repaired: the run ends `skill_stopped`, and its terminal decision carries the skill and the line. Before this a
+  stopped proposal was asked to revise and failed on its revision budget, and a stopped dev or QA task read as an
+  empty emission. The three Roblox skills declare theirs, and `luau-gameplay`'s stop gains the fixed opening
+  `saved data:` (the owner's approval, 2026-11-16). Migration `2202` adds the ending to `cycle_ends`.
 - **The Roblox squad profile, `game-dev-roblox`** (#3041; SIP-0118 R4.3, R5.4): `full-38-tf`'s roster with no
   builder, with `roblox-increment-design` on Nat, `roblox-luau-dev` on Neo and `roblox-studio-qa` on Eve. Its skills
   load only on a cycle whose development profile requires them, and no profile does yet. It is the one Roblox

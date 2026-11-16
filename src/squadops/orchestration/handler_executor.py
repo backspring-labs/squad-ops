@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.disputed_checks import DISPUTED_CHECKS
 from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.capabilities.skill_stops import SkillStop, describe_stop
 from squadops.comms.task_delivery import dispatch_of
 from squadops.cycles.llm_usage import UsageTotals
 from squadops.cycles.task_outcome import TaskOutcome
@@ -24,6 +25,7 @@ from squadops.orchestration.handler_registry import HandlerNotFoundError, Handle
 from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.tasks.models import (
     INPUT_REFUSAL_EVIDENCE,
+    SKILL_STOP_EVIDENCE,
     TaskEnvelope,
     TaskResult,
     TaskResultStatus,
@@ -73,6 +75,40 @@ def _held_if_blocked(outputs: dict[str, Any] | None, context: ExecutionContext |
         "outcome_class": TaskOutcome.BLOCKED,
         "infrastructure_block": context.infrastructure_block,
     }
+
+
+def _stopped_by_skill(
+    task_id: str,
+    context: ExecutionContext | None,
+    outputs: dict[str, Any] | None,
+    evidence: dict[str, Any],
+) -> TaskResult | None:
+    """The result of a task whose model answered with a stop one of its skills declares
+    (SIP-0116 §17o), or ``None`` for a task with none.
+
+    Whatever the handler returned or raised gives way to it. The model refused the task as its
+    equipment told it to, so a handler's own reading of that answer (no emission, a refused
+    proposal, an output built without the model) is not the task's result. The executor ends
+    the run on ``SKILL_STOP_EVIDENCE``."""
+    if context is None or not isinstance(context.skill_stop, SkillStop):
+        return None
+    stop = context.skill_stop.to_dict()
+    logger.warning(
+        "skill_stopped task_id=%s skill=%s/%s line=%s",
+        task_id,
+        stop["skillset"],
+        stop["skill"],
+        stop["line"],
+    )
+    return TaskResult(
+        task_id=task_id,
+        status=TaskResultStatus.FAILED,
+        outputs=_with_disputes(outputs, context),
+        error=describe_stop(stop),
+        execution_evidence={**evidence, SKILL_STOP_EVIDENCE: stop},
+        llm_usage=context.llm_usage.to_dict(),
+        authoring_envelope=context.authoring_envelope,
+    )
 
 
 class HandlerExecutor(CapabilityExecutor):
@@ -221,6 +257,12 @@ class HandlerExecutor(CapabilityExecutor):
                 timed_out.authoring_envelope = context.authoring_envelope  # type: ignore[attr-defined]
                 raise timed_out from err
 
+            stopped = _stopped_by_skill(
+                task_id, context, result.outputs, self._evidence_to_dict(result.evidence)
+            )
+            if stopped is not None:
+                return stopped
+
             # Convert handler result to task result
             if result.success:
                 logger.info(
@@ -262,6 +304,9 @@ class HandlerExecutor(CapabilityExecutor):
             raise
 
         except Exception as e:
+            stopped = _stopped_by_skill(task_id, context, None, {"exception": type(e).__name__})
+            if stopped is not None:
+                return stopped
             logger.exception(
                 "execution_failed",
                 extra={"task_id": task_id, "error": str(e)},

@@ -441,7 +441,7 @@ def _skill_problem(directory: Path) -> str:
     if not skill_file.is_file():
         return f"no {SKILL_FILE} in {directory.name}/"
     try:
-        header, _body = parse_frontmatter(skill_file.read_bytes().decode("utf-8"))
+        header, body = parse_frontmatter(skill_file.read_bytes().decode("utf-8"))
     except UnicodeDecodeError:
         return f"{SKILL_FILE} is not UTF-8 text"
     except FrontmatterError as exc:
@@ -451,8 +451,14 @@ def _skill_problem(directory: Path) -> str:
         return f"{SKILL_FILE} front matter lacks {', '.join(missing)}"
     try:
         _promotion(header, _supersedes(header))
+        stops = _stops(header)
     except ValueError as exc:
         return f"{SKILL_FILE} front matter: {exc}"
+    unshown = [stop for stop in stops if stop.casefold() not in body.casefold()]
+    if unshown:
+        # The declaration is how a seam reads the line and the text is how the model learns
+        # to write it. One without the other is a stop nobody can reach.
+        return f"{SKILL_FILE} declares the stop {unshown[0]!r} and its text never shows it"
     return ""
 
 
@@ -479,6 +485,33 @@ def _supersedes(header: Mapping[str, Any]) -> tuple[str, ...]:
             f"supersedes is a list of lesson pattern ids (pat_ and 16 hex digits), not {value!r}"
         )
     return tuple(value)
+
+
+def skill_stops(skill_md: str) -> tuple[str, ...]:
+    """The stops a skill's ``SKILL.md`` declares (§17o): its front matter's ``stops``, or ``()``
+    when it declares none. Each is the opening words of the one line the skill tells the model
+    to answer with in place of its work, as ``no scenario:`` opens a strategy skill's. The
+    skillset's load refused any other value, so a kept copy's text reads here as it was
+    checked."""
+    header, _body = parse_frontmatter(skill_md)
+    return _stops(header)
+
+
+def _stops(header: Mapping[str, Any]) -> tuple[str, ...]:
+    value = header.get("stops")
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ValueError(f"stops is a list of a line's opening words, not {value!r}")
+    stops = tuple(v.strip() for v in value)
+    for stop in stops:
+        if len(stop) < 2 or not stop.endswith(":") or "\n" in stop or "`" in stop:
+            raise ValueError(
+                f"a stop is the opening words of one line, ending in a colon, not {stop!r}"
+            )
+    if len({stop.casefold() for stop in stops}) != len(stops):
+        raise ValueError("a stop is declared more than once")
+    return stops
 
 
 #: A lesson revision's id, as ``memory.lessons.PatternRevision.revision_id`` writes it.

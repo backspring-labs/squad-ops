@@ -534,6 +534,10 @@ class TerminalKind(StrEnum):
     #: campaign branch's head, read as soon as the qa task's test for it existed, before the run
     #: delivered. The run ended there: nothing it built can make that criterion discriminate.
     CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
+    #: SIP-0116 §17o: a task's model answered with a stop one of its skills declares
+    #: (``SKILL_STOP_EVIDENCE`` on its reply), and the run ended at once: the work as asked is
+    #: one its equipment refuses, so a re-ask or a repair would ask for the refused thing again.
+    SKILL_STOPPED = "skill_stopped"
     COMPLETED = "completed"
     OTHER = "other"
 
@@ -697,6 +701,8 @@ _PRIMARY_DECLARED_BY_KIND: dict[TerminalKind, AttributionClass] = {
     TerminalKind.INFRASTRUCTURE_FAILED: AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE,
     TerminalKind.INPUT_REFUSED: AttributionClass.INPUT_CONTRACT_FAILURE,
     TerminalKind.CRITERIA_NOT_CHECKABLE: AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
+    # SIP-0116 §17o: what was asked is at fault, as an uncheckable criterion is, not the work.
+    TerminalKind.SKILL_STOPPED: AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
 }
 
 

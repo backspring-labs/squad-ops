@@ -606,3 +606,40 @@ async def test_a_scenario_proposal_emits_what_each_scenario_observes_for_its_rul
         "| equals `false` |"
     ) in review["content"]
     assert "| `spawned` (precondition) |" in review["content"]
+
+
+_SCENARIO_SKILL = [
+    {
+        "skillset": "fixture-design",
+        "version": 1,
+        "skill": "scenario-authoring",
+        "digest": "0" * 64,
+        "files": {
+            "SKILL.md": (
+                '---\nname: scenario-authoring\ndescription: d\nstops: ["no scenario:"]\n---\n'
+                "Write the scenario. If its effect can't be observed, write no change request "
+                "and say in one line: `no scenario: <why>`.\n"
+            )
+        },
+    }
+]
+
+
+async def test_a_proposal_answered_with_its_skills_stop_is_not_asked_to_revise():
+    """SIP-0116 §17o, at the seam the outside review named: the proposal's revision loop. Bug
+    caught: the stop read as a missing ``change_request.yaml`` block, so the model is asked
+    again for the change request its skill told it to refuse, and the task fails as "refused
+    after its revision budget" with the reason lost."""
+    from squadops.capabilities.skill_stops import SkillStop
+
+    line = "no scenario: the total line shows itself as a sound, which fixture/1 can't observe"
+    ctx = _ctx(f"`{line}`", _fenced(_REQUEST))
+    ctx.task_id = "task-proposal"
+
+    result = await StrategyProposeIncrementHandler().handle(
+        ctx, {**_inputs(), "skills": _SCENARIO_SKILL}
+    )
+
+    assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+    assert result.success is False
+    assert ctx.skill_stop == SkillStop("fixture-design", "scenario-authoring", "no scenario:", line)
