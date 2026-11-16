@@ -756,6 +756,14 @@ def _surfaces(
     surfaces += [Surface("package", name=PurePosixPath(p).name) for p in packages]
     if node.get("name") and _node_package_has_an_interface(node):
         surfaces.append(Surface("package", name=str(node["name"])))
+    # H.33 (#3134): the package roots the configuration declares, where the tree names none (a
+    # Luau product under Script Sync). Named by the folder, as a Python package is; one the tree
+    # no longer holds is no surface, and ``package_root_missing`` says so.
+    surfaces += [
+        Surface("package", name=PurePosixPath(r).name)
+        for r in configuration.package_roots
+        if r in tree.dirs
+    ]
     return tuple(surfaces)
 
 
@@ -870,6 +878,20 @@ def _gaps(
                 "the Development Configuration declares no start (contract 7), so Outcome "
                 "Evaluation reads every scenario blocked_unverified",
                 "a start declaration in the Development Configuration",
+            )
+        )
+    missing = [r for r in configuration.package_roots if r not in tree.dirs]
+    if missing:
+        gaps.append(
+            Gap(
+                "package_root_missing",
+                DISCLOSED,
+                None,
+                tuple(f"{r}/**" for r in missing),
+                f"the declared package roots {', '.join(missing)} hold no files at this commit, so "
+                "no criterion may name their packages",
+                "the package roots as the tree holds them, declared in a new Development "
+                "Configuration revision",
             )
         )
     gaps += _stack_unmatched(configuration, runners)

@@ -64,6 +64,8 @@ GAPS: Mapping[str, Mapping[str, str]] = {
     "runner_not_scopable": {DISCLOSED: "criterion_scoping"},
     "no_test_id_reader": {DISCLOSED: "per_test_reading"},
     "lint_without_reader": {DISCLOSED: "per_finding_comparison"},
+    # H.33: a declared package root the tree doesn't hold; its package is no surface.
+    "package_root_missing": {DISCLOSED: "criterion_surfaces"},
     # H.26: no development profile fits. Disclosed while a runner can verify the work, and a
     # Campaign's refusal when none can, since nothing could judge its increments.
     "stack_unmatched": {BLOCKING: "campaigns", DISCLOSED: "stack_guidance"},

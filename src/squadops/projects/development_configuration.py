@@ -152,6 +152,10 @@ class DevelopmentConfiguration:
     workspace_mode: str = "managed_clone"
     quality_contract_ref: str | None = None
     benchmark_profile_ref: str | None = None
+    #: SIP-0112 H.33 (#3134): the product's package roots, declared where nothing in the tree
+    #: names them (a Luau product under Script Sync, mapped in Studio by hand). Each is a
+    #: repository directory, and its package is named by its last part, as a Python package is.
+    package_roots: tuple[str, ...] = ()
 
     def to_document(self) -> dict[str, Any]:
         """The record as it is stored and read (the shape the shared fixture records)."""
@@ -166,6 +170,7 @@ class DevelopmentConfiguration:
                     "target": self.target,
                     "stack": self.stack,
                     "commands": _commands_document(self.commands),
+                    **({"package_roots": list(self.package_roots)} if self.package_roots else {}),
                 },
                 "workspace": {
                     "mode": self.workspace_mode,
@@ -193,6 +198,33 @@ def parse_technical(technical: Mapping[str, Any]) -> tuple[str, str, str | None,
         raise ConfigurationInvalid("technical.stack", "a stack's name, or null")
     commands = _mapping(technical, "commands", "technical")
     return project_type, target, stack, _commands(commands, "technical.commands")
+
+
+def parse_package_roots(technical: Mapping[str, Any]) -> tuple[str, ...]:
+    """A submitted or stored ``technical.package_roots`` (H.33): repository directories, each
+    named by its last part. Absent is none. Refused, naming the entry: anything but a list of
+    paths; a path that is absolute, leaves the repository or ends in ``/``; and two roots whose
+    last parts are one name, since a criterion names the package, not the path."""
+    at = "technical.package_roots"
+    value = technical.get("package_roots", [])
+    if not isinstance(value, list):
+        raise ConfigurationInvalid(at, "a list of repository directories")
+    roots: list[str] = []
+    for i, root in enumerate(value):
+        where = f"{at}[{i}]"
+        if not isinstance(root, str) or not root or root.endswith("/"):
+            raise ConfigurationInvalid(where, "a repository directory, such as src/Shared")
+        parts = PurePosixPath(root).parts
+        if root.startswith("/") or ".." in parts or root in (".", "./"):
+            raise ConfigurationInvalid(where, f"{root!r} is not a directory inside the repository")
+        roots.append(root)
+    names = [PurePosixPath(r).name for r in roots]
+    twice = sorted({n for n in names if names.count(n) > 1})
+    if twice:
+        raise ConfigurationInvalid(
+            at, f"two roots name one package ({', '.join(twice)}): a package is named by its folder"
+        )
+    return tuple(roots)
 
 
 def _readings(doc: Any, at: str, check_ids: list[str]) -> tuple[Reading, ...]:
@@ -387,9 +419,8 @@ def parse_configuration(doc: Mapping[str, Any]) -> DevelopmentConfiguration:
     commit = _text(configuration, "validated_at_commit", "configuration")
     if not _COMMIT.match(commit):
         raise ConfigurationInvalid("configuration.validated_at_commit", "a Git commit")
-    project_type, target, stack, commands = parse_technical(
-        _mapping(configuration, "technical", "configuration")
-    )
+    technical = _mapping(configuration, "technical", "configuration")
+    project_type, target, stack, commands = parse_technical(technical)
     sources = configuration.get("instruction_sources", [])
     if not isinstance(sources, list):
         raise ConfigurationInvalid("configuration.instruction_sources", "a list")
@@ -409,6 +440,7 @@ def parse_configuration(doc: Mapping[str, Any]) -> DevelopmentConfiguration:
         workspace_mode=workspace.get("mode", "managed_clone"),
         quality_contract_ref=quality.get("contract_ref"),
         benchmark_profile_ref=configuration.get("benchmark_profile_ref"),
+        package_roots=parse_package_roots(technical),
     )
 
 

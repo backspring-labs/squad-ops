@@ -18,6 +18,7 @@ from squadops.projects.development_configuration import (
     ConfigurationInvalid,
     DevelopmentConfiguration,
     discover_instruction_sources,
+    parse_package_roots,
     parse_technical,
     submission_digest,
 )
@@ -51,11 +52,14 @@ async def configure_project(
             f"Project {project_id} is {project.lifecycle_status.value}: a Development "
             "Configuration is recorded for a registered Project whose source has been reached"
         )
-    project_type, target, stack, commands = parse_technical(_mapping(submission, "technical"))
+    technical = _mapping(submission, "technical")
+    project_type, target, stack, commands = parse_technical(technical)
+    package_roots = parse_package_roots(technical)
     await _check_stack(registry, project_id, stack)
     tree = await baseline_tree(
         repository, project_id, project.source.repo_uri, project.source.base_ref, commit
     )
+    _check_package_roots(package_roots, tree.files, commit)
     quality = submission.get("quality") or {}
     configuration = DevelopmentConfiguration(
         project_id=project_id,
@@ -67,6 +71,7 @@ async def configure_project(
         commands=commands,
         instruction_sources=discover_instruction_sources(tree.files, commit),
         quality_contract_ref=quality.get("contract_ref"),
+        package_roots=package_roots,
     )
     return await registry.record_development_configuration(
         configuration,
@@ -90,6 +95,17 @@ async def baseline_tree(
             raise
     await repository.sync(project_id, locator, ref)
     return await repository.tree_at(project_id, commit)
+
+
+def _check_package_roots(roots: tuple[str, ...], files: Mapping[str, bytes], commit: str) -> None:
+    """H.33: each declared package root is a directory holding files at the baseline commit. A
+    root that isn't would declare a package nothing can import, so it's refused as submitted."""
+    for i, root in enumerate(roots):
+        if not any(path.startswith(root + "/") for path in files):
+            raise ConfigurationInvalid(
+                f"technical.package_roots[{i}]",
+                f"{root!r} is no directory at the baseline commit {commit[:12]}",
+            )
 
 
 def _mapping(doc: Mapping[str, Any], key: str) -> Mapping[str, Any]:
