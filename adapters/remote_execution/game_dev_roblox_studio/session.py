@@ -67,10 +67,12 @@ class StudioToolError(StudioSessionError):
 @dataclass(frozen=True)
 class ToolCheck:
     """The live ``tools/list``, as the worker registers it (R4.6): how many tools, and the digest
-    of their schemas, so an operation can read ``not_executed`` when Studio changed under it."""
+    of their schemas, so an operation can read ``not_executed`` when Studio changed under it. The
+    names, sorted, let a re-qualification name the tools an update added or removed (#3048)."""
 
     count: int
     schema_digest: str
+    names: tuple[str, ...]
 
 
 def tool_check(
@@ -95,7 +97,9 @@ def tool_check(
     if problems:
         raise StudioSessionError("Studio's tool list fails the allow-list: " + "; ".join(problems))
     canonical = json.dumps(sorted(tools, key=lambda t: str(t.get("name"))), sort_keys=True)
-    return ToolCheck(len(tools), hashlib.sha256(canonical.encode()).hexdigest())
+    return ToolCheck(
+        len(tools), hashlib.sha256(canonical.encode()).hexdigest(), tuple(sorted(by_name))
+    )
 
 
 class StudioMcpSession:

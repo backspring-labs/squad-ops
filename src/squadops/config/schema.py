@@ -422,15 +422,12 @@ class WorkerConfig(BaseModel):
     roblox_studio_baseline_digest: str | None = Field(
         default=None, description="The pinned digest of the place's non-script baseline"
     )
-    roblox_studio_proved_version: str | None = Field(
-        default=None,
-        description="The Studio version the operations were proved on; another reads not executed",
-    )
-    roblox_studio_proved_tools: str | None = Field(
+    roblox_studio_qualifications: str | None = Field(
         default=None,
         description=(
-            "The Studio tool list the operations were proved on, as '<count>:<schema digest>'; "
-            "another reads not executed"
+            "The directory of the worker's re-qualification records (#3048). The newest passing "
+            "one names the Studio version and tool list the operation was proved on, and another "
+            "Studio reads not executed"
         ),
     )
 
@@ -471,8 +468,7 @@ PROVIDER_SETTINGS: dict[str, tuple[str, ...]] = {
         "roblox_studio_baseline_file",
         "roblox_studio_baseline_sha256",
         "roblox_studio_baseline_digest",
-        "roblox_studio_proved_version",
-        "roblox_studio_proved_tools",
+        "roblox_studio_qualifications",
     ),
 }
 

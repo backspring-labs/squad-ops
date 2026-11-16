@@ -188,7 +188,7 @@ phases are in its own ledger.
 | A Campaign whose worker is unavailable: it waits in `launch_blocked` before launch, and an availability-only gap is relaunched within a budget persisted per logical increment, then escalated (R5.7) | **shipped** | 2.8 (PRs #3086 and #3087, closing #3045; R5.10 and R5.12) |
 | The worker as a service on the MacBook: launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step, and the worker registered with the Spark's runtime serving `roblox-studio` (R5.7, R5.20) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
 | The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **shipped** | 2.8 (PR #3059, closing #3047) |
-| Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3048 |
+| Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7, R5.21) | **shipped** | 2.8 (PR #3119, closing #3048) |
 | Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3049 |
 | The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **shipped** | 2.8 (PRs #3074, #3080 and #3084, closing #3050). The faults are read on the remote-execution path, on Postgres in the integration job (#3074). The two-increment Campaign runs in the unit regression job, as it needs no service (#3084) |
 | Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
@@ -1101,6 +1101,62 @@ screen's Play button, then reads three assertions: the title gone (client), Ener
 
 **Who ruled.** The MacBook lane, under the owner's "go ahead with #3039" and their go-ahead for this proof, including
 the Studio restart (2026-11-15).
+
+## R5.21 Re-qualification after a Studio update as built: the record is the pin (#3048, 2026-11-16)
+
+**What changed.** R5.19 pinned the worker to the Studio it was proved on with two settings, `PROVED_VERSION` and
+`PROVED_TOOLS`. Studio updates itself, so after an update every claim read `not_executed` (R2.4) until someone edited
+those settings by hand. R5.7 rules that a recorded run moves the pin, never a hand edit. So the two settings are
+replaced by one, `SQUADOPS__WORKER__ROBLOX_STUDIO_QUALIFICATIONS`: the directory of the worker's qualification
+records.
+
+**The run** (`scripts/dev/studio_requalify.py`, `qualification.requalify`), on the Studio the Mac runs now:
+1. The live Studio's version and its tool list are read.
+2. The qualification scenario is played with Studio held to exactly those.
+3. The place is reset: Studio is quit, the place restored and Studio reopened (R5.17).
+4. The scenario is played again.
+
+It passes when both plays complete with every assertion passed and the reset succeeds. A step that fails ends the run.
+
+**The record** is one JSON document per run, passed or failed. It names:
+- the Studio version, the tool list (`<count>:<schema digest>`) and the tool names;
+- the record it would replace, and the tools added and removed since then;
+- the scenario's digest and the source revision played;
+- each step's outcome, and the first failing step by name.
+
+Records carry assertion ids and outcomes only, so the player's account appears in none.
+
+**The pin.**
+- **Which record:** the newest passing record for this provider version. A failed run leaves the pin where it was.
+- **When it's read:** at each claim, so the claim after a passing re-qualification runs with no restart.
+- **Recorded with each result:** each result's `ran_with` names the record (`qualified_by`).
+
+**What is refused, by name, before any tool is called:**
+- no passing record;
+- a record that can't be read. Skipping it could pin an older record over a newer one;
+- a record whose body doesn't match its own digest, because it was edited after it was recorded.
+
+**Studio is used by one process at a time.** A re-qualification holds a lock file in the same directory for its
+whole run.
+- **A claim that finds it held** reads `not_executed`.
+- **A worker's reset that finds it held** raises, and the worker tries again at its next claim (R5.5).
+- **A re-qualification started during a claim** is refused, and nothing is recorded.
+
+**R5.7's "the provider's four operations" is read as the operation R5.19 serves:** `play_scenario`, whose transaction
+includes the sync and the console read, plus the reset.
+
+**Evidence on the real Studio** (0.747.0.7471481, `z_tower-ascension`, 2026-11-16, with an input-free scenario while
+the Mac was locked):
+- **No record yet:** a play was refused in 0.0 s: "no passing qualification of roblox-studio 1 is recorded …
+  re-qualify".
+- **The re-qualification passed in 191 s.** Both plays passed both assertions. The reset quit and reopened Studio,
+  and its process changed from 87522 to 4514. The record pins `38:1ba499d8…`, the tool list R5.19 was proved on.
+- **The next play read its pin from that record** and passed both assertions, in 76.5 s.
+
+**What it doesn't show live.** Studio didn't update during the run, so the version-mismatch refusal after an update
+is shown by the tests over the stand-in. R5.19 showed that refusal live, for a wrong pinned version, in 0.5 s.
+
+**Who ruled.** The MacBook lane, under the owner's "go on 3049 and 3048" (2026-11-16).
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
