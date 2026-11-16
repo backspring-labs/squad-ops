@@ -115,3 +115,141 @@ async def test_validity_only_checks_without_calling_the_model():
     )
 
     assert [r["record"] for r in records] == ["validity"] and model.asked == 0
+
+
+# --- skills cases (SIP-0116 §17p) ------------------------------------------------------------
+
+_STOP_LINE = "no scenario: the total shows itself as a sound, which roblox-studio/1 can't observe"
+
+
+class _SkilledModel:
+    """Answers a prompt that shows the scenario skill with ``with_skill``, and any other with the
+    reference proposal."""
+
+    default_model = "m"
+
+    def __init__(self, with_skill: str) -> None:
+        self.with_skill = with_skill
+        self.prompts: list[str] = []
+
+    async def chat_stream_with_usage(self, messages, **kwargs):
+        prompt = "\n".join(m.content for m in messages)
+        self.prompts.append(prompt)
+        skilled = "Play scenarios for a Roblox game" in prompt
+        return ChatMessage(
+            role="assistant", content=self.with_skill if skilled else _fenced(_REFERENCE)
+        )
+
+
+def _skills_payload(envelope: dict, **case) -> dict:
+    envelope = {**envelope, "envelope_id": envelope_id(envelope) + "#strategy-case"}
+    return {
+        "experiment_id": "roblox-skills-v1",
+        "cases": [envelope],
+        "arms": ["baseline", "skills"],
+        "schedule": [
+            [envelope["envelope_id"], "skills", 0],
+            [envelope["envelope_id"], "baseline", 0],
+        ],
+        "skill_cases": {
+            envelope["envelope_id"]: {
+                "case": "strategy-case",
+                "skillset": "roblox-increment-design",
+                "swaps": [],
+                **case,
+            }
+        },
+    }
+
+
+async def test_a_skills_case_is_authored_with_and_without_the_skills_its_cycle_would_hand():
+    """Entered at ``replay`` with a captured proposal, the real handler and prompt assets and the
+    packaged skillsets. Bug caught: a skills arm that hands the task no skill, or changes its
+    prompt elsewhere, so the comparison isn't the skill's."""
+    envelope = await _captured_envelope()
+    model = _SkilledModel(_fenced(_REFERENCE))
+
+    records = await _module.replay(_skills_payload(envelope), *_tools(), model)
+
+    [check] = [r for r in records if r["record"] == "validity"]
+    assert (check["case"], check["capture_checked"], check["valid"]) == (
+        "strategy-case",
+        True,
+        True,
+    )
+    assert (check["baseline_exact"], check["skills_differ_only_by_their_section"]) == (True, True)
+    assert list(check["skills"]) == ["roblox-increment-design/play-scenario-authoring"]
+    assert check["prompt_chars"]["skills"] > check["prompt_chars"]["baseline"] > 0
+    by_arm = {r["arm"]: r for r in records if r["record"] == "authoring"}
+    assert sorted(by_arm) == ["baseline", "skills"]
+    assert by_arm["baseline"]["first_call_is_the_capture"] is True
+    assert [r["skill_stop"] for r in by_arm.values()] == [None, None]
+    assert all(r["success"] and r["case"] == "strategy-case" for r in by_arm.values())
+    assert sum("Play scenarios for a Roblox game" in p for p in model.prompts) == 1
+
+
+async def test_a_skills_arm_answered_with_its_skills_stop_records_the_stop_and_asks_once():
+    """Bug caught: the stop lost between ``_llm_call`` and the record, so a stop case can only be
+    judged by the handler's failure, which any refusal also produces."""
+    envelope = await _captured_envelope()
+    model = _SkilledModel(f"`{_STOP_LINE}`")
+
+    records = await _module.replay(_skills_payload(envelope), *_tools(), model)
+
+    by_arm = {r["arm"]: r for r in records if r["record"] == "authoring"}
+    assert by_arm["skills"]["success"] is False
+    assert by_arm["skills"]["skill_stop"] == {
+        "skillset": "roblox-increment-design",
+        "skill": "play-scenario-authoring",
+        "opening": "no scenario:",
+        "line": _STOP_LINE,
+    }
+    assert len(by_arm["skills"]["calls"]) == 1
+    assert (by_arm["baseline"]["success"], by_arm["baseline"]["skill_stop"]) == (True, None)
+
+
+async def test_a_swapped_case_is_checked_against_its_own_baseline_and_claims_no_capture():
+    """Bug caught: a swapped case failing validity because its prompt isn't the capture's (so no
+    swapped case could ever run), or its baseline claiming to be the captured prompt."""
+    envelope = await _captured_envelope()
+    path = ["resolved_config", "campaign_proposal", "objective", "statement"]
+    swaps = [{"path": path, "value": "A chime plays when a run is saved."}]
+    model = _SkilledModel(_fenced(_REFERENCE))
+
+    records = await _module.replay(_skills_payload(envelope, swaps=swaps), *_tools(), model)
+
+    [check] = [r for r in records if r["record"] == "validity"]
+    assert (check["capture_checked"], check["baseline_exact"], check["valid"]) == (
+        False,
+        None,
+        True,
+    )
+    assert check["skills_differ_only_by_their_section"] is True
+    by_arm = {r["arm"]: r for r in records if r["record"] == "authoring"}
+    assert "first_call_is_the_capture" not in by_arm["baseline"]
+    assert all("A chime plays when a run is saved." in p for p in model.prompts)
+    assert len(model.prompts) == 2
+
+
+@pytest.mark.parametrize(
+    ("case", "says"),
+    [
+        ({"skillset": "roblox-studio-qa"}, "is for qa, not"),
+        ({"skillset": "absent"}, "holds no skillset absent"),
+        ({"swaps": [{"path": ["absent"], "value": "x"}]}, "hold no absent to swap"),
+        ({"vocabulary_skillset": "roblox-studio-qa"}, "hold no product_proposal"),
+    ],
+    ids=["another-roles-skillset", "unknown-skillset", "a-swap-of-nothing", "nowhere-for-it"],
+)
+async def test_a_skills_case_that_cant_be_built_is_reported_and_never_authored(case, says):
+    """Bug caught: a mistyped case authored anyway, with no skills or with the capture's own
+    task, and recorded under the case's name."""
+    envelope = await _captured_envelope()
+    model = _SkilledModel(_fenced(_REFERENCE))
+
+    records = await _module.replay(_skills_payload(envelope, **case), *_tools(), model)
+
+    [check] = records
+    assert (check["record"], check["valid"]) == ("validity", False)
+    assert says in check["reason"]
+    assert model.prompts == []
