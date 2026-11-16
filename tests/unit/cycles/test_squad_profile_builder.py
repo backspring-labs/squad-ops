@@ -94,6 +94,9 @@ class TestFullSquadBuilderProfile:
             # machinery is the scripted squad (#2495): every call answered from a recorded
             # script, no model. Inert until a cycle names it with its llm_script.
             "machinery",
+            # game-dev-roblox is the Roblox squad on the Spark (SIP-0118 phase 2f, #3041). Its
+            # skills load only under a development profile that requires them.
+            "game-dev-roblox",
         }
 
 
