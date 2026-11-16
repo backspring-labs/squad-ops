@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import typing
@@ -22,19 +23,21 @@ SECTION = {
     "SQUADOPS__WORKER__TOKEN_ENDPOINT": "http://spark.test:8180/realms/r/protocol/openid-connect/token",
     "SQUADOPS__WORKER__CLIENT_ID": "squadops-worker",
     "SQUADOPS__WORKER__CLIENT_SECRET": "a-literal-secret",
+    "SQUADOPS__WORKER__STATUS_FILE": "worker-status.json",
     "SQUADOPS__WORKER__PROVIDER": "fixture",
 }
 
 
 @pytest.fixture
-def env(monkeypatch):
+def env(monkeypatch, tmp_path):
     """The worker's section set, and nothing else of the worker's or the secrets section's
-    from the process running the tests."""
+    from the process running the tests. Its status goes under the test's own directory."""
     for key in list(os.environ):
         if key.startswith(("SQUADOPS__WORKER__", "SQUADOPS__SECRETS__")):
             monkeypatch.delenv(key)
     for key, value in SECTION.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SQUADOPS__WORKER__STATUS_FILE", str(tmp_path / "worker-status.json"))
     return monkeypatch
 
 
@@ -54,6 +57,7 @@ def test_the_section_is_read_from_its_variables(env):
         "token_endpoint": SECTION["SQUADOPS__WORKER__TOKEN_ENDPOINT"],
         "client_id": "squadops-worker",
         "client_secret": "a-literal-secret",
+        "status_file": os.environ["SQUADOPS__WORKER__STATUS_FILE"],
         "provider": "fixture",
     } | {name: None for name in PROVIDER_SETTINGS["roblox-studio"]}
 
@@ -98,10 +102,11 @@ def test_a_secret_reference_is_resolved_and_one_with_no_provider_is_refused(env)
     assert client_secret(config, _secret_manager()) == "the-real-secret"
 
 
-async def test_the_root_builds_a_worker_that_registers_as_configured(env, monkeypatch):
-    """The wiring, entered at ``build_worker``. Bug caught: the worker built with another id,
-    or with a runner other than the provider's, so it registers as something it isn't. The
-    runtime here is the factory's adapter with its calls recorded."""
+async def test_the_root_builds_a_worker_that_registers_as_configured(env, monkeypatch, tmp_path):
+    """The wiring, entered at ``build_worker``. Bugs caught: the worker built with another id,
+    or with a runner other than the provider's, so it registers as something it isn't; its
+    status (#3046) not written where its host's doctor reads it. The runtime here is the
+    factory's adapter with its calls recorded."""
     import adapters.remote_execution.factory as factory
     from squadops.remote_execution.workers import WorkerRefused
 
@@ -135,6 +140,15 @@ async def test_the_root_builds_a_worker_that_registers_as_configured(env, monkey
     assert registration.tool_versions == {"fixture": "2", "reader": "fixture/1"}
     assert registration.platform == f"{platform.system().lower()}-{platform.machine().lower()}"
     assert bound == ["http://spark.test:8001", "closed"]
+    status_file = tmp_path / "worker-status.json"
+    status = json.loads(status_file.read_text())
+    assert (status["worker_id"], status["runtime_api_url"], status["tool_ready"]) == (
+        "macbook",
+        "http://spark.test:8001",
+        True,
+    )
+    assert status["session_id"] is None  # the runtime refused it before it registered
+    assert oct(status_file.stat().st_mode & 0o777) == "0o600"
 
 
 def _studio_section(tmp_path) -> dict[str, str]:

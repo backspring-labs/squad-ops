@@ -395,6 +395,14 @@ class WorkerConfig(BaseModel):
         min_length=1,
         description="The service client's secret (supports a secret:// reference)",
     )
+    status_file: str = Field(
+        min_length=1,
+        description=(
+            "Where the worker records its own status (#3046): its tool's reset at start, the "
+            "session it registered as and when the runtime last answered. Its host's doctor "
+            "reads it, since the host never calls the runtime itself"
+        ),
+    )
     provider: Literal["fixture", "roblox-studio"] = Field(
         description=(
             "The provider whose operations this worker runs (required; the vocabulary is the "
