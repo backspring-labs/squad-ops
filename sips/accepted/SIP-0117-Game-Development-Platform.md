@@ -189,7 +189,7 @@ phases are in its own ledger.
 | The worker as a service on the MacBook: launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step, and the worker registered with the Spark's runtime serving `roblox-studio` (R5.7, R5.20) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3046 |
 | The operator's read surface: a read-only workers route and `squadops workers list` and `show` (R5.7) | **shipped** | 2.8 (PR #3059, closing #3047) |
 | Re-qualification after a Studio update: a recorded run moves the pin, never a hand edit (R5.7, R5.21) | **shipped** | 2.8 (PR #3119, closing #3048) |
-| Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3049 |
+| Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7, R5.22) | **shipped** | 2.8 (PR #PRNUM, closing #3049) |
 | The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **shipped** | 2.8 (PRs #3074, #3080 and #3084, closing #3050). The faults are read on the remote-execution path, on Postgres in the integration job (#3074). The two-increment Campaign runs in the unit regression job, as it needs no service (#3084) |
 | Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
@@ -1157,6 +1157,52 @@ the Mac was locked):
 is shown by the tests over the stand-in. R5.19 showed that refusal live, for a wrong pinned version, in 0.5 s.
 
 **Who ruled.** The MacBook lane, under the owner's "go on 3049 and 3048" (2026-11-16).
+
+## R5.22 Payload limits as built: measured on the real tree, and set with the product's own (#3049, 2026-11-16)
+
+**What prompted the change in plan.** Measuring for #3049 found that a source-backed run refuses z_tower-ascension
+at checkout, before any request is built: 2,298 KB of source and config against a 384 KB cap (#3118). A request
+limit set below whatever cap replaced it would refuse at the worker's port a tree the run carries whole. The owner
+placed #3118 in 2.8 with #3049 (2026-11-16: "put 3118 in 2.8 with 3049"). SIP-0112 H.32 records the cap and the
+resolution's limit.
+
+**The measurements** (z_tower-ascension at `0beaac0`, 2026-11-16):
+
+| what | size |
+|---|---|
+| the whole tree as staged: 234 text files, as a request on the wire | 3,059,816 bytes |
+| the same request stored as JSONB in Postgres, after compression | 1,255,666 bytes |
+| `src/` alone: 137 files, as a request on the wire | 1,855,801 bytes |
+| `src/` alone, stored in Postgres | 696,552 bytes |
+
+The registry rewrites an operation's row, request included, at each lease renewal (every 15 s).
+
+On the real Studio, a play's evidence items were 197 bytes (`play_log.json`) and 6,936 bytes (`console.txt`), and
+the whole result 8,216 bytes on the wire. The runner keeps at most 20,000 characters of console.
+
+**The limits:**
+- **The request:** its staged tree may hold up to 4 MiB in UTF-8 (`REQUEST_TREE_LIMIT_BYTES`). That is the
+  resolution's limit, held equal by a test. The executor holds the tree it stages, with the scenario's file in it,
+  to the same limit, so a tree it passes is never refused at the port.
+- **Each evidence item:** up to 256 KiB (`EVIDENCE_ITEM_LIMIT_BYTES`), about three times the console's largest
+  possible tail.
+
+**Refused by name, and nothing truncated:**
+- **At the port.** Both ports refuse a request past the limit before anything is queued or sent. It reads
+  `not_executed` with its size, the limit and its three largest files, and it isn't flagged as no worker being
+  available.
+- **At the worker.** A result with an item past the limit is settled `not_executed`, naming the item. Its
+  records aren't returned without the evidence they rest on, and the item never reaches the operation's row.
+- **When the handler reads a result,** `result_defects` names an item past the limit, for a provider that isn't
+  this worker's.
+
+**Captures stay outside 2.8's acceptance evidence**, as ruled. No binary evidence path is built.
+
+**Not measured here:** a claim's time over the tailnet. That needs the worker registered with the Spark, which is
+#3046's.
+
+**Who ruled.** The owner: "go on 3049 and 3048", then "put 3118 in 2.8 with 3049" (2026-11-16). The limits are the
+MacBook lane's, from the measurements.
 ---
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
