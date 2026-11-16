@@ -12,18 +12,23 @@ the newest passing re-qualification (#3048): ``scripts/dev/studio_requalify.py``
 
 from __future__ import annotations
 
+import hashlib
+import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from adapters.remote_execution.game_dev_roblox_studio.qualification import Qualifications
 from adapters.remote_execution.game_dev_roblox_studio.runner import (
     PROVIDER,
+    NotProved,
     ProvedOn,
     RobloxStudioRunner,
+    studio_version,
 )
 from adapters.remote_execution.game_dev_roblox_studio.studio_app import PlaceFiles
+from squadops.remote_execution.workers import HostCheck
 
-__all__ = ["PROVIDER", "SETTINGS", "create_runner", "create_qualifier"]
+__all__ = ["PROVIDER", "SETTINGS", "create_qualifier", "create_runner", "host_checks"]
 
 #: The settings the runner is created with.
 SETTINGS = (
@@ -74,3 +79,69 @@ def _place(settings: Mapping[str, str]) -> tuple[PlaceFiles, Path]:
         baseline_digest=settings["roblox_studio_baseline_digest"],
     )
     return files, paths["roblox_studio_mcp"]
+
+
+def host_checks(settings: Mapping[str, str]) -> list[HostCheck]:
+    """What ``squadops doctor`` checks of the Mac a Studio worker runs on (#3046). Reads only:
+    nothing is opened, started or written.
+
+    - **Studio:** installed where the settings say, with a version that can be read;
+    - **StudioMCP:** the proxy present and executable;
+    - **the place:** the place file there, and the baseline file there and equal to its pin;
+    - **qualified:** a passing re-qualification of the Studio installed now (#3048). An update
+      that hasn't been re-qualified fails here before it fails a claim."""
+    mcp = Path(settings.get("roblox_studio_mcp") or "").expanduser()
+    checks = []
+    try:
+        version = studio_version(mcp)
+    except ValueError as e:
+        version = None
+        checks.append(HostCheck("studio", False, str(e)))
+    else:
+        checks.append(HostCheck("studio", True, f"Studio {version} is installed"))
+    runs = mcp.is_file() and os.access(mcp, os.X_OK)
+    checks.append(
+        HostCheck(
+            "studio_mcp",
+            runs,
+            f"{mcp} is present" if runs else f"{mcp} isn't there, or can't be run",
+        )
+    )
+    checks.append(_place_check(settings))
+    checks.append(_qualified_check(settings, version))
+    return checks
+
+
+def _place_check(settings: Mapping[str, str]) -> HostCheck:
+    place = Path(settings.get("roblox_studio_place_file") or "").expanduser()
+    baseline = Path(settings.get("roblox_studio_baseline_file") or "").expanduser()
+    missing = [str(p) for p in (place, baseline) if not p.is_file()]
+    if missing:
+        return HostCheck("place", False, f"not there: {', '.join(missing)}")
+    held = hashlib.sha256(baseline.read_bytes()).hexdigest()
+    pinned = settings.get("roblox_studio_baseline_sha256") or ""
+    if held != pinned:
+        return HostCheck(
+            "place",
+            False,
+            f"the baseline file {baseline} is {held[:16]}…, not the pinned {pinned[:16]}…",
+        )
+    return HostCheck("place", True, f"{place.name}, and its baseline equal to its pin")
+
+
+def _qualified_check(settings: Mapping[str, str], installed: str | None) -> HostCheck:
+    directory = Path(settings.get("roblox_studio_qualifications") or "").expanduser()
+    try:
+        pins = Qualifications(directory).current()
+    except (ValueError, NotProved) as e:
+        return HostCheck("qualified", False, str(e))
+    if installed is not None and pins.studio_version != installed:
+        return HostCheck(
+            "qualified",
+            False,
+            f"Studio is {installed}, and the worker was qualified on {pins.studio_version}: "
+            "re-qualify (scripts/dev/studio_requalify.py)",
+        )
+    return HostCheck(
+        "qualified", True, f"qualified on Studio {pins.studio_version} ({pins.record[:16]}…)"
+    )

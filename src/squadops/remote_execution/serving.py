@@ -31,6 +31,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -48,6 +49,7 @@ from squadops.remote_execution.workers import (
     RuntimeUnreachable,
     UnknownSession,
     WorkerRegistration,
+    WorkerStatus,
 )
 
 if TYPE_CHECKING:
@@ -77,6 +79,8 @@ class Worker:
         clock: Callable[[], datetime] = _utc_now,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         idle_poll: timedelta = IDLE_POLL,
+        runtime_api_url: str = "",
+        report: Callable[[WorkerStatus], None] | None = None,
     ) -> None:
         self._api = api
         self._runner = runner
@@ -89,10 +93,21 @@ class Worker:
         self._unknown_state: str | None = None
         #: The tool was reset and has run nothing since.
         self._fresh = False
+        #: Where the worker's own status goes (#3046), and what it is.
+        self._report = report
+        self._status = WorkerStatus(self._worker_id, runtime_api_url, clock())
 
     async def serve(self) -> None:
         """Serve until the call is cancelled. ``WorkerRefused`` and ``RuntimeAnswerUnreadable``
-        end it: trying again would change neither."""
+        end it: trying again would change neither.
+
+        The tool is reset first, before the worker registers (#3046): what an earlier process
+        left in it is unknown, and a worker whose tool isn't up is offline, so nothing would be
+        queued for it to claim. A reset that fails is tried again at each claim, as after any
+        other unknown state."""
+        self._unknown_state = "the worker has just started, and its tool's state is unknown"
+        failure = await self._reset()
+        self._record(tool_ready=failure is None, tool_note=failure or "")
         while True:
             enrolment = await self._enrol()
             try:
@@ -121,8 +136,11 @@ class Worker:
                 enrolment = await self._api.register(registration)
             except RuntimeUnreachable as e:
                 logger.warning("worker %s can't register yet: %s", self._worker_id, e)
+                self._unreachable(e)
                 await self._sleep(self._idle_poll)
                 continue
+            now = self._clock()
+            self._record(session_id=enrolment.session_id, registered_at=now, last_answer_at=now)
             logger.info(
                 "worker %s registered as session %s, serving %s",
                 self._worker_id,
@@ -139,9 +157,11 @@ class Worker:
                 if self._clock() >= heartbeat_due:
                     await self._api.heartbeat(enrolment.session_id, await self._runner.health())
                     heartbeat_due = self._clock() + enrolment.heartbeat
+                    self._record(last_answer_at=self._clock())
                 claim = await self._api.claim(enrolment.session_id)
             except RuntimeUnreachable as e:
                 logger.warning("worker %s can't reach the runtime: %s", self._worker_id, e)
+                self._unreachable(e)
             if claim is None:
                 await self._sleep(self._idle_poll)
                 continue
@@ -207,7 +227,9 @@ class Worker:
                 lease = await self._api.renew(
                     enrolment.session_id, await self._runner.health(), fence
                 )
+                self._record(last_answer_at=self._clock())
             except RuntimeUnreachable as e:
+                self._unreachable(e)
                 if self._clock() < expires:
                     logger.warning("the lease was not renewed, and will be tried again: %s", e)
                     continue
@@ -275,6 +297,21 @@ class Worker:
         return RemoteOperationResult(
             status=OperationStatus.INTERRUPTED, reason=reason, dispatch_id=dispatch_id
         )
+
+    def _unreachable(self, error: Exception) -> None:
+        self._record(last_unreachable_at=self._clock(), last_unreachable=str(error))
+
+    def _record(self, **changes: object) -> None:
+        """Update the worker's status and report it. A report that fails is logged, and the
+        worker serves on: its host then reads a status as old as the last one written, with its
+        age."""
+        self._status = replace(self._status, **changes)  # type: ignore[arg-type]
+        if self._report is None:
+            return
+        try:
+            self._report(self._status)
+        except Exception as e:  # noqa: BLE001 - the report is the host's; serving goes on
+            logger.error("the worker's status could not be recorded: %s", e)
 
     async def _abandon(self, task: asyncio.Future, why: str) -> str | None:
         """Stop the operation and reset the tool. Returns why the reset failed, or ``None``."""

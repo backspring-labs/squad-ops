@@ -201,6 +201,55 @@ class RecordedRefusal:
 
 
 @dataclass(frozen=True)
+class HostCheck:
+    """One check of a worker's host, as its provider makes it (#3046): what was checked, whether
+    it holds, and what was found. Read by ``squadops doctor``."""
+
+    name: str
+    passed: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class WorkerStatus:
+    """What a worker process knows of itself, recorded where its host reads it (#3046): whether its
+    tool was readied at start, the session it registered as, and when the runtime last answered.
+    The host never asks the runtime: a worker connects outward only."""
+
+    worker_id: str
+    runtime_api_url: str
+    started_at: datetime
+    #: The tool's reset at start: ``None`` until it is tried, then whether it held.
+    tool_ready: bool | None = None
+    #: Why the tool isn't ready, or ``""``.
+    tool_note: str = ""
+    session_id: str | None = None
+    registered_at: datetime | None = None
+    #: The runtime's last answer to a registration, heartbeat or renewal.
+    last_answer_at: datetime | None = None
+    #: The last time it couldn't be reached, and why.
+    last_unreachable_at: datetime | None = None
+    last_unreachable: str = ""
+
+    def to_document(self) -> dict[str, object]:
+        def when(moment: datetime | None) -> str | None:
+            return moment.isoformat() if moment is not None else None
+
+        return {
+            "worker_id": self.worker_id,
+            "runtime_api_url": self.runtime_api_url,
+            "started_at": when(self.started_at),
+            "tool_ready": self.tool_ready,
+            "tool_note": self.tool_note,
+            "session_id": self.session_id,
+            "registered_at": when(self.registered_at),
+            "last_answer_at": when(self.last_answer_at),
+            "last_unreachable_at": when(self.last_unreachable_at),
+            "last_unreachable": self.last_unreachable,
+        }
+
+
+@dataclass(frozen=True)
 class Enrolment:
     """What a worker is told when it registers: its session, and the cadence to keep."""
 

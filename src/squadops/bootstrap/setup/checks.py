@@ -17,6 +17,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from squadops.bootstrap.database_isolation import (
@@ -27,6 +28,7 @@ from squadops.bootstrap.database_isolation import (
     TEST_DB_ROLE,
     test_role_dsn,
 )
+from squadops.bootstrap.secrets import secret_manager_from_env
 from squadops.bootstrap.setup.credentials import (
     REPO,
     load_registry,
@@ -46,6 +48,13 @@ from squadops.cycles.check_registry import FRAMEWORK_CHECKS
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.models import ProfileNotFoundError
 from squadops.cycles.preflight import model_availability_decision
+from squadops.remote_execution.host_service import (
+    LABEL,
+    ServicePaths,
+    installed_settings,
+    worker_config,
+)
+from squadops.remote_execution.registry import cadence
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.preflight import sandbox_environment_decision
 
@@ -68,6 +77,7 @@ VALID_CATEGORIES = frozenset(
         "verification",
         "sandbox",
         "credentials",
+        "worker",
     }
 )
 
@@ -1504,6 +1514,158 @@ def _collect_credentials_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return [check_deploy_credentials()]
 
 
+# ---------------------------------------------------------------------------
+# The remote-execution worker as a service (SIP-0117 R5.7; #3046)
+# ---------------------------------------------------------------------------
+
+_WORKER_FIX = (
+    "python scripts/dev/worker_service.py install --env-file ~/.config/squadops/worker.env"
+)
+
+
+def _worker_result(name: str, passed: bool, message: str, fix: str | None = None) -> CheckResult:
+    return CheckResult(
+        name=f"worker:{name}",
+        category="worker",
+        passed=passed,
+        message=message,
+        fix_command=None if passed else fix,
+    )
+
+
+#: launchd's own word for a job whose process is up, named for the reason ``_SYSTEMD_ACTIVE`` is:
+#: "running" also spells run and task statuses, an unrelated vocabulary (#380).
+_LAUNCHD_RUNNING = "running"
+
+
+def check_worker_service(home: Path | None = None) -> list[CheckResult]:
+    """The worker's service, on a Mac that installed it (#3046). A Mac that didn't is asked
+    nothing, as a profile with no memory containment is. Reads only what is on this Mac: the
+    agent, its settings, the provider's own checks of its tool, and the status the worker
+    records. The runtime is never called from here: the worker connects outward, and its host
+    reads what the worker says the runtime last answered."""
+    paths = ServicePaths(home or Path.home())
+    try:
+        settings = installed_settings(paths)
+    except (OSError, ValueError) as e:
+        return [_worker_result("service", False, f"the agent can't be read: {e}", _WORKER_FIX)]
+    if settings is None:
+        return []
+    results = [_worker_service_state(LABEL)]
+    config = _worker_config(settings)
+    if isinstance(config, CheckResult):
+        return [*results, config]
+    results.append(
+        _worker_result("config", True, f"worker {config.worker_id} serves {config.provider}")
+    )
+    results.extend(_worker_provider_checks(config))
+    results.append(_worker_registered(config))
+    return results
+
+
+def _worker_service_state(label: str) -> CheckResult:
+    try:
+        proc = subprocess.run(
+            ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return _worker_result("service", False, f"launchctl can't be asked: {e}")
+    if proc.returncode != 0:
+        return _worker_result("service", False, f"{label} isn't loaded", _WORKER_FIX)
+    fields = dict(
+        line.strip().split(" = ", 1)
+        for line in proc.stdout.splitlines()
+        if " = " in line and line.startswith("\t") and not line.startswith("\t\t")
+    )
+    state, pid = fields.get("state", "unknown"), fields.get("pid")
+    if state != _LAUNCHD_RUNNING:
+        why = fields.get("last exit code", "unknown")
+        return _worker_result(
+            "service", False, f"{label} is {state}, and its last exit was {why}", _WORKER_FIX
+        )
+    return _worker_result("service", True, f"{label} is running (pid {pid})")
+
+
+def _worker_config(settings: dict[str, str]):
+    """The worker's config as the agent will start it, its secret's reference resolved (the
+    value is never kept), or the failed check."""
+    try:
+        config = worker_config(settings)
+    except ValueError as e:
+        return _worker_result("config", False, str(e), _WORKER_FIX)
+    try:
+        manager = secret_manager_from_env(settings)
+        if manager is None or not manager.resolve(config.client_secret):
+            return _worker_result(
+                "config", False, "the client's secret reference resolves to nothing", _WORKER_FIX
+            )
+    except Exception as e:  # noqa: BLE001 - whichever way the reference fails is the finding
+        return _worker_result(
+            "config", False, f"the client's secret reference doesn't resolve: {e}", _WORKER_FIX
+        )
+    return config
+
+
+def _worker_provider_checks(config) -> list[CheckResult]:
+    from adapters.remote_execution.factory import provider_host_checks
+
+    try:
+        checks = provider_host_checks(config.provider, config.provider_settings())
+    except ValueError as e:
+        return [_worker_result("provider", False, str(e))]
+    return [_worker_result(c.name, c.passed, c.message) for c in checks]
+
+
+def _worker_registered(config, now: datetime | None = None) -> CheckResult:
+    """Registered with the runtime, and answered by it within one lease: the worker's own
+    record of both."""
+    path = Path(config.status_file).expanduser()
+    try:
+        status = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _worker_result("registered", False, f"the worker has recorded no status at {path}")
+    except (OSError, ValueError) as e:
+        return _worker_result("registered", False, f"its status at {path} can't be read: {e}")
+    if status.get("tool_ready") is False:
+        return _worker_result(
+            "registered", False, f"the worker's tool didn't reset at start: {status['tool_note']}"
+        )
+    if not status.get("session_id"):
+        why = status.get("last_unreachable") or "it hasn't registered yet"
+        return _worker_result(
+            "registered", False, f"not registered with {status.get('runtime_api_url')}: {why}"
+        )
+    _heartbeat, lease = cadence()
+    now = now or datetime.now(UTC)
+    answered = datetime.fromisoformat(status["last_answer_at"])
+    unreachable = status.get("last_unreachable_at")
+    if unreachable and datetime.fromisoformat(unreachable) > answered:
+        return _worker_result(
+            "registered",
+            False,
+            f"{status['runtime_api_url']} hasn't answered since "
+            f"{answered.isoformat(timespec='seconds')}: {status['last_unreachable']}",
+        )
+    if now - answered > lease:
+        return _worker_result(
+            "registered",
+            False,
+            f"the worker last heard from {status['runtime_api_url']} at "
+            f"{answered.isoformat(timespec='seconds')}, more than a lease ago: is it running?",
+        )
+    return _worker_result(
+        "registered",
+        True,
+        f"session {status['session_id']} with {status['runtime_api_url']}, answered at "
+        f"{answered.isoformat(timespec='seconds')}",
+    )
+
+
+def _collect_worker_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    return check_worker_service()
+
+
 _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("python", _collect_python_checks),
     ("platform", _collect_platform_checks),
@@ -1519,6 +1681,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("verification", _collect_verification_checks),
     ("sandbox", _collect_sandbox_checks),
     ("credentials", _collect_credentials_checks),
+    ("worker", _collect_worker_checks),
 ]
 
 

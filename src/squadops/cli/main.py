@@ -118,3 +118,9 @@ app.add_typer(instructions_app, name="instructions")  # Appendix A §3.5: task i
 app.add_typer(scenarios_app, name="scenarios")  # SIP-0113 §4.1: held-out scenario suites
 app.add_typer(workers_app, name="workers")  # #3047: the worker registry, read
 app.add_typer(box_app, name="box")  # SIP-0109 §24dw (#2287): the operator's lease on the box
+
+
+if __name__ == "__main__":
+    # #3122: `python -m squadops.cli.main` is the same command as `squadops`. bootstrap.sh runs
+    # its closing doctor this way, and without this it imported the app and exited 0, unread.
+    app()

@@ -23,6 +23,7 @@ from squadops.ports.remote_execution import (
 if TYPE_CHECKING:
     from squadops.ports.tool_authority import ToolAuthorityPort
     from squadops.remote_execution.registry import WorkerRegistry
+    from squadops.remote_execution.workers import HostCheck
 
 
 def create_remote_execution(
@@ -119,6 +120,24 @@ def create_operation_runner(provider: str, settings: Mapping[str, str]) -> Opera
             f"(the providers found: {known})"
         )
     return serving[0].create_runner(settings)
+
+
+def provider_host_checks(provider: str, settings: Mapping[str, str]) -> list[HostCheck]:
+    """What the provider checks of the machine its worker runs on (#3046): its tool installed,
+    its files where the settings say, and what it was proved on. Found as the provider package's
+    ``worker.host_checks(settings)``, so a platform's name stays in its own directory (SIP-0117
+    R4.6). ``fixture`` drives no tool and checks nothing. A provider no package serves raises."""
+    if provider == "fixture":
+        return []
+    found = _provider_packages("worker")
+    serving = [module for module in found if module.PROVIDER == provider]
+    if len(serving) != 1:
+        known = sorted({"fixture", *(module.PROVIDER for module in found)})
+        raise ValueError(
+            f"{len(serving)} provider packages serve {provider!r}, and exactly one must "
+            f"(the providers found: {known})"
+        )
+    return list(serving[0].host_checks(settings))
 
 
 def _provider_packages(module: str) -> list:
