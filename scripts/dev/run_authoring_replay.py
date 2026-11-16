@@ -16,6 +16,22 @@ freezes the experiment manifest, and runs each case in the agent container of it
 frozen: rerunning a named experiment with anything changed is refused; name a new one. A rubric the
 repository holds (``replay_rubrics/``, each file headed by its id and version) is pinned by its text:
 the manifest records the named version's hash, and a version no file holds is refused (#2313).
+
+**A skills replay** (SIP-0116 §17p; Q47) tests a skillset's skills on the deploy's own models before
+any development profile requires them:
+
+    python scripts/dev/run_authoring_replay.py --experiment roblox-skills-v1 \
+        --run run_… --skill-cases roblox-skills@1 [--generations 3] [--seed 7] [--validity-only] \
+        [--product-checkout DIR [--spec-argv .tools/lune run tests/run.luau]]
+
+``--run`` is the capture: a run with no skills loaded, holding one envelope of each task type the
+cases name. Each case (``skill_replay_cases/``, a file headed by its id and version and pinned by
+its text) is authored under the baseline and under the skills its cycle would hand it, and each
+skills-arm authoring is judged by its case's expectation (``judged.jsonl``). A case that expects its
+emitted specs to pass is judged only when ``--product-checkout`` names a checkout of the product at
+the capture's commit, with its test runtime installed: the specs are run there, on a copy, by the
+product's own runner, and read by the framework's ``luau`` reader. Without it that expectation reads
+``not_judged``.
 """
 
 from __future__ import annotations
@@ -23,16 +39,21 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+from collections import defaultdict
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[1]
 _POSTGRES = "squadops-postgres"
 _RUBRICS = _HERE / "replay_rubrics"
+_SKILL_CASES = _HERE / "skill_replay_cases"
+_SPEC_ARGV = (".tools/lune", "run", "tests/run.luau")
+_SPEC_TIMEOUT_SECONDS = 300
 _RUBRIC_HEADER = re.compile(r"# Rubric `(?P<name>[^`@]+)@(?P<version>[^`]+)`")
 sys.path.insert(0, str(_HERE))
 from verify_authoring_envelopes import _container_for  # noqa: E402
@@ -217,6 +238,220 @@ def plan(args, envelopes: list[dict], lessons: list) -> tuple[dict, dict]:
     return frozen.to_dict(), case_lessons
 
 
+def skill_cases_text(cases_id: str) -> tuple[object, str]:
+    """The cases a ``<name>@<version>`` names, and their file's text, which the manifest pins.
+    A name no file holds, or a version of it no file holds, is refused."""
+    from squadops.memory.skill_replay import SkillCasesError, read_cases
+
+    name, _, version = cases_id.rpartition("@")
+    held: dict[str, tuple[object, str]] = {}
+    for path in sorted(_SKILL_CASES.glob("*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        try:
+            cases = read_cases(text)
+        except SkillCasesError as exc:
+            raise SystemExit(f"{path.name}: {exc}") from exc
+        if cases.name == name:
+            held[cases.version] = (cases, text)
+    if version not in held:
+        versions = ", ".join("@" + v for v in sorted(held)) or "no version"
+        raise SystemExit(
+            f"--skill-cases {cases_id}: the repository holds {name or cases_id} at {versions}"
+        )
+    return held[version]
+
+
+def skill_plan(
+    args, envelopes: list[dict], cases, cases_text: str
+) -> tuple[dict, list[dict], dict]:
+    """The frozen manifest, each case's envelope, and each case's notes by its envelope's id.
+
+    A case names its captured task by type, so the capture holds exactly one envelope of it. A
+    case's envelope is the capture's under an id of the case's own, since several cases may
+    start from one capture."""
+    from squadops.memory.replay import Arm, manifest
+
+    by_type: dict[str, list[dict]] = defaultdict(list)
+    for envelope in envelopes:
+        by_type[envelope["task_type"]].append(envelope)
+    case_envelopes, notes = [], {}
+    for case in cases.cases:
+        found = by_type.get(case.task_type, [])
+        if len(found) != 1:
+            raise SystemExit(
+                f"case {case.id}: the capture holds {len(found)} envelopes of {case.task_type}, "
+                "and a case starts from exactly one"
+            )
+        envelope = {**found[0], "envelope_id": f"{found[0]['envelope_id']}#{case.id}"}
+        case_envelopes.append(envelope)
+        notes[envelope["envelope_id"]] = case.notes()
+    frozen = manifest(
+        experiment_id=args.experiment,
+        created_at=datetime.now(UTC),
+        envelopes=case_envelopes,
+        arms=[Arm.BASELINE, Arm.SKILLS],
+        generations=args.generations,
+        seed=args.seed,
+        lessons=[],
+        static_guidance="",
+        rubric=f"skill-cases.{cases.id}",
+        rubric_text=cases_text,
+        framework_git_sha=args.framework_git_sha,
+        case_notes=notes,
+    )
+    return frozen.to_dict(), case_envelopes, notes
+
+
+def run_specs(checkout: Path, artifacts: list[dict], argv: tuple[str, ...]) -> dict:
+    """The emitted spec files' results on the product: ``{"passed", "failed"}`` by test id, as the
+    framework's ``luau`` reader reads the product's own runner.
+
+    The emitted files are laid over a copy of ``checkout`` and ``argv`` is run there. Only the
+    emitted specs' own tests are counted: the product's other specs ran before the change and are
+    no evidence about it. A run the reader can't read fails, with the reader's reason."""
+    from squadops.sandbox.findings import LUAU, read
+
+    with tempfile.TemporaryDirectory() as scratch:
+        tree = Path(scratch) / "product"
+        shutil.copytree(checkout, tree, ignore=shutil.ignore_patterns(".git"), symlinks=True)
+        emitted = []
+        for artifact in artifacts:
+            relative = PurePosixPath(str(artifact["name"]))
+            if relative.is_absolute() or ".." in relative.parts:
+                raise SystemExit(f"an emitted file's path leaves the product: {relative}")
+            target = tree / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(str(artifact["content"]), encoding="utf-8")
+            if relative.name.endswith(".spec.luau"):
+                emitted.append(relative.name)
+        if not emitted:
+            return {"passed": [], "failed": ["no emitted file is a *.spec.luau spec"]}
+        try:
+            done = subprocess.run(
+                list(argv),
+                cwd=tree,
+                capture_output=True,
+                text=True,
+                timeout=_SPEC_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"passed": [], "failed": [f"the runner did not run: {exc}"]}
+    reading = read(LUAU, done.stdout, done.stderr, done.returncode)
+    if not reading.readable:
+        return {"passed": [], "failed": [f"unreadable: {reading.reason}"]}
+
+    def mine(test_id: str) -> bool:
+        return PurePosixPath(test_id.split(" > ")[0].split(" ")[0]).name in emitted
+
+    return {
+        "passed": sorted(i for i in reading.passing or () if mine(i)),
+        "failed": sorted(k for k in reading.counts if mine(k)),
+    }
+
+
+def judge_records(records: list[dict], notes: dict, specs_for) -> list[dict]:
+    """Each authoring record's judgement. The skills arm is held to its case's expectation; the
+    baseline is recorded for contrast and held to nothing, since it was handed no skill.
+    ``specs_for(record)`` runs a record's emitted specs, or is ``None`` when no product checkout
+    was given."""
+    from squadops.memory.replay import Arm
+    from squadops.memory.skill_replay import judge
+
+    judged = []
+    for record in records:
+        if record.get("record") != "authoring":
+            continue
+        expect = notes[record["envelope_id"]]["expect"]
+        row = {
+            "case": record["case"],
+            "arm": record["arm"],
+            "generation": record["generation"],
+            "success": record["success"],
+            "skill_stop": record.get("skill_stop"),
+        }
+        if record["arm"] == Arm.SKILLS.value:
+            wants_specs = bool(expect.get("specs_pass")) and specs_for is not None
+            specs = specs_for(record) if wants_specs and record["success"] else None
+            row.update(judge(expect, record, specs=specs))
+            if specs is not None:
+                row["specs"] = specs
+        judged.append(row)
+    return judged
+
+
+def _skills_main(args, envelopes: list[dict], containers: dict[str, str]) -> int:
+    from squadops.memory.replay import Arm, schedule
+    from squadops.memory.skill_replay import MET
+
+    cases, text = skill_cases_text(args.skill_cases)
+    frozen, case_envelopes, notes = skill_plan(args, envelopes, cases, text)
+    directory = _REPO / "var" / "replays" / args.experiment
+    _freeze(directory, frozen)
+    order = schedule(
+        [e["envelope_id"] for e in case_envelopes],
+        [Arm(a) for a in frozen["arms"]],
+        args.generations,
+        args.seed,
+    )
+    records = []
+    for role, container in sorted(containers.items()):
+        mine = [e for e in case_envelopes if e["role"] == role]
+        ids = {e["envelope_id"] for e in mine}
+        if not mine:
+            continue
+        records.extend(
+            _run_in(
+                container,
+                {
+                    "experiment_id": args.experiment,
+                    "cases": mine,
+                    "arms": frozen["arms"],
+                    "skill_cases": {k: v for k, v in notes.items() if k in ids},
+                    "schedule": [[c, a.value, g] for c, a, g in order if c in ids],
+                    "validity_only": args.validity_only,
+                },
+            )
+        )
+    name = "validity.jsonl" if args.validity_only else "results.jsonl"
+    with (directory / name).open("w") as out:
+        for record in records:
+            out.write(json.dumps(record) + "\n")
+    checks = [r for r in records if r["record"] == "validity"]
+    print(f"{args.experiment}: {sum(r['valid'] for r in checks)} of {len(checks)} cases valid")
+    for r in checks:
+        if r["valid"]:
+            sizes = r["prompt_chars"]
+            print(
+                f"  {r['case']}: valid; capture checked={r['capture_checked']}; prompt "
+                f"{sizes['baseline']:,} characters, {sizes['skills']:,} with its skills"
+            )
+        else:
+            print(f"  {r['case']}: NOT VALID: {r.get('reason') or 'its prompts do not line up'}")
+    if not args.validity_only:
+        specs_for = None
+        if args.product_checkout:
+            argv = tuple(args.spec_argv)
+            specs_for = lambda record: run_specs(args.product_checkout, record["artifacts"], argv)  # noqa: E731
+        judged = judge_records(records, notes, specs_for)
+        with (directory / "judged.jsonl").open("w") as out:
+            for row in judged:
+                out.write(json.dumps(row) + "\n")
+        for case in cases.cases:
+            skills = [j for j in judged if j["case"] == case.id and j["arm"] == "skills"]
+            base = [j for j in judged if j["case"] == case.id and j["arm"] == "baseline"]
+            verdicts = [j["verdict"] for j in skills]
+            print(
+                f"  {case.id}: skills arm met {verdicts.count(MET)} of {len(skills)} "
+                f"({', '.join(verdicts) or 'none authored'}); baseline accepted "
+                f"{sum(bool(j['success']) for j in base)} of {len(base)}"
+            )
+            for j in skills:
+                for finding in j["findings"]:
+                    print(f"    generation {j['generation']}: {finding}")
+    print(f"records: {directory}")
+    return 0 if all(r["valid"] for r in checks) else 1
+
+
 def _freeze(directory: Path, frozen: dict) -> None:
     """Write the manifest, or refuse a named experiment whose inputs changed (§0.12)."""
     path = directory / "manifest.json"
@@ -242,11 +477,20 @@ def main() -> int:
     ap.add_argument("--static-guidance", type=Path)
     ap.add_argument("--generations", type=int, default=1)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--rubric", required=True)
+    ap.add_argument("--rubric")
     ap.add_argument("--validity-only", action="store_true")
+    ap.add_argument("--skill-cases", help="a skills replay's cases, as <name>@<version>")
+    ap.add_argument("--product-checkout", type=Path)
+    ap.add_argument("--spec-argv", nargs="+", default=list(_SPEC_ARGV))
     args = ap.parse_args()
     if not args.envelope and not args.run:
         ap.error("name the cases: --envelope, or --run")
+    if args.skill_cases and (args.lessons or args.static_guidance or args.rubric):
+        ap.error("--skill-cases is its own experiment: no --lessons, --static-guidance or --rubric")
+    if not args.skill_cases and not args.rubric:
+        ap.error("--rubric is required")
+    if args.product_checkout and not args.product_checkout.is_dir():
+        ap.error(f"--product-checkout {args.product_checkout} is not a directory")
 
     from squadops.memory.replay import Arm, schedule
 
@@ -256,6 +500,8 @@ def main() -> int:
         return 1
     containers = {role: _container_for(role) for role in {e["role"] for e in envelopes}}
     args.framework_git_sha = _framework_sha(next(iter(containers.values())))
+    if args.skill_cases:
+        return _skills_main(args, envelopes, containers)
     lessons = _lessons(args.lessons)
     frozen, case_lessons = plan(args, envelopes, lessons)
     directory = _REPO / "var" / "replays" / args.experiment
