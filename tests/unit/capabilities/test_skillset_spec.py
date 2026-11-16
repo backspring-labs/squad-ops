@@ -23,6 +23,7 @@ from squadops.capabilities.skillsets import (
     load_skillsets,
     skill_digest,
     skill_files_digest,
+    skill_stops,
 )
 from squadops.tasks.task_types import TaskType
 
@@ -248,6 +249,45 @@ def test_a_skill_without_its_name_and_description_is_refused(root):
 
     with pytest.raises(SkillsetError, match="front matter lacks description"):
         load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+
+@pytest.mark.parametrize(
+    ("stops", "says"),
+    [
+        ("no-scenario", "stops is a list of a line's opening words"),
+        ("[no scenario]", "ending in a colon"),
+        ('["`no scenario:`"]', "ending in a colon"),
+        ('[":"]', "ending in a colon"),
+        ('["no scenario:", "No Scenario:"]', "declared more than once"),
+        ('["no runner:"]', "declares the stop 'no runner:' and its text never shows it"),
+    ],
+    ids=["not-a-list", "no-colon", "backticks", "nothing-before-colon", "twice", "unshown"],
+)
+def test_a_stop_declared_wrongly_refuses_the_skillset_by_name(root, stops, says):
+    """SIP-0116 §17o. Bug caught: a stop a seam can never match (no colon, quoted in backticks)
+    or one the skill's text never teaches, loading as if the skill's refusal were readable."""
+    (root / "fixture-qa/skills/play-scenario/SKILL.md").write_text(
+        f"---\nname: play-scenario\ndescription: d\nstops: {stops}\n---\n"
+        "Play it, or say `no scenario: <why>`.\n"
+    )
+
+    with pytest.raises(SkillsetError, match=says):
+        load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+
+def test_a_skills_declared_stops_are_read_from_its_text(root):
+    """Bug caught: the declaration loading and then reading back as none, so every seam's
+    reader sees a skill with no stops."""
+    text = (
+        '---\nname: play-scenario\ndescription: d\nstops: ["no scenario:", "no place:"]\n---\n'
+        "Play it, or say `no scenario: <why>` or `No place: <why>`.\n"
+    )
+    (root / "fixture-qa/skills/play-scenario/SKILL.md").write_text(text)
+
+    load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+    assert skill_stops(text) == ("no scenario:", "no place:")
+    assert skill_stops("---\nname: n\ndescription: d\n---\nDo the work.\n") == ()
 
 
 def test_a_skillset_may_specialize_a_planned_task_type_as_its_own_contract(root):

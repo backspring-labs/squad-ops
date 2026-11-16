@@ -1,0 +1,75 @@
+"""A skill's named stop, read from a model's answer (SIP-0116 §17o; prompt standard rule 7).
+
+A skill may tell the model to refuse a task its equipment can't do honestly, and to say why in
+one line: a criterion whose effect the scenario reader can't observe, a product with no test
+runner. The skill declares that line's opening words in its front matter (``stops``), and this
+is the one place an answer is read for them. A seam handed skills asks it when its own parser
+found nothing to accept, so the reason reaches whoever reads the run and the model isn't asked
+again to do what its skill told it to refuse.
+
+Core holds no skill's words: it reads what the task's handed skills declare.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from squadops.capabilities.skillsets import SKILL_FILE, skill_stops
+
+#: What a model puts around a line it was shown in inline code or a list: stripped from both
+#: ends before the line is compared, and never from inside it.
+_DECORATION = " \t>-*_`"
+
+
+@dataclass(frozen=True)
+class SkillStop:
+    """One declared stop found in an answer: the skill that declares it, and the line."""
+
+    skillset: str
+    skill: str
+    #: The declared opening words, as the skill's front matter writes them.
+    opening: str
+    #: The whole line as the model wrote it, without the decoration around it.
+    line: str
+
+    @property
+    def reason(self) -> str:
+        """What follows the opening words."""
+        return self.line[len(self.opening) :].strip()
+
+    def describe(self) -> str:
+        return f"stopped by the skill {self.skillset}/{self.skill}: {self.line}"
+
+
+def read_stop(handed: Sequence[Mapping[str, Any]] | None, response: str | None) -> SkillStop | None:
+    """The first line of ``response`` that opens with a stop one of the task's ``handed`` skills
+    declares, or ``None``. ``handed`` is the task's ``SKILLS_INPUT``.
+
+    A line is compared without the decoration around it and without regard to case, since a
+    model shown the line in inline code may write it in a list or with a capital. An opening
+    with nothing after it is no stop: the line exists to carry a reason.
+
+    Raises:
+        FrontmatterError: A handed skill's ``SKILL.md`` has no readable front matter. The
+            skillset's load refused that, so a kept copy holding one was changed afterwards.
+    """
+    if not handed or not response:
+        return None
+    declared = [
+        (str(skill["skillset"]), str(skill["skill"]), opening)
+        for skill in handed
+        for opening in skill_stops(skill["files"][SKILL_FILE])
+    ]
+    if not declared:
+        return None
+    for raw in response.splitlines():
+        line = raw.strip(_DECORATION)
+        if line.endswith("`."):
+            # The line quoted in inline code at the end of a sentence.
+            line = line[:-2].rstrip(_DECORATION)
+        for skillset, skill, opening in declared:
+            if line.casefold().startswith(opening.casefold()) and line[len(opening) :].strip():
+                return SkillStop(skillset, skill, opening, line)
+    return None
