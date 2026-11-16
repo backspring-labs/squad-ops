@@ -176,6 +176,7 @@ Sizes are the SIPs' own where they give one (S, M, L). A size marked * is this p
 | **The Studio adapter:** the transaction under one lease, the adapter's own sync, paged read-back, the full baseline before and after play, reset (including reopening Studio), deadlines, the deny list, returned edits as revisions, four operations, and the isolation test SIP-0117 R4.6 commits to | #3039 (SIP-0117 phase 2d) | MacBook | L |
 | **The assertion harness and reader:** the harness is the scenario executor over a validated declaration; one structured record per assertion; every outcome produced on purpose | #3040 (SIP-0117 phase 2e) | MacBook | M |
 | **Payload limits:** measure the request, claim and row sizes on the real tree (about 1.7 MB), then set explicit limits from the measurements; captures stay outside 2.8's acceptance evidence | #3049 | MacBook | S* |
+| **The product carried whole** (added by the owner, 2026-11-16: "put 3118 in 2.8 with 3049"): the checkout cap refused z_tower-ascension (2,298 KB against 384 KB). The cap and the resolution's limit are raised together, and a tree past either is refused by name, never cut short. Built with #3049, from the same measurement | #3118 (SIP-0112 H.32) | MacBook | M |
 | **Re-qualification after a Studio update:** a recorded run moves the pin, never a hand edit | #3048 | MacBook | S* |
 | **The worker as a service on the MacBook:** launchd, stay-awake, Studio opened on the place, `doctor dev-mac` checks, an optional bootstrap step | #3046 | MacBook | M* |
 | **The operator's view of the registry:** a read-only route and `squadops workers list` / `show` | #3047 | **Spark** (ruled, §11.1) | S* |
@@ -435,6 +436,7 @@ build check, agent image and deploy are the Spark lane's. Where a ruling assigns
 | MacBook | #3044 | the frozen scenario, declarative | the handler and plan expansion |
 | MacBook | #3039, #3040 | the Studio adapter and the harness | the game plan; they need Studio |
 | MacBook | #3046, #3048, #3049 | the worker service, re-qualification, payload limits | they need the MacBook and Studio |
+| MacBook | #3118 | the product carried whole | the executor and the checkout are the MacBook lane's; built with #3049 (the owner, 2026-11-16) |
 | MacBook | #3041, #3042 | the squad and the product | the game plan |
 | MacBook, then Spark | #3043 | the demonstration: the rehearsal and the diagnostic on the MacBook; the counted run on the Spark | the game plan §5 |
 | Spark | #3053 | Campaign delivery | `campaigns/` acceptance and the product runner |

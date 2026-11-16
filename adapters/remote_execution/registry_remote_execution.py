@@ -33,6 +33,7 @@ from squadops.remote_execution.models import (
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
+    request_size_defect,
 )
 from squadops.remote_execution.registry import WorkerRegistry, cadence
 from squadops.remote_execution.waiting import OperationReading, await_result, ended
@@ -68,6 +69,9 @@ class RegistryRemoteExecution(RemoteExecutionPort):
         self._lease_seconds = cadence()[1].total_seconds()
 
     async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+        too_large = request_size_defect(request)
+        if too_large is not None:
+            return ended(request, OperationStatus.NOT_EXECUTED, too_large)
         deadline = self._clock() + self._wait.total_seconds()
         queued = await self._registry.enqueue(
             request, self._origin, max_attempts=self._max_attempts, only_with_worker=True

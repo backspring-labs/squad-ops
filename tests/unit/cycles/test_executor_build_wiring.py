@@ -234,46 +234,62 @@ class TestArtifactContentsPreResolution:
 
         assert contents["lib/errors.ts"] == "frozen v2"
 
-    async def test_size_limit_stops_resolution(self, executor):
-        """If content exceeds 512KB, resolution stops early."""
-        big_content = b"x" * (256 * 1024)  # 256KB each, 2 = 512KB
-
-        ref1 = _make_artifact_ref(
-            "art_001",
-            "file1.md",
-            "document",
-            producing_task_type="strategy.analyze_prd",
-        )
-        ref2 = _make_artifact_ref(
-            "art_002",
-            "file2.md",
-            "document",
-            producing_task_type="development.design",
-        )
-        ref3 = _make_artifact_ref(
-            "art_003",
-            "file3.md",
-            "document",
-            producing_task_type="strategy.analyze_prd",
+    async def test_a_tree_past_the_limit_is_refused_never_cut_short(self, executor):
+        """#3118. Bug caught: the resolution stopping at its limit and handing the task the files
+        before it, which the task reads as the whole tree (a check failing on an import the
+        workspace lost, or a test author shown half the package)."""
+        from squadops.capabilities.context_assembly import (
+            ARTIFACT_CONTENTS_LIMIT_BYTES,
+            ContentsOverLimit,
         )
 
-        stored = [("art_001", ref1), ("art_002", ref2), ("art_003", ref3)]
+        half = b"x" * (ARTIFACT_CONTENTS_LIMIT_BYTES // 2)
+        entries = [(self._source_ref(f"art_{n}", f"src/file{n}.luau"), half) for n in range(3)]
 
-        executor._artifact_vault.retrieve = AsyncMock(
-            side_effect=[
-                (ref1, big_content),
-                (ref2, big_content),
-                (ref3, big_content),  # Should not be reached
-            ]
+        with pytest.raises(ContentsOverLimit, match="over 3 files, past the 4,194,304-byte"):
+            await self._resolve(executor, entries)
+
+    async def test_a_file_rewritten_many_times_counts_once(self, executor):
+        """#3118. Bug caught: every stored version of a file counted toward the limit, so a run
+        whose repairs rewrote one file across rounds is refused for a tree it doesn't carry."""
+        from squadops.capabilities.context_assembly import ARTIFACT_CONTENTS_LIMIT_BYTES
+
+        third = b"x" * (ARTIFACT_CONTENTS_LIMIT_BYTES // 3)
+        entries = [(self._source_ref(f"art_{n}", "src/Main.luau"), third) for n in range(5)]
+
+        contents = await self._resolve(executor, entries)
+
+        assert list(contents) == ["src/Main.luau"]
+
+    async def test_a_task_whose_tree_is_past_the_limit_ends_the_run_by_name(self, executor):
+        """#3118, entered at ``_enrich_envelope``, the call every dispatch makes. Bug caught: the
+        refusal escaping as an unclassified error, or swallowed, so the run retries a dispatch
+        that is refused every time, or proceeds without the task's tree."""
+        from squadops.capabilities.context_assembly import ARTIFACT_CONTENTS_LIMIT_BYTES
+        from squadops.cycles.failure_attribution import CONTENTS_OVER_LIMIT, TerminalKind
+        from squadops.execution.execution_errors import _ExecutionError
+        from squadops.tasks.models import TaskEnvelope
+
+        half = b"x" * (ARTIFACT_CONTENTS_LIMIT_BYTES // 2)
+        entries = [(self._source_ref(f"art_{n}", f"src/file{n}.luau"), half) for n in range(3)]
+        stored = [(ref.artifact_id, ref) for ref, _ in entries]
+        executor._artifact_vault.retrieve = AsyncMock(side_effect=lambda art_id: next(
+            (ref, content) for ref, content in entries if ref.artifact_id == art_id))  # fmt: skip
+        envelope = TaskEnvelope(
+            task_id="t-qa", agent_id="eve", cycle_id="c", pulse_id="p", project_id="proj",
+            task_type="qa.test", correlation_id="x", causation_id="x", trace_id="x", span_id="x",
+        )  # fmt: skip
+
+        with pytest.raises(_ExecutionError) as raised:
+            await executor._enrich_envelope(envelope, {}, [], stored)
+
+        terminal = raised.value.terminal
+        assert (terminal.kind, terminal.failure_classification, terminal.task_id) == (
+            TerminalKind.INPUT_REFUSED,
+            CONTENTS_OVER_LIMIT,
+            "t-qa",
         )
-
-        contents = await executor._resolve_artifact_contents(
-            "development.develop",
-            stored,
-        )
-
-        # First two fit (256+256=512), third would exceed limit
-        assert len(contents) == 2
+        assert "qa.test's context would carry 6,291,456 bytes" in terminal.termination_reason
 
     async def test_repair_patch_wins_over_original_on_filename_collision(self, executor):
         """RC3 (pf-23): when stored_artifacts accumulates a correction repair's

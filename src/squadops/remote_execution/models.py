@@ -29,6 +29,17 @@ OPERATION_ARTIFACT_TYPES = frozenset(
     {ASSERTION_RECORDS_ARTIFACT_TYPE, OPERATION_EVIDENCE_ARTIFACT_TYPE}
 )
 
+#: #3049, with #3118: the most a request's staged tree may hold, in UTF-8 bytes. It travels
+#: inline, is stored with the operation and is sent again at every claim. It is the evaluation
+#: tree's own limit (``context_assembly.ARTIFACT_CONTENTS_LIMIT_BYTES``, held equal by a test),
+#: so a tree a run carries whole is never refused here. Measured on z_tower-ascension at
+#: ``0beaac0`` (2026-11-16): its 2.3 MB of source and config, and 3.06 MB as a request on the wire.
+REQUEST_TREE_LIMIT_BYTES = 4 * 1024 * 1024
+#: #3049: the most one evidence item may hold, in UTF-8 bytes. Measured on the real Studio
+#: (2026-11-16): a play log of 197 bytes and a console tail of 6,936. The runner keeps at most
+#: 20,000 characters of console, 80,000 bytes at the most, so the limit is about three times that.
+EVIDENCE_ITEM_LIMIT_BYTES = 256 * 1024
+
 
 class AssertionOutcome(StrEnum):
     """One assertion's result (R3.7)."""
@@ -168,14 +179,40 @@ class RemoteOperationResult:
     unavailable: bool = False
 
 
+def request_size_defect(request: RemoteOperationRequest) -> str | None:
+    """Why ``request`` is too large to send, or ``None`` (#3049). Nothing is truncated: a request
+    past the limit is refused whole, naming its size, the limit and its largest files."""
+    sizes = {path: len(text.encode()) for path, text in request.source_files.items()}
+    total = sum(sizes.values())
+    if total <= REQUEST_TREE_LIMIT_BYTES:
+        return None
+    largest = sorted(sizes.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+    return (
+        f"the request's staged tree is {total:,} bytes over {len(sizes)} files, past the "
+        f"{REQUEST_TREE_LIMIT_BYTES:,}-byte limit a remote operation carries, so nothing was "
+        "sent. Its largest files: " + ", ".join(f"{path} ({size:,})" for path, size in largest)
+    )
+
+
+def evidence_size_defects(result: RemoteOperationResult) -> list[str]:
+    """Each evidence item past :data:`EVIDENCE_ITEM_LIMIT_BYTES`, named (#3049)."""
+    return [
+        f"evidence item {item.name!r} is {size:,} bytes, past the "
+        f"{EVIDENCE_ITEM_LIMIT_BYTES:,}-byte limit"
+        for item in result.evidence
+        if (size := len(item.content.encode())) > EVIDENCE_ITEM_LIMIT_BYTES
+    ]
+
+
 def result_defects(request: RemoteOperationRequest, result: RemoteOperationResult) -> list[str]:
     """Why ``result`` can't be read as the answer to ``request``, or ``[]``.
 
     A provider is outside the framework, so what it returns is checked before it is believed:
     a stale echo, a completion with no reason given for not completing, a record for an
-    assertion the scenario never declared, or two records for one assertion.
+    assertion the scenario never declared, two records for one assertion, or an evidence item
+    past its limit (#3049).
     """
-    defects: list[str] = []
+    defects: list[str] = evidence_size_defects(result)
     if result.dispatch_id != request.dispatch_id:
         defects.append(
             f"the result echoes dispatch {result.dispatch_id!r}, and the request was "

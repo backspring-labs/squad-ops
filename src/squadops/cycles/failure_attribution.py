@@ -542,6 +542,9 @@ class TerminalKind(StrEnum):
 #: dispatch because no provider could run an operation task's tool. The Campaign's relaunch
 #: budget (#3045) keys on this, never on the reason's words.
 WORKER_UNAVAILABLE = "worker_unavailable"
+#: #3118 (SIP-0112 H.32): the ``failure_classification`` of an ``input_refused`` run ended at
+#: dispatch because a task's tree would carry more than a resolution's limit. It would every time.
+CONTENTS_OVER_LIMIT = "contents_over_limit"
 
 
 @dataclass(frozen=True, kw_only=True)

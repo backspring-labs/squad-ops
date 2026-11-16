@@ -86,7 +86,7 @@ def seeded_files(
     (#2889), which measures what the run's tasks will be handed.
 
     A binary file or a generated lockfile reaches no task: every view of the tree is text a squad
-    reads, and a context resolution would spend its 512 KB on it. The manifest lists it, and
+    reads, and a context resolution would spend its limit on it. The manifest lists it, and
     verification and capture read it from the clone."""
     return [
         (path, content, *_classify_file(path))

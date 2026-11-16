@@ -613,7 +613,7 @@ def _product(**packages: int) -> dict[str, bytes]:
 async def test_a_product_larger_than_the_window_whose_tasks_fit_starts_unaffected(tmp_path, caplog):
     """The wiring for a product that fits (#2889), entered at the start route on the window #2805
     and #2810 were found on: about 92,000 tokens of product in four packages beside Tally's own
-    small ones, larger than the 65,536-token window and inside 2.4's 384 KB limit. Every task the Campaign dispatches is
+    small ones, larger than the 65,536-token window and inside the checkout's limit. Every task the Campaign dispatches is
     measured and fits, as #2807 and #2812 made it, so the start writes its record as it did.
     Bugs caught: a preflight that counts the whole tree for a task that is shown a part of it
     (the #2805 and #2810 class), refusing a product that fits; or one that measures nothing (no
@@ -716,9 +716,9 @@ class _Squads:
         (_Squads(None), None, "campaign-increment-source", "on no model"),
         (
             None,
-            _Clone({**product_files(), **_product(app=120_000)}),
+            _Clone({**product_files(), **_product(app=800_000)}),
             "campaign-increment-source",
-            "(too_large): 477 KB of source and config, past the 384 KB",
+            "(too_large): 3134 KB of source and config, past the 3072 KB",
         ),
         (
             None,
@@ -740,7 +740,7 @@ async def test_a_size_nobody_could_measure_refuses_the_start(
     tmp_path, squads, repository, proposal_profile, named
 ):
     """Require, don't default (#2889): a binding whose model has no window the registry knows, or
-    no model at all; a tree too large to read (past 2.4's limit, ``CheckoutTooLarge``) or one the
+    no model at all; a tree too large to read (past the checkout cap, ``CheckoutTooLarge``) or one the
     clone can't read; a proposal profile the deploy doesn't hold.
     Each refuses the start (409 ``size_unmeasured``) naming what, and writes nothing. Bugs caught:
     an unknown window or an unread tree read as fitting, so the Campaign starts on a size nobody

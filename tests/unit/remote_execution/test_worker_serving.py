@@ -357,3 +357,36 @@ async def test_a_worker_the_runtime_refuses_stops_and_leaves_nothing_running(w, 
 
     assert ended is refusal
     assert len(w.runner.stopped_at) == 1
+
+
+async def test_a_result_with_evidence_past_its_limit_is_settled_not_executed_naming_it(w):
+    """#3049, entered at ``Worker.serve()``. Bugs caught: a provider's oversized console stored
+    in the operation's row and sent on every reading of it; the item cut to fit, so the evidence
+    reads as complete; or the records credited without the evidence they rest on."""
+    from dataclasses import replace
+
+    from squadops.remote_execution.models import EVIDENCE_ITEM_LIMIT_BYTES, EvidenceItem
+
+    queued = await w.enqueue()
+    w.runner.result = replace(
+        passing("dispatch-1"),
+        evidence=(
+            EvidenceItem("play_log.json", "{}"),
+            EvidenceItem("console.txt", "x" * (EVIDENCE_ITEM_LIMIT_BYTES + 1)),
+        ),
+    )
+
+    async with Serving(w.worker) as serving:
+        await serving.until(w.settled(queued.operation_id))
+
+    result = (await w.stored(queued.operation_id)).result
+    assert (result.status, result.records, result.evidence) == (
+        OperationStatus.NOT_EXECUTED,
+        (),
+        (),
+    )
+    assert result.reason == (
+        "the provider's result can't be returned: evidence item 'console.txt' is 262,145 "
+        "bytes, past the 262,144-byte limit"
+    )
+    assert result.ran_with == {"worker": "worker"}

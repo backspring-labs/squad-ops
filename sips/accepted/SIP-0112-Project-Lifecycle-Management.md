@@ -137,6 +137,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a source-backed change that deletes a file | **shipped** (H.23): the `delete:<path>` form, judged against the task's view and grant, applied to the delivery candidate, named in `changed_paths` and absent from the capture | 2.6.0, PR #2923, closes #2612 |
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
 | a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #3002, closes #2862 |
+| a product the size of z_tower-ascension carried whole: the checkout cap and the resolution's limit raised together, a tree past either refused by name and never cut short, and the steps that render no prompt counted as none (H.32) | **shipped** | 2.8 (PR #3121, closing #3118) |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect; then re-placed from 2.8 by the 2.8 plan's decision 9 (the owner, 2026-11-11): the MacBook lane holds the 2.8 headline, and its files are that lane's) | 2.10.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
@@ -3578,3 +3579,69 @@ logic tests. A product tested only by `luau` runners is shown its qa task's work
 **The evidence.** `tests/unit/projects/test_profile_derivation_luau.py` covers a Rojo layout and a Script Sync
 layout, the other runtimes, frktest, and Lune calls that run no script. `tests/unit/sandbox/test_findings_luau.py`
 covers the contract's reader and each tag's meaning at acceptance.
+
+## H.32 A product the size of z_tower-ascension is carried whole (2026-11-16; E.4.3, H.21; #3118, with SIP-0117's #3049; the MacBook lane)
+
+**What prompted it.** The 2.8 headline's product, z_tower-ascension, has 2,298 KB of source and config. 2.4's cap
+on a source-backed run was 384 KB (E.4.3), so the checkout refused it. That blocked SIP-0118's registration
+done-when (a Campaign passing creation preflight) and every run of its demonstration.
+
+The cap protected one rule: every task's tree is carried whole in one resolution of 512 KB. Raising the cap alone
+would have broken that rule, because the resolution stopped at its limit and handed the task the files before it,
+with only a log line.
+
+**What changed.**
+- **The limits:**
+  - one resolution carries up to 4 MiB (`ARTIFACT_CONTENTS_LIMIT_BYTES`). That applies to the evaluation tree and
+    to the curated context alike;
+  - the checkout cap is 3 MiB (`MAX_WORKSPACE_BYTES`), leaving 1 MiB for the squad's own files. A test holds the
+    two apart by that room.
+- **Never cut short.** A resolution past its limit is refused by name (`ContentsOverLimit`), and so is the size
+  preflight's. The run ends `input_refused`, classified `contents_over_limit`, since its envelope would be the
+  same at every dispatch.
+  - The tree is measured as the task is handed it: each file once, after deletions. A file rewritten across
+    correction rounds counts once.
+- **A step that renders no prompt counts none of its trees.** `qa.run_remote_operation` and
+  `qa.evaluate_increment` call no model. Their contracts now mark the trees they're handed as unrendered, so the
+  size preflight stops counting the candidate tree as prompt. That had been 148,679 tokens on this product at
+  512 KB, and 642,259 at 4 MiB.
+- **The remote request's limit is the resolution's** (SIP-0117 R5.22, #3049), held equal by a test. A tree a run
+  carries whole is never refused at the worker's port.
+
+**What bounds a prompt is unchanged:** the composer's budget, and the size preflight's floor (H.21). A product's
+curated context larger than a model's window is held by the composer and named, as before. Today it would
+instead be cut to 512 KB and shown as the whole.
+
+**Evidence** (z_tower-ascension at `0beaac0`, 2026-11-16, measured with the size preflight's own functions):
+
+**The checkout:**
+- refused today: "2298 KB of source and config, past the 384 KB every task's workspace carries whole";
+- accepted with the new cap: 619 files.
+
+**What each task is handed:**
+- today, 520,336 characters, cut short;
+- now, 2,353,884 characters, the whole tree.
+
+**The preflight's floor, against qwen3.6:27b's window of 131,072 tokens:**
+
+| task type | floor (tokens) |
+|---|---|
+| `qa.test` | 25,301 |
+| `development.develop` | 16,147 |
+| `qa.evaluate_increment` | 11,801 |
+| `qa.run_remote_operation` | 11,802 |
+| `builder.assemble` | 644,777 |
+
+`builder.assemble` was already over the window at 512 KB (151,197 tokens), because its curated context is
+unscoped. SIP-0118's Roblox squad has no builder role. The finding is on #3041.
+
+**Transport:**
+- an envelope carrying both trees is about 5 MB, inside RabbitMQ 3.12's 128 MB message limit;
+- the only envelopes stored are the authoring ones, which hold prompts, not inputs.
+
+**Not changed here:** a vault retrieval that fails still leaves its file out of the tree, with a warning. That is
+its own silent fallback, recorded as #3120 for the owner to place.
+
+**Who ruled.** The owner placed #3118 in 2.8 with #3049 (2026-11-16: "put 3118 in 2.8 with 3049"). The design is
+the MacBook lane's, under that ruling.
+

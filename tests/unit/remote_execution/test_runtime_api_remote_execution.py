@@ -853,3 +853,25 @@ async def test_the_attempts_the_port_was_given_are_the_operations():
         await waiting
 
     assert (await world.registry.operation(recording.operation_id)).max_attempts == 4
+
+
+async def test_a_request_past_the_limit_is_refused_by_name_and_nothing_is_sent():
+    """#3049, at the agent's port. Bug caught: a tree past the limit posted to the runtime,
+    where it is stored and sent to the worker at every claim, or cut to fit."""
+    from dataclasses import replace
+
+    from squadops.remote_execution.models import REQUEST_TREE_LIMIT_BYTES
+
+    port, asked = _answering((500, {}))
+    small = request(dispatch_id="task-7")
+    big = replace(small, source_files={"src/Big.luau": "é" * (REQUEST_TREE_LIMIT_BYTES // 2 + 1)})
+
+    result = await port.run_operation(big)
+
+    assert (result.status, result.dispatch_id, result.unavailable) == (
+        OperationStatus.NOT_EXECUTED,
+        "task-7",
+        False,
+    )
+    assert "is 4,194,306 bytes over 1 files, past the 4,194,304-byte limit" in result.reason
+    assert asked == []
