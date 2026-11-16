@@ -287,7 +287,7 @@ def checkout(tmp_path):
     ("spec", "expected"),
     [
         ("ok", {"passed": ["tests/Shop.spec.luau > pays the bonus"], "failed": []}),
-        ("wrong", {"passed": [], "failed": ["tests/Shop.spec.luau > pays the bonus"]}),
+        ("wrong", {"passed": [], "failed": ["FAILED tests/Shop.spec.luau > pays the bonus"]}),
     ],
     ids=["passes", "fails"],
 )
@@ -300,10 +300,7 @@ def test_emitted_specs_are_run_on_a_copy_of_the_product_and_only_their_own_tests
 
     specs = runner.run_specs(checkout, artifacts, (sys.executable, "tests/run.py"))
 
-    assert {
-        "passed": specs["passed"],
-        "failed": [f.split(" [")[0] for f in specs["failed"]],
-    } == expected
+    assert specs == expected
     assert not (checkout / "tests" / "Shop.spec.luau").exists()
 
 

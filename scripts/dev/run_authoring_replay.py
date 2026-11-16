@@ -341,7 +341,8 @@ def run_specs(checkout: Path, artifacts: list[dict], argv: tuple[str, ...]) -> d
         return {"passed": [], "failed": [f"unreadable: {reading.reason}"]}
 
     def mine(test_id: str) -> bool:
-        return PurePosixPath(test_id.split(" > ")[0].split(" ")[0]).name in emitted
+        # A pass is ``<file> > <name>``; a failure's key leads with ``FAILED`` or ``ERROR``.
+        return PurePosixPath(test_id.split(" > ")[0].split(" ")[-1]).name in emitted
 
     return {
         "passed": sorted(i for i in reading.passing or () if mine(i)),
