@@ -37,6 +37,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -85,7 +86,7 @@ def install(env_file: Path, python: Path, paths: ServicePaths) -> int:
     paths.agent.parent.mkdir(parents=True, exist_ok=True)
     document = agent_document(values, python=python, repo=REPO, paths=paths)
     if paths.agent.exists():
-        _launchctl("bootout", f"{_domain()}/{LABEL}")
+        _unload()
     partial = paths.agent.with_suffix(".partial")
     with partial.open("wb") as f:
         plistlib.dump(document, f)
@@ -100,6 +101,21 @@ def install(env_file: Path, python: Path, paths: ServicePaths) -> int:
     print(f"  log:    {paths.log}")
     print(f"  status: {config.status_file}")
     return 0
+
+
+def _unload(wait_seconds: float = 30.0) -> None:
+    """Unload the agent and wait until launchd no longer knows it. ``bootout`` returns before the
+    old job is gone, and a ``bootstrap`` in that window fails with an I/O error, leaving no agent
+    loaded at all."""
+    _launchctl("bootout", f"{_domain()}/{LABEL}")
+    deadline = time.monotonic() + wait_seconds
+    while _launchctl("print", f"{_domain()}/{LABEL}").returncode == 0:
+        if time.monotonic() > deadline:
+            raise SystemExit(
+                f"{LABEL} was asked to stop and is still loaded after {wait_seconds:g}s; "
+                "nothing was changed"
+            )
+        time.sleep(0.5)
 
 
 def _require_private_secret(values: dict[str, str], reference: str) -> None:
@@ -138,10 +154,12 @@ def _resolves(values: dict[str, str], reference: str, manager_from_env) -> None:
 
 
 def uninstall(paths: ServicePaths) -> int:
-    out = _launchctl("bootout", f"{_domain()}/{LABEL}")
+    loaded = _launchctl("print", f"{_domain()}/{LABEL}").returncode == 0
+    if loaded:
+        _unload()
     if paths.agent.exists():
         paths.agent.unlink()
-    print(f"removed {LABEL}" + ("" if out.returncode == 0 else " (it wasn't loaded)"))
+    print(f"removed {LABEL}" + ("" if loaded else " (it wasn't loaded)"))
     return 0
 
 
