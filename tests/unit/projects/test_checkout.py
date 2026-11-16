@@ -45,8 +45,11 @@ def test_the_manifest_names_binary_and_executable_files_and_only_real_instructio
 
 
 def test_a_product_past_the_workspace_limit_is_refused_by_name_never_truncated():
-    """Bug caught: a large product seeded whole, then cut at the 512 KB context cap, so a task
+    """Bug caught: a large product seeded whole, then cut at the context's limit, so a task
     works from a tree with files silently missing."""
+    _manifest(
+        {"src/game.luau": b"x" * (2_354_012)}
+    )  # z_tower-ascension's source and config (#3118)
     over = b"x" * (MAX_WORKSPACE_BYTES + 1)
     with pytest.raises(CheckoutTooLarge, match="KB of source and config"):
         _manifest({"big.py": over})
@@ -126,3 +129,15 @@ def test_a_manifest_stored_before_the_runners_reads_with_none():
 
     assert manifest.runners == ()
     assert source_repository_input(manifest, {"a.py": "x"}, [])["runners"] == []
+
+
+def test_a_checkout_the_cap_accepts_is_carried_whole_and_reaches_the_worker():
+    """#3118 and #3049: three limits, one tree. Bugs caught: the checkout cap raised without the
+    resolution's, so a run the checkout accepts is refused at its first acceptance workspace once
+    the squad adds files; or the remote request's limit set below the resolution's, so a tree a
+    run carries whole is refused at the worker's port."""
+    from squadops.capabilities.context_assembly import ARTIFACT_CONTENTS_LIMIT_BYTES
+    from squadops.remote_execution.models import REQUEST_TREE_LIMIT_BYTES
+
+    assert ARTIFACT_CONTENTS_LIMIT_BYTES - MAX_WORKSPACE_BYTES >= 1024 * 1024  # the squad's room
+    assert REQUEST_TREE_LIMIT_BYTES == ARTIFACT_CONTENTS_LIMIT_BYTES

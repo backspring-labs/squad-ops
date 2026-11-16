@@ -34,7 +34,11 @@ from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from squadops.remote_execution.models import OperationStatus, RemoteOperationResult
+from squadops.remote_execution.models import (
+    OperationStatus,
+    RemoteOperationResult,
+    evidence_size_defects,
+)
 from squadops.remote_execution.workers import (
     Claim,
     Enrolment,
@@ -248,6 +252,19 @@ class Worker:
             if result.status is OperationStatus.INTERRUPTED:
                 self._unknown_state = "the tool reported the operation interrupted"
                 await self._reset()
+            too_large = evidence_size_defects(result)
+            if too_large:
+                # #3049: the operation's row and every reading of it carry the evidence, so an
+                # item past its limit is never sent, and nothing is cut to fit. The records can't
+                # be returned without the evidence they rest on.
+                logger.error("the operation's result is too large to submit: %s", too_large)
+                return RemoteOperationResult(
+                    status=OperationStatus.NOT_EXECUTED,
+                    reason="the provider's result can't be returned: " + "; ".join(too_large),
+                    provider_version=result.provider_version,
+                    ran_with=result.ran_with,
+                    dispatch_id=dispatch_id,
+                )
             return result
         logger.error("the tool raised while the operation ran", exc_info=raised)
         self._unknown_state = f"the tool raised {type(raised).__name__}"

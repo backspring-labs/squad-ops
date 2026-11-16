@@ -40,6 +40,7 @@ from squadops.capabilities.context_assembly import (
     PRIOR_SLOT_FAILURES_KEY,
     RETAKE_CURRENT_FILES_KEY,
     ArtifactFilter,
+    ContentsOverLimit,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
@@ -75,7 +76,11 @@ from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStop
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EmissionStatus, banked_as
-from squadops.cycles.failure_attribution import WORKER_UNAVAILABLE, TerminalKind
+from squadops.cycles.failure_attribution import (
+    CONTENTS_OVER_LIMIT,
+    WORKER_UNAVAILABLE,
+    TerminalKind,
+)
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.flow_runs import end_open_flow_runs
 from squadops.cycles.gate_decisions import record_gate_decision
@@ -859,6 +864,20 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
         increment_id=cycle.increment_id,
         kind=cycle.kind,
         replay_of=replay.source_run_id if replay else None,
+    )
+
+
+def _contents_refused(envelope: TaskEnvelope, refused: ContentsOverLimit) -> _ExecutionError:
+    """#3118: the run ends ``input_refused`` when a task's tree is past its resolution's limit,
+    classified ``contents_over_limit``. Its envelope would be the same at every dispatch."""
+    return _ExecutionError(
+        f"task {envelope.task_id} ({envelope.task_type}) can't be handed its tree: {refused}",
+        terminal=RunTerminalDecision(
+            kind=TerminalKind.INPUT_REFUSED,
+            termination_reason=str(refused),
+            failure_classification=CONTENTS_OVER_LIMIT,
+            task_id=envelope.task_id,
+        ),
     )
 
 
@@ -1995,6 +2014,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # task-type opinions of its own; adding a per-task input is a registry
     # edit beside the capability code, never an executor diff.
 
+    async def _contents_within_limit(
+        self, envelope: TaskEnvelope, stored_artifacts: list[tuple[str, ArtifactRef]]
+    ) -> dict[str, str]:
+        """The correction loop's re-resolution (RC3), ending the run by name past the limit."""
+        try:
+            return await self._resolve_artifact_contents(envelope.task_type, stored_artifacts)
+        except ContentsOverLimit as e:
+            raise _contents_refused(envelope, e) from e
+
     async def _resolve_artifact_contents(
         self,
         task_type: str,
@@ -2060,7 +2088,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             if selection.selects(ref.metadata.get("producing_task_type", ""), ref.artifact_type)
         ]
 
-        # Resolve content (D3: 512KB limit). Per filename, later-in-order wins
+        # Resolve content (D3). Per filename, later-in-order wins
         # (RC3: the latest correction attempt supersedes earlier ones) with ONE
         # exception (#881): a scaffold-seeded artifact never shadows produced
         # content. The run's artifact list is a log, not a manifest — a resumed
@@ -2069,31 +2097,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # back to the skeleton. Frozen files exist only as seeded artifacts and
         # are unaffected; among seeded versions the latest still wins.
         contents: dict[str, str] = {}
+        sizes: dict[str, int] = {}
         seeded_holder: set[str] = set()
-        total_bytes = 0
-        limit = ARTIFACT_CONTENTS_LIMIT_BYTES
 
         for art_id in selected_ids:
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(art_id)
-                decoded = content_bytes.decode(errors="replace")
-                total_bytes += len(content_bytes)
-                if total_bytes > limit:
-                    logger.warning(
-                        "Artifact content limit exceeded (%d bytes) for %s, "
-                        "stopping pre-resolution",
-                        total_bytes,
-                        task_type,
-                    )
-                    break
-                is_seeded = bool(ref.metadata.get("scaffold_seeded"))
-                if is_seeded and ref.filename in contents and ref.filename not in seeded_holder:
-                    continue
-                contents[ref.filename] = decoded
-                if is_seeded:
-                    seeded_holder.add(ref.filename)
-                else:
-                    seeded_holder.discard(ref.filename)
             except Exception:
                 logger.warning(
                     "Failed to retrieve artifact %s for build task %s",
@@ -2101,11 +2110,26 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     task_type,
                     exc_info=True,
                 )
+                continue
+            is_seeded = bool(ref.metadata.get("scaffold_seeded"))
+            if is_seeded and ref.filename in contents and ref.filename not in seeded_holder:
+                continue
+            contents[ref.filename] = content_bytes.decode(errors="replace")
+            sizes[ref.filename] = len(content_bytes)
+            if is_seeded:
+                seeded_holder.add(ref.filename)
+            else:
+                seeded_holder.discard(ref.filename)
 
         # #2612: a path whose latest accepted entry is a removal holds no file in the workspace,
         # whichever filter selected an earlier copy of it (the checkout's seed, a prior write).
         for path in deleted_paths(stored_artifacts):
             contents.pop(path, None)
+            sizes.pop(path, None)
+        # #3118: the tree as the task is handed it, each file once. A task handed part of a tree
+        # reads it as the whole, so a tree past the limit is refused, never cut short.
+        if sum(sizes.values()) > ARTIFACT_CONTENTS_LIMIT_BYTES:
+            raise ContentsOverLimit(task_type, sum(sizes.values()), len(sizes))
         return contents
 
     async def _resolve_assembly_notes(
@@ -3421,6 +3445,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         interface_manifest: Any = None,
         run_derived_contract: Any = None,
     ) -> TaskEnvelope:
+        """:meth:`_enriched_envelope`, with a tree past its resolution's limit ending the run by
+        name (#3118): it would be past it at every dispatch, and is never cut short."""
+        try:
+            return await self._enriched_envelope(
+                envelope,
+                prior_outputs,
+                all_artifact_refs,
+                stored_artifacts,
+                interface_manifest=interface_manifest,
+                run_derived_contract=run_derived_contract,
+            )
+        except ContentsOverLimit as e:
+            raise _contents_refused(envelope, e) from e
+
+    async def _enriched_envelope(
+        self,
+        envelope: TaskEnvelope,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        interface_manifest: Any = None,
+        run_derived_contract: Any = None,
+    ) -> TaskEnvelope:
         """Build chain context inputs and return an enriched envelope.
 
         #663: the SINGLE composition point. Every per-task-type opinion comes
@@ -3539,6 +3586,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     **(workspace_files or {}),
                     scenario["path"]: scenario["document"],
                 }
+                # #3049: the tree the operation stages, the scenario's file in it, is what the
+                # port carries, so it is held to the same limit here and never refused there.
+                staged = sum(len(str(text).encode()) for text in workspace_files.values())
+                if staged > ARTIFACT_CONTENTS_LIMIT_BYTES:
+                    raise ContentsOverLimit(envelope.task_type, staged, len(workspace_files))
             if workspace_files:
                 extra_inputs["acceptance_workspace_files"] = workspace_files
             # #734 Slice A: cut a revision from the EXACT post-filter mapping
@@ -4163,7 +4215,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # file and never converged. Fall back to the enriched copy for task
             # types with no build-artifact filter (non-build corrections unchanged).
             artifact_contents=(
-                await self._resolve_artifact_contents(envelope.task_type, stored_artifacts)
+                await self._contents_within_limit(envelope, stored_artifacts)
                 or ((enriched_envelope.inputs if enriched_envelope is not None else {}) or {}).get(
                     "artifact_contents"
                 )

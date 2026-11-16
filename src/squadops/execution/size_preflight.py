@@ -16,7 +16,7 @@ application's Campaign has no record and no product tree, and is never read here
 (``task_plan.dispatched_task_steps``, the reading the #2810 guard reads), on the model its squad
 binds the type's role to:
 - the envelope the increment's run composes from the product: the tree at the calibration record's
-  commit and its manifest (``source_checkout.checkout_of``, ``seeded_files``), selected and capped
+  commit and its manifest (``source_checkout.checkout_of``, ``seeded_files``), selected and held to the limit
   by the executor's own rule (``ArtifactFilter.selects``, ``ARTIFACT_CONTENTS_LIMIT_BYTES``), its
   ``source_repository`` view (``checkout.source_repository_input``), and a repair's forwarded tree
   and failed files (``repair_forwarded_inputs``), with the first increment's resolved config
@@ -559,17 +559,22 @@ def _enriched(
 
 
 def _resolved(files: Sequence[_File], selection: ArtifactFilter) -> dict[str, str]:
-    """The checkout's files a resolution selects, in the run's order, stopping where the
-    executor's does: at the file that takes it past ``ARTIFACT_CONTENTS_LIMIT_BYTES``."""
-    contents: dict[str, str] = {}
-    total = 0
-    for path, text, artifact_type, size in files:
-        if not selection.selects(SOURCE_CHECKOUT, artifact_type):
-            continue
-        total += size
-        if total > ARTIFACT_CONTENTS_LIMIT_BYTES:
-            break
-        contents[path] = text
+    """The checkout's files a resolution selects, refused where the executor's is (#3118): past
+    ``ARTIFACT_CONTENTS_LIMIT_BYTES``, by name, never cut short. The checkout cap keeps a product's
+    own tree under it."""
+    contents = {
+        path: text
+        for path, text, artifact_type, _size in files
+        if selection.selects(SOURCE_CHECKOUT, artifact_type)
+    }
+    total = sum(size for path, _text, _type, size in files if path in contents)
+    if total > ARTIFACT_CONTENTS_LIMIT_BYTES:
+        raise CalibrationRecordRefused(
+            RefusalCause.SIZE_UNMEASURED,
+            f"the size preflight can't hand a task this product's tree: {total:,} bytes over "
+            f"{len(contents)} files, past the {ARTIFACT_CONTENTS_LIMIT_BYTES:,}-byte limit of "
+            "one resolution",
+        )
     return contents
 
 

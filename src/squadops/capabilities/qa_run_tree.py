@@ -37,7 +37,8 @@ purpose to keep helpers out of a source set, isn't used here.
   collect it.
 - A product with no derived profile has only the stacks' JavaScript extensions, so a ``.test.mjs``
   stays in its run tree.
-- Past the executor's 512 KB ``artifact_contents`` limit, the run can lack a file the product holds.
+- A tree past the executor's ``artifact_contents`` limit is refused before dispatch (#3118), so the
+  run never lacks a file the product holds for that reason.
 
 Pure: no I/O. The qa handler calls it.
 """

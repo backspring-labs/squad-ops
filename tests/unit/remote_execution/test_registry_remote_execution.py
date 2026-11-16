@@ -230,3 +230,30 @@ def test_a_silent_workers_operation_is_settled_not_left_held_when_the_wait_ends(
 async def _operations(h: Harness):
     async with h.registry._store.exclusive() as tx:  # the test reads every row it made
         return list(tx._rows.operations.values())
+
+
+def test_a_request_past_the_limit_is_refused_by_name_and_nothing_is_queued():
+    """#3049, at the port. Bugs caught: a multi-megabyte tree queued, stored and sent at every
+    claim past what a run carries; the tree cut to fit, so the worker plays part of the
+    candidate; or the refusal read as no worker being available, so a Campaign waits for one."""
+    from dataclasses import replace
+
+    from squadops.remote_execution.models import REQUEST_TREE_LIMIT_BYTES
+
+    h = Harness()
+    request = ask(OPEN)
+    big = replace(
+        request,
+        source_files={**request.source_files, "src/Big.luau": "x" * REQUEST_TREE_LIMIT_BYTES},
+    )
+
+    result = asyncio.run(h.adapter.run_operation(big))
+
+    assert (result.status, result.records, result.unavailable) == (
+        OperationStatus.NOT_EXECUTED,
+        (),
+        False,
+    )
+    assert "past the 4,194,304-byte limit a remote operation carries" in result.reason
+    assert "Its largest files: src/Big.luau (4,194,304)" in result.reason
+    assert asyncio.run(_operations(h)) == []
