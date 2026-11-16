@@ -40,6 +40,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from squadops.core.secrets import SecretNotFoundError
 from squadops.remote_execution.host_service import (
     LABEL,
     ServicePaths,
@@ -131,7 +132,11 @@ def _resolves(values: dict[str, str], reference: str, manager_from_env) -> None:
         manager = manager_from_env()
         if manager is None:
             raise SystemExit("the env file selects no secrets provider for the reference")
-        if not manager.resolve(reference):
+        try:
+            resolved = manager.resolve(reference)
+        except SecretNotFoundError as e:
+            raise SystemExit(f"{reference} doesn't resolve: {e}") from e
+        if not resolved:
             raise SystemExit(f"{reference} resolves to an empty secret")
     finally:
         for key, value in saved.items():
