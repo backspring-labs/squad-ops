@@ -193,6 +193,7 @@ phases are in its own ledger.
 | Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7, R5.22) | **shipped** | 2.8 (PR #3121, closing #3049) |
 | The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **shipped** | 2.8 (PRs #3074, #3080 and #3084, closing #3050). The faults are read on the remote-execution path, on Postgres in the integration job (#3074). The two-increment Campaign runs in the unit regression job, as it needs no service (#3084) |
 | Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
+| The reader reads a screen's visibility: `gui_state` `visible` of a `ScreenGui` is its `Enabled`, with the provider's version moved and the worker requalified (R5.25) | **shipped** | 2.8 (PR #3175, closing #3176) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1351,6 +1352,33 @@ the tailnet connection. No request is queued for an offline worker (R5.10, R5.12
 **Who ruled.** The owner, 2026-11-16: "we don't need another restart test", after adding the login item, and "go" on
 the MacBook lane's proposal to close #3046 on that ruling.
 ---
+
+## R5.25 The reader reads a screen's visibility (#3176, 2026-11-17; R5.9; SIP-0118 R5.5)
+
+**What changed.** `gui_state` `visible` reads a screen (a `ScreenGui`, any `LayerCollector`) as enabled. The
+harness read `gui_state` of a GUI object alone and refused a screen as unsupported.
+
+**The evidence.** The 2.8 demonstration's full-path gate, second attempt (`cmp_1afaeaaacd46`): both baseline
+plays ran in Studio and stopped at the scenario's third setup action, "…TA_HUD can't be observed (…is a
+ScreenGui, not a GUI object)". The setup stopped, no assertion executed, and the baseline read was blocked. The
+strategy skill's worked example observes the HUD with `property` `Enabled`, which works. The proposals wrote
+`gui_state visible` on the screen in three of three (#3041's part 5 and both attempts of this gate).
+
+**The rule.**
+- **`visible` of a screen is its `Enabled`,** which is what the harness already read of the screen a GUI object
+  sits in (`harness/observe.luau`, `shown`).
+- **`text` of a screen stays unsupported,** naming its class: a screen has none.
+- **Additive.** No scenario that executed before reads differently, and the vocabulary's declaration
+  (`scenario_vocabulary.json`) is unchanged, so the reader is still `roblox-studio/1` and no skill's copy moves.
+- **The provider's version is 2.** A qualification pins the version it was proved under, so the worker refuses
+  to play until it is requalified on its Studio (`scripts/dev/studio_requalify.py`).
+
+**The evidence it works.** The harness's observation script runs only inside Studio, so no unit test executes
+it. It is read live: the requalification on the MacBook's Studio plays a scenario that waits on a screen's
+visibility, and its record is named in the PR. The adapter's tests hold the version and the refusal a worker
+with no record of it gives.
+
+**Who ruled.** The Spark lane read the plays. The change is the MacBook lane's, which owns the Studio adapter.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 

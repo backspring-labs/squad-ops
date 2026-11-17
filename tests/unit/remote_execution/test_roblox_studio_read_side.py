@@ -257,7 +257,8 @@ async def test_the_runner_registers_what_it_runs_with_and_serves_play_scenario_a
     versions = await runner.tool_versions()
     result = await runner.run(request(ServedOperation("roblox-studio", "capture")))
 
-    assert versions["roblox-studio"] == "1" and versions["studio"] == "0.747.0"
+    # 2 since #3176: gui_state visible reads a screen as enabled.
+    assert versions["roblox-studio"] == "2" and versions["studio"] == "0.747.0"
     assert versions["studio_tools"].startswith(f"{len(_tools())}:")
     assert (versions["reader"], len(versions["harness.observe"])) == ("roblox-studio/1", 16)
     assert runner.serves() == (ServedOperation("roblox-studio", "play_scenario"),)

@@ -2727,3 +2727,12 @@ checks:
       appendix = templates.joinpath("request.increment_scenario_criteria_appendix.md").read_text()
       print("framework writes itself" in section, "declaration file, which the framework writes itself" in appendix)
     expect: "True True"
+  - id: "3176-screen-visibility"
+    what: the Studio harness reads a screen's visibility, and the provider's version is 2 (SIP-0117 R5.25)
+    container: squadops-runtime-api
+    code: |
+      from importlib import resources
+      from adapters.remote_execution.game_dev_roblox_studio.runner import PROVIDER_VERSION
+      observe = resources.files("adapters.remote_execution.game_dev_roblox_studio").joinpath("harness/observe.luau").read_text()
+      print(PROVIDER_VERSION, 'instance:IsA("LayerCollector")' in observe)
+    expect: "2 True"

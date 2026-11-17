@@ -11,7 +11,8 @@ executes, read from ``scenario_vocabulary.json`` beside this module.
 - ``property`` and ``attribute`` read a value. Numbers, text and booleans are read as they are,
   and anything else as its text (``Enum.Material.Plastic``, an instance's path);
 - ``gui_state`` reads ``visible`` (a GUI object shown on screen: it and every ancestor visible,
-  and its screen enabled) or ``text``;
+  and its screen enabled; of a screen itself, a ``ScreenGui``, that it is enabled, #3176) or
+  ``text``, which a screen has none of;
 - ``value`` reads a ``ValueBase``'s ``Value``.
 
 An instance that isn't there observes ``absent``.
