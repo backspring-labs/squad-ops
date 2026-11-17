@@ -2736,3 +2736,32 @@ checks:
       observe = resources.files("adapters.remote_execution.game_dev_roblox_studio").joinpath("harness/observe.luau").read_text()
       print(PROVIDER_VERSION, 'instance:IsA("LayerCollector")' in observe)
     expect: "2 True"
+  - id: "3178-map-lists-source-paths"
+    what: a product past the map's limit folds binary files by directory and lists every other path, and a task's view names its new files (SIP-0112 H.36)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.checkout import MAP_PATH_LIMIT, manifest_of, repository_map, source_repository_input
+      files = {f"art/a{n}.png": b"\xff" for n in range(MAP_PATH_LIMIT)} | {"src/UI/Screens/HUD.luau": b"hud"}
+      manifest = manifest_of("c" * 40, files, (), (), classify=lambda path: "source")
+      view = source_repository_input(manifest, {"src/UI/Screens/HUD.luau": "hud"}, ["src/UI/HUD.luau"])
+      print(repository_map(manifest).split("\n"), view["new_files"])
+    expect: "['- `art/` (400 binary or generated files)', '- `src/UI/Screens/HUD.luau` (3 bytes)'] ['src/UI/HUD.luau']"
+  - id: "3178-new-files-asset"
+    what: the block that tells a task which of its files the product doesn't hold is in the image (SIP-0112 H.36)
+    container: squadops-neo
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      block = templates.joinpath("request.source_repository_new_files_block.md").read_text()
+      appendix = templates.joinpath("request.source_repository_appendix.md").read_text()
+      print("The product holds no file at these paths" in block, "{{new_files}}" in appendix)
+    expect: "True True"
+  - id: "3179-increment-suite-steps"
+    what: an increment's plan that authors no suite gets no suite step re-appended, and any other cycle keeps the workload's (SIP-0109 §24eg)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.cycles import task_plan
+      source = inspect.getsource(task_plan._replace_build_steps_with_plan)
+      print("increment and authors_qa_suite(task_type)" in source, "increment" in inspect.signature(task_plan._replace_build_steps_with_plan).parameters)
+    expect: "True True"

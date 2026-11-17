@@ -182,27 +182,12 @@ DONE = {
 }
 
 
-def _check(thing: str) -> str:
-    """qa's test for the increment: the world holds ``thing``, a test file of its own."""
-    return f"""import json
-import unittest
-from pathlib import Path
-
-WORLD = Path(__file__).resolve().parents[1] / "{WORLD_PATH}"
-
-
-class World(unittest.TestCase):
-    def test_the_world_holds_{thing.split(".")[-1].lower()}(self):
-        world = json.loads(WORLD.read_text())
-        self.assertIn("{thing}", world["server"])"""
-
-
-def _implementation(world: dict, thing: str) -> list[dict]:
-    name = thing.split(".")[-1].lower()
+def _implementation(world: dict) -> list[dict]:
+    """The implementation run's answers. The plan authors no suite, so no suite step is
+    dispatched (#3179): the developer's task, then the framework's plays."""
     return [
         answer("governance.define_done", 1, emitted("definition_of_done.json", json.dumps(DONE))),
         answer("development.develop", 1, emitted(WORLD_PATH, json.dumps(world, indent=2))),
-        answer("qa.test", 1, emitted(f"checks/check_{name}_test.py", _check(thing), "python")),
     ]
 
 
@@ -216,7 +201,7 @@ SCRIPTS = {
             ),
         ),
         *_framing("open the door from its panel"),
-        *_implementation(OPEN, "Workspace.Door"),
+        *_implementation(OPEN),
     ],
     "machinery-inc2": [
         answer(
@@ -225,9 +210,9 @@ SCRIPTS = {
             _proposal("C-3", "Clicking the switch lights the lamp", LAMP_LIGHTS, "Workspace.Lamp"),
         ),
         *_framing("light the lamp from its switch"),
-        *_implementation(LIT_SHUT, "Workspace.Lamp"),
+        *_implementation(LIT_SHUT),
     ],
-    "machinery-repair": _implementation(LIT_OPEN, "Workspace.Lamp"),
+    "machinery-repair": _implementation(LIT_OPEN),
 }
 
 
@@ -588,7 +573,7 @@ RETRY_SCRIPTS = {
     "machinery-inc1": SCRIPTS["machinery-inc1"],
     "machinery-retry": [
         *_framing("open the door from its panel"),
-        *_implementation(OPEN, "Workspace.Door"),
+        *_implementation(OPEN),
     ],
 }
 

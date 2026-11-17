@@ -317,6 +317,7 @@ _SHARED_CONTEXT_TEMPLATES = (
     "request.source_repository_appendix",
     "request.source_repository_checks_block",
     "request.source_repository_existing_files_block",
+    "request.source_repository_new_files_block",
     "request.source_repository_instructions_block",
     "request.source_repository_runners_block",
     # #2612: how a step that may remove a file does, in its grant's terms, one at a time.

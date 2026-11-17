@@ -140,6 +140,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a product the size of z_tower-ascension carried whole: the checkout cap and the resolution's limit raised together, a tree past either refused by name and never cut short, and the steps that render no prompt counted as none (H.32) | **shipped** | 2.8 (PR #3121, closing #3118) |
 | a product's package roots declared in its Development Configuration where its tree names none (a Luau product under Script Sync), read by the derivation as package surfaces, with `package_root_missing` for one the tree lacks (H.33) | **shipped** | 2.8 (PR #3135, closing #3134) |
 | a product's reserved paths declared in its Development Configuration, carried on its derived profile, and refused by path at a proposal's rails, both plan gates, an operator's plan at create and delivery (H.35) | **shipped** | 2.8 (PR #3168, closes #3155) |
+| the repository map past its limit folds binary and generated files first and lists every other path, and a task is told which files it names the product doesn't hold (H.36) | **shipped** | 2.8 (PR #3180, closes #3178) |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect; then re-placed from 2.8 by the 2.8 plan's decision 9 (the owner, 2026-11-11): the MacBook lane holds the 2.8 headline, and its files are that lane's) | 2.10.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | a Project's declared contribution identity: the request's token checked against it at the forge before anything is pushed, another's refused, and the forge identity recorded beside the caller (H.34, ruled 2026-11-17, not yet built) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
@@ -3942,3 +3943,52 @@ submit, and the first cycle on it reads the rule live.
 
 **Who ruled.** The MacBook lane proposed the rule from the replay's reading (#3155). The owner ruled it on
 2026-11-17: "let's go with the proposed rule for 3155."
+
+## H.36 The map lists every path a task can change, and a task is told which of its files are new (2026-11-17; E.4.3, H.13; SIP-0109 §7.3; #3178; the MacBook lane)
+
+**What changed.** A product past the map's limit of 400 paths folds the files no task's view carries first, by
+directory, and every other path stays listed with its size. A task that names a file the product doesn't hold
+is told so.
+
+**The evidence.** The 2.8 demonstration's full-path gate, attempt 3 (`cmp_35659d2394a3`, `run_178243ba831b`),
+on z_tower-ascension at `0beaac09c606`:
+- **The tree holds 619 files,** 385 of them binary art and documents. Past its limit the map showed each
+  top-level directory with a count, so every author read `src/ (137 files)` and no source path. The proposal's
+  prompt calls that map "every file the product holds", and says a footprint names its paths.
+- **The proposals named a path the product doesn't hold.** Two of four approved footprints were
+  `src/Client/UI/HUD.luau`, and a third's plan named it under a glob. The game's HUD is
+  `src/Client/UI/Screens/HUD.luau`.
+- **The developer was shown nothing.** `existing_files` is keyed by the files a task names, so it was empty, and
+  the prompt gave no reason. The task wrote a new 42-line module that builds its own `TA_HUD`. Nothing requires
+  it, so no candidate play could have passed.
+- **The approver didn't read the path against the tree** (the Spark lane, under the owner's grant for uncounted
+  runs, attempts 1 and 3).
+
+**The rule.**
+- **Up to the limit, the map is unchanged:** every path with its size.
+- **Past it, binary and generated files fold** (`projects.checkout.repository_map`). A directory whose every file
+  is one of them is a single line with its count, at the shallowest such directory. One that also holds a listed
+  file gets a line counting its own, "beside the files listed". A root-level file and a file the run removed are
+  listed as themselves. On the game's tree that is 250 lines and 13,275 characters, with all 234 text files
+  listed.
+- **A tree still past the limit then** shows each top-level directory with its count, as before, under a
+  sentence saying its files aren't listed (`MAP_FOLDED_NOTE`). It read as a complete map before.
+- **`source_repository.new_files`** names the files a task names that neither the product nor the run holds,
+  and the appendix states them (`request.source_repository_new_files_block`): each is a new file, and a change to
+  a file the product holds goes at that file's own path, as the map writes it. A task that names none is shown
+  no such block, so its prompt is unchanged.
+
+**Considered and left out.** A refusal of a footprint path whose file name the product holds elsewhere. A new
+file that shares its name with another (`init.luau`, `index.ts`, `__init__.py`) is ordinary, so the rule would
+refuse honest changes.
+
+**Not built here.** A proposal's footprint shown to its approver with each new path marked. No surface renders
+a proposal for its approver today: the approver reads the stored change request. It is its own issue.
+
+**What it costs.** The map is in every authoring prompt on the product. On the game it grows from 11 lines to
+250, about 3,300 tokens. The Campaign's size preflight measures it, since it reads the same view.
+
+**Not shown:** a proposal on the game that names `src/Client/UI/Screens/HUD.luau`. That is read on the next
+full-path gate.
+
+**Who ruled.** The Spark lane read the record. The MacBook lane read the cause and made the change.
