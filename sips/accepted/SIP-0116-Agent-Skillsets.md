@@ -142,6 +142,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
 | Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 | A skill's stops: declared in its front matter, read from every authoring answer, and a stopped task ending its run as `skill_stopped` with the stop carried (§17o). The Campaign's handling of that ending is SIP-0109's | **shipped** | 2.8 (PR #3132; #3041 tracks the Roblox squad's rest) |
+| The skills replay: a `skills` arm on the authoring replay, the equipment built as a cycle builds it, swapped cases, and each answer judged by its case's declared stop, acceptance, emitted files, scenario criterion and passing specs; the nine Roblox cases (§17p). Its run on the Spark's models is #3041's | **shipped** | 2.8 (PR #3141; #3041 tracks the Roblox squad's rest) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1324,6 +1325,98 @@ and recorded as any other, and before any parser reads the answer.
 **Who ruled.** The MacBook lane, under the owner's delegation, after the outside review's call c. The shape and the
 split with the Campaign's side were agreed with the Spark lane on 2026-11-16 (#3041). The owner approved
 `luau-gameplay`'s new wording the same day.
+
+### 17p. The skills replay: how a skill is tested before a profile requires it (2026-11-16, §7; #3041)
+
+**What changed.** §7 says each skill is replay-tested on the models that will run it before it is used (Q47's rule).
+It doesn't say how, and the order makes it awkward: a skill loads only where a development profile requires its
+skillset, and a profile may require it only once it has passed. So the test can't be a cycle on that profile. This
+section says what the test is. It adds one arm to the authoring replay SIP-0110 built (its §0.11), and no second
+runner.
+
+**The instrument.**
+- **The capture.** One cycle on the product with no skill loaded: the squad that will carry the skillsets, under a
+  development profile that requires none. Its authoring envelopes are the cases' starting points: one of each task
+  type a case names. A Campaign's cycle holds them in two runs, the proposal's and the build's, so the runner
+  takes them by envelope id.
+- **Two arms.** The baseline is the captured task as it stands. The `skills` arm is the same task handed what a
+  cycle requiring the case's skillset would hand it.
+- **The equipment is built as a cycle builds it** (`cycles/skillset_replay.task_equipment`): the skillset assigned to
+  the envelope's agent, the copy a cycle keeps of it, and the skills that copy loads for the task's type, through
+  `kept_document` and `skills_for`. A proposal is also handed the scenario vocabulary its cycle would keep, from the
+  skillset that supplies the scenario operation. It is built inside the agent's container, from the image's own
+  packaged skillsets, so the text tested is the text deployed.
+- **Validity, before any model call.** An unswapped case's baseline must reconstruct its captured prompt byte for
+  byte. Every case's skills arm must differ from its baseline only by the rendered skills section. A capture that
+  already holds skills is refused as their baseline.
+- **A swapped case** puts a task the capture didn't hold in front of the same seam, by changing named inputs: a
+  value replaced, text replaced within one, or an input removed. No capture stands behind its prompt, so it is
+  checked against its own baseline and says so in its record. A swap that changes nothing is refused.
+- **Where it runs.** In the agent container of the envelope's role, with the image's own handler and prompt assets,
+  on the deploy's own model configuration. Nothing is written to a store. The records go to
+  `var/replays/<experiment>/`.
+
+**The cases** are a file under `scripts/dev/skill_replay_cases/`, headed by its name and version. An experiment's
+manifest pins the file by its text, and each case's skillset, swaps and expectation are frozen with it. A changed
+file is a new version and a new experiment.
+
+**What a skills-arm authoring is judged by** (`memory/skill_replay.judge`). Nothing here parses an answer by a rule
+of its own:
+- `stop`: the declared stop `_llm_call` read from the answer (§17o), by its opening words;
+- `accepted`: the handler's own verdict on the answer;
+- `emits`: the paths of the files the handler accepted;
+- `emits_expected`: every file the task's own `expected_artifacts` names is among them. A captured case names no
+  file of its own, since a capture taken again brings another proposal and another plan;
+- `scenario_criterion`: the accepted change request holds a scenario criterion. The proposal's rails have already
+  read each one strictly against the vocabulary;
+- `specs_pass`: the emitted specs, laid over a copy of a product checkout and run by the product's own runner, read
+  by the framework's `luau` reader. Only the emitted specs' tests count. Without a checkout the expectation reads
+  `not_judged`, never met. The checkout is the product at the pin, before the captured run's own change, so the
+  files a test task was written against (its `implementation_artifacts`, with the bodies its inputs hold) are laid
+  beneath the emitted specs. One the inputs don't hold is refused.
+
+The baseline is recorded for contrast and held to nothing: it was handed no skill.
+
+**What the first capture showed** (Campaign `cmp_22ca0525782c` on z_tower-ascension, uncounted; the Spark lane's
+reading of its three envelopes, 2026-11-16):
+- **A build task is shown the plan's words, never the objective.** The Campaign's objective is in a develop and a
+  `qa.test` task's inputs and in neither prompt. What reaches them is the plan's restatement: the task's
+  description, its focus, its criteria and its expected files. So a develop or `qa.test` case swaps those together,
+  and a swap of the objective alone would leave the prompt as captured.
+- **`qa.test` fits the window as it is scoped.** Its prompt is about 42,000 characters, the largest of the three,
+  under the squad's 65,536-token window with its completion reserve. `package_scoped` stays as built.
+- **Two defects in the `qa.test` prompt on a Luau product:** its files are fenced as Python (#3136), and the module
+  under test is never shown (#3139). Both change the prompt the replay starts from, so they are fixed first and the
+  capture is taken again.
+
+**What the replay doesn't show:**
+- **Whether a skill makes the squad better.** It runs a few generations of a few cases. It shows each skill's rules
+  are followed, its stops are given and its output is accepted by the framework's own readers. A difference between
+  the arms is a description, not a measurement.
+- **A played scenario.** A proposal's scenario is read against the vocabulary and never played here. Play is the
+  demonstration's (SIP-0118 phase 3).
+- **A stop's effect on a run.** The handler is called directly, so the executor never ends a run. §17o's tests hold
+  that path.
+
+**Evidence.**
+- **The equipment is a cycle's.** `test_the_replays_equipment_is_what_a_cycle_on_the_roblox_squad_would_hand` enters
+  the cycle's side at `resolve_coverage` on the seeded `game-dev-roblox` squad, its kept copy and `skills_for`, and
+  compares what the replay hands the same task, for all three roles.
+- **The runner.** `test_authoring_replay_runner.py` enters at the in-container `replay` with a captured proposal,
+  the real handler and prompt assets and the packaged skillsets: both arms authored, the skills arm differing by its
+  section alone, a stop recorded with one model call, a swapped case checked against its own baseline, and a case
+  that can't be built reported and never authored.
+- **The host.** `test_run_authoring_replay.py`: the cases pinned by text, each case's own envelope, a missing or
+  ambiguous capture refused, and emitted specs run on a copy with only their own tests counted. That last test
+  found the first version counting no failure at all, because the reader's failure keys lead with `FAILED`. A spec
+  is run with its task's implementation files beneath it, and a file laid beneath is never counted as a spec.
+- **The packaged cases.** `test_every_packaged_case_can_be_built_on_the_captures_shape` builds all nine Roblox
+  cases against the packaged skillsets and the three captured tasks' recorded shapes: every swap's path is there,
+  and each task is handed its skills (one for a proposal, two for a develop or a `qa.test` task).
+
+**Who ruled.** The MacBook lane, under the owner's delegation. The shape was agreed with the Spark lane, which runs
+it, on 2026-11-16 (#3041): the capture on the final squad under the derived profile, the byte check held to
+unswapped captures, a swapped case given its own baseline, and the records kept under the main checkout.
 
 ## Appendix A. A paper compatibility matrix
 

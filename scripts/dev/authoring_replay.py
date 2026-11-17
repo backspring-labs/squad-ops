@@ -9,6 +9,13 @@ section. A case that fails is reported and never authored. Then each scheduled `
 generation)`` is authored for real, with the image's own handler, prompt assets and model port, and
 its prompt, the model's replies and the handler's outputs are recorded.
 
+**A skills case** (SIP-0116 §17p; ``payload["skill_cases"]``) is authored under two arms: the
+baseline, and the task handed the skills its cycle would hand it if its development profile
+required the case's skillset. Its equipment is built here, from the image's own packaged
+skillsets. A case with swaps has no capture behind its prompt, so only an unswapped case is
+checked against one; every case's skills arm must differ from its baseline by the skills'
+section alone. Each authoring records the declared stop its model answered with, if any.
+
 **Isolation:** nothing here touches a store. The context carries no authoring capture, so no
 envelope is recorded, and the records go only to stdout.
 """
@@ -92,11 +99,103 @@ async def _prompt(handler: Any, envelope: dict, inputs: dict, prompt_service: An
     return None
 
 
+async def _skill_case(
+    envelope_id: str,
+    envelope: dict,
+    case: dict,
+    handler: Any,
+    prompt_service: Any,
+    renderer: Any,
+    catalog: Any,
+    experiment: str,
+) -> tuple[dict, dict[str, dict]]:
+    """One skills case's validity record, and its inputs by arm (empty when it isn't valid).
+
+    A case that can't be built as written (a swap that changes nothing, a skillset that loads
+    no skill for the task) is reported with its reason and never authored."""
+    from squadops.campaigns.change_request import PRODUCT_PROPOSAL_INPUT
+    from squadops.capabilities.handlers.skills import skills_section
+    from squadops.capabilities.skillsets import SKILLS_INPUT
+    from squadops.cycles.skillset_replay import task_equipment
+    from squadops.memory.authoring_envelope import AuthoringReplayEnvelope, inputs_as_handed
+    from squadops.memory.replay import Arm, arm_inputs, swapped_inputs, validity
+
+    swaps = case.get("swaps") or []
+    record: dict[str, Any] = {
+        "record": "validity",
+        "envelope_id": envelope_id,
+        "case": case["case"],
+        "capture_checked": not swaps,
+    }
+    try:
+        own = swapped_inputs(envelope["inputs"], swaps) if swaps else envelope["inputs"]
+        equipment = task_equipment(
+            catalog,
+            skillset=case["skillset"],
+            role=envelope["role"],
+            agent_id=envelope["agent_id"],
+            task_type=envelope["task_type"],
+            vocabulary_skillset=case.get("vocabulary_skillset") or "",
+        )
+        handed = [((SKILLS_INPUT,), equipment.skills)]
+        if equipment.scenario_vocabulary is not None:
+            handed.append(
+                ((PRODUCT_PROPOSAL_INPUT, "scenario_vocabulary"), equipment.scenario_vocabulary)
+            )
+        inputs = {
+            Arm.BASELINE.value: arm_inputs(own, Arm.BASELINE, experiment_id=experiment),
+            Arm.SKILLS.value: arm_inputs(
+                own, Arm.SKILLS, experiment_id=experiment, equipment=handed
+            ),
+        }
+    except ValueError as exc:
+        return {**record, "valid": False, "reason": str(exc)}, {}
+    baseline = await _prompt(
+        handler, envelope, inputs[Arm.BASELINE.value], prompt_service, renderer
+    )
+    skills = await _prompt(handler, envelope, inputs[Arm.SKILLS.value], prompt_service, renderer)
+    section = await skills_section(renderer, inputs[Arm.SKILLS.value])
+    if swaps:
+        # No capture stands behind a swapped prompt, so there is nothing to reproduce.
+        captured = reproduced = baseline or []
+    else:
+        captured = [m["content"] for m in envelope["messages"]]
+        reproduced = await _prompt(
+            handler,
+            envelope,
+            inputs_as_handed(AuthoringReplayEnvelope.from_dict(envelope)),
+            prompt_service,
+            renderer,
+        )
+    verdict = validity(captured, reproduced or [], baseline or [], skills, section)
+    record.update(
+        {
+            "baseline_exact": verdict.baseline_exact if not swaps else None,
+            "skills_differ_only_by_their_section": verdict.memory_differs_only_by_its_section,
+            "valid": bool(baseline) and verdict.valid,
+            "skills": equipment.digests(),
+            "prompt_chars": {
+                "baseline": sum(len(m) for m in baseline or []),
+                "skills": sum(len(m) for m in skills or []),
+            },
+        }
+    )
+    return record, inputs if record["valid"] else {}
+
+
 async def replay(
-    payload: dict, registry: Any, prompt_service: Any, renderer: Any, llm: Any
+    payload: dict,
+    registry: Any,
+    prompt_service: Any,
+    renderer: Any,
+    llm: Any,
+    catalog: Any = None,
 ) -> list[dict]:
-    """The experiment's records: each case's validity, then each scheduled authoring."""
+    """The experiment's records: each case's validity, then each scheduled authoring.
+    ``catalog`` is the skillsets a skills case's equipment is built from: the image's own
+    packaged ones when it isn't given."""
     from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
+    from squadops.capabilities.skill_stops import SkillStop
     from squadops.memory.authoring_envelope import (
         AuthoringReplayEnvelope,
         inputs_as_handed,
@@ -110,11 +209,32 @@ async def replay(
         for lesson in payload.get("lessons", [])
     }
     cases = {e.get("envelope_id") or id_of(e): e for e in payload["cases"]}
+    skill_cases = payload.get("skill_cases") or {}
+    if skill_cases and catalog is None:
+        from squadops.capabilities.skillsets import load_skillsets
+
+        catalog = load_skillsets()
     records: list[dict] = []
     valid: set[str] = set()
     inputs_of: dict[tuple[str, str], dict] = {}
     for envelope_id, envelope in cases.items():
         handler = registry.get(envelope["task_type"])
+        if envelope_id in skill_cases:
+            check, by_arm = await _skill_case(
+                envelope_id,
+                envelope,
+                skill_cases[envelope_id],
+                handler,
+                prompt_service,
+                renderer,
+                catalog,
+                experiment,
+            )
+            records.append(check)
+            if check["valid"]:
+                valid.add(envelope_id)
+            inputs_of.update({(envelope_id, arm): held for arm, held in by_arm.items()})
+            continue
         own = envelope["inputs"]
         lessons = [lessons_by_id[r] for r in payload.get("case_lessons", {}).get(envelope_id, [])]
         arms = [Arm(a) for a in payload["arms"]]
@@ -169,14 +289,28 @@ async def replay(
         result = await registry.get(envelope["task_type"]).handle(context, copy.deepcopy(inputs))
         # Validity checked the baseline's prompt before the model was called; this is the call the
         # scored authoring actually made, read against the capture.
+        case = skill_cases.get(envelope_id)
+        swapped = bool(case and case.get("swaps"))
         fidelity = (
             {
                 "first_call_is_the_capture": bool(recording.calls)
                 and recording.calls[0]["messages_sha256"] == envelope["messages_sha256"]
             }
-            if arm_name == Arm.BASELINE.value
+            if arm_name == Arm.BASELINE.value and not swapped
             else {}
         )
+        if case is not None:
+            # SIP-0116 §17o: the declared stop the model answered with, as ``_llm_call`` read
+            # it. The handler's own failure is whatever its seam makes of a failed call.
+            stop = context.skill_stop
+            fidelity = {
+                **fidelity,
+                "case": case["case"],
+                "skill_stop": stop.to_dict() if isinstance(stop, SkillStop) else None,
+                # What the task as authored expected, after the case's swaps: a captured case
+                # names no file of its own, since another capture brings another plan.
+                "expected_artifacts": [str(e) for e in inputs.get("expected_artifacts") or ()],
+            }
         records.append(
             {
                 "record": "authoring",
