@@ -210,6 +210,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A worker keeps its lease while its tool is busy** (#3185; SIP-0117 R5.26): a worker renewed its lease only
+  after asking its tool for its health, and Roblox Studio answered one such probe a minute late while a play was
+  ending. The lease ran out, the finished play's result was dropped, and the worker reset Studio. A renewal now
+  carries the health read before the claim, the tool is probed only between claims, and an operation that ends
+  while a renewal is out has its result submitted and its tool left as it is.
 - **A large product's source paths stay on its map** (#3178; SIP-0112 H.36): past 400 files the map of a product
   showed its top-level folders with counts, so a squad on a game with hundreds of art files saw no source path and
   named a file the game doesn't have. Binary and generated files now fold by folder first, and every other path
