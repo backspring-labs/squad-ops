@@ -520,7 +520,7 @@ grant for uncounted runs.
 - The Spark approved attempts 1 and 3 under the grant without reading their paths against the tree. The check added
   to §5 and §7.4 above is that reading.
 
-**The fix: PR #3180** (the MacBook lane's; it closes #3178 and #3179), merged as `<COMMIT>`:
+**The fix: PR #3180** (the MacBook lane's; it closes #3178 and #3179), merged as `2ea70253` (2026-11-17 11:55 ET):
 1. **The repository map** (SIP-0112 H.36): past 400 paths, binary and generated files fold first, by directory, and
    every other path stays listed with its size. On this game at `0beaac09`: all 234 text files listed, including
    `src/Client/UI/Screens/HUD.luau (26586 bytes)`.
@@ -536,7 +536,7 @@ The worker's side is unchanged: provider version 2, the same harness and qualifi
 - #3181: a proposal's footprint shown to its approver, with new paths marked.
 - #3182: a plan's own `qa.test` on a product can be shown a whole top-level directory.
 
-**The deploy for steps 1 to 3** is built from `<COMMIT>` with `runtime_api` bound, once main's CI on it is green. Its
+**The deploy for steps 1 to 3** is built from `2ea70253` (or main above it by documents only) with `runtime_api` bound, once main's CI on it is green. Its
 record id and verify_loaded count go into the run record before gate attempt 4 (§3, check 2). #3171 stays out of it.
 
 **What is expected of attempt 4, read as G3 (context selection) for the first time:**
