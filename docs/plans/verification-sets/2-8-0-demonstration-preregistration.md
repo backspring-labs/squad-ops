@@ -530,7 +530,11 @@ grant for uncounted runs.
    runs `governance.define_done`, `development.develop`, then the plays. A cycle that is no increment keeps the
    workload's `qa.test`.
 
-The worker's side is unchanged: provider version 2, the same harness and qualification record.
+The worker's side is unchanged: provider version 2, the same harness and qualification record, and no restart.
+
+**Split out, not in #3180, after the demonstration:**
+- #3181: a proposal's footprint shown to its approver, with new paths marked.
+- #3182: a plan's own `qa.test` on a product can be shown a whole top-level directory.
 
 **The deploy for steps 1 to 3** is built from `<COMMIT>` with `runtime_api` bound, once main's CI on it is green. Its
 record id and verify_loaded count go into the run record before gate attempt 4 (§3, check 2). #3171 stays out of it.
