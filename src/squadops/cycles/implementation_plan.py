@@ -1139,13 +1139,16 @@ class ImplementationPlan:
         if not footprint:
             return []
         # deferred (pair): cycles and campaigns would import each other at load
-        from squadops.campaigns.change_request import in_footprint
+        from squadops.campaigns.change_request import in_footprint, is_scenario_path
 
+        # #3173: the files a task may plan are named without the scenario declarations, which
+        # the framework writes. Listed with the rest, they read to a re-rolled framing as files
+        # to plan, and ``validate_increment_scenario_files`` then refuses the task that does.
+        plannable = ", ".join(p for p in footprint if not is_scenario_path(p))
         return [
             f"Task {task.task_index} ({task.focus}): {task.task_type} declares {artifact!r}, "
             f"which this increment's approved change does not touch. The accepted application "
-            f"keeps that file as it is; plan only the files the change touches: "
-            f"{', '.join(footprint)}"
+            f"keeps that file as it is; plan only the files the change touches: {plannable}"
             for task in self.tasks
             for artifact in task.expected_artifacts
             if not in_footprint(artifact, footprint)

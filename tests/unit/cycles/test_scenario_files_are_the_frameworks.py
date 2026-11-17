@@ -232,3 +232,71 @@ async def test_every_plan_author_is_told_a_scenario_criterions_file_is_no_confli
         assert "declaration file, which the framework writes itself" in text
         assert "no conflict with\nthe brief, so raise none about it." in text
         assert text.rstrip().endswith("- T1: The HUD shows how many lives are left")
+
+
+def test_a_plan_refused_for_a_file_outside_the_footprint_is_told_the_files_a_task_may_plan():
+    """The demonstration's second gate attempt (``run_791e229e17e9``): the refusal told the
+    re-rolled framing to "plan only" a list holding both scenario declarations. Bug caught: a
+    re-roll planning a task for a declaration because the gate's own words listed it, to be
+    refused again by ``validate_increment_scenario_files``."""
+    import yaml
+
+    from squadops.cycles.implementation_plan import ImplementationPlan
+
+    plan = ImplementationPlan.from_yaml(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "project_id": "prj-tower",
+                "cycle_id": "cyc_x",
+                "prd_hash": "h",
+                "summary": {"total_dev_tasks": 0, "total_qa_tasks": 1},
+                "tasks": [
+                    {
+                        "task_index": 0,
+                        "task_type": "qa.test",
+                        "role": "qa",
+                        "focus": "LivesLabel format and creation spec",
+                        "description": "d",
+                        "expected_artifacts": ["tests/Client/UI/LivesLabel.spec.luau"],
+                        "acceptance_criteria": [],
+                    }
+                ],
+            }
+        )
+    )
+    footprint = ("src/Client/UI/**", "src/Client/Controllers/**", SCENARIO_T1, SCENARIO_T2)
+
+    [error] = plan.validate_increment_footprint(footprint)
+
+    assert error.endswith(
+        "plan only the files the change touches: src/Client/UI/**, src/Client/Controllers/**"
+    )
+    assert ".squadops" not in error
+    # A task that does name a declaration is still inside the footprint, and is the other
+    # validator's to refuse.
+    inside = ImplementationPlan.from_yaml(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "project_id": "prj-tower",
+                "cycle_id": "cyc_x",
+                "prd_hash": "h",
+                "summary": {"total_dev_tasks": 1, "total_qa_tasks": 0},
+                "tasks": [
+                    {
+                        "task_index": 0,
+                        "task_type": "development.develop",
+                        "role": "dev",
+                        "focus": "the scenario file",
+                        "description": "d",
+                        "expected_artifacts": [SCENARIO_T1],
+                        "acceptance_criteria": [],
+                    }
+                ],
+            }
+        )
+    )
+    assert inside.validate_increment_footprint(footprint) == []
+    [refused] = inside.validate_increment_scenario_files({SCENARIO_T1: "T1"})
+    assert "The framework writes it" in refused

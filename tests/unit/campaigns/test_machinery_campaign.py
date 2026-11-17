@@ -435,6 +435,7 @@ async def test_a_campaign_refuses_a_candidate_that_breaks_an_earlier_scenario_an
     # product the cycle is seeded with, at its pinned commit. An increment's own cycle carries no
     # change request yet (its proposal authors one); the repair carries the ruled one's footprint.
     from squadops.campaigns.increment_tree import approved_footprint, forwarded_change_request
+    from squadops.execution.product_view import squad_footprint
 
     shown = machinery.authority.shown
     assert [project for project, _view in shown] == [PROJECT] * 3
@@ -445,8 +446,13 @@ async def test_a_campaign_refuses_a_candidate_that_breaks_an_earlier_scenario_an
             await machinery.clones.file_at(PROJECT, view.commit, WORLD_PATH)
         )
     ruled = await forwarded_change_request(machinery.vault, repair)
-    assert [view.footprint for _p, view in shown] == [None, None, approved_footprint(ruled)]
-    assert shown[2][1].footprint
+    assert [view.footprint for _p, view in shown] == [None, None, squad_footprint(ruled)]
+    # #3173: the repair's creation asks its provider about the squad's change. The scenario
+    # declaration the framework placed is in the ruled footprint, and is no part of what the
+    # authority is shown. Before this, a provider with a rule on what a change may carry refused
+    # every repair and retry of an increment with a scenario criterion.
+    assert shown[2][1].footprint == (WORLD_PATH,)
+    assert approved_footprint(ruled) == (WORLD_PATH, ".squadops/scenarios/criterion_C_3.json")
 
 
 def _waits(log) -> list[tuple[int, str]]:
