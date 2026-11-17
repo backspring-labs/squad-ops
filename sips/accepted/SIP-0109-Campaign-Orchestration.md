@@ -169,6 +169,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
 | on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #3144, closes #3143 |
 | a campaign's policy names the development profile its product is developed under, every launch carries it alone, and a squad lacking what it requires is refused at creation (§24ed) | **shipped** | 2.8.0, PR #3158, closes #3157 |
+| the plan-review tier's fourth condition: no brief conflict the merge escalated to the operator, read from the framing's merge decisions (§24ee) | **shipped** | 2.8.0, PR #3167, closes #3164 |
 | a Campaign's push and contribution carrying the token of its Project's declared contribution identity, with the forge identity on their rows and the accepted head beside the contribution commit (§24ea, ruled 2026-11-17, not yet built; SIP-0112 H.34) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
@@ -7495,3 +7496,48 @@ path as it stood, and it ties what an operator names to one request profile per 
 
 **Who ruled.** The Spark lane found the gap and recommended a policy field over a request profile. The design
 is the MacBook lane's, within §24bs and the 2.8 plan.
+
+### 24ee. The plan-review tier doesn't approve past a brief conflict the merge escalated (2026-11-17, §24bj; SIP-0093 §5.8 rule 1, §15d; #3164; ruled by the owner)
+
+**What changed.** §24bj's tier approves when every condition holds. It gains a fourth: the plan's merge
+escalated no brief conflict to the operator.
+
+**The evidence.** Reading #3163, where a proposer's disagreement with the brief was dropped before anyone saw it,
+the MacBook lane followed where one that parses goes:
+- The merge gives each raised brief conflict a disposition (SIP-0093 §5.8 rule 1): a `warning` is accepted, and a
+  `blocking` one is `escalated_to_operator`, with a line in `merge_decisions.yaml`'s `operator_notes`. Since
+  SIP-0093 §15d a conflict that couldn't be read is escalated too.
+- The tier read the design's open questions, the plan's footprint and the framing's runs. It read no merge
+  decision. So on a Campaign with `plan_gate: tier`, a conflict escalated to an operator was approved by the
+  tier with no operator having seen it.
+
+This was read in the code. No run showed it: the one conflict a live cycle raised was dropped earlier, at the
+parse (#3163).
+
+**The rule.**
+- **The condition, `no_escalated_conflict`:** the tier reads the framing run's `merge_decisions.yaml`. It holds
+  when no disposition is `escalated_to_operator`. A conflict the merge settled (a `warning`, accepted) leaves it
+  held, and the reading says how many were raised.
+- **It fails with each escalated conflict's field and reason,** which for an unread one is why it couldn't be
+  read and what the proposer wrote. The gate then escalates as it does for any failed condition (§24bj), and the
+  escalation's row carries the reading to whoever rules the gate.
+- **Merge decisions that are absent or can't be read fail it too.** Every framing that reaches the plan gate
+  ran the merge, so their absence establishes nothing, as a cycle with no manifest does for the open questions.
+- **Fourth, after §24bj's three.** A verdict lists every condition, and the gate's notes carry each reading.
+
+**What it does not change.** The tier still only approves. A supervised campaign's gate reads as it did. The
+merge's own rules (SIP-0093 §5.8) are untouched: which conflicts are escalated is the merge's, and SIP-0093 §15a's
+dropped rule 5 (conflicts between proposals blocking the gate) stays dropped.
+
+**The evidence it works.**
+- **`test_plan_review_tier.py`:** against merge decisions the merger itself writes, a blocking conflict and an
+  unread one each fail the condition with the conflict's words; none written, an empty document, a partial one
+  and one that isn't YAML each fail it; no conflict and an accepted warning hold it, with all four conditions in
+  the verdict in order.
+- **`test_plan_review_tier_wiring.py`,** entered at the gate's `decide` with the framing run's artifacts in a
+  vault: an escalated conflict, and a framing that stored no merge decisions, each leave the gate waiting for a
+  person with one escalation naming `no_escalated_conflict`, the first carrying the proposer's reason.
+- A loaded-check row, `3164-tier-reads-merge-decisions`.
+
+**Who ruled.** §24bj's policy is the owner's (2026-10-08). The MacBook lane found the gap and recommended the
+condition (#3164), and the owner ruled it on 2026-11-17 ("use recommendations on the others as well").

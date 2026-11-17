@@ -2019,15 +2019,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         an unreadable artifact degrades the re-roll context to reasons-only,
         never blocks the re-roll.
         """
+        return await self._run_artifact_text(
+            run,
+            lambda ref: (
+                ref.filename == "implementation_plan.yaml"
+                or getattr(ref, "artifact_type", None) == "control_implementation_plan"
+            ),
+        )
+
+    async def _load_run_merge_decisions(self, run: Run) -> str | None:
+        """The run's ``merge_decisions.yaml`` content, or None when it wrote none: what the
+        plan-review tier reads a proposer's escalated brief conflict from (SIP-0109 §24ee)."""
+        return await self._run_artifact_text(
+            run, lambda ref: ref.filename == "merge_decisions.yaml"
+        )
+
+    async def _run_artifact_text(self, run: Run, matches: Callable[[Any], bool]) -> str | None:
+        """The text of the first of ``run``'s artifacts ``matches`` holds for, or None."""
         for ref_id in tuple(run.artifact_refs or ()):
             got = await retrieve_or_absent(self._artifact_vault, ref_id)
             if got is None:
                 continue
             ref, content_bytes = got
-            if (
-                ref.filename == "implementation_plan.yaml"
-                or getattr(ref, "artifact_type", None) == "control_implementation_plan"
-            ):
+            if matches(ref):
                 return content_bytes.decode(errors="replace")
         return None
 

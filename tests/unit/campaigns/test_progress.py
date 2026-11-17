@@ -38,6 +38,7 @@ from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, Ru
 from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.models import ArtifactRef, Cycle, Gate, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import campaign, move, policy
 
 NOW = datetime(2026, 10, 2, 15, 0, tzinfo=UTC)
@@ -2068,6 +2069,7 @@ async def _a_late_answer_on_record(
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         prior, opening_transition(identity, verdict, ((decision_id, question),), NOW)

@@ -524,10 +524,11 @@ checks:
       verdict = plan_review_tier(
           kind=CycleKind.CALIBRATION, open_questions=(), footprint=("assembly_notes.md",),
           allowed_scope=("backend/**",), stack="fullstack_fastapi_react", refused_framing_runs=(),
-          answered_on_record={},
+          answered_on_record={}, merge_decisions=None,
       )
-      print(verdict.approves)
-    expect: "True"
+      # The scope's own check: the row reads its condition, and §24ee's has a row of its own.
+      print([c.held for c in verdict.checks if c.condition == "inside_scope"])
+    expect: "[True]"
   - id: "2754"
     what: a declared catch-all client route is read where no declared route is served
     container: squadops-eve
@@ -567,10 +568,10 @@ checks:
           kind=CycleKind.INCREMENT, open_questions=(),
           footprint=("backend/routes.py", "backend/tests/criteria/test_c1.py"),
           allowed_scope=("backend/routes.py",), stack="fullstack_fastapi_react",
-          refused_framing_runs=(), answered_on_record={},
+          refused_framing_runs=(), answered_on_record={}, merge_decisions=None,
       )
-      print(verdict.approves)
-    expect: "True"
+      print([c.held for c in verdict.checks if c.condition == "inside_scope"])
+    expect: "[True]"
   - id: "1708-queue"
     what: the escalation queue's operations, the late answer included
     container: squadops-runtime-api
@@ -2680,3 +2681,11 @@ checks:
       surface = parse_goal_set(doc).expected_results[0].surface
       print(surface.kind, surface.ref)
     expect: "scenario the HUD in a play session"
+  - id: "3164-tier-reads-merge-decisions"
+    what: the plan-review tier holds a fourth condition, and merge decisions it can't read fail it (SIP-0109 §24ee)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.plan_review_tier import conflict_check
+      check = conflict_check(None)
+      print(check.condition, check.held)
+    expect: "no_escalated_conflict False"

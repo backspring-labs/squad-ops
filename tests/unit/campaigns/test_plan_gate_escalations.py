@@ -40,6 +40,7 @@ from squadops.campaigns.models import (
 from squadops.campaigns.plan_review_tier import TierCondition, plan_review_tier
 from squadops.campaigns.progress import CampaignProgress
 from squadops.cycles.models import Gate, GateDecision, Run, RunStatus, TaskFlowPolicy
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import campaign, cycle_for, move, policy
 
 S = CampaignState
@@ -137,6 +138,7 @@ async def _world():
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         CID,
@@ -313,6 +315,7 @@ def test_an_escalation_pending_when_its_campaign_ended_reads_cancelled():
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     opening = opening_transition(
         _identity("cyc_x"), verdict, (("list-ordering", QUESTION),), OPENED
@@ -428,6 +431,7 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         CID, opening_transition(_identity("cyc_x"), verdict, (("list-ordering", question),), OPENED)

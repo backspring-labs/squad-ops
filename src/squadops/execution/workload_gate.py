@@ -138,6 +138,7 @@ class WorkloadGate:
         "_cycle_event_bus",
         "_cycle_registry",
         "_design_questions_for_gate",
+        "_load_run_merge_decisions",
         "_load_run_plan_yaml",
         "_poll_inter_workload_gate",
         "_reject_invalid_plan_before_workload_gate",
@@ -616,6 +617,7 @@ class WorkloadGate:
             stack=manifest_stack(manifest),
             refused_framing_runs=refused,
             answered_on_record=carried,
+            merge_decisions=await self._load_run_merge_decisions(run),
             placed=await self._placed_criterion_files(run_cycle),
             design_is_the_change_request=(
                 manifest is None and await self._ruled_change_request(run_cycle)

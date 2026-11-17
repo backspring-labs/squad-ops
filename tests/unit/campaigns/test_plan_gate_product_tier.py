@@ -16,6 +16,7 @@ from squadops.campaigns.models import PlanGate
 from squadops.campaigns.plan_review_tier import TierCondition
 from squadops.execution import workload_gate
 from squadops.execution.workload_gate import WorkloadGate
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -50,6 +51,7 @@ def _gate(*, change_request) -> WorkloadGate:
         _cycle_registry=SimpleNamespace(list_runs=lambda *_a, **_k: _async([])),
         _run_manifest_content=lambda *_a: _async(None),
         _load_run_plan_yaml=lambda *_a: _async(_PLAN),
+        _load_run_merge_decisions=lambda *_a: _async(merge_decisions_yaml()),
         _artifact_vault=object(),
     )
     gate = WorkloadGate(executor=lambda: executor)

@@ -23,6 +23,7 @@ from squadops.api.routes.campaigns import campaigns_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from squadops.campaigns.models import CampaignState
 from squadops.campaigns.progress import CampaignProgress
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import campaign, move
 
 pytestmark = pytest.mark.auth
@@ -142,6 +143,7 @@ async def _open_escalation(campaigns, *, ended: str | None = None) -> str:
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         CID,

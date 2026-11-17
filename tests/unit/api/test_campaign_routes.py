@@ -33,6 +33,7 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.llm.script import script_version
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import cycle_for, move, quiet_box
 
 pytestmark = pytest.mark.auth
@@ -730,6 +731,7 @@ async def _escalation(world: _World, *, ended: str | None) -> str:
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     opening = opening_transition(
         identity,
