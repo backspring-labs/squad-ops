@@ -116,8 +116,28 @@ def suite_language(inputs: Mapping[str, Any]) -> str:
         if runners and runners <= JAVASCRIPT_RUNNERS:
             return "javascript"
         if runners and runners <= LUAU_RUNNERS:
-            return "luau"
+            return LUAU_SUITE
     return "python"
+
+
+#: The suite language of a product that tests only with Luau runners (``suite_language``).
+LUAU_SUITE = "luau"
+ADDED_MODULE_TEST_LUAU = "request.increment_added_module_test_luau_appendix"
+
+
+async def added_module_test_section(renderer: Any, inputs: Mapping[str, Any]) -> str:
+    """How a criterion's test reaches a module the change adds, on a product that tests only with
+    Luau runners (#3143), or ``""``. The caller knows the run is an increment.
+
+    A spec that requires an absent module at the top of its file can't load on the accepted
+    product, the runner reports the file and none of its tests, and §24ci (a) reads
+    ``only_setup_failures``: the increment is refused however correct the build. One rendering
+    for every author of the spec and of its plan: the framing stages, the brief, the qa proposer,
+    the plan's sole author, and the suite's author and its repair."""
+    if renderer is None or suite_language(inputs) != LUAU_SUITE:
+        return ""
+    rendered = await renderer.render(ADDED_MODULE_TEST_LUAU, {})
+    return rendered.content
 
 
 def product_conventions_template(inputs: Mapping[str, Any]) -> str:

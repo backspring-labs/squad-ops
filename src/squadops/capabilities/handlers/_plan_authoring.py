@@ -25,6 +25,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.capabilities.handlers.source_repository import added_module_test_section
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -121,6 +122,12 @@ DEVELOPMENT_INCREMENT_SURFACES = tuple(
 SOURCE_SURFACES = (("request.plan_blocking_gaps_appendix", "blocked_index", "blocked_paths_index"),)
 
 
+#: The appendix that tells a plan's author to plan each new criterion's test file: the qa
+#: proposer's and the merger's. The development proposer is shown its own, which leaves those
+#: files to qa.
+_CRITERION_FILES_APPENDIX = "request.plan_increment_criteria_appendix"
+
+
 async def render_surfaces(renderer: Any, inputs: dict[str, Any], surfaces) -> str:
     """Each surface whose index the inputs carry, rendered through its managed asset (#448), in
     order. Each appendix opens with its heading and ends on its list, so they are joined with a
@@ -131,6 +138,11 @@ async def render_surfaces(renderer: Any, inputs: dict[str, Any], surfaces) -> st
         if index:
             rendered = await renderer.render(template_id, {variable: index})
             sections.append(rendered.content)
+            if template_id == _CRITERION_FILES_APPENDIX:
+                # #3143: the author who plans each criterion's test file, on a Luau product.
+                added = await added_module_test_section(renderer, inputs)
+                if added:
+                    sections.append(added)
     return "\n\n".join(sections)
 
 
