@@ -351,6 +351,8 @@ _PLANNING_TEMPLATES = (
     "request.planning_task_base",
     "request.increment_framing_section",
     "request.increment_ruling_notes_section",
+    # #3143: on a Luau product, how a criterion's test reaches a module the change adds.
+    "request.increment_added_module_test_luau_appendix",
     "request.plan_reroll_rejected_plan_appendix",
     "request.plan_reroll_rejection_appendix",
     "request.target_stack_section",
@@ -367,6 +369,8 @@ _PLAN_PROPOSAL_TEMPLATES = (
         "request.plan_increment_criteria_appendix",
         "request.plan_increment_criteria_development_appendix",
     ),
+    # #3143: shown with the criterion files' appendix, on a Luau product.
+    "request.increment_added_module_test_luau_appendix",
     "request.plan_increment_footprint_appendix",
     "request.plan_increment_frozen_appendix",
     "request.plan_increment_regenerated_appendix",
@@ -480,6 +484,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.increment_views_appendix",
             # #2799: a page criterion's test on a vitest product, from its test scope.
             "request.increment_page_loader_appendix",
+            # #3143: a criterion's test for a module the change adds, on a Luau product.
+            "request.increment_added_module_test_luau_appendix",
             *_SHARED_CONTEXT_TEMPLATES,
             *_CYCLE_TASK_RETRY_TEMPLATES,
         ),
@@ -774,6 +780,8 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         "request.increment_views_appendix",
         # #2799: a qa repair of a page criterion's test on a vitest product, from its test scope.
         "request.increment_page_loader_appendix",
+        # #3143: a qa repair of a criterion's test for a module the change adds, on a Luau product.
+        "request.increment_added_module_test_luau_appendix",
         *_DEVELOP_APPENDIX_TEMPLATES,
     ),
     # #2810: it carries the whole accepted tree for its own evaluation (#1229) and the failed

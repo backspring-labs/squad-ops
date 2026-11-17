@@ -167,6 +167,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the owner's goal delegation (SIP-0115 slice 3): `goal_delegation_granted`, the first record a completed Campaign refuses (§24dd) | **shipped** | 2.6.0, PR #2908 |
 | a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
+| on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #3144, closes #3143 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
 | a product proposal is shown that what the product already does stays inside the criterion that changes it (§24di); whether row 19 re-queues a goal-set item waits for the owner (SIP-0115 §5.3) | **shipped** | 2.6.0, PR #2936, refs #2935 |
@@ -7295,3 +7296,66 @@ reads it as a failed repair (SIP-0116 §17o). Only a run that ends `skill_stoppe
 **Who ruled.** The MacBook lane proposed the question on #3041 (issuecomment-6925771589) and the Spark lane answered
 with this shape (issuecomment-6925831386), under the 2.8 plan the owner adopted on 2026-11-11. The MacBook lane built
 the terminal kind first (PR #3132).
+
+### 24ec. A criterion's test for a module the change adds, on a Luau product: its absence is an assertion the spec makes (2026-11-16, §8.2, §24ci (a), §24dp; SIP-0112 H.31; SIP-0118 R4.3; #3143; the MacBook lane, on the Spark lane's finding)
+
+**What was wrong.** The #3041 capture Campaign `cmp_22ca0525782c` on z_tower-ascension (uncounted) ended at row 4
+with its one increment refused, though the build was right:
+- **the baseline:** the criterion's spec ran alone on the accepted product and the runner reported the file
+  `[setup]`, with none of its tests;
+- **the candidate:** six of six passed;
+- **the reading:** `only_setup_failures`, by §24ci (a), and rightly. The test never reached what it asserts.
+
+The spec required the module the change adds at the top of its file, and the accepted product has no such module.
+The design stage's draft of the spec had that shape. The brief and both proposers carried the draft, and the plan's
+qa criterion asked for it: "The spec begins with `local SalePricing = require(Shared.Modules.SalePricing)`". This is
+§24dp's shape on a fourth stack.
+
+**What changed.** §24ci (a) is unchanged, and the framework places no file. A Roblox product's own instance tree
+already tells an absent module from a broken one: `FindFirstChild` gives `nil` for a child that isn't there. So a
+spec looks the new module up inside each test, checks that it is there, and only then requires it. Read from
+z_tower's runner under Lune, at `0beaac0`:
+- **module absent:** `FAIL … > <test> [assertion] Shared.Modules.StreakRules exists: got nil`, the test's own
+  failure;
+- **module present:** `PASS`;
+- **module present and failing to load** (it asks for an engine service): `[setup]`, as before. Only absence becomes
+  an assertion, as §24dp has it.
+
+Two things carry that to the authors:
+1. **One asset, for every author of the spec or of its plan**
+   (`request.increment_added_module_test_luau_appendix`, through `source_repository.added_module_test_section`),
+   on a product that tests only with Luau runners:
+   - the framing stages and the brief, after the approved change request. The design stage drafts the spec, and
+     the plan follows its draft;
+   - the qa proposer and the plan's sole author, with the criterion files' appendix (§8.1). The development
+     proposer is shown its own appendix, which leaves those files to qa (§24cr);
+   - the suite's author and its repair, in the test scope (#1884), where the increment has a criterion a test
+     proves.
+   It states the rule in the runner's terms and names `FindFirstChild` for an instance tree. It shows no code:
+   the spec's globals are the product's runner's, and the platform's name stays in its skillset (SIP-0118 R4.6).
+   It also says that each folder the change adds is looked up and checked like the module, and that an observable
+   written as `require(<the new module>)…` says what to call, not where the `require` goes.
+2. **The Roblox QA skill shows the idiom** (`roblox-studio-qa/luau-test-loader`, "A module the change adds"), with
+   the spec whose lines are quoted above. The skill is the one that knows the product's runner.
+
+**Not changed, and for the owner.** The same shape holds on every stack: a criterion's test that imports, at the top
+of its file, a module its change adds can't load on the accepted tree. §24dp answered it for a vitest page with a
+loader the framework places, and this answers it for a Luau product with the product's own tree. Whether the rails
+should handle "the module this change adds is absent on the baseline" once for every stack is recorded on #3143 for
+the owner.
+
+**The evidence.**
+- **`test_added_module_test_luau.py`:**
+  - entered at `discrimination_on_runner` with the framework's `luau` reading of the runner's own lines: the
+    idiom discriminates, by its test's id, and a file-level require reads `only_setup_failures`;
+  - the skill's example is the spec those lines came from;
+  - each of the five seams, entered at the handler's own section with the real assets: told on a Luau product,
+    and not on a pytest one;
+  - the development proposer and an increment no test proves aren't told.
+- **Not yet read live.** No model has been shown the asset or the skill's section. The #3041 replay reads it
+  first. Its captured `qa.test` case expects `discriminates`: each emitted spec is run alone on the product at
+  the pin and again with the task's implementation laid beneath, and the two readings go through
+  `discrimination_on_runner` (SIP-0116 §17p; `test_run_authoring_replay.py` holds that step on a stand-in runner).
+
+**Who ruled.** The Spark lane found it and proposed the shape on #3143 (2026-11-16), tracing the plan's wording
+to the design stage's draft. The MacBook lane built it, under the 2.8 plan the owner adopted on 2026-11-11.

@@ -64,6 +64,39 @@ What it shows:
 - each test builds fresh state in `beforeEach`;
 - each check has a label, which is what a failure prints.
 
+## A module the change adds
+
+Your spec is run twice: on the game before the change, where one of its tests must fail at a
+check, and on the built change, where it must pass. Before the change a new module isn't in the
+tree. Requiring it at the top of the file, as the worked spec does for a module the game already
+has, fails the whole file `[setup]`. That never counts, and the change is refused however correct
+it is.
+
+So look a new module up inside each test, check that it is there, and then require it. The names
+here are illustrative: use your own module's.
+
+```luau
+local Shared = game:GetService("ReplicatedStorage").Shared
+
+local function streakRules()
+	local found = Shared.Modules:FindFirstChild("StreakRules")
+	check.truthy(found, "Shared.Modules.StreakRules exists")
+	return require(found)
+end
+
+test("a streak of three kills pays a bonus of thirty", function()
+	check.equal(streakRules().Bonus(3), 30, "bonus")
+end)
+```
+
+`FindFirstChild` gives `nil` for a child that isn't there, where `Shared.Modules.StreakRules` and
+`WaitForChild` raise. So before the change the first check fails and the test reads
+`[assertion]`. A module that is there and fails to load still reads `[setup]`.
+
+Where the change adds a folder too, look up and check each new level the same way before the
+next. And where a criterion's observable is written as `require(Shared.Modules.StreakRules)…`,
+it tells you what to call, not where the `require` goes: reach the module as above.
+
 ## What can be tested here
 
 Modules that only compute load here: rules, formulas, configs and state transitions over plain

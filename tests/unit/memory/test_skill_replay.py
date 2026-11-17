@@ -244,6 +244,34 @@ def test_every_defect_of_a_cases_file_is_named_in_one_pass():
             NOT_MET,
             "0 passing and 0 failing",
         ),
+        (
+            {"discriminates": True},
+            {"success": True, "artifacts": [_SPEC]},
+            None,
+            NOT_JUDGED,
+            "discriminates: the emitted specs were not run on the product",
+        ),
+        (
+            {"discriminates": True},
+            {"success": True, "artifacts": [_SPEC]},
+            {"discrimination": {_SPEC["name"]: "discriminates"}},
+            MET,
+            None,
+        ),
+        (
+            {"discriminates": True},
+            {"success": True, "artifacts": [_SPEC]},
+            {"discrimination": {_SPEC["name"]: "only_setup_failures"}},
+            NOT_MET,
+            "doesn't prove its change: only_setup_failures",
+        ),
+        (
+            {"discriminates": True},
+            {"success": True, "artifacts": [_SPEC]},
+            {"passed": ["a"], "failed": [], "discrimination": {}},
+            NOT_MET,
+            "no emitted spec was run before and after its change",
+        ),
     ],
     ids=[
         "the-stop",
@@ -262,6 +290,10 @@ def test_every_defect_of_a_cases_file_is_named_in_one_pass():
         "specs-passed",
         "a-spec-failed",
         "no-spec-ran",
+        "discrimination-not-run",
+        "the-spec-proves-its-change",
+        "the-spec-cant-load-before",
+        "no-spec-judged",
     ],
 )
 def test_an_authoring_is_judged_by_the_handlers_verdict_and_the_stop_read(
