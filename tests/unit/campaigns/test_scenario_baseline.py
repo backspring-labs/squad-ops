@@ -21,7 +21,7 @@ from squadops.campaigns.change_request import stored_change_request, validate_pr
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.execution import scenario_baseline
-from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.execution_errors import _CancellationError, _ExecutionError
 from squadops.execution.product_acceptance import baseline_scenario_overlay
 from squadops.projects.models import CheckoutTree
 from squadops.projects.source_context import parse_source_context
@@ -197,10 +197,15 @@ async def test_the_executor_reads_scenarios_its_plan_plays_and_ends_the_run_on_t
         asked.append(criteria)
         raise ValueError("no managed clone")
 
+    cancelled: set[str] = set()
+
+    async def is_cancelled(run_id):
+        return run_id in cancelled
+
     monkeypatch.setattr(dispatched_flow_executor, "judge_scenario_baselines", judge)
     executor = SimpleNamespace(
         _artifact_vault=None, _remote_execution=None, _source_repository=None,
-        _project_registry=None, _derived_profile_for=None,
+        _project_registry=None, _derived_profile_for=None, _is_cancelled=is_cancelled,
     )  # fmt: skip
     method = dispatched_flow_executor.DispatchedFlowExecutor._judge_scenario_baselines
 
@@ -210,3 +215,13 @@ async def test_the_executor_reads_scenarios_its_plan_plays_and_ends_the_run_on_t
 
     assert asked == [("C-2",)]
     assert e.value.terminal.kind is TerminalKind.INFRASTRUCTURE_FAILED
+
+    # #3160: a run cancelled while it was preparing asks nothing. Bug caught: the baseline step
+    # runs before the task loop's own status read, so a cancelled cycle's scenario was sent to
+    # the worker and played in the owner's Studio.
+    cancelled.add("run_impl")
+    with pytest.raises(_CancellationError):
+        await method(executor, _cycle_at_pin(), "run_impl", plan)
+    await method(executor, _cycle_at_pin(), "run_impl", plan[:1])
+
+    assert asked == [("C-2",)]

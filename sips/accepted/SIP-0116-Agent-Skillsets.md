@@ -147,6 +147,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | The second skills replay read (`roblox-skills-v2`: `roblox-luau-dev` and `roblox-studio-qa` admitted, `roblox-increment-design` failing on one case), and the strategy skill told which scenarios a disclosed gap means (§17s) | **shipped** | 2.8 (PR #3153; #3041 tracks the third replay) |
 | The third skills replay read (`roblox-skills-v3`: all three skillsets pass, one stop overridden in one answer of three), and the `game_dev_roblox` profile registered on it (§17t, §17q) | **shipped** | 2.8 (PR #3145; #3041 tracks the first cycle under the profile, #3154 the stop's recorded line, #3155 the reserved paths) |
 | A stop is read from the model's own line, and a line the skill itself shows is passed over (§17u) | **shipped** | 2.8 (PR #3156, closing #3154) |
+| A worker's tool is available only on a runtime that binds remote execution, at creation and at dispatch (§17w) | **shipped** | 2.8 (PR #3162, closing #3159) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1715,6 +1716,45 @@ which reads `matched`, and it reaches no gap.
 - Nothing is built for this.
 
 **Who ruled.** The Spark lane read the prompt and reported it. The withdrawal is the MacBook lane's.
+### 17w. A worker's tool is available when the runtime binds remote execution and a worker serves it (2026-11-17, §8, §9; SIP-0117; #3159)
+
+**What changed.** §8's availability check read the worker registry alone. It now reads the runtime's own
+remote-execution port first: a runtime that binds none can run no worker's tool, whatever the registry lists.
+
+**The evidence.** On the Spark (`dep_665a81b900e8`), the first cycle under `game_dev_roblox` was accepted at
+creation and then could not play:
+- The deploy's `remote_execution.provider` was `none`. The MacBook's worker was registered and online, serving
+  `roblox-studio` / `play_scenario`: the registry takes a worker's session whatever the provider is.
+- Creation's check asked the registry, found the worker, and passed.
+- The implementation run's baseline step read "blocked: this runtime binds no remote execution
+  (remote_execution.provider none)". Left to run, it would have ended `infrastructure_failed` and been retried.
+
+**The rule.**
+- **`unavailable`** (`capabilities/tool_checks.py`), the one decision both seams call, takes the runtime's
+  remote-execution port. For a tool at a worker, a port that is `None` is the refusal, in the words the baseline
+  step and a scenario's reading already use (`NO_REMOTE_EXECUTION`, now their one source). The registry is asked
+  only on a runtime that binds one.
+- **At creation,** the port is read from the runtime's state (`CreationPorts.remote_execution`), for an
+  operator's cycle and a Campaign's launch alike. The runtime builds the port once and hands the same one to the
+  executor that plays through it.
+- **At dispatch,** `_require_tool_available` passes the executor's own port, so an operation task on such a
+  runtime ends `infrastructure_failed`, classified `worker_unavailable`, naming the tool and the reason.
+- The port is required of both callers. Neither defaults it.
+
+**What it reads, and what it doesn't.** This is the runtime's binding, which the baseline read and delivery's
+readings go through. An agent's own binding is the same deploy setting, read in its container, and its handler
+refuses an operation it can't send, as before.
+
+**The evidence it works** (`tests/unit/api/test_tool_preflight.py`):
+- an online worker on a runtime that binds no remote execution is refused as availability, with those words,
+  entered at the preflight decision, at `_run_create_preflight` (the call creation makes) and at the executor's
+  `_require_tool_available`;
+- `CreationPorts.of_request` carries the port the runtime's state holds, and `None` when it holds none;
+- a bound runtime with an online worker creates the cycle, and the three earlier refusals read as they did.
+- A loaded-check row, `3159-remote-execution-bound`.
+
+**Who ruled.** The Spark lane found it and stated the rule (#3159). The change is the MacBook lane's, which built
+§8's checks (phase 4).
 
 ## Appendix A. A paper compatibility matrix
 

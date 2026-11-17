@@ -555,6 +555,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
     )
     worker_registry = _worker_registry(config.cycles.registry_provider, pool)
+    # SIP-0117 (#3053, #3044): the runtime's own way to a worker, on that registry. One port,
+    # held by the executor that plays through it and by creation's tool check that reads whether
+    # it is bound (#3159).
+    remote_execution = _runtime_remote_execution(config.remote_execution, worker_registry)
     squad_profile_provider = config.cycles.squad_profile_provider
     if squad_profile_provider == "postgres":
         squad_profile = create_squad_profile_port("postgres", pool=pool)
@@ -790,8 +794,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # and the sandbox its candidate is verified in.
         source_repository=state.source_repository,
         sandbox=sandbox_client,
-        # SIP-0117 (#3053, #3044): the runtime's own way to a worker, on the registry above.
-        remote_execution=_runtime_remote_execution(config.remote_execution, worker_registry),
+        remote_execution=remote_execution,
         worker_registry=worker_registry,
         # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
         # started from its declaration, by the same runner the cycle-end hook evaluates with.
@@ -808,6 +811,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.sandbox_client = sandbox_client
     state.scenario_store = scenario_store
     state.worker_registry = worker_registry
+    state.remote_execution = remote_execution
     # SIP-0116 §8, §17n: each provider's authority over its operations, by provider name, found in
     # its own package (#3042). A worker tool of a provider with none is refused at creation.
     from adapters.remote_execution.factory import create_tool_authorities
@@ -874,6 +878,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         tool_authorities=state.tool_authorities,
         worker_registry=worker_registry,
         sandbox_client=sandbox_client,
+        remote_execution=remote_execution,
         source_repository=state.source_repository,
     )
     branch_rebase = _branch_rebase(

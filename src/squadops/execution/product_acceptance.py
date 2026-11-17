@@ -74,6 +74,7 @@ from squadops.campaigns.scenario_runs import (
 )
 from squadops.capabilities.operation_supply import OperationSupplyError, scenario_operation
 from squadops.capabilities.skillsets import packaged_skillsets
+from squadops.capabilities.tool_checks import NO_REMOTE_EXECUTION
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.product_proposal import kept_scenario_vocabulary
@@ -299,7 +300,7 @@ async def scenario_runs_for(
         return None
     reasons = []
     if remote_execution is None:
-        reasons.append("this runtime binds no remote execution (remote_execution.provider none)")
+        reasons.append(NO_REMOTE_EXECUTION)
     try:
         operation = scenario_operation(cycle.skillset_record, packaged_skillsets())
     except OperationSupplyError as e:
