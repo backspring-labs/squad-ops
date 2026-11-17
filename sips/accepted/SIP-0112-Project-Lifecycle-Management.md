@@ -141,6 +141,8 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a product's package roots declared in its Development Configuration where its tree names none (a Luau product under Script Sync), read by the derivation as package surfaces, with `package_root_missing` for one the tree lacks (H.33) | **shipped** | 2.8 (PR #3135, closing #3134) |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect; then re-placed from 2.8 by the 2.8 plan's decision 9 (the owner, 2026-11-11): the MacBook lane holds the 2.8 headline, and its files are that lane's) | 2.10.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
+| a Project's declared contribution identity: the request's token checked against it at the forge before anything is pushed, another's refused, and the forge identity recorded beside the caller (H.34, proposed) | **unplaced**, deliberately: proposed text for the owner's ruling. The owner placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
+| a test-id reader validated on vitest 4, which the first real product's Campaign needs (H.10 reads vitest 2 alone; H.34) | **unplaced**, deliberately: the owner placed it after the 2.8 cut (2026-11-16), for the next line's plan | #3138 |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
 
 **What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It was to close in 2.6
@@ -3709,3 +3711,141 @@ product at `0beaac0`. `X/init.luau` is the module `X`.
 **Who ruled.** #3134 is the 2.8 capture's blocker under #3041, in the plan the owner adopted on 2026-11-11. The
 MacBook lane, which holds the Roblox layout, recommended the declaration over a derivation (2026-11-16). The
 mechanics are the Spark lane's.
+
+## H.34 A contribution through a service identity the product's owner approves: proposed (2026-11-16; FR-06, FR-13, FR-14, §B.5.1, E.4.3, H.22, H.30; SIP-0109 §24ea; #3137, #3138; the MacBook lane's draft on the owner's brief, with three points the owner ruled)
+
+**Status: proposed.** Nothing in this section is built. Items 1 to 9 take effect when the owner rules them, and
+until then E.4.3 and H.22 read as they do. Three points are ruled already, under "What the owner ruled".
+
+**Why.** A contribution (E.4.3, H.22) takes a forge token with the request, and this SIP and SIP-0109 call it the
+contributor's or the supervisor's own. The owner's first real product for a Campaign, GuideRail, is to take its
+contributions from a GitHub App installed on its repository. Two identities then stand behind one contribution:
+- **the caller:** the person SquadOps authenticated, who holds the authority and asked for it;
+- **the forge identity:** the account whose token pushes the branch and opens the review request.
+
+FR-13 and FR-14 name the first. Nothing names the second, and main never reads it.
+
+**What main does today, and what this proposes** (read at `28a7a0df`):
+
+| | today | proposed |
+|---|---|---|
+| who may ask | the route's scope: `admin:write` for a run's contribution, `campaigns:manage` for a Campaign's push and contribution. `delegated_actions` is recorded and isn't read on this path | the same scopes. A Project that declares a contribution identity refuses a caller the deploy didn't authenticate (item 4) |
+| who is recorded | the caller: `contributed_by` on the contribution, `actor` and `actor_role` on a Campaign's rows. `anonymous` where the deploy authenticated no one | the caller, and beside it the forge identity as the forge reported it (item 5) |
+| whose token | unread. Any token the forge accepts pushes and opens the request | a Project may declare one contribution identity. The token's identity is read from the forge before anything is pushed, and another's is refused (items 1 and 2) |
+| where it can go | the Project's own `repo_uri`, its base branch, and a `squadops/…` branch the path names. The request names none of them, and `push_campaign_branch` refuses any other ref (SIP-0109 §24cn item 7) | the same, and a token that reaches a repository other than the Project's is refused where the forge can say (item 3) |
+| how the token travels | in the request's body, into the push and the forge call, in memory. `Bearer` on the forge call and `x-access-token` on the push, which is the form an App's installation token takes | the same |
+| where the token comes from | the request. A run's contribution falls back to `projects.review_request_tokens`; a Campaign's path has no fallback (H.22 item 4). The CLI's only source is `--token-from-gh`, the box's `gh` login | the same, and the CLI takes one on standard input (item 6). The check covers whichever token the path uses |
+| the key behind a service identity | no such identity exists | never in the deploy, which mints nothing (item 6) |
+
+**Proposed.**
+1. **A Project may declare one contribution identity.** It is part of the Project Record's product authority
+   (§B.5.1), an owner decision: the forge's host, and the account as the forge reports it (its login and its
+   numeric id).
+   - It is recorded by an `admin:write` caller, with the caller and the time. Each change is a new revision of the
+     Record's authority, and a contribution names the revision it was checked against. The Record's authority has
+     no revision today: it is set at registration. The build adds one for this.
+   - It lives in the Record, since the Development Configuration is an execution binding and no source of product
+     policy (§B.5.1's precedence).
+   - **It grants nothing else.** Candidate acceptance, baseline promotion, integration, release, publication and
+     the repository's administration stay where FR-13 and the product's own policy put them. `delegated_actions`
+     is unchanged, and so is `direct_push`'s refusal (E.4.3).
+   - A Project that declares none keeps today's rule: the token is the caller's own.
+2. **The token's identity is read from the forge, before anything is pushed.** A token that isn't the declared
+   identity's is refused (`409 CONTRIBUTION_REFUSED`, naming both accounts), with nothing pushed or opened.
+   - The identity is never taken from the request, from a commit's author or committer, or from the token's
+     form. A commit's author can be checked for consistency and proves nothing.
+   - So a Project that declares an identity refuses the owner's own token and the supervisor's own. No path falls
+     back to another credential when the declared one is missing, expired or refused.
+   - The opened request's author, as the forge returns it, is what the record carries. One that differs from the
+     declared identity is recorded as a failed attempt naming both, and the request is left for the owner.
+3. **The token's reach.** Where the forge answers which repositories a token reaches, one that reaches any but the
+   Project's is refused. Where the forge can't say, the record says the reach was unread. It is never assumed
+   narrow: a token's short life says nothing about what it can do.
+4. **The caller.** A contribution under a declared identity needs a caller the deploy authenticated, holding the
+   route's scope. Holding the identity's token confers no authority: a request with a valid token and no such
+   caller is refused at the route, as any request without the scope is.
+5. **The record** (FR-14). The contribution's document gains the forge identity as the forge reported it and the
+   authority revision. `contributed_by` stays the caller. The token is in no row, response or log, as today.
+   - A Project that declares no identity has the forge identity recorded too, and nothing refused on it.
+   - `patch_export` pushes nothing and records none.
+6. **Credentials** (FR-13).
+   - A service identity's private key is never in the deploy, the Project Record, the Development Configuration, a
+     prompt, a task's input, evidence, a response or a log. The deploy mints no token. One token is minted per
+     request, outside the deploy, and passed with it.
+   - No agent container and no task is given a forge credential, as today: the push and the forge call are the
+     runtime API's adapters', from the request.
+   - The CLI takes the token on standard input (`--token-stdin`) on `projects contribute`,
+     `campaigns push-review` and `campaigns contribute`, beside `--token-from-gh`. It prints none.
+   - The rules for evaluation and test credentials are untouched.
+7. **A failure opens nothing and widens nothing.** A missing token, an expired one, a refused identity, a token
+   that reaches too far, a moved branch and a forge error each end in the refusal or the failed record the path
+   already makes (E.4.3; SIP-0109 §24cn item 5, §24dc item 5). The contribution stays due for the next request.
+8. **Reads are outside the check.** A sync, a validation and H.30's integration check take any token that can
+   read the product, in the order they read one today.
+9. **A review the forge recorded is the product's.** The contribution's `commit` is the head the review request is
+   opened on. Whether a moved head needs a new review is the product's forge setting. SquadOps reads integration
+   from the merge (E.4.4) and reads no approval as authority for anything.
+
+**What the framework checks, and what it leaves to the forge.** A claim about a product's protection says which of
+the three it rests on:
+- **the framework's checks:** items 2 to 5, the refs the port pushes, the lease on a Campaign's push, and a
+  contribution that is never forced;
+- **the forge's settings, which are the product's:** what the identity's token may do, branch protection, required
+  review and whether a moved head dismisses it, and who may create a tag or a release. GitHub's permission to
+  write contents, which a push needs, also allows creating tags and releases. So a rule that only the owner
+  updates the main branch doesn't show that only the owner can release. The product's settings answer that, and
+  its record says what was shown and what is left as the owner's accepted exposure;
+- **instructions only:** anything neither enforces. It is named as that.
+
+**What the owner ruled (2026-11-16, in conversation with the MacBook lane).**
+- **(a) GuideRail may take one contribution.** The owner's rule of 2026-10-21, "I don't want to be pushing actual
+  change to Continuum until we have the framework solid", has held for every real product since, and this is its
+  first record in a SIP. It is lifted for GuideRail only: one supervised issue, contributed as a review request,
+  which the owner merges. Continuum and every other real product stay under it.
+- **(b) The App's private key** is kept on a host the owner controls, outside the deploy and outside both lanes'
+  sessions, and one token is minted per request.
+- **(c) Placement.** This text lands as proposed. The build is placed after the 2.8 cut, by the next line's plan.
+
+**What the build needs.**
+- **#3137:** items 1 to 6, and SIP-0109 §24ea's rows.
+- **#3138, first for GuideRail and independent of the rest:** a test-id reader validated on vitest 4. H.10's reader
+  is validated on vitest 2, and the derivation refuses a package that doesn't pin vitest 2 alone. GuideRail's two
+  packages declare vitest `^4.1.12`, and SIP-0109 §24ci (a) accepts no criterion under a runner with no reader.
+  The brief also reads GuideRail's root test script as going through Turborepo, which discovery doesn't follow.
+
+**The checks that show it built,** each entered at the route:
+1. a valid token of the declared identity with no authenticated caller holding the scope: refused;
+2. a caller with the scope can name no repository, base or branch: the request carries none;
+3. a permitted request opens the review request as the declared identity, and its record names the run or the
+   Campaign, the commit, the caller, the forge identity and the authority revision;
+4. a missing or expired token fails by name, with no stored token read on a Campaign's path and no other
+   credential tried;
+5. a Campaign's close, abort and startup open nothing (SIP-0109 §24dc item 1, unchanged);
+6. the lease, the moved-branch refusal, the replay and the crash recovery hold under the identity's token, with
+   one review request;
+7. a commit authored under the declared identity's name, pushed with another account's token: refused;
+8. the token and the key are in no task input, log, response or stored evidence.
+
+The product's own checks are its pilot's, on disposable refs: what the App can do and is denied, what the owner
+still needs to merge, and who can create a tag or a release.
+
+**Outside this SIP.** GuideRail's forge settings and its policy. A crew's review procedure and its supervision
+(the Nostromo crew's). A general broker for forge credentials, forge access for agents, and issue management:
+each would be its own proposal.
+
+**The evidence.**
+- **Read on main at `28a7a0df`:**
+  - `projects/contribution.py`: `_review_target`, `_open_review_request` and `contributed_by`;
+  - the three routes, their scopes and their `anonymous` actor;
+  - `campaigns/close_contribution.py` and `campaigns/review_push.py`: the token required and no stored one read;
+  - `adapters/tools/github_review_request.py` (`Bearer`) and `adapters/tools/git_source.py` (`x-access-token`);
+  - `cli/forge_token.py`: `gh auth token` alone;
+  - `projects/profile_derivation.py`: `_VITEST_2_ONLY`.
+- **Not done:**
+  - no App's installation token has been passed to a deploy;
+  - how GitHub answers an installation token's identity and reach is the build's to show;
+  - GuideRail's repository, its issue #90, its PR #92 and its settings weren't read here;
+  - the Turborepo reading is the brief's.
+
+**Who ruled.** The owner brought the brief and ruled (a), (b) and (c) on 2026-11-16. Items 1 to 9 are the MacBook
+lane's draft from it, for the owner's ruling. SIP-0109 §24ea is the Campaign's side.
