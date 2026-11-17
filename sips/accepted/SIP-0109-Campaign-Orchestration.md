@@ -7357,6 +7357,7 @@ are items 3 to 5 here, under the identity's token.
 
 **Who ruled.** The owner brought the brief (2026-11-16) and placed the build after the 2.8 cut. The text is the
 MacBook lane's draft, for the owner's ruling with SIP-0112 H.34.
+
 ### 24ec. A criterion's test for a module the change adds, on a Luau product: its absence is an assertion the spec makes (2026-11-16, §8.2, §24ci (a), §24dp; SIP-0112 H.31; SIP-0118 R4.3; #3143; the MacBook lane, on the Spark lane's finding)
 
 **What was wrong.** The #3041 capture Campaign `cmp_22ca0525782c` on z_tower-ascension (uncounted) ended at row 4
