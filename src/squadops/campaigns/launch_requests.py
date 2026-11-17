@@ -31,11 +31,21 @@ if TYPE_CHECKING:
     from squadops.campaigns.campaign_branch import CampaignHead
 
 
-def _stack_values(campaign: Campaign) -> dict:
-    """The campaign's stack, as every launch carries it (§24bs, #2443): both of a cycle's stack
-    keys, which #832 holds in agreement, or nothing when the profiles' own stack stands."""
-    stack = campaign.policy.stack
-    return {"build_profile": stack, "development_profile": stack} if stack else {}
+def _profile_values(campaign: Campaign) -> dict:
+    """What the campaign's policy declares of the stack, as every launch carries it:
+
+    - **its stack** (§24bs, #2443): both of a cycle's stack keys, which #832 holds in agreement;
+    - **its development profile** (§24ed, #3157): that key alone, so a repository-backed
+      Project's cycle pins the operator's profile and seeds nothing;
+    - **neither:** nothing, and the profiles' own stack, or the product's derived profile, stands.
+
+    A policy declares at most one of the two (``CampaignPolicy``)."""
+    policy = campaign.policy
+    if policy.stack:
+        return {"build_profile": policy.stack, "development_profile": policy.stack}
+    if policy.development_profile:
+        return {"development_profile": policy.development_profile}
+    return {}
 
 
 def calibration_launch(campaign: Campaign) -> LaunchRequest:
@@ -48,7 +58,7 @@ def calibration_launch(campaign: Campaign) -> LaunchRequest:
             "body": cycle_request_body(
                 policy.calibration_profile,
                 squad_profile_id=policy.squad_profile,
-                user_values=_stack_values(campaign),
+                user_values=_profile_values(campaign),
                 notes=f"campaign {campaign.campaign_id}: calibration (SIP-0109 §11)",
             )
         },
@@ -174,7 +184,7 @@ def increment_launch(
                 policy.proposal_profile,
                 squad_profile_id=policy.squad_profile,
                 user_values={
-                    **_stack_values(campaign),
+                    **_profile_values(campaign),
                     "campaign_proposal": {
                         "proposal_id": f"prop_{uuid.uuid4().hex[:12]}",
                         "version": 1,
@@ -364,7 +374,7 @@ def bound_launch(
             f"workloads {list(keep)}"
         )
     user_values: dict = {
-        **_stack_values(campaign),
+        **_profile_values(campaign),
         "campaign_proposal": dict(block),
         "plan_artifact_refs": list(plan_artifact_refs),
         "workload_sequence": sequence,

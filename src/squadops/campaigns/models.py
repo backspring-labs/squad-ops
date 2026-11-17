@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.cycles.models import GateDecisionValue
+from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
 from squadops.stacks.scaffold import hosts_campaign_increments
 
 #: A commit id, as the managed clone names one (SIP-0112 E.4.2).
@@ -647,6 +648,12 @@ class CampaignPolicy:
     # it was declarable reads as that. A launch past the last is refused by name, never answered
     # from another script or by a model (``launch_requests.scripted_launch``).
     llm_scripts: tuple[str, ...] = ()
+    # §24ed (#3157): the development profile an operator names for a repository-backed Project's
+    # product, passed to each launch as its ``development_profile`` alone, so the cycle pins it
+    # as the operator's and nothing is seeded. ``None``, each cycle derives its profile from the
+    # product, as before; a policy stored before it was declarable reads as that. A stack sets a
+    # cycle's development profile itself (§24bs), so the two are never declared together.
+    development_profile: str | None = None
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
@@ -693,6 +700,19 @@ class CampaignPolicy:
                 f"CampaignPolicy.stack {self.stack!r} is not a stack a campaign can run on: it "
                 "needs a scaffold that declares where a criterion's test file lives (§8.1)"
             )
+        if self.development_profile is not None:
+            if self.stack is not None:
+                raise ValueError(
+                    f"CampaignPolicy declares both stack {self.stack!r} and development_profile "
+                    f"{self.development_profile!r}: a stack sets a cycle's development profile "
+                    "itself (§24bs), so a campaign declares one of them (§24ed)"
+                )
+            if self.development_profile not in DEVELOPMENT_PROFILES:
+                raise ValueError(
+                    f"CampaignPolicy.development_profile {self.development_profile!r} is not a "
+                    "development profile this deployment holds; the profiles are "
+                    f"{sorted(DEVELOPMENT_PROFILES)}"
+                )
         object.__setattr__(self, "unattended_resume", _resumable_classes(self.unattended_resume))
         object.__setattr__(self, "llm_scripts", _script_references(self.llm_scripts))
 

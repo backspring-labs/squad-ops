@@ -201,6 +201,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A Campaign can name a development profile** (#3157; SIP-0109 §24ed): `policy.stack` carries only a scaffold
+  stack, so no Campaign could run under `game_dev_roblox`. A policy now declares `development_profile` beside it,
+  each launch carries that key alone, and a squad lacking the skillsets the profile requires is refused at the
+  Campaign's creation.
 - **A skill's stop is read from the model's own line** (#3154; SIP-0116 §17u): an answer that quoted its skill's
   template before stopping was recorded as stopped by the template, placeholders and all, and one that quoted it
   and then did its work would have ended its run. A line the skill itself shows is now passed over.

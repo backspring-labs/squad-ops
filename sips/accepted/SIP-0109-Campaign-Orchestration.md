@@ -168,6 +168,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
 | on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #3144, closes #3143 |
+| a campaign's policy names the development profile its product is developed under, every launch carries it alone, and a squad lacking what it requires is refused at creation (§24ed) | **shipped** | 2.8.0, PR #3158, closes #3157 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
 | a product proposal is shown that what the product already does stays inside the criterion that changes it (§24di); whether row 19 re-queues a goal-set item waits for the owner (SIP-0115 §5.3) | **shipped** | 2.6.0, PR #2936, refs #2935 |
@@ -7371,3 +7372,66 @@ the owner.
 
 **Who ruled.** The Spark lane found it and proposed the shape on #3143 (2026-11-16), tracing the plan's wording
 to the design stage's draft. The MacBook lane built it, under the 2.8 plan the owner adopted on 2026-11-11.
+
+
+### 24ed. A campaign names the development profile its product is developed under (2026-11-17, §24bs, §24bv point 5; SIP-0112 H.4 point 3; SIP-0116 §9, §17q; SIP-0118 R5.2; #3157; the MacBook lane, on the Spark lane's finding)
+
+**What changed.** A campaign's policy may declare `development_profile`, beside `stack` and separate from it.
+Every cycle the campaign launches carries it as the cycle's `development_profile` and nothing else.
+
+**The evidence.** The `game_dev_roblox` profile (SIP-0116 §17q) is one "an operator names, for a Campaign on a
+Roblox game". At the first Campaign that was to name it, the Spark lane found no way to (#3157):
+- §24bs's `stack` is passed to each launch as both `build_profile` and `development_profile`, and the policy
+  refuses a stack that is no scaffold stack. With `stack: game_dev_roblox` the refusal reads "is not a stack a
+  campaign can run on: it needs a scaffold that declares where a criterion's test file lives (§8.1)".
+- Were it accepted, a `build_profile` would be set too. A repository-backed campaign refuses that (§24bv
+  point 5: its increments seed no skeleton), and a cycle with one pins no development profile.
+- The increment's request profile names neither key, deliberately (SIP-0112 H.4 point 3), and nothing else in
+  a policy or an objective reaches a launch's values.
+
+So no campaign could run under the profile, and the Roblox squad's first cycle and the 2.8 demonstration both
+need one.
+
+**The rule.**
+1. **What it names:** a development profile this deployment holds. A name it doesn't hold is refused at
+   creation, with the names it does.
+2. **What a launch carries:** `development_profile` alone, on the increment and on every repair and retry
+   (`launch_requests._profile_values`, the one place a policy's stack or profile becomes a launch's values).
+   The cycle's own pin then records it with the operator as its origin (SIP-0112 H.4), and its preflight
+   refuses one that contradicts the product's runners, as it does for a cycle an operator creates.
+3. **Never with `stack`.** A stack sets both of a cycle's keys, so a policy declaring both is refused.
+4. **A repository-backed Project's only.** A sample application's campaign builds on a scaffold stack and
+   names that as `stack`. It is refused the field, by name.
+5. **The squad carries what the profile requires, or the creation is refused.** The policy's squad is read
+   and compared as each launch's preflight compares it (SIP-0116 §9, `skillset_coverage_decision`), and the
+   refusal is that decision's words under `policy.development_profile`. A squad the deployment doesn't hold is
+   refused under `policy.squad_profile`. A policy naming no development profile is left to its launches, as
+   before.
+6. **The creation hash names it only when declared,** as it does the stack, so a stored campaign's replayed
+   creation is unchanged. A stored policy without the field reads as naming none.
+
+**What needed no change.** The start's size preflight builds the campaign's first launch through
+`increment_launch` and pins its profile through `development_profile_pin`, so it measures each task with the
+skills the named profile hands it (SIP-0116 §17m). The equipment pin (SIP-0116 §10) is taken from the first
+launch's cycle, which now carries the profile.
+
+**Considered and set aside:** a request profile that carries the development profile. It works on the launch
+path as it stood, and it ties what an operator names to one request profile per product family.
+
+**The evidence it works** (`tests/unit/api/test_campaign_development_profile.py`, entered at
+`POST /api/v1/campaigns`):
+- A campaign naming `game_dev_roblox` on the seeded `game-dev-roblox` squad is created and read back. From the
+  stored campaign, the increment's launch and a repair's each resolve a configuration that holds the profile
+  and no `build_profile`, seeds nothing, is pinned as the operator's on a Luau product's derived profile, and
+  is assigned all three skillsets.
+- A campaign naming none launches as before, and a Luau product's cycle derives `product_neutral`.
+- Refused at creation, each naming its field: a squad lacking the skillsets, a squad the deployment doesn't
+  hold, a profile it doesn't hold, an empty name, a profile with a stack, and a sample application.
+- The creation hash of a policy naming none is the digest pinned before the field existed, and two profiles
+  hash apart.
+- A loaded-check row, `3157-campaign-development-profile`.
+
+**Not shown:** a campaign's cycle under the profile. That is the Spark lane's, as #3041's run plan part 5.
+
+**Who ruled.** The Spark lane found the gap and recommended a policy field over a request profile. The design
+is the MacBook lane's, within §24bs and the 2.8 plan.
