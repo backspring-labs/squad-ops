@@ -185,6 +185,8 @@ async def test_a_skills_case_is_authored_with_and_without_the_skills_its_cycle_w
     assert by_arm["baseline"]["first_call_is_the_capture"] is True
     assert [r["skill_stop"] for r in by_arm.values()] == [None, None]
     assert all(r["success"] and r["case"] == "strategy-case" for r in by_arm.values())
+    # A proposal's task names no expected file, and the record says so rather than leaving it out.
+    assert [r["expected_artifacts"] for r in by_arm.values()] == [[], []]
     assert sum("Play scenarios for a Roblox game" in p for p in model.prompts) == 1
 
 

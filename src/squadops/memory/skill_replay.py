@@ -33,12 +33,14 @@ _CASE_FIELDS = frozenset(
 EXPECT_STOP = "stop"
 EXPECT_ACCEPTED = "accepted"
 EXPECT_EMITS = "emits"
+EXPECT_EMITS_EXPECTED = "emits_expected"
 EXPECT_SCENARIO_CRITERION = "scenario_criterion"
 EXPECT_SPECS_PASS = "specs_pass"
 EXPECTATIONS = (
     EXPECT_STOP,
     EXPECT_ACCEPTED,
     EXPECT_EMITS,
+    EXPECT_EMITS_EXPECTED,
     EXPECT_SCENARIO_CRITERION,
     EXPECT_SPECS_PASS,
 )
@@ -152,7 +154,12 @@ def expectation_errors(expect: Any) -> list[str]:
             errors.append("expect: stop is a declared stop's opening words, ending in a colon")
         if len(expect) > 1:
             errors.append("expect: stop stands alone, since a stopped task emits nothing")
-    for key in (EXPECT_ACCEPTED, EXPECT_SCENARIO_CRITERION, EXPECT_SPECS_PASS):
+    for key in (
+        EXPECT_ACCEPTED,
+        EXPECT_EMITS_EXPECTED,
+        EXPECT_SCENARIO_CRITERION,
+        EXPECT_SPECS_PASS,
+    ):
         if key in expect and expect[key] is not True:
             errors.append(f"expect: {key} is true, or left out")
     if EXPECT_EMITS in expect and (
@@ -172,8 +179,9 @@ def judge(
 ) -> dict[str, Any]:
     """One authoring record against its case's expectation: ``{"verdict", "findings"}``.
 
-    ``record`` is the runner's: the handler's ``success``, its ``artifacts`` and the declared
-    stop its model answered with (``skill_stop``). ``specs`` is the result of running the
+    ``record`` is the runner's: the handler's ``success``, its ``artifacts``, the files its task
+    expected (``expected_artifacts``, the task's own input) and the declared stop its model
+    answered with (``skill_stop``). ``specs`` is the result of running the
     record's emitted specs on the product, where they were run: ``{"passed": [...], "failed":
     [...]}`` as the product's own reader read them.
 
@@ -190,6 +198,8 @@ def judge(
             findings.append(
                 f"no emitted file matches {pattern} (emitted: {', '.join(artifacts) or 'none'})"
             )
+    if expect.get(EXPECT_EMITS_EXPECTED):
+        findings.extend(_expected_findings(record, artifacts))
     if expect.get(EXPECT_SCENARIO_CRITERION):
         findings.extend(_scenario_findings(record))
     if expect.get(EXPECT_SPECS_PASS):
@@ -212,6 +222,21 @@ def _stop_findings(expect: Mapping[str, Any], record: Mapping[str, Any]) -> list
     if str(stop.get("opening")).casefold() != wanted.casefold():
         return [f"the stop read opens {stop.get('opening')!r}, not {wanted!r}: {stop.get('line')}"]
     return []
+
+
+def _expected_findings(record: Mapping[str, Any], artifacts: Sequence[str]) -> list[str]:
+    """Each file the task itself expected is among the files the handler accepted. A capture
+    taken again brings another proposal and another plan, so a captured case names no file of
+    its own. A task that expected none has nothing to be held to, and says so."""
+    expected = [str(e) for e in record.get("expected_artifacts") or ()]
+    if not expected:
+        return ["the task expected no file, so there is none to hold its answer to"]
+    return [
+        f"the task expected {name}, and it was not emitted "
+        f"(emitted: {', '.join(artifacts) or 'none'})"
+        for name in expected
+        if name not in artifacts
+    ]
 
 
 def _spec_findings(specs: Mapping[str, Any]) -> list[str]:

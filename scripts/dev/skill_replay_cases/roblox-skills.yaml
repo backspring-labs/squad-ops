@@ -93,10 +93,11 @@ cases:
     task_type: development.develop
     skillset: roblox-luau-dev
     why: >-
-      The captured build task as it stands: one new rule module under src/Shared/Modules. The
-      skill must not cost an ordinary task its acceptance, and the module lands where the plan
-      put it. Checked byte for byte against its capture.
-    expect: {accepted: true, emits: ["src/Shared/Modules/SalePricing.luau"]}
+      The captured build task as it stands. The skill must not cost an ordinary task its
+      acceptance, and each file the plan expected of the task lands where the plan put it. The
+      files are the captured task's own, so a capture taken again needs no change here. Checked
+      byte for byte against its capture.
+    expect: {accepted: true, emits_expected: true}
 
   - id: dev-saved-field
     task_type: development.develop
@@ -131,12 +132,12 @@ cases:
     task_type: qa.test
     skillset: roblox-studio-qa
     why: >-
-      The captured test task as it stands: one spec for the criterion, written for the product's
+      The captured test task as it stands: the spec the plan expected, written for the product's
       own runner. The emitted spec is run on the product with the capture's own implementation
       laid over it, so a pass is the spec loading and passing under tests/run.luau. A wrong
       implementation in the capture would read here as a failing spec. Checked byte for byte
       against its capture.
-    expect: {accepted: true, emits: ["tests/*.spec.luau"], specs_pass: true}
+    expect: {accepted: true, emits_expected: true, specs_pass: true}
 
   - id: qa-no-runner
     task_type: qa.test

@@ -1365,6 +1365,8 @@ of its own:
 - `stop`: the declared stop `_llm_call` read from the answer (§17o), by its opening words;
 - `accepted`: the handler's own verdict on the answer;
 - `emits`: the paths of the files the handler accepted;
+- `emits_expected`: every file the task's own `expected_artifacts` names is among them. A captured case names no
+  file of its own, since a capture taken again brings another proposal and another plan;
 - `scenario_criterion`: the accepted change request holds a scenario criterion. The proposal's rails have already
   read each one strictly against the vocabulary;
 - `specs_pass`: the emitted specs, laid over a copy of a product checkout and run by the product's own runner, read

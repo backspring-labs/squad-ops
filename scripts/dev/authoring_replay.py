@@ -307,6 +307,9 @@ async def replay(
                 **fidelity,
                 "case": case["case"],
                 "skill_stop": stop.to_dict() if isinstance(stop, SkillStop) else None,
+                # What the task as authored expected, after the case's swaps: a captured case
+                # names no file of its own, since another capture brings another plan.
+                "expected_artifacts": [str(e) for e in inputs.get("expected_artifacts") or ()],
             }
         records.append(
             {
