@@ -404,6 +404,7 @@ _LUAU_TREE = {
     "run_report.md": "# Run\n",
     "src/Shared/Modules/SalePricing.luau": "return { computeSaleTotal = function() end }\n",
     "src/Shared/Modules/LivesRules.luau": "return { New = function() end }\n",
+    "src/Shared/Modules/Sale.luau": "return {}\n",
     "src/Shared/Util/init.luau": "return { clamp = math.clamp }\n",
     "tests/LivesRules.spec.luau": "local Rules = require(Shared.Modules.LivesRules)\n",
     "tests/run.luau": "-- the product's runner\n",
@@ -452,28 +453,30 @@ async def test_a_luau_products_first_spec_is_shown_the_module_it_tests_in_luau_f
             "game.ReplicatedStorage.Shared.Modules.SalePricing.computeSaleTotal(lines)",
             ["src/Shared/Modules/SalePricing.luau"],
         ),
-        (
-            "Modules.SalePricing and Modules.LivesRules",
-            [
-                "src/Shared/Modules/LivesRules.luau",
-                "src/Shared/Modules/SalePricing.luau",
-            ],
-        ),
+        # As the product's own comments write an instance path.
+        ("Lives in Shared > Modules > SalePricing.", ["src/Shared/Modules/SalePricing.luau"]),
+        ("the module src.Shared.Modules.LivesRules", ["src/Shared/Modules/LivesRules.luau"]),
         # A package's init file is its folder's module.
         ("require(Shared.Util).clamp", ["src/Shared/Util/init.luau"]),
-        # One word, another module's longer name, and a name the tree doesn't hold.
+        # Each names nothing: a tail below the source root, one word, a longer name, a shorter
+        # name inside this one, and a name the tree doesn't hold.
+        ("Modules.SalePricing and Modules.LivesRules", []),
         ("SalePricing computes the total", []),
         ("require(Shared.Modules.SalePricingV2)", []),
+        ("require(Shared.Modules.Sal)", []),
         ("require(Shared.Modules.Pricing)", []),
         ("", []),
     ],
     ids=[
         "require",
         "full-instance-path",
-        "two-modules",
+        "arrow-separated",
+        "from-the-root",
         "package-init",
+        "tail-below-the-root",
         "bare-word",
         "longer-name",
+        "shorter-name-inside",
         "absent",
         "no-text",
     ],
@@ -482,6 +485,17 @@ def test_a_task_names_code_under_test_by_its_dotted_module_path(text, shown):
     """Bug caught (#3139): a module the task names as the product's code does left out, or a
     loose match pulling in a file the task never named, which costs pf-33's scoping."""
     assert list(code_under_test({}, _LUAU_TREE, text)) == shown
+
+
+def test_a_longer_modules_name_does_not_show_the_shorter_one_inside_it():
+    """``Sale.luau`` sits beside ``SalePricing.luau``. Bug caught: a name matched as a prefix, so
+    a task about SalePricing is shown Sale too."""
+    assert list(code_under_test({}, _LUAU_TREE, "require(Shared.Modules.SalePricing)")) == [
+        "src/Shared/Modules/SalePricing.luau"
+    ]
+    assert list(code_under_test({}, _LUAU_TREE, "require(Shared.Modules.Sale)")) == [
+        "src/Shared/Modules/Sale.luau"
+    ]
 
 
 def test_a_python_module_is_named_by_its_import_path():
