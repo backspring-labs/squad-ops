@@ -1629,7 +1629,7 @@ def _worker_registered(config, now: datetime | None = None) -> CheckResult:
         return _worker_result("registered", False, f"its status at {path} can't be read: {e}")
     if status.get("tool_ready") is False:
         return _worker_result(
-            "registered", False, f"the worker's tool didn't reset at start: {status['tool_note']}"
+            "registered", False, f"the worker's tool couldn't be reset: {status['tool_note']}"
         )
     if not status.get("session_id"):
         why = status.get("last_unreachable") or "it hasn't registered yet"

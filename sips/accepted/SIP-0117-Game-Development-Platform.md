@@ -195,6 +195,7 @@ phases are in its own ledger.
 | Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
 | The reader reads a screen's visibility: `gui_state` `visible` of a `ScreenGui` is its `Enabled`, with the provider's version moved and the worker requalified (R5.25) | **shipped** | 2.8 (PR #3175, closing #3176) |
 | The worker's lease: a renewal carries the health read before the claim and never probes a running tool, and an operation that ended while a renewal was out submits its result and isn't reset (R5.26) | **shipped** | 2.8 (PR #3186, closing #3185) |
+| The reset names a Studio update: Studio's version is read before the quit and after the reopening, a Studio that isn't the proved version is refused before anything is touched, and every reset's outcome goes on the worker's status (R5.27) | **shipped** | 2.8 (PR #PRNUM, closing #3184) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1435,6 +1436,68 @@ runs keeps its lease through a 150-second operation and is never probed; and an 
 
 **Who ruled.** The Spark lane read the runtime's side and filed #3185. The change is the MacBook lane's, which
 built the worker.
+
+---
+
+## R5.27 The reset names a Studio update (#3184, 2026-11-17; R3.6, R5.17, R5.21)
+
+**What changed.** The reset (R5.17: Studio quit, the place restored from its baseline file, Studio reopened)
+reads Studio's installed version, and the worker's status records every reset.
+1. **Before anything is touched,** a Studio that isn't the version the worker's proof names is refused, with both
+   versions and the re-qualification it needs. So is a bundle whose version can't be read.
+2. **After the reopening,** the version is read again. A Studio that changed across the reopening is named with
+   both versions, whatever the reopened Studio then read, and whether or not the place came back.
+3. **The worker's status** (`worker-status.json`: `tool_ready`, `tool_note`) is written at every reset, held or
+   failed. It was written at the reset made at the worker's start alone.
+
+**The evidence.** The 2.8 demonstration's first rehearsal (`cmp_85f97e001320`, 2026-11-17, times ET), after the
+worker lost a claim (R5.26):
+- 14:28:44 the reset quit Studio 0.747.0.7471481, which had run since 10:31 and played every operation of the day.
+- 14:28:48 the reset's open of the place file started Studio. It logged "Latest version 0.748.0.7481526", launched
+  its installer with launch intent `None` and exited.
+- 14:29:08 the installer replaced the application, and at 14:29:09 started Studio 0.748 holding no place.
+- 14:29:13 the reset failed with "the place in Studio (None) is saved to the cloud, or doesn't say".
+- 14:29:17 the next claim's reset failed with "the running Studio holds [None], not ta-copy.rbxl; the reset
+  doesn't quit it". That is the reason the runtime recorded.
+- The worker's status file read `tool_ready: true` with no note throughout, while the runtime's row read offline.
+- Neither message named the update, the versions, or the re-qualification. The cause was read from Studio's and
+  the installer's own logs.
+
+**The rule.**
+- **The reset's reopening is a launch, and Studio updates itself at a launch.** The reset reads the installed
+  version on both sides of it. This is the one point where the worker itself causes the version to move.
+- **A version the worker has no proof for is said first.** An updated Studio comes back holding no place, and
+  "holds no place" is the least of what happened. The first refusal is the version, and what the reopened Studio
+  read follows it.
+- **The remedy is in the message:** re-qualify on the new version with the place open in it
+  (`scripts/dev/studio_requalify.py`, R5.21). The installer starts Studio with no place, so a person opens the
+  place file first.
+- **A re-qualification's own reset is held to the same rule.** Its runner is pinned to the live version, so an
+  update that lands at its reset fails the run by name, and the run is made again on the new version.
+- **With no proof at all** the reset has nothing to hold Studio to and compares only across its reopening. Every
+  play is already refused by name then (R2.4).
+
+**Deliberately not built: holding an update back.**
+- **What was read:** Roblox's Studio setup page and its developer forum (2026-11-17). They describe no setting
+  that stops Studio updating at launch, and a forum request for one is open. Studio's own log shows the check
+  made at each start, before any place is opened.
+- **So a waiting update lands at the next launch, whoever makes it.** A reset that refused to relaunch would
+  leave the place in an unknown state on a Studio nothing can restore, and the update would still land at the
+  next launch.
+- **What keeps it out of a run is when the pin is read.** A measured run starts with a fresh launch of Studio
+  and a reading of its version against the pin, with a re-qualification first when it moved. That is the run's
+  procedure (the 2.8 demonstration's pre-registration), and the reset's part is to say so when it happens anyway.
+
+**The tests.** `tests/unit/remote_execution/test_roblox_studio_reset.py`, entered at `RobloxStudioRunner.reset`:
+an update at the reopening that leaves no place, one where the place reopens, and a bundle unreadable
+mid-replacement, each named; a Studio that isn't the proved version, and one whose version can't be read, each
+refused with nothing touched. The wiring test enters at `Worker.serve()` with the real runner over the real
+registry and asserts the reason the runtime records and the worker's status.
+`tests/unit/remote_execution/test_worker_serving.py` holds the status through a reset that fails at a claim and
+one that then holds.
+
+**Who ruled.** The MacBook lane read the Mac's logs and owns the Studio adapter. The Spark lane read the
+runtime's side.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 

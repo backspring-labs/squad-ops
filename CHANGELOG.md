@@ -210,6 +210,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A Studio reset says when Studio updated itself** (#3184; SIP-0117 R5.27): the reset reopens Studio, Studio
+  updates itself at a launch, and an updated Studio comes back holding no place. The reset reported only "the
+  running Studio holds no place", and the worker's status file still read ready. The reset now names both
+  versions and the re-qualification to run, refuses before touching anything when Studio isn't the version the
+  worker was proved on, and every reset's outcome goes on the worker's status.
 - **A worker keeps its lease while its tool is busy** (#3185; SIP-0117 R5.26): a worker renewed its lease only
   after asking its tool for its health, and Roblox Studio answered one such probe a minute late while a play was
   ending. The lease ran out, the finished play's result was dropped, and the worker reset Studio. A renewal now
