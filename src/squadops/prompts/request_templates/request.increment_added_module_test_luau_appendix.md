@@ -14,7 +14,7 @@ file failing to load and none of its tests failing. That never counts as the cri
 and the increment is refused however correct the build.
 
 So a spec for a module this change adds looks the module up inside each test, in a way that gives
-`nil` when it is absent (in a Roblox instance tree, `FindFirstChild`), checks that it is there,
+`nil` when it is absent (`FindFirstChild`, in an instance tree), checks that it is there,
 and only then requires it. Before the change that check is the assertion that fails. A module the
 product already has is required at the top of the file, as the product's own specs do.
 

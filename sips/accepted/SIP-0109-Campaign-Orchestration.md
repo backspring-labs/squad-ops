@@ -167,6 +167,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the owner's goal delegation (SIP-0115 slice 3): `goal_delegation_granted`, the first record a completed Campaign refuses (§24dd) | **shipped** | 2.6.0, PR #2908 |
 | a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
+| on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #PRNUM, closes #3143 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
 | a product proposal is shown that what the product already does stays inside the criterion that changes it (§24di); whether row 19 re-queues a goal-set item waits for the owner (SIP-0115 §5.3) | **shipped** | 2.6.0, PR #2936, refs #2935 |
@@ -7330,8 +7331,10 @@ Two things carry that to the authors:
      proposer is shown its own appendix, which leaves those files to qa (§24cr);
    - the suite's author and its repair, in the test scope (#1884), where the increment has a criterion a test
      proves.
-   It states the rule in the runner's terms and names `FindFirstChild` for a Roblox instance tree. It shows no code:
-   the spec's globals are the product's runner's.
+   It states the rule in the runner's terms and names `FindFirstChild` for an instance tree. It shows no code:
+   the spec's globals are the product's runner's, and the platform's name stays in its skillset (SIP-0118 R4.6).
+   It also says that each folder the change adds is looked up and checked like the module, and that an observable
+   written as `require(<the new module>)…` says what to call, not where the `require` goes.
 2. **The Roblox QA skill shows the idiom** (`roblox-studio-qa/luau-test-loader`, "A module the change adds"), with
    the spec whose lines are quoted above. The skill is the one that knows the product's runner.
 
@@ -7349,9 +7352,10 @@ the owner.
   - each of the five seams, entered at the handler's own section with the real assets: told on a Luau product,
     and not on a pytest one;
   - the development proposer and an increment no test proves aren't told.
-- **Not yet read live.** No model has been shown the asset or the skill's section. The #3041 replay's QA cases
-  read it first: the emitted spec is run on the product without the task's implementation, and must fail by
-  assertion (SIP-0116 §17p).
+- **Not yet read live.** No model has been shown the asset or the skill's section. The #3041 replay reads it
+  first. Its captured `qa.test` case expects `discriminates`: each emitted spec is run alone on the product at
+  the pin and again with the task's implementation laid beneath, and the two readings go through
+  `discrimination_on_runner` (SIP-0116 §17p; `test_run_authoring_replay.py` holds that step on a stand-in runner).
 
 **Who ruled.** The Spark lane found it and proposed the shape on #3143 (2026-11-16), tracing the plan's wording
 to the design stage's draft. The MacBook lane built it, under the 2.8 plan the owner adopted on 2026-11-11.

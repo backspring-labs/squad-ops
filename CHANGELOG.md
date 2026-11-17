@@ -200,6 +200,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   TypeScript was fenced as Python. And a task's text names code under test by its dotted module path as well as
   by its file path, so `require(Shared.Modules.SalePricing)` shows `src/Shared/Modules/SalePricing.luau`. A first
   spec on a Roblox product was shown the tests beside it and never the module. Found by the #3041 capture.
+- **On a Luau product, a criterion for a module the change adds can be proven** (#3143; SIP-0109 §24ec): the #3041
+  capture's increment was refused though its build was right, because its spec required the new module at the top
+  of the file and the accepted product has none (`only_setup_failures`). Every author of such a spec or of its plan
+  is now told, through `request.increment_added_module_test_luau_appendix`: the framing stages, the brief, the qa
+  proposer, the plan's sole author, and the suite's author and its repair. The spec looks the module up inside each
+  test, checks that it is there, and then requires it, so its absence is the test's own failure. The Roblox QA skill
+  shows the idiom, and the skills replay's captured `qa.test` case gains `discriminates`, judged by the Campaign's
+  own rule.
 - **A failed repair step is named, and spent only when a retry would repeat it** (#3020): a correction
   round whose repair step's task failed was read as "the repair emitted no content" and refunded. It now
   names the step and its error in the log and in the next round's carry. A failure that says a retry
