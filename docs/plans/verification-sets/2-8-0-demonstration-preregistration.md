@@ -163,7 +163,8 @@ rehearsal, with the failing family and its reading reported.
 objective's statement differs. It runs goal set revision 1, B-1 then B-2.
 - **The same items as the counted run, on purpose.** Only a goal-set Campaign on this goal set exercises the counted
   path: the proposal naming the next eligible item, the scenario surface, and B-2's replay of B-1's frozen scenario.
-- **The owner rules its proposals,** as in the counted run (§7.4), so the rehearsal includes the ruling path.
+- **The owner rules its proposals,** as in the counted run, with the MacBook lane's reading of each scenario first
+  (§7.4). So the rehearsal includes the ruling path.
 
 ### 6.1 Clean
 
@@ -243,7 +244,7 @@ the vocabulary before merge.
 | item | what is played | what isn't played, and where it is proved instead |
 |---|---|---|
 | **B-1** | the lobby half: the hint line's text, read in the lobby, where the session starts | the floor half (the line hidden on a floor): no vocabulary action takes a player through the portal by name, so it is proved by the rule module's headless test |
-| **B-2** | the clock: read it, wait, and read that it changed | how a duration is written (65 s is `1:05`): the rule module's headless test |
+| **B-2** | the clock: a `wait_until` in the scenario's steps, where a timeout lets the scenario go on, for the clock to read a later time; then the named assertion on that reading, with `contains` or `equals`. A missing clock and one stuck at its start value both fail it. The vocabulary compares a reading with a value, never two readings, and has no action that only waits | how a duration is written (65 s is `1:05`): the rule module's headless test |
 
 ### 7.2 When counting starts and stops
 
@@ -291,6 +292,15 @@ acceptable (SIP-0118 R3.5).
 - **The owner rules each proposal at the increment gate:** approve it as it stands, return it with a reason, or
   reject it with a reason. The owner rules through the MacBook session, and the Spark enters the ruling with the
   owner's words.
+- **The MacBook lane reads each proposal's scenario before its ruling.** It reads the scenario against the strategy
+  skill's baseline rules and tells the owner what it reads. That reading is recorded with the ruling.
+  - **It reads for three shapes,** each of which ends the increment at its baseline read:
+    - a named assertion using `not_equals` on the element the change adds;
+    - a setup action that needs that element;
+    - a precondition on that element.
+  - **A return on that ground** is a permitted ruling by the owner, and is reported like any other return.
+  - **How it flows:** the Spark sends the MacBook lane each change request whole, with its scenario, when the gate
+    opens.
 
 **Permitted, and each is an intervention, recorded with its time (ET), who, what, why and which cycle:**
 - a person's ruling on an escalated plan gate (§24ee) or on a held cycle's escalation;
