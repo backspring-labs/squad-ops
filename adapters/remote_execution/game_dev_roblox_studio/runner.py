@@ -75,8 +75,11 @@ from squadops.remote_execution.workers import ServedOperation
 from squadops.runtime.models import RuntimeStatus
 
 PROVIDER = "roblox-studio"
-#: This provider's version: what each operation's evidence records it ran with (R4.6).
-PROVIDER_VERSION = "1"
+#: This provider's version: what each operation's evidence records it ran with (R4.6). A
+#: qualification pins it, so a change to what the harness reads moves it and the worker is
+#: requalified on its Studio before it plays again.
+#: - 2 (#3176): ``gui_state`` ``visible`` reads a screen (a ``ScreenGui``) as enabled.
+PROVIDER_VERSION = "2"
 OPERATION = "play_scenario"
 RUN_LOG_NAME = "play_log.json"
 CONSOLE_NAME = "console.txt"

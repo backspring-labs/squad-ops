@@ -130,12 +130,18 @@ elseif job.kind == "attribute" then
 	end
 	return answer({ value = scalar(value) })
 elseif job.kind == "gui_state" then
-	if not instance:IsA("GuiObject") then
-		return answer({ unsupported = job.path .. " is a " .. instance.ClassName .. ", not a GUI object" })
+	-- A screen (a ScreenGui, any LayerCollector) is visible when it is enabled, which is what
+	-- `shown` reads of the screen a GUI object sits in (#3176). It has no text.
+	local screen = instance:IsA("LayerCollector")
+	if not (screen or instance:IsA("GuiObject")) then
+		return answer({ unsupported = job.path .. " is a " .. instance.ClassName .. ", not a GUI object or a screen" })
 	end
 	if job.state == "visible" then
 		return answer({ value = shown(instance) })
 	elseif job.state == "text" then
+		if screen then
+			return answer({ unsupported = job.path .. " is a " .. instance.ClassName .. ", a screen, which has no text" })
+		end
 		local ok, value = pcall(function()
 			return instance.Text
 		end)

@@ -13,6 +13,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 from squadops.capabilities.anchored_edits import verbatim_block
 from squadops.capabilities.handlers._plan_authoring import authoring_rules_section
 from squadops.capabilities.handlers.base import (
@@ -154,6 +156,27 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _framework_files_section(self, renderer: Any, change_request: str) -> str:
+        """The footprint's files the framework itself writes (a scenario criterion's
+        declaration), or "" for a change request whose footprint holds none (#3173). A
+        document that isn't a stored change request names none: the stages that hold a plan
+        to its footprint refuse it, and this one only describes."""
+        # deferred (pair): campaigns imports this package at load
+        from squadops.campaigns.change_request import is_scenario_path
+
+        try:
+            footprint = yaml.safe_load(change_request).get("footprint") or []
+        except (yaml.YAMLError, AttributeError):
+            return ""
+        placed = [p for p in footprint if isinstance(p, str) and is_scenario_path(p)]
+        if not placed:
+            return ""
+        rendered = await renderer.render(
+            "request.increment_framework_files_section",
+            {"framework_file_lines": "\n".join(f"- `{p}`" for p in placed)},
+        )
+        return rendered.content
+
     async def _increment_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
         """An increment's approved change request, shown verbatim as the framed objective, or
         "" (SIP-0109 §7.3).
@@ -172,6 +195,12 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             {"change_request": verbatim_block("change_request.yaml", document)},
         )
         sections = [rendered.content]
+        # #3173: the footprint holds each scenario criterion's declaration, which the framework
+        # writes. Said beside the change request, so no stage lists it as a file to change and
+        # no proposer raises a conflict over it.
+        framework_files = await self._framework_files_section(renderer, document)
+        if framework_files:
+            sections.append(framework_files)
         notes = str(inputs.get("increment_ruling_notes") or "").strip()
         if notes:
             # #2854: the reviewer approved it, and said how it is to be built.
