@@ -724,11 +724,9 @@ def _build_operator_notes(
     # #3163: an advisory section a proposal wrote in a shape that couldn't be read was dropped
     # at its parse. It is said here, so what the plan was merged without is on the record.
     for proposal in (dev_proposal, qa_proposal):
-        dropped = [
-            s
-            for s in (proposal.degraded_sections if proposal else ())
-            if not s.startswith(_CONFLICTS)
-        ]
+        if proposal is None:
+            continue
+        dropped = [s for s in proposal.degraded_sections if not s.startswith(_CONFLICTS)]
         if dropped:
             parts.append(
                 f"The {proposal.proposing_role} proposal's {', '.join(dropped)} couldn't be "
