@@ -532,9 +532,9 @@ grant for uncounted runs.
 
 The worker's side is unchanged: provider version 2, the same harness and qualification record, and no restart.
 
-**Split out, not in #3180, after the demonstration:**
-- #3181: a proposal's footprint shown to its approver, with new paths marked.
-- #3182: a plan's own `qa.test` on a product can be shown a whole top-level directory.
+**Split out, not in #3180:**
+- #3181, unplaced: a proposal's footprint shown to its approver, with new paths marked.
+- #3182, after the demonstration: a plan's own `qa.test` on a product can be shown a whole top-level directory.
 
 **The deploy for steps 1 to 3** is built from `2ea70253` (or main above it by documents only) with `runtime_api` bound, once main's CI on it is green. Its
 record id and verify_loaded count go into the run record before gate attempt 4 (§3, check 2). #3171 stays out of it.
@@ -546,4 +546,4 @@ record id and verify_loaded count go into the run record before gate attempt 4 (
 
 These are readings, not gates. G1, G2, G4 and G5 still decide the gate (§5).
 
-**The window:** today's window closed at the gate. The counted run waits for the next attended window the owner names.
+**The window:** the first window closed at the gate. The owner named the next attended window: 2026-11-17, 12:30 to 16:00 ET, at the MacBook ("yes 12:30 to 4 works, I'll be here"). §3's time rule is read against its 16:00 end.
