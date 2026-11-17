@@ -2689,3 +2689,21 @@ checks:
       check = conflict_check(None)
       print(check.condition, check.held)
     expect: "no_escalated_conflict False"
+  - id: "3155-reserved-path-reading"
+    what: a reserved entry is read as a file, a folder with what is beneath it, or a glob, and a plan naming one is refused (SIP-0112 H.35)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.reserved_paths import reached_by, reserved_among
+      reserved = ("src/Server/Data", "**/SaveConfig.luau")
+      paths = ["src/Server/Data/P.luau", "src/Server/DataStore.luau", "SaveConfig.luau"]
+      print(reserved_among(paths, reserved), reached_by(["src/**"], reserved))
+    expect: "[('src/Server/Data/P.luau', 'src/Server/Data'), ('SaveConfig.luau', '**/SaveConfig.luau')] [('src/**', 'src/Server/Data')]"
+  - id: "3155-reserved-paths-assets"
+    what: the two assets that show a plan's authors and a proposal the product's reserved paths are in the image (SIP-0112 H.35)
+    container: squadops-nat
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      names = ("request.plan_reserved_paths_appendix.md", "request.proposal_reserved_paths.md")
+      print([("owner reserves" in templates.joinpath(n).read_text()) for n in names])
+    expect: "[True, True]"

@@ -163,6 +163,64 @@ async def test_a_manifest_delta_on_a_product_is_returned_to_the_proposer_and_rev
     assert result.success
 
 
+def _reserving(*reserved: str) -> dict:
+    """The run's input for Tally, with ``reserved`` declared by its Development Configuration:
+    composed as ``execution.product_proposal`` composes it, through ``profile_view``."""
+    import dataclasses
+
+    profile = dataclasses.replace(
+        parse_profile(recorded("derived_profile", "valid")), reserved_paths=reserved
+    )
+    inputs = _inputs()
+    inputs["product_proposal"]["profile"] = profile_view(profile, product_files())
+    return inputs
+
+
+async def test_a_proposal_reaching_a_reserved_path_is_shown_it_refused_by_path_and_revises():
+    """SIP-0112 H.35 (#3155). Wiring, entered at ``handle()`` with the input the run composes,
+    so the declaration is followed from the derived profile to the prompt and to the rails. Bugs
+    caught: the reserved paths composed and never shown, so the proposer is refused for a path
+    nobody named; or shown and never read by the rails, so the refusal is the model's to make."""
+    reaching = yaml.safe_load(_REQUEST)
+    beside = yaml.safe_load(_REQUEST)
+    beside["footprint"] = ["tally/ledger.py"]
+    beside["criteria"][0]["surface"] = "tally.ledger"
+    ctx = _ctx(_fenced(yaml.safe_dump(reaching)), _fenced(yaml.safe_dump(beside)))
+
+    result = await StrategyProposeIncrementHandler().handle(
+        ctx, _reserving("tally/report.py", "docs")
+    )
+
+    first, second = _prompts(ctx)
+    assert (
+        "**Paths the product's owner reserves.** The owner changes these themselves, and no "
+        "cycle writes\nthem."
+    ) in first
+    assert first.rstrip().count("- `tally/report.py`\n- `docs`") == 1
+    assert (
+        "the footprint reaches tally/report.py, which the product's owner reserves from a "
+        "cycle's change"
+    ) in second
+    assert result.success, result.error
+    [artifact] = result.outputs["artifacts"]
+    assert yaml.safe_load(artifact["content"])["footprint"][0] == "tally/ledger.py"
+
+
+async def test_a_product_reserving_nothing_is_sent_the_request_it_always_was():
+    """The edge every product is today. Bugs caught: the section rendered empty, a blank line
+    added where it would stand, or a key added to the input, any of which changes a captured
+    proposal's prompt and so every replay taken from it."""
+    with_none, as_before = _ctx(_fenced(_REQUEST)), _ctx(_fenced(_REQUEST))
+
+    await StrategyProposeIncrementHandler().handle(with_none, _reserving())
+    await StrategyProposeIncrementHandler().handle(as_before, _inputs())
+
+    assert _prompts(with_none) == _prompts(as_before)
+    assert "reserves" not in _prompts(with_none)[0]
+    assert "reserved_paths" not in _reserving()["product_proposal"]["profile"]
+    assert _reserving("docs")["product_proposal"]["profile"]["reserved_paths"] == ["docs"]
+
+
 async def test_a_branch_proposal_given_no_product_input_fails_and_never_reads_as_a_manifests():
     """The edge. Bug caught: a campaign-branch proposal with no ``product_proposal`` input read as
     a sample application's, whose rails would refuse it for want of a manifest, or worse, propose

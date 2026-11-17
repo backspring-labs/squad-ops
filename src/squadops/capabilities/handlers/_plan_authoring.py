@@ -119,7 +119,11 @@ DEVELOPMENT_INCREMENT_SURFACES = tuple(
 
 #: SIP-0112 H.8: what a source-backed plan's authors are shown, as ``(asset, variable, input key)``:
 #: where a blocking gap stops the work, which the plan gate refuses a task for writing (#686).
-SOURCE_SURFACES = (("request.plan_blocking_gaps_appendix", "blocked_index", "blocked_paths_index"),)
+#: And, SIP-0112 H.35 (#3155), the paths the product's owner reserves from a cycle's change.
+SOURCE_SURFACES = (
+    ("request.plan_blocking_gaps_appendix", "blocked_index", "blocked_paths_index"),
+    ("request.plan_reserved_paths_appendix", "reserved_index", "reserved_paths_index"),
+)
 
 
 #: The appendix that tells a plan's author to plan each new criterion's test file: the qa

@@ -7,8 +7,12 @@ shown those paths first (#686: teach, then enforce): each task ``authors_plan`` 
 its own inputs, as the index ``request.plan_blocking_gaps_appendix`` renders. An unconfined gap
 refused the Cycle at create, so only confined ones reach here.
 
+**The paths the product's owner reserves are shown the same way** (SIP-0112 H.35, #3155): a plan
+that writes one is refused by ``ImplementationPlan.validate_reserved_paths``, and its authors get
+the declared entries as ``request.plan_reserved_paths_appendix`` renders them.
+
 **A cycle with no source, or a pin whose baseline has no profile, adds no key,** so its authors'
-inputs are the ones they had before H.4.
+inputs are the ones they had before H.4. A product that reserves no path adds none for them.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import authors_plan
 
 BLOCKED_PATHS_INPUT = "blocked_paths_index"
+RESERVED_PATHS_INPUT = "reserved_paths_index"
 
 
 async def with_blocked_paths(
@@ -35,14 +40,28 @@ async def with_blocked_paths(
     authors = [i for i, e in enumerate(envelopes) if authors_plan(e.task_type)]
     if not authors or cycle.source_context is None:
         return envelopes
-    index = blocked_paths_index(await read_profile(cycle))
-    if index is None:
+    profile = await read_profile(cycle)
+    shown = {
+        key: index
+        for key, index in (
+            (BLOCKED_PATHS_INPUT, blocked_paths_index(profile)),
+            (RESERVED_PATHS_INPUT, reserved_paths_index(profile)),
+        )
+        if index is not None
+    }
+    if not shown:
         return envelopes
     composed = list(envelopes)
     for i in authors:
-        inputs = {**envelopes[i].inputs, BLOCKED_PATHS_INPUT: index}
-        composed[i] = dataclasses.replace(envelopes[i], inputs=inputs)
+        composed[i] = dataclasses.replace(envelopes[i], inputs={**envelopes[i].inputs, **shown})
     return composed
+
+
+def reserved_paths_index(profile: DerivedProfile | None) -> str | None:
+    """Each path the product's owner reserves, as one line, or ``None`` when it reserves none."""
+    if profile is None or not profile.reserved_paths:
+        return None
+    return "\n".join(f"- `{entry}`" for entry in profile.reserved_paths)
 
 
 def blocked_paths_index(profile: DerivedProfile | None) -> str | None:

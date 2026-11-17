@@ -29,6 +29,7 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
+from squadops.projects.reserved_paths import EVERYTHING
 from squadops.sandbox.findings import READERS
 
 API_VERSION = "squadops.project-development-configuration/v1"
@@ -156,6 +157,9 @@ class DevelopmentConfiguration:
     #: names them (a Luau product under Script Sync, mapped in Studio by hand). Each is a
     #: repository directory, and its package is named by its last part, as a Python package is.
     package_roots: tuple[str, ...] = ()
+    #: SIP-0112 H.35 (#3155): the paths the product's owner reserves from a cycle's change
+    #: (``squadops.projects.reserved_paths``). None declared, nothing is reserved, as before.
+    reserved_paths: tuple[str, ...] = ()
 
     def to_document(self) -> dict[str, Any]:
         """The record as it is stored and read (the shape the shared fixture records)."""
@@ -171,6 +175,9 @@ class DevelopmentConfiguration:
                     "stack": self.stack,
                     "commands": _commands_document(self.commands),
                     **({"package_roots": list(self.package_roots)} if self.package_roots else {}),
+                    **(
+                        {"reserved_paths": list(self.reserved_paths)} if self.reserved_paths else {}
+                    ),
                 },
                 "workspace": {
                     "mode": self.workspace_mode,
@@ -198,6 +205,35 @@ def parse_technical(technical: Mapping[str, Any]) -> tuple[str, str, str | None,
         raise ConfigurationInvalid("technical.stack", "a stack's name, or null")
     commands = _mapping(technical, "commands", "technical")
     return project_type, target, stack, _commands(commands, "technical.commands")
+
+
+def parse_reserved_paths(technical: Mapping[str, Any]) -> tuple[str, ...]:
+    """A submitted or stored ``technical.reserved_paths`` (H.35, #3155): the paths the product's
+    owner reserves from a cycle's change, each a glob or a path as
+    ``squadops.projects.reserved_paths`` reads them. Absent is none. Refused, naming the entry:
+    anything but a list of them, and an entry that is empty, absolute, leaves the repository,
+    reserves every file, or is declared twice."""
+    at = "technical.reserved_paths"
+    value = technical.get("reserved_paths", [])
+    if not isinstance(value, list):
+        raise ConfigurationInvalid(at, "a list of repository paths or globs")
+    entries: list[str] = []
+    for i, entry in enumerate(value):
+        where = f"{at}[{i}]"
+        if not isinstance(entry, str) or not entry or entry != entry.strip():
+            raise ConfigurationInvalid(
+                where, "a repository path or glob, such as src/Server/Data/*"
+            )
+        if entry.startswith("/") or ".." in PurePosixPath(entry).parts or "\\" in entry:
+            raise ConfigurationInvalid(where, f"{entry!r} is not a path inside the repository")
+        if entry.rstrip("/") in EVERYTHING or entry in EVERYTHING:
+            raise ConfigurationInvalid(
+                where, f"{entry!r} reserves every file, and a cycle on the product changes some"
+            )
+        if entry in entries:
+            raise ConfigurationInvalid(where, f"{entry!r} is declared twice")
+        entries.append(entry)
+    return tuple(entries)
 
 
 def parse_package_roots(technical: Mapping[str, Any]) -> tuple[str, ...]:
@@ -441,6 +477,7 @@ def parse_configuration(doc: Mapping[str, Any]) -> DevelopmentConfiguration:
         quality_contract_ref=quality.get("contract_ref"),
         benchmark_profile_ref=configuration.get("benchmark_profile_ref"),
         package_roots=parse_package_roots(technical),
+        reserved_paths=parse_reserved_paths(technical),
     )
 
 

@@ -351,6 +351,13 @@ class FramingGateCheck:
                     "validate_blocking_gaps", parsed_plan.validate_blocking_gaps(profile)
                 )
             )
+            # SIP-0112 H.35 (#3155): no task writes a path the product's owner reserves. A
+            # re-roll is told which, so a plan can leave it out.
+            errors.extend(
+                classifier.collect(
+                    "validate_reserved_paths", parsed_plan.validate_reserved_paths(profile)
+                )
+            )
 
         # SIP-0098 98.3: bind-mode contract validation. A seeded contract_ref switches the
         # cycle to bind mode — the plan must bind the contract's covered-file criteria by

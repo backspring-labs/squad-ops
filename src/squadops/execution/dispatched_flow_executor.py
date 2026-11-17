@@ -5607,9 +5607,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
         # SIP-0112 H.4 (H.8): as at the promotion seam, no task writes where a blocking gap stops
         # the work.
+        derived = await self._derived_profile_for(cycle)
+        errors += classifier.collect("validate_blocking_gaps", plan.validate_blocking_gaps(derived))
+        # SIP-0112 H.35 (#3155): nor a path the product's owner reserves from a cycle's change.
         errors += classifier.collect(
-            "validate_blocking_gaps",
-            plan.validate_blocking_gaps(await self._derived_profile_for(cycle)),
+            "validate_reserved_paths", plan.validate_reserved_paths(derived)
         )
         if errors:
             raise _ExecutionError(

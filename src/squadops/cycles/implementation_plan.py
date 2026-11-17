@@ -39,6 +39,7 @@ from squadops.cycles.acceptance_check_spec import (
     reserved_keys_for,
 )
 from squadops.cycles.agent_config import served_roles
+from squadops.projects.reserved_paths import naming, reserved_among
 from squadops.stacks.development_profiles import (
     collected_test_patterns_for,
     matches_test_file_patterns,
@@ -1099,6 +1100,28 @@ class ImplementationPlan:
                 f"({', '.join(gap.paths)}): {gap.reason}. Plan the change elsewhere, or close the "
                 f"gap first: {gap.closes_by}."
             )
+        return errors
+
+    def validate_reserved_paths(self, profile: DerivedProfile | None) -> list[str]:
+        """SIP-0112 H.35 (#3155): no task's expected artifact is a path the product's owner
+        reserves from a cycle's change (its Development Configuration's ``reserved_paths``, on
+        the derived profile). Decided from the declaration and the path, whatever a task's
+        description argues. ``None``, a Project with no profile, checks nothing, and so does a
+        product that reserves none."""
+        if profile is None or not profile.reserved_paths:
+            return []
+        errors = []
+        for task in self.tasks:
+            found = reserved_among(task.expected_artifacts, profile.reserved_paths)
+            if found:
+                errors.append(
+                    f"reserved_path: Task {task.task_index} ({task.focus}) declares "
+                    f"{naming(found)}, which the product's owner reserves from a cycle's change "
+                    f"(its Development Configuration, revision "
+                    f"{profile.development_configuration_revision}, technical.reserved_paths). "
+                    "No task writes there: plan the change without it, or leave the work to "
+                    "the owner."
+                )
         return errors
 
     def validate_increment_footprint(self, footprint: tuple[str, ...] | None) -> list[str]:

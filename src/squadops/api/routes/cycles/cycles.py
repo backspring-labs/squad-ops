@@ -782,7 +782,8 @@ async def require_no_blocking_gap(
         )
     plan = await _operator_plan(vault, body)
     if plan is not None:
-        errors = plan.validate_blocking_gaps(profile)
+        # H.35 (#3155): an operator's plan is held to the owner's reserved paths here too.
+        errors = plan.validate_blocking_gaps(profile) + plan.validate_reserved_paths(profile)
     else:
         errors = [
             f"blocking_gap: {g.id}{f' ({g.subject})' if g.subject else ''} stops all work: "
@@ -791,8 +792,8 @@ async def require_no_blocking_gap(
         ]
     if errors:
         raise ProjectStateConflictError(
-            f"Project {context.project_id}'s derived profile names a blocking gap this Cycle's "
-            "work meets: " + "; ".join(errors)
+            f"Project {context.project_id}'s derived profile refuses this Cycle's work "
+            "(a blocking gap it meets, or a path its owner reserves): " + "; ".join(errors)
         )
     return ()
 

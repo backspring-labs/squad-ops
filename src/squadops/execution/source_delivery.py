@@ -65,6 +65,7 @@ from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.contribution import capture_ref
 from squadops.projects.models import CheckoutTree
+from squadops.projects.reserved_paths import naming, reserved_among
 from squadops.projects.verification import (
     ACCEPTED,
     REGRESSED,
@@ -365,6 +366,17 @@ async def deliver_source_change(
         raise SourceDeliveryRefused(
             "the run changed no file of the product: its one change was a file the framework "
             "places, which the head already holds"
+        )
+    # SIP-0112 H.35 (#3155): a path the product's owner reserves is never changed by a run,
+    # whatever its tasks argued. Read from the configuration the cycle pinned, on everything the
+    # delivery would write (the squad's change and the framework's files over it), before
+    # anything is verified.
+    reserved = reserved_among(sorted(changes), configuration.reserved_paths)
+    if reserved:
+        raise SourceDeliveryRefused(
+            f"the run changed {naming(reserved)}, which the product's owner reserves from a "
+            f"cycle's change (Development Configuration revision {configuration.revision}, "
+            "technical.reserved_paths). Nothing of the run is verified or captured"
         )
     binary = sorted(
         p for p, c in changes.items() if c is not None and _is_binary(checkout.files.get(p))
