@@ -1534,3 +1534,182 @@ class TestTheDeployADiagnosticsFaults:
         (contested,) = evidence["contested_rows"]
         assert contested["criterion_id"] == "vc-declared-imports-lib-alias"
         assert contested["contested"]["by"] == "dev"
+
+
+# --- #3170: a played product's client script shows a player a text cut by its last word ----------
+
+_LUAU_EMISSION = """Here is the change.
+
+```luau:src/Shared/LivesRules.luau
+local LivesRules = {}
+function LivesRules.text(lives: number): string
+    return string.format("%d lives left", lives)
+end
+return LivesRules
+```
+
+```luau:src/Client/UI/HUD.local.luau
+-- shows "5 lives left" for a player with five lives
+local Players = game:GetService("Players")
+local label = Instance.new("TextLabel")
+label.Name = "LivesLabel"
+label.Text = `{lives} lives left` -- the "lives left" text
+label.Parent = gui
+```
+
+```luau:tests/LivesRules.spec.luau
+test("says how many", function() check.equal(LivesRules.text(5), "5 lives left") end)
+```
+"""
+_WRONG_TEXT = "luau_player_text_drops_a_word"
+_PLAYED = {"development_profile": "game_dev_roblox"}
+
+
+class TestThePlayedProductsWrongTextFault:
+    """#3043's repair diagnostic needs a defect the increment's play scenario fails on as an
+    executed assertion. A headless spec loads no client script, so the fault goes there first."""
+
+    def test_the_client_scripts_first_player_facing_text_loses_its_last_word(self):
+        """Bugs caught: the fault landing in a comment or a spec (applied and inert, so the
+        diagnostic proves nothing); a one-word name cut, which breaks the script and reads as
+        an error where the diagnostic needs an executed assertion; the shared module cut while
+        a client script was there, so a headless spec meets it and no scenario does."""
+        faulted = FAULTS[_WRONG_TEXT].transform(_LUAU_EMISSION)
+
+        before, after = _LUAU_EMISSION.splitlines(), faulted.splitlines()
+        changed = [(a, b) for a, b in zip(before, after, strict=True) if a != b]
+        assert changed == [
+            (
+                'label.Text = `{lives} lives left` -- the "lives left" text',
+                'label.Text = `{lives} lives` -- the "lives left" text',
+            )
+        ]
+
+    @pytest.mark.parametrize(
+        ("path", "body", "expected"),
+        [
+            # No client script holds a text: the first other source that does is cut.
+            (
+                "src/Shared/LivesRules.luau",
+                'return string.format("%d lives left", n)\n',
+                'return string.format("%d lives", n)\n',
+            ),
+            ("src/Client/A.client.luau", "x = 'it\\'s a tie game'", "x = 'it\\'s a tie'"),
+            (
+                "src/Client/A.luau",
+                'a = "Players"\nb = "Step into the portal"',
+                'a = "Players"\nb = "Step into the"',
+            ),
+            # Left alone: a spec, another language, a comment, and a file with no such text.
+            ("tests/A.spec.luau", 'check.equal(t, "5 lives left")', None),
+            ("src/app.py", 'x = "5 lives left"', None),
+            ("src/Client/A.luau", '-- "5 lives left"\nlocal s = game:GetService("Players")', None),
+            ("src/Client/A.luau", 'label.Name = "LivesLabel"', None),
+        ],
+        ids=[
+            "a shared module",
+            "an escaped quote",
+            "the first text of two words, not the first literal",
+            "a spec",
+            "not luau",
+            "a comment",
+            "one-word names only",
+        ],
+    )
+    def test_one_file_is_cut_only_where_a_player_would_read_the_difference(
+        self, path, body, expected
+    ):
+        assert FAULTS[_WRONG_TEXT].file_transform(path, body) == (expected or body)
+
+    def test_with_no_client_text_the_first_other_source_is_cut_and_a_textless_emission_isnt(self):
+        """The fallback, and the edge that must read as DID NOT BITE. Bug caught: an emission
+        with nothing to cut returned changed, so an inert fault reads as applied."""
+        shared_only = _LUAU_EMISSION.replace(
+            'label.Text = `{lives} lives left` -- the "lives left" text',
+            "label.Text = LivesRules.text(lives)",
+        )
+        textless = '```luau:src/Client/A.luau\nlocal s = game:GetService("Players")\n```\n'
+
+        faulted = FAULTS[_WRONG_TEXT].transform(shared_only)
+
+        assert 'return string.format("%d lives", lives)' in faulted
+        assert faulted.count("lives left") == shared_only.count("lives left") - 1
+        assert FAULTS[_WRONG_TEXT].transform(textless) == textless
+
+    @pytest.mark.parametrize(
+        ("config", "refused"),
+        [
+            ({**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}, None),
+            (
+                {"development_profile": "fullstack_fastapi_react", DECLARATION_KEY: [_WRONG_TEXT]},
+                "transform a file shape this cycle's stack does not emit",
+            ),
+            ({DECLARATION_KEY: [_WRONG_TEXT]}, "transform a file shape this cycle's stack"),
+        ],
+        ids=["a played product", "a web stack", "no profile named"],
+    )
+    def test_it_is_declared_only_where_a_play_scenario_would_read_it(self, config, refused):
+        """Bug caught: the fault declared on a cycle whose product is never played, where it
+        cuts nothing a verifier reads and the diagnostic reports a green cycle."""
+        if refused:
+            with pytest.raises(UnreachableFault, match=refused):
+                validate_declaration(config)
+            return
+        assert validate_declaration(config) == (_WRONG_TEXT,)
+
+    async def _develop(self, declaration, inputs=None):
+        import time
+        from unittest.mock import AsyncMock, MagicMock
+
+        from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+        from squadops.llm.models import ChatMessage
+
+        ctx = MagicMock()
+        ctx.task_id = "task-run_ab12cd34-m000-development.develop"
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=_LUAU_EMISSION)
+        )
+        ctx.ports.llm_observability = None
+        ctx.correlation_context = None
+        _message, content = await DevelopmentDevelopHandler()._llm_call(
+            ctx,
+            [ChatMessage(role="user", content="build it")],
+            {},
+            inputs=inputs or {},
+            started=time.perf_counter(),
+            apply_fault=True,
+            fault_config=declaration,
+        )
+        return content
+
+    async def test_the_developers_first_emission_takes_it_and_its_repair_runs_clean(self, caplog):
+        """Wiring, entered at ``_llm_call`` on the real develop handler, the seam its emission
+        passes. Bugs caught: the declaration validating and the fault never reaching the
+        developer's emission; or the re-dispatch after the scenario fails taking it again, so
+        the repair can never be seen passing the same scenario."""
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+
+        with caplog.at_level("WARNING"):
+            first = await self._develop(declared)
+        again = await self._develop(declared, {"prior_attempts": 1})
+        control = await self._develop(_PLAYED)
+
+        assert "label.Text = `{lives} lives` --" in first
+        assert any(
+            f"fault_injection: APPLIED {_WRONG_TEXT}" in r.getMessage() for r in caplog.records
+        )
+        assert again == _LUAU_EMISSION
+        assert control == _LUAU_EMISSION
+
+
+def test_the_wrong_text_profile_is_the_source_increment_with_the_fault_and_nothing_else():
+    """Bug caught: `campaign-increment-source` changing and its diagnostic copy not, so the
+    repair diagnostic runs on a cycle that differs from a real increment in more than the
+    seeded text."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    plain = dict(load_profile("campaign-increment-source").defaults)
+    faulted = dict(load_profile("campaign-increment-source-wrong-text").defaults)
+
+    assert faulted.pop(DECLARATION_KEY) == [_WRONG_TEXT]
+    assert faulted == plain

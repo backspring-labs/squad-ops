@@ -244,6 +244,47 @@ for uncounted runs, and the Campaign was stopped after the plan gate, uncounted.
 **Who ruled.** The MacBook lane wrote the six readings before the run (#3041, run plan part 5). The Spark lane
 ran and read it.
 
+### R5.6 The repair diagnostic's seeded defect, and its place after the counted run (2026-11-17; R3.5; #3170, #3043)
+
+**What this records.** R3.5's repair diagnostic needs "a pre-registered, seeded behavioural defect". Until now
+none could be seeded on a played product, and the owner has ruled where the diagnostic runs.
+
+**The evidence.** Drafting the demonstration's pre-registration, in its window, the Spark lane found that no
+declared fault is a behavioural defect in a Luau development emission: the development faults are a web join
+route's response, a hold, and two for the Next.js stack alone.
+
+**The fault, as built:** `luau_player_text_drops_a_word`, on `development.develop`, first attempt only.
+- **What it does:** the first player-facing text a client script sets loses its last word ("%d lives left"
+  becomes "%d lives"). A client script is a file in a `Client` folder or a `.client.luau` or `.local.luau`
+  file. With no such text in one, the first other Luau source is cut. A spec, a comment and a one-word name are
+  left alone.
+- **Why this shape:** a play scenario reads the text a player sees, so the wrong text is an executed assertion
+  failure with the expected and the observed side by side, which is what a repair is shown. A headless spec
+  loads no client script, so the scenario is the verifier that meets it. Where the text was cut in a shared
+  module instead, a spec may meet it first, and the diagnostic's record says which verifier failed.
+- **Where it applies:** development profiles that name a platform. A declaration on any other cycle is refused,
+  as a fault that could not bite.
+- **Its provenance:** no roll produced it. It is modelled on the second skills replay's HUD-text case (SIP-0116
+  §17s), and its `found_in` says so.
+- **How a Campaign declares it:** the request profile `campaign-increment-source-wrong-text`, which is
+  `campaign-increment-source` with the one declaration. A test holds that as the only difference.
+
+**The order.** The 2.8 plan and #3043 list the diagnostic before the counted run. On 2026-11-17 the owner ruled
+"Counted run first": the full-path gate, the rehearsal and the counted run run on one deploy in the window, and
+the diagnostic follows once the fault is merged and deployed. R3.5 holds as written: the diagnostic is labelled
+apart, proves the correction route, and is no evidence about the models. The counted claim does not rest on it.
+
+**The evidence it works** (`tests/unit/capabilities/test_fault_injection.py`): the transform on an emission
+holding a shared module, a client script with a comment and a spec; each file shape cut or left alone; the
+fallback and an emission with nothing to cut; the declaration refused off a played profile; and, entered at
+the real develop handler's emission seam, the first attempt cut, a re-dispatch clean and an undeclared cycle
+unchanged.
+
+**Not shown.** The diagnostic itself. It is the Spark lane's, after the counted run.
+
+**Who ruled.** The Spark lane found the gap and proposed the shape. The fault is the MacBook lane's. The order
+is the owner's, 2026-11-17.
+
 ## R4. Revision 4 (2026-11-09): the composition as requirements and supply
 
 **What prompted it.** SIP-0116, Agent Skillsets, was accepted on 2026-11-09. The owner split it from Capability-Backed

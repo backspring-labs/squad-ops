@@ -2707,3 +2707,12 @@ checks:
       names = ("request.plan_reserved_paths_appendix.md", "request.proposal_reserved_paths.md")
       print([("owner reserves" in templates.joinpath(n).read_text()) for n in names])
     expect: "[True, True]"
+  - id: "3170-wrong-text-fault"
+    what: the played product's wrong-text fault cuts a client script's player-facing text, and its Campaign profile declares it (SIP-0118 R5.6)
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers.fault_injection import FAULTS
+      from squadops.contracts.cycle_request_profiles import load_profile
+      cut = FAULTS["luau_player_text_drops_a_word"].file_transform("src/Client/Hud.local.luau", 'label.Text = "5 lives left"')
+      print(cut, load_profile("campaign-increment-source-wrong-text").defaults["fault_injection"])
+    expect: "label.Text = \"5 lives\" ['luau_player_text_drops_a_word']"

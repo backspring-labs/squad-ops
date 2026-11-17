@@ -17,6 +17,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the
   run's terminal decision, under its own heading. Before this a stopped proposal read as `proposal_failed` and was
   proposed again unexplained, and a stopped increment was repaired into the same stop.
+- **A fault for the repair diagnostic on a played product** (#3170; SIP-0118 R5.6): `luau_player_text_drops_a_word`
+  cuts the last word of the first player-facing text a client script sets, on a developer's first attempt, so
+  an increment's play scenario fails on the candidate and the repair route is exercised. A Campaign declares it
+  through the `campaign-increment-source-wrong-text` request profile.
 - **A product's owner reserves paths from a cycle's change** (#3155; SIP-0112 H.35): a Development Configuration
   may declare `technical.reserved_paths` (files, folders, globs). A proposal whose footprint reaches one, a plan
   whose task names one and a run that changes one are each refused by path, whatever a model argued, and the

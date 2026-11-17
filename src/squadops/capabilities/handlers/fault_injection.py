@@ -42,10 +42,19 @@ from enum import Enum
 from typing import Any
 
 from squadops.capabilities.handlers.impl._json_extraction import _find_first_balanced_object
-from squadops.stacks.development_profiles import effective_development_profile
+from squadops.stacks.development_profiles import (
+    DEVELOPMENT_PROFILES,
+    effective_development_profile,
+)
 from squadops.tasks.task_types import TaskType
 
 logger = logging.getLogger(__name__)
+
+#: The development profiles whose product is played on a platform (SIP-0116 §17q): where a
+#: fault in what a player is shown can bite, since a play scenario is the verifier that reads it.
+PLAYED_PROFILES: frozenset[str] = frozenset(
+    name for name, profile in DEVELOPMENT_PROFILES.items() if profile.platform is not None
+)
 
 #: The ``execution_overrides`` key a cycle declares faults under. One key, so a cycle that
 #: carries a fault is recognisable from its stored overrides alone — which is what lets the
@@ -430,6 +439,78 @@ def _two_type_errors(content: str) -> str:
     return content[: target.start("body")] + faulted + content[target.end("body") :]
 
 
+#: #3170: a Luau source file, and the ones a headless test never loads (a client script).
+_LUAU_SOURCE = re.compile(r"\.luau?$")
+_LUAU_CLIENT = re.compile(r"(?:^|/)Client/|\.(?:client|local)\.luau?$")
+#: A string literal on one line, in any of Luau's three quotes, escapes kept.
+_LUAU_STRING = re.compile(r"""(?P<q>["'`])(?P<text>(?:\\.|(?!(?P=q)).)*)(?P=q)""")
+#: Text a player reads: at least two words. A service name, a property or an instance name
+#: is one.
+_TWO_WORDS = re.compile(r"\S \S")
+
+
+def _luau_code(line: str) -> str:
+    """``line`` up to its comment: a ``--`` outside every string literal."""
+    quote = ""
+    i = 0
+    while i < len(line):
+        char = line[i]
+        if quote:
+            if char == "\\":
+                i += 1
+            elif char == quote:
+                quote = ""
+        elif char in "\"'`":
+            quote = char
+        elif line.startswith("--", i):
+            return line[:i]
+        i += 1
+    return line
+
+
+def _luau_text_drops_a_word(path: str, body: str) -> str:
+    """``body`` with the first player-facing text it sets cut by its last word, or unchanged.
+
+    The #3170 shape: a client script that shows "5 lives" where its criterion's scenario reads
+    "5 lives left". The scenario's assertion executes and fails with the two texts side by
+    side, which is what the repair is shown. Only a Luau source file is touched, never a spec,
+    and only a literal on a code line: a changed comment would change no behaviour, and the
+    fault would read as applied and prove nothing."""
+    if not _LUAU_SOURCE.search(path) or _is_suite_path(path):
+        return body
+    lines = body.split("\n")
+    for i, line in enumerate(lines):
+        code = _luau_code(line)
+        for literal in _LUAU_STRING.finditer(code):
+            text = literal.group("text")
+            if not _TWO_WORDS.search(text):
+                continue
+            cut = text.rstrip().rsplit(" ", 1)[0]
+            lines[i] = line[: literal.start("text")] + cut + line[literal.end("text") :]
+            return "\n".join(lines)
+    return body
+
+
+def _luau_player_text_drops_a_word(content: str) -> str:
+    """The emission with one file's player-facing text cut (``_luau_text_drops_a_word``): the
+    first client script that sets one, since a headless spec loads none and the play scenario
+    is then the verifier that meets it, and failing that the first other Luau source."""
+    blocks = [
+        m
+        for m in _ADDRESSED_BLOCK.finditer(content)
+        if _LUAU_SOURCE.search(m.group("info").partition(":")[2])
+    ]
+    client_first = sorted(
+        blocks, key=lambda m: not _LUAU_CLIENT.search(m.group("info").partition(":")[2])
+    )
+    for block in client_first:
+        body = block.group("body")
+        faulted = _luau_text_drops_a_word(block.group("info").partition(":")[2], body)
+        if faulted != body:
+            return content[: block.start("body")] + faulted + content[block.end("body") :]
+    return content
+
+
 #: SIP-0096 §17a's diagnostic: the 2026-09-01 false positive — a correct `@/lib` alias import
 #: refused by `declared_imports`, which the model then degraded to a relative path to comply.
 _ALIAS_IMPORT = re.compile(r"""from\s+['"](?P<spec>@/lib/[^'"]+)['"]""")
@@ -669,6 +750,20 @@ FAULTS: dict[str, Fault] = {
         exercises="§12a: the task compiles until clean — both errors repaired by its own passes, "
         "zero correction rounds, every pass in the usage ledger",
         stacks=frozenset({"nextjs_ts"}),
+    ),
+    # #3170, #3043's repair diagnostic on a played product: the scenario is the verifier. A
+    # campaign's increments declare it through the `campaign-increment-source-wrong-text`
+    # request profile.
+    "luau_player_text_drops_a_word": Fault(
+        task=TaskType.DEVELOPMENT_DEVELOP,
+        transform=_luau_player_text_drops_a_word,
+        file_transform=_luau_text_drops_a_word,
+        found_in="#3170 — no roll produced it: modelled on the second skills replay's HUD-text "
+        "case (SIP-0116 §17s), where the criterion is the text a label shows a player",
+        exercises="#3043's repair diagnostic: the increment's frozen play scenario executes and "
+        "fails on the candidate with the wrong text, a development repair is routed, and the "
+        "same scenario, by digest, passes",
+        stacks=PLAYED_PROFILES,
     ),
     # 1.8.2 plan §4.1 `false-criterion`: SIP-0096 §17a's first case, on the task's own rows.
     "false_criterion_alias_import": Fault(
