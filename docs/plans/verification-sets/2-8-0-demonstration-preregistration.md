@@ -630,3 +630,5 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 - The counted run needs that plus 30 minutes still left when the rehearsal ends.
 - So a window of **about 3 hours, with the owner ruling each proposal within minutes,** holds rehearsal 2 and the counted run.
 - A ruling that waits past the 30-minute bound doesn't end anything, but its wait counts in the rehearsal's wall time.
+
+**Who ruled.** The owner approved this amendment on 2026-11-17: "approve 12c".
