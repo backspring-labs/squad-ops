@@ -1,0 +1,36 @@
+# The 2.8 demonstration's full-path gate (#3043), pre-registration §5. UNCOUNTED. One increment on
+# z_tower-ascension under the game_dev_roblox development profile and the game-dev-roblox squad, read per
+# task family: the real prompt budget, skill loading, scoped context (measured against the change's
+# footprint) and the reader, including the play. Its objective is the part 5 Campaign's (cmp_d1463eb2d31b),
+# the replay's strategy-hud-text case word for word: neither B-1 nor B-2. It reads machinery, not acceptance.
+project_id: prj-z-tower-ascension
+objective:
+  statement: 'The HUD''s lives label says how many lives are left, as in "5 lives left" for a player with five lives.'
+  measurement: "one increment ended, any verdict; read per task family (pre-registration §5), not by its acceptance"
+  allowed_scope:
+    - "src/**"
+    - "tests/**/*.spec.luau"
+  target_accepted_increments: 1
+  requirements: "repo:file:docs/GAME_CONTEXT.md@current"
+  work_class:
+    prd_tier: core
+    attendance: attended
+policy:
+  max_cycles: 2
+  max_elapsed_s: 3600
+  budget_tokens: 6000000
+  max_repair_cycles_per_increment: 0
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 1
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 3
+  calibration_profile: campaign-increment-source
+  proposal_profile: campaign-increment-source
+  squad_profile: game-dev-roblox
+  plan_gate: tier
+  development_profile: game_dev_roblox
