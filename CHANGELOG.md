@@ -210,6 +210,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A large product's source paths stay on its map** (#3178; SIP-0112 H.36): past 400 files the map of a product
+  showed its top-level folders with counts, so a squad on a game with hundreds of art files saw no source path and
+  named a file the game doesn't have. Binary and generated files now fold by folder first, and every other path
+  stays listed. A task that names a file the product doesn't hold is told the file is new.
+- **A scenario-only increment runs no suite step** (#3179; SIP-0109 §24eg): an increment whose checks are all play
+  scenarios has no test file to write, and the framework's default QA step was shown every source file of the
+  product. An increment now runs the QA tasks its plan names, and its plays.
 - **The Studio reader reads a screen's visibility** (#3176; SIP-0117 R5.25): a scenario that waits for a whole
   screen (a `ScreenGui`) to be `visible` stopped at its setup, since the reader read GUI objects alone. A screen now
   reads as visible when it is enabled. The provider's version is 2, so the worker is requalified before it plays.

@@ -1983,7 +1983,12 @@ def generate_task_plan(
             raise CycleError(
                 "Plan validation failed (skillset coverage): " + "; ".join(offered_errors)
             )
-        steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
+        # deferred (cycle): campaigns.increment_tree loads this module
+        from squadops.campaigns.increment_tree import is_increment
+
+        steps = _replace_build_steps_with_plan(
+            steps, plan, profile, profile_roles, contract, increment=is_increment(resolved_config)
+        )
         steps = list(steps) + list(_scenario_operation_steps(cycle, change_request))
     # SIP-0109 §8: after everything that builds the candidate, never before the plan's body.
     steps = list(steps) + list(evaluation.steps)
@@ -2228,11 +2233,19 @@ def _replace_build_steps_with_plan(
     profile: SquadProfile,
     profile_roles: set[str],
     contract: VerificationContract | None = None,
+    *,
+    increment: bool = False,
 ) -> list:
     """Replace static build steps with plan-derived PlanTask objects.
 
     Preserves planning steps; only the build-phase segment is replaced.
     Validates that all plan roles exist in the profile.
+
+    ``increment`` (#3179): an increment's suites are its plan's. Each criterion with a test file
+    has a plan task that authors it, which the plan gate requires
+    (``validate_increment_criterion_files``), and each scenario criterion has the framework's
+    play. So a plan that authors no suite has none to author, and the workload's own suite step
+    isn't re-appended for it.
     """
     # Validate plan roles against profile
     errors = plan.validate_against_profile(profile)
@@ -2299,6 +2312,11 @@ def _replace_build_steps_with_plan(
     for task_type in _WORKLOAD_INVARIANT_TAIL_ORDER:
         if task_type in plan_task_types:
             invariant_tail.extend(t for t in plan.tasks if t.task_type == task_type)
+        elif increment and authors_qa_suite(task_type):
+            # #3179: on a scenario-only increment the workload's step had no file to author and
+            # no task to scope its prompt, which then showed every source file of the product
+            # (570,726 tokens against a 65,536 window, ``run_178243ba831b``).
+            continue
         else:
             invariant_tail.extend(s for s in steps if s[0] == task_type)
 

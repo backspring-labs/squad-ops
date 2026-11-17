@@ -57,8 +57,15 @@ MAX_FILES = 2000
 MAX_WORKSPACE_BYTES = 3 * 1024 * 1024
 #: How much current file content one task is shown in full.
 FOCUS_BUDGET_BYTES = 96 * 1024
-#: Beyond this many paths the map lists directories, with their file counts.
+#: The most lines the map lists. A tree with more paths folds the files no task's view carries
+#: first, so the paths a task can change stay listed (#3178), and only a tree still past it then
+#: shows directories with their file counts.
 MAP_PATH_LIMIT = 400
+#: What a map past its limit says before its directories, so no reader takes it for every path.
+MAP_FOLDED_NOTE = (
+    f"The product holds more than the {MAP_PATH_LIMIT} paths this map lists, so each directory "
+    "is shown with its file count and its files are not listed:"
+)
 
 
 class CheckoutTooLarge(ValueError):
@@ -193,24 +200,68 @@ def manifest_of(
 
 
 def repository_map(manifest: CheckoutManifest, deleted: Iterable[str] = ()) -> str:
-    """Every path with its size, or, past the path limit, every directory with its count. A path
-    the run has removed (#2612) is named as removed."""
+    """Every path with its size. A path the run has removed (#2612) is named as removed.
+
+    Past the path limit the files no task's view carries (binary, generated) fold first, by
+    directory, with their count, and every other path stays listed (#3178). A game's tree held
+    619 files, 385 of them art and documents; folded to its top-level directories it read
+    ``src/ (137 files)``, and the proposal named a source file the product doesn't hold. Only a
+    tree still past the limit then shows every directory with its count, and says so."""
     paths = sorted(manifest.sizes)
     removed = frozenset(deleted)
     if len(paths) <= MAP_PATH_LIMIT:
-        return "\n".join(
-            f"- `{p}` (removed by this run)"
-            if p in removed
-            else f"- `{p}` ({manifest.sizes[p]} bytes{_held_back_note(manifest, p)})"
-            for p in paths
-        )
+        return "\n".join(_path_line(manifest, p, removed) for p in paths)
+    folded = _held_back_folded(manifest, paths, removed)
+    if len(folded) <= MAP_PATH_LIMIT:
+        return "\n".join(folded)
     counts: dict[str, int] = {}
     for p in paths:
         top = p.split("/", 1)[0] + ("/" if "/" in p else "")
         counts[top] = counts.get(top, 0) + 1
     return "\n".join(
-        f"- `{d}` ({n} files)" if d.endswith("/") else f"- `{d}`" for d, n in sorted(counts.items())
+        [MAP_FOLDED_NOTE]
+        + [
+            f"- `{d}` ({n} files)" if d.endswith("/") else f"- `{d}`"
+            for d, n in sorted(counts.items())
+        ]
     )
+
+
+def _path_line(manifest: CheckoutManifest, path: str, removed: frozenset[str]) -> str:
+    if path in removed:
+        return f"- `{path}` (removed by this run)"
+    return f"- `{path}` ({manifest.sizes[path]} bytes{_held_back_note(manifest, path)})"
+
+
+def _held_back_folded(
+    manifest: CheckoutManifest, paths: list[str], removed: frozenset[str]
+) -> list[str]:
+    """The map with its held-back files folded: one line for a directory whose every file is
+    held back, at the shallowest such directory, and one for the held-back files that sit
+    beside listed ones. A root-level file and a removed one are listed as themselves."""
+    listed = [p for p in paths if p not in manifest.held_back or p in removed or "/" not in p]
+    beside_listed = {
+        "/".join(parts[:depth])
+        for parts in (p.split("/")[:-1] for p in listed)
+        for depth in range(1, len(parts) + 1)
+    }
+    whole: dict[str, int] = {}
+    among: dict[str, int] = {}
+    for path in sorted(set(paths) - set(listed)):
+        parts = path.split("/")[:-1]
+        ancestors = ["/".join(parts[:depth]) for depth in range(1, len(parts) + 1)]
+        all_held_back = next((d for d in ancestors if d not in beside_listed), None)
+        if all_held_back is not None:
+            whole[all_held_back] = whole.get(all_held_back, 0) + 1
+        else:
+            among[ancestors[-1]] = among.get(ancestors[-1], 0) + 1
+    lines = [(p, _path_line(manifest, p, removed)) for p in listed]
+    lines += [(f"{d}/", f"- `{d}/` ({n} binary or generated files)") for d, n in whole.items()]
+    lines += [
+        (f"{d}/", f"- `{d}/` ({n} binary or generated files, beside the files listed)")
+        for d, n in among.items()
+    ]
+    return [line for _key, line in sorted(lines)]
 
 
 def _held_back_note(manifest: CheckoutManifest, path: str) -> str:
@@ -246,6 +297,7 @@ def source_repository_input(
     It also carries, as data no prompt renders, what a removal is judged against (#2612): every
     path at the commit (the map collapses past its limit), the ones no task changes (binary
     files, generated lockfiles), and the ones the run has already removed."""
+    named = list(named)
     removed = sorted(set(deleted) & manifest.sizes.keys())
     focus = [p for p in focus_paths(manifest, named) if p not in removed]
     return {
@@ -258,4 +310,9 @@ def source_repository_input(
         "runners": [r.as_dict() for r in manifest.runners],
         "instructions": {p: current[p] for p in manifest.instruction_paths if p in current},
         "existing_files": {p: current[p] for p in focus if p in current},
+        # #3178: the files it names that neither the product nor this run holds, so a task
+        # shown no content for one is told why.
+        "new_files": [
+            p for p in dict.fromkeys(named) if p not in manifest.sizes and p not in current
+        ],
     }

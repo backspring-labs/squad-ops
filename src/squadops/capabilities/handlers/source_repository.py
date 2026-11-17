@@ -71,6 +71,15 @@ async def source_repository_section(
             "request.source_repository_existing_files_block", {"files": _files(existing)}
         )
         variables["existing_files"] = block.content
+    # #3178: a file the task names that the product doesn't hold is said to be new. A plan carried
+    # a proposal's guess at a path, and its developer was shown no content and no reason.
+    new_files = repository.get("new_files") or []
+    if new_files:
+        block = await renderer.render(
+            "request.source_repository_new_files_block",
+            {"files": "\n".join(f"- `{path}`" for path in new_files)},
+        )
+        variables["new_files"] = block.content
     deletion = await _deletion_block(renderer, repository, task_type)
     if deletion:
         variables["deletion"] = deletion
