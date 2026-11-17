@@ -2565,3 +2565,18 @@ checks:
       from squadops.projects.derived_profile import GAPS
       print(parse_package_roots({"package_roots": ["src/Shared"]}), "package_root_missing" in GAPS)
     expect: "('src/Shared',) True"
+  - id: "3136-fence-language"
+    what: a qa.test prompt names each file's own language on its fence, and text for one it doesn't know
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.handlers.fenced_parser import fence_language
+      print(fence_language("tests/criterion_T1.spec.luau"), fence_language("art/tower.blend"))
+    expect: luau text
+  - id: "3139-module-path"
+    what: a qa.test prompt shows a module its task names by its module path
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.qa_prompt_contents import code_under_test
+      tree = {"src/Shared/Modules/SalePricing.luau": "return {}", "src/Shared/Modules/Sale.luau": "return {}"}
+      print(list(code_under_test({}, tree, "require(Shared.Modules.SalePricing)")))
+    expect: "['src/Shared/Modules/SalePricing.luau']"
