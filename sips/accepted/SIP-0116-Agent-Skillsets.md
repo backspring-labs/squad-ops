@@ -1531,7 +1531,7 @@ derived `product_neutral` reads as no profile matching, which a proposal's promp
 - **`test_profile_derivation_luau.py`:** entered at `development_profile_pin` on z_tower's layout: named, it is
   pinned as the operator's; unnamed, the pin is `product_neutral`.
 - **`test_skillset_spec.py`:** it is the one profile that requires a skillset, and the catalog holds all three.
-- **The replay** (§17p) is what admits it: PR #PRNUM merges after the three skillsets pass on the Spark's models.
+- **The replay** (§17p) is what admits it: PR #3145 merges after the three skillsets pass on the Spark's models.
 
 **Who ruled.** The owner's ruling of 2026-11-09 (§17a point 6) set the two fields' path. The MacBook lane built
 the profile under the 2.8 plan the owner adopted on 2026-11-11.
