@@ -17,6 +17,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the
   run's terminal decision, under its own heading. Before this a stopped proposal read as `proposal_failed` and was
   proposed again unexplained, and a stopped increment was repaired into the same stop.
+- **The skills replay: a skillset's skills tested on the deploy's models before a profile requires them** (#3041;
+  SIP-0116 §17p): the authoring replay gains a `skills` arm. A captured task is authored as it stands and again
+  handed what a cycle requiring the skillset would hand it, built from the image's own packaged skillsets. A case
+  may swap named inputs to put another task in front of the same seam. Each skills-arm answer is judged by its
+  case: the declared stop read, the handler's acceptance, the files emitted, a scenario criterion accepted, and
+  the emitted specs passing on the product's own runner. `run_authoring_replay.py --skill-cases roblox-skills@1`
+  runs the nine Roblox cases; records go to `var/replays/<experiment>/`.
 - **A skill's stop is read, and it ends the run** (#3041; SIP-0116 §17o): a skill declares the opening words of
   the line it tells the model to refuse a task with (`stops:` in its `SKILL.md` front matter). Every authoring
   answer is read against the stops its task's skills declare. A task answered with one is not asked again or

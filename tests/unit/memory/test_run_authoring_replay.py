@@ -336,6 +336,58 @@ def test_an_emitted_path_that_leaves_the_product_is_refused(checkout):
         runner.run_specs(checkout, [{"name": "../outside.spec.luau", "content": "x"}], ("true",))
 
 
+_NEEDS_MODULE = """\
+import pathlib, sys
+there = pathlib.Path("src/Shop.luau").exists()
+print("PASS tests/Shop.spec.luau > pays the bonus" if there else "FAIL tests/Shop.spec.luau > pays the bonus [assertion] src/Shop.luau is not there")
+print(f"Tests: {1 if there else 0} passed, {0 if there else 1} failed, 0 errored, 0 setup, 1 total")
+sys.exit(0 if there else 1)
+"""
+
+
+def test_a_spec_is_run_with_the_files_it_was_written_against_laid_beneath_it(checkout):
+    """The checkout is the product at the pin, before the captured run's own change. Bugs caught:
+    a spec for that change run without the change, so a sound spec reads as the skill's failure;
+    and a file laid beneath counted as an emitted spec."""
+    (checkout / "tests" / "run.py").write_text(_NEEDS_MODULE)
+    spec = [{"name": "tests/Shop.spec.luau", "content": "ok"}]
+    argv = (sys.executable, "tests/run.py")
+
+    alone = runner.run_specs(checkout, spec, argv)
+    laid = runner.run_specs(
+        checkout,
+        spec,
+        argv,
+        beneath=[
+            {"name": "src/Shop.luau", "content": "return {}"},
+            {"name": "tests/Old.spec.luau", "content": "ok"},
+        ],
+    )
+
+    assert alone == {"passed": [], "failed": ["FAILED tests/Shop.spec.luau > pays the bonus"]}
+    assert laid == {"passed": ["tests/Shop.spec.luau > pays the bonus"], "failed": []}
+    assert not (checkout / "src").exists()
+
+
+def test_the_files_a_test_task_was_written_against_come_from_its_own_inputs():
+    """Bug caught: a test task's implementation file missing from its inputs passed over, so its
+    spec is run on a product without the change and fails for want of it."""
+    held = {
+        "envelope_id": "env_q#qa-capture",
+        "inputs": {
+            "implementation_artifacts": ["src/Shop.luau"],
+            "artifact_contents": {"src/Shop.luau": "return {}", "tests/run.luau": "-- runner"},
+        },
+    }
+    missing = {**held, "inputs": {**held["inputs"], "artifact_contents": {}}}
+    no_implementation = {"envelope_id": "env_d#dev-capture", "inputs": {"prd": None}}
+
+    assert runner.under_test(held) == [{"name": "src/Shop.luau", "content": "return {}"}]
+    assert runner.under_test(no_implementation) == []
+    with pytest.raises(SystemExit, match="the task tests src/Shop.luau"):
+        runner.under_test(missing)
+
+
 def test_only_the_skills_arm_is_held_to_its_cases_expectation():
     """Bug caught: a baseline, handed no skill, judged against a stop it could never give; or a
     spec expectation read as met when nothing ran it."""
@@ -404,6 +456,51 @@ _CAPTURED_SHAPES = {
         },
         "source_repository": {"map": "- `src/` (137 files)", "paths": ["tests/run.luau"]},
     },
+    "development.develop": {
+        "subtask_description": "Create src/Shared/Modules/SalePricing.luau as a ModuleScript.",
+        "subtask_focus": "SalePricing module",
+        "expected_artifacts": ["src/Shared/Modules/SalePricing.luau"],
+        "acceptance_criteria": [
+            {
+                "check": "count_at_least",
+                "params": {"glob": "src/Shared/Modules/SalePricing.luau", "min_count": 1},
+                "severity": "error",
+                "description": "",
+                "id": "",
+            },
+            "M1: Module exports a function computeSaleTotal(lines).",
+        ],
+        "artifact_contents": {"run_report.md": "# Run"},
+        "acceptance_workspace_files": {"run_report.md": "# Run", "tests/run.luau": "-- runner"},
+        "source_repository": {
+            "checks": [{"id": "luau_tests", "argv": [".tools/lune", "run", "tests/run.luau"]}],
+        },
+    },
+    "qa.test": {
+        "subtask_description": "Author tests/criterion_T1.spec.luau, a Lune spec.",
+        "subtask_focus": "criterion T1 spec suite",
+        "expected_artifacts": ["tests/criterion_T1.spec.luau"],
+        "implementation_artifacts": ["src/Shared/Modules/SalePricing.luau"],
+        "acceptance_criteria": ["M5-T1a: The spec asserts computeSaleTotal(...) == 900."],
+        "artifact_contents": {
+            "run_report.md": "# Run",
+            "src/Shared/Modules/SalePricing.luau": "return {}",
+            "tests/LivesRules.spec.luau": "-- run with tests/run.luau",
+            "tests/loader.luau": "-- loader",
+            "tests/run.luau": "-- runner",
+        },
+        "acceptance_workspace_files": {
+            "run_report.md": "# Run",
+            "src/Shared/Modules/SalePricing.luau": "return {}",
+            "tests/LivesRules.spec.luau": "-- run with tests/run.luau",
+            "tests/loader.luau": "-- loader",
+            "tests/run.luau": "-- runner",
+        },
+        "source_repository": {
+            "checks": [{"id": "luau_tests", "argv": [".tools/lune", "run", "tests/run.luau"]}],
+            "paths": ["tests/run.luau"],
+        },
+    },
 }
 
 
@@ -445,4 +542,8 @@ def test_every_packaged_case_can_be_built_on_the_captures_shape():
         "strategy-title-screen": (1, True, True),
         "strategy-unobservable": (1, True, True),
         "strategy-saved-state": (1, True, True),
+        "dev-capture": (2, False, True),
+        "dev-saved-field": (2, True, True),
+        "qa-capture": (2, False, True),
+        "qa-no-runner": (2, True, True),
     }

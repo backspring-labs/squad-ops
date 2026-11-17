@@ -6,6 +6,10 @@
 # with swaps puts another task in front of the same seam, and its record says no capture stands
 # behind its prompt.
 #
+# A build task is shown the plan's words for its work and never the Campaign's objective, so a
+# develop or qa case swaps the task's description, its focus, its criteria and its expected files
+# together.
+#
 # The swapped objectives are changes to this game that the demonstration's goal set does not hold:
 # the replay tests the skills, and the demonstration's increments stay unseen by it.
 #
@@ -84,3 +88,73 @@ cases:
       - path: [resolved_config, campaign_proposal, objective, allowed_scope]
         value: ["src/**", "tests/**/*.spec.luau"]
     expect: {accepted: true}
+
+  - id: dev-capture
+    task_type: development.develop
+    skillset: roblox-luau-dev
+    why: >-
+      The captured build task as it stands: one new rule module under src/Shared/Modules. The
+      skill must not cost an ordinary task its acceptance, and the module lands where the plan
+      put it. Checked byte for byte against its capture.
+    expect: {accepted: true, emits: ["src/Shared/Modules/SalePricing.luau"]}
+
+  - id: dev-saved-field
+    task_type: development.develop
+    skillset: roblox-luau-dev
+    why: >-
+      The skill's stop: a task that renames a field of the saved profile. The task isn't shown
+      the file, so the stop is read from the task's own words. The baseline, handed no skill,
+      is expected to write the file.
+    swaps:
+      - path: [subtask_description]
+        value: |-
+          Change src/Server/Util/ProfileSchema.luau so the saved profile's gold is held in a
+          field named Coins. Rename the Gold field of DEFAULT_PROFILE to Coins, and change every
+          read and write of profile.Gold in the file to profile.Coins. Every other field stays
+          as it is.
+      - path: [subtask_focus]
+        value: ProfileSchema field rename
+      - path: [expected_artifacts]
+        value: ["src/Server/Util/ProfileSchema.luau"]
+      - path: [acceptance_criteria]
+        value:
+          - check: count_at_least
+            params: {glob: "src/Server/Util/ProfileSchema.luau", min_count: 1}
+            severity: error
+            description: ""
+            id: ""
+          - "DEFAULT_PROFILE holds a Coins field with the value 0, and no Gold field."
+          - "No file other than src/Server/Util/ProfileSchema.luau is created or modified by this task."
+    expect: {stop: "saved data:"}
+
+  - id: qa-capture
+    task_type: qa.test
+    skillset: roblox-studio-qa
+    why: >-
+      The captured test task as it stands: one spec for the criterion, written for the product's
+      own runner. The emitted spec is run on the product with the capture's own implementation
+      laid over it, so a pass is the spec loading and passing under tests/run.luau. A wrong
+      implementation in the capture would read here as a failing spec. Checked byte for byte
+      against its capture.
+    expect: {accepted: true, emits: ["tests/*.spec.luau"], specs_pass: true}
+
+  - id: qa-no-runner
+    task_type: qa.test
+    skillset: roblox-studio-qa
+    why: >-
+      The skill's prerequisite failure: a product checked by another script, whose tree shows no
+      tests/run.luau. The spec globals the skill teaches belong to that runner's loader, so the
+      skill writes no spec and says why in one line. The repository's path list, which no prompt
+      shows, still names the file.
+    swaps:
+      - path: [source_repository, checks, 0, argv]
+        value: [".tools/lune", "run", "tests/harness.luau"]
+      - path: [artifact_contents, tests/run.luau]
+        delete: true
+      - path: [artifact_contents, tests/loader.luau]
+        delete: true
+      - path: [acceptance_workspace_files, tests/run.luau]
+        delete: true
+      - path: [acceptance_workspace_files, tests/loader.luau]
+        delete: true
+    expect: {stop: "no tests/run.luau:"}

@@ -21,17 +21,19 @@ the manifest records the named version's hash, and a version no file holds is re
 any development profile requires them:
 
     python scripts/dev/run_authoring_replay.py --experiment roblox-skills-v1 \
-        --run run_… --skill-cases roblox-skills@1 [--generations 3] [--seed 7] [--validity-only] \
+        --envelope env_… --envelope env_… --envelope env_… --skill-cases roblox-skills@1 \
+        [--generations 3] [--seed 7] [--validity-only] \
         [--product-checkout DIR [--spec-argv .tools/lune run tests/run.luau]]
 
-``--run`` is the capture: a run with no skills loaded, holding one envelope of each task type the
-cases name. Each case (``skill_replay_cases/``, a file headed by its id and version and pinned by
+The envelopes are the capture: a cycle with no skills loaded, holding one envelope of each task
+type the cases name. A Campaign's cycle holds them in two runs (the proposal's and the build's),
+so they are named one by one; ``--run`` names a single run's. Each case (``skill_replay_cases/``, a file headed by its id and version and pinned by
 its text) is authored under the baseline and under the skills its cycle would hand it, and each
 skills-arm authoring is judged by its case's expectation (``judged.jsonl``). A case that expects its
 emitted specs to pass is judged only when ``--product-checkout`` names a checkout of the product at
 the capture's commit, with its test runtime installed: the specs are run there, on a copy, by the
-product's own runner, and read by the framework's ``luau`` reader. Without it that expectation reads
-``not_judged``.
+product's own runner, and read by the framework's ``luau`` reader, over the files the test task
+was written against (``under_test``). Without it that expectation reads ``not_judged``.
 """
 
 from __future__ import annotations
@@ -302,28 +304,54 @@ def skill_plan(
     return frozen.to_dict(), case_envelopes, notes
 
 
-def run_specs(checkout: Path, artifacts: list[dict], argv: tuple[str, ...]) -> dict:
+def under_test(envelope: dict) -> list[dict]:
+    """The files a captured test task was written against: its ``implementation_artifacts``, with
+    the bodies its inputs hold. The product's checkout is at the pin, before the run's own change,
+    so a spec for that change needs them laid over it. A named file the inputs don't hold is
+    refused: the spec would fail on the product for want of it and read as the skill's failure."""
+    inputs = envelope.get("inputs") or {}
+    held = inputs.get("artifact_contents") or {}
+    files = []
+    for name in inputs.get("implementation_artifacts") or ():
+        if not isinstance(held.get(name), str):
+            raise SystemExit(
+                f"{envelope['envelope_id']}: the task tests {name}, and its inputs hold no body "
+                "for it"
+            )
+        files.append({"name": name, "content": held[name]})
+    return files
+
+
+def run_specs(
+    checkout: Path,
+    artifacts: list[dict],
+    argv: tuple[str, ...],
+    *,
+    beneath: tuple[dict, ...] | list[dict] = (),
+) -> dict:
     """The emitted spec files' results on the product: ``{"passed", "failed"}`` by test id, as the
     framework's ``luau`` reader reads the product's own runner.
 
-    The emitted files are laid over a copy of ``checkout`` and ``argv`` is run there. Only the
-    emitted specs' own tests are counted: the product's other specs ran before the change and are
-    no evidence about it. A run the reader can't read fails, with the reader's reason."""
+    ``beneath`` (the files the task was written against, ``under_test``) and then the emitted
+    files are laid over a copy of ``checkout``, and ``argv`` is run there. Only the emitted specs'
+    own tests are counted: the product's other specs ran before the change and are no evidence
+    about it. A run the reader can't read fails, with the reader's reason."""
     from squadops.sandbox.findings import LUAU, read
 
     with tempfile.TemporaryDirectory() as scratch:
         tree = Path(scratch) / "product"
         shutil.copytree(checkout, tree, ignore=shutil.ignore_patterns(".git"), symlinks=True)
         emitted = []
-        for artifact in artifacts:
-            relative = PurePosixPath(str(artifact["name"]))
-            if relative.is_absolute() or ".." in relative.parts:
-                raise SystemExit(f"an emitted file's path leaves the product: {relative}")
-            target = tree / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(str(artifact["content"]), encoding="utf-8")
-            if relative.name.endswith(".spec.luau"):
-                emitted.append(relative.name)
+        for laid, counted in ((beneath, False), (artifacts, True)):
+            for artifact in laid:
+                relative = PurePosixPath(str(artifact["name"]))
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise SystemExit(f"an emitted file's path leaves the product: {relative}")
+                target = tree / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(str(artifact["content"]), encoding="utf-8")
+                if counted and relative.name.endswith(".spec.luau"):
+                    emitted.append(relative.name)
         if not emitted:
             return {"passed": [], "failed": ["no emitted file is a *.spec.luau spec"]}
         try:
@@ -380,9 +408,44 @@ def judge_records(records: list[dict], notes: dict, specs_for) -> list[dict]:
     return judged
 
 
+def _judge_and_report(args, cases, case_envelopes, records, notes, directory) -> None:
+    """Judge each authoring record against its case, write ``judged.jsonl``, and print each
+    case's line. With a product checkout the emitted specs are run on it first."""
+    from squadops.memory.skill_replay import MET
+
+    specs_for = None
+    if args.product_checkout:
+        argv = tuple(args.spec_argv)
+        beneath = {e["envelope_id"]: under_test(e) for e in case_envelopes}
+
+        def specs_for(record: dict) -> dict:
+            return run_specs(
+                args.product_checkout,
+                record["artifacts"],
+                argv,
+                beneath=beneath[record["envelope_id"]],
+            )
+
+    judged = judge_records(records, notes, specs_for)
+    with (directory / "judged.jsonl").open("w") as out:
+        for row in judged:
+            out.write(json.dumps(row) + "\n")
+    for case in cases.cases:
+        skills = [j for j in judged if j["case"] == case.id and j["arm"] == "skills"]
+        base = [j for j in judged if j["case"] == case.id and j["arm"] == "baseline"]
+        verdicts = [j["verdict"] for j in skills]
+        print(
+            f"  {case.id}: skills arm met {verdicts.count(MET)} of {len(skills)} "
+            f"({', '.join(verdicts) or 'none authored'}); baseline accepted "
+            f"{sum(bool(j['success']) for j in base)} of {len(base)}"
+        )
+        for j in skills:
+            for finding in j["findings"]:
+                print(f"    generation {j['generation']}: {finding}")
+
+
 def _skills_main(args, envelopes: list[dict], containers: dict[str, str]) -> int:
     from squadops.memory.replay import Arm, schedule
-    from squadops.memory.skill_replay import MET
 
     cases, text = skill_cases_text(args.skill_cases)
     frozen, case_envelopes, notes = skill_plan(args, envelopes, cases, text)
@@ -429,26 +492,7 @@ def _skills_main(args, envelopes: list[dict], containers: dict[str, str]) -> int
         else:
             print(f"  {r['case']}: NOT VALID: {r.get('reason') or 'its prompts do not line up'}")
     if not args.validity_only:
-        specs_for = None
-        if args.product_checkout:
-            argv = tuple(args.spec_argv)
-            specs_for = lambda record: run_specs(args.product_checkout, record["artifacts"], argv)  # noqa: E731
-        judged = judge_records(records, notes, specs_for)
-        with (directory / "judged.jsonl").open("w") as out:
-            for row in judged:
-                out.write(json.dumps(row) + "\n")
-        for case in cases.cases:
-            skills = [j for j in judged if j["case"] == case.id and j["arm"] == "skills"]
-            base = [j for j in judged if j["case"] == case.id and j["arm"] == "baseline"]
-            verdicts = [j["verdict"] for j in skills]
-            print(
-                f"  {case.id}: skills arm met {verdicts.count(MET)} of {len(skills)} "
-                f"({', '.join(verdicts) or 'none authored'}); baseline accepted "
-                f"{sum(bool(j['success']) for j in base)} of {len(base)}"
-            )
-            for j in skills:
-                for finding in j["findings"]:
-                    print(f"    generation {j['generation']}: {finding}")
+        _judge_and_report(args, cases, case_envelopes, records, notes, directory)
     print(f"records: {directory}")
     return 0 if all(r["valid"] for r in checks) else 1
 

@@ -1334,9 +1334,10 @@ section says what the test is. It adds one arm to the authoring replay SIP-0110 
 runner.
 
 **The instrument.**
-- **The capture.** One run on the product with no skill loaded: the squad that will carry the skillsets, under a
+- **The capture.** One cycle on the product with no skill loaded: the squad that will carry the skillsets, under a
   development profile that requires none. Its authoring envelopes are the cases' starting points: one of each task
-  type a case names.
+  type a case names. A Campaign's cycle holds them in two runs, the proposal's and the build's, so the runner
+  takes them by envelope id.
 - **Two arms.** The baseline is the captured task as it stands. The `skills` arm is the same task handed what a
   cycle requiring the case's skillset would hand it.
 - **The equipment is built as a cycle builds it** (`cycles/skillset_replay.task_equipment`): the skillset assigned to
@@ -1367,9 +1368,23 @@ of its own:
   read each one strictly against the vocabulary;
 - `specs_pass`: the emitted specs, laid over a copy of a product checkout and run by the product's own runner, read
   by the framework's `luau` reader. Only the emitted specs' tests count. Without a checkout the expectation reads
-  `not_judged`, never met.
+  `not_judged`, never met. The checkout is the product at the pin, before the captured run's own change, so the
+  files a test task was written against (its `implementation_artifacts`, with the bodies its inputs hold) are laid
+  beneath the emitted specs. One the inputs don't hold is refused.
 
 The baseline is recorded for contrast and held to nothing: it was handed no skill.
+
+**What the first capture showed** (Campaign `cmp_22ca0525782c` on z_tower-ascension, uncounted; the Spark lane's
+reading of its three envelopes, 2026-11-16):
+- **A build task is shown the plan's words, never the objective.** The Campaign's objective is in a develop and a
+  `qa.test` task's inputs and in neither prompt. What reaches them is the plan's restatement: the task's
+  description, its focus, its criteria and its expected files. So a develop or `qa.test` case swaps those together,
+  and a swap of the objective alone would leave the prompt as captured.
+- **`qa.test` fits the window as it is scoped.** Its prompt is about 42,000 characters, the largest of the three,
+  under the squad's 65,536-token window with its completion reserve. `package_scoped` stays as built.
+- **Two defects in the `qa.test` prompt on a Luau product:** its files are fenced as Python (#3136), and the module
+  under test is never shown (#3139). Both change the prompt the replay starts from, so they are fixed first and the
+  capture is taken again.
 
 **What the replay doesn't show:**
 - **Whether a skill makes the squad better.** It runs a few generations of a few cases. It shows each skill's rules
@@ -1390,7 +1405,11 @@ The baseline is recorded for contrast and held to nothing: it was handed no skil
   that can't be built reported and never authored.
 - **The host.** `test_run_authoring_replay.py`: the cases pinned by text, each case's own envelope, a missing or
   ambiguous capture refused, and emitted specs run on a copy with only their own tests counted. That last test
-  found the first version counting no failure at all, because the reader's failure keys lead with `FAILED`.
+  found the first version counting no failure at all, because the reader's failure keys lead with `FAILED`. A spec
+  is run with its task's implementation files beneath it, and a file laid beneath is never counted as a spec.
+- **The packaged cases.** `test_every_packaged_case_can_be_built_on_the_captures_shape` builds all nine Roblox
+  cases against the packaged skillsets and the three captured tasks' recorded shapes: every swap's path is there,
+  and each task is handed its skills (one for a proposal, two for a develop or a `qa.test` task).
 
 **Who ruled.** The MacBook lane, under the owner's delegation. The shape was agreed with the Spark lane, which runs
 it, on 2026-11-16 (#3041): the capture on the final squad under the derived profile, the byte check held to
