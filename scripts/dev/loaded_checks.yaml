@@ -2604,3 +2604,11 @@ checks:
       tree = {"src/Shared/Modules/ShopDiscount.luau": "return {}", "src/Server/Services/Shop.luau": "return {}"}
       print(list(code_under_test({}, tree, "the ShopDiscount module, as the Shop shows it", plan_sources=["src/Shared/Modules/ShopDiscount.luau"])))
     expect: "['src/Shared/Modules/ShopDiscount.luau']"
+  - id: "3041-roblox-profile"
+    what: the game_dev_roblox development profile requires the three Roblox skillsets (SIP-0116 §17q)
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+      p = DEVELOPMENT_PROFILES["game_dev_roblox"]
+      print(p.platform.id, sorted(r.skillset for e in p.requires for r in e.any_of))
+    expect: "roblox ['roblox-increment-design', 'roblox-luau-dev', 'roblox-studio-qa']"

@@ -145,6 +145,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | The skills replay: a `skills` arm on the authoring replay, the equipment built as a cycle builds it, swapped cases, and each answer judged by its case's declared stop, acceptance, emitted files, scenario criterion and passing specs; the nine Roblox cases (§17p). Its run on the Spark's models is #3041's | **shipped** | 2.8 (PR #3141; #3041 tracks the Roblox squad's rest) |
 | The first skills replay read (`roblox-skills-v1`: every ordinary case passed, each skillset failed on its stop case), the three skills' stops revised for `roblox-skills@2`, and a suite left to the product's runner judged by that runner (§17r) | **shipped** | 2.8 (PR #3151, closing #3150; #3041 tracks the second replay) |
 | The second skills replay read (`roblox-skills-v2`: `roblox-luau-dev` and `roblox-studio-qa` admitted, `roblox-increment-design` failing on one case), and the strategy skill told which scenarios a disclosed gap means (§17s) | **shipped** | 2.8 (PR #3153; #3041 tracks the third replay) |
+| The third skills replay read (`roblox-skills-v3`: all three skillsets pass, one stop overridden in one answer of three), and the `game_dev_roblox` profile registered on it (§17t, §17q) | **shipped** | 2.8 (PR #3145; #3041 tracks the first cycle under the profile, #3154 the stop's recorded line, #3155 the reserved paths) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1423,6 +1424,45 @@ reading of its three envelopes, 2026-11-16):
 it, on 2026-11-16 (#3041): the capture on the final squad under the derived profile, the byte check held to
 unswapped captures, a swapped case given its own baseline, and the records kept under the main checkout.
 
+### 17q. The first profile with requirements is registered, and the two stack fields are declared optionals (2026-11-17, §5.1, §14, §17a point 6, §17p; SIP-0118 R5.2; #3041)
+
+**What changed.** `game_dev_roblox` is a registered development profile. It declares the platform `roblox`,
+variant `studio-place`, and what each responsibility requires: `roblox-increment-design` for `strat`,
+`roblox-luau-dev` for `dev`, and `roblox-studio-qa` (version 1 or later) for `qa`, with the contracts and modes
+SIP-0118 R5.2 lists. A cycle that names it on a squad lacking any of them is refused at creation (§9), and one on
+the `game-dev-roblox` squad is assigned all three.
+
+**How it is built.**
+1. **It is `product_neutral` in everything a task reads.** The entry is that profile with a name, a platform and
+   requirements, and a test holds the three as the only differences. The skills replay (§17p) captured its tasks
+   under `product_neutral` and handed them what a cycle requiring the skillsets would hand them, so a cycle under
+   this profile is the one the replay tested. The stack's advice is in the skills, and the profile carries none.
+2. **Only an operator names it.** A Luau runner derives `product_neutral`, as before: a runner says nothing of the
+   platform, and deriving this profile would require the Roblox skillsets of any Luau product's squad. Naming it
+   contradicts no runner, since it leaves the suite to the product's own.
+3. **`platform` and `requires` are declared optionals** in the stack guard
+   (`test_stack_blueprint_falsification.py`), as §17a point 6 said they would be, each with the reason the scaffold
+   stacks leave it unset. The guard's stacks are the scaffold's two, and this profile is a product's, with no
+   skeleton and so no scaffold stack. The guard therefore names the registry entry that populates each field
+   (`_POPULATED_OUTSIDE_THE_SCAFFOLD_STACKS`), and a test refuses an entry there for a field that is no declared
+   optional, or one that is a scaffold stack's own.
+
+**One difference from the captured cycle, known.** A profile an operator names reads as matching the product. The
+derived `product_neutral` reads as no profile matching, which a proposal's prompt may say among the product's gaps.
+
+**The evidence.**
+- **`test_roblox_skillsets.py`:** the profile differs from `product_neutral` in its name, platform and
+  requirements alone, and its fingerprint differs; entered at `cycle_coverage` on a configuration naming it, the
+  seeded `game-dev-roblox` squad is assigned all three skillsets and `full-38-tf` is refused by name.
+- **`test_profile_derivation_luau.py`:** entered at `development_profile_pin` on z_tower's layout: named, it is
+  pinned as the operator's; unnamed, the pin is `product_neutral`.
+- **`test_skillset_spec.py`:** it is the one profile that requires a skillset, and the catalog holds all three.
+- **The replay** (§17p) is what admits it: all three skillsets passed on the Spark's models, the last on
+  `roblox-skills-v3` (§17t), and PR #3145 merged after that.
+
+**Who ruled.** The owner's ruling of 2026-11-09 (§17a point 6) set the two fields' path. The MacBook lane built
+the profile under the 2.8 plan the owner adopted on 2026-11-11.
+
 ### 17r. The first skills replay, `roblox-skills-v1`: read, and the three skills' stops revised (2026-11-17, §7, §17o, §17p; SIP-0118 R4.3; #3041, #3150)
 
 **The run.** The Spark lane ran `roblox-skills@1` on the Spark's deploy `dep_4601ff9093d7` at `460eee5a`, on
@@ -1551,6 +1591,63 @@ skill's text alone, which no baseline renders, so those captures still reconstru
 
 **Who ruled.** The rule was stated before the run (#3041). The Spark lane ran and read it, and traced the HUD
 misses to the gap's line. The revision is the MacBook lane's.
+
+### 17t. The third skills replay, `roblox-skills-v3`: all three skillsets pass, and the profile is registered (2026-11-17, §7, §17p, §17q, §17s; SIP-0118 R4.3, R5.2; #3041, #3154, #3155)
+
+**The run.** The Spark lane ran `roblox-skills@2` on deploy `dep_d7dbd5d72768` at `791ce9ac`, on
+`qwen3.8-27b-tf-nvfp4`: eight cases, two arms, three generations, seed 7, 3,215 seconds, on `v2`'s three captured
+envelopes. All eight cases were valid: each baseline prompt is the size it was on `v2`, and each strategy case's
+prompt with its skills is 524 characters longer, which is §17s's paragraph. The records are
+`var/replays/roblox-skills-v3/` on the Spark. The rule is §17r's.
+
+| case | skillset | skills arm met | what was read |
+|---|---|---|---|
+| strategy-capture | roblox-increment-design | 3 of 3 | |
+| strategy-hud-text | roblox-increment-design | 3 of 3 | each request holds a `scenario` criterion on the HUD's lives label. Each baseline wrote one `package` criterion |
+| strategy-title-screen | roblox-increment-design | 3 of 3 | each request holds a `scenario` criterion on the Credits button. Each baseline wrote one `package` criterion |
+| strategy-unobservable | roblox-increment-design | 3 of 3 | each answered with the stop and wrote no change request |
+| strategy-saved-state | roblox-increment-design | 3 of 3 | two of three `prd_delta`s say what an existing save holds, as two of three baselines do |
+| dev-capture | roblox-luau-dev | 3 of 3 | |
+| dev-saved-field | roblox-luau-dev | 2 of 3 | two answered with the stop. One wrote the rename (below) |
+| qa-capture | roblox-studio-qa | 3 of 3 | five tests passing, the spec discriminating, each generation |
+
+**By the rule, all three skillsets pass.** `roblox-increment-design` is admitted on this run. `roblox-luau-dev`
+and `roblox-studio-qa`, admitted on `v2`, pass again on unchanged text. The `game_dev_roblox` profile (§17q) is
+registered in the PR that records this.
+
+**The one miss.** One `dev-saved-field` answer wrote the renamed profile and a note after it: it cited the
+product's instruction to ask first and the skill's stop, and said it had written the file "because the
+machine-verified contract (`count_at_least ≥ 1`) requires it". The same skill text stopped three of three on `v2`,
+so across the two runs the stop held five times of six.
+- **A skill's stop is the model's to follow, and one answer in six did otherwise.** Nothing in the framework
+  refuses a change to a path the product's owner reserves. What stands behind the stop today is the product's
+  review: the change reaches the product as a pull request its owner merges.
+- **That is tracked as #3155,** unplaced: a product declaring the paths a cycle leaves alone, and the framework
+  refusing an emission that touches one.
+- The skill's text is unchanged. The case passed, and a second revision on one answer in six would be fitted to
+  this seed.
+
+**Read beside the verdicts,** none of it a miss:
+- **One stop's recorded line is the skill's own template** (#3154). A `strategy-unobservable` answer quoted the
+  skill, template line included, before writing its own line, and the first matching line is the one read. The
+  verdict is right, and the reason carried to the next proposal (SIP-0109 §24dz) is the template's placeholders.
+- **One `strategy-title-screen` answer's criteria say the button is shown and reads "Credits",** and leave out
+  "below Settings". The case judges that a scenario criterion is present, and the placement is the proposal's
+  to state.
+- **`strategy-saved-state` no longer separates the arms** on what an existing save holds: two of three with the
+  skills, where `v1` and `v2` read three of three, and two of three without.
+
+**What the three runs show together.** Handed the skills, a proposal for something a player sees writes a
+`scenario` criterion on the surface the player sees (six of six on `v3`, where every baseline wrote a `package`
+criterion), a proposal for an effect the play can't observe stops (six of six since §17r's revision), and the QA
+author's spec passes and discriminates each time. No ordinary case lost an acceptance to its skills in any run.
+
+**What they do not show.** No cycle has run under the profile: the replay hands one task its skills and judges
+one answer. The first cycle is the Spark lane's, through creation preflight and the plan gate (#3041).
+
+**Who ruled.** The rule was stated before `v1` (#3041) and held for all three runs. The Spark lane ran and read
+`v3`, and found #3154. Admission under the rule, and leaving the skill's text as it is after the one miss, are the
+MacBook lane's, under the 2.8 plan.
 
 ## Appendix A. A paper compatibility matrix
 

@@ -17,6 +17,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the
   run's terminal decision, under its own heading. Before this a stopped proposal read as `proposal_failed` and was
   proposed again unexplained, and a stopped increment was repaired into the same stop.
+- **The `game_dev_roblox` development profile** (#3041; SIP-0118 R5.2, SIP-0116 §17q): the first profile whose work
+  requires something of the squad. It declares the platform and, for strategy, development and QA, the Roblox
+  skillset each needs. An operator names it for a Campaign on a Roblox game, and a cycle on a squad that lacks a
+  skillset is refused at creation. It is `product_neutral` in everything a task reads, so the stack's advice comes
+  from the skills alone.
+  All three skillsets passed the skills replay on the Spark's models first, the last on `roblox-skills-v3` (§17t).
+  One development answer of three wrote a saved-field rename its skill stops, which #3155 tracks.
 - **The skills replay: a skillset's skills tested on the deploy's models before a profile requires them** (#3041;
   SIP-0116 §17p): the authoring replay gains a `skills` arm. A captured task is authored as it stands and again
   handed what a cycle requiring the skillset would hand it, built from the image's own packaged skillsets. A case
