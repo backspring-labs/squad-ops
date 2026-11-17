@@ -135,9 +135,11 @@ cases:
       The captured test task as it stands: the spec the plan expected, written for the product's
       own runner. The emitted spec is run on the product with the capture's own implementation
       laid over it, so a pass is the spec loading and passing under tests/run.luau. A wrong
-      implementation in the capture would read here as a failing spec. Checked byte for byte
-      against its capture.
-    expect: {accepted: true, emits_expected: true, specs_pass: true}
+      implementation in the capture would read here as a failing spec. The spec is also run
+      alone without that implementation, and the two readings are judged by the Campaign's own
+      rule: a spec that requires, at the top of its file, a module the change adds reads
+      only_setup_failures there (SIP-0109 §24ec). Checked byte for byte against its capture.
+    expect: {accepted: true, emits_expected: true, specs_pass: true, discriminates: true}
 
   - id: qa-no-runner
     task_type: qa.test

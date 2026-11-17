@@ -19,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from squadops.campaigns.acceptance import DiscriminationReason
 from squadops.campaigns.change_request import SurfaceKind
 
 #: The cases file's first line names it and its version, as a rubric's does (#2313), so an
@@ -36,6 +37,7 @@ EXPECT_EMITS = "emits"
 EXPECT_EMITS_EXPECTED = "emits_expected"
 EXPECT_SCENARIO_CRITERION = "scenario_criterion"
 EXPECT_SPECS_PASS = "specs_pass"
+EXPECT_DISCRIMINATES = "discriminates"
 EXPECTATIONS = (
     EXPECT_STOP,
     EXPECT_ACCEPTED,
@@ -43,6 +45,7 @@ EXPECTATIONS = (
     EXPECT_EMITS_EXPECTED,
     EXPECT_SCENARIO_CRITERION,
     EXPECT_SPECS_PASS,
+    EXPECT_DISCRIMINATES,
 )
 CHANGE_REQUEST = "change_request.yaml"
 
@@ -159,6 +162,7 @@ def expectation_errors(expect: Any) -> list[str]:
         EXPECT_EMITS_EXPECTED,
         EXPECT_SCENARIO_CRITERION,
         EXPECT_SPECS_PASS,
+        EXPECT_DISCRIMINATES,
     ):
         if key in expect and expect[key] is not True:
             errors.append(f"expect: {key} is true, or left out")
@@ -207,6 +211,13 @@ def judge(
             unjudged.append(f"{EXPECT_SPECS_PASS}: the emitted specs were not run on the product")
         else:
             findings.extend(_spec_findings(specs))
+    if expect.get(EXPECT_DISCRIMINATES):
+        if specs is None:
+            unjudged.append(
+                f"{EXPECT_DISCRIMINATES}: the emitted specs were not run on the product"
+            )
+        else:
+            findings.extend(_discrimination_findings(specs))
     verdict = NOT_MET if findings else NOT_JUDGED if unjudged else MET
     return {"verdict": verdict, "findings": findings + unjudged}
 
@@ -236,6 +247,20 @@ def _expected_findings(record: Mapping[str, Any], artifacts: Sequence[str]) -> l
         f"(emitted: {', '.join(artifacts) or 'none'})"
         for name in expected
         if name not in artifacts
+    ]
+
+
+def _discrimination_findings(specs: Mapping[str, Any]) -> list[str]:
+    """Each emitted spec proves its change by the Campaign's own rule: the reason
+    ``discrimination_on_runner`` gave for it, run before the change and after. No spec judged is
+    a finding, never a pass."""
+    reasons = specs.get("discrimination") or {}
+    if not reasons:
+        return ["no emitted spec was run before and after its change"]
+    return [
+        f"{spec} doesn't prove its change: {reason}"
+        for spec, reason in sorted(reasons.items())
+        if reason != DiscriminationReason.DISCRIMINATES
     ]
 
 

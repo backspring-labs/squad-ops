@@ -33,7 +33,10 @@ skills-arm authoring is judged by its case's expectation (``judged.jsonl``). A c
 emitted specs to pass is judged only when ``--product-checkout`` names a checkout of the product at
 the capture's commit, with its test runtime installed: the specs are run there, on a copy, by the
 product's own runner, and read by the framework's ``luau`` reader, over the files the test task
-was written against (``under_test``). Without it that expectation reads ``not_judged``.
+was written against (``under_test``). A case that expects its spec to discriminate has each spec
+run alone there twice, without those files and with them, and the two readings judged by the
+Campaign's own rule (``spec_discrimination``). Without a checkout those expectations read
+``not_judged``.
 """
 
 from __future__ import annotations
@@ -378,6 +381,59 @@ def run_specs(
     }
 
 
+def spec_discrimination(
+    checkout: Path,
+    artifacts: list[dict],
+    argv: tuple[str, ...],
+    *,
+    beneath: tuple[dict, ...] | list[dict] = (),
+) -> dict:
+    """Whether each emitted spec proves the change it was written for, by the Campaign's own rule
+    (``discrimination_on_runner``, SIP-0109 §24ci (a)): ``{<spec's path>: <reason>}``, where the
+    reason is ``discriminates`` or why it doesn't.
+
+    Each spec is run alone, as the runner runs one file (its path after ``argv``): on the product
+    as checked out, where one of its tests must fail for a reason of its own, and again with the
+    files its task was written against laid beneath (``under_test``), where that test must pass.
+    A spec that can't load on the product before the change reads ``only_setup_failures``
+    (SIP-0109 §24ec). A run that didn't happen reads ``not_run``."""
+    from squadops.campaigns.acceptance import discrimination_on_runner
+    from squadops.sandbox.findings import LUAU, read
+
+    def reading(layers: list[dict], spec: str):
+        with tempfile.TemporaryDirectory() as scratch:
+            tree = Path(scratch) / "product"
+            shutil.copytree(checkout, tree, ignore=shutil.ignore_patterns(".git"), symlinks=True)
+            for artifact in layers:
+                relative = PurePosixPath(str(artifact["name"]))
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise SystemExit(f"an emitted file's path leaves the product: {relative}")
+                target = tree / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(str(artifact["content"]), encoding="utf-8")
+            try:
+                done = subprocess.run(
+                    [*argv, spec],
+                    cwd=tree,
+                    capture_output=True,
+                    text=True,
+                    timeout=_SPEC_TIMEOUT_SECONDS,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+        return read(LUAU, done.stdout, done.stderr, done.returncode)
+
+    found = {}
+    for artifact in artifacts:
+        spec = str(artifact["name"])
+        if not spec.endswith(".spec.luau"):
+            continue
+        before = reading(list(artifacts), spec)
+        after = reading([*beneath, *artifacts], spec)
+        found[spec] = str(discrimination_on_runner(spec, LUAU, before, after).reason)
+    return found
+
+
 def judge_records(records: list[dict], notes: dict, specs_for) -> list[dict]:
     """Each authoring record's judgement. The skills arm is held to its case's expectation; the
     baseline is recorded for contrast and held to nothing, since it was handed no skill.
@@ -399,7 +455,10 @@ def judge_records(records: list[dict], notes: dict, specs_for) -> list[dict]:
             "skill_stop": record.get("skill_stop"),
         }
         if record["arm"] == Arm.SKILLS.value:
-            wants_specs = bool(expect.get("specs_pass")) and specs_for is not None
+            wants_specs = (
+                bool(expect.get("specs_pass") or expect.get("discriminates"))
+                and specs_for is not None
+            )
             specs = specs_for(record) if wants_specs and record["success"] else None
             row.update(judge(expect, record, specs=specs))
             if specs is not None:
@@ -419,12 +478,13 @@ def _judge_and_report(args, cases, case_envelopes, records, notes, directory) ->
         beneath = {e["envelope_id"]: under_test(e) for e in case_envelopes}
 
         def specs_for(record: dict) -> dict:
-            return run_specs(
-                args.product_checkout,
-                record["artifacts"],
-                argv,
-                beneath=beneath[record["envelope_id"]],
-            )
+            laid = beneath[record["envelope_id"]]
+            return {
+                **run_specs(args.product_checkout, record["artifacts"], argv, beneath=laid),
+                "discrimination": spec_discrimination(
+                    args.product_checkout, record["artifacts"], argv, beneath=laid
+                ),
+            }
 
     judged = judge_records(records, notes, specs_for)
     with (directory / "judged.jsonl").open("w") as out:

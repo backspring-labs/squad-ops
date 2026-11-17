@@ -93,6 +93,10 @@ end)
 `WaitForChild` raise. So before the change the first check fails and the test reads
 `[assertion]`. A module that is there and fails to load still reads `[setup]`.
 
+Where the change adds a folder too, look up and check each new level the same way before the
+next. And where a criterion's observable is written as `require(Shared.Modules.StreakRules)…`,
+it tells you what to call, not where the `require` goes: reach the module as above.
+
 ## What can be tested here
 
 Modules that only compute load here: rules, formulas, configs and state transitions over plain

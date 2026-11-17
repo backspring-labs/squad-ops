@@ -18,5 +18,13 @@ So a spec for a module this change adds looks the module up inside each test, in
 and only then requires it. Before the change that check is the assertion that fails. A module the
 product already has is required at the top of the file, as the product's own specs do.
 
+Where the change adds a folder too, each new level is looked up and checked the same way before
+the next: calling a method on a folder that isn't there raises, and the message says nothing of
+what is missing.
+
+A criterion's observable may be written as `require(<the new module>).<function>(…)`. That says
+what to call and what it returns. It doesn't say where the `require` goes: the spec still reaches
+the module inside each test.
+
 A design or a plan for such a spec says the same: it never asks that the spec begin with the
 `require` of the new module, and its draft of the spec doesn't.

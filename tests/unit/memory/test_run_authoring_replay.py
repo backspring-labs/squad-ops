@@ -388,6 +388,71 @@ def test_the_files_a_test_task_was_written_against_come_from_its_own_inputs():
         runner.under_test(missing)
 
 
+#: A runner that runs one spec, as the product's does with a path after its script. The spec's
+#: first line says how it reaches the module: ``lookup`` fails its test's own check when
+#: ``src/Shop.luau`` is absent, and anything else fails to load.
+_ONE_SPEC_RUNNER = """\
+import pathlib, sys
+spec = sys.argv[1]
+there = pathlib.Path("src/Shop.luau").exists()
+lookup = pathlib.Path(spec).read_text().startswith("lookup")
+name = f"{spec} > pays the bonus"
+if there:
+    print(f"PASS {name}")
+    print("Tests: 1 passed, 0 failed, 0 errored, 0 setup, 1 total")
+elif lookup:
+    print(f"FAIL {name} [assertion] Shop exists: got nil")
+    print("Tests: 0 passed, 1 failed, 0 errored, 0 setup, 1 total")
+else:
+    print(f"FAIL {spec} [setup] Shop is not a valid member of Folder")
+    print("Tests: 0 passed, 0 failed, 0 errored, 1 setup, 1 total")
+sys.exit(0 if there else 1)
+"""
+
+
+@pytest.mark.parametrize(
+    ("spec", "beneath", "reason"),
+    [
+        ("lookup", [{"name": "src/Shop.luau", "content": "return {}"}], "discriminates"),
+        # Required at the top of the file: it can't load before the change (SIP-0109 §24ec).
+        ("require", [{"name": "src/Shop.luau", "content": "return {}"}], "only_setup_failures"),
+        # Nothing laid beneath: the spec fails after the change as it did before.
+        ("lookup", [], "fails_on_candidate"),
+    ],
+    ids=["looked-up-in-the-test", "required-at-the-top", "no-implementation"],
+)
+def test_an_emitted_spec_is_judged_before_and_after_its_change_by_the_campaigns_rule(
+    checkout, spec, beneath, reason
+):
+    """Entered at the host's own step, through ``discrimination_on_runner`` and the ``luau``
+    reader. Bugs caught: a spec that only passes with the change counted as proving it, when it
+    could never have failed for its own reason; and the two runs sharing one tree."""
+    (checkout / "tests" / "run.py").write_text(_ONE_SPEC_RUNNER)
+    artifacts = [
+        {"name": "tests/Shop.spec.luau", "content": spec},
+        {"name": "docs/notes.md", "content": "not a spec"},
+    ]
+
+    found = runner.spec_discrimination(
+        checkout, artifacts, (sys.executable, "tests/run.py"), beneath=beneath
+    )
+
+    assert found == {"tests/Shop.spec.luau": reason}
+    assert not (checkout / "src").exists()
+
+
+def test_a_spec_whose_runner_never_ran_is_not_run_and_no_spec_is_no_judgement(checkout):
+    """Edge: a missing runtime, and an authoring that emitted no spec."""
+    spec = [{"name": "tests/Shop.spec.luau", "content": "lookup"}]
+
+    assert runner.spec_discrimination(checkout, spec, ("no-such-runner-binary",)) == {
+        "tests/Shop.spec.luau": "not_run"
+    }
+    assert (
+        runner.spec_discrimination(checkout, [{"name": "src/Shop.luau", "content": "x"}], ()) == {}
+    )
+
+
 def test_only_the_skills_arm_is_held_to_its_cases_expectation():
     """Bug caught: a baseline, handed no skill, judged against a stop it could never give; or a
     spec expectation read as met when nothing ran it."""

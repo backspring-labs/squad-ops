@@ -1373,7 +1373,10 @@ of its own:
   by the framework's `luau` reader. Only the emitted specs' tests count. Without a checkout the expectation reads
   `not_judged`, never met. The checkout is the product at the pin, before the captured run's own change, so the
   files a test task was written against (its `implementation_artifacts`, with the bodies its inputs hold) are laid
-  beneath the emitted specs. One the inputs don't hold is refused.
+  beneath the emitted specs. One the inputs don't hold is refused;
+- `discriminates`: each emitted spec proves its change by the Campaign's own rule. It is run alone on the checkout,
+  and again with the task's implementation files laid beneath, and the two readings go to `discrimination_on_runner`
+  (SIP-0109 §24ci (a)). A spec that can't load before the change reads `only_setup_failures` (SIP-0109 §24ec).
 
 The baseline is recorded for contrast and held to nothing: it was handed no skill.
 
