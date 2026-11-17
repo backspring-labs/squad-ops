@@ -61,8 +61,8 @@ CODE_UNDER_TEST_MAX_CHARS = 16_000
 _READS_IMPORTS = (".py", *ECMASCRIPT_SUFFIXES)
 #: A file that is its folder's module: Luau's and Python's.
 _PACKAGE_MODULES = ("init", "__init__")
-#: What joins a module path's parts in a task's text: a dot, or the `` > `` a Roblox product's
-#: comments write between instances.
+#: What joins a module path's parts in a task's text: a dot, or the `` > `` a game's own comments
+#: write between the instances of its tree.
 _MODULE_SEPARATOR = r"(?:\.|\s*>\s*)"
 
 
@@ -133,7 +133,7 @@ def code_under_test(
     ``unit.shots`` for a count the helper returns as ``shots``. It read 0, and three repairs guessed
     at the name (``cyc_8e691eb2bccf``). One hop: the helper's own imports are the helper's concern.
 
-    The task's text names a file by its path, or by its dotted module path (#3139): a Roblox plan
+    The task's text names a file by its path, or by its dotted module path (#3139): a game's plan
     says ``require(Shared.Modules.SalePricing)`` for ``src/Shared/Modules/SalePricing.luau``, and
     a first spec has no suite beside it whose imports could be read.
     """
@@ -147,7 +147,7 @@ def code_under_test(
 
 def _named_as_a_module(path: str, task_text: str) -> bool:
     """Whether ``task_text`` names ``path`` as a module: its folders and its name without the
-    extension, joined by dots or by `` > `` (as a Roblox product's own comments write an instance
+    extension, joined by dots or by `` > `` (as a game's own comments write an instance
     path), two parts at least.
 
     The name starts at the repository's root or below its first folder, which is where a source
