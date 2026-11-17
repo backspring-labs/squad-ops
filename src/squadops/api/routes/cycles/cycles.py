@@ -43,6 +43,7 @@ from squadops.api.runtime.deps import (
     get_memory_store,
     get_project_registry,
     get_reference_resolvers,
+    get_remote_execution,
     get_sandbox_client,
     get_source_repository,
     get_squad_profile_port,
@@ -231,6 +232,9 @@ class ToolPreflight:
     authorities: Mapping[str, ToolAuthorityPort] = field(default_factory=dict)
     worker_registry: Any | None = None
     sandbox_client: Any | None = None
+    #: #3159: the runtime's own way to a worker, ``None`` when it binds none. A worker's tool is
+    #: unavailable without it, whatever the registry lists.
+    remote_execution: Any | None = None
     project_id: str | None = None
     #: SIP-0116 §17n (#3042): what an authority's ``ProductView`` is read from. The cycle's pinned
     #: source (``None`` on a sample application, so its authorities are given no view), the
@@ -270,7 +274,10 @@ async def _tool_preflight_decision(
             product=product,
         )
     ) + await availability_findings(
-        required, worker_registry=tools.worker_registry, sandbox_client=tools.sandbox_client
+        required,
+        worker_registry=tools.worker_registry,
+        sandbox_client=tools.sandbox_client,
+        remote_execution=tools.remote_execution,
     )
     return PreflightDecision(
         blocking=tuple(
@@ -553,6 +560,9 @@ class CreationPorts:
     tool_authorities: Mapping[str, Any] = field(default_factory=dict)
     worker_registry: Any | None = None
     sandbox_client: Any | None = None
+    #: #3159: the runtime's remote-execution port, ``None`` under ``remote_execution.provider
+    #: none``, where no operation is sent to a worker the registry lists.
+    remote_execution: Any | None = None
     #: SIP-0116 §17n (#3042): the managed clone a repository-backed cycle's product is read from,
     #: for the authorities its tools are checked against. Optional, as the vault is: a runtime
     #: with none refuses a tool whose authority asks for the product, naming why.
@@ -580,6 +590,7 @@ class CreationPorts:
             tool_authorities=get_tool_authorities(request),
             worker_registry=get_worker_registry(request),
             sandbox_client=get_sandbox_client(request),
+            remote_execution=get_remote_execution(request),
             source_repository=optional(get_source_repository),
         )
 
@@ -889,6 +900,7 @@ async def prepare_cycle(
             authorities=ports.tool_authorities,
             worker_registry=ports.worker_registry,
             sandbox_client=ports.sandbox_client,
+            remote_execution=ports.remote_execution,
             project_id=project_id,
             source_context=source_context,
             source_repository=ports.source_repository,

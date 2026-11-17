@@ -3433,7 +3433,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # The handler refuses the task with this reason, as a supplier it can't vouch for.
             return
         why = await unavailable(
-            tool, worker_registry=self._worker_registry, sandbox_client=self._sandbox
+            tool,
+            worker_registry=self._worker_registry,
+            sandbox_client=self._sandbox,
+            remote_execution=self._remote_execution,
         )
         if why is not None:
             raise _ExecutionError(
@@ -5390,6 +5393,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         criteria = scenario_criteria_of(plan)
         if not criteria:
             return
+        # #3160: a run cancelled while it was preparing asks no provider for anything. The task
+        # loop reads the run's status before each task, and this step comes before the loop.
+        if await self._is_cancelled(run_id):
+            raise _CancellationError(run_id)
         try:
             judgements = await judge_scenario_baselines(
                 cycle,

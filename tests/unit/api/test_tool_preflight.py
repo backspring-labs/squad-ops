@@ -62,10 +62,17 @@ async def _registry(*, online: bool) -> WorkerRegistry:
     return registry
 
 
+#: A runtime that binds remote execution: the port's presence is all the check reads (#3159).
+BOUND = object()
+
+
 async def _preflight(config: dict, **tools: Any) -> tuple[str, ...]:
-    """Each refusal's code and message for ``config`` with ``tools``; ``()`` when created."""
+    """Each refusal's code and message for ``config`` with ``tools``; ``()`` when created. The
+    runtime binds remote execution unless a test says otherwise."""
     decision = await route._tool_preflight_decision(
-        PROFILE, config, route.ToolPreflight(project_id="prj-1", **tools)
+        PROFILE,
+        config,
+        route.ToolPreflight(project_id="prj-1", **{"remote_execution": BOUND, **tools}),
     )
     return tuple(f"{f.code}: {f.message}" for f in decision.blocking)
 
@@ -97,23 +104,29 @@ async def test_a_tool_its_providers_rule_refuses_is_refused_naming_the_rule(conf
         ("offline", "fixture-editor/play_scenario and is offline"),
         ("none_serves", "no registered worker serves fixture-editor/play_scenario"),
         ("no_registry", "this runtime holds no worker registry"),
+        ("unbound", "this runtime binds no remote execution (remote_execution.provider none)"),
     ],
 )
 async def test_a_tool_no_worker_can_run_is_refused_as_availability_never_coverage(
     config, registry, says
 ):
-    """§14: an offline worker reads as availability, never as a missing skillset. Bug caught:
-    the squad told to carry a skillset it carries, or a cycle created that stalls at its first
-    operation."""
+    """§14: an offline worker reads as availability, never as a missing skillset. Bugs caught:
+    the squad told to carry a skillset it carries; a cycle created that stalls at its first
+    operation; and a cycle created on a runtime that binds no remote execution because a worker
+    is registered and online, whose every scenario then reads not executed (#3159)."""
     registries = {
         "offline": lambda: _registry(online=False),
         "none_serves": lambda: _empty_registry(),
         "no_registry": None,
+        "unbound": lambda: _registry(online=True),
     }
     worker_registry = await registries[registry]() if registries[registry] else None
 
     [refusal] = await _preflight(
-        config, authorities={"fixture-editor": _Allows()}, worker_registry=worker_registry
+        config,
+        authorities={"fixture-editor": _Allows()},
+        worker_registry=worker_registry,
+        remote_execution=None if registry == "unbound" else BOUND,
     )
 
     assert refusal.startswith("skillset_availability:")
@@ -171,13 +184,24 @@ def test_creation_and_a_campaigns_launch_read_the_same_tool_ports():
     cycles skip the checks every operator-created cycle passes."""
     fields = {f.name for f in dataclasses.fields(route.CreationPorts)}
 
-    assert {"tool_authorities", "worker_registry", "sandbox_client"} <= fields
+    assert {"tool_authorities", "worker_registry", "sandbox_client", "remote_execution"} <= fields
 
 
-async def test_the_create_preflight_refuses_the_cycle_with_the_tool_and_its_location(config):
+@pytest.mark.parametrize(
+    ("online", "remote_execution", "says"),
+    [
+        (False, BOUND, "fixture-editor/play_scenario and is offline"),
+        (True, None, "this runtime binds no remote execution (remote_execution.provider none)"),
+    ],
+    ids=["a worker offline", "no remote execution bound"],
+)
+async def test_the_create_preflight_refuses_the_cycle_with_the_tool_and_its_location(
+    config, online, remote_execution, says
+):
     """The wiring, entered at ``_run_create_preflight``, the call cycle creation makes with the
-    ports it gathered. Bug caught: the tool checks computed and never combined into the
-    preflight, so the cycle is created and its operation reads not executed mid-run."""
+    ports it gathered. Bugs caught: the tool checks computed and never combined into the
+    preflight, so the cycle is created and its operation reads not executed mid-run; and the
+    runtime's own binding never reaching the check, so a worker online is enough (#3159)."""
     from squadops.cycles.models import PreflightRejectedError
 
     with pytest.raises(PreflightRejectedError) as refused:
@@ -188,13 +212,34 @@ async def test_the_create_preflight_refuses_the_cycle_with_the_tool_and_its_loca
             campaign_cycle=False,
             tools=route.ToolPreflight(
                 authorities={"fixture-editor": _Allows()},
-                worker_registry=await _registry(online=False),
+                worker_registry=await _registry(online=online),
+                remote_execution=remote_execution,
                 project_id="prj-1",
             ),
         )
 
     assert "tool play_scenario (fixture-editor, at worker)" in str(refused.value)
     assert "has no provider available" in str(refused.value)
+    assert says in str(refused.value)
+
+
+def test_creation_reads_the_runtimes_binding_from_the_request():
+    """The other end of the wiring: ``CreationPorts.of_request`` reads the port the runtime put
+    on its state. Bug caught: the field declared and never filled, so every cycle that needs a
+    worker is refused, or (filled with the registry) none is."""
+    from types import SimpleNamespace
+
+    def request(**state):
+        base = dict.fromkeys(
+            ("project_registry", "squad_profile", "cycle_registry", "deploy_registry",
+             "memory_records", "reference_resolvers", "tool_authorities", "worker_registry",
+             "sandbox_client"),
+            object(),
+        )  # fmt: skip
+        return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(**{**base, **state})))
+
+    assert route.CreationPorts.of_request(request(remote_execution=BOUND)).remote_execution is BOUND
+    assert route.CreationPorts.of_request(request()).remote_execution is None
 
 
 # ---------------------------------------------------------------- at dispatch (part 2)
@@ -216,9 +261,17 @@ def _operation_task(skillset_digest: str):
     )  # fmt: skip
 
 
-@pytest.mark.parametrize("online", [True, False])
+@pytest.mark.parametrize(
+    ("online", "bound", "says"),
+    [
+        (True, True, None),
+        (False, True, "fixture-editor/play_scenario and is offline"),
+        (True, False, "this runtime binds no remote execution (remote_execution.provider none)"),
+    ],
+    ids=["available", "a worker offline", "no remote execution bound"],
+)
 async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatched(
-    monkeypatch, online
+    monkeypatch, online, bound, says
 ):
     """§8, entered at the executor's ``_require_tool_available``, which runs after a task's
     preconditions. Bugs caught: a worker that went offline after creation leaving the operation
@@ -232,11 +285,15 @@ async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatch
 
     catalog = _catalog(TOOL)
     monkeypatch.setattr(executor_module, "packaged_skillsets", lambda: catalog)
-    executor = SimpleNamespace(_worker_registry=await _registry(online=online), _sandbox=None)
+    executor = SimpleNamespace(
+        _worker_registry=await _registry(online=online),
+        _sandbox=None,
+        _remote_execution=BOUND if bound else None,
+    )
     method = executor_module.DispatchedFlowExecutor._require_tool_available
     task = _operation_task(catalog["fixture-qa"].digest)
 
-    if online:
+    if says is None:
         await method(executor, task)
         return
     with pytest.raises(_ExecutionError) as ended:
@@ -249,7 +306,7 @@ async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatch
         "task-op",
     )
     assert "tool play_scenario (fixture-editor, at worker)" in str(ended.value)
-    assert "fixture-editor/play_scenario and is offline" in terminal.termination_reason
+    assert says in terminal.termination_reason
 
 
 async def test_a_task_that_runs_no_operation_is_never_asked_for_a_tool():
@@ -264,7 +321,7 @@ async def test_a_task_that_runs_no_operation_is_never_asked_for_a_tool():
         task_type="development.develop", correlation_id="c", causation_id="c", trace_id="t",
         span_id="s",
     )  # fmt: skip
-    executor = SimpleNamespace(_worker_registry=None, _sandbox=None)
+    executor = SimpleNamespace(_worker_registry=None, _sandbox=None, _remote_execution=None)
 
     await executor_module.DispatchedFlowExecutor._require_tool_available(executor, develop)
 

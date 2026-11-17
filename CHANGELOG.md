@@ -203,6 +203,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A cycle that needs a worker's tool is refused on a runtime that binds no remote execution** (#3159; SIP-0116
+  §17w): creation's check read the worker registry alone, so a deploy with `remote_execution.provider none` and a
+  worker online accepted a cycle whose every scenario then read not executed.
+- **A run cancelled while it was preparing asks no scenario to be played** (#3160): the baseline step ran before
+  the task loop's own read of the run's status, so a cancelled cycle's scenario could be sent to the worker.
 - **A Campaign can name a development profile** (#3157; SIP-0109 §24ed): `policy.stack` carries only a scaffold
   stack, so no Campaign could run under `game_dev_roblox`. A policy now declares `development_profile` beside it,
   each launch carries that key alone, and a squad lacking the skillsets the profile requires is refused at the

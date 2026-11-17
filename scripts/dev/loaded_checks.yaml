@@ -2635,3 +2635,22 @@ checks:
       policy = SimpleNamespace(stack=None, development_profile="game_dev_roblox")
       print("development_profile" in CampaignPolicy.__dataclass_fields__, _profile_values(SimpleNamespace(policy=policy)))
     expect: "True {'development_profile': 'game_dev_roblox'}"
+  - id: "3159-remote-execution-bound"
+    what: a worker's tool is unavailable on a runtime that binds no remote execution, whatever its registry lists (SIP-0116 §17w)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from squadops.capabilities.skillsets import ToolRequest
+      from squadops.capabilities.tool_checks import unavailable
+      tool = ToolRequest("play_scenario", "fixture-editor", "worker")
+      print(asyncio.run(unavailable(tool, worker_registry=object(), sandbox_client=None, remote_execution=None)))
+    expect: "this runtime binds no remote execution (remote_execution.provider none)"
+  - id: "3160-cancelled-run-asks-nothing"
+    what: the scenario baseline step reads the run's status before it asks a provider
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+      source = inspect.getsource(DispatchedFlowExecutor._judge_scenario_baselines)
+      print(0 < source.index("self._is_cancelled(run_id)") < source.index("await judge_scenario_baselines("))
+    expect: "True"
