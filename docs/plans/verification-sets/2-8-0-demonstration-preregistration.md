@@ -129,7 +129,9 @@ are observed on a `scenario` surface, "the HUD in a play session". Its backlog, 
   more reason the gate reads machinery and not acceptance.
 
 **Who rules its proposal:** the Spark, under the owner's 2026-11-16 grant for uncounted runs. It is approved as it
-stands when it is a change request for the objective. A return is reported.
+stands when it is a change request for the objective, and when every literal path it names (footprint and criterion
+`paths`) is a file the product holds at its baseline commit, or one the change says it adds (amended 2026-11-17,
+§12b). A return is reported.
 
 **Read per task family:**
 - the strategy proposal;
@@ -301,6 +303,12 @@ acceptable (SIP-0118 R3.5).
     - a setup action that needs that element;
     - a precondition on that element.
   - **A return on that ground** is a permitted ruling by the owner, and is reported like any other return.
+- **The Spark reads each proposal's literal paths against the baseline tree before it sends the change request**
+  (amended 2026-11-17, §12b).
+  - It names any path in the footprint or a criterion's `paths` that the product doesn't hold and the change doesn't
+    say it adds, and that reading goes to the MacBook lane and the owner with the change request.
+  - A return on that ground is a permitted ruling by the owner.
+  - Globs are read as globs: a glob that matches no held file is named too.
   - **How it flows:** the Spark sends the MacBook lane each change request whole, with its scenario, when the gate
     opens.
 
@@ -477,3 +485,65 @@ diagnostic's fault) stays out of it.
 **The order and the time rule are unchanged** (§2, §3). The owner's window ends around 12:04 ET. If the counted run
 can't start under the time rule, it waits for another attended window, on the deploy that window's clean rehearsal
 ran on.
+
+### 12b. The full-path gate's third attempt, and the second fixed deploy (2026-11-17, before any rehearsal or counted run)
+
+**Attempt 3 doesn't count toward step 1.** It ran on the first fixed deploy (`5d374fa5`). Step 1 is the gate run on
+the deploy named below. Every attempt is reported (§9).
+
+**Attempt 3:** `cmp_35659d2394a3`, cycle `cyc_9528027ea865`, deploy `dep_ecf661722547` (`c7dfdb9a`, 288 loaded),
+worker session `wks-3d5c20973c194d88885613b03c02a3a1` at provider version 2, 10:53–11:12 ET. Aborted under the owner's
+grant for uncounted runs.
+
+**What #3175's fixes did on the live path:**
+- **The plan gate was approved by the tier unescalated:** no brief conflict over the scenario declarations, and no
+  re-roll.
+- **Both baseline plays executed their named assertions and failed them,** observed `<absent>`. Both preconditions
+  passed (the v2 reader read `TA_HUD`'s visibility). This is §7.3 C3's mechanism working on the real place.
+
+**Finding 1: the framework's `qa.test` overflowed** (#3179).
+- The plan held one `development.develop` task and no `qa.test`. So the task plan re-appended the workload's static
+  `qa.test` (#439), which has no focus and takes the monolithic prompt: every non-test source and support file.
+- On the game's tree that's 181 files, about 2.25 M chars. The task failed before any model call:
+  `PROMPT_EXCEEDS_CONTEXT_WINDOW`, an estimated 570,726 tokens against 53,248 available.
+- Correction ended the run (`model_limitation`), and the cycle escalated (§10 row 9).
+- Every earlier repository-backed Campaign had a criterion test file, so its plan carried a `qa.test`. A
+  scenario-only increment is the first with none.
+
+**Finding 2: the path named didn't exist** (#3178).
+- The approved footprint named `src/Client/UI/HUD.luau`, as attempt 1's had. The product holds
+  `src/Client/UI/Screens/HUD.luau` (26,586 bytes at `0beaac09`) and no `src/Client/UI/HUD.luau`.
+- The repository map shown to every author was top-level only (`src/ (137 files)`). The developer's
+  `existing_files` was empty, and its prompt never showed the real HUD.
+- It wrote a new 42-line module at the named path, inventing its own `TA_HUD`. Nothing requires that module, so the
+  candidate play couldn't have passed.
+- The Spark approved attempts 1 and 3 under the grant without reading their paths against the tree. The check added
+  to §5 and §7.4 above is that reading.
+
+**The fix: PR #3180** (the MacBook lane's; it closes #3178 and #3179), merged as `2ea70253` (2026-11-17 11:55 ET):
+1. **The repository map** (SIP-0112 H.36): past 400 paths, binary and generated files fold first, by directory, and
+   every other path stays listed with its size. On this game at `0beaac09`: all 234 text files listed, including
+   `src/Client/UI/Screens/HUD.luau (26586 bytes)`.
+2. **New files are named:** `source_repository.new_files`. A task is told which of the files it names the product
+   doesn't hold.
+3. **An increment whose plan authors no `qa.test` dispatches none** (SIP-0109 §24eg). A scenario-only increment
+   runs `governance.define_done`, `development.develop`, then the plays. A cycle that is no increment keeps the
+   workload's `qa.test`.
+
+The worker's side is unchanged: provider version 2, the same harness and qualification record, and no restart.
+
+**Split out, not in #3180:**
+- #3181, unplaced: a proposal's footprint shown to its approver, with new paths marked.
+- #3182, after the demonstration: a plan's own `qa.test` on a product can be shown a whole top-level directory.
+
+**The deploy for steps 1 to 3** is built from `2ea70253` (or main above it by documents only) with `runtime_api` bound, once main's CI on it is green. Its
+record id and verify_loaded count go into the run record before gate attempt 4 (§3, check 2). #3171 stays out of it.
+
+**What is expected of attempt 4, read as G3 (context selection) for the first time:**
+- the proposal's literal paths are held files, or declared additions;
+- the developer's `existing_files` holds the files it edits;
+- the composed task plan has no `qa.test`.
+
+These are readings, not gates. G1, G2, G4 and G5 still decide the gate (§5).
+
+**The window:** the first window closed at the gate. The owner named the next attended window: 2026-11-17, 12:30 to 16:00 ET, at the MacBook ("yes 12:30 to 4 works, I'll be here"). §3's time rule is read against its 16:00 end.
