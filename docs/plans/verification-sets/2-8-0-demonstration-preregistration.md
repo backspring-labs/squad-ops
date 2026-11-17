@@ -571,7 +571,7 @@ Attempts 1 to 3 don't count toward step 1 (12a, 12b).
 **What it ran, in order:**
 - **B-1's proposal** `prop_80a5e297b406` v1 was submitted at 12:52:10. The Spark's path reading went with it: `Screens/HUD.luau` held; `src/Shared/Modules/HudRules.luau` and `tests/criterion_P1.spec.luau` are implied additions.
 - **The ruling bound passed at 13:22:50** (`ruling_overdue`). The Campaign stayed `awaiting_ruling`, and nothing proceeded.
-- **The owner ruled at 14:11:06,** through the MacBook session: "approve as it stands". The MacBook lane's scenario reading found none of the three shapes (§7.4).
+- **The owner ruled at about 14:10,** through the MacBook session: "approve as it stands". The Spark entered it at 14:11:06. The MacBook lane's scenario reading found none of the three shapes (§7.4).
 - **The tier approved the plan gate** at 14:19:50, unescalated.
 - **Both baseline plays** (14:21:31, 14:22:52, about 77 s each on the worker) executed their named assertions and failed them, `<absent>`. The MacBook lane read each play as doing only its scenario's steps (§6.1 item 4).
 - **`qa.test` ran P1 headless** for the first time in this demonstration (`roblox-studio-qa`). Its head check read P1 `fails_on_head` at `0beaac09`.
@@ -580,7 +580,7 @@ Attempts 1 to 3 don't count toward step 1 (12a, 12b).
 **Why it isn't clean: two framework defects, no squad or model cause.** They break §6.1 item 2 (no framework defect) and item 5 (the worker held).
 1. **The lease lapsed behind a probe** (#3185).
    - The worker's lease renewal waited on a health probe of Studio. One probe, made as the play was ending, held about 60 s. Renewals arrived at 19:27:26.5Z and then 19:28:41.6Z, a 75 s gap against the 60 s lease. The runtime expired attempt 1 at 19:28:27.5Z.
-   - The play most likely finished: Studio's log shows a completed transaction at 14:27:41. The worker dropped the result and reset the tool.
+   - The play most likely finished. Studio's log shows play begin and stop, and the operation's connection to Studio closed at 14:27:41.414, the same offset as in the baseline plays. That it completed is an inference. The worker dropped whatever result it held and reset the tool.
 2. **The reset let Studio update itself** (#3184).
    - The reset's relaunch took Studio from `0.747.0.7471481` to `0.748.0.7481526`, and Studio came back with no place open. The reset's failure named neither the update nor the version.
    - §3 check 4 then stopped the window: the Studio version must be the one the worker was qualified on.
@@ -600,7 +600,7 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
   - the reset reads Studio's installed version before the quit and after the reopening, and names a change with both versions and the re-qualification to run;
   - a Studio that isn't the proved version is refused before anything is touched;
   - every reset's outcome goes on the worker's status.
-  - Holding an update back isn't built, because Studio has no setting for it. The protection is the check below.
+  - Holding an update back isn't built: R5.27 found no setting for it in what was read. The protection is the check below.
 - **The live check** (15:26–15:31 ET, Studio 0.748, from the branch carrying both):
   - two plays of about 100 s each held the 60 s lease to an accepted result;
   - a cancel was answered `interrupted`, with the tool reset in 33 s;
@@ -611,7 +611,7 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 **§3 check 4 gains a version reading, before the window's first launch:**
 - Studio is launched fresh.
 - `CFBundleShortVersionString` in `/Applications/RobloxStudio.app/Contents/Info.plist` is read against the pin's version.
-- If it moved, the worker is requalified first, and that is recorded.
+- If it moved, the place file is opened (an updated Studio comes back holding no place), the worker is requalified, and that is recorded.
 - The MacBook lane sends the reading to the Spark before the Spark's first launch. Studio checks for an update at every launch, so a pin read the day before isn't enough.
 
 **The deploy for the next window** is built from `fd0ff66b`, or main above it by documents only, with `runtime_api` bound once the owner opens the window.
@@ -625,7 +625,7 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 3. **The repair diagnostic,** last (§8). #3171 merges only after the counted run.
 
 **What the time rule needs, read from today:**
-- One increment took about 27 minutes from ruling to promote (gate attempt 4), with the rulings prompt.
+- One increment took about 27 minutes from the Campaign's create to its completion (gate attempt 4, 12:20:05 to 12:47:12), with its ruling inside them and prompt.
 - Rehearsal 2 is two increments, so about 60 to 70 minutes.
 - The counted run needs that plus 30 minutes still left when the rehearsal ends.
 - So a window of **about 3 hours, with the owner ruling each proposal within minutes,** holds rehearsal 2 and the counted run.
