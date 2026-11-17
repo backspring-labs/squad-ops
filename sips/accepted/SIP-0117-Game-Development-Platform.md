@@ -1476,6 +1476,10 @@ worker lost a claim (R5.26):
   update that lands at its reset fails the run by name, and the run is made again on the new version.
 - **With no proof at all** the reset has nothing to hold Studio to and compares only across its reopening. Every
   play is already refused by name then (R2.4).
+- **The version read is the installed bundle's,** as a play's own check reads it (R5.19). Studio's installer
+  ends every running Studio before it replaces the bundle (its log, 14:29:06: "Terminating apps with bundleId
+  com.Roblox.RobloxStudio", then the move). So the bundle and a running Studio differ only while a replacement is
+  under way, and a reset that meets one refuses. That is the intended failure: the running Studio is about to end.
 
 **Deliberately not built: holding an update back.**
 - **What was read:** Roblox's Studio setup page and its developer forum (2026-11-17). They describe no setting
