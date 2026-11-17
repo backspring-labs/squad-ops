@@ -2580,3 +2580,19 @@ checks:
       tree = {"src/Shared/Modules/SalePricing.luau": "return {}", "src/Shared/Modules/Sale.luau": "return {}"}
       print(list(code_under_test({}, tree, "require(Shared.Modules.SalePricing)")))
     expect: "['src/Shared/Modules/SalePricing.luau']"
+  - id: "3143-added-module-asset"
+    what: the asset that tells a Luau product's authors how a test reaches a module the change adds is in the image (SIP-0109 §24ec)
+    container: squadops-neo
+    code: |
+      from importlib.resources import files
+      from squadops.capabilities.handlers.source_repository import ADDED_MODULE_TEST_LUAU
+      print((files("squadops.prompts") / "request_templates" / f"{ADDED_MODULE_TEST_LUAU}.md").is_file())
+    expect: "True"
+  - id: "3143-skill-section"
+    what: the Roblox QA skill shows how a spec reaches a module the change adds, and declares its stop (SIP-0109 §24ec, SIP-0116 §17o)
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.skillsets import load_skillsets, skill_stops
+      md = load_skillsets()["roblox-studio-qa"].skill_files["luau-test-loader"]["SKILL.md"]
+      print("## A module the change adds" in md, skill_stops(md))
+    expect: "True ('no tests/run.luau:',)"
