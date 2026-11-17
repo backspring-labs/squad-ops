@@ -510,7 +510,7 @@ def _skills_main(args, envelopes: list[dict], containers: dict[str, str]) -> int
     cases, text = skill_cases_text(args.skill_cases)
     frozen, case_envelopes, notes = skill_plan(args, envelopes, cases, text)
     directory = _REPO / "var" / "replays" / args.experiment
-    _freeze(directory, frozen)
+    _freeze(directory, frozen, validity_only=args.validity_only)
     order = schedule(
         [e["envelope_id"] for e in case_envelopes],
         [Arm(a) for a in frozen["arms"]],
@@ -557,8 +557,15 @@ def _skills_main(args, envelopes: list[dict], containers: dict[str, str]) -> int
     return 0 if all(r["valid"] for r in checks) else 1
 
 
-def _freeze(directory: Path, frozen: dict) -> None:
-    """Write the manifest, or refuse a named experiment whose inputs changed (§0.12)."""
+def _freeze(directory: Path, frozen: dict, *, validity_only: bool = False) -> None:
+    """Write the manifest, or refuse a named experiment whose inputs changed (§0.12).
+
+    A validity-only pass makes no model call and authors nothing, so it has no run to freeze and
+    is held to no earlier one (#3148): the run that follows freezes its own manifest. Frozen, the
+    pass's generations and seed refused that run for differing from a pass that never used them."""
+    directory.mkdir(parents=True, exist_ok=True)
+    if validity_only:
+        return
     path = directory / "manifest.json"
     if path.exists():
         held = json.loads(path.read_text())
@@ -568,7 +575,6 @@ def _freeze(directory: Path, frozen: dict) -> None:
                 f"{path}: this experiment's manifest is frozen and differs; name a new experiment"
             )
         return
-    directory.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(frozen, indent=2, sort_keys=True))
 
 
@@ -610,7 +616,7 @@ def main() -> int:
     lessons = _lessons(args.lessons)
     frozen, case_lessons = plan(args, envelopes, lessons)
     directory = _REPO / "var" / "replays" / args.experiment
-    _freeze(directory, frozen)
+    _freeze(directory, frozen, validity_only=args.validity_only)
     order = schedule(
         [e["envelope_id"] for e in envelopes],
         [Arm(a) for a in frozen["arms"]],

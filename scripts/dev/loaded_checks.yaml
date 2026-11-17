@@ -2596,3 +2596,11 @@ checks:
       md = load_skillsets()["roblox-studio-qa"].skill_files["luau-test-loader"]["SKILL.md"]
       print("## A module the change adds" in md, skill_stops(md))
     expect: "True ('no tests/run.luau:',)"
+  - id: "3146-bare-name"
+    what: a qa.test prompt shows a plan source its task names by its bare name, and no other
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.qa_prompt_contents import code_under_test
+      tree = {"src/Shared/Modules/ShopDiscount.luau": "return {}", "src/Server/Services/Shop.luau": "return {}"}
+      print(list(code_under_test({}, tree, "the ShopDiscount module, as the Shop shows it", plan_sources=["src/Shared/Modules/ShopDiscount.luau"])))
+    expect: "['src/Shared/Modules/ShopDiscount.luau']"

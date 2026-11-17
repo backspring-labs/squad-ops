@@ -194,6 +194,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A `qa.test` prompt shows the module under test when the plan names it by its bare name** (#3146): the second
+  #3041 capture's plan wrote "the ShopDiscount module" and nothing longer, so the module-path rule (#3139) had
+  nothing to match. A file among the plan's own sources (`implementation_artifacts`) whose name the task's text
+  holds as a whole word is now code under test. The plan's other sources stay scoped out, and so does every other
+  file of the tree.
+- **A replay's validity-only pass freezes no manifest** (#3148): it authors nothing, and its generations and seed
+  refused the run it was the check for.
 - **A Luau product's `qa.test` prompt shows the module under test, in Luau fences** (#3136, #3139): a file the
   prompt shows, and the fence it asks for the suite in, names the file's own language from one table by extension
   (`fenced_parser.fence_language`), with `text` for one it doesn't hold. Every file that wasn't JavaScript or
