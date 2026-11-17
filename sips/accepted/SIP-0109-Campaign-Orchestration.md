@@ -7352,10 +7352,22 @@ the owner.
   - each of the five seams, entered at the handler's own section with the real assets: told on a Luau product,
     and not on a pytest one;
   - the development proposer and an increment no test proves aren't told.
-- **Not yet read live.** No model has been shown the asset or the skill's section. The #3041 replay reads it
-  first. Its captured `qa.test` case expects `discriminates`: each emitted spec is run alone on the product at
-  the pin and again with the task's implementation laid beneath, and the two readings go through
-  `discrimination_on_runner` (SIP-0116 §17p; `test_run_authoring_replay.py` holds that step on a stand-in runner).
+- **Read live, the asset alone (2026-11-17).** The Spark's second #3041 capture, Campaign `cmp_2b1aa826d5bb`
+  (uncounted, no skill loaded), on deploy `dep_4601ff9093d7` at `460eee5a`:
+  - the asset was in the design stage's, the brief's, the qa proposer's and the suite author's prompts, and in no
+    other;
+  - the plan's qa task listed a top-level `require` of the new module as a fault to avoid;
+  - the spec looked the module up with `FindFirstChild` inside each test. On the baseline all six tests failed as
+    `assertion`, on the candidate all six passed, and the increment was accepted. The first capture, on the same
+    goal before this change, read `only_setup_failures`.
+- **Read live a second time,** on deploy `dep_aa7d76fa46a7` at `a4bb41d6`: capture Campaign `cmp_6f3664949d4c`,
+  again with no skill loaded. Its spec looked up each level down to the new module with `FindFirstChild`, five of
+  five tests failed as `assertion` on the baseline and passed on the candidate, and the increment was accepted.
+- **The skill's section** is read by the skills replay. Its captured `qa.test` case expects `discriminates`:
+  each emitted spec is run alone on the product at the pin and again with the task's implementation laid
+  beneath, and the two readings go through `discrimination_on_runner`. In `roblox-skills-v2` all three
+  generations' specs discriminated, on the record (SIP-0116 §17s). In `roblox-skills-v1` all six authorings' did,
+  read by hand since that run misjudged the case (SIP-0116 §17r).
 
 **Who ruled.** The Spark lane found it and proposed the shape on #3143 (2026-11-16), tracing the plan's wording
 to the design stage's draft. The MacBook lane built it, under the 2.8 plan the owner adopted on 2026-11-11.

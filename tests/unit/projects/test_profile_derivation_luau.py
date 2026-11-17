@@ -206,3 +206,18 @@ def test_the_proposal_rails_read_a_luau_products_declared_packages(surface, admi
 
     reason = _unserved(SimpleNamespace(surface_kind=SurfaceKind.PACKAGE, surface=surface), context)
     assert (reason is None) is admitted
+
+
+def test_the_strategy_skill_quotes_the_gap_a_luau_product_discloses_as_it_is_written():
+    """``roblox-skills-v2`` (SIP-0116 §17s): a proposal read the gap's "every scenario" as its
+    play-scenario criteria and wrote a ``package`` criterion for what a player sees. The skill
+    now quotes the gap and says what it is about. Bug caught: the derivation's sentence reworded
+    (#3152) and the skill left quoting words no prompt shows."""
+    from squadops.capabilities.skillsets import load_skillsets
+
+    (gap,) = [g for g in _derive(_SCRIPT_SYNC).gaps if g.id == "no_start_declaration"]
+    skill = load_skillsets()["roblox-increment-design"].skill_files["play-scenario-authoring"]
+
+    quoted = "Outcome Evaluation reads every scenario blocked_unverified"
+    assert gap.reason.endswith(quoted)
+    assert " ".join(skill["SKILL.md"].split()).count(f'says "{quoted}"') == 1

@@ -194,6 +194,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **The Roblox strategy skill says which scenarios a disclosed gap means** (#3041; SIP-0116 §17s): the second
+  skills replay admitted the development and QA skillsets and failed the strategy one on a HUD-text case. A
+  proposal read the product's `no_start_declaration` gap ("Outcome Evaluation reads every scenario
+  blocked_unverified") as covering its play scenarios, and proved a formatter where a player's HUD was asked for.
+  The skill now quotes the gap and says a play scenario is played whatever it says. The gap's own wording is #3152.
 - **The skills replay judges a suite left to the product's runner by that runner** (#3150; SIP-0116 §17r): on a
   product whose suite only its own runner runs, `qa.test` comes back unsuccessful by design. The replay read that
   as a refusal and never ran the emitted specs, so every QA case of `roblox-skills-v1` read `not_met`.
