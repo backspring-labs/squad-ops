@@ -152,8 +152,15 @@ from squadops.campaigns.progress import (
 from squadops.campaigns.projection import project
 from squadops.campaigns.repository_backed import creation_refusal
 from squadops.campaigns.review_push import ReviewPushRefused, push_review
+from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.cycles.gate_attribution import compose_decided_by
-from squadops.cycles.models import CycleStatus, GoalSetNotFoundError, ProjectNotFoundError
+from squadops.cycles.models import (
+    CycleStatus,
+    GoalSetNotFoundError,
+    ProfileNotFoundError,
+    ProjectNotFoundError,
+)
+from squadops.cycles.preflight import skillset_coverage_decision
 from squadops.execution.size_preflight import size_preflight
 from squadops.llm.script import LLMScriptError, ScriptLibrary, ScriptReference
 from squadops.memory.pinning import pin_campaign
@@ -437,6 +444,7 @@ async def create_campaign(
         )
         _require_profiles(campaign.policy)
         _require_scripts(campaign.policy, ScriptLibrary.packaged())
+        await _require_skillsets(request, campaign.policy)
         await _require_project_rules(request, campaign)
         definition = CampaignDefinition(**body.definition.model_dump()) if body.definition else None
         scenarios = await _pinnable_scenario_store(request, body.scenario_suite)
@@ -1373,6 +1381,27 @@ def _require_scripts(policy: CampaignPolicy, library: ScriptLibrary) -> None:
             library.resolve(ScriptReference.parse(named))
         except LLMScriptError as e:
             raise ValueError(f"policy.llm_scripts entry {position}: {e}") from e
+
+
+async def _require_skillsets(request: Request, policy: CampaignPolicy) -> None:
+    """§24ed: the squad a campaign names carries the skillsets its development profile requires
+    (SIP-0116 §9), decided as each launch's own preflight decides it and refused in its words, so
+    a campaign whose every launch would be refused is refused at its creation. A policy naming no
+    development profile is left to its launches, as before."""
+    if policy.development_profile is None:
+        return
+    try:
+        squad = await get_squad_profile_port(request).get_profile(policy.squad_profile)
+    except ProfileNotFoundError as e:
+        raise ValueError(f"policy.squad_profile: {e}") from e
+    decision = skillset_coverage_decision(
+        squad, {"development_profile": policy.development_profile}, packaged_skillsets()
+    )
+    if decision.blocking:
+        raise ValueError(
+            f"policy.development_profile {policy.development_profile!r}: "
+            + " ".join(finding.message for finding in decision.blocking)
+        )
 
 
 async def _materialize_after_close(request: Request, campaign_id: str) -> None:

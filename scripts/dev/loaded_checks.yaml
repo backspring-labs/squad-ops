@@ -2625,3 +2625,13 @@ checks:
       stop = read_stop(handed, "> " + shown + "\n\n`" + own + "`")
       print(stop.line == own, read_stop(handed, "> " + shown))
     expect: "True None"
+  - id: "3157-campaign-development-profile"
+    what: a Campaign's policy names a development profile, and its launches carry that key alone (SIP-0109 §24ed)
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace
+      from squadops.campaigns.launch_requests import _profile_values
+      from squadops.campaigns.models import CampaignPolicy
+      policy = SimpleNamespace(stack=None, development_profile="game_dev_roblox")
+      print("development_profile" in CampaignPolicy.__dataclass_fields__, _profile_values(SimpleNamespace(policy=policy)))
+    expect: "True {'development_profile': 'game_dev_roblox'}"

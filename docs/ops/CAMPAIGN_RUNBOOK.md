@@ -221,6 +221,12 @@ retry, as `build_profile` and `development_profile`. Leave it out and the campai
 profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
 creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
 
+**A repository-backed Project's campaign may name its development profile** (`policy.development_profile`,
+§24ed, #3157). Every cycle it launches carries it, and the cycle pins it as the operator's. Leave it out and each
+cycle derives its profile from the product. It is declared without `policy.stack`, never beside it. A profile
+that requires skillsets (`game_dev_roblox`) needs a squad that carries them (`game-dev-roblox`): any other squad
+is refused at creation, naming what is missing.
+
 **A scripted Campaign names its scripts** (`policy.llm_scripts`, SIP-0109 §24dt; #2892). On the `machinery`
 squad every call is answered from a recorded script (#2495), and a Campaign names one pinned script,
 `<name>@<version>`, per cycle it launches, in launch order: its first launch takes the first, a repair or a retry

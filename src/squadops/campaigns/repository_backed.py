@@ -10,6 +10,9 @@ A repository-backed Project (SIP-0112 E.4.1) is developed from its own tree, so:
 - **its increments seed no skeleton.** The cycles it launches resolve through its proposal profile
   and its policy's stack (§24bs), and a stack's skeleton laid beside the product's files describes
   a different application. ``seeds_skeleton`` is the one rule (H.11), E.4.3's guard's.
+- **it may name its development profile** (``policy.development_profile``, §24ed), which shapes
+  the prompts and seeds nothing. A sample application's Campaign names a scaffold stack, and is
+  refused the field.
 
 A sample application's objective names neither: its PRD is its campaign's, and a source or a goal
 set given there would be read by nothing. Each refusal names its field and comes at creation
@@ -40,6 +43,12 @@ def creation_refusal(
                 "repository-backed Project's Campaign reads (SIP-0109 §24bv point 5, SIP-0115 "
                 "§5.1): this Project is a sample application, whose requirements are its PRD"
             )
+        if campaign.policy.development_profile is not None:
+            return (
+                "policy.development_profile names the profile a repository-backed Project's "
+                "product is developed under (SIP-0109 §24ed): this Project is a sample "
+                "application, which builds on a scaffold stack. Name that as policy.stack"
+            )
         return None
     if requirements is None and goals is None:
         return (
@@ -58,6 +67,8 @@ def creation_refusal(
     resolved = dict(load_profile(policy.proposal_profile).defaults)
     if policy.stack:
         resolved.update(build_profile=policy.stack, development_profile=policy.stack)
+    elif policy.development_profile:
+        resolved.update(development_profile=policy.development_profile)
     if seeds_skeleton(resolved):
         field = "policy.stack" if policy.stack else "policy.proposal_profile"
         return (
