@@ -187,6 +187,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A Luau product's `qa.test` prompt shows the module under test, in Luau fences** (#3136, #3139): a file the
+  prompt shows, and the fence it asks for the suite in, names the file's own language from one table by extension
+  (`fenced_parser.fence_language`), with `text` for one it doesn't hold. Every file that wasn't JavaScript or
+  TypeScript was fenced as Python. And a task's text names code under test by its dotted module path as well as
+  by its file path, so `require(Shared.Modules.SalePricing)` shows `src/Shared/Modules/SalePricing.luau`. A first
+  spec on a Roblox product was shown the tests beside it and never the module. Found by the #3041 capture.
 - **A failed repair step is named, and spent only when a retry would repeat it** (#3020): a correction
   round whose repair step's task failed was read as "the repair emitted no content" and refunded. It now
   names the step and its error in the log and in the next round's carry. A failure that says a retry

@@ -33,7 +33,9 @@ it.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
+from pathlib import PurePosixPath
 from typing import Any
 
 from squadops.campaigns.evaluator_trees import imported_paths
@@ -57,6 +59,8 @@ _PLAN_SECTION = "## Validation Plan"
 CODE_UNDER_TEST_MAX_CHARS = 16_000
 #: The files whose imports :func:`code_under_test` reads.
 _READS_IMPORTS = (".py", *ECMASCRIPT_SUFFIXES)
+#: A file that is its folder's module: Luau's and Python's.
+_PACKAGE_MODULES = ("init", "__init__")
 
 
 def qa_test_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
@@ -125,13 +129,35 @@ def code_under_test(
     call: battle-trainer's suite lives in ``test/``, the helper it calls in ``tools/``, and qa wrote
     ``unit.shots`` for a count the helper returns as ``shots``. It read 0, and three repairs guessed
     at the name (``cyc_8e691eb2bccf``). One hop: the helper's own imports are the helper's concern.
+
+    The task's text names a file by its path, or by its dotted module path (#3139): a Roblox plan
+    says ``require(Shared.Modules.SalePricing)`` for ``src/Shared/Modules/SalePricing.luau``, and
+    a first spec has no suite beside it whose imports could be read.
     """
     present = set(tree)
-    wanted = {path for path in present if path in task_text}
+    wanted = {path for path in present if path in task_text or _named_as_a_module(path, task_text)}
     for path, source in files.items():
         if path.endswith(_READS_IMPORTS):
             wanted.update(imported_paths(path, source, present)[0])
     return {path: _shown_or_named(tree[path]) for path in sorted(wanted - set(files))}
+
+
+def _named_as_a_module(path: str, task_text: str) -> bool:
+    """Whether ``task_text`` names ``path`` by a dotted module path: its folders and its name
+    without the extension, joined by dots, from any folder down, two parts at least.
+    ``src/Shared/Modules/SalePricing.luau`` is ``Shared.Modules.SalePricing`` and
+    ``Modules.SalePricing``; a package's ``init.luau`` or ``__init__.py`` is its folder's name.
+    The name stands alone: ``Modules.SalePricingV2`` names another file. A bare ``SalePricing``
+    names none, since one word matches too much."""
+    if not task_text:
+        return False
+    parts = list(PurePosixPath(path.replace("\\", "/")).with_suffix("").parts)
+    if parts and parts[-1] in _PACKAGE_MODULES:
+        parts.pop()
+    return any(
+        re.search(rf"(?<![A-Za-z0-9_]){re.escape('.'.join(parts[at:]))}(?![A-Za-z0-9_])", task_text)
+        for at in range(len(parts) - 1)
+    )
 
 
 def _shown_or_named(content: str) -> str:

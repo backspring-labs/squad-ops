@@ -185,6 +185,44 @@ _SOURCE_EXTENSIONS = frozenset(
     }
 )
 
+#: The language a prompt names on the fence of a file it shows, or asks for on a file's own
+#: fence, by the file's extension (#3136). ``qa.test`` named Python on every file that wasn't
+#: JavaScript or TypeScript, so a Luau product's sources were shown as Python and its spec was
+#: asked for in a Python fence.
+_FENCE_LANGUAGE_BY_EXTENSION = {
+    "py": "python",
+    "js": "javascript",
+    "jsx": "javascript",
+    "mjs": "javascript",
+    "cjs": "javascript",
+    "ts": "typescript",
+    "tsx": "typescript",
+    "luau": "luau",
+    "lua": "lua",
+    "json": "json",
+    "yaml": "yaml",
+    "yml": "yaml",
+    "toml": "toml",
+    "md": "markdown",
+    "html": "html",
+    "htm": "html",
+    "css": "css",
+    "sh": "bash",
+    "sql": "sql",
+}
+#: The fence language for a file whose extension the table doesn't hold: the neutral word the
+#: build prompts already use, never another language's name.
+NEUTRAL_FENCE_LANGUAGE = "text"
+
+
+def fence_language(path: str) -> str:
+    """The language to name on ``path``'s fence: its extension's, or ``NEUTRAL_FENCE_LANGUAGE``
+    for one the table doesn't hold or a name with none."""
+    name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    extension = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return _FENCE_LANGUAGE_BY_EXTENSION.get(extension, NEUTRAL_FENCE_LANGUAGE)
+
+
 # Filenames that LLMs often emit as the language slot (``` ```Dockerfile``` ```).
 _SPECIAL_FILENAMES_AS_LANG = set(_SPECIAL_NAMES)
 
