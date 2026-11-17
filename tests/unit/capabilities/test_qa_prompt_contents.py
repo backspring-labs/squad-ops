@@ -520,3 +520,76 @@ def test_the_composer_counts_the_module_a_task_names_by_its_module_path():
         "tests/run.luau",
     ]
     assert named > fewer
+
+
+#: The second #3041 capture's shape (#3146): the plan names the module by its bare name alone.
+_BARE_TREE = {
+    "src/Shared/Modules/ShopDiscount.luau": "return { calcBulkDiscount = function() end }\n",
+    "src/Shared/Modules/ShopRules.luau": "return {}\n",
+    "src/Server/Services/Shop.luau": "return {}\n",
+    "src/Shared/Util/init.luau": "return {}\n",
+    "tests/LivesRules.spec.luau": "-- the product's own\n",
+    "tests/run.luau": "-- the product's runner\n",
+}
+_BARE_SUITE = {
+    "prd": "",
+    "subtask_focus": "criterion T1 spec suite",
+    "subtask_description": (
+        "Author tests/criterion_T1.spec.luau proving criterion T1: the ShopDiscount\n"
+        "module's calcBulkDiscount function, as the Shop shows it."
+    ),
+    "expected_artifacts": ["tests/criterion_T1.spec.luau"],
+    "implementation_artifacts": [
+        "src/Shared/Modules/ShopDiscount.luau",
+        "src/Shared/Modules/ShopRules.luau",
+    ],
+    "acceptance_criteria": ["The spec does NOT require the ShopDiscount module at file top."],
+    "artifact_contents": _BARE_TREE,
+    "resolved_config": {"development_profile": "product_neutral"},
+}
+
+
+async def test_a_plan_source_the_task_names_by_its_bare_name_is_shown():
+    """Entered at ``_compose_user_prompt`` on the capture's shape. Bugs caught: the module under
+    test left out when the plan says "the ShopDiscount module" and nothing longer (#3146); the
+    plan's other sources shown with it, which undoes the package scoping; and a file outside the
+    plan's sources shown for a word the text happens to hold ("Shop")."""
+    prompt = (await _composed(_BARE_SUITE, "product_neutral")).user_prompt
+
+    assert _section_names(_shown_section(prompt)) == [
+        "tests/LivesRules.spec.luau",
+        "tests/run.luau",
+        "src/Shared/Modules/ShopDiscount.luau",
+    ]
+    assert "calcBulkDiscount = function() end" in prompt
+
+
+@pytest.mark.parametrize(
+    ("text", "sources", "shown"),
+    [
+        ("the ShopDiscount module", ["src/Shared/Modules/ShopDiscount.luau"], True),
+        # A longer word, another word, and no text name nothing.
+        ("the ShopDiscounts table", ["src/Shared/Modules/ShopDiscount.luau"], False),
+        ("the discount module", ["src/Shared/Modules/ShopDiscount.luau"], False),
+        ("", ["src/Shared/Modules/ShopDiscount.luau"], False),
+        # Named, and no source of the plan's: the tree's other files stay scoped out.
+        ("the ShopDiscount module", [], False),
+        # A plan source the tree doesn't hold yet is not shown, and nothing is raised.
+        ("the Pricing module", ["src/Shared/Modules/Pricing.luau"], False),
+    ],
+    ids=["named", "longer-word", "another-word", "no-text", "not-a-plan-source", "not-in-the-tree"],
+)
+def test_a_bare_name_counts_only_for_the_plans_own_sources(text, sources, shown):
+    found = code_under_test({}, _BARE_TREE, text, plan_sources=sources)
+
+    assert ("src/Shared/Modules/ShopDiscount.luau" in found) is shown
+    assert set(found) <= {"src/Shared/Modules/ShopDiscount.luau"}
+
+
+def test_a_package_named_by_its_folder_is_its_init_file():
+    """A plan source that is its folder's module is named by the folder."""
+    found = code_under_test(
+        {}, _BARE_TREE, "the Util module's clamp", plan_sources=["src/Shared/Util/init.luau"]
+    )
+
+    assert list(found) == ["src/Shared/Util/init.luau"]

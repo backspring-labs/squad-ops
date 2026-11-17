@@ -135,6 +135,51 @@ def test_a_held_rubric_named_at_a_version_no_file_holds_is_refused(version):
         )
 
 
+def test_a_validity_pass_freezes_no_manifest_and_is_held_to_none(tmp_path):
+    """Bug caught (#3148): a validity-only pass freezing its own generations and seed, so the run
+    it was the check for is refused as a different experiment. Found on the Spark, whose plan ran
+    the pass with the defaults and the run with three generations."""
+    envelopes = [_envelope("env_a", T, "cyc_a")]
+    checked, _ = runner.plan(_args(generations=1, seed=0), envelopes, [])
+    run, _ = runner.plan(_args(generations=3, seed=7), envelopes, [])
+    another, _ = runner.plan(_args(generations=2, seed=7), envelopes, [])
+
+    runner._freeze(tmp_path, checked, validity_only=True)
+    assert tmp_path.is_dir() and not (tmp_path / "manifest.json").exists()
+
+    runner._freeze(tmp_path, run)
+    assert json.loads((tmp_path / "manifest.json").read_text())["generations"] == 3
+    runner._freeze(tmp_path, checked, validity_only=True)  # a later pass is held to nothing
+    with pytest.raises(SystemExit, match="frozen and differs"):
+        runner._freeze(tmp_path, another)
+
+
+def test_a_skills_validity_pass_leaves_the_run_free_to_freeze_its_own_manifest(
+    cases_dir, tmp_path, monkeypatch
+):
+    """Wiring, entered at the skills replay's main path with the container stood in. Bug caught:
+    the flag not reaching the freeze, so the fix holds in ``_freeze`` and nowhere it is called."""
+    monkeypatch.setattr(runner, "_REPO", tmp_path)
+    monkeypatch.setattr(runner, "_run_in", lambda container, payload: [])
+    envelopes = [
+        _typed("env_s", "strategy.propose_increment", "strat"),
+        _typed("env_q", "qa.test", "qa"),
+    ]
+    containers = {"strat": "nat", "qa": "eve"}
+    common = {"skill_cases": "fixture-skills@2", "product_checkout": None, "spec_argv": []}
+
+    runner._skills_main(
+        _args(generations=1, seed=0, validity_only=True, **common), envelopes, containers
+    )
+    manifest = tmp_path / "var" / "replays" / "e1" / "manifest.json"
+    assert not manifest.exists()
+
+    runner._skills_main(
+        _args(generations=3, seed=7, validity_only=False, **common), envelopes, containers
+    )
+    assert json.loads(manifest.read_text())["generations"] == 3
+
+
 def test_a_rubric_edited_under_its_version_is_a_different_experiment(tmp_path, monkeypatch):
     """The label can't show an in-place edit and the text's hash can, so a frozen experiment refuses
     a rerun whose rubric changed under the same version. A label no file holds records no text."""

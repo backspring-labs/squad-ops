@@ -76,7 +76,13 @@ def qa_test_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
     if inputs.get("subtask_focus") is not None:
         scoped = package_scoped(contents, inputs.get("expected_artifacts") or [])
         suite = {**scoped, **(inputs.get(RETAKE_CURRENT_FILES_KEY) or {})}
-        return {**scoped, **code_under_test(suite, contents, _task_text(inputs))}
+        under_test = code_under_test(
+            suite,
+            contents,
+            _task_text(inputs),
+            plan_sources=inputs.get("implementation_artifacts") or (),
+        )
+        return {**scoped, **under_test}
     profile = get_development_profile(effective_development_profile(inputs.get("resolved_config")))
     sources = source_files(contents, profile)
     plan = _validation_plan_file(contents)
@@ -123,7 +129,11 @@ def package_scoped(
 
 
 def code_under_test(
-    files: Mapping[str, str], tree: Mapping[str, str], task_text: str = ""
+    files: Mapping[str, str],
+    tree: Mapping[str, str],
+    task_text: str = "",
+    *,
+    plan_sources: Iterable[Any] = (),
 ) -> dict[str, str]:
     """The files of ``tree`` that ``files`` import or ``task_text`` names, beyond ``files`` itself:
     what a suite calls, when it lives in another package.
@@ -136,9 +146,21 @@ def code_under_test(
     The task's text names a file by its path, or by its dotted module path (#3139): a game's plan
     says ``require(Shared.Modules.SalePricing)`` for ``src/Shared/Modules/SalePricing.luau``, and
     a first spec has no suite beside it whose imports could be read.
+
+    ``plan_sources`` are the plan's own source files (a ``qa.test`` task's
+    ``implementation_artifacts``). They are never shown whole, which would undo the package
+    scoping on a larger plan. One of them is named by less, though: its bare name as a whole word
+    (#3146). A plan wrote "the ShopDiscount module" for ``src/Shared/Modules/ShopDiscount.luau``
+    and nothing longer. The candidates are only the plan's sources, so a common word can't pull
+    in a file from the rest of the tree.
     """
     present = set(tree)
     wanted = {path for path in present if path in task_text or _named_as_a_module(path, task_text)}
+    wanted.update(
+        path
+        for path in map(str, plan_sources)
+        if path in present and _named_by_its_bare_name(path, task_text)
+    )
     for path, source in files.items():
         if path.endswith(_READS_IMPORTS):
             wanted.update(imported_paths(path, source, present)[0])
@@ -170,6 +192,19 @@ def _named_as_a_module(path: str, task_text: str) -> bool:
         if re.search(rf"(?<![A-Za-z0-9_]){name}(?![A-Za-z0-9_])", task_text):
             return True
     return False
+
+
+def _named_by_its_bare_name(path: str, task_text: str) -> bool:
+    """Whether ``task_text`` holds ``path``'s own name, without its folders or its extension, as a
+    whole word. A package's ``init.luau`` or ``__init__.py`` is named by its folder. Asked only of
+    the plan's own sources (``code_under_test``): among every file of a tree, one word matches
+    too much."""
+    parts = list(PurePosixPath(path.replace("\\", "/")).with_suffix("").parts)
+    if parts and parts[-1] in _PACKAGE_MODULES:
+        parts.pop()
+    if not parts or not task_text:
+        return False
+    return bool(re.search(rf"(?<![A-Za-z0-9_]){re.escape(parts[-1])}(?![A-Za-z0-9_])", task_text))
 
 
 def _shown_or_named(content: str) -> str:
