@@ -547,3 +547,86 @@ record id and verify_loaded count go into the run record before gate attempt 4 (
 These are readings, not gates. G1, G2, G4 and G5 still decide the gate (§5).
 
 **The window:** the first window closed at the gate. The owner named the next attended window: 2026-11-17, 12:30 to 16:00 ET, at the MacBook ("yes 12:30 to 4 works, I'll be here"). §3's time rule is read against its 16:00 end.
+
+### 12c. The gate passed, rehearsal 1 unclean, and the third deploy (2026-11-17, before any counted run)
+
+**Step 1 is met.** Gate attempt 4 passed §5:
+- `cmp_5503d79cdfaa`, cycle `cyc_40cb3ebbc034`, deploy `dep_9e2dbae697d4` (`5138e720`, which is `2ea70253` plus this file's 12b, 291 loaded), 12:20–12:47 ET;
+- the tier approved the plan gate unescalated;
+- both baseline plays executed their named assertions and failed them (`<absent>`);
+- both candidate plays passed: S1 read "5 lives left", and S2 read the label visible;
+- promote: an accepted capture on the campaign branch, ending at §10 row 3.
+
+**Its readings:**
+- G1: every prompt fit, the largest 77 K chars, with no budget cut.
+- G2: `roblox-increment-design` and `roblox-luau-dev` loaded; `roblox-studio-qa` wasn't exercised (no `qa.test`, as 12b expected).
+- G3: the developer's `existing_files` held `src/Client/UI/Screens/HUD.luau`, and `new_files` was empty.
+- G4: no conflicts.
+- G5: all four tasks ended, accepted 7 of 7.
+
+Attempts 1 to 3 don't count toward step 1 (12a, 12b).
+
+**Rehearsal 1 is not clean** (§6.1). It ran as `cmp_85f97e001320`, cycle `cyc_4a918c004fa5`, on the same deploy, 12:48–14:35 ET.
+
+**What it ran, in order:**
+- **B-1's proposal** `prop_80a5e297b406` v1 was submitted at 12:52:10. The Spark's path reading went with it: `Screens/HUD.luau` held; `src/Shared/Modules/HudRules.luau` and `tests/criterion_P1.spec.luau` are implied additions.
+- **The ruling bound passed at 13:22:50** (`ruling_overdue`). The Campaign stayed `awaiting_ruling`, and nothing proceeded.
+- **The owner ruled at 14:11:06,** through the MacBook session: "approve as it stands". The MacBook lane's scenario reading found none of the three shapes (§7.4).
+- **The tier approved the plan gate** at 14:19:50, unescalated.
+- **Both baseline plays** (14:21:31, 14:22:52, about 77 s each on the worker) executed their named assertions and failed them, `<absent>`. The MacBook lane read each play as doing only its scenario's steps (§6.1 item 4).
+- **`qa.test` ran P1 headless** for the first time in this demonstration (`roblox-studio-qa`). Its head check read P1 `fails_on_head` at `0beaac09`.
+- **S1's candidate play,** `rop-847b84b405ce4ec6bc7610f4b730bfc7`, settled `not_executed` at 14:29:20. The run then failed at S2's dispatch with the worker offline. The Campaign went to `retrying` (§10 row 10), then to `launch_blocked` (attempt 1 of 3).
+
+**Why it isn't clean: two framework defects, no squad or model cause.** They break §6.1 item 2 (no framework defect) and item 5 (the worker held).
+1. **The lease lapsed behind a probe** (#3185).
+   - The worker's lease renewal waited on a health probe of Studio. One probe, made as the play was ending, held about 60 s. Renewals arrived at 19:27:26.5Z and then 19:28:41.6Z, a 75 s gap against the 60 s lease. The runtime expired attempt 1 at 19:28:27.5Z.
+   - The play most likely finished: Studio's log shows a completed transaction at 14:27:41. The worker dropped the result and reset the tool.
+2. **The reset let Studio update itself** (#3184).
+   - The reset's relaunch took Studio from `0.747.0.7471481` to `0.748.0.7481526`, and Studio came back with no place open. The reset's failure named neither the update nor the version.
+   - §3 check 4 then stopped the window: the Studio version must be the one the worker was qualified on.
+
+No person acted in Studio (the MacBook lane's reading of the Mac's logs).
+
+The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted runs. The window closed at 14:38:41: provider `none`, deploy `dep_a040a73649ff`, 291 loaded.
+
+**The counted run didn't start.** By §3's time rule it couldn't have: the rehearsal would have ended about 15:20 after a wall time of about 2 h 32 min, leaving 40 minutes against about 3 hours needed. The owner heard this plan for the day and raised nothing against it.
+
+**The fixes** (the MacBook lane's; each closes its issue):
+- **#3186 → `5d73185b`** (SIP-0117 R5.26):
+  - a renewal carries the tool's health as read between claims, and the tool is never probed while it runs;
+  - an operation that ends while a renewal is out submits its result whatever the renewal answered;
+  - a tool that returned a result isn't reset.
+- **#3188 → `fd0ff66b`** (R5.27):
+  - the reset reads Studio's installed version before the quit and after the reopening, and names a change with both versions and the re-qualification to run;
+  - a Studio that isn't the proved version is refused before anything is touched;
+  - every reset's outcome goes on the worker's status.
+  - Holding an update back isn't built, because Studio has no setting for it. The protection is the check below.
+- **The live check** (15:26–15:31 ET, Studio 0.748, from the branch carrying both):
+  - two plays of about 100 s each held the 60 s lease to an accepted result;
+  - a cancel was answered `interrupted`, with the tool reset in 33 s;
+  - two real resets passed the version reading on both sides of the reopening.
+
+**The Studio pin moves.** The worker is requalified on `0.748.0.7481526`: record `20261117T194035.352679Z-passed.json`, written 14:40:35 ET. The tools are unchanged against the last record, and it played twice across a reset with no update taken.
+
+**§3 check 4 gains a version reading, before the window's first launch:**
+- Studio is launched fresh.
+- `CFBundleShortVersionString` in `/Applications/RobloxStudio.app/Contents/Info.plist` is read against the pin's version.
+- If it moved, the worker is requalified first, and that is recorded.
+- The MacBook lane sends the reading to the Spark before the Spark's first launch. Studio checks for an update at every launch, so a pin read the day before isn't enough.
+
+**The deploy for the next window** is built from `fd0ff66b`, or main above it by documents only, with `runtime_api` bound once the owner opens the window.
+- `verify_loaded.py` is expected to report 293 loaded, including `3185-renewal-without-probe` and `3184-reset-names-update`. Its record id goes into the run record (§3 check 2).
+- The worker starts on the same commit.
+- #3171 stays out of this deploy.
+
+**The next window's order** is the owner's 2026-11-17 order, unchanged:
+1. **Rehearsal 2,** from `2-8-0-rehearsal-campaign.yaml` unchanged, B-1 then B-2. It is reported as rehearsal 2 (§6.1).
+2. **The counted run,** only if rehearsal 2 reads clean, on the same deploy and in the same window, under §3's time rule.
+3. **The repair diagnostic,** last (§8). #3171 merges only after the counted run.
+
+**What the time rule needs, read from today:**
+- One increment took about 27 minutes from ruling to promote (gate attempt 4), with the rulings prompt.
+- Rehearsal 2 is two increments, so about 60 to 70 minutes.
+- The counted run needs that plus 30 minutes still left when the rehearsal ends.
+- So a window of **about 3 hours, with the owner ruling each proposal within minutes,** holds rehearsal 2 and the counted run.
+- A ruling that waits past the 30-minute bound doesn't end anything, but its wait counts in the rehearsal's wall time.
