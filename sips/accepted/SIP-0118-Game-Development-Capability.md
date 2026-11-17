@@ -85,7 +85,7 @@ placed yet. SIP-0116's phases are in its own ledger.
 | Phase 2a as revision 3 cut it: the specialty table and declaration, the digest pin, both preflights, the isolation test, the profile's `specialties` field | **dropped** by Revision 4 (R4.1): SIP-0116's phases 1, 2 and 5 carry the declarations, the checks, the record and the pin, in its own ledger | — |
 | Phase 2a: the game capability contracts, declared once in `squadops.capabilities` (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`; R4.2), proved with the companion's fixture provider | **shipped** | 2.8 (PR #3019) |
 | Phase 2f, the tolerant emission parser: S6's two broken formats read, every resolving response read as before (R3.4, R5.2) | **shipped** | 2.8 (PR #3091; #3041 tracks the rest) |
-| Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the `game-dev-roblox` squad profile whose agents declare them (R4.1, R4.3, R5.2, R5.4; replaces F2–F4). The MacBook's `game-dev-roblox-lite-14b` profile is dropped by R5.4. Its requirements are switched on only after SIP-0116's phases 2–6 | **shipped**: the squad profile (PR #3131), the skills' stops (PR #3132), the replay and its cases (PR #3141), and the development profile, registered once the three skillsets passed the replay (SIP-0116 §17q) | 2.8 (PR #3145; #3041 tracks the cycle through creation preflight and the plan gate) |
+| Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the `game-dev-roblox` squad profile whose agents declare them (R4.1, R4.3, R5.2, R5.4; replaces F2–F4). The MacBook's `game-dev-roblox-lite-14b` profile is dropped by R5.4. Its requirements are switched on only after SIP-0116's phases 2–6 | **shipped**: the squad profile (PR #3131), the skills' stops (PR #3132), the replay and its cases (PR #3141), and the development profile, registered once the three skillsets passed the replay (SIP-0116 §17q) | 2.8 (PR #3145; the cycle through creation preflight and the plan gate was read on the Spark, R5.5, PR #3161, closing #3041) |
 | Phase 2g, its eligibility rules: the `roblox-studio` authority over the product's Script Sync layout and a change's footprint, with "no attributes or tags on scripts" checked at the worker (R5.3) | **shipped** | 2.8, PR #3111 |
 | Phase 2g: the product: `z_tower-ascension`'s registration, Development Configuration, baseline and goal set, and the copy compared with the live game; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11; the registration part handed to the Spark lane on 2026-11-15) | 2.8, #3042 |
 | Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run, each on the Spark with the MacBook's worker serving play (R3.5, R5.4; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
@@ -208,6 +208,41 @@ phase 2f's cycle, where a MacBook check would have found it earlier.
 
 **Who ruled.** The owner, 2026-11-16: "yes, cycles on the spark. go." Of the plumbing cycles: "small plumbing cycles
 are fine here".
+
+### R5.5 Phase 2f's done-when, read: the first cycle under `game_dev_roblox` (2026-11-17; #3041; SIP-0116 §17t, §17v; SIP-0109 §24ed)
+
+**What this records.** R5.2 restated #3041's done-when in four parts. Each has now been read, and phase 2f is
+shipped whole.
+
+| done-when | read |
+|---|---|
+| the skills pass replay on the Spark's models | `roblox-skills-v3`: all three skillsets pass by the rule stated before the first run (SIP-0116 §17t) |
+| a cycle on `game-dev-roblox` passes creation preflight | Campaign `cmp_d1463eb2d31b`, cycle `cyc_33b04e40d806`, on the Spark's deploy `dep_665a81b900e8` at `9609a0a0`: accepted. Its skillset record assigns `roblox-increment-design` to strategy, `roblox-luau-dev` to development and `roblox-studio-qa` to QA, and its pin is `game_dev_roblox` with the operator as its origin |
+| the plan's tasks load the skills with no contract named, plan expansion appends `game.scenario_verification` in `play` mode for each scenario criterion, and the plan passes the plan gate | the authored plan holds one development task and names no contract. The expanded plan is `governance.define_done`, `development.develop`, `qa.test`, `qa.run_remote_operation`, the last offered as `game.scenario_verification` in `play` mode. The plan gate approved it (`system:plan_review_tier`) |
+| a cycle on any other stack is offered exactly the base set, and its prompts are byte-identical | a self-test cycle on `full-38-tf` (`cyc_129b51efa8ce`) is offered `base@1`'s three plannable types and nothing else, with no requirement, assignment or skill content. A validity pass of the replay's eight cases on a deploy holding the profile reconstructs every baseline prompt at the size it had before the profile was registered |
+
+**What the proposal wrote.** Handed the strategy skill, the proposal for "the HUD's lives label says how many
+lives are left" wrote one `scenario` criterion on `@player.PlayerGui.TA_HUD.LivesLabel`, read by
+`roblox-studio/1`: wait for Play, click it, wait for the HUD, and read the label's text as "5 lives left". Its
+footprint is the client UI and the scenario's own document. The Spark lane approved it under the owner's grant
+for uncounted runs, and the Campaign was stopped after the plan gate, uncounted.
+
+**How the Campaign named the profile.** A Campaign could not name a development profile until SIP-0109 §24ed
+(#3157), which this reading found and waited for.
+
+**What the reading found beyond the done-when,** each tracked on its own:
+- **The Spark's runtime binds no remote execution** (`remote_execution.provider none`), so the scenario's
+  baseline read was blocked. The MacBook's worker was registered and online. The setting is the Spark lane's,
+  made when a cycle that plays is scheduled (phase 3).
+- **Creation's tool check read the worker registry alone,** so it accepted a cycle that runtime could not
+  play (#3159).
+- **A run cancelled while preparing still started and asked the scenario port** (#3160).
+- **The proposal's prompt still lists the gap `stack_unmatched`** under the named profile (SIP-0116 §17v).
+
+**Not shown.** Nothing was played, and nothing past the plan gate was read. That is phase 3's.
+
+**Who ruled.** The MacBook lane wrote the six readings before the run (#3041, run plan part 5). The Spark lane
+ran and read it.
 
 ## R4. Revision 4 (2026-11-09): the composition as requirements and supply
 

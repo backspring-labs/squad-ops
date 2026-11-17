@@ -24,6 +24,8 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   from the skills alone.
   All three skillsets passed the skills replay on the Spark's models first, the last on `roblox-skills-v3` (§17t).
   One development answer of three wrote a saved-field rename its skill stops, which #3155 tracks.
+  The first cycle under it was read on the Spark through creation preflight and the plan gate (SIP-0118 R5.5):
+  its proposal wrote a `scenario` criterion on the HUD's lives label, and plan expansion appended the play step.
 - **The skills replay: a skillset's skills tested on the deploy's models before a profile requires them** (#3041;
   SIP-0116 §17p): the authoring replay gains a `skills` arm. A captured task is authored as it stands and again
   handed what a cycle requiring the skillset would hand it, built from the image's own packaged skillsets. A case

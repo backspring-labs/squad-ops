@@ -1689,6 +1689,33 @@ change request would have ended its run as stopped. No replay answer did. The ru
 
 **Who ruled.** The Spark lane found it reading `v3` and filed #3154. The rule is the MacBook lane's.
 
+### 17v. §17q's "one known difference" does not occur: the proposal's gaps are the derivation's (2026-11-17, §17q; SIP-0112 H.26; SIP-0118 R5.5; #3041)
+
+**What changed.** §17q said a cycle under `game_dev_roblox` differs from the captured one in one known way: "A
+profile an operator names reads as matching the product. The derived `product_neutral` reads as no profile
+matching, which a proposal's prompt may say among the product's gaps." That is withdrawn. The prompt is the same
+in both.
+
+**The evidence.** The first cycle under the profile (`cyc_33b04e40d806`, SIP-0118 R5.5) was shown, among what the
+squad can't do on the product: "stack_unmatched, on `**`: no development profile fits runners luau, so the squad
+works from the product's own files and runners, with no stack guidance". The profile's name appears nowhere in
+that prompt.
+
+**Why.** A proposal's gaps are the derived profile's, read at the Project's pin
+(`execution/product_proposal.py`). The gap `stack_unmatched` is decided at derivation, from the product's
+runners alone (`profile_derivation._stack_unmatched`). An operator's name changes the cycle's pin and its record,
+which reads `matched`, and it reaches no gap.
+
+**What follows.**
+- **The cycle's proposal prompt is the one the replay's skills arm tested,** gap line included: the captures
+  were taken under the derived profile and handed the skills. §17q's point 1 holds more exactly than it said.
+- **The gap's sentence is true of the profile and reads oddly beside a skills section.** The profile carries no
+  stack guidance (§17q point 1), and the skills carry it. Its wording goes with #3152, the gaps' wording, for the
+  lane that owns the derivation.
+- Nothing is built for this.
+
+**Who ruled.** The Spark lane read the prompt and reported it. The withdrawal is the MacBook lane's.
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each
