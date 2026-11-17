@@ -21,48 +21,18 @@ from adapters.remote_execution.game_dev_roblox_studio.runner import OPERATION, P
 from squadops.capabilities.operation_supply import OperationSupplyError, tool_request
 from squadops.capabilities.skillsets import SCENARIO_VOCABULARY_FILE, load_skillsets
 from squadops.cycles.skillset_content import scenario_vocabulary_for
-from squadops.cycles.skillset_coverage import Assignment, resolve_coverage
-from squadops.stacks.requirements import (
-    ContractNeed,
-    PlatformTarget,
-    ResponsibilityRequirement,
-    SkillsetRequirement,
-)
+from squadops.cycles.skillset_coverage import Assignment, cycle_coverage
+from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
 
 QA = "roblox-studio-qa"
 SCENARIO = "game.scenario_verification"
 SQUAD = "game-dev-roblox"
 SQUAD_PROFILES = Path(__file__).resolve().parents[3] / "config" / "squad-profiles.yaml"
 
-#: What the first milestone requires of a Roblox squad (SIP-0118 R4.3): each responsibility's
-#: skillset, and the contracts and modes the work needs from it.
-ROBLOX_REQUIRES = (
-    ResponsibilityRequirement(
-        "strat",
-        (
-            SkillsetRequirement(
-                "roblox-increment-design", needs=(ContractNeed("game.increment_design"),)
-            ),
-        ),
-    ),
-    ResponsibilityRequirement(
-        "dev",
-        (
-            SkillsetRequirement(
-                "roblox-luau-dev", needs=(ContractNeed("game.gameplay_implementation"),)
-            ),
-        ),
-    ),
-    ResponsibilityRequirement(
-        "qa",
-        (
-            SkillsetRequirement(
-                QA,
-                needs=(ContractNeed("game.unit_tests", "headless"), ContractNeed(SCENARIO, "play")),
-            ),
-        ),
-    ),
-)
+#: The profile that says what a Roblox game's work requires (SIP-0118 R5.2), and a cycle's
+#: configuration naming it, as an operator's request does.
+ROBLOX = DEVELOPMENT_PROFILES["game_dev_roblox"]
+NAMED = {"development_profile": "game_dev_roblox"}
 
 
 @pytest.fixture(scope="module")
@@ -159,16 +129,37 @@ def test_the_strategy_skills_worked_example_is_one_the_rails_accept(catalog):
     assert named.observe.arguments["path"] == criterion["surface"]
 
 
+def test_the_roblox_profile_is_the_neutral_profile_with_a_platform_and_requirements():
+    """The skills replay captured its tasks under ``product_neutral`` and handed them the skills a
+    cycle requiring the skillsets would (SIP-0116 §17p). Bug caught: the profile gaining advice,
+    a source filter or a test pattern of its own, so a cycle under it renders another prompt than
+    the one the replay tested; or its requirements leaving its fingerprint, so a retry can't tell
+    the work now asks something of the squad."""
+    import dataclasses
+
+    from squadops.stacks.development_profiles import development_profile_fingerprint
+    from squadops.stacks.requirements import requirement_errors
+
+    neutral = dataclasses.asdict(DEVELOPMENT_PROFILES["product_neutral"])
+    roblox = dataclasses.asdict(ROBLOX)
+
+    assert sorted(k for k in neutral if neutral[k] != roblox[k]) == ["name", "platform", "requires"]
+    assert roblox["platform"] == {"id": "roblox", "variant": "studio-place"}
+    assert requirement_errors(ROBLOX.platform, ROBLOX.requires) == []
+    assert development_profile_fingerprint("game_dev_roblox") != development_profile_fingerprint(
+        "product_neutral"
+    )
+
+
 async def test_the_roblox_squad_covers_what_the_first_milestone_requires(catalog):
-    """Entered at the comparison cycle creation makes (``resolve_coverage``), on the squad as the
+    """Entered at the comparison cycle creation makes (``cycle_coverage``, on a configuration
+    naming the profile as an operator's request does), on the squad as the
     deploy seeds it. Bug caught: a skillset id misspelt, or declared on an agent of another
     role. A squad profile seeds once and an edit never reaches the deploy, so either would refuse
     every Roblox cycle until a new profile is cloned."""
     squad = await ConfigSquadProfile(yaml_path=SQUAD_PROFILES).get_profile(SQUAD)
 
-    coverage = resolve_coverage(
-        squad, PlatformTarget("roblox", "studio-place"), ROBLOX_REQUIRES, catalog
-    )
+    coverage = cycle_coverage(squad, NAMED, catalog)
 
     assert coverage.findings == ()
     assert [(a.role, a.agent_id, a.skillset) for a in coverage.assignments] == [
@@ -189,9 +180,7 @@ async def test_a_squad_without_the_roblox_skillsets_is_refused_by_name(catalog):
     the skillsets as covered, so a Roblox cycle on the wrong squad would author with no skills."""
     plain = await ConfigSquadProfile(yaml_path=SQUAD_PROFILES).get_profile("full-38-tf")
 
-    coverage = resolve_coverage(
-        plain, PlatformTarget("roblox", "studio-place"), ROBLOX_REQUIRES, catalog
-    )
+    coverage = cycle_coverage(plain, NAMED, catalog)
 
     assert coverage.assignments == ()
     (finding,) = coverage.findings

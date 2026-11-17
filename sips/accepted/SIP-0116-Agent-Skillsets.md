@@ -1498,6 +1498,43 @@ cases file is kept as it ran (`roblox-skills@1.yaml`, held to its text's digest 
 **Who ruled.** The reading rule was the MacBook lane's, stated in the run plan before the run (#3041,
 issuecomment-6936196850). The Spark lane ran it, read it and found #3150. The revisions are the MacBook lane's,
 under the owner's approval of the skill drafts (2026-11-15) and the 2.8 plan.
+### 17q. The first profile with requirements is registered, and the two stack fields are declared optionals (2026-11-17, §5.1, §14, §17a point 6, §17p; SIP-0118 R5.2; #3041)
+
+**What changed.** `game_dev_roblox` is a registered development profile. It declares the platform `roblox`,
+variant `studio-place`, and what each responsibility requires: `roblox-increment-design` for `strat`,
+`roblox-luau-dev` for `dev`, and `roblox-studio-qa` (version 1 or later) for `qa`, with the contracts and modes
+SIP-0118 R5.2 lists. A cycle that names it on a squad lacking any of them is refused at creation (§9), and one on
+the `game-dev-roblox` squad is assigned all three.
+
+**How it is built.**
+1. **It is `product_neutral` in everything a task reads.** The entry is that profile with a name, a platform and
+   requirements, and a test holds the three as the only differences. The skills replay (§17p) captured its tasks
+   under `product_neutral` and handed them what a cycle requiring the skillsets would hand them, so a cycle under
+   this profile is the one the replay tested. The stack's advice is in the skills, and the profile carries none.
+2. **Only an operator names it.** A Luau runner derives `product_neutral`, as before: a runner says nothing of the
+   platform, and deriving this profile would require the Roblox skillsets of any Luau product's squad. Naming it
+   contradicts no runner, since it leaves the suite to the product's own.
+3. **`platform` and `requires` are declared optionals** in the stack guard
+   (`test_stack_blueprint_falsification.py`), as §17a point 6 said they would be, each with the reason the scaffold
+   stacks leave it unset. The guard's stacks are the scaffold's two, and this profile is a product's, with no
+   skeleton and so no scaffold stack. The guard therefore names the registry entry that populates each field
+   (`_POPULATED_OUTSIDE_THE_SCAFFOLD_STACKS`), and a test refuses an entry there for a field that is no declared
+   optional, or one that is a scaffold stack's own.
+
+**One difference from the captured cycle, known.** A profile an operator names reads as matching the product. The
+derived `product_neutral` reads as no profile matching, which a proposal's prompt may say among the product's gaps.
+
+**The evidence.**
+- **`test_roblox_skillsets.py`:** the profile differs from `product_neutral` in its name, platform and
+  requirements alone, and its fingerprint differs; entered at `cycle_coverage` on a configuration naming it, the
+  seeded `game-dev-roblox` squad is assigned all three skillsets and `full-38-tf` is refused by name.
+- **`test_profile_derivation_luau.py`:** entered at `development_profile_pin` on z_tower's layout: named, it is
+  pinned as the operator's; unnamed, the pin is `product_neutral`.
+- **`test_skillset_spec.py`:** it is the one profile that requires a skillset, and the catalog holds all three.
+- **The replay** (§17p) is what admits it: PR #PRNUM merges after the three skillsets pass on the Spark's models.
+
+**Who ruled.** The owner's ruling of 2026-11-09 (§17a point 6) set the two fields' path. The MacBook lane built
+the profile under the 2.8 plan the owner adopted on 2026-11-11.
 
 ### 17s. The second skills replay, `roblox-skills-v2`: two skillsets admitted, and the strategy skill told which scenarios a gap means (2026-11-17, §7, §17p, §17r; SIP-0118 R4.3; #3041, #3152)
 

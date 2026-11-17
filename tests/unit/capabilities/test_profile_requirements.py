@@ -39,7 +39,9 @@ QA = ResponsibilityRequirement(
 )
 
 
-@pytest.mark.parametrize("name", sorted(DEVELOPMENT_PROFILES))
+@pytest.mark.parametrize(
+    "name", sorted(n for n, p in DEVELOPMENT_PROFILES.items() if not p.requires)
+)
 def test_a_profile_that_requires_nothing_keeps_the_fingerprint_it_had(name):
     """Bug caught: a new dataclass field entering every profile's digest. Each stored
     ``development_profile_selection`` would then stop matching, and every retry of a pinned

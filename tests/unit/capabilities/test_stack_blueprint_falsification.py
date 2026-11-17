@@ -135,6 +135,14 @@ _DECLARED_OPTIONAL = {
         "it declares no store paragraph rather than inheriting stack #1's"
     ),
     ("probe profile", "prepare_argv"): "uvicorn needs no build step before boot",
+    # SIP-0116 §5.1, §17q: recorded as unevidenced until the first profile with requirements was
+    # registered (its §17a point 6, the owner's ruling of 2026-11-09). ``game_dev_roblox`` is.
+    ("DevelopmentProfile", "platform"): (
+        "the scaffold stacks' work targets no platform a squad must be equipped for"
+    ),
+    ("DevelopmentProfile", "requires"): (
+        "the scaffold stacks' work requires nothing of the squad beyond the base set"
+    ),
     # #1967: three string fields the empty-string blind spot had passed without a reason.
     # #2577: stack #1's ``client`` fixture answers a missing route 404, so its criterion tests
     # fail on the accepted tree as assertions already; only nextjs_ts needs a route caller.
@@ -202,22 +210,21 @@ _DECORATIVE_FOUND: dict[tuple[str, str], str] = {}
 
 #: A real reader, and no declaration anywhere supplies data. See the module docstring.
 #:
-#: SIP-0116 phase 1 (#3011) adds two, knowingly: the accepted SIP lands a development profile's
-#: requirements as inert declarations first, and switches on the first profile that declares
-#: any (``game_dev_roblox``) only after its phases 2-6. Until then both are read by the cycle's
-#: skillset record and populated by no stack, which is this list's case exactly. The exception
-#: is recorded in the SIP's §17a point 6, ruled by the owner on 2026-11-09, and
-#: ``test_an_unevidenced_field_is_still_populated_by_no_stack`` ends it the day a stack
-#: populates one: the entry then moves to ``_DECLARED_OPTIONAL`` with that stack's reason.
-_UNEVIDENCED: dict[tuple[str, str], str] = {
-    ("DevelopmentProfile", "platform"): (
-        "SIP-0116 §5.1: the platform a profile's work targets; none until a stack with "
-        "requirements is switched on (its §14)"
-    ),
-    ("DevelopmentProfile", "requires"): (
-        "SIP-0116 §5.1: the skillsets a profile's work requires; empty on every stack until "
-        "the first one with requirements is switched on (its §14)"
-    ),
+#: SIP-0116 phase 1 (#3011) recorded two here, knowingly: a development profile's ``platform``
+#: and ``requires`` landed as inert declarations first (its §17a point 6, the owner's ruling of
+#: 2026-11-09). ``game_dev_roblox`` populates both now, so they are declared optionals (§17q),
+#: and this list is empty again. It stays for the next finding.
+_UNEVIDENCED: dict[tuple[str, str], str] = {}
+
+#: Declared optionals that a registry entry outside the two scaffold stacks populates, as
+#: ``(registry, field) -> the entry``. SIP-0116 §17a point 6 said ``platform`` and ``requires``
+#: become declared optionals once ``game_dev_roblox`` is registered. That profile is a
+#: product's (it has no skeleton, so no scaffold stack resolves to it), and this file's stacks
+#: are the scaffold's two. So the entry that populates each is named here, and
+#: ``test_a_declared_optional_is_populated_by_some_stack`` reads it there (SIP-0116 §17q).
+_POPULATED_OUTSIDE_THE_SCAFFOLD_STACKS = {
+    ("DevelopmentProfile", "platform"): "game_dev_roblox",
+    ("DevelopmentProfile", "requires"): "game_dev_roblox",
 }
 
 
@@ -462,9 +469,25 @@ def test_a_declared_optional_is_populated_by_some_stack():
     for (registry, field), reason in _DECLARED_OPTIONAL.items():
         mapping, resolve = _REGISTRIES[registry]
         populated = [s for s in _STACKS if getattr(mapping[resolve(scaffold._STACKS[s])], field)]
+        outside = _POPULATED_OUTSIDE_THE_SCAFFOLD_STACKS.get((registry, field))
+        if outside is not None and getattr(mapping[outside], field):
+            populated.append(outside)
         assert populated, (
             f"{registry}.{field} is empty on every stack, yet recorded as optional: {reason}"
         )
+
+
+def test_an_entry_named_as_populating_a_field_is_a_declared_optionals_and_not_a_stacks():
+    """Bug caught: the list above naming an entry for a field that is no declared optional, or a
+    scaffold stack's own entry, where it would excuse a field the stacks leave empty."""
+    stack_entries = {
+        (registry, resolve(scaffold._STACKS[s]))
+        for registry, (_mapping, resolve) in _REGISTRIES.items()
+        for s in _STACKS
+    }
+    for (registry, field), entry in _POPULATED_OUTSIDE_THE_SCAFFOLD_STACKS.items():
+        assert (registry, field) in _DECLARED_OPTIONAL
+        assert (registry, entry) not in stack_entries
 
 
 def test_check_stack_is_falsified_at_the_acceptance_layer():
