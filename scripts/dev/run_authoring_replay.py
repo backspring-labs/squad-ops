@@ -453,13 +453,18 @@ def judge_records(records: list[dict], notes: dict, specs_for) -> list[dict]:
             "generation": record["generation"],
             "success": record["success"],
             "skill_stop": record.get("skill_stop"),
+            "left_to_the_product_runner": bool(record.get("left_to_the_product_runner")),
         }
         if record["arm"] == Arm.SKILLS.value:
-            wants_specs = (
-                bool(expect.get("specs_pass") or expect.get("discriminates"))
-                and specs_for is not None
+            handed_off = bool(record.get("left_to_the_product_runner"))
+            # #3150: a suite left to the product's runner is run there, as a successful one is.
+            # Its acceptance is that runner's reading, so the reading is wanted for it too.
+            wants_specs = specs_for is not None and bool(
+                expect.get("specs_pass")
+                or expect.get("discriminates")
+                or (expect.get("accepted") and handed_off)
             )
-            specs = specs_for(record) if wants_specs and record["success"] else None
+            specs = specs_for(record) if wants_specs and (record["success"] or handed_off) else None
             row.update(judge(expect, record, specs=specs))
             if specs is not None:
                 row["specs"] = specs
@@ -498,6 +503,12 @@ def _judge_and_report(args, cases, case_envelopes, records, notes, directory) ->
             f"  {case.id}: skills arm met {verdicts.count(MET)} of {len(skills)} "
             f"({', '.join(verdicts) or 'none authored'}); baseline accepted "
             f"{sum(bool(j['success']) for j in base)} of {len(base)}"
+            + (
+                f", and left {sum(j['left_to_the_product_runner'] for j in base)} to the "
+                "product's runner"
+                if any(j["left_to_the_product_runner"] for j in base)
+                else ""
+            )
         )
         for j in skills:
             for finding in j["findings"]:

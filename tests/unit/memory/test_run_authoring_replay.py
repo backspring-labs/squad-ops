@@ -498,6 +498,47 @@ def test_a_spec_whose_runner_never_ran_is_not_run_and_no_spec_is_no_judgement(ch
     )
 
 
+def test_a_suite_left_to_the_products_runner_is_run_there_and_judged_by_it():
+    """Entered at the host's judging step. Bug caught (#3150): a qa task on a product whose suite
+    only the product's runner runs comes back ``success=False`` by design, so its specs were
+    never run and the hand-off read as the handler refusing the answer. Every QA case of
+    ``roblox-skills-v1`` read ``not_met`` that way, and the baseline "accepted 0 of 3"."""
+    notes = {"env_q#qa": {"expect": {"accepted": True, "specs_pass": True, "discriminates": True}}}
+    record = {
+        "record": "authoring",
+        "envelope_id": "env_q#qa",
+        "case": "qa",
+        "arm": "skills",
+        "generation": 0,
+        "success": False,
+        "error": "Tests not executed: left to the product's runner",
+        "left_to_the_product_runner": True,
+        "artifacts": [{"name": "tests/Shop.spec.luau", "content": "ok"}],
+    }
+    ran = []
+
+    def specs_for(r):
+        ran.append(r["case"])
+        return {
+            "passed": ["tests/Shop.spec.luau > pays the bonus"],
+            "failed": [],
+            "discrimination": {"tests/Shop.spec.luau": "discriminates"},
+        }
+
+    (judged,) = runner.judge_records([record], notes, specs_for)
+    (unrun,) = runner.judge_records([record], notes, None)
+    (refused,) = runner.judge_records(
+        [{**record, "left_to_the_product_runner": False}], notes, specs_for
+    )
+
+    assert ran == ["qa"]
+    assert (judged["verdict"], judged["findings"]) == ("met", [])
+    assert judged["left_to_the_product_runner"] is True
+    assert unrun["verdict"] == "not_judged"
+    assert refused["verdict"] == "not_met"
+    assert any("the handler refused the answer" in f for f in refused["findings"])
+
+
 def test_only_the_skills_arm_is_held_to_its_cases_expectation():
     """Bug caught: a baseline, handed no skill, judged against a stop it could never give; or a
     spec expectation read as met when nothing ran it."""

@@ -184,9 +184,11 @@ def judge(
     """One authoring record against its case's expectation: ``{"verdict", "findings"}``.
 
     ``record`` is the runner's: the handler's ``success``, its ``artifacts``, the files its task
-    expected (``expected_artifacts``, the task's own input) and the declared stop its model
-    answered with (``skill_stop``). ``specs`` is the result of running the
-    record's emitted specs on the product, where they were run: ``{"passed": [...], "failed":
+    expected (``expected_artifacts``, the task's own input), the declared stop its model answered
+    with (``skill_stop``), and whether its suite was left to the product's own runner
+    (``left_to_the_product_runner``). Such a task comes back unsuccessful with no verdict of its
+    own, so its acceptance is what the product's runner reads of its specs. ``specs`` is the
+    result of running the record's emitted specs on the product, where they were run: ``{"passed": [...], "failed":
     [...]}`` as the product's own reader read them.
 
     Every expectation is checked and every miss is named. One that nothing was run for makes
@@ -194,8 +196,9 @@ def judge(
     findings = _stop_findings(expect, record)
     unjudged: list[str] = []
     artifacts = [str(a.get("name") or "") for a in record.get("artifacts") or ()]
+    handed_off = bool(record.get("left_to_the_product_runner"))
     if any(k in expect for k in EXPECTATIONS if k != EXPECT_STOP):
-        if not record.get("success"):
+        if not record.get("success") and not handed_off:
             findings.append(f"the handler refused the answer: {record.get('error')}")
     for pattern in expect.get(EXPECT_EMITS) or ():
         if not any(fnmatch.fnmatchcase(name, pattern) for name in artifacts):
@@ -206,18 +209,19 @@ def judge(
         findings.extend(_expected_findings(record, artifacts))
     if expect.get(EXPECT_SCENARIO_CRITERION):
         findings.extend(_scenario_findings(record))
-    if expect.get(EXPECT_SPECS_PASS):
+    # What only the product's own runner can say. #3150: a suite the qa image left to that
+    # runner (SIP-0112 H.26) has no verdict of its own, so its acceptance is read there too.
+    for name, wanted, read in (
+        (EXPECT_ACCEPTED, bool(expect.get(EXPECT_ACCEPTED)) and handed_off, _spec_findings),
+        (EXPECT_SPECS_PASS, bool(expect.get(EXPECT_SPECS_PASS)), _spec_findings),
+        (EXPECT_DISCRIMINATES, bool(expect.get(EXPECT_DISCRIMINATES)), _discrimination_findings),
+    ):
+        if not wanted:
+            continue
         if specs is None:
-            unjudged.append(f"{EXPECT_SPECS_PASS}: the emitted specs were not run on the product")
+            unjudged.append(f"{name}: the emitted specs were not run on the product")
         else:
-            findings.extend(_spec_findings(specs))
-    if expect.get(EXPECT_DISCRIMINATES):
-        if specs is None:
-            unjudged.append(
-                f"{EXPECT_DISCRIMINATES}: the emitted specs were not run on the product"
-            )
-        else:
-            findings.extend(_discrimination_findings(specs))
+            findings.extend(f for f in read(specs) if f not in findings)
     verdict = NOT_MET if findings else NOT_JUDGED if unjudged else MET
     return {"verdict": verdict, "findings": findings + unjudged}
 
