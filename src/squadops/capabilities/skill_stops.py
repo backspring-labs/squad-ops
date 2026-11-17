@@ -3,9 +3,9 @@
 A skill may tell the model to refuse a task its equipment can't do honestly, and to say why in
 one line: a criterion whose effect the scenario reader can't observe, a product with no test
 runner. The skill declares that line's opening words in its front matter (``stops``), and this
-is the one place an answer is read for them. A seam handed skills asks it when its own parser
-found nothing to accept, so the reason reaches whoever reads the run and the model isn't asked
-again to do what its skill told it to refuse.
+is the one place an answer is read for them. Every authoring answer of a task handed skills
+passes it before any parser reads the answer (``_llm_call``), so the reason reaches whoever
+reads the run and the model isn't asked again to do what its skill told it to refuse.
 
 Core holds no skill's words: it reads what the task's handed skills declare.
 """

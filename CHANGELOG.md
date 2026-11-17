@@ -201,6 +201,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A skill's stop is read from the model's own line** (#3154; SIP-0116 §17u): an answer that quoted its skill's
+  template before stopping was recorded as stopped by the template, placeholders and all, and one that quoted it
+  and then did its work would have ended its run. A line the skill itself shows is now passed over.
 - **The Roblox strategy skill says which scenarios a disclosed gap means** (#3041; SIP-0116 §17s): the second
   skills replay admitted the development and QA skillsets and failed the strategy one on a HUD-text case. A
   proposal read the product's `no_start_declaration` gap ("Outcome Evaluation reads every scenario

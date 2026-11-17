@@ -2612,3 +2612,16 @@ checks:
       p = DEVELOPMENT_PROFILES["game_dev_roblox"]
       print(p.platform.id, sorted(r.skillset for e in p.requires for r in e.any_of))
     expect: "roblox ['roblox-increment-design', 'roblox-luau-dev', 'roblox-studio-qa']"
+  - id: "3154-quoted-template"
+    what: a stop is read from the model's own line when its answer quotes the skill's template first, and the template alone is no stop (SIP-0116 §17u)
+    container: squadops-nat
+    code: |
+      from squadops.capabilities.skill_stops import read_stop
+      from squadops.capabilities.skillsets import load_skillsets
+      md = load_skillsets()["roblox-increment-design"].skill_files["play-scenario-authoring"]["SKILL.md"]
+      handed = [{"skillset": "roblox-increment-design", "skill": "play-scenario-authoring", "files": {"SKILL.md": md}}]
+      shown = [line for line in md.splitlines() if line.startswith("`no scenario:")][0]
+      own = "no scenario: a chime shows itself as a sound, which roblox-studio/1 can't observe"
+      stop = read_stop(handed, "> " + shown + "\n\n`" + own + "`")
+      print(stop.line == own, read_stop(handed, "> " + shown))
+    expect: "True None"
