@@ -182,6 +182,7 @@ PLAN_VALIDATORS: tuple[str, ...] = (
     "validate_qa_artifact_ownership",
     "validate_qa_suite_namespace",
     "validate_qa_tasks_author_a_suite",
+    "validate_reserved_paths",
     "validate_unique_expected_artifacts",
 )
 

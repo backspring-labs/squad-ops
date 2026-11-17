@@ -139,6 +139,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #3002, closes #2862 |
 | a product the size of z_tower-ascension carried whole: the checkout cap and the resolution's limit raised together, a tree past either refused by name and never cut short, and the steps that render no prompt counted as none (H.32) | **shipped** | 2.8 (PR #3121, closing #3118) |
 | a product's package roots declared in its Development Configuration where its tree names none (a Luau product under Script Sync), read by the derivation as package surfaces, with `package_root_missing` for one the tree lacks (H.33) | **shipped** | 2.8 (PR #3135, closing #3134) |
+| a product's reserved paths declared in its Development Configuration, carried on its derived profile, and refused by path at a proposal's rails, both plan gates, an operator's plan at create and delivery (H.35) | **shipped** | 2.8 (PR #3168, closes #3155) |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect; then re-placed from 2.8 by the 2.8 plan's decision 9 (the owner, 2026-11-11): the MacBook lane holds the 2.8 headline, and its files are that lane's) | 2.10.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | a Project's declared contribution identity: the request's token checked against it at the forge before anything is pushed, another's refused, and the forge identity recorded beside the caller (H.34, ruled 2026-11-17, not yet built) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
@@ -3860,3 +3861,84 @@ each would be its own proposal.
 
 **Who ruled.** The owner brought the brief and ruled (a), (b) and (c) on 2026-11-16. Items 1 to 9 are the MacBook
 lane's draft from it, which the owner ruled as drafted on 2026-11-17. SIP-0109 §24ea is the Campaign's side.
+
+## H.35 A product's owner reserves paths from a cycle's change (2026-11-17; E.4.3, H.4, H.6, H.8, FR-06; SIP-0109 §9.1, §24bv point 5; SIP-0116 §17t; #3155; the MacBook lane, ruled by the owner)
+
+**What changed.** A product's Development Configuration may declare `technical.reserved_paths`: files, folders
+and globs its owner changes themselves. No cycle changes one. A proposal that reaches one, a plan that names
+one and a run that changes one are each refused by path, naming the entry, whatever a model argued.
+
+**The evidence.** z_tower-ascension's own instructions put anything touching saved data behind its owner's
+approval. The development skill tells the model to stop on such a change, and the skills replay measured how
+well that holds (SIP-0116 §17r to §17t): no answer of three on the first run, three of three on the second,
+two of three on the third. The answer that didn't stop quoted the instruction and the skill, then wrote the
+schema anyway because a typed criterion expected a file. The file it wrote held the renamed field alone. A
+skill's stop is the model's to follow, and nothing in the framework refused the change. It would have reached
+the product as a review request for its owner to notice.
+
+**The declaration.**
+- **`technical.reserved_paths`,** a list, in the Development Configuration, beside H.33's `package_roots`. It is
+  recorded with a revision as every declaration there is, a cycle pins the revision it runs under, and the
+  derived profile at that pin carries the entries (contract 8 gains an optional `reserved_paths`).
+- **An entry** is a file, a folder with everything beneath it, or a glob. `*` is the one wildcard and crosses
+  `/`, as in a footprint; `**/` also stands for no folder; case is kept; `[` and `?` are literal (#2512).
+  `squadops.projects.reserved_paths` is the one reading.
+- **Refused at submission, naming the entry:** one that is empty, absolute, leaves the repository or is
+  declared twice; one that reserves every file; and one that reserves no file at the baseline commit, which is
+  what a misspelt path looks like and would protect nothing.
+- **None declared, nothing is reserved.** A stored configuration or profile without the key reads as before
+  and is written back without it.
+
+**The Project Record was the other home considered** (#3155 asked). The configuration is where every seam
+below already reads the product's declarations at the cycle's own pin. A record-level declaration would need a
+second pin for a cycle to hold to.
+
+**Where a reserved path is refused.** Each seam that accepts a path, the tree it sees, and its outcome:
+
+| seam | what it reads | a reserved path |
+|---|---|---|
+| a proposal's rails (SIP-0109 §9.1; `validate_proposal`) | the authored `footprint`, as globs, and the criterion files the framework would place | refused `reserved_path` and returned to the proposer: a footprint entry that is reserved, lies in a reserved folder or holds a reserved file, and a criterion's own file placed at one. A reserved glob against a footprint glob that only might share a file is left to the seams below, which read paths |
+| the plan gates (H.8's two: the promotion seam and the in-run gate) | each task's `expected_artifacts` | `validate_reserved_paths` refuses the plan, naming the task, the path and the revision; the framing re-rolls told which |
+| cycle create, for an operator's plan | the plan's `expected_artifacts` | refused before anything is persisted |
+| a task's emission, an agent-side repair, the verifier's tree | the task's own files | not refused here. Each is a part of the run's change, which delivery reads whole |
+| delivery (E.4.3; `deliver_source_change`) | every path the delivery would write: the squad's change at its latest accepted content, removals included, with the framework's placed files | the run is refused before a candidate is built: nothing is seeded, verified or captured. It reads the configuration at the cycle's pinned revision |
+| a Campaign's acceptance, its branch and its contribution | the captured commit | nothing reaches them: they take what delivery captured |
+
+**Taught before it is enforced** (#686), and only where declared:
+- the plan's authors are shown the entries through `request.plan_reserved_paths_appendix`, on the same inputs
+  step that shows H.8's blocked paths;
+- a Campaign's proposal is shown them in its product section (`request.proposal_reserved_paths`).
+
+A product that declares none is sent the requests it always was, to the byte: its proposal's input holds no new
+key and no template renders a blank.
+
+**What it does not do.**
+- It does not stop a change outside a cycle. The owner's own commits are theirs.
+- It does not read a rename of the folder that holds a reserved file as reaching it, unless the plan or the
+  run names the file.
+- A repair round is not offered for a run refused at delivery. Its plan passed the gate without naming the
+  path, so its change strayed from its plan.
+
+**The evidence it works.**
+- **`tests/unit/cycles/test_reserved_paths.py`:** the reading of an entry in each form; both plan gates
+  entered as the live run reaches them, each refusing a plan that names one with the path, the entry and the
+  revision; an operator's plan at `prepare_cycle`; the authors shown the entries by the run's inputs step and
+  both authoring paths rendering the asset; a profile derived from a configuration that reserves, written and
+  read back; one stored before the key; a damaged one refused.
+- **`tests/unit/projects/test_configuration.py`,** entered at `configure_project`: the entries recorded and
+  read back; none declared stored as before; ten refusals naming the entry.
+- **`tests/unit/campaigns/test_product_change_request.py`,** entered at `validate_proposal`: a footprint that
+  names, lies in or holds a reserved path; a criterion file placed at one; requests beside them accepted.
+- **`test_strategy_propose_product_increment.py`,** entered at the proposal's `handle()` with the input the
+  run composes: the entries shown, a reaching request returned with the refusal and the revised one accepted;
+  and a product reserving nothing sent the same prompt as before.
+- **`tests/unit/cycles/test_source_backed_run.py`,** entered at the end of the plan: a run changing a reserved
+  file, one under a reserved folder beside a free file, and one a glob matches are each refused with nothing
+  stored or mapped; a run beside the reserved paths is delivered.
+- Loaded-check rows `3155-reserved-path-reading` and `3155-reserved-paths-assets`.
+
+**Not shown.** No product declares a reserved path yet. z_tower-ascension's revision is the Spark lane's to
+submit, and the first cycle on it reads the rule live.
+
+**Who ruled.** The MacBook lane proposed the rule from the replay's reading (#3155). The owner ruled it on
+2026-11-17: "let's go with the proposed rule for 3155."

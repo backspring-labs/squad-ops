@@ -17,6 +17,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the
   run's terminal decision, under its own heading. Before this a stopped proposal read as `proposal_failed` and was
   proposed again unexplained, and a stopped increment was repaired into the same stop.
+- **A product's owner reserves paths from a cycle's change** (#3155; SIP-0112 H.35): a Development Configuration
+  may declare `technical.reserved_paths` (files, folders, globs). A proposal whose footprint reaches one, a plan
+  whose task names one and a run that changes one are each refused by path, whatever a model argued, and the
+  authors are shown the entries first. A product that declares none is unchanged, to the byte of its prompts.
 - **A goal set's result can be observed on a `scenario` surface** (#3042; SIP-0115 §10h): a result seen only while
   the product is played, such as a game's HUD in a play session. The other kinds each named something a Roblox
   game doesn't have, and `none` showed the proposal "not observed".

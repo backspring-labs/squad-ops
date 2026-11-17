@@ -151,6 +151,7 @@ def derive_profile(
         test_files=_test_globs(runners, owner),
         test_support_files=tuple(dict.fromkeys(f for r in runners for f in r.support_files)),
         gaps=_gaps(tree, configuration, results, runners, owner, lint, toolchains, unread),
+        reserved_paths=configuration.reserved_paths,
     )
 
 

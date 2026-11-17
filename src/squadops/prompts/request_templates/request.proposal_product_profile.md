@@ -1,12 +1,13 @@
 ---
 template_id: request.proposal_product_profile
-version: "2"
+version: "3"
 required_variables:
   - surface_lines
   - placement_lines
 optional_variables:
   - judged_routes_section
   - gaps_section
+  - reserved_paths_section
 ---
 ### What the product exposes, and where its tests run
 
@@ -23,4 +24,4 @@ product files when it names none. So a change across two runners' paths names ea
 `paths`. A criterion whose paths no runner tests, or only one that hosts no criterion, is refused:
 {{placement_lines}}
 
-{{gaps_section}}
+{{gaps_section}}{{reserved_paths_section}}

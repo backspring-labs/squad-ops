@@ -365,6 +365,8 @@ _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_proposal_brief_conflicts_shape",
     "request.plan_bind_criteria_appendix",
     "request.plan_blocking_gaps_appendix",
+    # #3155: the paths the product's owner reserves, shown beside where its checks can't run.
+    "request.plan_reserved_paths_appendix",
     "request.plan_frozen_surface_appendix",
     # #2795: the qa proposer's, and the development proposer's, which tells it the files are qa's.
     (
@@ -656,6 +658,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.strategy_propose_product_increment",
             "request.proposal_product_profile",
             "request.proposal_product_gaps",
+            # SIP-0112 H.35 (#3155): the paths the product's owner reserves from a cycle's change.
+            "request.proposal_reserved_paths",
             # SIP-0109 §24cp: the pages acceptance already reads, which a criterion names no
             # anchor on.
             "request.proposal_judged_routes",

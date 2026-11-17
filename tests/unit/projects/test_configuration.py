@@ -209,3 +209,94 @@ async def test_a_package_root_nothing_could_import_is_refused_naming_the_entry(
     assert raised.value.field == field
     assert says in str(raised.value)
     assert registry.recorded is None
+
+
+# --- H.35 (#3155): the paths the product's owner reserves from a cycle's change ------------------
+
+
+async def _configure_reserving(registry, clone, reserved):
+    submission = _submission()
+    submission["technical"]["reserved_paths"] = reserved
+    return await configure_project(
+        "prj-tally",
+        submission,
+        expected_revision=0,
+        registry=registry,
+        repository=clone,
+        actor="owner",
+        idempotency_key="c-reserved",
+    )
+
+
+async def test_declared_reserved_paths_are_recorded_and_read_back(fixture_tree):
+    """Entered at ``configure_project``, the call the configuration route makes. Bugs caught:
+    the entries dropped between the submission and the stored document, or not read back by
+    ``parse_configuration``, so the derivation and delivery both read "nothing reserved"."""
+    from squadops.projects.development_configuration import parse_configuration
+
+    registry = _Registry(commit=fixture_tree.commit)
+    reserved = ["tally/report.py", "checks", "**/*.md"]
+
+    await _configure_reserving(registry, _Clone(fixture_tree), reserved)
+
+    configuration, _ = registry.recorded
+    document = configuration.to_document()
+    assert document["configuration"]["technical"]["reserved_paths"] == reserved
+    assert parse_configuration(document).reserved_paths == tuple(reserved)
+
+
+async def test_a_configuration_reserving_nothing_is_stored_as_it_was_before(fixture_tree):
+    """The edge every existing product is: none declared. Bug caught: an empty list written to
+    every stored configuration, moving its digest and reading as a declaration."""
+    registry = _Registry(commit=fixture_tree.commit)
+
+    await _configure_reserving(registry, _Clone(fixture_tree), [])
+
+    configuration, _ = registry.recorded
+    assert configuration.reserved_paths == ()
+    assert "reserved_paths" not in configuration.to_document()["configuration"]["technical"]
+
+
+@pytest.mark.parametrize(
+    ("reserved", "field", "says"),
+    [
+        (["tally/reprot.py"], "technical.reserved_paths[0]", "reserves no file at the baseline"),
+        (["tally", "gone/**"], "technical.reserved_paths[1]", "reserves no file at the baseline"),
+        (["**"], "technical.reserved_paths[0]", "reserves every file"),
+        (["./"], "technical.reserved_paths[0]", "reserves every file"),
+        (["/tally"], "technical.reserved_paths[0]", "not a path inside the repository"),
+        (["tally/../checks"], "technical.reserved_paths[0]", "not a path inside the repository"),
+        (["tally", "tally"], "technical.reserved_paths[1]", "declared twice"),
+        ([""], "technical.reserved_paths[0]", "a repository path or glob"),
+        ([" tally"], "technical.reserved_paths[0]", "a repository path or glob"),
+        ("tally", "technical.reserved_paths", "a list of repository paths or globs"),
+    ],
+    ids=[
+        "a misspelt file",
+        "a glob matching nothing",
+        "everything",
+        "the root",
+        "absolute",
+        "leaves",
+        "twice",
+        "empty",
+        "padded",
+        "not-a-list",
+    ],
+)
+async def test_a_reservation_that_would_protect_nothing_or_everything_is_refused_naming_the_entry(
+    fixture_tree, reserved, field, says
+):
+    """Require, don't default. Bugs caught: a misspelt entry recorded, so the file the owner
+    meant is unprotected and nothing says so; an entry that reserves the whole product, which
+    refuses every cycle at its end; a path outside the repository."""
+    from squadops.projects.development_configuration import ConfigurationInvalid
+
+    registry = _Registry(commit=fixture_tree.commit)
+
+    with pytest.raises(ConfigurationInvalid) as raised:
+        await _configure_reserving(registry, _Clone(fixture_tree), reserved)
+
+    assert raised.value.field == field
+    assert says in str(raised.value)
+    assert registry.recorded is None

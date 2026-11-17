@@ -677,3 +677,65 @@ def test_a_page_the_manifest_and_the_inventory_both_name_keeps_both_their_ids(an
     )
 
     assert [r.kind for r in verdict.refusals] == [RefusalKind.ANCHOR_NOT_UNIQUE]
+
+
+# --- SIP-0112 H.35 (#3155): a path the product's owner reserves is no proposal's to change -------
+
+
+def _reserving(*reserved: str) -> ProductContext:
+    return dataclasses.replace(_PRODUCT, reserved_paths=reserved)
+
+
+@pytest.mark.parametrize(
+    ("reserved", "footprint", "detail"),
+    [
+        (("tally/report.py",), ["tally/report.py"], "the footprint reaches tally/report.py, "),
+        (("tally",), ["tally/report.py"], "the footprint reaches tally/report.py (tally), "),
+        (("tally/ledger.py",), ["tally/**"], "the footprint reaches tally/** (tally/ledger.py), "),
+        (
+            ("**/report.py",),
+            ["tally/ledger.py", "tally/report.py"],
+            "the footprint reaches tally/report.py (**/report.py), ",
+        ),
+    ],
+    ids=["the file", "its folder", "a glob that holds it", "a reserved glob"],
+)
+def test_a_request_whose_footprint_reaches_a_reserved_path_is_refused_by_path(
+    reserved, footprint, detail
+):
+    """Entered at ``validate_proposal``. Bug caught: a proposal to change what a save holds
+    reaching the increment gate and a build, on a product whose owner reserved the schema."""
+    verdict = validate_proposal(
+        _request(footprint=footprint), _context(product=_reserving(*reserved))
+    )
+
+    assert not verdict.accepted
+    [refusal] = [r for r in verdict.refusals if r.kind is RefusalKind.RESERVED_PATH]
+    assert refusal.detail.startswith(detail)
+    assert "which the product's owner reserves from a cycle's change" in refusal.detail
+
+
+def test_a_criterion_file_the_framework_would_place_at_a_reserved_path_is_refused():
+    """The framework writes too. Bug caught: a criterion's own test placed under a folder the
+    owner reserved, so the framework changes what no cycle may."""
+    verdict = validate_proposal(_request(), _context(product=_reserving("checks")))
+
+    assert not verdict.accepted
+    [refusal] = [r for r in verdict.refusals if r.kind is RefusalKind.RESERVED_PATH]
+    assert refusal.detail.startswith(
+        "a criterion's own test file would be placed at checks/check_criterion_R1.py (checks)"
+    )
+
+
+@pytest.mark.parametrize(
+    "reserved",
+    [(), ("tally/ledger.py",), ("docs", "**/secrets.py")],
+    ids=["none reserved", "a file beside the change", "a folder and a glob elsewhere"],
+)
+def test_a_request_beside_the_reserved_paths_is_accepted_as_before(reserved):
+    """Bug caught: every proposal on a product refused once it reserves one path, or a product
+    reserving none held to a rule it never declared."""
+    verdict = validate_proposal(_request(), _context(product=_reserving(*reserved)))
+
+    assert verdict.accepted, verdict.refusals
+    assert verdict.change_request.footprint == ("tally/report.py", "checks/check_criterion_R1.py")

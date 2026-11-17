@@ -19,10 +19,12 @@ from squadops.projects.development_configuration import (
     DevelopmentConfiguration,
     discover_instruction_sources,
     parse_package_roots,
+    parse_reserved_paths,
     parse_technical,
     submission_digest,
 )
 from squadops.projects.models import CheckoutTree, SourceUnavailable
+from squadops.projects.reserved_paths import matches_none
 from squadops.stacks.scaffold import is_scaffoldable_stack, scaffoldable_stacks
 
 if TYPE_CHECKING:
@@ -55,11 +57,13 @@ async def configure_project(
     technical = _mapping(submission, "technical")
     project_type, target, stack, commands = parse_technical(technical)
     package_roots = parse_package_roots(technical)
+    reserved = parse_reserved_paths(technical)
     await _check_stack(registry, project_id, stack)
     tree = await baseline_tree(
         repository, project_id, project.source.repo_uri, project.source.base_ref, commit
     )
     _check_package_roots(package_roots, tree.files, commit)
+    _check_reserved_paths(reserved, tree.files, commit)
     quality = submission.get("quality") or {}
     configuration = DevelopmentConfiguration(
         project_id=project_id,
@@ -72,6 +76,7 @@ async def configure_project(
         instruction_sources=discover_instruction_sources(tree.files, commit),
         quality_contract_ref=quality.get("contract_ref"),
         package_roots=package_roots,
+        reserved_paths=reserved,
     )
     return await registry.record_development_configuration(
         configuration,
@@ -106,6 +111,19 @@ def _check_package_roots(roots: tuple[str, ...], files: Mapping[str, bytes], com
                 f"technical.package_roots[{i}]",
                 f"{root!r} is no directory at the baseline commit {commit[:12]}",
             )
+
+
+def _check_reserved_paths(
+    reserved: tuple[str, ...], files: Mapping[str, bytes], commit: str
+) -> None:
+    """H.35: each declared entry reserves a file the baseline commit holds. One that matches
+    nothing is what a misspelt path looks like, and it would protect nothing, so it's refused as
+    submitted."""
+    for i, entry in matches_none(reserved, files):
+        raise ConfigurationInvalid(
+            f"technical.reserved_paths[{i}]",
+            f"{entry!r} reserves no file at the baseline commit {commit[:12]}",
+        )
 
 
 def _mapping(doc: Mapping[str, Any], key: str) -> Mapping[str, Any]:

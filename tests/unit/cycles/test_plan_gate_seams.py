@@ -119,6 +119,11 @@ def test_seam_error_channels_stay_distinct():
             "nothing it writes there can be verified (SIP-0112 H.8)",
         ),
         (
+            "validate_reserved_paths",
+            "a plan naming a path the product's owner reserves reaches implementation, to be "
+            "refused only at delivery after the whole run (SIP-0112 H.35)",
+        ),
+        (
             "validate_against_offered",
             "a plan naming a contract the cycle's squad doesn't supply reaches dispatch through "
             "that path, where its task fails as handler_not_found (SIP-0116 §9)",

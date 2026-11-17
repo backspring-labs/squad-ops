@@ -211,6 +211,11 @@ class DerivedProfile:
     test_files: tuple[str, ...]
     test_support_files: tuple[str, ...]
     gaps: tuple[Gap, ...]
+    #: SIP-0112 H.35 (#3155): the paths the product's owner reserves from a cycle's change, as
+    #: its Development Configuration declares them at this revision
+    #: (``squadops.projects.reserved_paths``). A profile derived before the declaration existed
+    #: holds none.
+    reserved_paths: tuple[str, ...] = ()
 
     @property
     def blocking(self) -> tuple[Gap, ...]:
@@ -294,6 +299,8 @@ class DerivedProfile:
                 }
                 for g in self.gaps
             ],
+            # H.35: written only when declared, so a profile with none reads back as it was.
+            **({"reserved_paths": [*self.reserved_paths]} if self.reserved_paths else {}),
         }
 
 
@@ -335,7 +342,17 @@ def parse_profile(doc: Mapping[str, Any]) -> DerivedProfile:
         test_files=_paths(files, "test", "files", allow_empty=True),
         test_support_files=_paths(files, "test_support", "files", allow_empty=True),
         gaps=tuple(_gap(x, at) for at, x in _items(doc, "gaps")),
+        reserved_paths=_reserved_paths(doc),
     )
+
+
+def _reserved_paths(doc: Mapping[str, Any]) -> tuple[str, ...]:
+    """H.35: the stored ``reserved_paths``, or none for a record written before it. A value
+    that isn't a list of texts is refused: it would read as "nothing is reserved"."""
+    value = doc.get("reserved_paths", [])
+    if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+        raise ProfileInvalid("reserved_paths", "a list of repository paths or globs")
+    return tuple(value)
 
 
 def _language(doc: Mapping[str, Any], at: str) -> Language:
