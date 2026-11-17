@@ -122,6 +122,10 @@ def test_every_defect_of_a_cases_file_is_named_in_one_pass():
     assert "specs_pass is true" in str(refused.value)
 
 
+#: A suite the qa image left to the product's own runner (#3150): unsuccessful, with no verdict.
+_HANDED = {"left_to_the_product_runner": True}
+
+
 @pytest.mark.parametrize(
     ("expect", "record", "specs", "verdict", "finding"),
     [
@@ -245,6 +249,34 @@ def test_every_defect_of_a_cases_file_is_named_in_one_pass():
             "0 passing and 0 failing",
         ),
         (
+            {"accepted": True, "specs_pass": True},
+            {"success": False, "error": "Tests not executed", "artifacts": [_SPEC], **_HANDED},
+            {"passed": ["Shop > pays the bonus"], "failed": []},
+            MET,
+            None,
+        ),
+        (
+            {"accepted": True},
+            {"success": False, "error": "Tests not executed", "artifacts": [_SPEC], **_HANDED},
+            None,
+            NOT_JUDGED,
+            "accepted: the emitted specs were not run on the product",
+        ),
+        (
+            {"accepted": True},
+            {"success": False, "error": "Tests not executed", "artifacts": [_SPEC], **_HANDED},
+            {"passed": [], "failed": ["Shop > rounds down"]},
+            NOT_MET,
+            "0 passing and 1 failing: Shop > rounds down",
+        ),
+        (
+            {"accepted": True},
+            {"success": False, "error": "refused after its revision budget", "artifacts": []},
+            {"passed": ["a"], "failed": []},
+            NOT_MET,
+            "the handler refused the answer: refused after its revision budget",
+        ),
+        (
             {"discriminates": True},
             {"success": True, "artifacts": [_SPEC]},
             None,
@@ -290,6 +322,10 @@ def test_every_defect_of_a_cases_file_is_named_in_one_pass():
         "specs-passed",
         "a-spec-failed",
         "no-spec-ran",
+        "handed-off-and-passing-on-the-product",
+        "handed-off-and-not-run",
+        "handed-off-and-failing-on-the-product",
+        "a-refusal-is-still-a-refusal",
         "discrimination-not-run",
         "the-spec-proves-its-change",
         "the-spec-cant-load-before",

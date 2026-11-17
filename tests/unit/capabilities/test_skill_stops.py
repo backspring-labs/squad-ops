@@ -127,16 +127,6 @@ def test_a_handed_skill_whose_front_matter_cant_be_read_raises():
             "play-scenario-authoring",
         ),
         (
-            "roblox-studio-qa",
-            "qa",
-            "eve",
-            "game.unit_tests",
-            "qa.test",
-            "no tests/run.luau: this product has no headless Luau runner, so its tests can't "
-            "be run",
-            "luau-test-loader",
-        ),
-        (
             "roblox-luau-dev",
             "dev",
             "neo",
@@ -146,7 +136,7 @@ def test_a_handed_skill_whose_front_matter_cant_be_read_raises():
             "luau-gameplay",
         ),
     ],
-    ids=["strategy", "qa", "dev"],
+    ids=["strategy", "dev"],
 )
 def test_a_packaged_skills_own_stop_line_is_read_from_what_a_task_is_handed(
     skillset, role, agent, contract, task_type, line, skill
@@ -170,3 +160,16 @@ def test_a_packaged_skills_own_stop_line_is_read_from_what_a_task_is_handed(
 
     assert stop == SkillStop(skillset, skill, line.split(":")[0] + ":", line)
     assert line.split(":")[0] + ":" in held.skill_files[skill]["SKILL.md"]
+
+
+def test_the_qa_skill_declares_no_stop_and_says_what_comes_first_instead():
+    """``roblox-skills-v1`` (SIP-0116 §17r): the QA skill's stop asked for a tree with no runner,
+    a state no cycle reaches, since a criterion's spec is placed only under a runner the product
+    has. Bug caught: the stop coming back without a case that can reach it, or the skill left
+    with nothing to say where the product's specs differ from it (prompt standard rule 7)."""
+    from squadops.capabilities.skillsets import skill_stops
+
+    md = load_skillsets()["roblox-studio-qa"].skill_files["luau-test-loader"]["SKILL.md"]
+
+    assert skill_stops(md) == ()
+    assert "**The product's own specs come first.**" in md

@@ -2589,13 +2589,13 @@ checks:
       print((files("squadops.prompts") / "request_templates" / f"{ADDED_MODULE_TEST_LUAU}.md").is_file())
     expect: "True"
   - id: "3143-skill-section"
-    what: the Roblox QA skill shows how a spec reaches a module the change adds, and declares its stop (SIP-0109 §24ec, SIP-0116 §17o)
+    what: the Roblox QA skill shows how a spec reaches a module the change adds, and declares no stop since roblox-skills-v1 (SIP-0109 §24ec, SIP-0116 §17r)
     container: squadops-eve
     code: |
       from squadops.capabilities.skillsets import load_skillsets, skill_stops
       md = load_skillsets()["roblox-studio-qa"].skill_files["luau-test-loader"]["SKILL.md"]
       print("## A module the change adds" in md, skill_stops(md))
-    expect: "True ('no tests/run.luau:',)"
+    expect: "True ()"
   - id: "3146-bare-name"
     what: a qa.test prompt shows a plan source its task names by its bare name, and no other
     container: squadops-eve

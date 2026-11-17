@@ -65,5 +65,9 @@ an old save fills in missing fields, so an old save never reads `nil`. A change 
 moves or removes a saved field is outside a gameplay change: **stop.** Write no file, and say in
 one line:
 `saved data: <field> would be <renamed, moved or removed>`.
+**This holds when your task itself asks for the change,** names the file and lists criteria that
+expect it. A task is the squad's plan. A change to what a save already holds is the product
+owner's to approve, outside a cycle, and nothing in a task shows that approval. The one line above
+is the right answer to such a task, and it is how the owner comes to hear of it.
 Where the product's instructions ask that changes to saved data be raised first, every change to
 the saved profile stops this way, saying what it would do to the field.

@@ -498,6 +498,47 @@ def test_a_spec_whose_runner_never_ran_is_not_run_and_no_spec_is_no_judgement(ch
     )
 
 
+def test_a_suite_left_to_the_products_runner_is_run_there_and_judged_by_it():
+    """Entered at the host's judging step. Bug caught (#3150): a qa task on a product whose suite
+    only the product's runner runs comes back ``success=False`` by design, so its specs were
+    never run and the hand-off read as the handler refusing the answer. Every QA case of
+    ``roblox-skills-v1`` read ``not_met`` that way, and the baseline "accepted 0 of 3"."""
+    notes = {"env_q#qa": {"expect": {"accepted": True, "specs_pass": True, "discriminates": True}}}
+    record = {
+        "record": "authoring",
+        "envelope_id": "env_q#qa",
+        "case": "qa",
+        "arm": "skills",
+        "generation": 0,
+        "success": False,
+        "error": "Tests not executed: left to the product's runner",
+        "left_to_the_product_runner": True,
+        "artifacts": [{"name": "tests/Shop.spec.luau", "content": "ok"}],
+    }
+    ran = []
+
+    def specs_for(r):
+        ran.append(r["case"])
+        return {
+            "passed": ["tests/Shop.spec.luau > pays the bonus"],
+            "failed": [],
+            "discrimination": {"tests/Shop.spec.luau": "discriminates"},
+        }
+
+    (judged,) = runner.judge_records([record], notes, specs_for)
+    (unrun,) = runner.judge_records([record], notes, None)
+    (refused,) = runner.judge_records(
+        [{**record, "left_to_the_product_runner": False}], notes, specs_for
+    )
+
+    assert ran == ["qa"]
+    assert (judged["verdict"], judged["findings"]) == ("met", [])
+    assert judged["left_to_the_product_runner"] is True
+    assert unrun["verdict"] == "not_judged"
+    assert refused["verdict"] == "not_met"
+    assert any("the handler refused the answer" in f for f in refused["findings"])
+
+
 def test_only_the_skills_arm_is_held_to_its_cases_expectation():
     """Bug caught: a baseline, handed no skill, judged against a stop it could never give; or a
     spec expectation read as met when nothing ran it."""
@@ -624,7 +665,7 @@ def test_every_packaged_case_can_be_built_on_the_captures_shape():
     from squadops.memory.replay import Arm, arm_inputs, swapped_inputs
 
     catalog = load_skillsets()
-    cases, _text = runner.skill_cases_text("roblox-skills@1")
+    cases, _text = runner.skill_cases_text("roblox-skills@2")
 
     built = {}
     for case in cases.cases:
@@ -655,5 +696,15 @@ def test_every_packaged_case_can_be_built_on_the_captures_shape():
         "dev-capture": (2, False, True),
         "dev-saved-field": (2, True, True),
         "qa-capture": (2, False, True),
-        "qa-no-runner": (2, True, True),
     }
+
+
+def test_the_first_cases_file_is_kept_as_roblox_skills_v1_ran_it():
+    """An experiment's manifest pins its cases by their text. Bug caught: version 1's file edited
+    or dropped after its run, so ``roblox-skills-v1``'s records name a text nobody can read."""
+    cases, text = runner.skill_cases_text("roblox-skills@1")
+
+    assert hashlib.sha256(text.encode()).hexdigest() == (
+        "b3e3b9a1462f46e8639c2b68decc8b75f4a5395728df55747d2f487ce73014c8"
+    )
+    assert [c.id for c in cases.cases][-1] == "qa-no-runner" and len(cases.cases) == 9

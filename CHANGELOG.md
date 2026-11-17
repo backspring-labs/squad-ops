@@ -194,6 +194,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **The skills replay judges a suite left to the product's runner by that runner** (#3150; SIP-0116 §17r): on a
+  product whose suite only its own runner runs, `qa.test` comes back unsuccessful by design. The replay read that
+  as a refusal and never ran the emitted specs, so every QA case of `roblox-skills-v1` read `not_met`.
+- **The three Roblox skills' stops, revised after the first replay** (#3041; SIP-0116 §17r): every ordinary case
+  passed and each skillset failed on its stop case. The strategy skill now says a `package` criterion is no way
+  round an effect a scenario can't observe. The development skill says its saved-data stop holds when the task
+  itself asks for the change. The QA skill's stop, which asked for a state no cycle reaches, is replaced by "the
+  product's own specs come first". The cases are `roblox-skills@2`; version 1's file is kept as it ran.
 - **A `qa.test` prompt shows the module under test when the plan names it by its bare name** (#3146): the second
   #3041 capture's plan wrote "the ShopDiscount module" and nothing longer, so the module-path rule (#3139) had
   nothing to match. A file among the plan's own sources (`implementation_artifacts`) whose name the task's text

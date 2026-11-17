@@ -196,6 +196,7 @@ async def replay(
     packaged ones when it isn't given."""
     from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
     from squadops.capabilities.skill_stops import SkillStop
+    from squadops.execution.product_suite import left_to_the_product_runner
     from squadops.memory.authoring_envelope import (
         AuthoringReplayEnvelope,
         inputs_as_handed,
@@ -310,6 +311,10 @@ async def replay(
                 # What the task as authored expected, after the case's swaps: a captured case
                 # names no file of its own, since another capture brings another plan.
                 "expected_artifacts": [str(e) for e in inputs.get("expected_artifacts") or ()],
+                # #3150: a suite the qa image left to the product's own runner (SIP-0112 H.26)
+                # comes back ``success=False`` with no verdict of its own. The framework's own
+                # reading of that, so the judge never takes a hand-off for a refusal.
+                "left_to_the_product_runner": left_to_the_product_runner(result),
             }
         records.append(
             {

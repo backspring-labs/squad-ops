@@ -21,6 +21,13 @@ a purchase prompt. Write no change request, and say in one line:
 `no scenario: <criterion> shows itself as <effect>, which roblox-studio/1 can't observe`.
 A scenario that can't read its effect would pass or fail on something else.
 
+**A `package` criterion is no way round that.** A headless test loads only modules that compute.
+A module that creates a Sound, an instance or an effect doesn't load there, so its test never runs
+and the increment is refused after it is built. A rule beside the effect can be tested (whether
+the chime should play), and it proves the rule: nobody has checked that a player hears anything.
+So where the effect a player gets is the whole of what was asked, stop as above, however small a
+part of it a test could reach.
+
 ## The criterion in `change_request.yaml`
 
 ```yaml
