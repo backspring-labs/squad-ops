@@ -48,7 +48,9 @@ it.**
 4. **The MacBook side is ready.** The MacBook lane confirms:
    - Studio is open on the place, unpublished, with Studio writes going to the local copy only (the owner's standing
      rule);
-   - the Studio version is the one the worker was qualified on (#3048). Any other version stops the window.
+   - the Studio version is the one the worker was qualified on (#3048). Any other version stops the window;
+   - **the Mac is unlocked and awake, and Studio is the app in front** (amended 2026-11-17, §12a). The MacBook lane
+     reads this at each launch that plays, and keeps it so until the plays that launch asks for have settled.
 
 **When the window closes:** at its end, or at the first thing that needs the owner or the MacBook lane, the provider
 goes back to `none` and the Spark is rebuilt. It isn't left bound outside the window.
@@ -398,3 +400,80 @@ The cut record repeats this:
 
 The counted Campaign's result stands as read. Whether a second counted attempt runs, on the same items in the same
 order and never on easier ones, or the cut narrows under the plan §5 and §6, is the owner's ruling.
+
+## 12. Amendments
+
+### 12a. The full-path gate's first two attempts, and the fixed deploy (2026-11-17, before any rehearsal or counted run)
+
+**Neither attempt counts toward step 1.** Both ran on the window's first deploy (`c31f720a`). Step 1 is the gate
+run on the fixed deploy named below. Every attempt is reported (§9).
+
+**Attempt 1:** `cmp_c22ad50e1de0`, cycle `cyc_0c4a22cbc932`, deploy `dep_800a593a0cf2`, 09:09–09:33 ET. Aborted under
+the owner's grant for uncounted runs.
+- **The plan gate escalated under §24ee.** Both task proposers raised a blocking `must_cover_requirements`
+  conflict. The brief lists the footprint's scenario declarations (`.squadops/scenarios/criterion_T1.json`,
+  `criterion_T2.json`) among the files modified. The increment's writable list names only
+  `src/Client/UI/HUD.luau`.
+  - **The Spark's answer**, approving under the grant: the framework places those files
+    (`change_request.scenario_criterion_path`, #3044).
+  - **The escalation stayed `pending`** after that decision (#3174).
+- **Both baseline plays were `not_executed`.** "the scenario acts through Studio's input, which acts only on a Studio
+  in front". The Mac was locked (`loginwindow` in front), and the worker ran nothing in Studio.
+- **The retry launch was refused at creation preflight.** roblox-studio's rule `footprint_scripts_only` refused the
+  framework's own `.squadops/scenarios/criterion_T1.json`. Any retry or repair cycle of a scenario increment would be
+  refused the same way.
+
+**Attempt 2:** `cmp_1afaeaaacd46`, cycle `cyc_c75cdc9d6d4c`, deploy `dep_9702e88f5c73` (the same commit), 09:37–10:13
+ET. The Mac was unlocked, and Studio was in front, confirmed by the MacBook lane. Aborted under the owner's grant
+for uncounted runs, with the owner's "Ok to proceed".
+- **Plan validation rejected the first plan,** which named two `qa.test` specs under `tests/` outside the footprint.
+  It re-rolled the framing, as designed.
+  - **The re-rolled plan escalated on `framed_once` alone.** No brief conflict was raised that time.
+- **The play leg worked end to end.** Both baseline plays ran in Studio, 77 s each by the worker's log: claim, sync,
+  play, the setup actions, the reader's records and the evidence.
+- **Both stopped at setup.** The squad's scenario waits on `gui_state` `visible` of `@player.PlayerGui.TA_HUD`. The
+  reader refused it: "TA_HUD is a ScreenGui, not a GUI object". So the named assertions didn't execute, and the
+  run failed before development.
+  - The model wrote this shape in all three proposals so far (part 5, attempts 1 and 2), although the strategy
+    skill's own example observes `Enabled`.
+- **The retry launch was refused** by `footprint_scripts_only`, as in attempt 1.
+
+**What the attempts settle:**
+- **Studio runs with DataStore off,** so every play starts from the default profile. The game's console says
+  "Saving is OFF for this Studio test". §5's lives-count dependence doesn't arise in this place, and B-1 and B-2
+  read the same on any save by construction.
+- **The worker missed several heartbeat and claim answers.** Seven claim or heartbeat `ReadTimeout`s on the worker,
+  each within about 15 s of a run starting on the Spark. The worker recovered each time. One play's claim was
+  delayed about 5 s. Recorded as a finding about the runtime's answer time.
+
+**The fix: PR #3175** (the MacBook lane's; it closes #3173 and #3176), merged as `5d374fa5` (2026-11-17 10:31 ET):
+1. **The footprint a provider's authority is asked about** is the squad's footprint, without the framework's
+   scenario declarations (`execution/product_view.squad_footprint`).
+2. **What plan authors are told:** the stages shown the change request, and every plan author's scenario-criteria
+   appendix, say that the framework writes each criterion's declaration, that no task is planned for it, and that
+   it is no conflict with the brief. `validate_increment_footprint`'s refusal names the files a task may plan
+   without them.
+3. **The reader** (SIP-0117 R5.25): `gui_state` `visible` on a screen (a ScreenGui, any LayerCollector) reads its
+   `Enabled`. `text` on a screen stays unsupported, by name. This is additive: no scenario that ran before reads
+   differently.
+   - **The provider's version goes to 2.**
+   - **The worker was requalified on Studio 0.747.0.7471481** under version 2, on the MacBook, 10:11–10:14:46 ET, by
+     `studio_requalify.py`. The scenario's third setup action waits on `gui_state` `visible` of
+     `@player.PlayerGui.TA_HUD`, the shape both attempts wrote.
+     - Play 1 passed.
+     - Then a reset: Studio quit, the place restored from the pristine file, and Studio reopened.
+     - Play 2 passed.
+   - **The record:** `20261117T151446.571002Z-passed.json`, the first under version 2.
+   - **The worker** runs the merge commit's harness from its own checkout, restarted under launchd.
+
+The skills' text is unchanged, so no replay is owed.
+
+**The deploy for steps 1 to 3** is built from `5d374fa5` with `runtime_api` bound, once main's CI on it is green. Its
+record id and verify_loaded count (288 expected) go into the run record before gate attempt 3 (§3, check 2). What it runs on (§4)
+now includes the worker's side: the provider `roblox-studio` at version 2, the harness at the merge commit, and the
+version-2 qualification record above. A change to any of them is a change of deploy. #3171 (the
+diagnostic's fault) stays out of it.
+
+**The order and the time rule are unchanged** (§2, §3). The owner's window ends around 12:04 ET. If the counted run
+can't start under the time rule, it waits for another attended window, on the deploy that window's clean rehearsal
+ran on.
