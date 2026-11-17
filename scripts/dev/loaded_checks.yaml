@@ -2671,3 +2671,12 @@ checks:
       text = resources.files("squadops.prompts").joinpath("request_templates/request.plan_proposal_brief_conflicts_shape.md").read_text()
       print(all(f"#     {name}:" in text or f"#   - {name}:" in text for name in ("brief_field", "proposed_change", "reason", "severity")))
     expect: "True"
+  - id: "3042-scenario-goal-surface"
+    what: a goal set's expected result can be observed on a scenario surface (SIP-0115 §10h)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.goal_set import parse_goal_set
+      doc = {"goal": "g", "expected_results": [{"id": "ER-1", "statement": "s", "surface": {"kind": "scenario", "ref": "the HUD in a play session"}}]}
+      surface = parse_goal_set(doc).expected_results[0].surface
+      print(surface.kind, surface.ref)
+    expect: "scenario the HUD in a play session"

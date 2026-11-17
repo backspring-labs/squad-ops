@@ -71,6 +71,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | slice 4: the console's goals panel: a panel of the Projects plugin, its edit a confirm-level command (`squadops.revise_goal_set`). §8.3's latest assessment of each expected result is not shown: no assessment record exists until slice 5 (§5.7), and showing it in the panel is that slice's | **shipped** | 2.6.0, PR #2916, closes #2887 |
 | slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7), shown in the console (as built: §10d) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 | an operator's assessment shown in the Campaign digest and the next proposal (as built: §10g) | **shipped** | 2.8, PR #3098, closes #2954 |
+| a result seen in play is observed on a `scenario` surface (§10h) | **shipped** | 2.8, PR #3166 (#3042 tracks the goal set's registration) |
 | an item ended at §10 row 19 gets one automatic re-proposal, shown the abandonment's reason (the 2.7 plan's R3) | **dropped** (§10f): after SIP-0109 §24do no path ends an item at row 19 | — |
 | slice 6: the repository export | **unplaced**, deliberately: not in 2.6 (the plan's D1, ruled 2026-11-03) | — |
 
@@ -734,3 +735,35 @@ and the digest, with a held store, one that raises and none.
 
 **Who ruled it.** The owner moved #2954 to 2.8 by the 2.7 plan's R2 (2026-11-08), which records it as feature work
 because it changes what the next proposal receives, and adopted the 2.8 plan with it in the Spark lane.
+
+### 10h. A result seen in play is observed on a `scenario` surface (2026-11-17, §4, §10a; SIP-0118 phase 2g; #3042; the MacBook lane, ruled by the owner)
+
+**What changed.** §10a's surface kinds gain one: `scenario`, with a `ref` as every observed kind has. It names a
+result seen only while the product is played or driven, which a scenario's steps reach: a game's HUD in a play
+session.
+
+**The evidence.** z_tower-ascension's goal set (#3042) has two expected results, a lobby hint and a session clock,
+each seen on the HUD while the game is played. None of the kinds fits:
+- `http_endpoint`, `page`, `command` and `package_interface` each name something a Roblox game doesn't have;
+- `none` carries a reason the result can't be observed, and the proposal is shown it as "not observed". These
+  results can be observed, by the play scenarios SIP-0117's harness plays, and "not observed" steers a proposal
+  off the scenario criterion the result needs.
+
+**The rule.**
+- `{kind: scenario, ref: <what is observed, in words>}`, as `{kind: scenario, ref: the HUD in a play session}`.
+  A `scenario` surface with no `ref`, or with a `reason`, is refused, as for every observed kind.
+- **The kind says where a result is seen, and nothing about how it is checked.** A proposal is shown it as
+  "scenario `the HUD in a play session`" and writes its criteria as its stack's skills say. No reader of a goal
+  set treats one observed kind differently from another, and this adds no such reader.
+- A goal set stored before this reads as it did.
+
+**The evidence it works.**
+- **`tests/unit/projects/test_goal_set.py`:** the goal set the owner approved for z_tower-ascension, as written,
+  parses to two `scenario` results and reads back as the same document. A `scenario` surface with no `ref`, or
+  with a `reason`, is refused naming its field, and a kind outside the list is refused with the list.
+- **`test_strategy_propose_product_increment.py`,** entered at the proposal's `handle()`: a result on a
+  `scenario` surface is shown with its kind and its `ref`, beside one with no surface shown as not observed.
+- A loaded-check row, `3042-scenario-goal-surface`.
+
+**Who ruled.** The MacBook lane found the gap drafting the goal set and recommended the kind (#3042). The owner
+approved the goal set and the kind on 2026-11-17 ("use recommendations on the others as well").

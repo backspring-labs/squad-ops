@@ -453,6 +453,30 @@ def _naming(item: str | None) -> str:
     return _fenced(yaml.safe_dump(request, sort_keys=False))
 
 
+async def test_a_result_seen_in_play_is_shown_to_the_proposal_as_a_scenario_surface():
+    """Wiring, entered at ``handle()`` with the input the run composes. Bug caught (#3042): a
+    result on a ``scenario`` surface rendered as "not observed", or with its kind dropped, so
+    the proposer is steered off the scenario criterion the result needs."""
+    import copy
+
+    inputs = copy.deepcopy(_on_goals())
+    inputs["product_proposal"]["goals"]["expected_results"][0]["surface"] = {
+        "kind": "scenario",
+        "ref": "the HUD in a play session",
+    }
+    ctx = _ctx(_naming("B-3"))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert result.success, result.error
+    [prompt] = _prompts(ctx)
+    assert (
+        "- `ER-total`: The report ends in the total of its amounts "
+        "(scenario `the HUD in a play session`)"
+    ) in prompt
+    assert "- `ER-plain`: The report reads plainly (not observed: judged by the owner)" in prompt
+
+
 async def test_a_goal_set_proposal_is_shown_the_goal_set_and_names_the_next_item():
     """Wiring (anti-pattern 6a), entered at ``handle()`` with the input the run composes. Bugs
     caught: the goal set composed and never rendered, so the proposer is shown no requirements at

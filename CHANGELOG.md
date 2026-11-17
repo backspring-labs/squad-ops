@@ -17,6 +17,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the
   run's terminal decision, under its own heading. Before this a stopped proposal read as `proposal_failed` and was
   proposed again unexplained, and a stopped increment was repaired into the same stop.
+- **A goal set's result can be observed on a `scenario` surface** (#3042; SIP-0115 §10h): a result seen only while
+  the product is played, such as a game's HUD in a play session. The other kinds each named something a Roblox
+  game doesn't have, and `none` showed the proposal "not observed".
 - **The `game_dev_roblox` development profile** (#3041; SIP-0118 R5.2, SIP-0116 §17q): the first profile whose work
   requires something of the squad. It declares the platform and, for strategy, development and QA, the Roblox
   skillset each needs. An operator names it for a Campaign on a Roblox game, and a cycle on a squad that lacks a
