@@ -144,6 +144,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | A skill's stops: declared in its front matter, read from every authoring answer, and a stopped task ending its run as `skill_stopped` with the stop carried (§17o). The Campaign's handling of that ending is SIP-0109's | **shipped** | 2.8 (PR #3132; #3041 tracks the Roblox squad's rest) |
 | The skills replay: a `skills` arm on the authoring replay, the equipment built as a cycle builds it, swapped cases, and each answer judged by its case's declared stop, acceptance, emitted files, scenario criterion and passing specs; the nine Roblox cases (§17p). Its run on the Spark's models is #3041's | **shipped** | 2.8 (PR #3141; #3041 tracks the Roblox squad's rest) |
 | The first skills replay read (`roblox-skills-v1`: every ordinary case passed, each skillset failed on its stop case), the three skills' stops revised for `roblox-skills@2`, and a suite left to the product's runner judged by that runner (§17r) | **shipped** | 2.8 (PR #3151, closing #3150; #3041 tracks the second replay) |
+| The second skills replay read (`roblox-skills-v2`: `roblox-luau-dev` and `roblox-studio-qa` admitted, `roblox-increment-design` failing on one case), and the strategy skill told which scenarios a disclosed gap means (§17s) | **shipped** | 2.8 (PR #PRNUM; #3041 tracks the third replay) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1497,6 +1498,59 @@ cases file is kept as it ran (`roblox-skills@1.yaml`, held to its text's digest 
 **Who ruled.** The reading rule was the MacBook lane's, stated in the run plan before the run (#3041,
 issuecomment-6936196850). The Spark lane ran it, read it and found #3150. The revisions are the MacBook lane's,
 under the owner's approval of the skill drafts (2026-11-15) and the 2.8 plan.
+
+### 17s. The second skills replay, `roblox-skills-v2`: two skillsets admitted, and the strategy skill told which scenarios a gap means (2026-11-17, §7, §17p, §17r; SIP-0118 R4.3; #3041, #3152)
+
+**The run.** The Spark lane ran `roblox-skills@2` on deploy `dep_aa7d76fa46a7` at `a4bb41d6`, on
+`qwen3.8-27b-tf-nvfp4`: eight cases, two arms, three generations, seed 7, 3,060 seconds, on a fresh capture
+(Campaign `cmp_6f3664949d4c`, uncounted, no skill loaded). All eight cases were valid. The records are
+`var/replays/roblox-skills-v2/` on the Spark. The rule is §17r's, restated in the run plan before the run.
+
+| case | skillset | skills arm met | what was read |
+|---|---|---|---|
+| strategy-capture | roblox-increment-design | 3 of 3 | |
+| strategy-hud-text | roblox-increment-design | **1 of 3** | two generations wrote one `package` criterion on a label formatter |
+| strategy-title-screen | roblox-increment-design | 2 of 3 | one generation wrote a `package` criterion on a button list |
+| strategy-unobservable | roblox-increment-design | 3 of 3 | each answered with the stop, and two quoted the skill's new rule |
+| strategy-saved-state | roblox-increment-design | 3 of 3 | each `prd_delta` says an existing save holds 0. Two of three baselines said nothing of existing saves |
+| dev-capture | roblox-luau-dev | 3 of 3 | |
+| dev-saved-field | roblox-luau-dev | 3 of 3 | each answered with the stop and wrote no file. None argued for writing one |
+| qa-capture | roblox-studio-qa | 3 of 3 | judged on the record (§17r's fix): five tests passing, the spec discriminating, each generation |
+
+**By the rule:**
+- **`roblox-luau-dev` and `roblox-studio-qa` pass,** and are admitted on this run. Their skills' text is
+  unchanged by what follows.
+- **`roblox-increment-design` fails** on `strategy-hud-text`. It is revised and replayed.
+
+**No answer cited a skill's rule and overrode it,** which every development answer of `v1` did. One development
+answer disputed the task's own typed criterion in its favour.
+
+**Why the HUD case missed.** One answer said it: "scenarios are `blocked_unverified` for this product. Since
+scenarios can't be verified here, I need a criterion the `luau` runner can prove." That comes from the proposal's
+own prompt, in both arms. A product with no start declaration discloses the gap `no_start_declaration`, whose
+sentence ends "Outcome Evaluation reads every scenario blocked_unverified". It is about Outcome Evaluation's
+scenarios, which need a started application. One word names two things in one prompt, and the proposal read it as
+its play scenarios too. `v1`'s proposal prompt held the same line and passed the case three of three, so the
+sampling moved as well as the text.
+
+**What changed.**
+- **The strategy skill says which scenarios the gap means:** it quotes the gap, says it is another check, and
+  says a criterion a player sees is a `scenario` criterion on this product too. A formatter a `package`
+  criterion proves is not what the player sees.
+- **In the skill, and not in the framework's prompt.** The skill and the scenario vocabulary reach a proposal
+  together, from the two skillsets the profile requires, so the skill is there in every cycle where a scenario
+  criterion can be written. A line the framework rendered only where a vocabulary is kept would also have made
+  the replay's skills arm differ from its baseline by more than its skills section (§17p's validity).
+- **The gap's own wording** is #3152, for the lane that owns the derivation.
+- **The cases are unchanged,** so they stay `roblox-skills@2`. The experiment is `roblox-skills-v3`, on the
+  framework commit that carries the revised skill.
+
+**Next:** all eight cases again as `roblox-skills-v3`, on `v2`'s three captured envelopes. The revision touches a
+skill's text alone, which no baseline renders, so those captures still reconstruct exactly. The profile
+(§17q) is registered when `roblox-increment-design` has passed.
+
+**Who ruled.** The rule was stated before the run (#3041). The Spark lane ran and read it, and traced the HUD
+misses to the gap's line. The revision is the MacBook lane's.
 
 ## Appendix A. A paper compatibility matrix
 

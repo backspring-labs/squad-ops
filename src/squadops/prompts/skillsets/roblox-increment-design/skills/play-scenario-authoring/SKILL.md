@@ -15,6 +15,13 @@ game in Studio, before development and again on the change, and its records deci
 
 The scenario is frozen when the change request is approved. You write it once, here.
 
+**A play scenario is not one of Outcome Evaluation's scenarios.** The product may disclose a gap
+named `no_start_declaration`, which says "Outcome Evaluation reads every scenario
+blocked_unverified". That is another check, of an application that is started and called. It says
+nothing of a play scenario: the worker plays yours in Studio whatever that gap says. So a
+criterion a player sees is a `scenario` criterion on this product too. A formatter or a list that
+a `package` criterion proves is not what the player sees.
+
 **If the criterion's effect is one `roblox-studio/1` can't observe, stop.** That covers a sound, a
 particle effect, an animation, a colour or anything only seen in a picture, two players at once, and
 a purchase prompt. Write no change request, and say in one line:
