@@ -2707,3 +2707,23 @@ checks:
       names = ("request.plan_reserved_paths_appendix.md", "request.proposal_reserved_paths.md")
       print([("owner reserves" in templates.joinpath(n).read_text()) for n in names])
     expect: "[True, True]"
+  - id: "3173-squad-footprint"
+    what: a provider's authority is asked about the squad's footprint, without the scenario declarations the framework writes (SIP-0116 §17x)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.change_request import is_scenario_path, scenario_criterion_path
+      from squadops.execution import product_view
+      path = scenario_criterion_path("T1")
+      print(is_scenario_path(path), "footprint=squad_footprint(document)" in inspect.getsource(product_view.product_view))
+    expect: "True True"
+  - id: "3173-framework-files-assets"
+    what: the two assets that tell an increment's framing roles a scenario declaration is the framework's are in the image (SIP-0109 §24ef)
+    container: squadops-max
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      section = templates.joinpath("request.increment_framework_files_section.md").read_text()
+      appendix = templates.joinpath("request.increment_scenario_criteria_appendix.md").read_text()
+      print("framework writes itself" in section, "declaration file, which the framework writes itself" in appendix)
+    expect: "True True"

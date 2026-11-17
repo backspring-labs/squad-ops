@@ -210,6 +210,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A retry or repair of an increment with a play scenario is no longer refused at creation** (#3173; SIP-0116
+  §17x, SIP-0109 §24ef): the provider's footprint rule was asked about the scenario declaration the framework
+  itself places. A provider is now asked about the squad's footprint alone, and the plan's authors are told
+  those files are the framework's, so they raise no brief conflict over them.
 - **The plan-review tier doesn't approve past a brief conflict the merge escalated** (#3164; SIP-0109 §24ee): under
   `plan_gate: tier` a proposer's blocking disagreement with the brief was escalated to the operator by the merge
   and approved by the tier unseen. The tier now reads the framing's merge decisions as a fourth condition.

@@ -350,6 +350,8 @@ _DEVELOP_APPENDIX_TEMPLATES = (
 _PLANNING_TEMPLATES = (
     "request.planning_task_base",
     "request.increment_framing_section",
+    # #3173: the footprint's files the framework writes itself, beside the change request.
+    "request.increment_framework_files_section",
     "request.increment_ruling_notes_section",
     # #3143: on a Luau product, how a criterion's test reaches a module the change adds.
     "request.increment_added_module_test_luau_appendix",

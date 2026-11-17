@@ -148,6 +148,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | The third skills replay read (`roblox-skills-v3`: all three skillsets pass, one stop overridden in one answer of three), and the `game_dev_roblox` profile registered on it (§17t, §17q) | **shipped** | 2.8 (PR #3145; #3041 tracks the first cycle under the profile, #3154 the stop's recorded line, #3155 the reserved paths) |
 | A stop is read from the model's own line, and a line the skill itself shows is passed over (§17u) | **shipped** | 2.8 (PR #3156, closing #3154) |
 | A worker's tool is available only on a runtime that binds remote execution, at creation and at dispatch (§17w) | **shipped** | 2.8 (PR #3162, closing #3159) |
+| A provider's authority is asked about the squad's footprint, without the scenario declarations the framework writes (§17x) | **shipped** | 2.8 (PR #3175, closing #3173) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1756,6 +1757,35 @@ refuses an operation it can't send, as before.
 
 **Who ruled.** The Spark lane found it and stated the rule (#3159). The change is the MacBook lane's, which built
 §8's checks (phase 4).
+
+### 17x. A provider is asked about the squad's footprint, without the files the framework writes (2026-11-17, §17n; SIP-0118 R5.3; SIP-0109 §24ef; #3173)
+
+**What changed.** §17n hands a tool's authority the product and "the footprint the cycle is held to". It is now
+the squad's footprint: the ruled change request's, without the files the framework itself writes for the
+increment.
+
+**The evidence.** The 2.8 demonstration's full-path gate, first attempt (`cmp_c22ad50e1de0`, the Spark, deploy
+`dep_800a593a0cf2`). Its cycle ended `blocked_unverified`, and the Campaign's retry was refused at creation:
+"…is refused by roblox-studio's rule footprint_scripts_only: .squadops/scenarios/criterion_T1.json is outside
+what a change may carry…". The framework lays each scenario criterion's declaration at that path and adds it to
+the approved footprint (#3044). An increment's first cycle has no footprint at creation, so it passed. Every
+retry or repair of an increment with a scenario criterion was refused.
+
+**The rule.**
+- **`execution/product_view.squad_footprint`** is what a `ProductView` carries: the approved footprint without
+  the scenario declarations, by the one predicate that names their path (`change_request.is_scenario_path`).
+- **A criterion's own test file stays in it.** The framework chooses its path and the squad's QA writes it, so a
+  provider's rule still reads it.
+- **In core, for every provider.** A rule about what a change may carry reads the squad's change, whichever
+  provider asks.
+- A cycle with no change request yet still shows no footprint.
+
+**The evidence it works** (`tests/unit/cycles/test_scenario_files_are_the_frameworks.py`), entered at
+`product_view` with the change request a retry carries, and judged by the Studio provider's own authority: the
+retry is not refused; the test runner, a document, another file under the framework's folder and a model in the
+same footprint are each still refused by path; a first cycle shows no footprint.
+
+**Who ruled.** The Spark lane found it in the demonstration's window. The fix is the MacBook lane's.
 
 ## Appendix A. A paper compatibility matrix
 

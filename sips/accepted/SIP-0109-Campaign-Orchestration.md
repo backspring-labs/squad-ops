@@ -170,6 +170,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #3144, closes #3143 |
 | a campaign's policy names the development profile its product is developed under, every launch carries it alone, and a squad lacking what it requires is refused at creation (§24ed) | **shipped** | 2.8.0, PR #3158, closes #3157 |
 | the plan-review tier's fourth condition: no brief conflict the merge escalated to the operator, read from the framing's merge decisions (§24ee) | **shipped** | 2.8.0, PR #3167, closes #3164 |
+| an increment's framing roles are told which footprint files the framework writes, so a scenario criterion's declaration raises no brief conflict (§24ef) | **shipped** | 2.8.0, PR #3175, closes #3173 |
 | a Campaign's push and contribution carrying the token of its Project's declared contribution identity, with the forge identity on their rows and the accepted head beside the contribution commit (§24ea, ruled 2026-11-17, not yet built; SIP-0112 H.34) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
@@ -7541,3 +7542,35 @@ dropped rule 5 (conflicts between proposals blocking the gate) stays dropped.
 
 **Who ruled.** §24bj's policy is the owner's (2026-10-08). The MacBook lane found the gap and recommended the
 condition (#3164), and the owner ruled it on 2026-11-17 ("use recommendations on the others as well").
+
+### 24ef. A plan's authors are told which footprint files the framework writes (2026-11-17, §7.3, §24ee; SIP-0093 §15d; SIP-0116 §17x; #3173)
+
+**What changed.** An increment whose change request holds a scenario criterion tells its framing roles that the
+criterion's declaration, which the footprint names, is the framework's file.
+
+**The evidence.** On the same full-path gate attempt (§17x's), both task proposers raised a blocking brief
+conflict, and the plan gate escalated under §24ee, as designed. The brief listed the two scenario declarations
+among the files the increment changes; the increment's own constraint named the client script alone; and nothing
+said who writes the declarations. The proposers asked an operator to add the files or confirm them provisioned
+elsewhere. On its substance the conflict was moot, as #3163's was. With §24ee, every increment with a scenario
+criterion would stop at its plan gate for a person.
+
+**The rule.**
+- **The stages shown the change request** (§7.3: the design, the brief's author) get a short section after it,
+  `request.increment_framework_files_section`, naming the footprint's files the framework writes itself and
+  saying to plan no task for them and that they are no conflict with the brief.
+- **Every plan author** is told the same in the scenario-criteria appendix they are already shown
+  (`request.increment_scenario_criteria_appendix`, #3081), since the proposers read the brief and not the change
+  request.
+- **Only on an increment that holds a scenario criterion.** Every other increment's framing requests are the
+  ones they were.
+- The plan gate still refuses a task that names a declaration (`validate_increment_scenario_files`), and §24ee
+  still escalates a conflict a proposer raises anyway.
+
+**The evidence it works** (the same test file): the brief author's section names both declarations after the
+change request; an increment with none renders the section it always did; a document that is no change request
+names none; and the proposers' and the merger's surfaces carry the appendix's new paragraph.
+
+**Not shown:** a framing that raises no such conflict. That is read on the next full-path gate.
+
+**Who ruled.** The Spark lane named the gap. The fix is the MacBook lane's.
