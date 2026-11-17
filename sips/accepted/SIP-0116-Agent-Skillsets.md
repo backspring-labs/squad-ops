@@ -1716,6 +1716,7 @@ which reads `matched`, and it reaches no gap.
 - Nothing is built for this.
 
 **Who ruled.** The Spark lane read the prompt and reported it. The withdrawal is the MacBook lane's.
+
 ### 17w. A worker's tool is available when the runtime binds remote execution and a worker serves it (2026-11-17, §8, §9; SIP-0117; #3159)
 
 **What changed.** §8's availability check read the worker registry alone. It now reads the runtime's own
