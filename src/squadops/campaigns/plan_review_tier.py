@@ -11,7 +11,11 @@ validation passed at the gate, the manifest's schema and winnability gates inclu
 - **the plan's footprint is inside the objective's allowed scope**: the union of its tasks'
   ``expected_artifacts``. A calibration is not held to it: it builds the baseline the scope is read
   against, and its plan names the builder's own notes at the root;
-- **the framing ran once**: a framing that plan validation refused and re-rolled escalates.
+- **the framing ran once**: a framing that plan validation refused and re-rolled escalates;
+- **the merge escalated no brief conflict** (§24ee, #3164): a proposer's disagreement with the brief
+  that the plan's merge escalated to the operator (SIP-0093 §5.8 rule 1, §15d) is the operator's to
+  answer, so the tier doesn't approve past it. Merge decisions that are absent or unreadable
+  establish nothing, and escalate.
 
 Pure: it reads the gate's evidence and the campaign's record, never mutable memory (SIP-0110 §7,
 §0.8).
@@ -26,6 +30,7 @@ from enum import StrEnum
 from squadops.campaigns.change_request import outside_allowed_scope, qa_namespace_paths
 from squadops.campaigns.models import CycleKind
 from squadops.cycles.implementation_plan import ImplementationPlan
+from squadops.cycles.merge_decisions import MergeDecisions
 
 #: The decider a tier approval records (§24bj), in the machine deciders' vocabulary (#812).
 GATE_DECIDED_BY_PLAN_REVIEW_TIER = "system:plan_review_tier"
@@ -37,6 +42,7 @@ class TierCondition(StrEnum):
     NO_OPEN_QUESTION = "no_open_question"
     INSIDE_SCOPE = "inside_scope"
     FRAMED_ONCE = "framed_once"
+    NO_ESCALATED_CONFLICT = "no_escalated_conflict"
 
 
 @dataclass(frozen=True)
@@ -87,6 +93,46 @@ def plan_footprint(plan_yaml: str | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(path for task in plan.tasks for path in task.expected_artifacts))
 
 
+#: The disposition the plan's merge gives a brief conflict it doesn't settle (SIP-0093 §5.7).
+_ESCALATED = "escalated_to_operator"
+
+
+def conflict_check(merge_decisions_yaml: str | None) -> TierCheck:
+    """§24ee: whether the plan's merge escalated a brief conflict to the operator, read from the
+    ``merge_decisions.yaml`` the framing wrote. An escalated conflict fails the condition with
+    each conflict's field and reason, which the escalation then carries to whoever rules the
+    gate. A framing with no merge decisions, or ones that can't be read, fails it too: every
+    framing that reaches this gate ran the merge, so their absence is nothing to approve on."""
+    condition = TierCondition.NO_ESCALATED_CONFLICT
+    if not merge_decisions_yaml:
+        return TierCheck(
+            condition,
+            False,
+            "the framing wrote no merge decisions, so the tier can establish nothing about a "
+            "conflict a proposer raised with the brief",
+        )
+    try:
+        decisions = MergeDecisions.from_yaml(merge_decisions_yaml)
+    except ValueError as e:
+        return TierCheck(condition, False, f"the merge decisions can't be read: {e}")
+    dispositions = decisions.brief_conflicts_disposition
+    escalated = [d for d in dispositions if d.disposition == _ESCALATED]
+    if escalated:
+        return TierCheck(
+            condition,
+            False,
+            f"{len(escalated)} escalated to the operator: "
+            + "; ".join(f"{d.brief_field}: {d.reason}" for d in escalated),
+        )
+    settled = len(dispositions)
+    return TierCheck(
+        condition,
+        True,
+        "the merge escalated no brief conflict"
+        + (f" ({settled} raised and settled by the merge)" if settled else ""),
+    )
+
+
 def plan_review_tier(
     *,
     kind: CycleKind,
@@ -96,6 +142,7 @@ def plan_review_tier(
     stack: str,
     refused_framing_runs: Sequence[str],
     answered_on_record: Mapping[str, str],
+    merge_decisions: str | None,
     placed: Sequence[str] = (),
     design_is_the_change_request: bool = False,
 ) -> TierVerdict:
@@ -114,7 +161,11 @@ def plan_review_tier(
     ``design_is_the_change_request`` (#2796, SIP-0109 §24cs): a repository-backed increment has no
     interface manifest; its design is its approved change request, which the supervisor ruled at
     the increment gate, and which carries no open question. The scope and the framing are still
-    read, so a plan that strays from that request still escalates."""
+    read, so a plan that strays from that request still escalates.
+
+    ``merge_decisions`` is the framing run's ``merge_decisions.yaml``, or ``None`` when it wrote
+    none (``conflict_check``, §24ee). Required: a caller that has none says so, and the tier
+    escalates."""
     if open_questions is None and design_is_the_change_request:
         questions = TierCheck(
             TierCondition.NO_OPEN_QUESTION,
@@ -192,4 +243,4 @@ def plan_review_tier(
             else "the framing ran once"
         ),
     )
-    return TierVerdict((questions, scope, once))
+    return TierVerdict((questions, scope, once, conflict_check(merge_decisions)))

@@ -2680,3 +2680,11 @@ checks:
       surface = parse_goal_set(doc).expected_results[0].surface
       print(surface.kind, surface.ref)
     expect: "scenario the HUD in a play session"
+  - id: "3164-tier-reads-merge-decisions"
+    what: the plan-review tier holds a fourth condition, and merge decisions it can't read fail it (SIP-0109 §24ee)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.plan_review_tier import conflict_check
+      check = conflict_check(None)
+      print(check.condition, check.held)
+    expect: "no_escalated_conflict False"

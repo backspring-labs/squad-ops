@@ -206,6 +206,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **The plan-review tier doesn't approve past a brief conflict the merge escalated** (#3164; SIP-0109 §24ee): under
+  `plan_gate: tier` a proposer's blocking disagreement with the brief was escalated to the operator by the merge
+  and approved by the tier unseen. The tier now reads the framing's merge decisions as a fourth condition.
 - **A brief conflict a proposer raises in the wrong shape reaches the operator** (#3163; SIP-0093 §15d): it was
   dropped at the parse, so `merge_decisions.yaml` recorded nothing. It is now an escalated disposition holding what
   was written, and both task proposers' prompts show one worked entry in place of a bare `brief_conflicts: []`.

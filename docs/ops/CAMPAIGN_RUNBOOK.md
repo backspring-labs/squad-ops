@@ -252,7 +252,9 @@ definition declares it; one that does not is refused at creation:
 - `supervised`: as above. A design that asks nothing passes on its own (#807), and a question waits
   for you;
 - `tier`: the plan-review tier approves when the design asks nothing, the plan's files are inside the
-  objective's `allowed_scope` (a calibration is exempt), and the framing ran once. It records
+  objective's `allowed_scope` (a calibration is exempt), the framing ran once, and the plan's merge
+  escalated no brief conflict to the operator (§24ee: a proposer's blocking disagreement with the brief, or one
+  that couldn't be read, waits for a person). It records
   `system:plan_review_tier`, with what each condition read in the notes. **Anything else escalates**
   (§24bj, §24bk): an `escalation_opened` row names the conditions that failed and the questions, and
   the gate waits for you as above. Answer it within `ruling_bound_s`; any decision you record resolves
