@@ -7609,10 +7609,11 @@ no criterion named and ran it. The machinery Campaign's scripted squad answered 
 the footprint. Acceptance never read it: it reads each criterion's own test file and each scenario's plays
 (§8.2). The cycle's own verification keeps the plays, which fail the task and route to the developer's repair.
 
-**Not changed.** A focused `qa.test` shows the top-level directories its expected files live in. The plan gate
-holds a suite's files to the stack's test namespace (`validate_qa_suite_namespace`), so on the game that is
-`tests/`, 18,182 characters. A product whose test directory is itself past a window is the composer's to hold,
-as before.
+**Not changed, and open (#3182).** A plan's own `qa.test` is shown the top-level directories its expected files
+live in, and the whole tree when none matches. On the game a spec under `tests/` is shown 18,182 characters. A
+task naming a file under `src/` would be shown all of `src/`, and nothing at the plan gate refuses it there: the
+game's profile declares no test namespace for `validate_qa_suite_namespace` to hold it to. No run has planned
+one, and the prompt guard refuses such a prompt by name, as it did here.
 
 **Not shown:** a scenario-only increment that runs its developer's task and then its candidate plays on a real
 product. That is read on the next full-path gate.
