@@ -103,6 +103,58 @@ def test_the_first_stop_in_the_answer_is_the_one_read():
     )
 
 
+_TEMPLATE = "no scenario: <criterion> shows itself as <effect>, which fixture/1 can't observe"
+
+
+def _handed_with_template() -> list[dict]:
+    handed = _handed("no scenario:")
+    handed[0]["files"]["SKILL.md"] += (
+        f"Write no change request, and say in one line:\n`{_TEMPLATE}`.\n"
+    )
+    return handed
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        f"> Write no change request, and say in one line:\n> `{_TEMPLATE}`\n\n`{_STOP_LINE}`",
+        f"`{_STOP_LINE}`\n\nThe skill's line is `{_TEMPLATE}`.\n{_TEMPLATE}",
+        f"> `{_TEMPLATE[:52]}\n> {_TEMPLATE[52:]}`\n\n{_STOP_LINE}",
+        f"{_TEMPLATE.upper()}\n{_STOP_LINE}",
+    ],
+    ids=["quoted-first", "quoted-after", "quote-wrapped", "quote-in-capitals"],
+)
+def test_the_skills_own_template_quoted_in_the_answer_is_passed_over(answer):
+    """Bug caught (#3154): an answer that quotes its skill before stopping read as stopped by
+    the template, so the reason the next proposal is shown was "<criterion> shows itself as
+    <effect>"."""
+    stop = read_stop(_handed_with_template(), answer)
+
+    assert stop == SkillStop("fixture-design", "scenario-authoring", "no scenario:", _STOP_LINE)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [f"`{_TEMPLATE}`", f"> {_TEMPLATE}\n\nSo I wrote a package criterion.", _TEMPLATE[:40]],
+    ids=["template-alone", "quoted-then-overridden", "template-cut-short"],
+)
+def test_an_answer_holding_only_the_skills_template_holds_no_stop(answer):
+    """Bug caught: an answer that quotes its skill's rule and goes round it reading as a stop,
+    with the template for its reason."""
+    assert read_stop(_handed_with_template(), answer) is None
+
+
+def test_a_template_filled_in_part_is_the_models_line():
+    """A line the skill doesn't show is the model's, placeholders and all: the reader passes
+    over the skill's words and judges no others."""
+    line = "no scenario: the chime shows itself as <effect>, which fixture/1 can't observe"
+
+    stop = read_stop(_handed_with_template(), f"`{_TEMPLATE}`\n{line}")
+
+    assert stop is not None
+    assert stop.line == line
+
+
 def test_a_handed_skill_whose_front_matter_cant_be_read_raises():
     """Bug caught: a kept copy changed after its load reading as a skill with no stops, so its
     stop is asked again and repaired instead of ending the run."""
@@ -156,10 +208,20 @@ def test_a_packaged_skills_own_stop_line_is_read_from_what_a_task_is_handed(
     }
     handed = skills_input(skills_for(document, record, task_type=task_type, agent_id=agent))
 
-    stop = read_stop(handed, f"`{line}`")
+    opening = line.split(":")[0] + ":"
+    templates = [
+        shown
+        for shown in held.skill_files[skill]["SKILL.md"].splitlines()
+        if shown.startswith(f"`{opening}")
+    ]
 
-    assert stop == SkillStop(skillset, skill, line.split(":")[0] + ":", line)
-    assert line.split(":")[0] + ":" in held.skill_files[skill]["SKILL.md"]
+    stop = read_stop(handed, f"`{line}`")
+    quoting = read_stop(handed, "".join(f"> {shown}\n" for shown in templates) + f"\n`{line}`")
+
+    assert stop == SkillStop(skillset, skill, opening, line)
+    assert len(templates) == 1, "the skill shows its stop's line once, on a line of its own"
+    assert quoting == stop
+    assert read_stop(handed, templates[0]) is None
 
 
 def test_the_qa_skill_declares_no_stop_and_says_what_comes_first_instead():

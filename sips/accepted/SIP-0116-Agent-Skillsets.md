@@ -146,6 +146,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | The first skills replay read (`roblox-skills-v1`: every ordinary case passed, each skillset failed on its stop case), the three skills' stops revised for `roblox-skills@2`, and a suite left to the product's runner judged by that runner (§17r) | **shipped** | 2.8 (PR #3151, closing #3150; #3041 tracks the second replay) |
 | The second skills replay read (`roblox-skills-v2`: `roblox-luau-dev` and `roblox-studio-qa` admitted, `roblox-increment-design` failing on one case), and the strategy skill told which scenarios a disclosed gap means (§17s) | **shipped** | 2.8 (PR #3153; #3041 tracks the third replay) |
 | The third skills replay read (`roblox-skills-v3`: all three skillsets pass, one stop overridden in one answer of three), and the `game_dev_roblox` profile registered on it (§17t, §17q) | **shipped** | 2.8 (PR #3145; #3041 tracks the first cycle under the profile, #3154 the stop's recorded line, #3155 the reserved paths) |
+| A stop is read from the model's own line, and a line the skill itself shows is passed over (§17u) | **shipped** | 2.8 (PR #3156, closing #3154) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1648,6 +1649,45 @@ one answer. The first cycle is the Spark lane's, through creation preflight and 
 **Who ruled.** The rule was stated before `v1` (#3041) and held for all three runs. The Spark lane ran and read
 `v3`, and found #3154. Admission under the rule, and leaving the skill's text as it is after the one miss, are the
 MacBook lane's, under the 2.8 plan.
+
+### 17u. A stop is the model's own line: the skill's quoted words are passed over (2026-11-17, §17o; #3154)
+
+**What changed.** §17o's reader took the first line of an answer that opens with a declared stop. It now passes
+over a line the skill itself shows, and takes the first such line that is the model's.
+
+**The evidence.** In `roblox-skills-v3` (§17t) one `strategy-unobservable` answer quoted its skill before applying
+it, template line included, and wrote its own line further down. The stop recorded was the template: "no scenario:
+<criterion> shows itself as <effect>, which roblox-studio/1 can't observe". The verdict was right and the reason
+was the skill's placeholders, which is the line a Campaign shows the next proposal (SIP-0109 §24dz).
+
+**It reached further than the reason.** The reader runs on every authoring answer before any parser (§17o), and a
+stop line is the stop whatever is written beside it. So an answer that quoted the template and then wrote its
+change request would have ended its run as stopped. No replay answer did. The rule below closes it.
+
+**The rule.**
+- **What the skill shows** is each line of its `SKILL.md`, and each inline-code span, that opens with a stop it
+  declares, read as an answer's line is read: without the decoration around it and without regard to case. §17o's
+  load already refuses a declared stop the skill's text never shows, so every stop has at least one.
+- **A line of the answer that is one of those, whole, is the skill quoted.** So is a line that is the opening of
+  one, since a quote wraps. Either is passed over.
+- **An answer whose only such line is the quote holds no stop.** It goes to its seam's parser as any answer does.
+- **Any other line that opens with the stop is the model's,** with whatever it holds. A template filled in part
+  is read as written: the reader passes over the skill's words and judges no others.
+
+**Considered and set aside.**
+- **Taking the last matching line:** wrong for an answer that stops and then quotes its skill to say why.
+- **Refusing a line that holds `<…>`:** a guess at what a template looks like, and a reason may hold one.
+
+**The evidence it works.**
+- **`test_skill_stops.py`:** the quote first, the quote after, the quote wrapped and the quote in capitals each
+  read as the model's own line; the template alone, the template followed by work, and the template cut short
+  each read as no stop. Entered at the supply a cycle uses (the kept copy, `skills_for`, `skills_input`), each
+  packaged skill's own template is passed over and its filled line is read. Nine of these fail on the reader as
+  it was.
+- **A loaded-check row,** `3154-quoted-template`, for the deploy.
+- The caller (`_llm_call`) is unchanged, and §17o's wiring tests hold it.
+
+**Who ruled.** The Spark lane found it reading `v3` and filed #3154. The rule is the MacBook lane's.
 
 ## Appendix A. A paper compatibility matrix
 

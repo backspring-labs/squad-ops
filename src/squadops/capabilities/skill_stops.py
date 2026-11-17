@@ -3,15 +3,16 @@
 A skill may tell the model to refuse a task its equipment can't do honestly, and to say why in
 one line: a criterion whose effect the scenario reader can't observe, a product with no test
 runner. The skill declares that line's opening words in its front matter (``stops``), and this
-is the one place an answer is read for them. A seam handed skills asks it when its own parser
-found nothing to accept, so the reason reaches whoever reads the run and the model isn't asked
-again to do what its skill told it to refuse.
+is the one place an answer is read for them. Every authoring answer of a task handed skills
+passes it before any parser reads the answer (``_llm_call``), so the reason reaches whoever
+reads the run and the model isn't asked again to do what its skill told it to refuse.
 
 Core holds no skill's words: it reads what the task's handed skills declare.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +23,8 @@ from squadops.llm.exceptions import LLMError
 #: What a model puts around a line it was shown in inline code or a list: stripped from both
 #: ends before the line is compared, and never from inside it.
 _DECORATION = " \t>-*_`"
+
+_INLINE_CODE = re.compile(r"`([^`\n]+)`")
 
 
 @dataclass(frozen=True)
@@ -69,13 +72,37 @@ class SkillStopped(LLMError):
         self.stop = stop
 
 
+def _bare(raw: str) -> str:
+    """A line without the decoration around it."""
+    line = raw.strip(_DECORATION)
+    if line.endswith("`."):
+        # The line quoted in inline code at the end of a sentence.
+        line = line[:-2].rstrip(_DECORATION)
+    return line
+
+
+def _shown(skill_md: str, opening: str) -> tuple[str, ...]:
+    """The skill's own showings of a stop it declares, casefolded: each line and each inline-code
+    span of its text that opens with ``opening``. They are the skill's words (its template, with
+    the placeholders the model is to fill), and a model that quotes its skill writes them too."""
+    opens = opening.casefold()
+    candidates = [_bare(line) for line in skill_md.splitlines()]
+    candidates += [span.strip() for span in _INLINE_CODE.findall(skill_md)]
+    return tuple({c.casefold() for c in candidates if c.casefold().startswith(opens)})
+
+
 def read_stop(handed: Sequence[Mapping[str, Any]] | None, response: str | None) -> SkillStop | None:
     """The first line of ``response`` that opens with a stop one of the task's ``handed`` skills
-    declares, or ``None``. ``handed`` is the task's ``SKILLS_INPUT``.
+    declares and is the model's own, or ``None``. ``handed`` is the task's ``SKILLS_INPUT``.
 
     A line is compared without the decoration around it and without regard to case, since a
     model shown the line in inline code may write it in a list or with a capital. An opening
     with nothing after it is no stop: the line exists to carry a reason.
+
+    A line the skill itself shows is the skill quoted, whole or cut short where the quote
+    wrapped, and it is passed over (#3154): a model quotes the rule before it applies it, and
+    the template's placeholders are no reason. An answer whose only such line is the quote
+    holds no stop.
 
     Raises:
         FrontmatterError: A handed skill's ``SKILL.md`` has no readable front matter. The
@@ -84,18 +111,20 @@ def read_stop(handed: Sequence[Mapping[str, Any]] | None, response: str | None) 
     if not handed or not response:
         return None
     declared = [
-        (str(skill["skillset"]), str(skill["skill"]), opening)
+        (str(skill["skillset"]), str(skill["skill"]), opening, _shown(text, opening))
         for skill in handed
-        for opening in skill_stops(skill["files"][SKILL_FILE])
+        for text in (skill["files"][SKILL_FILE],)
+        for opening in skill_stops(text)
     ]
     if not declared:
         return None
     for raw in response.splitlines():
-        line = raw.strip(_DECORATION)
-        if line.endswith("`."):
-            # The line quoted in inline code at the end of a sentence.
-            line = line[:-2].rstrip(_DECORATION)
-        for skillset, skill, opening in declared:
-            if line.casefold().startswith(opening.casefold()) and line[len(opening) :].strip():
-                return SkillStop(skillset, skill, opening, line)
+        line = _bare(raw)
+        folded = line.casefold()
+        for skillset, skill, opening, shown in declared:
+            if not folded.startswith(opening.casefold()) or not line[len(opening) :].strip():
+                continue
+            if any(quoted.startswith(folded) for quoted in shown):
+                continue
+            return SkillStop(skillset, skill, opening, line)
     return None
