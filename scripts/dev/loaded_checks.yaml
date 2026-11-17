@@ -2654,3 +2654,20 @@ checks:
       source = inspect.getsource(DispatchedFlowExecutor._judge_scenario_baselines)
       print(0 < source.index("self._is_cancelled(run_id)") < source.index("await judge_scenario_baselines("))
     expect: "True"
+  - id: "3163-unread-conflict-escalated"
+    what: a brief conflict raised in field names of the proposer's own is kept as unread, with what was written (SIP-0093 §15d)
+    container: squadops-max
+    code: |
+      from squadops.cycles.proposed_role_tasks import _parse_brief_conflicts
+      degraded, unread = [], []
+      parsed = _parse_brief_conflicts([{"requirement": "M5", "issue": "x"}], degraded, unread)
+      print(parsed, degraded, [(u.section, u.why) for u in unread], "requirement: M5" in unread[0].as_written)
+    expect: "[] ['brief_conflicts[0]'] [('brief_conflicts[0]', 'brief_conflicts[0] missing required field: brief_field')] True"
+  - id: "3163-conflict-shape-asset"
+    what: the asset that shows a task proposer the shape a brief conflict is read in is in the image (SIP-0093 §15d)
+    container: squadops-neo
+    code: |
+      from importlib import resources
+      text = resources.files("squadops.prompts").joinpath("request_templates/request.plan_proposal_brief_conflicts_shape.md").read_text()
+      print(all(f"#     {name}:" in text or f"#   - {name}:" in text for name in ("brief_field", "proposed_change", "reason", "severity")))
+    expect: "True"

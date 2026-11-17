@@ -135,6 +135,25 @@ class ProposedTask:
 _VALID_BRIEF_CONFLICT_SEVERITIES = frozenset({"warning", "blocking"})
 
 
+#: How much of an unread conflict's own text is carried to the merge decisions.
+_AS_WRITTEN_MAX = 2000
+
+
+@dataclass(frozen=True)
+class UnreadBriefConflict:
+    """A ``brief_conflicts`` entry a proposer raised that couldn't be read as one (#3163).
+
+    Attributes:
+        section: where it stood, as ``degraded_sections`` names it (``brief_conflicts[0]``).
+        why: what made it unreadable (a missing field, a severity outside the two).
+        as_written: the entry as the proposer wrote it.
+    """
+
+    section: str
+    why: str
+    as_written: str
+
+
 @dataclass(frozen=True)
 class BriefConflict:
     """A proposer's structured disagreement with the shared brief (SIP-0093 §5.5).
@@ -210,6 +229,10 @@ class ProposedRoleTasks:
     # a clean proposal; e.g. ``["brief_conflicts[0]"]`` when one conflict entry
     # was skipped. The merger can surface these without re-deriving them.
     degraded_sections: list[str] = field(default_factory=list)
+    # #3163: each ``brief_conflicts`` entry the proposer raised that couldn't be read, with why
+    # and what it wrote. A dropped annotation is recoverable; a dropped disagreement is one
+    # nobody answers, so the merger records each as escalated and shows the operator its words.
+    unread_brief_conflicts: list[UnreadBriefConflict] = field(default_factory=list)
 
     @classmethod
     def from_yaml(cls, content: str) -> ProposedRoleTasks:
@@ -286,7 +309,8 @@ class ProposedRoleTasks:
         # appends the names of dropped sections to ``degraded`` instead of
         # failing the whole proposal.
         degraded: list[str] = []
-        brief_conflicts = _parse_brief_conflicts(data.get("brief_conflicts", []), degraded)
+        unread: list[UnreadBriefConflict] = []
+        brief_conflicts = _parse_brief_conflicts(data.get("brief_conflicts", []), degraded, unread)
 
         return cls(
             version=version,
@@ -306,6 +330,7 @@ class ProposedRoleTasks:
             ),
             confidence=str(data.get("confidence", "")).strip(),
             degraded_sections=degraded,
+            unread_brief_conflicts=unread,
         )
 
     def task_keys(self) -> list[str]:
@@ -413,7 +438,22 @@ def _advisory_str_list(raw: object, section: str, degraded: list[str]) -> list[s
         return []
 
 
-def _parse_brief_conflicts(raw: object, degraded: list[str]) -> list[BriefConflict]:
+def _as_written(raw: object) -> str:
+    """What the proposer wrote, as YAML, for whoever reads the conflict it couldn't be read as.
+    Whole up to ``_AS_WRITTEN_MAX`` characters; past that, cut with the count left out, and the
+    stored proposal holds the rest."""
+    text = yaml.safe_dump(raw, sort_keys=False, default_flow_style=False).strip()
+    if len(text) <= _AS_WRITTEN_MAX:
+        return text
+    return (
+        f"{text[:_AS_WRITTEN_MAX]}… ({len(text) - _AS_WRITTEN_MAX} more characters in the "
+        "stored proposal)"
+    )
+
+
+def _parse_brief_conflicts(
+    raw: object, degraded: list[str], unread: list[UnreadBriefConflict]
+) -> list[BriefConflict]:
     """Parse the optional ``brief_conflicts`` list (SIP-0093 §5.5).
 
     Tolerant per-entry (issue #187): a malformed conflict entry is skipped
@@ -431,6 +471,13 @@ def _parse_brief_conflicts(raw: object, degraded: list[str]) -> list[BriefConfli
             type(raw).__name__,
         )
         degraded.append("brief_conflicts")
+        unread.append(
+            UnreadBriefConflict(
+                "brief_conflicts",
+                f"expected a YAML list, got {type(raw).__name__}",
+                _as_written(raw),
+            )
+        )
         return []
 
     parsed: list[BriefConflict] = []
@@ -440,6 +487,9 @@ def _parse_brief_conflicts(raw: object, degraded: list[str]) -> list[BriefConfli
         except ValueError as exc:
             logger.warning("Proposal: skipping malformed brief_conflicts[%d] — %s", i, exc)
             degraded.append(f"brief_conflicts[{i}]")
+            unread.append(
+                UnreadBriefConflict(f"brief_conflicts[{i}]", str(exc), _as_written(entry))
+            )
     return parsed
 
 

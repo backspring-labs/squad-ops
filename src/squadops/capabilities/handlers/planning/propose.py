@@ -36,6 +36,10 @@ from squadops.cycles.plan_guidance import PlanGuidance
 from squadops.cycles.proposal_failure import ProposalFailure
 from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 
+#: The asset that shows a proposer the one shape a brief conflict is read in (#3163). Both
+#: proposers' output examples render it where the bare ``brief_conflicts: []`` stood.
+BRIEF_CONFLICTS_SHAPE = "request.plan_proposal_brief_conflicts_shape"
+
 _PROPOSAL_MAX_ATTEMPTS_DEFAULT = 2
 
 
@@ -188,6 +192,20 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         The qa proposer's shows a suite (#2876)."""
         return {}
 
+    #: Whether this proposer's output holds ``brief_conflicts``. The task proposers' does; the
+    #: strategy proposer writes guidance, which has no such list.
+    _raises_brief_conflicts = True
+
+    async def _brief_conflict_variables(self, renderer: Any) -> dict[str, str]:
+        """#3163: how a disagreement with the brief is written, from the one asset both task
+        proposers' output examples show. The examples held a bare ``brief_conflicts: []`` and a
+        pointer to a SIP section, so a proposer with a disagreement invented its own field names
+        and the entry was dropped at the parse."""
+        if not self._raises_brief_conflicts:
+            return {}
+        shape = await renderer.render(BRIEF_CONFLICTS_SHAPE, {})
+        return {"brief_conflicts_shape": shape.content.rstrip("\n")}
+
     async def _bind_criteria_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
         """The *bind, don't author* instruction + contract criteria index, or ""
         (SIP-0098 98.3).
@@ -299,6 +317,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         # to key on — they hold for every plan, so this one renders unconditionally.
         variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)
         variables.update(await self._task_example_variables(renderer, inputs))
+        variables.update(await self._brief_conflict_variables(renderer))
         # #669: on a framing re-roll, the prior attempt's rejection — revise,
         # don't re-dice. Data-driven and managed-asset prose, exactly like the
         # sections above; a first-roll framing has no input and renders nothing.
@@ -555,6 +574,7 @@ class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
     _success_artifact_name = "plan_guidance.yaml"
     _success_artifact_type = "plan_guidance"
     _proposer_role = "strategy"
+    _raises_brief_conflicts = False
 
     def _build_render_variables(
         self,
