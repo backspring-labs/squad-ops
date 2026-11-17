@@ -1422,6 +1422,11 @@ play, `rop-847b84b405ce4ec6bc7610f4b730bfc7`:
 **Not changed.** The lease's length (60 seconds) and the renewal's interval (15). A renewal the runtime answers
 late can still outlast the lease. What changes is what the worker does then: it submits the result it holds and
 keeps its tool as it is.
+- **The heartbeat between claims still waits on its probe.** A probe that answers late there delays the next
+  claim and holds no lease. It is left as it is. The claim and heartbeat timeouts seen near a run's start may be
+  the same stall, which is unconfirmed.
+- **Each claim renews with the reading made just before it.** The probe is made after a claim ends and before
+  the next is asked for, so a renewal's reading is as old as its operation is long.
 
 **The tests.** Both enter at `Worker.serve()` over the real registry
 (`tests/unit/remote_execution/test_worker_serving.py`): a tool that answers a probe after 90 seconds while it

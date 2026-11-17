@@ -31,9 +31,9 @@ is reset before it runs again. When the reset fails, the next operation is answe
 
 **The tool is probed only between claims** (#3185). ``OperationRunnerPort.health`` asks whether
 the tool can run an operation now, and a tool that is running one can't be asked without
-reaching into it. A renewal carries the health read before the claim, and nothing the tool
-does can hold a renewal back: the lease is the runtime's only sign that the operation is
-still held.
+reaching into it. A renewal carries the health as last read between claims, and nothing the
+tool does can hold a renewal back: the lease is the runtime's only sign that the operation is
+still held. The heartbeat between claims still waits on its probe, which holds no lease.
 """
 
 from __future__ import annotations
