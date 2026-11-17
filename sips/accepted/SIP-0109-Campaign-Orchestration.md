@@ -169,7 +169,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
 | on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #3144, closes #3143 |
 | a campaign's policy names the development profile its product is developed under, every launch carries it alone, and a squad lacking what it requires is refused at creation (§24ed) | **shipped** | 2.8.0, PR #3158, closes #3157 |
-| a Campaign's push and contribution carrying the token of its Project's declared contribution identity, with the forge identity on their rows and the accepted head beside the contribution commit (§24ea, proposed; SIP-0112 H.34) | **unplaced**, deliberately: proposed text for the owner's ruling. The owner placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
+| a Campaign's push and contribution carrying the token of its Project's declared contribution identity, with the forge identity on their rows and the accepted head beside the contribution commit (§24ea, ruled 2026-11-17, not yet built; SIP-0112 H.34) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
 | a product proposal is shown that what the product already does stays inside the criterion that changes it (§24di); whether row 19 re-queues a goal-set item waits for the owner (SIP-0115 §5.3) | **shipped** | 2.6.0, PR #2936, refs #2935 |
@@ -7299,17 +7299,17 @@ reads it as a failed repair (SIP-0116 §17o). Only a run that ends `skill_stoppe
 with this shape (issuecomment-6925831386), under the 2.8 plan the owner adopted on 2026-11-11. The MacBook lane built
 the terminal kind first (PR #3132).
 
-### 24ea. A Campaign's push and contribution may carry the token of its Project's contribution identity: proposed (2026-11-16, §13, §24ci (b), §24cn, §24dc, §24dg; SIP-0112 H.34; #3137; the MacBook lane's draft on the owner's brief, for the owner's ruling)
+### 24ea. A Campaign's push and contribution may carry the token of its Project's contribution identity: ruled, not yet built (2026-11-16, ruled 2026-11-17, §13, §24ci (b), §24cn, §24dc, §24dg; SIP-0112 H.34; #3137; the MacBook lane's draft on the owner's brief, ruled by the owner as drafted)
 
-**Status: proposed.** Nothing here is built. It takes effect with SIP-0112 H.34, when the owner rules both, and
-until then §24ci (b), §24cn and §24dc read as they do.
+**Status: ruled, not yet built.** The owner ruled this text as drafted on 2026-11-17, with SIP-0112 H.34. Nothing
+here is built. It takes effect when #3137 ships, and until then §24ci (b), §24cn and §24dc read as they do.
 
 **Why.** Three sections and two ledger rows say whose token a Campaign's outward act carries:
 - §24ci (b): "passing the token with the request … (`--token-from-gh`, the box's `gh` login)";
 - §24cn item 4 and its evidence: "The CLI sends the caller's own token";
 - §24dc: "Only the supervisor's request opens one, with the supervisor's own token".
 
-SIP-0112 H.34 proposes that a Project may declare a contribution identity: a forge account its owner approved,
+Under SIP-0112 H.34 a Project may declare a contribution identity: a forge account its owner approved,
 such as a GitHub App's. Under it the token a request carries is that identity's, and the supervisor's own is
 refused for that Project.
 
@@ -7356,7 +7356,7 @@ section names no reviewer.
 are items 3 to 5 here, under the identity's token.
 
 **Who ruled.** The owner brought the brief (2026-11-16) and placed the build after the 2.8 cut. The text is the
-MacBook lane's draft, for the owner's ruling with SIP-0112 H.34.
+MacBook lane's draft, which the owner ruled as drafted on 2026-11-17, with SIP-0112 H.34.
 
 ### 24ec. A criterion's test for a module the change adds, on a Luau product: its absence is an assertion the spec makes (2026-11-16, §8.2, §24ci (a), §24dp; SIP-0112 H.31; SIP-0118 R4.3; #3143; the MacBook lane, on the Spark lane's finding)
 

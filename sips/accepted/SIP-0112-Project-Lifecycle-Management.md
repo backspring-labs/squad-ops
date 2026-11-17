@@ -141,7 +141,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a product's package roots declared in its Development Configuration where its tree names none (a Luau product under Script Sync), read by the derivation as package surfaces, with `package_root_missing` for one the tree lacks (H.33) | **shipped** | 2.8 (PR #3135, closing #3134) |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect; then re-placed from 2.8 by the 2.8 plan's decision 9 (the owner, 2026-11-11): the MacBook lane holds the 2.8 headline, and its files are that lane's) | 2.10.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
-| a Project's declared contribution identity: the request's token checked against it at the forge before anything is pushed, another's refused, and the forge identity recorded beside the caller (H.34, proposed) | **unplaced**, deliberately: proposed text for the owner's ruling. The owner placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
+| a Project's declared contribution identity: the request's token checked against it at the forge before anything is pushed, another's refused, and the forge identity recorded beside the caller (H.34, ruled 2026-11-17, not yet built) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
 | a test-id reader validated on vitest 4, which the first real product's Campaign needs (H.10 reads vitest 2 alone; H.34) | **unplaced**, deliberately: the owner placed it after the 2.8 cut (2026-11-16), for the next line's plan | #3138 |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
 
@@ -3712,10 +3712,11 @@ product at `0beaac0`. `X/init.luau` is the module `X`.
 MacBook lane, which holds the Roblox layout, recommended the declaration over a derivation (2026-11-16). The
 mechanics are the Spark lane's.
 
-## H.34 A contribution through a service identity the product's owner approves: proposed (2026-11-16; FR-06, FR-13, FR-14, §B.5.1, E.4.3, H.22, H.30; SIP-0109 §24ea; #3137, #3138; the MacBook lane's draft on the owner's brief, with three points the owner ruled)
+## H.34 A contribution through a service identity the product's owner approves: ruled, not yet built (2026-11-16, ruled 2026-11-17; FR-06, FR-13, FR-14, §B.5.1, E.4.3, H.22, H.30; SIP-0109 §24ea; #3137, #3138; the MacBook lane's draft on the owner's brief, ruled by the owner as drafted)
 
-**Status: proposed.** Nothing in this section is built. Items 1 to 9 take effect when the owner rules them, and
-until then E.4.3 and H.22 read as they do. Three points are ruled already, under "What the owner ruled".
+**Status: ruled, not yet built.** The owner ruled items 1 to 9 as drafted on 2026-11-17, with the three points
+under "What the owner ruled". Nothing in this section is built. It takes effect when #3137 ships, and until then
+E.4.3 and H.22 read as they do.
 
 **Why.** A contribution (E.4.3, H.22) takes a forge token with the request, and this SIP and SIP-0109 call it the
 contributor's or the supervisor's own. The owner's first real product for a Campaign, GuideRail, is to take its
@@ -3725,9 +3726,9 @@ contributions from a GitHub App installed on its repository. Two identities then
 
 FR-13 and FR-14 name the first. Nothing names the second, and main never reads it.
 
-**What main does today, and what this proposes** (read at `28a7a0df`):
+**What main does today, and what this section adds** (read at `28a7a0df`):
 
-| | today | proposed |
+| | today | with H.34 built |
 |---|---|---|
 | who may ask | the route's scope: `admin:write` for a run's contribution, `campaigns:manage` for a Campaign's push and contribution. `delegated_actions` is recorded and isn't read on this path | the same scopes. A Project that declares a contribution identity refuses a caller the deploy didn't authenticate (item 4) |
 | who is recorded | the caller: `contributed_by` on the contribution, `actor` and `actor_role` on a Campaign's rows. `anonymous` where the deploy authenticated no one | the caller, and beside it the forge identity as the forge reported it (item 5) |
@@ -3806,6 +3807,16 @@ the three it rests on:
   sessions, and one token is minted per request.
 - **(c) Placement.** This text lands as proposed. The build is placed after the 2.8 cut, by the next line's plan.
 
+**And on 2026-11-17,** with the draft's five questions in front of them ("use recommendations on the others as
+well"), the owner took each as drafted:
+1. items 1 to 9 and SIP-0109 §24ea stand as written;
+2. the identity lives in the Project Record's authority, with a revision of its own, and not in the Development
+   Configuration;
+3. a token that reaches any repository but the Project's is refused, where the forge can say;
+4. a Project that declares no identity has the forge identity recorded too, with nothing refused;
+5. the refusal of a caller the deploy didn't authenticate covers Projects that declare an identity, and leaves
+   the rest as they are.
+
 **What the build needs.**
 - **#3137:** items 1 to 6, and SIP-0109 §24ea's rows.
 - **#3138, first for GuideRail and independent of the rest:** a test-id reader validated on vitest 4. H.10's reader
@@ -3848,4 +3859,4 @@ each would be its own proposal.
   - the Turborepo reading is the brief's.
 
 **Who ruled.** The owner brought the brief and ruled (a), (b) and (c) on 2026-11-16. Items 1 to 9 are the MacBook
-lane's draft from it, for the owner's ruling. SIP-0109 §24ea is the Campaign's side.
+lane's draft from it, which the owner ruled as drafted on 2026-11-17. SIP-0109 §24ea is the Campaign's side.
