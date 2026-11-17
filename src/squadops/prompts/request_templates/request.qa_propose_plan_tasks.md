@@ -1,7 +1,8 @@
 ---
 template_id: request.qa_propose_plan_tasks
-version: "12"
+version: "13"
 required_variables:
+  - brief_conflicts_shape
   - qa_task_example
   - brief_content
   - planning_content
@@ -61,7 +62,7 @@ scope_statement: |
   One-paragraph self-assessment of what this proposal covers.
 tasks:
   {{qa_task_example}}
-brief_conflicts: []  # Raise structured disagreements here if needed (see SIP-0093 §5.5).
+{{brief_conflicts_shape}}
 # Optional Rev 1 fields — include only if you have substantive content.
 source_artifact_refs: []
 assumptions: []

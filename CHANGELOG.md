@@ -203,6 +203,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A brief conflict a proposer raises in the wrong shape reaches the operator** (#3163; SIP-0093 §15d): it was
+  dropped at the parse, so `merge_decisions.yaml` recorded nothing. It is now an escalated disposition holding what
+  was written, and both task proposers' prompts show one worked entry in place of a bare `brief_conflicts: []`.
 - **A cycle that needs a worker's tool is refused on a runtime that binds no remote execution** (#3159; SIP-0116
   §17w): creation's check read the worker registry alone, so a deploy with `remote_execution.provider none` and a
   worker online accepted a cycle whose every scenario then read not executed.

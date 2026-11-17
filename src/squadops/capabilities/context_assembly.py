@@ -361,6 +361,8 @@ _PLANNING_TEMPLATES = (
 )
 _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_authoring_rules_appendix",
+    # #3163: the shape a brief conflict is read in, in both task proposers' output examples.
+    "request.plan_proposal_brief_conflicts_shape",
     "request.plan_bind_criteria_appendix",
     "request.plan_blocking_gaps_appendix",
     "request.plan_frozen_surface_appendix",
