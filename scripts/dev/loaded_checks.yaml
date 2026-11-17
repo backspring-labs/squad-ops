@@ -2765,3 +2765,12 @@ checks:
       source = inspect.getsource(task_plan._replace_build_steps_with_plan)
       print("increment and authors_qa_suite(task_type)" in source, "increment" in inspect.signature(task_plan._replace_build_steps_with_plan).parameters)
     expect: "True True"
+  - id: "3185-renewal-without-probe"
+    what: a worker's renewal carries the health read before the claim, and an operation that ended behind a renewal returns its result (SIP-0117 R5.26)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.remote_execution.serving import Worker
+      watch = inspect.getsource(Worker._watch)
+      print("self._runner.health()" in watch, "self._health_held()" in watch, watch.count("if task.done():"))
+    expect: "False True 3"

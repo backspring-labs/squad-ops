@@ -194,6 +194,7 @@ phases are in its own ledger.
 | The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **shipped** | 2.8 (PRs #3074, #3080 and #3084, closing #3050). The faults are read on the remote-execution path, on Postgres in the integration job (#3074). The two-increment Campaign runs in the unit regression job, as it needs no service (#3084) |
 | Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
 | The reader reads a screen's visibility: `gui_state` `visible` of a `ScreenGui` is its `Enabled`, with the provider's version moved and the worker requalified (R5.25) | **shipped** | 2.8 (PR #3175, closing #3176) |
+| The worker's lease: a renewal carries the health read before the claim and never probes a running tool, and an operation that ended while a renewal was out submits its result and isn't reset (R5.26) | **shipped** | 2.8 (PR #PRNUM, closing #3185) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1379,6 +1380,56 @@ visibility, and its record is named in the PR. The adapter's tests hold the vers
 with no record of it gives.
 
 **Who ruled.** The Spark lane read the plays. The change is the MacBook lane's, which owns the Studio adapter.
+
+---
+
+## R5.26 A renewal doesn't wait on the tool, and a result that ended behind one is submitted (#3185, 2026-11-17; R5.5, R3.3)
+
+**What changed.** Three things in the worker's loop (`squadops.remote_execution.serving`):
+1. **A renewal carries the health read before the claim.** The tool is probed only between claims. R5.5's loop
+   probed it at every renewal, while it ran the operation.
+2. **An operation that ended while a renewal was out submits its result,** whatever the renewal answered. R5.5's
+   table read a refused renewal as "stops the tool and resets it. It submits nothing".
+3. **A tool whose last run returned a result isn't reset when the next claim says "reconcile first".** R5.5's rule 3
+   already said the tool is reset after any ending but a returned result. The loop reset it on that claim anyway.
+
+**The evidence.** The 2.8 demonstration's first rehearsal (`cmp_85f97e001320`, 2026-11-17), B-1's first candidate
+play, `rop-847b84b405ce4ec6bc7610f4b730bfc7`:
+- **The runtime's side:** renewals arrived every 15 seconds up to 19:27:26.5 UTC, and the next at 19:28:41.6. The
+  60-second lease ended at 19:28:27.47 as `expired`, and the late renewal was answered `not_claimed`. No result
+  was posted for the attempt.
+- **The worker's side:** Studio's log shows the play begin and stop on the same offsets as the two baseline plays
+  before it, and the operation's connection to Studio close 76 seconds after the claim, where both baseline plays
+  completed. A second connection then held for sixty seconds. That was the renewal's probe
+  (`RobloxStudioRunner.health` opens a session of its own), started as the operation's session was closing.
+- **What followed:** the worker read the refusal as a running operation, reset the tool, and the reset's relaunch
+  of Studio met a pending update (#3184). The worker had no proof for the new version and the window ended.
+
+**The rule.**
+- **`OperationRunnerPort.health` is asked only of an idle tool.** It asks whether the tool can run an operation
+  now. A tool that is running one can't answer without being reached into, and for Studio the probe is a second
+  session beside the operation's own.
+- **Nothing the tool does holds a renewal back.** The lease is the runtime's only sign that the operation is
+  still held, so a renewal is sent at its interval with what the worker already knows.
+- **A finished operation's result is what the worker says next.** A claim the runtime had given up refuses the
+  result and records the refusal (R3.3: "a late completion never satisfies a newer attempt"). That record is how
+  an operator learns a finished result arrived late. Before, the only trace was a line in the worker's own log.
+- **The reset follows what the worker knows of its tool.** A tool that returned a result left a known state. It
+  isn't stopped, and it isn't reset then or at the next claim. Every other ending resets as R5.5 has it: a
+  cancel, a refused renewal or an ended lease while the tool still runs, an ended session, a tool that raises or
+  reports `interrupted`, and a worker that has just started.
+
+**Not changed.** The lease's length (60 seconds) and the renewal's interval (15). A renewal the runtime answers
+late can still outlast the lease. What changes is what the worker does then: it submits the result it holds and
+keeps its tool as it is.
+
+**The tests.** Both enter at `Worker.serve()` over the real registry
+(`tests/unit/remote_execution/test_worker_serving.py`): a tool that answers a probe after 90 seconds while it
+runs keeps its lease through a 150-second operation and is never probed; and an operation that ends inside a
+70-second renewal has its result refused and recorded, with no stop and no reset, and the second attempt runs.
+
+**Who ruled.** The Spark lane read the runtime's side and filed #3185. The change is the MacBook lane's, which
+built the worker.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 
