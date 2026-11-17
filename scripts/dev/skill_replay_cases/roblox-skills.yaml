@@ -1,7 +1,7 @@
-# Skill cases `roblox-skills@1`
+# Skill cases `roblox-skills@2`
 #
 # The replay cases for the three Roblox skillsets (SIP-0118 R4.3; SIP-0116 §17p; Q47), on
-# z_tower-ascension. Run by `run_authoring_replay.py --skill-cases roblox-skills@1` against a capture
+# z_tower-ascension. Run by `run_authoring_replay.py --skill-cases roblox-skills@2` against a capture
 # run that loaded no skill. Each case starts from the capture's one envelope of its task type. A case
 # with swaps puts another task in front of the same seam, and its record says no capture stands
 # behind its prompt.
@@ -12,6 +12,10 @@
 #
 # The swapped objectives are changes to this game that the demonstration's goal set does not hold:
 # the replay tests the skills, and the demonstration's increments stay unseen by it.
+#
+# Version 2, after `roblox-skills-v1` (SIP-0116 §17r): the three skills' stops were revised, and
+# `qa-no-runner` is gone with the stop it tested. The QA skill's stop asked for a state no cycle
+# reaches, and the case's own tree still showed a spec written for the runner.
 #
 # What each case can and can't show is in its `why`. A proposal's scenario is read against the
 # vocabulary here and never played. The proposal is shown the product's map and instructions, not
@@ -140,24 +144,3 @@ cases:
       rule: a spec that requires, at the top of its file, a module the change adds reads
       only_setup_failures there (SIP-0109 §24ec). Checked byte for byte against its capture.
     expect: {accepted: true, emits_expected: true, specs_pass: true, discriminates: true}
-
-  - id: qa-no-runner
-    task_type: qa.test
-    skillset: roblox-studio-qa
-    why: >-
-      The skill's prerequisite failure: a product checked by another script, whose tree shows no
-      tests/run.luau. The spec globals the skill teaches belong to that runner's loader, so the
-      skill writes no spec and says why in one line. The repository's path list, which no prompt
-      shows, still names the file.
-    swaps:
-      - path: [source_repository, checks, 0, argv]
-        value: [".tools/lune", "run", "tests/harness.luau"]
-      - path: [artifact_contents, tests/run.luau]
-        delete: true
-      - path: [artifact_contents, tests/loader.luau]
-        delete: true
-      - path: [acceptance_workspace_files, tests/run.luau]
-        delete: true
-      - path: [acceptance_workspace_files, tests/loader.luau]
-        delete: true
-    expect: {stop: "no tests/run.luau:"}

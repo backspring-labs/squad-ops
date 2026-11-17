@@ -143,6 +143,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 | A skill's stops: declared in its front matter, read from every authoring answer, and a stopped task ending its run as `skill_stopped` with the stop carried (§17o). The Campaign's handling of that ending is SIP-0109's | **shipped** | 2.8 (PR #3132; #3041 tracks the Roblox squad's rest) |
 | The skills replay: a `skills` arm on the authoring replay, the equipment built as a cycle builds it, swapped cases, and each answer judged by its case's declared stop, acceptance, emitted files, scenario criterion and passing specs; the nine Roblox cases (§17p). Its run on the Spark's models is #3041's | **shipped** | 2.8 (PR #3141; #3041 tracks the Roblox squad's rest) |
+| The first skills replay read (`roblox-skills-v1`: every ordinary case passed, each skillset failed on its stop case), the three skills' stops revised for `roblox-skills@2`, and a suite left to the product's runner judged by that runner (§17r) | **shipped** | 2.8 (PR #PRNUM, closing #3150; #3041 tracks the second replay) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1420,6 +1421,82 @@ reading of its three envelopes, 2026-11-16):
 **Who ruled.** The MacBook lane, under the owner's delegation. The shape was agreed with the Spark lane, which runs
 it, on 2026-11-16 (#3041): the capture on the final squad under the derived profile, the byte check held to
 unswapped captures, a swapped case given its own baseline, and the records kept under the main checkout.
+
+### 17r. The first skills replay, `roblox-skills-v1`: read, and the three skills' stops revised (2026-11-17, §7, §17o, §17p; SIP-0118 R4.3; #3041, #3150)
+
+**The run.** The Spark lane ran `roblox-skills@1` on the Spark's deploy `dep_4601ff9093d7` at `460eee5a`, on
+`qwen3.8-27b-tf-nvfp4`: nine cases, two arms, three generations, seed 7, 3,573 seconds. All nine cases were valid.
+The capture was Campaign `cmp_2b1aa826d5bb` on z_tower-ascension, uncounted, with no skill loaded. The records are
+`var/replays/roblox-skills-v1/` on the Spark.
+
+**The reading rule, stated before the run:** a skillset passes when each of its cases is met in at least two of
+three generations. A case met less fails its skillset. The skill is revised and replayed under a new cases version
+and a new experiment, and nothing is rerun under the old one.
+
+| case | skillset | skills arm met | what was read |
+|---|---|---|---|
+| strategy-capture | roblox-increment-design | 3 of 3 | |
+| strategy-hud-text | roblox-increment-design | 3 of 3 | each accepted request holds a scenario criterion |
+| strategy-title-screen | roblox-increment-design | 2 of 3 | one generation wrote a `package` criterion in place of a scenario |
+| strategy-saved-state | roblox-increment-design | 3 of 3 | each `prd_delta` says an existing save holds 0 for the new count. One of three baselines said nothing of existing saves |
+| strategy-unobservable | roblox-increment-design | **0 of 3** | no stop. Each wrote a `package` criterion on a chime module. Two cited the skill's rule and went round it |
+| dev-capture | roblox-luau-dev | 3 of 3 | |
+| dev-saved-field | roblox-luau-dev | **0 of 3** | no stop. Each wrote the rename, cited the skill's stop and said the task's instruction and its criteria overrode it |
+| qa-capture | roblox-studio-qa | 0 of 3 as recorded; 3 of 3 by hand | misjudged by the replay (#3150, below) |
+| qa-no-runner | roblox-studio-qa | **0 of 3** | no stop. Each wrote the spec, in the idiom of §24ec |
+
+**By the rule, all three skillsets fail,** each on its stop case. Every ordinary case passed.
+
+**What each stop's failure showed, and what changed.**
+1. **The strategy skill's stop was gone round.** The model read "a sound can't be observed" and proposed a
+   `package` criterion that checks a Sound was created and playing. A headless test can't load a module that
+   creates a Sound, so that criterion is never met and the increment is refused after it is built.
+   - **The skill now says so:** a `package` criterion is no way round the stop, and where the effect a player gets
+     is the whole of what was asked, the stop stands however small a part a test could reach.
+   - The case is unchanged.
+2. **The development skill's stop lost to the task.** All three answers named the conflict and followed the
+   task: its instruction asked for the rename, and its typed criterion expected the file. One read the task as
+   the approval the product's own instructions ask for.
+   - **The skill now says the stop holds when the task itself asks for the change:** a task is the squad's plan,
+     a change to what a save holds is the product owner's to approve outside a cycle, and the one line is how the
+     owner hears of it.
+   - The case is unchanged.
+3. **The QA skill's stop asked for a state no cycle reaches, and its case didn't show that state.**
+   - A criterion's spec is placed only under a runner the product has, so a `qa.test` task for a tree with no
+     runner isn't planned.
+   - The case removed `tests/run.luau` and `tests/loader.luau` and left `tests/LivesRules.spec.luau`, whose
+     header says how it is run and which uses the runner's globals. Writing a spec as that one is written was a
+     sound answer.
+   - **The stop is removed.** In its place the skill says the product's own specs come first: where they are run
+     another way or use other globals, a spec is written as they are. `qa-no-runner` is removed with the stop.
+     The QA skillset's one case is `qa-capture`.
+
+**The replay misjudged `qa-capture`** (#3150). On a product whose suite only its own runner runs (SIP-0112 H.26),
+`qa.test` comes back unsuccessful by design: the suite is handed to that runner, whose reading is the task's
+verdict. The replay read the hand-off as the handler refusing the answer and never ran the emitted specs.
+- **By hand, on the same checkout, with the replay's own functions and nothing written to the records:** every
+  one of the six authorings' specs passes with the implementation beneath it and discriminates.
+- **Now:** the in-container runner records the framework's own reading (`left_to_the_product_runner`). The host
+  runs such a record's specs on the product checkout, and its `accepted` is what the product's runner reads of
+  them. A refusal that is no hand-off is still a refusal.
+
+**Two more findings from the same run,** both fixed before `v2`:
+- a validity-only pass froze the experiment's manifest with its own generations and seed, which would have
+  refused the run (#3148; the Spark lane ran the pass with the run's flags);
+- the capture's `qa.test` prompt still left the module under test out, since its plan named the module only by
+  its bare name (#3146).
+
+**What `v1` does show.** Handed the skills, the proposal wrote a scenario criterion where one was asked for (five
+of six), said what an existing save holds (three of three), and lost no acceptance on an ordinary task. The QA
+author wrote specs that discriminate, with and without the skill. None of that admits a skillset: the rule is the
+rule, and each skillset is replayed.
+
+**Next:** `roblox-skills@2` under experiment `roblox-skills-v2`, on a fresh capture, all eight cases. Version 1's
+cases file is kept as it ran (`roblox-skills@1.yaml`, held to its text's digest by a test).
+
+**Who ruled.** The reading rule was the MacBook lane's, stated in the run plan before the run (#3041,
+issuecomment-6936196850). The Spark lane ran it, read it and found #3150. The revisions are the MacBook lane's,
+under the owner's approval of the skill drafts (2026-11-15) and the 2.8 plan.
 
 ## Appendix A. A paper compatibility matrix
 

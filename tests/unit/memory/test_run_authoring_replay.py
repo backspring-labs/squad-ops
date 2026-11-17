@@ -665,7 +665,7 @@ def test_every_packaged_case_can_be_built_on_the_captures_shape():
     from squadops.memory.replay import Arm, arm_inputs, swapped_inputs
 
     catalog = load_skillsets()
-    cases, _text = runner.skill_cases_text("roblox-skills@1")
+    cases, _text = runner.skill_cases_text("roblox-skills@2")
 
     built = {}
     for case in cases.cases:
@@ -696,5 +696,15 @@ def test_every_packaged_case_can_be_built_on_the_captures_shape():
         "dev-capture": (2, False, True),
         "dev-saved-field": (2, True, True),
         "qa-capture": (2, False, True),
-        "qa-no-runner": (2, True, True),
     }
+
+
+def test_the_first_cases_file_is_kept_as_roblox_skills_v1_ran_it():
+    """An experiment's manifest pins its cases by their text. Bug caught: version 1's file edited
+    or dropped after its run, so ``roblox-skills-v1``'s records name a text nobody can read."""
+    cases, text = runner.skill_cases_text("roblox-skills@1")
+
+    assert hashlib.sha256(text.encode()).hexdigest() == (
+        "b3e3b9a1462f46e8639c2b68decc8b75f4a5395728df55747d2f487ce73014c8"
+    )
+    assert [c.id for c in cases.cases][-1] == "qa-no-runner" and len(cases.cases) == 9

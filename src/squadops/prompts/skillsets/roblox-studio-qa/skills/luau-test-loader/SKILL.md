@@ -1,7 +1,6 @@
 ---
 name: luau-test-loader
 description: Writes a Roblox game's headless Luau tests as tests/*.spec.luau files for the product's own runner (tests/run.luau under Lune), testing the plain-logic modules that load outside Studio.
-stops: ["no tests/run.luau:"]
 ---
 
 # Headless Luau tests
@@ -10,9 +9,9 @@ The product runs its own tests: `lune run tests/run.luau` runs every `tests/*.sp
 `lune run tests/run.luau tests/X.spec.luau` runs one. You write spec files. You never write or
 change `tests/run.luau` or `tests/loader.luau`: they belong to the product.
 
-**If the tree you are shown has no `tests/run.luau`, stop.** Write no spec, and say in one line:
-`no tests/run.luau: this product has no headless Luau runner, so its tests can't be run`. A spec
-file with nothing to run it is never executed.
+**The product's own specs come first.** Where the specs you are shown are run another way, or
+use other globals than the ones below, write yours as they are written. A spec's file is placed
+under a runner the product has, so there is always one to follow.
 
 ## What a spec file sees
 
