@@ -569,6 +569,16 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
             campaign_branch=CampaignBranch(projects=projects, repository=clones),
             goal_sets=None,
         )
+    # The runtime's one remote-execution port, held by the executor that plays through it and by
+    # creation's tool check that reads whether it is bound (#3159), as the runtime builds it.
+    remote_execution = RegistryRemoteExecution(
+        path.registry,
+        origin={"service": "runtime-api"},
+        wait=timedelta(seconds=300),
+        max_attempts=2,
+        clock=lambda: (path.clock.now - T0).total_seconds(),
+        sleep=path.sleep,
+    )
     executor = create_flow_executor(
         "dispatched",
         cycle_registry=registry,
@@ -592,14 +602,7 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
         ),
         route_renderer=None,
         goal_set_registry=None,
-        remote_execution=RegistryRemoteExecution(
-            path.registry,
-            origin={"service": "runtime-api"},
-            wait=timedelta(seconds=300),
-            max_attempts=2,
-            clock=lambda: (path.clock.now - T0).total_seconds(),
-            sleep=path.sleep,
-        ),
+        remote_execution=remote_execution,
         worker_registry=path.registry,
     )
     # The requester's routes read the executor's own router for the send that is current (R5.6).
@@ -617,6 +620,7 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
                 artifact_vault=vault,
                 tool_authorities={PROVIDER: authority},
                 worker_registry=path.registry,
+                remote_execution=remote_execution,
                 # §17n: the managed clone the fixture tool's authority is shown the product from.
                 source_repository=clones,
             ),
