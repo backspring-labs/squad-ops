@@ -221,6 +221,8 @@ def test_the_strategy_skill_quotes_the_gap_a_luau_product_discloses_as_it_is_wri
     quoted = "Outcome Evaluation reads every scenario blocked_unverified"
     assert gap.reason.endswith(quoted)
     assert " ".join(skill["SKILL.md"].split()).count(f'says "{quoted}"') == 1
+
+
 def test_only_an_operator_names_the_game_profile_and_a_luau_runner_derives_the_neutral_one():
     """Entered at the pin a product's cycle is created with (``development_profile_pin``). Bugs
     caught: the game's profile refused for a product whose runner is Luau (it leaves the suite to
