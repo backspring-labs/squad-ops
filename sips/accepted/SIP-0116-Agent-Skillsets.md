@@ -143,7 +143,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
 | A skill's stops: declared in its front matter, read from every authoring answer, and a stopped task ending its run as `skill_stopped` with the stop carried (§17o). The Campaign's handling of that ending is SIP-0109's | **shipped** | 2.8 (PR #3132; #3041 tracks the Roblox squad's rest) |
 | The skills replay: a `skills` arm on the authoring replay, the equipment built as a cycle builds it, swapped cases, and each answer judged by its case's declared stop, acceptance, emitted files, scenario criterion and passing specs; the nine Roblox cases (§17p). Its run on the Spark's models is #3041's | **shipped** | 2.8 (PR #3141; #3041 tracks the Roblox squad's rest) |
-| The first skills replay read (`roblox-skills-v1`: every ordinary case passed, each skillset failed on its stop case), the three skills' stops revised for `roblox-skills@2`, and a suite left to the product's runner judged by that runner (§17r) | **shipped** | 2.8 (PR #PRNUM, closing #3150; #3041 tracks the second replay) |
+| The first skills replay read (`roblox-skills-v1`: every ordinary case passed, each skillset failed on its stop case), the three skills' stops revised for `roblox-skills@2`, and a suite left to the product's runner judged by that runner (§17r) | **shipped** | 2.8 (PR #3151, closing #3150; #3041 tracks the second replay) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
