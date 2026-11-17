@@ -136,6 +136,13 @@ class Pins(Protocol):
         process holds it."""
 
 
+#: What a person does after Studio updates itself (#3048, #3184).
+_REQUALIFY = (
+    "Re-qualify the worker on {version} with the place open in it "
+    "(scripts/dev/studio_requalify.py, #3048)"
+)
+
+
 class _Drifted(RuntimeError):
     """The place's non-script state isn't its pinned baseline."""
 
@@ -427,11 +434,19 @@ class RobloxStudioRunner(OperationRunnerPort):
         """Restore the place from its baseline file and reopen Studio on it (R3.6). Raises
         :class:`place.PlaceStateError`, naming why, when it can't do so safely, and then a person
         is needed:
-        - before anything is touched, for a baseline file whose digest isn't the pinned one, more
-          than one Studio, a Studio that doesn't answer, or one holding another file;
+        - before anything is touched, for a baseline file whose digest isn't the pinned one, a
+          Studio that isn't the version the worker's proof names (#3184), more than one Studio,
+          a Studio that doesn't answer, or one holding another file;
         - for a Studio that won't quit, or a lock a running Studio holds;
-        - after reopening, for a place that doesn't come back unpublished, in Edit, holding the
-          pinned non-script baseline."""
+        - after reopening, for a Studio that replaced itself with another version as it
+          launched (#3184), and for a place that doesn't come back unpublished, in Edit,
+          holding the pinned non-script baseline.
+
+        **Studio updates itself at a launch, and the reset's reopening is one.** Studio's
+        version is read before the quit and again after the reopening. A Studio that changed
+        between them is named with both versions, whatever the reopened Studio then read: an
+        updated Studio comes back holding no place, and "holds no place" is the least of what
+        happened."""
         files = self._files
         if files is None:
             raise place.PlaceStateError(
@@ -443,11 +458,70 @@ class RobloxStudioRunner(OperationRunnerPort):
                 f"the baseline file {files.baseline} is {held[:16]}…, not the pinned "
                 f"{files.baseline_sha256[:16]}…; nothing was touched"
             )
+        before = self._installed_version("nothing was touched")
+        proved = self._proved_version()
+        if proved is not None and before != proved:
+            raise place.PlaceStateError(
+                f"Studio is {before}, and the operation was proved on {proved}: Studio has "
+                f"updated itself. {_REQUALIFY.format(version=before)}; nothing was touched"
+            )
         await self._quit_studio(files)
         self._clear_lock(files)
         self._restore(files)
         self._app.open(files.place)
-        await self._confirm_reopened(files)
+        try:
+            await self._confirm_reopened(files)
+        except (place.PlaceStateError, place.PlaceReadError, StudioSessionError) as e:
+            replaced = self._replaced_since(before)
+            if replaced:
+                raise place.PlaceStateError(
+                    f"{replaced} The reopened Studio then read: {type(e).__name__}: {e}"
+                ) from e
+            raise
+        replaced = self._replaced_since(before)
+        if replaced:
+            raise place.PlaceStateError(
+                f"{replaced} The place was restored and reopened in it at its baseline."
+            )
+
+    def _installed_version(self, then: str) -> str:
+        """Studio's installed version. One that can't be read is refused by name: the reset
+        compares versions, and has nothing to compare an unread one with."""
+        try:
+            return self._studio_version_of(self._studio_mcp)
+        except ValueError as e:
+            raise place.PlaceStateError(f"{e}; {then}") from e
+
+    def _proved_version(self) -> str | None:
+        """The Studio version the worker's proof names, or ``None`` when there is no proof to
+        read. Then every play is refused by name (R2.4), and the reset has nothing to hold
+        Studio to."""
+        pins = self._proved
+        if pins is None:
+            return None
+        if isinstance(pins, ProvedOn):
+            return pins.studio_version or None
+        try:
+            return pins.current().studio_version
+        except NotProved:
+            return None
+
+    def _replaced_since(self, before: str) -> str:
+        """What to say when Studio's installed version is no longer ``before``, or ``""``."""
+        try:
+            after = self._studio_version_of(self._studio_mcp)
+        except ValueError as e:
+            return (
+                f"Studio was {before} before the reset reopened it, and its version can't be "
+                f"read now ({e}): it is replacing itself with an update. "
+                f"{_REQUALIFY.format(version='the version it comes back as')}."
+            )
+        if after == before:
+            return ""
+        return (
+            f"Studio replaced itself as the reset reopened it: it was {before} and is now "
+            f"{after}, which no operation is proved on. {_REQUALIFY.format(version=after)}."
+        )
 
     async def _quit_studio(self, files: PlaceFiles) -> None:
         """Quit the one Studio, which must hold the place file, asking first and killing only

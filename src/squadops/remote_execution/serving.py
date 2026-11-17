@@ -122,8 +122,7 @@ class Worker:
         queued for it to claim. A reset that fails is tried again at each claim, as after any
         other unknown state."""
         self._unknown_state = "the worker has just started, and its tool's state is unknown"
-        failure = await self._reset()
-        self._record(tool_ready=failure is None, tool_note=failure or "")
+        await self._reset()
         while True:
             enrolment = await self._enrol()
             try:
@@ -369,15 +368,20 @@ class Worker:
         return await self._reset()
 
     async def _reset(self) -> str | None:
-        """Reset the tool. Returns why it couldn't be, or ``None`` once its state is known."""
+        """Reset the tool. Returns why it couldn't be, or ``None`` once its state is known.
+        Each outcome goes on the worker's status (#3184): a tool that couldn't be reset at a
+        claim reads not ready there, with why, as one that couldn't at the start does."""
         try:
             await self._runner.reset()
         except Exception as e:  # noqa: BLE001 - whatever the tool raised is the reason given
             logger.error("the tool could not be reset (%s)", self._unknown_state, exc_info=e)
-            return f"{type(e).__name__}: {e}"
+            failure = f"{type(e).__name__}: {e}"
+            self._record(tool_ready=False, tool_note=failure)
+            return failure
         logger.info("the tool was reset (%s)", self._unknown_state)
         self._unknown_state = None
         self._fresh = True
+        self._record(tool_ready=True, tool_note="")
         return None
 
     async def _deliver(

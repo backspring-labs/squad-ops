@@ -213,13 +213,14 @@ class HostCheck:
 @dataclass(frozen=True)
 class WorkerStatus:
     """What a worker process knows of itself, recorded where its host reads it (#3046): whether its
-    tool was readied at start, the session it registered as, and when the runtime last answered.
+    tool's last reset held, the session it registered as, and when the runtime last answered.
     The host never asks the runtime: a worker connects outward only."""
 
     worker_id: str
     runtime_api_url: str
     started_at: datetime
-    #: The tool's reset at start: ``None`` until it is tried, then whether it held.
+    #: The tool's last reset, at the worker's start or at a claim (#3184): ``None`` until one is
+    #: tried, then whether it held.
     tool_ready: bool | None = None
     #: Why the tool isn't ready, or ``""``.
     tool_note: str = ""

@@ -266,6 +266,39 @@ async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
     assert w.runner.resets == 2  # at start (#3046), and the one that held before the third
 
 
+async def test_a_reset_that_fails_at_a_claim_reads_not_ready_on_the_status_until_one_holds(w):
+    """#3184. In the rehearsal the worker's status file read ``tool_ready: true`` with no note
+    after two failed resets, while the runtime's row for it read offline. Bug caught: a status
+    that records the reset made at the start alone, so a host reading it (``squadops doctor``,
+    the service's own check) is told a tool is ready that every claim is refused on."""
+    reports = []
+    worker = Worker(
+        w.api, w.runner, worker_id="macbook", platform="darwin-arm64", clock=w.clock,
+        sleep=sleeping_on(w.clock), report=reports.append,
+    )  # fmt: skip
+    first = await w.enqueue(dispatch_id="dispatch-1")
+    w.runner.run_seconds = None
+
+    async with Serving(worker) as serving:
+        await serving.until(w.claimed(first.operation_id))
+        assert (reports[-1].tool_ready, reports[-1].tool_note) == (True, "")
+        w.runner.reset_raises = ConnectionError("the editor is not answering")
+        await w.registry.cancel(first.operation_id)
+        await serving.until(w.settled(first.operation_id))
+        assert (reports[-1].tool_ready, reports[-1].tool_note) == (
+            False,
+            "ConnectionError: the editor is not answering",
+        )
+
+        w.runner.reset_raises = None
+        w.runner.run_seconds = 0
+        second = await w.enqueue(dispatch_id="dispatch-2")
+        await serving.until(w.settled(second.operation_id))
+
+    assert (reports[-1].tool_ready, reports[-1].tool_note) == (True, "")
+    assert (await w.stored(second.operation_id)).result == passing("dispatch-2")
+
+
 async def test_a_worker_whose_session_was_ended_stops_its_tool_and_registers_again(w):
     """Bug caught: a worker that keeps polling a session the runtime ended and looks idle
     forever, or keeps its tool running on the attempt that ended with the session."""

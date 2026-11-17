@@ -175,7 +175,7 @@ def test_doctor_reports_each_check_by_name_for_a_serving_worker(tmp_path, monkey
     ("status", "says"),
     [
         (None, "has recorded no status"),
-        ({"tool_ready": False, "tool_note": "ConnectionError: Studio"}, "didn't reset at start"),
+        ({"tool_ready": False, "tool_note": "ConnectionError: Studio"}, "couldn't be reset"),
         ({"session_id": None, "last_unreachable": "connection refused"}, "connection refused"),
         (
             {"last_unreachable_at": (NOW - timedelta(seconds=5)).isoformat(),

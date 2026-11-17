@@ -2774,3 +2774,14 @@ checks:
       watch = inspect.getsource(Worker._watch)
       print("self._runner.health()" in watch, "self._health_held()" in watch, watch.count("if task.done():"))
     expect: "False True 3"
+  - id: "3184-reset-names-update"
+    what: the Studio reset reads Studio's version on both sides of its reopening, and every reset's outcome goes on the worker's status (SIP-0117 R5.27)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.remote_execution.game_dev_roblox_studio.runner import RobloxStudioRunner
+      from squadops.remote_execution.serving import Worker
+      held = inspect.getsource(RobloxStudioRunner._reset_held)
+      reset = inspect.getsource(Worker._reset)
+      print("self._proved_version()" in held, held.count("self._replaced_since(before)"), reset.count("self._record(tool_ready="))
+    expect: "True 2 2"
