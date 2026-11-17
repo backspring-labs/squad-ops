@@ -47,8 +47,10 @@ if TYPE_CHECKING:
 API_VERSION = "squadops.project-goal-set/v1"
 _API_MAJOR = re.compile(r"^squadops\.project-goal-set/v(\d+)$")
 
-#: Where an expected result can be observed (§4). ``none`` carries the reason it can't be.
-SURFACE_KINDS = ("http_endpoint", "page", "command", "package_interface", "none")
+#: Where an expected result can be observed (§4). ``scenario`` is a result seen only while the
+#: product is played or driven, which a scenario's steps reach (§10h): a game's HUD in a play
+#: session. ``none`` carries the reason it can't be.
+SURFACE_KINDS = ("http_endpoint", "page", "command", "package_interface", "scenario", "none")
 _NO_SURFACE = "none"
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 

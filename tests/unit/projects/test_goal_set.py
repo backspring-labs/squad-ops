@@ -182,3 +182,93 @@ class TestRevising:
 
         hashes = [c.kwargs["request_hash"] for c in ports[1].record_revision.await_args_list]
         assert hashes[0] == hashes[1] != hashes[2]
+
+
+# --- §10h: a result seen in a play session is observed on a scenario ---------------------------
+
+#: The goal set the owner approved for z_tower-ascension on 2026-11-17 (#3042), as written.
+_PLAYED = """
+goal: A player in the lobby can tell at a glance where to go and how long they have been playing
+expected_results:
+  - id: ER-lobby-hint
+    statement: While the player stands in the lobby, the HUD shows one line telling them to step into the portal. On a floor the line is gone
+    surface: {kind: scenario, ref: the HUD in a play session}
+  - id: ER-session-clock
+    statement: The HUD shows how long this play session has lasted, in minutes and seconds, and the time advances
+    surface: {kind: scenario, ref: the HUD in a play session}
+constraints:
+  - Nothing a player's save holds is added, renamed, moved or removed
+  - "Scripts only: nothing is built in Studio, and each new HUD element is created in code from Client/UI/Theme"
+  - Each rule that only computes (which line to show, how a duration is written) is a module the headless tests load
+  - No existing HUD element changes its text
+out_of_scope:
+  - Sound
+  - Anything that needs a fight, a second player or a saved value to observe
+  - Time played across sessions
+backlog:
+  - id: B-1
+    title: The lobby hint
+    description: In the lobby the HUD shows "Step into the portal to climb". It is hidden on a floor.
+    serves: [ER-lobby-hint]
+    size: one increment
+  - id: B-2
+    title: The session clock
+    description: The HUD shows the time since the session began as m:ss, such as 1:05, and counts up each second.
+    serves: [ER-session-clock]
+    size: one increment
+"""
+
+
+def test_a_goal_set_whose_results_are_seen_in_play_is_read_as_written():
+    """Bug caught: a game's goal set refused at registration, or registered with its results
+    marked ``none``, which shows the proposal "not observed" and steers it off the scenario
+    criterion the result needs (#3042)."""
+    import yaml
+
+    doc = yaml.safe_load(_PLAYED)
+
+    parsed = parse_goal_set(doc)
+
+    assert [
+        (r.id, r.surface.kind, r.surface.ref, r.surface.reason) for r in parsed.expected_results
+    ] == [
+        ("ER-lobby-hint", "scenario", "the HUD in a play session", None),
+        ("ER-session-clock", "scenario", "the HUD in a play session", None),
+    ]
+    assert [(b.id, b.serves) for b in parsed.backlog] == [
+        ("B-1", ("ER-lobby-hint",)),
+        ("B-2", ("ER-session-clock",)),
+    ]
+    assert parsed.to_document() == {"api_version": API_VERSION, **doc, "candidates": []}
+
+
+@pytest.mark.parametrize(
+    ("surface", "field", "says"),
+    [
+        ({"kind": "scenario"}, "expected_results[0].surface.ref", "required"),
+        (
+            {"kind": "scenario", "ref": "the HUD", "reason": "seen only in play"},
+            "expected_results[0].surface.reason",
+            "only a result with no surface gives a reason",
+        ),
+        (
+            {"kind": "play_session", "ref": "the HUD"},
+            "expected_results[0].surface.kind",
+            "'package_interface', 'scenario', 'none'), not 'play_session'",
+        ),
+    ],
+    ids=["no ref", "a reason beside a ref", "a kind of its own"],
+)
+def test_a_scenario_surface_is_held_to_the_rules_of_every_observed_surface(surface, field, says):
+    """Bugs caught: the new kind accepted with nothing named there, or read as ``none`` and
+    given a reason; and a kind outside the list accepted, or refused without the list."""
+    import yaml
+
+    doc = yaml.safe_load(_PLAYED)
+    doc["expected_results"][0]["surface"] = surface
+
+    with pytest.raises(GoalSetInvalid) as refused:
+        parse_goal_set(doc)
+
+    assert refused.value.field == field
+    assert says in str(refused.value)
