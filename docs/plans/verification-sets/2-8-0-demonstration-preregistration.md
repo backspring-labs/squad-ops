@@ -733,4 +733,4 @@ The owner can narrow or withdraw the delegation at any time. A ruling the owner 
 
 **Not changed:** the diagnostic's Campaign file, D1 to D4, the pass and the spec-first and did-not-bite readings (§8), and the guard (12d).
 
-**Who ruled:** the owner, on this amendment: pending.
+**Who ruled:** the Spark approved this amendment on 2026-11-18, under the owner's grant given that day: "I gave you approval rights!". The MacBook lane read it and recommended it.
