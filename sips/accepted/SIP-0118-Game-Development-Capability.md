@@ -12,7 +12,7 @@ updated_at: '2026-11-10T13:53:05.385598Z'
 **Status:** **Accepted (2026-11-10):** the owner, "accept 2405 then 2841", after the renewed review D9 called for; the companion was accepted first, as SIP-0117. Proposed 2026-10-31. **Building:** its phases may be built in a MacBook worktree during 2.7 (D6); nothing merges until 2.8 opens and its plan places them. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs). **Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. The composition is the `game_dev_roblox` development profile's requirements and the skillsets the selected squad's agents carry, compared at cycle preflight. This revision defines the engine-neutral game contracts once and the Roblox skillsets that specialize them (§R4, which governs where §R3 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.2, R4.6)
 **Authors:** Jason Ladd (the owner's outside review, 2026-10-31); drafted by the Spark lane's supervisor
 **Created:** 2026-10-31
-**Targets:** unplaced. Release placement is the owner's, through the 2.8 plan.
+**Targets:** phases 2a, 2f, 2g and 3 shipped in 2.8.0. F6 (Unity) is unplaced, deliberately.
 **Companion:** SIP-0117, Game Development Platform Capability (`sips/accepted/SIP-0117-Game-Development-Platform.md`), accepted 2026-11-10 at revision 4:
 how an engine is integrated. This SIP is how a squad uses it.
 **Builds on:** SIP-0116 (Agent Skillsets, accepted 2026-11-09: the part of Capability-Backed Agents' §21 and §27 taken
@@ -73,10 +73,10 @@ Agent Skillsets, accepted 2026-11-09.
 - **One question, shared with the companion (Q68), ruled 2026-11-09:** skillset ids keep SIP-0116's platform-first
   form, and the Roblox dev skillset is `roblox-luau-dev`.
 
-## Delivery ledger (current as of 2026-11-11)
+## Delivery ledger (current as of 2026-11-18, the 2.8.0 cut)
 
-The rows follow the adopted plan's phases, as revision 4 orders them (R4.5). The 2.8 plan places them, so none is
-placed yet. SIP-0116's phases are in its own ledger.
+The rows follow the adopted plan's phases, as revision 4 orders them (R4.5). The 2.8 plan placed them, and 2.8.0
+shipped all but F6. SIP-0116's phases are in its own ledger.
 
 | part | status | where |
 |---|---|---|
@@ -87,8 +87,8 @@ placed yet. SIP-0116's phases are in its own ledger.
 | Phase 2f, the tolerant emission parser: S6's two broken formats read, every resolving response read as before (R3.4, R5.2) | **shipped** | 2.8 (PR #3091; #3041 tracks the rest) |
 | Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the `game-dev-roblox` squad profile whose agents declare them (R4.1, R4.3, R5.2, R5.4; replaces F2–F4). The MacBook's `game-dev-roblox-lite-14b` profile is dropped by R5.4. Its requirements are switched on only after SIP-0116's phases 2–6 | **shipped**: the squad profile (PR #3131), the skills' stops (PR #3132), the replay and its cases (PR #3141), and the development profile, registered once the three skillsets passed the replay (SIP-0116 §17q) | 2.8 (PR #3145; the cycle through creation preflight and the plan gate was read on the Spark, R5.5, PR #3161, closing #3041) |
 | Phase 2g, its eligibility rules: the `roblox-studio` authority over the product's Script Sync layout and a change's footprint, with "no attributes or tags on scripts" checked at the worker (R5.3) | **shipped** | 2.8, PR #3111 |
-| Phase 2g: the product: `z_tower-ascension`'s registration, Development Configuration, baseline and goal set, and the copy compared with the live game; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11; the registration part handed to the Spark lane on 2026-11-15) | 2.8, #3042 |
-| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run, each on the Spark with the MacBook's worker serving play (R3.5, R5.4; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
+| Phase 2g: the product: `z_tower-ascension`'s registration, Development Configuration, baseline and goal set, and the copy compared with the live game; its copy, sweep and place file already exist | **shipped** | 2.8.0 (closing #3042: registered 2026-11-15, goal set revision 1 on 2026-11-17, the live-game comparison S1's of 2026-11-08; every 2.8 Campaign on it passed creation preflight) |
+| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run, each on the Spark with the MacBook's worker serving play (R3.5, R5.4; replaces F5) | **shipped** | 2.8.0 (closing #3043: the counted run `cmp_7ec826c9ec22` succeeded on attempt 1, and the repair diagnostic passed D1–D4 on attempt 2; `2-8-0-demonstration-record.md`, `2-8-0-cut-record.md`) |
 | F6: Unity, as the check that the contracts generalize across engines: a second set of skillsets and a provider, with no new core task type | **unplaced**, deliberately: after phase 3 | — |
 
 **What closes this SIP:** phases 2a, 2f, 2g and 3 shipped, with §8's "the squad can build and improve a playable

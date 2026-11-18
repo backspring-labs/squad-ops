@@ -5,6 +5,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-11-18
+
+A feature release (`docs/plans/2-8-0-plan.md`): a squad builds and plays an existing Roblox game. On the counted
+run's first attempt it took two consecutive increments of a private copy of Tower Ascension from design to accepted
+source, each proved in a real play session in Roblox Studio (SIP-0117, SIP-0118); agents carry replay-tested
+skillsets (SIP-0116, implemented). The cut's evidence is `docs/plans/verification-sets/2-8-0-cut-record.md`; the
+demonstration's record is `2-8-0-demonstration-record.md` beside it.
+
 ### Added
 - **A product declares its package roots where its tree names none** (#3134; SIP-0112 H.33): the Development
   Configuration's optional `technical.package_roots` lists repository directories. The derived profile reads each
