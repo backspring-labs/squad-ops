@@ -185,6 +185,19 @@ v2's criteria:
 
 **The repair diagnostic (§8)** waits for a later attended window. Its fault, #3171, was held unmerged until the counted run ended. It then needed its conflicts with main resolved and its checks re-run, which put its start near 12:30 against a 13:30 end. So the Spark closed the window on the counted result. The counted claim doesn't depend on it (§2).
 
+**The repair diagnostic, attempt 1** (the same day, 14:31–14:56 ET; amendment 12f), **didn't exercise the scenario**:
+- **The window:** opened by the owner ("Now") at 14:31, on `dep_985e92fac270`, built from `0dff164d` with 295 loaded. The worker `wks-78efb8a2…` ran on `0dff164d`, on Studio `0.748.0.7481526`, channel `zluauordereddensehashmapcontrol`, with the pin from today's requalification (`20261118T191513.213301Z-passed.json`).
+- **The Campaign:** `cmp_31ca1eef7424` (`2-8-0-repair-diagnostic-campaign.yaml`, sha256 `179537a6…`), created at 14:36:54, after 12f merged as `6d950506`.
+- **Its proposal** `prop_dc383b29171b` v1 was approved by the Spark under the grant for uncounted runs at 14:39:50. Its criteria:
+  - S1: `LobbyHint` visible;
+  - S2: `LobbyHint` text equals "The tower is waiting";
+  - footprint: `src/Client/UI/Screens/HUD.luau` alone.
+- **Both baselines** failed `<absent>` as predicted (`rop-f2476124` at 14:50:06, `rop-0c269d83` at 14:51:48).
+- **The fault cut the wrong text.** At 19:54:39Z, `luau_player_text_drops_a_word` logged `APPLIED`, chars 27109 → 27107. The candidate's `HUD.luau` (`art_f035cb548def`) reads line 106 `Text = "LV",`, cut from the level label's `"LV 1"`. Line 252, `Text = "The tower is waiting",`, is whole. The fault cuts the first two-word literal in the file, not the one the increment adds (#3208). The MacBook lane predicted it from the baseline's line 106 before the develop emission landed.
+- **So S2 couldn't fail, and D2 couldn't occur.** The Spark aborted at 14:55:01, under the grant. The run's first candidate play `rop-59800ef8` was cancelled before Studio played it: the worker's log shows the cancel at 14:55:03, and Studio's log shows only the two baselines. The reset after the cancel restored the place, and its sha256 equals the pin.
+- **The outcome:** a third outcome beside §8's two, "a diagnostic that didn't exercise the scenario: the cut landed on a text no criterion reads". It proves nothing about the repair route. The rerun waits for #3208's fix, a deploy and an amendment.
+- **The guard's log:** "guard started 14:31:39 ET" / "guard stopped 14:56:08 ET (window closed)". It never acted.
+
 **Also not exercised:**
 - **The Campaign-level repair (§10 row 8) on a played product.** Both rehearsals that reached it (2 and 3) were paused by the elapsed-time guard before the repair launched. The diagnostic is the step meant to prove that route.
 - **Interventions:** none in the counted run.
