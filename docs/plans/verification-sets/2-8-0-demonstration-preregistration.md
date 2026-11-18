@@ -647,17 +647,17 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 - **The revision run failed** at 19:23:23. Its first model attempt answered nothing for about 5 minutes and was retried. Its proposal was then refused after its revision budget, `scenario_outside_vocabulary` (`greater_than` on text). That is the squad's work: §10 row 6, a new proposal cycle.
 - **B-2's new proposal** `prop_6f0073b4db48` (19:27:50) was approved by the owner, "approve it as it stands", entered at 19:44:04.
 - **Its two baselines** read as the MacBook lane predicted: S4's `clock-not-start`, `not_equals "0:00"` on the added clock, passed on `<absent>` (`scenario.py`'s `expectation_met`), so the increment could start. These were the first played step (`hold_key W`, 15 s) and the first `not_equals` precondition on an added element.
-- **Five plays were refused** between 20:02:18 and 20:02:57: "the scenario acts through Studio's input, which acts only on a Studio in front, and process 1124 is in front". The owner had clicked into Terminal ("yes I clicked terminal"). The refused plays were the run's two scenario plays and the Campaign's candidate plays of S3, S4 and frozen S1. Frozen S2's replay, played after the MacBook lane brought Studio back at 20:03:01, passed.
+- **Five plays were refused,** claimed on the worker between 20:02:23.255 and 20:02:58.880: "the scenario acts through Studio's input, which acts only on a Studio in front, and process 1124 is in front". The owner had clicked into Terminal ("yes I clicked terminal"). The refused plays were the run's two scenario plays and the Campaign's candidate plays of S3, S4 and frozen S1. Frozen S2's replay, played after the MacBook lane brought Studio back at 20:03:01, passed.
 - **B-2's cycle ended** at 20:04:41: `blocked_unverified`, §10 row 8 (repair), and the elapsed-time pause (`max_elapsed_s` is read when a cycle ends) held it before the repair launched. The Spark aborted the paused Campaign at 20:05:18 under the owner's grant for uncounted runs.
 
 **Why it isn't clean:**
 - **Item 2, a framework defect** (#3192): a refusal for the worker's own tool routed to repair. The Campaign read it as the candidate's gap and would have rebuilt work nothing had faulted.
-- **Item 3, an unplanned action:** a person's click on the Mac during the plays. The MacBook lane read the front at each ruling and after each pair of plays. The click fell between two reads.
+- **Item 3, an unplanned action:** a person's click on the Mac during the plays. The MacBook lane read the front at each ruling and after each pair of plays. The click fell between two reads: Studio in front at 19:59:02, Terminal at 20:02:44. The guard then ran from 20:03:30 to 20:05:38 and logged nothing.
 
 **What held:**
 - §6.1 item 1: every cycle ended at a named row.
 - Item 4: each of the nine plays that executed did only its scenario's steps.
-- Item 5: the worker held. Fourteen operations were claimed, all on attempt 1. Every executed play ran 96 to 115 s, past the 60 s lease, and none was lost (R5.26 live). Six claim ReadTimeouts were each answered at the next poll, none during a play.
+- Item 5: the worker held. Fourteen operations were claimed, all on attempt 1. Every executed play ran 96.5 to 112.8 s on the worker, past the 60 s lease, and none was lost (R5.26 live). Five claim ReadTimeouts (18:00:38, 18:31:59, 18:41:28, 18:55:32, 19:44:22) were each answered at the next poll, none during a play.
 
 **The fixes:**
 - **#3195 → `e191b89f`** (SIP-0117 R5.28). A worker that refuses a play for its own tool says so on the result (`tool_unready`), and the Campaign reads it as it reads a scenario no worker took: §10 row 10, a retry, then row 11. A refusal the request or the candidate could have caused keeps the work's routing.
