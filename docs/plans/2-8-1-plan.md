@@ -1,6 +1,6 @@
 # 2.8.1 plan — the 2.8 demonstration's follow-ups, fixed small
 
-**Status: ADOPTED (2026-11-18).** After the 2.8.0 cut the Spark proposed three items, a verification and one finding to measure. The owner answered "I agree with the 2.8.1 items proposed". This plan says how each is built and verified, and what it leaves out.
+**Status: DRAFT, under the owner's outside review (2026-11-18).** After the 2.8.0 cut the Spark proposed three items, a verification and one finding to measure. The owner answered "I agree with the 2.8.1 items proposed", then held this PR's merge for a review ("hold on the 2.8.1 merge while I can have it reviewed"). This plan says how each item is built and verified, and what it leaves out. It's adopted when the review's findings are answered and the owner rules.
 
 **What 2.8.1 is.** A patch on the 2.8 line (CLAUDE.md, #281: urgent or small fixes, either lane). Each item is something the 2.8.0 windows met:
 - a defect in what 2.8 shipped;
