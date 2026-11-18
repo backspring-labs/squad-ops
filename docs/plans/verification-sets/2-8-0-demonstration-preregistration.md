@@ -687,3 +687,26 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 3. The repair diagnostic, last.
 
 **Who ruled:** the owner approved this amendment on 2026-11-18: "approve 12d".
+
+### 12e. The owner delegates the proposal rulings to the MacBook lane (2026-11-18, before any proposal of rehearsal 3 or the counted run)
+
+**What the owner said.** At about 08:10 ET on 2026-11-18, in the MacBook session, during rehearsal 3's calibration: "Can you just approve or return these gates. Use good judgement". The MacBook lane relayed it to the Spark.
+
+**What changes in §7.4.** For rehearsal 3 and the counted run in the window opened at 08:01 ET on 2026-11-18, the MacBook lane rules each proposal at the increment gate in the owner's place:
+- It approves the proposal as it stands, or returns it with a reason. A rejection stays the owner's.
+- It reads each scenario first, as before: the three baseline shapes, and the Spark's path reading.
+- Its bar is the one the owner applied in rehearsal 2. It approves a proposal whose named assertions fail on the baseline and can pass only when the increment works. It returns one whose check would pass on broken work: "the clock check would pass on a frozen clock".
+- The Spark enters each ruling as it entered the owner's. The ruling's notes say the MacBook lane made it under this delegation. A return names the defect, and the Spark maps it to the §24bi class and says so in the notes.
+- Each ruling is a permitted action, as the owner's was. It isn't an intervention.
+
+**What doesn't change.** These stay the owner's:
+- a rejection;
+- every intervention in §7.4's second list;
+- the time rule's call, and whether to stay if the window ends during the counted run (§3);
+- amendments, and the held fault (#3171).
+
+The owner can narrow or withdraw the delegation at any time. A ruling the owner makes in person stands over the MacBook lane's.
+
+**What it means for the evidence.** The counted run's proposals are ruled by a Claude session on the MacBook, not by the owner in person. The record says so beside each ruling. The claim (§1) reads the squad's increments, not who ruled them, so it is unchanged. §6.1 item 3 reads a delegated ruling as a permitted action.
+
+**Who ruled:** the owner approved this amendment on 2026-11-18, in the Spark session: "Approve 12e".
