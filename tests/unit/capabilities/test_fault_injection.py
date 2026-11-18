@@ -22,7 +22,9 @@ from squadops.capabilities.handlers.fault_injection import (
     FaultScope,
     UnknownFault,
     UnreachableFault,
+    _luau_text_drops_a_word,
     declared_faults,
+    held_through_pass,
     inject,
     validate_declaration,
 )
@@ -1563,6 +1565,27 @@ test("says how many", function() check.equal(LivesRules.text(5), "5 lives left")
 """
 _WRONG_TEXT = "luau_player_text_drops_a_word"
 _PLAYED = {"development_profile": "game_dev_roblox"}
+#: #3208's shape: a client script the product already holds, with player-facing text in it,
+#: and the same script with one text added below.
+_HUD_PATH = "src/Client/UI/Screens/HUD.luau"
+_HUD_BASELINE = """local HUD = {}
+function HUD.new(parent)
+    local level = Instance.new("TextLabel")
+    level.Name = "LevelLabel"
+    level.Text = "LV 1"
+    level.Parent = parent
+    return level
+end
+return HUD
+"""
+_HUD_CANDIDATE = _HUD_BASELINE.replace(
+    "    level.Parent = parent\n",
+    "    level.Parent = parent\n"
+    '    local hint = Instance.new("TextLabel")\n'
+    '    hint.Name = "LobbyHint"\n'
+    '    hint.Text = "The tower is waiting"\n'
+    "    hint.Parent = parent\n",
+)
 
 
 class TestThePlayedProductsWrongTextFault:
@@ -1619,7 +1642,7 @@ class TestThePlayedProductsWrongTextFault:
     def test_one_file_is_cut_only_where_a_player_would_read_the_difference(
         self, path, body, expected
     ):
-        assert FAULTS[_WRONG_TEXT].file_transform(path, body) == (expected or body)
+        assert _luau_text_drops_a_word(path, body) == (expected or body)
 
     def test_with_no_client_text_the_first_other_source_is_cut_and_a_textless_emission_isnt(self):
         """The fallback, and the edge that must read as DID NOT BITE. Bug caught: an emission
@@ -1635,6 +1658,59 @@ class TestThePlayedProductsWrongTextFault:
         assert 'return string.format("%d lives", lives)' in faulted
         assert faulted.count("lives left") == shared_only.count("lives left") - 1
         assert FAULTS[_WRONG_TEXT].transform(textless) == textless
+
+    @pytest.mark.parametrize(
+        ("held", "expected"),
+        [
+            (
+                {_HUD_PATH: _HUD_BASELINE},
+                [('hint.Text = "The tower is waiting"', 'hint.Text = "The tower is"')],
+            ),
+            # A path the product doesn't hold is a new file, and its first text is the change's.
+            ({}, [('level.Text = "LV 1"', 'level.Text = "LV"')]),
+            # The file as the product holds it: nothing in it is the change's.
+            ({_HUD_PATH: _HUD_CANDIDATE}, []),
+        ],
+        ids=["an existing script with a text added", "a new script", "nothing added"],
+    )
+    def test_the_cut_lands_on_a_text_the_change_adds_never_one_the_product_holds(
+        self, held, expected
+    ):
+        """#3208, read live on 2026-11-18: z_tower's HUD holds the level label's text 146
+        lines above the hint the increment added, the cut landed on the label, the scenario
+        that reads the hint passed and no repair was asked for. Bugs caught: the file's first
+        text cut where the product already holds it; and an emission that adds no text cut
+        anyway, so a fault no criterion can read is logged as applied."""
+        emission = f"Done.\n\n```luau:{_HUD_PATH}\n{_HUD_CANDIDATE}```\n"
+
+        faulted = FAULTS[_WRONG_TEXT].product_transform(emission, held)
+
+        before, after = emission.splitlines(), faulted.splitlines()
+        changed = [(a.strip(), b.strip()) for a, b in zip(before, after, strict=True) if a != b]
+        assert changed == expected
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            # An existing text reworded: the line is the change's, and it is the one cut.
+            (
+                _HUD_BASELINE.replace('"LV 1"', '"Level 1 of 9"'),
+                _HUD_BASELINE.replace('"LV 1"', '"Level 1 of"'),
+            ),
+            # A text added on a line the product's file already has elsewhere: nothing to cut.
+            (_HUD_BASELINE.replace("return level", 'level.Text = "LV 1"\n    return level'), None),
+        ],
+        ids=["an existing text reworded", "a line the product already has"],
+    )
+    def test_a_reworded_text_is_the_changes_and_a_repeated_line_is_the_products(
+        self, body, expected
+    ):
+        """The two edges of "a line the product holds". Bugs caught: a text the change reworded
+        skipped as the product's, so the criterion that reads the new wording never meets the
+        defect; and a line the product already has cut because it appears a second time."""
+        cut = _luau_text_drops_a_word(_HUD_PATH, body, {_HUD_PATH: _HUD_BASELINE})
+
+        assert cut == (expected or body)
 
     @pytest.mark.parametrize(
         ("config", "refused"),
@@ -1657,7 +1733,7 @@ class TestThePlayedProductsWrongTextFault:
             return
         assert validate_declaration(config) == (_WRONG_TEXT,)
 
-    async def _develop(self, declaration, inputs=None):
+    async def _develop(self, declaration, inputs=None, emission=_LUAU_EMISSION):
         import time
         from unittest.mock import AsyncMock, MagicMock
 
@@ -1667,7 +1743,7 @@ class TestThePlayedProductsWrongTextFault:
         ctx = MagicMock()
         ctx.task_id = "task-run_ab12cd34-m000-development.develop"
         ctx.ports.llm.chat_stream_with_usage = AsyncMock(
-            return_value=ChatMessage(role="assistant", content=_LUAU_EMISSION)
+            return_value=ChatMessage(role="assistant", content=emission)
         )
         ctx.ports.llm_observability = None
         ctx.correlation_context = None
@@ -1700,6 +1776,113 @@ class TestThePlayedProductsWrongTextFault:
         )
         assert again == _LUAU_EMISSION
         assert control == _LUAU_EMISSION
+
+    @pytest.mark.parametrize(
+        "inputs",
+        [
+            {"source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}}},
+            {"acceptance_workspace_files": {_HUD_PATH: _HUD_BASELINE}},
+            {
+                "acceptance_workspace_files": {_HUD_PATH: "an older copy of the script"},
+                "source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}},
+            },
+        ],
+        ids=["the files the task names", "the accepted tree", "both, the task's own winning"],
+    )
+    async def test_the_developer_is_cut_on_the_text_it_added_as_its_own_inputs_show_the_product(
+        self, inputs, caplog
+    ):
+        """Wiring for #3208, entered at ``_llm_call`` on the real develop handler with the
+        inputs dispatch gives it. Bugs caught: the product's text never reaching the fault, so
+        the level label is cut as it was live; and the log not saying which line was cut, so
+        the record of a diagnostic that proved nothing can't show why."""
+        emission = f"Done.\n\n```luau:{_HUD_PATH}\n{_HUD_CANDIDATE}```\n"
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+
+        with caplog.at_level("WARNING"):
+            first = await self._develop(declared, inputs, emission)
+
+        assert 'hint.Text = "The tower is"\n' in first
+        assert 'level.Text = "LV 1"\n' in first
+        applied = [r.getMessage() for r in caplog.records if "APPLIED" in r.getMessage()]
+        assert len(applied) == 1
+        assert applied[0].endswith(
+            "First line changed: 'hint.Text = \"The tower is waiting\"' -> "
+            "'hint.Text = \"The tower is\"'"
+        )
+
+    async def test_an_emission_that_adds_no_text_reads_did_not_bite(self, caplog):
+        """Bug caught: the product's own script, handed back unchanged, cut on a text it
+        already held, and the diagnostic reading as an exercise."""
+        emission = f"```luau:{_HUD_PATH}\n{_HUD_BASELINE}```\n"
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+        inputs = {"source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}}}
+
+        with caplog.at_level("WARNING"):
+            out = await self._develop(declared, inputs, emission)
+
+        assert out == emission
+        assert any(
+            f"fault_injection: DID NOT BITE {_WRONG_TEXT}" in r.getMessage() for r in caplog.records
+        )
+
+    @pytest.mark.parametrize(
+        ("delivered", "expected"),
+        [
+            # The pass wrote the script again, the text whole: the cut is put back, once.
+            (_HUD_CANDIDATE, _HUD_CANDIDATE.replace("The tower is waiting", "The tower is")),
+            # The pass carried the cut script: a second word is not taken.
+            (
+                _HUD_CANDIDATE.replace("The tower is waiting", "The tower is"),
+                _HUD_CANDIDATE.replace("The tower is waiting", "The tower is"),
+            ),
+        ],
+        ids=["the pass restored the text", "the pass carried the cut"],
+    )
+    async def test_a_self_evaluation_pass_hands_on_the_one_cut_and_no_other(
+        self, delivered, expected
+    ):
+        """The hold (#1716) for a fault that reads the product. Bugs caught: the per-file cut
+        run again after each pass, which takes a further word every time and cuts every other
+        script's text too; and a pass that rewrote the script delivering it repaired, so the
+        scenario never meets the defect."""
+        task_id = "task-run_ab12cd34-m000-development.develop"
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+        inputs = {"source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}}}
+        await self._develop(declared, inputs, f"```luau:{_HUD_PATH}\n{_HUD_CANDIDATE}```\n")
+        rules = 'return { text = "Welcome back climber" }\n'
+        artifacts = [
+            {"name": _HUD_PATH, "content": delivered},
+            {"name": "src/Shared/Modules/Rules.luau", "content": rules},
+        ]
+
+        held = held_through_pass(
+            artifacts,
+            handler_name="development_develop_handler",
+            task_id=task_id,
+            resolved_config=declared,
+            inputs=inputs,
+            pass_index=1,
+        )
+
+        assert [a["content"] for a in held] == [expected, rules]
+
+    def test_a_task_that_took_no_cut_is_not_held(self):
+        """Bug caught: a pass in a task the fault never bit (or in a process that didn't run
+        its emission) cut by a per-file rule, on whatever text it found."""
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+        artifacts = [{"name": _HUD_PATH, "content": _HUD_CANDIDATE}]
+
+        held = held_through_pass(
+            artifacts,
+            handler_name="development_develop_handler",
+            task_id="task-run_ffffffff-m000-development.develop",
+            resolved_config=declared,
+            inputs={},
+            pass_index=1,
+        )
+
+        assert held is artifacts
 
 
 def test_the_wrong_text_profile_is_the_source_increment_with_the_fault_and_nothing_else():

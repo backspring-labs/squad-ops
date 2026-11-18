@@ -21,6 +21,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   cuts the last word of the first player-facing text a client script sets, on a developer's first attempt, so
   an increment's play scenario fails on the candidate and the repair route is exercised. A Campaign declares it
   through the `campaign-increment-source-wrong-text` request profile.
+- **The repair diagnostic's fault cuts a text the change adds** (#3208; SIP-0118 R5.7): on an existing client
+  script `luau_player_text_drops_a_word` cut the file's first text, an element the product already held, so the
+  increment's scenario passed and no repair was asked for (read live on 2026-11-18). It now cuts the first
+  player-facing text on a line the product doesn't hold, read from the develop task's own inputs, reads DID NOT
+  BITE where the emission adds none, names the changed line in its log, and holds that one line through a
+  self-evaluation pass.
 - **A product's owner reserves paths from a cycle's change** (#3155; SIP-0112 H.35): a Development Configuration
   may declare `technical.reserved_paths` (files, folders, globs). A proposal whose footprint reaches one, a plan
   whose task names one and a run that changes one are each refused by path, whatever a model argued, and the
