@@ -2785,3 +2785,13 @@ checks:
       reset = inspect.getsource(Worker._reset)
       print("self._proved_version()" in held, held.count("self._replaced_since(before)"), reset.count("self._record(tool_ready="))
     expect: "True 2 2"
+  - id: "3192-tool-unready-retries"
+    what: a not_executed the worker returns for its own tool is flagged, crosses the wire, and delivery reads it as a scenario no worker took (SIP-0117 R5.28)
+    container: squadops-runtime-api
+    code: |
+      from squadops.remote_execution.models import OperationStatus, RemoteOperationResult, reading_for_want_of_a_worker
+      from squadops.remote_execution.wire import result_from_wire, result_to_wire
+      r = RemoteOperationResult(OperationStatus.NOT_EXECUTED, "not in front", tool_unready=True)
+      import inspect, squadops.campaigns.runner_acceptance as ra
+      print(result_from_wire(result_to_wire(r)).tool_unready, reading_for_want_of_a_worker({"tool_unready": True}), reading_for_want_of_a_worker({"unavailable": False}), inspect.getsource(ra).count("reading_for_want_of_a_worker(r"))
+    expect: "True True False 2"

@@ -210,6 +210,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A play the worker refuses for its own tool is retried, not repaired** (#3192; SIP-0117 R5.28): a worker that
+  took a scenario and couldn't run it for a reason of its own environment (another app in front of Studio, Studio
+  not the proved version, a place it couldn't restore) returned `not_executed`, and the Campaign read the gap as the
+  candidate's and sent the increment to repair, rebuilding work nothing had faulted. The worker now flags such a
+  result `tool_unready`, and the Campaign reads it as it reads a scenario no worker took: a retry, then escalation.
+  A refusal the request or the candidate could have caused keeps the work's routing.
 - **A Studio reset says when Studio updated itself** (#3184; SIP-0117 R5.27): the reset reopens Studio, Studio
   updates itself at a launch, and an updated Studio comes back holding no place. The reset reported only "the
   running Studio holds no place", and the worker's status file still read ready. The reset now names both

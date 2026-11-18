@@ -230,6 +230,8 @@ class Worker:
             status=OperationStatus.NOT_EXECUTED,
             reason=f"the worker's tool could not be reset ({self._unknown_state}): {failure}",
             dispatch_id=claim.request.dispatch_id,
+            # #3192: the worker's own tool, never the request: nothing ran.
+            tool_unready=True,
         )
 
     async def _watch(

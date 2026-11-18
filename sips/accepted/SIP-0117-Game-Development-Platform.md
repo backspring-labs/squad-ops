@@ -196,6 +196,7 @@ phases are in its own ledger.
 | The reader reads a screen's visibility: `gui_state` `visible` of a `ScreenGui` is its `Enabled`, with the provider's version moved and the worker requalified (R5.25) | **shipped** | 2.8 (PR #3175, closing #3176) |
 | The worker's lease: a renewal carries the health read before the claim and never probes a running tool, and an operation that ended while a renewal was out submits its result and isn't reset (R5.26) | **shipped** | 2.8 (PR #3186, closing #3185) |
 | The reset names a Studio update: Studio's version is read before the quit and after the reopening, a Studio that isn't the proved version is refused before anything is touched, and every reset's outcome goes on the worker's status (R5.27) | **shipped** | 2.8 (PR #3188, closing #3184) |
+| A worker whose tool isn't ready is read as an absent one: `tool_unready` on a `not_executed` the worker returns for its own environment, so an increment blocked only by it is retried, never repaired (R5.28) | **shipped** | 2.8 (PR #3195, closing #3192) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1502,6 +1503,37 @@ one that then holds.
 
 **Who ruled.** The MacBook lane read the Mac's logs and owns the Studio adapter. The Spark lane read the
 runtime's side.
+
+## R5.28 A worker whose tool isn't ready is read as R5.10 reads an absent one (#3192, 2026-11-17; R5.10, R5.18)
+
+**What changed.** R5.10 retries an increment that is blocked only because no worker took its scenarios, and
+leaves anything a worker returned to the work's routing. A worker that took a scenario and refused it because its
+own tool couldn't run it then fell on the work's side. The Campaign read it as a gap in the candidate and repaired
+it (SIP-0109 §10 row 8), rebuilding a candidate nothing had faulted. Now:
+
+| Point | As built | Why |
+|---|---|---|
+| **The worker says so, as a fact on the result.** `RemoteOperationResult.tool_unready` means a worker took the operation and its tool wasn't ready to run it, for a reason of the worker's own environment. It is set only by a worker, only on `not_executed`, and never read from a reason's words. The wire refuses it on any other status | the routing must not rest on prose (R5.10's first point) |
+| **Where the Studio provider sets it:** another app in front of Studio (R5.18); Studio not the version the worker was proved on, or busy (R2.4); no place files or pins given; a drifted place the reset couldn't restore, or still drifted after it; and, before play, a session that won't open or a place it can't read. The serving loop sets it on the `not_executed` it answers when its tool couldn't be reset | each is this Mac's state, and building the candidate again changes none of them |
+| **Where it doesn't:** a scenario outside the vocabulary or changed after it was frozen, a script the provider can't place, a sync refused, a place whose state play changed, and scripts changed in Studio during the run | each could be the request's or the candidate's. Left with the work's routing, as R5.10 left a worker that went silent |
+| **Every reading's document carries the key** (`records_document`), and every result on the wire (`result_to_wire`). A result or reading stored before the key reads as not flagged: the routing it had then. On the wire the key is the one optional one, since every settled row is read back through `result_from_wire` | R5.10's third point |
+| **Delivery reads the two facts together** (`reading_for_want_of_a_worker`, in `runner_acceptance`). A scenario unread because no worker took it, or because the one that took it wasn't ready, is flagged as R5.10 flags it. So the evaluation's `blocked_only_by_availability` and the hearing's rows 10 and 11 apply unchanged | SIP-0109 §10's rows are unchanged; the input that reaches rows 10 and 11 is widened again |
+
+**The evidence.** The 2.8 demonstration's rehearsal 2 (`cmp_66aab9993dc8`, 2026-11-17, times ET). Between 20:02:18
+and 20:02:57 five plays were refused with "the scenario acts through Studio's input, which acts only on a Studio in
+front, and process 1124 is in front": the run's two scenario plays, and the Campaign's candidate plays of S3, S4 and
+the frozen S1. Process 1124 was Terminal; the owner had clicked into it ("yes I clicked terminal"). The cycle
+ended at row 8 (repair), and the Campaign's elapsed-time pause stopped the repair before it launched.
+
+**The tests.** `tests/unit/campaigns/test_machinery_campaign.py` enters at the Campaign's start, with the worker
+taking every operation over HTTP and refusing each candidate reading for its tool. The Campaign takes rows 5, 10 and
+11, launches an increment and one retry, no repair, and escalates. Taking the flag out of delivery, or out of the
+wire, gives rows 5, 8 and 9. `test_wire.py` holds the key across the wire, a result stored before it, and the
+refusals. The Studio provider's tests hold the flag on an app in front and a place the reset couldn't restore, and
+off on a request's own defect. `test_worker_serving.py` holds it on a reset that failed at a claim.
+
+**Who ruled.** The owner, 2026-11-17: "go ahead and fix 3192". The Spark lane built it. Whether the provider should
+bring Studio to the front itself is #3193, for the owner's ruling, and isn't this.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 
