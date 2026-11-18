@@ -220,6 +220,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A product with no start declaration says which scenarios that stops** (#3152): the gap `no_start_declaration`
+  read "Outcome Evaluation reads every scenario blocked_unverified", and a proposal on a Roblox product read
+  "every scenario" as its play-scenario criteria too, and wrote a headless check for what a player sees. The
+  sentence now says it stops only the scenarios that start the application, never a play scenario the worker
+  plays. It still ends with the words the strategy skill quotes, so the replay-tested skill is unchanged. A
+  product's stored profile carries the new sentence from its next baseline capture.
 - **A play the worker refuses for its own tool is retried, not repaired** (#3192; SIP-0117 R5.28): a worker that
   took a scenario and couldn't run it for a reason of its own environment (another app in front of Studio, Studio
   not the proved version, a place it couldn't restore) returned `not_executed`, and the Campaign read the gap as the

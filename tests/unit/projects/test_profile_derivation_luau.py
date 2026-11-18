@@ -211,8 +211,9 @@ def test_the_proposal_rails_read_a_luau_products_declared_packages(surface, admi
 def test_the_strategy_skill_quotes_the_gap_a_luau_product_discloses_as_it_is_written():
     """``roblox-skills-v2`` (SIP-0116 §17s): a proposal read the gap's "every scenario" as its
     play-scenario criteria and wrote a ``package`` criterion for what a player sees. The skill
-    now quotes the gap and says what it is about. Bug caught: the derivation's sentence reworded
-    (#3152) and the skill left quoting words no prompt shows."""
+    now quotes the gap and says what it is about. Bugs caught: the derivation's sentence reworded
+    and the skill left quoting words no prompt shows; and the sentence losing the clause that says
+    a play scenario isn't one it stops (#3152), which a prompt without the skill would need."""
     from squadops.capabilities.skillsets import load_skillsets
 
     (gap,) = [g for g in _derive(_SCRIPT_SYNC).gaps if g.id == "no_start_declaration"]
@@ -221,6 +222,10 @@ def test_the_strategy_skill_quotes_the_gap_a_luau_product_discloses_as_it_is_wri
     quoted = "Outcome Evaluation reads every scenario blocked_unverified"
     assert gap.reason.endswith(quoted)
     assert " ".join(skill["SKILL.md"].split()).count(f'says "{quoted}"') == 1
+    # #3152: the sentence itself says which scenarios it stops, so a prompt that shows the gap
+    # without the skill (any other role, any later skill revision) can't read it as the play
+    # scenarios a change request declares.
+    assert "never a play scenario the worker plays" in gap.reason
 
 
 def test_only_an_operator_names_the_game_profile_and_a_luau_runner_derives_the_neutral_one():
