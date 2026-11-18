@@ -25,6 +25,9 @@ from squadops.remote_execution.workers import (
 )
 from tests.unit.remote_execution.registry_contract import PLAY, Clock, passing
 
+#: How long a worker told to stop may take, in real time, before the harness fails the test.
+STOP_SECONDS = 10.0
+
 
 def sleeping_on(clock: Clock) -> Callable[[float], Awaitable[None]]:
     """A sleep that passes the test's time, and lets everything else take a turn."""
@@ -158,12 +161,14 @@ class Serving:
         if self._task.done():
             return  # what it raised was the test's to read, through until() or ended_with()
         self._task.cancel()
-        for _ in range(200):
-            if self._task.done():
-                break
-            await asyncio.sleep(0)
-        else:
-            raise AssertionError("the worker kept serving after it was told to stop")
+        # By the clock, never in event-loop turns (#3194, as #3096 did for the path's waits): a
+        # worker stopping a tool that is a real process, or a call in flight over a transport,
+        # stops in real time, and 200 turns ran out on a correct worker.
+        stopped, _ = await asyncio.wait({self._task}, timeout=STOP_SECONDS)
+        if not stopped:
+            raise AssertionError(
+                f"the worker kept serving {STOP_SECONDS:g}s after it was told to stop"
+            )
         with suppress(asyncio.CancelledError):
             await self._task
 
