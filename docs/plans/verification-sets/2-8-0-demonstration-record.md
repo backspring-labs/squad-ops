@@ -198,6 +198,25 @@ v2's criteria:
 - **The outcome:** a third outcome beside §8's two, "a diagnostic that didn't exercise the scenario: the cut landed on a text no criterion reads". It proves nothing about the repair route. The rerun waits for #3208's fix, a deploy and an amendment.
 - **The guard's log:** "guard started 14:31:39 ET" / "guard stopped 14:56:08 ET (window closed)". It never acted.
 
+**The repair diagnostic, attempt 2** (the same day, 15:24–16:09 ET; amendment 12g) **passes: D1 to D4 hold**:
+- **The window:** opened on the owner's "ok go ahead with the rerun when ready", on `dep_d8ae923c079c`, built from `1083c158` (the fixed fault, #3210) with 296 loaded. The worker `wks-70b20835…` ran on `1083c158`, on Studio `0.748.0.7481526`, channel `zluauordereddensehashmapcontrol`.
+- **The Campaign:** `cmp_5163643ada63`, from the same file, created at about 15:40:25, after 12g merged as `eef291ca`.
+- **Its proposal:** `prop_02e6e88952c9` v1 was approved by the Spark under the grant at 15:44:48. Its criteria:
+  - S1: `LobbyHint` visible;
+  - S2: `LobbyHint` text equals "The tower is waiting";
+  - footprint: `HUD.luau` alone.
+- **The baselines** failed `<absent>` (`rop-2d6526ab` at 15:55:19, `rop-6ac2b56e` at 15:57:00).
+- **D1, the fault fires on the text the change adds.** neo logged at 15:59: `APPLIED luau_player_text_drops_a_word … chars 27359 -> 27351`, and `First line changed: 'lobbyHint.Text = "The tower is waiting"' -> 'lobbyHint.Text = "The tower is"'`. That's 12g's reading, met before any candidate play.
+- **D2, the frozen scenario fails as an executed assertion.**
+  - S1 on the candidate passed (`rop-eb347dc5`, 16:01:26).
+  - S2 failed (`rop-4db82ea8`, 16:03:11): expected `equals "The tower is waiting"`, observed `"The tower is"`.
+- **D3, the repair is routed.** At 21:03:40Z, `development_correction_repair_handler` made one anchored edit to `src/Client/UI/Screens/HUD.luau`'s `lobbyHint.Text` line. It was accepted, with candidate revision `71bd8011…`.
+- **D4, the same scenario passes on the repaired candidate.** The retest `rop-c3f9bade` passed at 16:05:20, observing "The tower is waiting", on source `fc0e8f50…`. The scenario text is identical (md5 `483b1181…`) in the S2 baseline, the failing play and the retest.
+- **The Campaign then delivered:** its own S1 (`rop-2d437002`) and S2 (`rop-643bb541`, "The tower is waiting") passed. It was accepted at 16:08:59, §10 row 3, capture `3ac0b337226f`, and ended `completed`/`success`.
+- **Item 4 on the Mac:** seven operations, seven Studio play sessions, one inside each claim, every play setup-only, no script error, no reset after the worker's start, no refusal.
+- **The guard's log:** started 15:24:52. It acted three times, all before any claim: 15:24:52 (at its own start), 15:40:34 and 15:40:37 (Terminal took the front). It stopped at 16:09:36.
+- **What it proves:** the correction route on a played product, from a seeded wrong text to an executed scenario failure, a routed repair and the same scenario passing. It is non-counting by construction, and no evidence about the models (§1). **A note on the route:** the repair here is the run's in-run correction. The Campaign-level repair (§10 row 8) is still unexercised, as below.
+
 **Also not exercised:**
 - **The Campaign-level repair (§10 row 8) on a played product.** Both rehearsals that reached it (2 and 3) were paused by the elapsed-time guard before the repair launched. The diagnostic is the step meant to prove that route.
 - **Interventions:** none in the counted run.
