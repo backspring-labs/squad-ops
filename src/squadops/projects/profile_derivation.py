@@ -876,8 +876,13 @@ def _gaps(
                 DISCLOSED,
                 None,
                 ("**",),
-                "the Development Configuration declares no start (contract 7), so Outcome "
-                "Evaluation reads every scenario blocked_unverified",
+                # #3152: "scenario" names two things in a proposal's prompt. This gap is about
+                # Outcome Evaluation's scenarios, which start the application; a play scenario
+                # the worker plays in the engine needs no start. The sentence ends with the
+                # words the strategy skill quotes, so the skill stays as replay-tested.
+                "the Development Configuration declares no start (contract 7). That stops only "
+                "the scenarios that start the application, never a play scenario the worker "
+                "plays: Outcome Evaluation reads every scenario blocked_unverified",
                 "a start declaration in the Development Configuration",
             )
         )
