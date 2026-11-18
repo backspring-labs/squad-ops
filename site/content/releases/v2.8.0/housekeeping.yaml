@@ -1,0 +1,14 @@
+tag: v2.8.0
+applied_at: '2026-11-18T23:41:36+00:00'
+worktrees_removed:
+- /home/jladd/Code/squad-ops-release
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a22f67d0bbfc77492
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a23479877beb2a0dd
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a3ac4185cd4a139b1
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a790437dccc73420e
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-acf0fc48f940d6200
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-aee82f0c5d70223a7
+branches_deleted:
+- docs/v2.7.0-records-housekeeping
+problems: []
+scenario_evidence_purged: 0
