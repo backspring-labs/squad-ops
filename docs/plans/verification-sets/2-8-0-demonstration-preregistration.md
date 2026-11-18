@@ -724,7 +724,7 @@ The owner can narrow or withdraw the delegation at any time. A ruling the owner 
 - **Check 5:** the worker's checkout is on that same commit.
 
 **The Studio it runs on:**
-- **What changed:** on 2026-11-18 at 13:35 ET, Roblox's updater moved the MacBook's Studio from the `production` channel to `zluauordereddensehashmapcontrol`, at the same version, `0.748.0.7481526`.
+- **What changed:** on 2026-11-18, at about 13:36 ET when Studio restarted through its installer, Roblox's updater moved the MacBook's Studio from the `production` channel to `zluauordereddensehashmapcontrol`, at the same version, `0.748.0.7481526`.
 - **Why it matters:** the proof reads the version and the tool list, and both are unchanged, so the pin couldn't see the move (#3206).
 - **The requalification:** the MacBook lane requalified on that Studio anyway, at 14:15:13 ET: `20261118T191513.213301Z-passed.json`, `0.748.0.7481526`, `studio_tools` `38:1ba499d8…`, both plays passing through the reset. That's the pin now.
 - **§3 check 4 gains the channel:** the MacBook lane reports Studio's channel line from its startup log beside the version. A channel other than `zluauordereddensehashmapcontrol` stops the window until the worker is requalified on it.
