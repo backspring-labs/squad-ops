@@ -632,3 +632,58 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 - A ruling that waits past the 30-minute bound doesn't end anything, but its wait counts in the rehearsal's wall time.
 
 **Who ruled.** The owner approved this amendment on 2026-11-17: "approve 12c".
+
+### 12d. Rehearsal 2 unclean, the fourth deploy, and two checks added to §3 (2026-11-17, before any counted run)
+
+**Rehearsal 2 isn't clean** (§6.1). It ran as `cmp_66aab9993dc8` on deploy `dep_2437cdbd3378` (`e6603f03`, 293 loaded), 18:00–20:05 ET, with the worker on the same commit (Studio `0.748.0.7481526`, session `wks-32246ba7…`).
+
+**What it ran, in order:**
+- **B-1's proposal** `prop_6095994ba385` (18:03:31). The owner ruled "approve it as it stands" at about 18:31; it was entered at 18:31:40.
+- **B-1 was accepted** at 18:55:19 (capture `3ada70b1e115`, §10 row 7), on six plays:
+  - two baselines, the named assertions failing `<absent>`;
+  - the run's two plays;
+  - the Campaign's two candidate plays, the named assertions passing ("Step into the portal to climb", visible).
+- **B-2's first proposal** `prop_251f659b2568` (18:57:40). The owner returned it at about 19:11: "return it: the clock check would pass on a frozen clock". The Spark entered it with the class `criteria_not_checkable`, its own mapping of those words.
+- **The revision run failed** at 19:23:23. Its first model attempt answered nothing for about 5 minutes and was retried. Its proposal was then refused after its revision budget, `scenario_outside_vocabulary` (`greater_than` on text). That is the squad's work: §10 row 6, a new proposal cycle.
+- **B-2's new proposal** `prop_6f0073b4db48` (19:27:50) was approved by the owner, "approve it as it stands", entered at 19:44:04.
+- **Its two baselines** read as the MacBook lane predicted: S4's `clock-not-start`, `not_equals "0:00"` on the added clock, passed on `<absent>` (`scenario.py`'s `expectation_met`), so the increment could start. These were the first played step (`hold_key W`, 15 s) and the first `not_equals` precondition on an added element.
+- **Five plays were refused** between 20:02:18 and 20:02:57: "the scenario acts through Studio's input, which acts only on a Studio in front, and process 1124 is in front". The owner had clicked into Terminal ("yes I clicked terminal"). The refused plays were the run's two scenario plays and the Campaign's candidate plays of S3, S4 and frozen S1. Frozen S2's replay, played after the MacBook lane brought Studio back at 20:03:01, passed.
+- **B-2's cycle ended** at 20:04:41: `blocked_unverified`, §10 row 8 (repair), and the elapsed-time pause (`max_elapsed_s` is read when a cycle ends) held it before the repair launched. The Spark aborted the paused Campaign at 20:05:18 under the owner's grant for uncounted runs.
+
+**Why it isn't clean:**
+- **Item 2, a framework defect** (#3192): a refusal for the worker's own tool routed to repair. The Campaign read it as the candidate's gap and would have rebuilt work nothing had faulted.
+- **Item 3, an unplanned action:** a person's click on the Mac during the plays. The MacBook lane read the front at each ruling and after each pair of plays. The click fell between two reads.
+
+**What held:**
+- §6.1 item 1: every cycle ended at a named row.
+- Item 4: each of the nine plays that executed did only its scenario's steps.
+- Item 5: the worker held. Fourteen operations were claimed, all on attempt 1. Every executed play ran 96 to 115 s, past the 60 s lease, and none was lost (R5.26 live). Six claim ReadTimeouts were each answered at the next poll, none during a play.
+
+**The fixes:**
+- **#3195 → `e191b89f`** (SIP-0117 R5.28). A worker that refuses a play for its own tool says so on the result (`tool_unready`), and the Campaign reads it as it reads a scenario no worker took: §10 row 10, a retry, then row 11. A refusal the request or the candidate could have caused keeps the work's routing.
+- **#3196** (tests only): the two remote-execution tests that failed in a directory run on the Spark (#3194).
+
+**Not changed:** whether the worker should bring Studio to the front itself is #3193, for the owner's ruling. Until it's ruled, the guard below is the procedure.
+
+**§3 gains two checks:**
+- **Check 4, the guard.** From the window's first launch to its last play, a loop on the MacBook re-activates Studio within two seconds whenever another app is in front. It logs each time and the app, and the log goes into the window record. A retry for Studio not in front relaunches whether or not the Mac was put right, so the guard is what puts it right.
+- **Check 5, one commit.** The worker's checkout and the deploy are read at the window's opening, and they are the same commit. The result's wire refuses a key it doesn't know, so a worker and a runtime on different commits can refuse each other's results.
+
+**The deploy for the next window** is built from `e191b89f`, or main above it by documents and tests only, with `runtime_api` bound once the owner opens the window.
+- `verify_loaded.py` is expected to report 294 loaded, including `3192-tool-unready-retries`. Its record id goes into the run record.
+- The worker starts on the same commit (check 5).
+- #3171 stays out.
+
+**What the time rule needs, read from rehearsal 2:**
+- On Studio 0.748 a play takes about 98 s, and about 113 s with a 15 s step. An increment runs six plays: about 10 minutes of plays.
+- Rehearsal 2 took 2 h 5 min, with one ruling at 28 minutes, one return and one failed revision.
+- With rulings within minutes and no return, an increment runs about 27 to 35 minutes, so a rehearsal of two increments takes about 60 to 75 minutes.
+- So the counted Campaign needs that plus 30 minutes still left when the rehearsal ends. **A window of about 3½ to 4 hours** holds rehearsal 3 and the counted run.
+- The Campaign's `max_elapsed_s` (7200) pauses a Campaign at the first cycle end past two hours. The counted Campaign's file is the rehearsal's, limit for limit, so it is unchanged.
+
+**The next window's order** is unchanged:
+1. Rehearsal 3, from `2-8-0-rehearsal-campaign.yaml`, B-1 then B-2, reported as rehearsal 3 (§6.1).
+2. The counted run, only on a clean rehearsal 3, on the same deploy and in the same window, under the time rule.
+3. The repair diagnostic, last.
+
+**Who ruled:** the owner, on this amendment: pending.
