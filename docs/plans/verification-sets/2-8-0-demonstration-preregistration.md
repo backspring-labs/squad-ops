@@ -709,4 +709,4 @@ The owner can narrow or withdraw the delegation at any time. A ruling the owner 
 
 **What it means for the evidence.** The counted run's proposals are ruled by a Claude session on the MacBook, not by the owner in person. The record says so beside each ruling. The claim (§1) reads the squad's increments, not who ruled them, so it is unchanged. §6.1 item 3 reads a delegated ruling as a permitted action.
 
-**Who ruled:** the owner, on this amendment: pending.
+**Who ruled:** the owner approved this amendment on 2026-11-18, in the Spark session: "Approve 12e".
