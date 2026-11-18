@@ -710,3 +710,27 @@ The owner can narrow or withdraw the delegation at any time. A ruling the owner 
 **What it means for the evidence.** The counted run's proposals are ruled by a Claude session on the MacBook, not by the owner in person. The record says so beside each ruling. The claim (§1) reads the squad's increments, not who ruled them, so it is unchanged. §6.1 item 3 reads a delegated ruling as a permitted action.
 
 **Who ruled:** the owner approved this amendment on 2026-11-18, in the Spark session: "Approve 12e".
+
+### 12f. The diagnostic's deploy, and the Studio it runs on (2026-11-18, after the counted run, before the diagnostic)
+
+**Why:** §8 asks for this amendment before the diagnostic runs. The counted run ended in success at 11:37:34 on 2026-11-18 (`cmp_7ec826c9ec22`, the record's §4), so the hold on #3171 ended with it.
+
+**The fault's merge:** #3171 was squash-merged at 12:18:54 ET as `01de2b91`, closing #3170. Main above it holds only:
+- `bd500b17` (#3204): the evaluator's audit-ignore entry for a withdrawn advisory, a CI input no image holds;
+- `0dff164d` (#3203): a replay rubric under `scripts/dev/`.
+
+**The deploy:** `dep_d0c3a642ac8e`, built from `01de2b91`, with `verify_loaded.py` reading 295 loaded and 0 not, including `3170-wrong-text-fault` (in `squadops-neo`). The provider is `none` until the diagnostic's window opens.
+- **At the window:** the Spark binds `runtime_api` and rebuilds from main's head, if main is still above `01de2b91` by documents, tests and CI inputs only. It expects 295 loaded.
+- **Check 5:** the worker's checkout is on that same commit.
+
+**The Studio it runs on:**
+- **What changed:** on 2026-11-18 at 13:35 ET, Roblox's updater moved the MacBook's Studio from the `production` channel to `zluauordereddensehashmapcontrol`, at the same version, `0.748.0.7481526`.
+- **Why it matters:** the proof reads the version and the tool list, and both are unchanged, so the pin couldn't see the move (#3206).
+- **The requalification:** the MacBook lane requalified on that Studio anyway, at 14:15:13 ET: `20261118T191513.213301Z-passed.json`, `0.748.0.7481526`, `studio_tools` `38:1ba499d8…`, both plays passing through the reset. That's the pin now.
+- **§3 check 4 gains the channel:** the MacBook lane reports Studio's channel line from its startup log beside the version. A channel other than `zluauordereddensehashmapcontrol` stops the window until the worker is requalified on it.
+
+**Who rules the diagnostic's gates:** the Spark, under the owner's 2026-11-16 grant for uncounted runs, as §8 says. Amendment 12e's delegation covered rehearsal 3 and the counted run only, so it doesn't apply here.
+
+**Not changed:** the diagnostic's Campaign file, D1 to D4, the pass and the spec-first and did-not-bite readings (§8), and the guard (12d).
+
+**Who ruled:** the owner, on this amendment: pending.
