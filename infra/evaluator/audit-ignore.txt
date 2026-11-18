@@ -1,17 +1,14 @@
 # npm advisories the dependency audit is told to ignore in the evaluator image's lock — each with its
 # reason, and the issue that retires it. Format: one advisory id per line; `#` comments.
 #
-# Empty from `-6` (2.5) until 2026-11-17 (below): pinning the peer `puppeteer` that @axe-core/puppeteer installs to 25.14.0, the
+# Empty from `-6` (2.5): pinning the peer `puppeteer` that @axe-core/puppeteer installs to 25.14.0, the
 # version of the `puppeteer-core` the driver uses (`overrides` in package.json), takes its browser-download
 # chain off `extract-zip` and `basic-ftp` (#2469) and its `chromium-bidi` onto `zod` 4 (#2712), and `fast-uri`
 # moves to 3.1.9 (#2712). The eight advisories accepted for 2.4.0 (the owner's rulings on #2455, 2026-10-18,
 # and at the 2.4.0 cut, 2026-10-23) no longer apply.
 #
-# GHSA-fc5q-39xc-vjpf, picomatch <= 4.0.7 (high, ReDoS through single-branch repeated extglobs; no patched
-# version). Accepted by the owner, 2026-11-17 ("accept 3187"). It comes in only through typescript-eslint's
-# typescript-estree -> tinyglobby/fdir, which globs for parserOptions.project. The evaluator's lint runs the
-# framework's delivered_lint_eslint.cjs with overrideConfigFile: true (a product's eslint config is never
-# read), fixed framework globs and no project. A product supplies only file paths, and the ReDoS is in
-# compiling a pattern, so nothing a product sends reaches it (#3187). Retired by #3190, when a release past
-# 4.0.7 ships.
-GHSA-fc5q-39xc-vjpf
+# One acceptance was held for a day and is retired (#3190): GHSA-fc5q-39xc-vjpf, picomatch <= 4.0.7 (ReDoS
+# through single-branch repeated extglobs), accepted by the owner on 2026-11-17 ("accept 3187") on the
+# reading that nothing a product sends reaches the matcher (#3187). GitHub withdrew the advisory on
+# 2026-11-18, `npm audit` stopped reporting it, and the audit refuses an acceptance nothing reports. The
+# lock still holds picomatch 4.0.7: no patched release shipped, and none is needed.
