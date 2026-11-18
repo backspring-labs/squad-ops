@@ -153,7 +153,7 @@ def _hand_edited(path: Path) -> None:
 @pytest.mark.parametrize(
     ("spoil", "says"),
     [
-        (None, "no passing qualification of roblox-studio 1 is recorded"),
+        (None, "no passing qualification of roblox-studio 2 is recorded"),
         (_hand_edited, "doesn't match its own digest"),
         (lambda path: path.write_text("{"), "can't be read"),
     ],

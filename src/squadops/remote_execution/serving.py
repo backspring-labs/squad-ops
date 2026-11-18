@@ -12,6 +12,11 @@ What it does with each thing that can happen while it holds a claim:
   submitted (R3.3).
 - **the claim is no longer held** (the lease ran out, or a renewal is refused): the operation
   is stopped and the tool reset. Nothing is submitted, since the runtime would refuse it.
+- **the operation ended while a renewal was out** (#3185): its result is submitted whatever the
+  renewal answered. The tool ran to a returned result, so its state is known and it isn't
+  reset, then or when the next claim says "reconcile first". A claim the runtime had already
+  given up refuses the result and records the refusal, which is the runtime's record that a
+  finished result arrived late.
 - **the runtime can't be reached:** the operation keeps running and the renewal is tried again
   at the next interval, until the lease's last known expiry. Then the claim is no longer held.
 - **the runtime no longer knows the session:** the operation is stopped, the tool reset, and
@@ -23,6 +28,12 @@ What it does with each thing that can happen while it holds a claim:
 **The tool's state is the worker's to know.** After any ending but a returned result the tool
 is reset before it runs again. When the reset fails, the next operation is answered
 ``not_executed`` with why, and the reset is tried again at the claim after.
+
+**The tool is probed only between claims** (#3185). ``OperationRunnerPort.health`` asks whether
+the tool can run an operation now, and a tool that is running one can't be asked without
+reaching into it. A renewal carries the health as last read between claims, and nothing the
+tool does can hold a renewal back: the lease is the runtime's only sign that the operation is
+still held. The heartbeat between claims still waits on its probe, which holds no lease.
 """
 
 from __future__ import annotations
@@ -54,6 +65,7 @@ from squadops.remote_execution.workers import (
 
 if TYPE_CHECKING:
     from squadops.ports.remote_execution import OperationRunnerPort, WorkerApiPort
+    from squadops.runtime.models import RuntimeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +105,10 @@ class Worker:
         self._unknown_state: str | None = None
         #: The tool was reset and has run nothing since.
         self._fresh = False
+        #: The tool's last run ended with a result it returned, so what it left is known (#3185).
+        self._returned = False
+        #: The tool's health as last read between claims: what a renewal reports (#3185).
+        self._health: RuntimeStatus | None = None
         #: Where the worker's own status goes (#3046), and what it is.
         self._report = report
         self._status = WorkerStatus(self._worker_id, runtime_api_url, clock())
@@ -106,8 +122,7 @@ class Worker:
         queued for it to claim. A reset that fails is tried again at each claim, as after any
         other unknown state."""
         self._unknown_state = "the worker has just started, and its tool's state is unknown"
-        failure = await self._reset()
-        self._record(tool_ready=failure is None, tool_note=failure or "")
+        await self._reset()
         while True:
             enrolment = await self._enrol()
             try:
@@ -155,7 +170,8 @@ class Worker:
             claim: Claim | None = None
             try:
                 if self._clock() >= heartbeat_due:
-                    await self._api.heartbeat(enrolment.session_id, await self._runner.health())
+                    self._health = await self._runner.health()
+                    await self._api.heartbeat(enrolment.session_id, self._health)
                     heartbeat_due = self._clock() + enrolment.heartbeat
                     self._record(last_answer_at=self._clock())
                 claim = await self._api.claim(enrolment.session_id)
@@ -184,6 +200,7 @@ class Worker:
             await self._deliver(enrolment, fence, claim.lease_expires_at, unready)
             return
         self._fresh = False
+        self._returned = False
         task = asyncio.ensure_future(self._runner.run(request))
         try:
             result, expires = await self._watch(enrolment, claim, task)
@@ -199,7 +216,10 @@ class Worker:
     async def _unready_for(self, claim: Claim) -> RemoteOperationResult | None:
         """Reset the tool when its state is unknown. Returns the ``not_executed`` to answer the
         claim with when it can't be reset, or ``None`` when the tool is ready."""
-        if claim.reconcile_first and not self._fresh and self._unknown_state is None:
+        known = self._fresh or self._returned
+        if claim.reconcile_first and not known and self._unknown_state is None:
+            # The runtime never took the last attempt's result. A tool that returned one has
+            # nothing to reconcile (R5.5 rule 3: reset after any ending but a returned result).
             self._unknown_state = "this worker's last attempt ended with no result"
         if self._unknown_state is None:
             return None
@@ -210,6 +230,8 @@ class Worker:
             status=OperationStatus.NOT_EXECUTED,
             reason=f"the worker's tool could not be reset ({self._unknown_state}): {failure}",
             dispatch_id=claim.request.dispatch_id,
+            # #3192: the worker's own tool, never the request: nothing ran.
+            tool_unready=True,
         )
 
     async def _watch(
@@ -224,12 +246,12 @@ class Worker:
             if task.done():
                 return await self._result_of(task, claim.request.dispatch_id), expires
             try:
-                lease = await self._api.renew(
-                    enrolment.session_id, await self._runner.health(), fence
-                )
+                lease = await self._api.renew(enrolment.session_id, self._health_held(), fence)
                 self._record(last_answer_at=self._clock())
             except RuntimeUnreachable as e:
                 self._unreachable(e)
+                if task.done():
+                    return await self._result_of(task, claim.request.dispatch_id), expires
                 if self._clock() < expires:
                     logger.warning("the lease was not renewed, and will be tried again: %s", e)
                     continue
@@ -242,6 +264,21 @@ class Worker:
             except UnknownSession:
                 await self._abandon(task, "the runtime ended this worker's session")
                 raise
+            if task.done():
+                # The operation ended while the renewal was out. Its result is what there is
+                # to say, whatever the renewal answered: a refused claim refuses the result
+                # and records that, and the tool, having returned, isn't reset.
+                if lease.refusal is not None:
+                    logger.warning(
+                        "operation %s ended while its renewal was out, and the runtime no "
+                        "longer holds it for this claim (%s). Its result is submitted for "
+                        "the runtime to record",
+                        fence.operation_id,
+                        lease.refusal.value,
+                    )
+                else:
+                    expires = _expiry(lease)
+                return await self._result_of(task, claim.request.dispatch_id), expires
             if lease.refusal is not None:
                 await self._abandon(
                     task,
@@ -274,6 +311,8 @@ class Worker:
             if result.status is OperationStatus.INTERRUPTED:
                 self._unknown_state = "the tool reported the operation interrupted"
                 await self._reset()
+            else:
+                self._returned = True
             too_large = evidence_size_defects(result)
             if too_large:
                 # #3049: the operation's row and every reading of it carry the evidence, so an
@@ -313,6 +352,16 @@ class Worker:
         except Exception as e:  # noqa: BLE001 - the report is the host's; serving goes on
             logger.error("the worker's status could not be recorded: %s", e)
 
+    def _health_held(self) -> RuntimeStatus:
+        """The tool's health as read before the claim. A claim is only ever made after a
+        heartbeat that read it, so its absence is a defect in this loop and is raised."""
+        if self._health is None:
+            raise RuntimeError(
+                "the worker holds a claim and never read its tool's health: a claim is made "
+                "only after a heartbeat"
+            )
+        return self._health
+
     async def _abandon(self, task: asyncio.Future, why: str) -> str | None:
         """Stop the operation and reset the tool. Returns why the reset failed, or ``None``."""
         logger.warning("stopping the operation: %s", why)
@@ -321,15 +370,20 @@ class Worker:
         return await self._reset()
 
     async def _reset(self) -> str | None:
-        """Reset the tool. Returns why it couldn't be, or ``None`` once its state is known."""
+        """Reset the tool. Returns why it couldn't be, or ``None`` once its state is known.
+        Each outcome goes on the worker's status (#3184): a tool that couldn't be reset at a
+        claim reads not ready there, with why, as one that couldn't at the start does."""
         try:
             await self._runner.reset()
         except Exception as e:  # noqa: BLE001 - whatever the tool raised is the reason given
             logger.error("the tool could not be reset (%s)", self._unknown_state, exc_info=e)
-            return f"{type(e).__name__}: {e}"
+            failure = f"{type(e).__name__}: {e}"
+            self._record(tool_ready=False, tool_note=failure)
+            return failure
         logger.info("the tool was reset (%s)", self._unknown_state)
         self._unknown_state = None
         self._fresh = True
+        self._record(tool_ready=True, tool_note="")
         return None
 
     async def _deliver(
@@ -355,9 +409,7 @@ class Worker:
                 logger.warning("the result was not delivered, and will be tried again: %s", e)
                 await self._sleep(self._idle_poll)
                 try:
-                    lease = await self._api.renew(
-                        enrolment.session_id, await self._runner.health(), fence
-                    )
+                    lease = await self._api.renew(enrolment.session_id, self._health_held(), fence)
                 except RuntimeUnreachable:
                     continue
                 if lease.refusal is not None:

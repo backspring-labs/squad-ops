@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 import pytest
 import yaml
 
-from adapters.remote_execution.fixture_operation_runner import WORLD_PATH
+from adapters.remote_execution.fixture_operation_runner import WORLD_PATH, FixtureOperationRunner
 from squadops.campaigns.calibration_record import record_for
 from squadops.campaigns.campaign_branch import head
 from squadops.campaigns.gate import ruling_transition
@@ -29,6 +29,7 @@ from squadops.campaigns.models import CampaignState, ControlOperation
 from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.models import GateDecision, GateDecisionValue
 from squadops.llm.script import script_version
+from squadops.remote_execution.models import OperationStatus, RemoteOperationResult
 from tests.unit.campaigns.builders import campaign, move, policy
 from tests.unit.campaigns.machinery import PROJECT, answer, compose, emitted
 from tests.unit.remote_execution.scenario_fixture import DOOR_OPENS, OPEN, SHUT
@@ -182,27 +183,12 @@ DONE = {
 }
 
 
-def _check(thing: str) -> str:
-    """qa's test for the increment: the world holds ``thing``, a test file of its own."""
-    return f"""import json
-import unittest
-from pathlib import Path
-
-WORLD = Path(__file__).resolve().parents[1] / "{WORLD_PATH}"
-
-
-class World(unittest.TestCase):
-    def test_the_world_holds_{thing.split(".")[-1].lower()}(self):
-        world = json.loads(WORLD.read_text())
-        self.assertIn("{thing}", world["server"])"""
-
-
-def _implementation(world: dict, thing: str) -> list[dict]:
-    name = thing.split(".")[-1].lower()
+def _implementation(world: dict) -> list[dict]:
+    """The implementation run's answers. The plan authors no suite, so no suite step is
+    dispatched (#3179): the developer's task, then the framework's plays."""
     return [
         answer("governance.define_done", 1, emitted("definition_of_done.json", json.dumps(DONE))),
         answer("development.develop", 1, emitted(WORLD_PATH, json.dumps(world, indent=2))),
-        answer("qa.test", 1, emitted(f"checks/check_{name}_test.py", _check(thing), "python")),
     ]
 
 
@@ -216,7 +202,7 @@ SCRIPTS = {
             ),
         ),
         *_framing("open the door from its panel"),
-        *_implementation(OPEN, "Workspace.Door"),
+        *_implementation(OPEN),
     ],
     "machinery-inc2": [
         answer(
@@ -225,9 +211,9 @@ SCRIPTS = {
             _proposal("C-3", "Clicking the switch lights the lamp", LAMP_LIGHTS, "Workspace.Lamp"),
         ),
         *_framing("light the lamp from its switch"),
-        *_implementation(LIT_SHUT, "Workspace.Lamp"),
+        *_implementation(LIT_SHUT),
     ],
-    "machinery-repair": _implementation(LIT_OPEN, "Workspace.Lamp"),
+    "machinery-repair": _implementation(LIT_OPEN),
 }
 
 
@@ -435,6 +421,7 @@ async def test_a_campaign_refuses_a_candidate_that_breaks_an_earlier_scenario_an
     # product the cycle is seeded with, at its pinned commit. An increment's own cycle carries no
     # change request yet (its proposal authors one); the repair carries the ruled one's footprint.
     from squadops.campaigns.increment_tree import approved_footprint, forwarded_change_request
+    from squadops.execution.product_view import squad_footprint
 
     shown = machinery.authority.shown
     assert [project for project, _view in shown] == [PROJECT] * 3
@@ -445,8 +432,13 @@ async def test_a_campaign_refuses_a_candidate_that_breaks_an_earlier_scenario_an
             await machinery.clones.file_at(PROJECT, view.commit, WORLD_PATH)
         )
     ruled = await forwarded_change_request(machinery.vault, repair)
-    assert [view.footprint for _p, view in shown] == [None, None, approved_footprint(ruled)]
-    assert shown[2][1].footprint
+    assert [view.footprint for _p, view in shown] == [None, None, squad_footprint(ruled)]
+    # #3173: the repair's creation asks its provider about the squad's change. The scenario
+    # declaration the framework placed is in the ruled footprint, and is no part of what the
+    # authority is shown. Before this, a provider with a rule on what a change may carry refused
+    # every repair and retry of an increment with a scenario criterion.
+    assert shown[2][1].footprint == (WORLD_PATH,)
+    assert approved_footprint(ruled) == (WORLD_PATH, ".squadops/scenarios/criterion_C_3.json")
 
 
 def _waits(log) -> list[tuple[int, str]]:
@@ -582,7 +574,7 @@ RETRY_SCRIPTS = {
     "machinery-inc1": SCRIPTS["machinery-inc1"],
     "machinery-retry": [
         *_framing("open the door from its panel"),
-        *_implementation(OPEN, "Workspace.Door"),
+        *_implementation(OPEN),
     ],
 }
 
@@ -608,6 +600,54 @@ async def test_a_worker_there_at_every_launch_and_gone_at_every_reading_spends_t
     log = await machinery.campaigns.control_log(CID)
     # The record proposes (5); the increment, blocked for want of a worker, is retried (10);
     # the retry, blocked the same way, escalates with its retries spent (11).
+    assert _rows(log) == ["row 5", "row 10", "row 11"]
+    cycles = sorted(await machinery.registry.list_cycles(PROJECT), key=lambda c: c.created_at)
+    assert [c.kind for c in cycles] == ["increment", "retry"]
+    for cycle in cycles:
+        evaluation = await _evaluation(machinery, cycle.cycle_id)
+        assert evaluation["verdict"] == "blocked_unverified"
+        assert evaluation["blocked_only_by_availability"] is True
+        [judged] = evaluation["discriminations"]
+        assert (judged["criterion_id"], judged["reason"], judged["unavailable"]) == (
+            "C-2", "not_run", True
+        )  # fmt: skip
+
+
+class _NotReadyAtDelivery(FixtureOperationRunner):
+    """A worker there throughout whose tool isn't ready at every delivery reading (#3192): it
+    plays qa's operation, and answers each candidate reading the Campaign asks for
+    ``not_executed`` for its own environment, as Studio does with another app in front."""
+
+    async def run(self, request):
+        if request.task_id.startswith("campaign:") and request.task_id.endswith(":candidate"):
+            return RemoteOperationResult(
+                status=OperationStatus.NOT_EXECUTED,
+                reason="nothing was run: the scenario acts through Studio's input, which acts "
+                "only on a Studio in front, and process 1124 is in front",
+                dispatch_id=request.dispatch_id,
+                tool_unready=True,
+            )
+        return await super().run(request)
+
+
+async def test_a_worker_whose_tool_isnt_ready_at_every_reading_spends_the_retries_not_a_repair(
+    machinery, monkeypatch
+):
+    """#3192, found in the 2.8 rehearsal: five plays refused for Studio not in front sent an
+    increment to row 8, which spends its one repair rebuilding a candidate nothing faulted.
+    Entered at the Campaign's start, with the worker taking every operation over HTTP. Bugs
+    caught: the flag dropped anywhere between the worker and the hearing (the wire, the stored
+    row, the reading's document, delivery), so the refusal reads as the work's and a repair
+    launches; or the retries never running out."""
+    monkeypatch.setitem(globals(), "SCRIPTS", RETRY_SCRIPTS)
+    worker = machinery.path.worker(_NotReadyAtDelivery(sleep=machinery.path.sleep))
+    async with machinery.path.serving(worker):
+        await _start(machinery)
+        await _until_settled(machinery)
+
+    current = await machinery.campaigns.get_campaign(CID)
+    assert current.state is CampaignState.ESCALATED
+    log = await machinery.campaigns.control_log(CID)
     assert _rows(log) == ["row 5", "row 10", "row 11"]
     cycles = sorted(await machinery.registry.list_cycles(PROJECT), key=lambda c: c.created_at)
     assert [c.kind for c in cycles] == ["increment", "retry"]

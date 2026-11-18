@@ -4,6 +4,7 @@ import pytest
 
 from squadops.projects.checkout import (
     FOCUS_BUDGET_BYTES,
+    MAP_FOLDED_NOTE,
     MAP_PATH_LIMIT,
     MAX_WORKSPACE_BYTES,
     CheckoutManifest,
@@ -65,8 +66,67 @@ def test_the_map_lists_every_path_or_past_its_limit_every_directory():
 
     many = {f"pkg/m{i}.py": b"x" for i in range(MAP_PATH_LIMIT + 1)} | {"README.md": b"r"}
     assert repository_map(_manifest(many)) == (
-        f"- `README.md`\n- `pkg/` ({MAP_PATH_LIMIT + 1} files)"
+        f"{MAP_FOLDED_NOTE}\n- `README.md`\n- `pkg/` ({MAP_PATH_LIMIT + 1} files)"
     )
+
+
+def _game(*, art: int, shots: int) -> dict[str, bytes]:
+    """A game's shape: one source directory, and art and documents that outnumber it."""
+    return (
+        {"src/Client/UI/Screens/HUD.luau": b"hud", "src/Client/UI/Theme.luau": b"th"}
+        | {"docs/GAME_CONTEXT.md": b"ctx", "README.md": b"r", "cover.png": b"\xff"}
+        | {f"art/icons/i{n}.png": b"\xff" for n in range(art)}
+        | {f"docs/shots/s{n}.png": b"\xff" for n in range(shots)}
+        | {"docs/diagram.png": b"\xff", "src/Client/UI/Screens/hud_frame.png": b"\xff"}
+    )
+
+
+def test_a_tree_past_the_limit_folds_what_no_task_changes_and_lists_every_other_path():
+    """#3178. Bug caught: a game of 619 files, 385 of them art, read ``src/ (137 files)``, so a
+    proposal named ``src/Client/UI/HUD.luau`` for the HUD at ``src/Client/UI/Screens/HUD.luau``."""
+    tree = _game(art=MAP_PATH_LIMIT, shots=30)
+    assert len(tree) > MAP_PATH_LIMIT
+
+    assert repository_map(_manifest(tree)).split("\n") == [
+        "- `README.md` (1 bytes)",
+        # a directory holding nothing a task changes is one line, at the shallowest such one
+        f"- `art/` ({MAP_PATH_LIMIT} binary or generated files)",
+        "- `cover.png` (1 bytes, binary)",
+        # beside a listed file, the directory's own held-back files are counted apart
+        "- `docs/` (1 binary or generated files, beside the files listed)",
+        "- `docs/GAME_CONTEXT.md` (3 bytes)",
+        "- `docs/shots/` (30 binary or generated files)",
+        "- `src/Client/UI/Screens/` (1 binary or generated files, beside the files listed)",
+        "- `src/Client/UI/Screens/HUD.luau` (3 bytes)",
+        "- `src/Client/UI/Theme.luau` (2 bytes)",
+    ]
+
+
+def test_a_removed_file_is_named_in_a_folded_map_and_left_out_of_its_count():
+    tree = _game(art=MAP_PATH_LIMIT, shots=2)
+    removed = ["art/icons/i0.png", "src/Client/UI/Theme.luau"]
+
+    lines = repository_map(_manifest(tree), removed).split("\n")
+
+    assert "- `art/icons/i0.png` (removed by this run)" in lines
+    assert "- `src/Client/UI/Theme.luau` (removed by this run)" in lines
+    # the removed icon sits in its directory now, so the rest fold beside it
+    assert (
+        f"- `art/icons/` ({MAP_PATH_LIMIT - 1} binary or generated files, beside the files listed)"
+        in lines
+    )
+
+
+def test_a_tree_of_text_past_the_limit_says_its_files_are_not_listed():
+    """Folding what no task changes can't bring a tree of source under the limit. Bug caught:
+    the directory counts read as "every file the product holds", which the prompts call the map."""
+    tree = {f"src/m{i}.py": b"x" for i in range(MAP_PATH_LIMIT + 1)} | {"art/a.png": b"\xff"}
+
+    assert repository_map(_manifest(tree)).split("\n") == [
+        MAP_FOLDED_NOTE,
+        "- `art/` (1 files)",
+        f"- `src/` ({MAP_PATH_LIMIT + 1} files)",
+    ]
 
 
 def test_the_focus_is_the_named_text_files_in_order_within_the_budget():
@@ -117,6 +177,23 @@ def test_the_input_carries_the_map_the_checks_the_instructions_and_the_named_fil
     assert view["instructions"] == {"CONTRIBUTING.md": "rules"}
     assert view["existing_files"] == {"a.py": "new"}
     assert "`a.py`" in view["map"]
+    assert view["new_files"] == []
+
+
+def test_the_input_names_the_files_a_task_names_that_neither_the_product_nor_the_run_holds():
+    """#3178. Bug caught: a developer told to read ``src/Client/UI/HUD.luau`` in full, shown no
+    content and no reason, since the product's HUD is under ``Screens/``."""
+    manifest = _manifest({"src/Screens/HUD.luau": b"hud", "art/a.png": b"\xff"})
+    current = {"src/Screens/HUD.luau": "hud", "src/Added.luau": "the run's own, written earlier"}
+
+    view = source_repository_input(
+        manifest,
+        current,
+        (p for p in ["src/HUD.luau", "src/Screens/HUD.luau", "src/Added.luau", "src/HUD.luau"]),
+    )
+
+    assert view["new_files"] == ["src/HUD.luau"]
+    assert view["existing_files"] == {"src/Screens/HUD.luau": "hud"}
 
 
 def test_a_manifest_stored_before_the_runners_reads_with_none():

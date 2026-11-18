@@ -82,7 +82,7 @@ from squadops.campaigns.scenario_runs import (
     is_scenario_criterion,
     scenario_bundle,
 )
-from squadops.remote_execution.models import ReadingSide, reading_unavailable
+from squadops.remote_execution.models import ReadingSide, reading_for_want_of_a_worker
 
 if TYPE_CHECKING:
     from squadops.sandbox.findings import FindingsReading
@@ -692,9 +692,10 @@ async def _scenario_discriminated(
         on_baseline.document,
         on_candidate.document,
     )
-    # #3045: unread only because a side's operation was taken by no worker.
+    # #3045, #3192: unread only because a side's operation was taken by no worker, or by one
+    # whose tool wasn't ready to run it.
     if decided.reason is DiscriminationReason.NOT_RUN and any(
-        reading_unavailable(r.document) for r in (on_baseline, on_candidate)
+        reading_for_want_of_a_worker(r.document) for r in (on_baseline, on_candidate)
     ):
         decided = dataclasses.replace(decided, unavailable=True)
     return decided, bundle, readings
@@ -736,7 +737,7 @@ async def _scenario_held(
     if reading.document is None:
         return result(Held.BLOCKED_UNVERIFIED, reading.why), _readings(reading)
     held, detail = held_on_scenario(scenario, reading.revision, reading.document)
-    unavailable = held is Held.BLOCKED_UNVERIFIED and reading_unavailable(reading.document)
+    unavailable = held is Held.BLOCKED_UNVERIFIED and reading_for_want_of_a_worker(reading.document)
     return result(held, detail, unavailable), _readings(reading)
 
 

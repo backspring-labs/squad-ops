@@ -2716,3 +2716,91 @@ checks:
       cut = FAULTS["luau_player_text_drops_a_word"].file_transform("src/Client/Hud.local.luau", 'label.Text = "5 lives left"')
       print(cut, load_profile("campaign-increment-source-wrong-text").defaults["fault_injection"])
     expect: "label.Text = \"5 lives\" ['luau_player_text_drops_a_word']"
+  - id: "3173-squad-footprint"
+    what: a provider's authority is asked about the squad's footprint, without the scenario declarations the framework writes (SIP-0116 §17x)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.change_request import is_scenario_path, scenario_criterion_path
+      from squadops.execution import product_view
+      path = scenario_criterion_path("T1")
+      print(is_scenario_path(path), "footprint=squad_footprint(document)" in inspect.getsource(product_view.product_view))
+    expect: "True True"
+  - id: "3173-framework-files-assets"
+    what: the two assets that tell an increment's framing roles a scenario declaration is the framework's are in the image (SIP-0109 §24ef)
+    container: squadops-max
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      section = templates.joinpath("request.increment_framework_files_section.md").read_text()
+      appendix = templates.joinpath("request.increment_scenario_criteria_appendix.md").read_text()
+      print("framework writes itself" in section, "declaration file, which the framework writes itself" in appendix)
+    expect: "True True"
+  - id: "3176-screen-visibility"
+    what: the Studio harness reads a screen's visibility, and the provider's version is 2 (SIP-0117 R5.25)
+    container: squadops-runtime-api
+    code: |
+      from importlib import resources
+      from adapters.remote_execution.game_dev_roblox_studio.runner import PROVIDER_VERSION
+      observe = resources.files("adapters.remote_execution.game_dev_roblox_studio").joinpath("harness/observe.luau").read_text()
+      print(PROVIDER_VERSION, 'instance:IsA("LayerCollector")' in observe)
+    expect: "2 True"
+  - id: "3178-map-lists-source-paths"
+    what: a product past the map's limit folds binary files by directory and lists every other path, and a task's view names its new files (SIP-0112 H.36)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.checkout import MAP_PATH_LIMIT, manifest_of, repository_map, source_repository_input
+      files = {f"art/a{n}.png": b"\xff" for n in range(MAP_PATH_LIMIT)} | {"src/UI/Screens/HUD.luau": b"hud"}
+      manifest = manifest_of("c" * 40, files, (), (), classify=lambda path: "source")
+      view = source_repository_input(manifest, {"src/UI/Screens/HUD.luau": "hud"}, ["src/UI/HUD.luau"])
+      print(repository_map(manifest).split("\n"), view["new_files"])
+    expect: "['- `art/` (400 binary or generated files)', '- `src/UI/Screens/HUD.luau` (3 bytes)'] ['src/UI/HUD.luau']"
+  - id: "3178-new-files-asset"
+    what: the block that tells a task which of its files the product doesn't hold is in the image (SIP-0112 H.36)
+    container: squadops-neo
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      block = templates.joinpath("request.source_repository_new_files_block.md").read_text()
+      appendix = templates.joinpath("request.source_repository_appendix.md").read_text()
+      print("The product holds no file at these paths" in block, "{{new_files}}" in appendix)
+    expect: "True True"
+  - id: "3179-increment-suite-steps"
+    what: an increment's plan that authors no suite gets no suite step re-appended, and any other cycle keeps the workload's (SIP-0109 §24eg)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.cycles import task_plan
+      source = inspect.getsource(task_plan._replace_build_steps_with_plan)
+      print("increment and authors_qa_suite(task_type)" in source, "increment" in inspect.signature(task_plan._replace_build_steps_with_plan).parameters)
+    expect: "True True"
+  - id: "3185-renewal-without-probe"
+    what: a worker's renewal carries the health read before the claim, and an operation that ended behind a renewal returns its result (SIP-0117 R5.26)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.remote_execution.serving import Worker
+      watch = inspect.getsource(Worker._watch)
+      print("self._runner.health()" in watch, "self._health_held()" in watch, watch.count("if task.done():"))
+    expect: "False True 3"
+  - id: "3184-reset-names-update"
+    what: the Studio reset reads Studio's version on both sides of its reopening, and every reset's outcome goes on the worker's status (SIP-0117 R5.27)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.remote_execution.game_dev_roblox_studio.runner import RobloxStudioRunner
+      from squadops.remote_execution.serving import Worker
+      held = inspect.getsource(RobloxStudioRunner._reset_held)
+      reset = inspect.getsource(Worker._reset)
+      print("self._proved_version()" in held, held.count("self._replaced_since(before)"), reset.count("self._record(tool_ready="))
+    expect: "True 2 2"
+  - id: "3192-tool-unready-retries"
+    what: a not_executed the worker returns for its own tool is flagged, crosses the wire, and delivery reads it as a scenario no worker took (SIP-0117 R5.28)
+    container: squadops-runtime-api
+    code: |
+      from squadops.remote_execution.models import OperationStatus, RemoteOperationResult, reading_for_want_of_a_worker
+      from squadops.remote_execution.wire import result_from_wire, result_to_wire
+      r = RemoteOperationResult(OperationStatus.NOT_EXECUTED, "not in front", tool_unready=True)
+      import inspect, squadops.campaigns.runner_acceptance as ra
+      print(result_from_wire(result_to_wire(r)).tool_unready, reading_for_want_of_a_worker({"tool_unready": True}), reading_for_want_of_a_worker({"unavailable": False}), inspect.getsource(ra).count("reading_for_want_of_a_worker(r"))
+    expect: "True True False 2"

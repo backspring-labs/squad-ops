@@ -193,6 +193,10 @@ phases are in its own ledger.
 | Payload limits: request and evidence sizes measured on the real tree, then explicit limits; captures outside 2.8's acceptance evidence (R5.7, R5.22) | **shipped** | 2.8 (PR #3121, closing #3049) |
 | The end-to-end machinery Campaign: two increments, the scripted squad and the fixture worker, from a fixture change request through plan, claim, verdict, repair, re-run and delivery, with six faults injected, in CI (R5.7) | **shipped** | 2.8 (PRs #3074, #3080 and #3084, closing #3050). The faults are read on the remote-execution path, on Postgres in the integration job (#3074). The two-increment Campaign runs in the unit regression job, as it needs no service (#3084) |
 | Campaign delivery: a scenario criterion accepted on evidence bound to the candidate's revision, and every earlier increment's scenario replayed on the same candidate (R5.7) | **shipped** | 2.8 (PRs #3057, #3061, #3064, #3069, #3072 and #3076, closing #3053) |
+| The reader reads a screen's visibility: `gui_state` `visible` of a `ScreenGui` is its `Enabled`, with the provider's version moved and the worker requalified (R5.25) | **shipped** | 2.8 (PR #3175, closing #3176) |
+| The worker's lease: a renewal carries the health read before the claim and never probes a running tool, and an operation that ended while a renewal was out submits its result and isn't reset (R5.26) | **shipped** | 2.8 (PR #3186, closing #3185) |
+| The reset names a Studio update: Studio's version is read before the quit and after the reopening, a Studio that isn't the proved version is refused before anything is touched, and every reset's outcome goes on the worker's status (R5.27) | **shipped** | 2.8 (PR #3188, closing #3184) |
+| A worker whose tool isn't ready is read as an absent one: `tool_unready` on a `not_executed` the worker returns for its own environment, so an increment blocked only by it is retried, never repaired (R5.28) | **shipped** | 2.8 (PR #3195, closing #3192) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1351,6 +1355,185 @@ the tailnet connection. No request is queued for an offline worker (R5.10, R5.12
 **Who ruled.** The owner, 2026-11-16: "we don't need another restart test", after adding the login item, and "go" on
 the MacBook lane's proposal to close #3046 on that ruling.
 ---
+
+## R5.25 The reader reads a screen's visibility (#3176, 2026-11-17; R5.9; SIP-0118 R5.5)
+
+**What changed.** `gui_state` `visible` reads a screen (a `ScreenGui`, any `LayerCollector`) as enabled. The
+harness read `gui_state` of a GUI object alone and refused a screen as unsupported.
+
+**The evidence.** The 2.8 demonstration's full-path gate, second attempt (`cmp_1afaeaaacd46`): both baseline
+plays ran in Studio and stopped at the scenario's third setup action, "…TA_HUD can't be observed (…is a
+ScreenGui, not a GUI object)". The setup stopped, no assertion executed, and the baseline read was blocked. The
+strategy skill's worked example observes the HUD with `property` `Enabled`, which works. The proposals wrote
+`gui_state visible` on the screen in three of three (#3041's part 5 and both attempts of this gate).
+
+**The rule.**
+- **`visible` of a screen is its `Enabled`,** which is what the harness already read of the screen a GUI object
+  sits in (`harness/observe.luau`, `shown`).
+- **`text` of a screen stays unsupported,** naming its class: a screen has none.
+- **Additive.** No scenario that executed before reads differently, and the vocabulary's declaration
+  (`scenario_vocabulary.json`) is unchanged, so the reader is still `roblox-studio/1` and no skill's copy moves.
+- **The provider's version is 2.** A qualification pins the version it was proved under, so the worker refuses
+  to play until it is requalified on its Studio (`scripts/dev/studio_requalify.py`).
+
+**The evidence it works.** The harness's observation script runs only inside Studio, so no unit test executes
+it. It is read live: the requalification on the MacBook's Studio plays a scenario that waits on a screen's
+visibility, and its record is named in the PR. The adapter's tests hold the version and the refusal a worker
+with no record of it gives.
+
+**Who ruled.** The Spark lane read the plays. The change is the MacBook lane's, which owns the Studio adapter.
+
+---
+
+## R5.26 A renewal doesn't wait on the tool, and a result that ended behind one is submitted (#3185, 2026-11-17; R5.5, R3.3)
+
+**What changed.** Three things in the worker's loop (`squadops.remote_execution.serving`):
+1. **A renewal carries the health read before the claim.** The tool is probed only between claims. R5.5's loop
+   probed it at every renewal, while it ran the operation.
+2. **An operation that ended while a renewal was out submits its result,** whatever the renewal answered. R5.5's
+   table read a refused renewal as "stops the tool and resets it. It submits nothing".
+3. **A tool whose last run returned a result isn't reset when the next claim says "reconcile first".** R5.5's rule 3
+   already said the tool is reset after any ending but a returned result. The loop reset it on that claim anyway.
+
+**The evidence.** The 2.8 demonstration's first rehearsal (`cmp_85f97e001320`, 2026-11-17), B-1's first candidate
+play, `rop-847b84b405ce4ec6bc7610f4b730bfc7`:
+- **The runtime's side:** renewals arrived every 15 seconds up to 19:27:26.5 UTC, and the next at 19:28:41.6. The
+  60-second lease ended at 19:28:27.47 as `expired`, and the late renewal was answered `not_claimed`. No result
+  was posted for the attempt.
+- **The worker's side:** Studio's log shows the play begin and stop on the same offsets as the two baseline plays
+  before it, and the operation's connection to Studio close 76 seconds after the claim, where both baseline plays
+  completed. A second connection then held for sixty seconds. That was the renewal's probe
+  (`RobloxStudioRunner.health` opens a session of its own), started as the operation's session was closing.
+- **What followed:** the worker read the refusal as a running operation, reset the tool, and the reset's relaunch
+  of Studio met a pending update (#3184). The worker had no proof for the new version and the window ended.
+
+**The rule.**
+- **`OperationRunnerPort.health` is asked only of an idle tool.** It asks whether the tool can run an operation
+  now. A tool that is running one can't answer without being reached into, and for Studio the probe is a second
+  session beside the operation's own.
+- **Nothing the tool does holds a renewal back.** The lease is the runtime's only sign that the operation is
+  still held, so a renewal is sent at its interval with what the worker already knows.
+- **A finished operation's result is what the worker says next.** A claim the runtime had given up refuses the
+  result and records the refusal (R3.3: "a late completion never satisfies a newer attempt"). That record is how
+  an operator learns a finished result arrived late. Before, the only trace was a line in the worker's own log.
+- **The reset follows what the worker knows of its tool.** A tool that returned a result left a known state. It
+  isn't stopped, and it isn't reset then or at the next claim. Every other ending resets as R5.5 has it: a
+  cancel, a refused renewal or an ended lease while the tool still runs, an ended session, a tool that raises or
+  reports `interrupted`, and a worker that has just started.
+
+**Not changed.** The lease's length (60 seconds) and the renewal's interval (15). A renewal the runtime answers
+late can still outlast the lease. What changes is what the worker does then: it submits the result it holds and
+keeps its tool as it is.
+- **The heartbeat between claims still waits on its probe.** A probe that answers late there delays the next
+  claim and holds no lease. It is left as it is. The claim and heartbeat timeouts seen near a run's start may be
+  the same stall, which is unconfirmed.
+- **Each claim renews with the reading made just before it.** The probe is made after a claim ends and before
+  the next is asked for, so a renewal's reading is as old as its operation is long.
+
+**The tests.** Both enter at `Worker.serve()` over the real registry
+(`tests/unit/remote_execution/test_worker_serving.py`): a tool that answers a probe after 90 seconds while it
+runs keeps its lease through a 150-second operation and is never probed; and an operation that ends inside a
+70-second renewal has its result refused and recorded, with no stop and no reset, and the second attempt runs.
+
+**Who ruled.** The Spark lane read the runtime's side and filed #3185. The change is the MacBook lane's, which
+built the worker.
+
+---
+
+## R5.27 The reset names a Studio update (#3184, 2026-11-17; R3.6, R5.17, R5.21)
+
+**What changed.** The reset (R5.17: Studio quit, the place restored from its baseline file, Studio reopened)
+reads Studio's installed version, and the worker's status records every reset.
+1. **Before anything is touched,** a Studio that isn't the version the worker's proof names is refused, with both
+   versions and the re-qualification it needs. So is a bundle whose version can't be read.
+2. **After the reopening,** the version is read again. A Studio that changed across the reopening is named with
+   both versions, whatever the reopened Studio then read, and whether or not the place came back.
+3. **The worker's status** (`worker-status.json`: `tool_ready`, `tool_note`) is written at every reset, held or
+   failed. It was written at the reset made at the worker's start alone.
+
+**The evidence.** The 2.8 demonstration's first rehearsal (`cmp_85f97e001320`, 2026-11-17, times ET), after the
+worker lost a claim (R5.26):
+- 14:28:44 the reset quit Studio 0.747.0.7471481, which had run since 10:31 and played every operation of the day.
+- 14:28:48 the reset's open of the place file started Studio. It logged "Latest version 0.748.0.7481526", launched
+  its installer with launch intent `None` and exited.
+- 14:29:08 the installer replaced the application, and at 14:29:09 started Studio 0.748 holding no place.
+- 14:29:13 the reset failed with "the place in Studio (None) is saved to the cloud, or doesn't say".
+- 14:29:17 the next claim's reset failed with "the running Studio holds [None], not ta-copy.rbxl; the reset
+  doesn't quit it". That is the reason the runtime recorded.
+- The worker's status file read `tool_ready: true` with no note throughout, while the runtime's row read offline.
+- Neither message named the update, the versions, or the re-qualification. The cause was read from Studio's and
+  the installer's own logs.
+
+**The rule.**
+- **The reset's reopening is a launch, and Studio updates itself at a launch.** The reset reads the installed
+  version on both sides of it. This is the one point where the worker itself causes the version to move.
+- **A version the worker has no proof for is said first.** An updated Studio comes back holding no place, and
+  "holds no place" is the least of what happened. The first refusal is the version, and what the reopened Studio
+  read follows it.
+- **The remedy is in the message:** re-qualify on the new version with the place open in it
+  (`scripts/dev/studio_requalify.py`, R5.21). The installer starts Studio with no place, so a person opens the
+  place file first.
+- **A re-qualification's own reset is held to the same rule.** Its runner is pinned to the live version, so an
+  update that lands at its reset fails the run by name, and the run is made again on the new version.
+- **With no proof at all** the reset has nothing to hold Studio to and compares only across its reopening. Every
+  play is already refused by name then (R2.4).
+- **The version read is the installed bundle's,** as a play's own check reads it (R5.19). Studio's installer
+  ends every running Studio before it replaces the bundle (its log, 14:29:06: "Terminating apps with bundleId
+  com.Roblox.RobloxStudio", then the move). So the bundle and a running Studio differ only while a replacement is
+  under way, and a reset that meets one refuses. That is the intended failure: the running Studio is about to end.
+
+**Deliberately not built: holding an update back.**
+- **What was read:** Roblox's Studio setup page and its developer forum (2026-11-17). They describe no setting
+  that stops Studio updating at launch, and a forum request for one is open. Studio's own log shows the check
+  made at each start, before any place is opened.
+- **So a waiting update lands at the next launch, whoever makes it.** A reset that refused to relaunch would
+  leave the place in an unknown state on a Studio nothing can restore, and the update would still land at the
+  next launch.
+- **What keeps it out of a run is when the pin is read.** A measured run starts with a fresh launch of Studio
+  and a reading of its version against the pin, with a re-qualification first when it moved. That is the run's
+  procedure (the 2.8 demonstration's pre-registration), and the reset's part is to say so when it happens anyway.
+
+**The tests.** `tests/unit/remote_execution/test_roblox_studio_reset.py`, entered at `RobloxStudioRunner.reset`:
+an update at the reopening that leaves no place, one where the place reopens, and a bundle unreadable
+mid-replacement, each named; a Studio that isn't the proved version, and one whose version can't be read, each
+refused with nothing touched. The wiring test enters at `Worker.serve()` with the real runner over the real
+registry and asserts the reason the runtime records and the worker's status.
+`tests/unit/remote_execution/test_worker_serving.py` holds the status through a reset that fails at a claim and
+one that then holds.
+
+**Who ruled.** The MacBook lane read the Mac's logs and owns the Studio adapter. The Spark lane read the
+runtime's side.
+
+## R5.28 A worker whose tool isn't ready is read as R5.10 reads an absent one (#3192, 2026-11-17; R5.10, R5.18)
+
+**What changed.** R5.10 retries an increment that is blocked only because no worker took its scenarios, and
+leaves anything a worker returned to the work's routing. A worker that took a scenario and refused it because its
+own tool couldn't run it then fell on the work's side. The Campaign read it as a gap in the candidate and repaired
+it (SIP-0109 §10 row 8), rebuilding a candidate nothing had faulted. Now:
+
+| Point | As built | Why |
+|---|---|---|
+| **The worker says so, as a fact on the result.** `RemoteOperationResult.tool_unready` means a worker took the operation and its tool wasn't ready to run it, for a reason of the worker's own environment. It is set only by a worker, only on `not_executed`, and never read from a reason's words. The wire refuses it on any other status | the routing must not rest on prose (R5.10's first point) |
+| **Where the Studio provider sets it:** another app in front of Studio (R5.18); Studio not the version the worker was proved on, or busy (R2.4); no place files or pins given; a drifted place the reset couldn't restore, or still drifted after it; and, before play, a session that won't open or a place it can't read. The serving loop sets it on the `not_executed` it answers when its tool couldn't be reset | each is this Mac's state, and building the candidate again changes none of them |
+| **Where it doesn't:** a scenario outside the vocabulary or changed after it was frozen, a script the provider can't place, a sync refused, a place whose state play changed, and scripts changed in Studio during the run | each could be the request's or the candidate's. Left with the work's routing, as R5.10 left a worker that went silent |
+| **Every reading's document carries the key** (`records_document`), and every result on the wire (`result_to_wire`). A result or reading stored before the key reads as not flagged: the routing it had then. On the wire the key is the one optional one, since every settled row is read back through `result_from_wire` | R5.10's third point |
+| **Delivery reads the two facts together** (`reading_for_want_of_a_worker`, in `runner_acceptance`). A scenario unread because no worker took it, or because the one that took it wasn't ready, is flagged as R5.10 flags it. So the evaluation's `blocked_only_by_availability` and the hearing's rows 10 and 11 apply unchanged | SIP-0109 §10's rows are unchanged; the input that reaches rows 10 and 11 is widened again |
+
+**The evidence.** The 2.8 demonstration's rehearsal 2 (`cmp_66aab9993dc8`, 2026-11-17, times ET). Between 20:02:18
+and 20:02:57 five plays were refused with "the scenario acts through Studio's input, which acts only on a Studio in
+front, and process 1124 is in front": the run's two scenario plays, and the Campaign's candidate plays of S3, S4 and
+the frozen S1. Process 1124 was Terminal; the owner had clicked into it ("yes I clicked terminal"). The cycle
+ended at row 8 (repair), and the Campaign's elapsed-time pause stopped the repair before it launched.
+
+**The tests.** `tests/unit/campaigns/test_machinery_campaign.py` enters at the Campaign's start, with the worker
+taking every operation over HTTP and refusing each candidate reading for its tool. The Campaign takes rows 5, 10 and
+11, launches an increment and one retry, no repair, and escalates. Taking the flag out of delivery, or out of the
+wire, gives rows 5, 8 and 9. `test_wire.py` holds the key across the wire, a result stored before it, and the
+refusals. The Studio provider's tests hold the flag on an app in front and a place the reset couldn't restore, and
+off on a request's own defect. `test_worker_serving.py` holds it on a reset that failed at a claim.
+
+**Who ruled.** The owner, 2026-11-17: "go ahead and fix 3192". The Spark lane built it. Whether the provider should
+bring Studio to the front itself is #3193, for the owner's ruling, and isn't this.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 

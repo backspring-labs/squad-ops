@@ -214,6 +214,36 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A play the worker refuses for its own tool is retried, not repaired** (#3192; SIP-0117 R5.28): a worker that
+  took a scenario and couldn't run it for a reason of its own environment (another app in front of Studio, Studio
+  not the proved version, a place it couldn't restore) returned `not_executed`, and the Campaign read the gap as the
+  candidate's and sent the increment to repair, rebuilding work nothing had faulted. The worker now flags such a
+  result `tool_unready`, and the Campaign reads it as it reads a scenario no worker took: a retry, then escalation.
+  A refusal the request or the candidate could have caused keeps the work's routing.
+- **A Studio reset says when Studio updated itself** (#3184; SIP-0117 R5.27): the reset reopens Studio, Studio
+  updates itself at a launch, and an updated Studio comes back holding no place. The reset reported only "the
+  running Studio holds no place", and the worker's status file still read ready. The reset now names both
+  versions and the re-qualification to run, refuses before touching anything when Studio isn't the version the
+  worker was proved on, and every reset's outcome goes on the worker's status.
+- **A worker keeps its lease while its tool is busy** (#3185; SIP-0117 R5.26): a worker renewed its lease only
+  after asking its tool for its health, and Roblox Studio answered one such probe a minute late while a play was
+  ending. The lease ran out, the finished play's result was dropped, and the worker reset Studio. A renewal now
+  carries the health read before the claim, the tool is probed only between claims, and an operation that ends
+  while a renewal is out has its result submitted and its tool left as it is.
+- **A large product's source paths stay on its map** (#3178; SIP-0112 H.36): past 400 files the map of a product
+  showed its top-level folders with counts, so a squad on a game with hundreds of art files saw no source path and
+  named a file the game doesn't have. Binary and generated files now fold by folder first, and every other path
+  stays listed. A task that names a file the product doesn't hold is told the file is new.
+- **A scenario-only increment runs no suite step** (#3179; SIP-0109 §24eg): an increment whose checks are all play
+  scenarios has no test file to write, and the framework's default QA step was shown every source file of the
+  product. An increment now runs the QA tasks its plan names, and its plays.
+- **The Studio reader reads a screen's visibility** (#3176; SIP-0117 R5.25): a scenario that waits for a whole
+  screen (a `ScreenGui`) to be `visible` stopped at its setup, since the reader read GUI objects alone. A screen now
+  reads as visible when it is enabled. The provider's version is 2, so the worker is requalified before it plays.
+- **A retry or repair of an increment with a play scenario is no longer refused at creation** (#3173; SIP-0116
+  §17x, SIP-0109 §24ef): the provider's footprint rule was asked about the scenario declaration the framework
+  itself places. A provider is now asked about the squad's footprint alone, and the plan's authors are told
+  those files are the framework's, so they raise no brief conflict over them.
 - **The plan-review tier doesn't approve past a brief conflict the merge escalated** (#3164; SIP-0109 §24ee): under
   `plan_gate: tier` a proposer's blocking disagreement with the brief was escalated to the operator by the merge
   and approved by the tier unseen. The tier now reads the framing's merge decisions as a fourth condition.

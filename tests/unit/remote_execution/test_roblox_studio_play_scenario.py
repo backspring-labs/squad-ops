@@ -302,6 +302,7 @@ async def test_a_scenario_using_studios_input_needs_studio_in_front(tmp_path, fr
 
     assert result.status is OperationStatus.NOT_EXECUTED
     assert says in result.reason
+    assert result.tool_unready is True  # #3192: this Mac's Studio, never the candidate
     assert not (tmp_path / "calls.log").exists()
 
 
@@ -385,6 +386,8 @@ async def test_what_cant_be_run_as_frozen_is_never_started(tmp_path, scenario, s
     result = await _runner(world).run(request)
 
     assert (result.status, says in result.reason) == (OperationStatus.NOT_EXECUTED, True)
+    # #3192: the request's own defect stays the work's, so the Campaign doesn't retry it.
+    assert result.tool_unready is False
     assert (
         not (tmp_path / "calls.log").exists()
         or "execute_luau:sync" not in (tmp_path / "calls.log").read_text()
@@ -503,6 +506,7 @@ async def test_a_drifted_place_the_reset_doesnt_restore_runs_nothing(tmp_path, m
 
     assert result.status is OperationStatus.NOT_EXECUTED
     assert says in result.reason
+    assert result.tool_unready is True  # #3192: a place this Mac couldn't restore
     assert "execute_luau:sync" not in (tmp_path / "calls.log").read_text()
 
 

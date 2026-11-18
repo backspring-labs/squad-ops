@@ -170,6 +170,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #3144, closes #3143 |
 | a campaign's policy names the development profile its product is developed under, every launch carries it alone, and a squad lacking what it requires is refused at creation (§24ed) | **shipped** | 2.8.0, PR #3158, closes #3157 |
 | the plan-review tier's fourth condition: no brief conflict the merge escalated to the operator, read from the framing's merge decisions (§24ee) | **shipped** | 2.8.0, PR #3167, closes #3164 |
+| an increment's framing roles are told which footprint files the framework writes, so a scenario criterion's declaration raises no brief conflict (§24ef) | **shipped** | 2.8.0, PR #3175, closes #3173 |
+| an increment whose plan authors no suite dispatches no suite step: each criterion's test file is a plan task's and each scenario's play is the framework's (§24eg) | **shipped** | 2.8.0, PR #3180, closes #3179 |
 | a Campaign's push and contribution carrying the token of its Project's declared contribution identity, with the forge identity on their rows and the accepted head beside the contribution commit (§24ea, ruled 2026-11-17, not yet built; SIP-0112 H.34) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
@@ -7541,3 +7543,80 @@ dropped rule 5 (conflicts between proposals blocking the gate) stays dropped.
 
 **Who ruled.** §24bj's policy is the owner's (2026-10-08). The MacBook lane found the gap and recommended the
 condition (#3164), and the owner ruled it on 2026-11-17 ("use recommendations on the others as well").
+
+### 24ef. A plan's authors are told which footprint files the framework writes (2026-11-17, §7.3, §24ee; SIP-0093 §15d; SIP-0116 §17x; #3173)
+
+**What changed.** An increment whose change request holds a scenario criterion tells its framing roles that the
+criterion's declaration, which the footprint names, is the framework's file.
+
+**The evidence.** On the same full-path gate attempt (§17x's), both task proposers raised a blocking brief
+conflict, and the plan gate escalated under §24ee, as designed. The brief listed the two scenario declarations
+among the files the increment changes; the increment's own constraint named the client script alone; and nothing
+said who writes the declarations. The proposers asked an operator to add the files or confirm them provisioned
+elsewhere. On its substance the conflict was moot, as #3163's was. With §24ee, every increment with a scenario
+criterion would stop at its plan gate for a person.
+
+**The rule.**
+- **The stages shown the change request** (§7.3: the design, the brief's author) get a short section after it,
+  `request.increment_framework_files_section`, naming the footprint's files the framework writes itself and
+  saying to plan no task for them and that they are no conflict with the brief.
+- **Every plan author** is told the same in the scenario-criteria appendix they are already shown
+  (`request.increment_scenario_criteria_appendix`, #3081), since the proposers read the brief and not the change
+  request.
+- **Only on an increment that holds a scenario criterion.** Every other increment's framing requests are the
+  ones they were.
+- The plan gate still refuses a task that names a declaration (`validate_increment_scenario_files`), and §24ee
+  still escalates a conflict a proposer raises anyway.
+
+**The evidence it works** (the same test file): the brief author's section names both declarations after the
+change request; an increment with none renders the section it always did; a document that is no change request
+names none; and the proposers' and the merger's surfaces carry the appendix's new paragraph.
+
+**Not shown:** a framing that raises no such conflict. That is read on the next full-path gate.
+
+**Who ruled.** The Spark lane named the gap. The fix is the MacBook lane's.
+
+### 24eg. An increment's suites are its plan's (2026-11-17, §8.1, §8.2, §24bv point 5; SIP-0117 R5.14; SIP-0118 R5.5; #3179)
+
+**What changed.** An increment whose plan authors no `qa.test` dispatches none. The workload's own suite step is
+re-appended to every other cycle, as before.
+
+**The evidence.** The 2.8 demonstration's full-path gate, attempt 3 (`cmp_35659d2394a3`, `run_178243ba831b`).
+The plan gate passed, both baseline plays read as they should, and the developer's task completed. Then
+`qa.test` failed three times before any model call: `PROMPT_EXCEEDS_CONTEXT_WINDOW`, 570,726 estimated tokens
+against a 65,536 window. The run was aborted as a model limitation and no candidate play ran.
+- **The plan held one task,** a developer's. Every criterion of the increment was a scenario criterion, which
+  the framing is told to give no test (#3081).
+- **`task_plan` re-appended the workload's `qa.test`** (the #439 tail), which no plan task stood in for. It
+  carries no subtask, so its prompt is the monolithic one: every source and support file of the stack. On the
+  game's tree that is 181 files and 2,249,267 characters.
+- **It was the first increment to reach that step on a product.** Every earlier one had a criterion with its own
+  test file, which the plan gate requires a `qa.test` task to author (§8.1).
+
+**The rule.**
+- **Each file of an increment has an owner.** The footprint's source files are the plan's tasks'. A criterion's
+  test file is a plan `qa.test` task's, and the plan gate refuses a plan that leaves one unplanned
+  (`validate_increment_criterion_files`). A scenario's declaration is the framework's, and its play is the
+  framework's step (SIP-0117 R5.14).
+- **So a plan that authors no suite has none to author,** and `_replace_build_steps_with_plan` re-appends no
+  suite step for an increment (`TaskType.authors_qa_suite`, `increment_tree.is_increment`). A repair or a retry
+  of an increment is an increment.
+- **#439's rule stands where it was made.** A cycle that is no increment and whose plan drops verification
+  still ends in the workload's `qa.test`.
+
+**What the step produced, and who read it.** On a scenario-only increment the workload's `qa.test` wrote a suite
+no criterion named and ran it. The machinery Campaign's scripted squad answered it with a check file outside
+the footprint. Acceptance never read it: it reads each criterion's own test file and each scenario's plays
+(§8.2). The cycle's own verification keeps the plays, which fail the task and route to the developer's repair.
+
+**Not changed, and open (#3182).** A plan's own `qa.test` is shown the top-level directories its expected files
+live in, and the whole tree when none matches. On the game a spec under `tests/` is shown 18,182 characters. A
+task naming a file under `src/` would be shown all of `src/`, and nothing at the plan gate refuses it there: the
+game's profile declares no test namespace for `validate_qa_suite_namespace` to hold it to. No run has planned
+one, and the prompt guard refuses such a prompt by name, as it did here.
+
+**Not shown:** a scenario-only increment that runs its developer's task and then its candidate plays on a real
+product. That is read on the next full-path gate.
+
+**Who ruled.** The Spark lane read the record. The MacBook lane read the cause and made the change.
+

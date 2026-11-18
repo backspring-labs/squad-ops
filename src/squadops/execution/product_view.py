@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from squadops.campaigns.change_request import is_scenario_path
 from squadops.campaigns.increment_tree import approved_footprint, forwarded_change_request
 from squadops.execution.source_checkout import SourceCheckoutRefused, checkout_of, seeded_files
 from squadops.ports.tool_authority import ProductView
@@ -82,6 +83,18 @@ async def product_view(
         project_id=context.project_id,
         commit=commit,
         paths=tuple(sorted(seeded)),
-        footprint=approved_footprint(document) if document is not None else None,
+        footprint=squad_footprint(document) if document is not None else None,
         _read=read,
     )
+
+
+def squad_footprint(change_request: str) -> tuple[str, ...]:
+    """What the ruled change request lets the squad's change touch: its approved footprint
+    without the files the framework itself writes for the increment (#3173).
+
+    A scenario criterion's declaration (``change_request.scenario_criterion_path``, #3044) is in
+    the approved footprint so a build may hold it, and the framework lays it from the frozen
+    change request. No task writes it and no provider carries it, so a provider's rule about what
+    a change may carry is never asked about it. A criterion's own test file stays: the framework
+    chooses its path, and the squad's QA writes it."""
+    return tuple(p for p in approved_footprint(change_request) if not is_scenario_path(p))

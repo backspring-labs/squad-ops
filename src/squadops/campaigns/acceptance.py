@@ -116,8 +116,9 @@ class Discrimination:
     candidate_passed: bool = False
     #: Why, in words, when it isn't met: which reading was unread and why (#3053).
     detail: str = ""
-    #: #3045: ``not_run`` only because no worker took a scenario reading's operation, as the
-    #: reading says (``reading_unavailable``). A fact about the workers, never about the work.
+    #: #3045: ``not_run`` only because no worker took a scenario reading's operation, or (#3192)
+    #: the one that took it found its tool not ready, as the reading says
+    #: (``reading_for_want_of_a_worker``). A fact about the workers, never about the work.
     unavailable: bool = False
 
 
@@ -275,7 +276,8 @@ class FrozenResult:
     bundle_address: str | None
     held: Held
     detail: str = ""
-    #: #3045: ``blocked_unverified`` only because no worker took the scenario's operation.
+    #: #3045: ``blocked_unverified`` only because no worker took the scenario's operation, or
+    #: (#3192) the one that took it found its tool not ready.
     unavailable: bool = False
 
 

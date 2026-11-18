@@ -25,6 +25,9 @@ from squadops.remote_execution.workers import (
 )
 from tests.unit.remote_execution.registry_contract import PLAY, Clock, passing
 
+#: How long a worker told to stop may take, in real time, before the harness fails the test.
+STOP_SECONDS = 10.0
+
 
 def sleeping_on(clock: Clock) -> Callable[[float], Awaitable[None]]:
     """A sleep that passes the test's time, and lets everything else take a turn."""
@@ -38,12 +41,15 @@ def sleeping_on(clock: Clock) -> Callable[[float], Awaitable[None]]:
 
 class RegistryWorkerApi(WorkerApiPort):
     """The worker's calls, straight onto the registry. ``down`` names the calls that get no
-    answer, as a cut network would leave them."""
+    answer, as a cut network would leave them. ``renewal_takes`` is how long each next renewal
+    is in flight, in the test's time, before the runtime reads it."""
 
-    def __init__(self, registry: WorkerRegistry) -> None:
+    def __init__(self, registry: WorkerRegistry, clock: Clock | None = None) -> None:
         self._registry = registry
+        self._clock = clock
         self.down: set[str] = set()
         self.renewals = 0
+        self.renewal_takes: list[float] = []
 
     def _reach(self, call: str) -> None:
         if call in self.down:
@@ -62,6 +68,11 @@ class RegistryWorkerApi(WorkerApiPort):
     async def renew(self, session_id, runtime_status, fence):
         self._reach("renew")
         self.renewals += 1
+        if self.renewal_takes:
+            assert self._clock is not None, "a slow renewal needs the test's clock"
+            self._clock.advance(self.renewal_takes.pop(0))
+            for _ in range(5):  # the tool takes its turns while the renewal is out
+                await asyncio.sleep(0)
         return await self._registry.heartbeat(session_id, runtime_status, fence)
 
     async def claim(self, session_id):
@@ -78,7 +89,8 @@ class RegistryWorkerApi(WorkerApiPort):
 
 class ScriptedRunner(OperationRunnerPort):
     """A tool. Each run lasts ``run_seconds`` of the test's time (forever when ``None``) and
-    then returns ``result``, or raises ``raises`` at once."""
+    then returns ``result``, or raises ``raises`` at once. A health probe made while it runs
+    lasts ``busy_probe_seconds``, as a tool that is asked while it is in use answers late."""
 
     def __init__(self, clock: Clock, *served: ServedOperation) -> None:
         self._clock = clock
@@ -91,6 +103,9 @@ class ScriptedRunner(OperationRunnerPort):
         self.resets = 0
         #: When each run was stopped before it ended.
         self.stopped_at: list[datetime] = []
+        self.busy_probe_seconds: float = 0
+        self.probes_while_running = 0
+        self._running = False
 
     def serves(self):
         return self._served
@@ -99,6 +114,10 @@ class ScriptedRunner(OperationRunnerPort):
         return {"scripted-editor": "7.2"}
 
     async def health(self):
+        if self._running:
+            self.probes_while_running += 1
+            self._clock.advance(self.busy_probe_seconds)
+            await asyncio.sleep(0)
         return "online"
 
     async def reset(self):
@@ -111,6 +130,7 @@ class ScriptedRunner(OperationRunnerPort):
         if self.raises is not None:
             raise self.raises
         started = self._clock()
+        self._running = True
         try:
             while self.run_seconds is None or self._clock() < started + timedelta(
                 seconds=self.run_seconds
@@ -119,6 +139,8 @@ class ScriptedRunner(OperationRunnerPort):
         except asyncio.CancelledError:
             self.stopped_at.append(self._clock())
             raise
+        finally:
+            self._running = False
         return self.result or passing(request.dispatch_id)
 
 
@@ -139,12 +161,14 @@ class Serving:
         if self._task.done():
             return  # what it raised was the test's to read, through until() or ended_with()
         self._task.cancel()
-        for _ in range(200):
-            if self._task.done():
-                break
-            await asyncio.sleep(0)
-        else:
-            raise AssertionError("the worker kept serving after it was told to stop")
+        # By the clock, never in event-loop turns (#3194, as #3096 did for the path's waits): a
+        # worker stopping a tool that is a real process, or a call in flight over a transport,
+        # stops in real time, and 200 turns ran out on a correct worker.
+        stopped, _ = await asyncio.wait({self._task}, timeout=STOP_SECONDS)
+        if not stopped:
+            raise AssertionError(
+                f"the worker kept serving {STOP_SECONDS:g}s after it was told to stop"
+            )
         with suppress(asyncio.CancelledError):
             await self._task
 

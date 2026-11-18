@@ -317,6 +317,7 @@ _SHARED_CONTEXT_TEMPLATES = (
     "request.source_repository_appendix",
     "request.source_repository_checks_block",
     "request.source_repository_existing_files_block",
+    "request.source_repository_new_files_block",
     "request.source_repository_instructions_block",
     "request.source_repository_runners_block",
     # #2612: how a step that may remove a file does, in its grant's terms, one at a time.
@@ -350,6 +351,8 @@ _DEVELOP_APPENDIX_TEMPLATES = (
 _PLANNING_TEMPLATES = (
     "request.planning_task_base",
     "request.increment_framing_section",
+    # #3173: the footprint's files the framework writes itself, beside the change request.
+    "request.increment_framework_files_section",
     "request.increment_ruling_notes_section",
     # #3143: on a Luau product, how a criterion's test reaches a module the change adds.
     "request.increment_added_module_test_luau_appendix",

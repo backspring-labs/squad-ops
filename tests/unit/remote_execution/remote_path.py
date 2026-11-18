@@ -185,10 +185,21 @@ class Path:
             return await tx.unsettled_operations_of(TASK)
 
 
-async def _until(check, *args, seconds: float = 30.0, poll: float = 0.01) -> None:
-    """Wait for ``check(*args)`` by the clock (#3096). A bound in event-loop turns ran out on
-    Postgres, where each check is a network round trip that ``asyncio.sleep(0)`` doesn't wait
-    for, so a slower database failed a correct path. A failure names the check."""
+async def _until(check, *args, seconds: float = 30.0, poll: float = 0.01, turns: int = 100) -> None:
+    """Wait for ``check(*args)``: first in event-loop turns, then by the clock. A failure names
+    the check.
+
+    - **By the clock** (#3096): a bound in turns alone ran out on Postgres, where each check is
+      a network round trip that ``asyncio.sleep(0)`` doesn't wait for, so a slower database
+      failed a correct path.
+    - **In turns first** (#3194): the path's own clock runs on while the test sleeps in real
+      time, since every worker's and requester's sleep advances it. A ten-millisecond sleep let
+      a fast box spend the requester's whole 300 s wait before the next worker was up, and a
+      correct path read ``interrupted``. A check that holds within a few turns never sleeps."""
+    for _ in range(turns):
+        if await check(*args):
+            return
+        await asyncio.sleep(0)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + seconds
     while not await check(*args):

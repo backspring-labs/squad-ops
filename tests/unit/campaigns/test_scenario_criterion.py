@@ -306,6 +306,61 @@ def test_plan_expansion_appends_one_operation_step_that_runs_the_frozen_scenario
     )
 
 
+def _scenario_only() -> str:
+    """A stored request whose one criterion is a scenario: it names no test file."""
+    verdict = validate_proposal(_request(), _ctx())
+    assert verdict.accepted, verdict.refusals
+    return stored_change_request(verdict.change_request)
+
+
+def test_a_scenario_only_increment_dispatches_its_developer_then_its_play_and_no_suite_step(
+    monkeypatch,
+):
+    """#3179, entered at ``generate_task_plan`` as ``RunProvisioning.prepare`` calls it; the
+    executor through to the squad is ``test_machinery_increment``'s dispatched list. Bug caught:
+    the workload's own ``qa.test`` re-appended to a plan that authors no suite, with no file to
+    author and no task to scope its prompt, which showed every source file of the product
+    (570,726 tokens against a 65,536 window, ``run_178243ba831b``)."""
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.cycles._product_increment import run, squad
+
+    cycle, _ = _equipped(monkeypatch)
+
+    envelopes = generate_task_plan(
+        cycle,
+        run("implementation"),
+        squad(),
+        plan=_plan("tally/report.py"),
+        change_request=_scenario_only(),
+    )
+
+    assert [e.task_type for e in envelopes] == [
+        "governance.define_done",
+        "development.develop",
+        "qa.run_remote_operation",
+    ]
+
+
+def test_an_increment_whose_plan_authors_its_suite_dispatches_the_plans_task_once(monkeypatch):
+    """The other side of #3179: the plan's own suite task stands, and none is added beside it."""
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.cycles._product_increment import SUITE, plan, run, squad
+
+    cycle, _ = _equipped(monkeypatch)
+
+    envelopes = generate_task_plan(
+        cycle,
+        run("implementation"),
+        squad(),
+        plan=plan("tally/report.py"),
+        change_request=_stored_with_a_suite_criterion(),
+    )
+
+    [suite] = [e for e in envelopes if e.task_type == "qa.test"]
+    assert "-m001-" in suite.task_id
+    assert suite.inputs["expected_artifacts"] == [SUITE]
+
+
 def test_a_scenario_no_one_can_run_stops_plan_expansion_by_name(monkeypatch):
     """Bug caught: a scenario criterion silently dropped from the plan because its cycle's
     record offers no operation, so the increment is judged without it."""
