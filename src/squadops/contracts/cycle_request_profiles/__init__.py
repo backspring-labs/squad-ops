@@ -30,6 +30,8 @@ CAMPAIGN_PROFILES = (
     "campaign-increment-asks",
     # SIP-0112 H.4 point 3 (2.5): a repository-backed Project's increments, with no stack.
     "campaign-increment-source",
+    # #3170: its diagnostic copy, declaring the played product's wrong-text fault (#3043).
+    "campaign-increment-source-wrong-text",
 )
 
 _PROFILES_PACKAGE = "squadops.contracts.cycle_request_profiles.profiles"

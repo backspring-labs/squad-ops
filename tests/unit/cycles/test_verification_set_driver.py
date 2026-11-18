@@ -1609,6 +1609,34 @@ class TestADiagnosticIsReadByTheSeamItReached:
 
         assert set(driver.SEAM_READOUTS) == set(FAULTS)
 
+    @pytest.mark.parametrize(
+        ("rounds", "patches", "reached"),
+        [(1, 1, True), (2, 0, False), (0, 0, None)],
+        ids=["repaired in the cycle", "a round and no patch applied", "no round in this cycle"],
+    )
+    def test_the_wrong_text_faults_readout_is_the_repair_route_or_unaskable(
+        self, driver, rounds, patches, reached
+    ):
+        """#3170. Bug caught: a faulted increment the campaign repaired in a repair cycle read
+        as "the repair was not routed", from a cycle record that holds no correction round."""
+        rec = {
+            "correction_rounds": rounds,
+            "loop_texture": {
+                "applied_patches": patches,
+                "faults_applied": {
+                    "luau_player_text_drops_a_word": {
+                        "applied": [{"task": "t-development.develop"}]
+                    }
+                },
+            },
+        }
+
+        out = driver.seam_readouts(["luau_player_text_drops_a_word"], rec)
+
+        reading = out["luau_player_text_drops_a_word"]
+        assert reading["reached"] is reached
+        assert "the repair route on a played product" in reading["seam"]
+
     def test_the_texture_carries_the_retests_as_facts(self, driver):
         line = (
             "PFX patch_retest task=task-run_x-m006-qa.test status=SUCCEEDED passed=True reason=ok"
