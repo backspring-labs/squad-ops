@@ -285,6 +285,53 @@ unchanged.
 **Who ruled.** The Spark lane found the gap and proposed the shape. The fault is the MacBook lane's. The order
 is the owner's, 2026-11-17.
 
+### R5.7 The seeded defect cuts a text the change adds (2026-11-18; R5.6; #3208, #3043)
+
+**What changed.** R5.6's fault cut "the first player-facing text a client script sets". It now cuts the first
+such text **on a line the product doesn't already hold**, and a pass of the task's own self-evaluation is held
+to that one line.
+
+**The evidence.** The repair diagnostic ran on 2026-11-18 as `cmp_31ca1eef7424`. Its increment added a lobby
+hint to z_tower-ascension's `src/Client/UI/Screens/HUD.luau`, and its frozen scenario read the hint's text.
+- The squad emitted the script whole. Its first text of two words is the level label's, `Text = "LV 1"`, at
+  line 106. The hint was at line 252.
+- The fault logged APPLIED, and the candidate read `Text = "LV"` at line 106 with the hint whole.
+- So the scenario would have passed on the first candidate and no repair been asked for. The Spark lane read
+  the candidate before any play of it and stopped the Campaign. It is recorded as a diagnostic that didn't
+  exercise the scenario.
+- The MacBook lane had predicted it minutes earlier by running the fault's transform on the baseline script.
+  R5.6's tests ran it only on scripts whose first text was the criterion's.
+
+**As built:**
+- **What "already holds" is read from:** the develop task's own inputs. `source_repository.existing_files` is
+  the current content of the files the task names, and `acceptance_workspace_files` the accepted tree. The
+  first wins for a path in both. A path in neither is a new file, and each of its lines is the change's.
+- **An emission that adds no such text reads DID NOT BITE,** as an emission with nothing to cut already did.
+- **The log names the line:** APPLIED ends with the first line changed, as it was and as it is.
+- **The hold through a self-evaluation pass** (#1716) no longer re-runs a per-file cut, which would have taken
+  a further word at every pass and cut each other script's text too. The line the emission's fault changed is
+  kept by task, in the handler's process, and a pass that delivers that line whole has the cut put back. A file
+  that carries the cut is left as it is.
+- **Not done: reading the criterion's own expected text.** The scenario's expectations reach the runtime and
+  the operation's envelope, never the develop task's. Threading them there would change what a developer is
+  shown, for a diagnostic's sake.
+
+**Its limit.** The change's first added text of two words may not be the one a scenario reads: an error message
+added above it would take the cut. The log's line shows it, and the diagnostic's record reads it before any
+candidate play, as the Spark lane did here.
+
+**The evidence it works** (`tests/unit/capabilities/test_fault_injection.py`): a script the product holds with
+a text added below its own, cut on the added one; the same script as a new file, cut on its first; the
+product's script handed back unchanged, DID NOT BITE; entered at the real develop handler's emission seam
+with each input that carries the product's text; and a pass that restored the text or carried the cut, each
+handing on the one cut and leaving another script's text alone. The fault's transform was also run on
+z_tower-ascension's `HUD.luau` at `0beaac09` with a hint added at line 252: with the product's text it cuts
+the hint, and without it the level label.
+
+**Who ruled.** The MacBook lane found the defect and built the change. The Spark lane confirmed the reading on
+the candidate and stopped the run under the owner's 2026-11-16 grant for uncounted runs. A rerun needs this
+merged, a deploy, and an amendment to the demonstration's pre-registration (§8).
+
 ## R4. Revision 4 (2026-11-09): the composition as requirements and supply
 
 **What prompted it.** SIP-0116, Agent Skillsets, was accepted on 2026-11-09. The owner split it from Capability-Backed

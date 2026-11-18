@@ -468,18 +468,34 @@ def _luau_code(line: str) -> str:
     return line
 
 
-def _luau_text_drops_a_word(path: str, body: str) -> str:
-    """``body`` with the first player-facing text it sets cut by its last word, or unchanged.
+def _held_lines(text: str | None) -> frozenset[str]:
+    """The lines a file the product already holds is made of, indentation aside."""
+    return frozenset(line.strip() for line in text.split("\n")) if text else frozenset()
+
+
+def _luau_text_drops_a_word(path: str, body: str, product: Mapping[str, str] | None = None) -> str:
+    """``body`` with the first player-facing text the change adds cut by its last word, or
+    unchanged.
 
     The #3170 shape: a client script that shows "5 lives" where its criterion's scenario reads
     "5 lives left". The scenario's assertion executes and fails with the two texts side by
     side, which is what the repair is shown. Only a Luau source file is touched, never a spec,
     and only a literal on a code line: a changed comment would change no behaviour, and the
-    fault would read as applied and prove nothing."""
+    fault would read as applied and prove nothing.
+
+    **A text the product already holds is left alone** (#3208). ``product`` is the text the
+    product holds for each path, and a literal on a line its file already has is an existing
+    element's, which no criterion of this change reads. On z_tower's HUD the file's first text
+    is the level label, 146 lines above the hint the diagnostic's increment added: the cut
+    landed there, the scenario passed and no repair was asked for. A path ``product`` doesn't
+    hold is a new file, and every line of it is the change's."""
     if not _LUAU_SOURCE.search(path) or _is_suite_path(path):
         return body
+    held = _held_lines((product or {}).get(path))
     lines = body.split("\n")
     for i, line in enumerate(lines):
+        if line.strip() in held:
+            continue
         code = _luau_code(line)
         for literal in _LUAU_STRING.finditer(code):
             text = literal.group("text")
@@ -491,9 +507,9 @@ def _luau_text_drops_a_word(path: str, body: str) -> str:
     return body
 
 
-def _luau_player_text_drops_a_word(content: str) -> str:
+def _luau_player_text_drops_a_word(content: str, product: Mapping[str, str] | None = None) -> str:
     """The emission with one file's player-facing text cut (``_luau_text_drops_a_word``): the
-    first client script that sets one, since a headless spec loads none and the play scenario
+    first client script that adds one, since a headless spec loads none and the play scenario
     is then the verifier that meets it, and failing that the first other Luau source."""
     blocks = [
         m
@@ -505,7 +521,7 @@ def _luau_player_text_drops_a_word(content: str) -> str:
     )
     for block in client_first:
         body = block.group("body")
-        faulted = _luau_text_drops_a_word(block.group("info").partition(":")[2], body)
+        faulted = _luau_text_drops_a_word(block.group("info").partition(":")[2], body, product)
         if faulted != body:
             return content[: block.start("body")] + faulted + content[block.end("body") :]
     return content
@@ -637,6 +653,11 @@ class Fault:
     #: #2279: a seed fault, not an emission's: ``seed`` applies it to the baseline an increment is
     #: launched against, and ``task`` names that seam (``INCREMENT_BASELINE_SEAM``).
     seed_transform: Callable[[str], str] | None = None
+    #: #3208: ``transform`` for a fault that acts on what the change adds, so it is also given
+    #: the text the product already holds, by path (``product_text``). Where set, ``inject``
+    #: calls it, and ``held_through_pass`` holds the one line it changed: a per-file transform
+    #: run again on a file that already carries the cut would cut it a second time.
+    product_transform: Callable[[str, Mapping[str, str]], str] | None = None
 
     @property
     def transforms_emission(self) -> bool:
@@ -757,7 +778,7 @@ FAULTS: dict[str, Fault] = {
     "luau_player_text_drops_a_word": Fault(
         task=TaskType.DEVELOPMENT_DEVELOP,
         transform=_luau_player_text_drops_a_word,
-        file_transform=_luau_text_drops_a_word,
+        product_transform=_luau_player_text_drops_a_word,
         found_in="#3170 — no roll produced it: modelled on the second skills replay's HUD-text "
         "case (SIP-0116 §17s), where the criterion is the text a label shows a player",
         exercises="#3043's repair diagnostic: the increment's frozen play scenario executes and "
@@ -920,6 +941,58 @@ def seed(manifest: str, resolved_config: Mapping[str, Any] | None) -> str:
 PRIOR_ATTEMPTS_KEY = "prior_attempts"
 
 
+def product_text(inputs: Mapping[str, Any] | None) -> dict[str, str]:
+    """The text the product already holds, by path, as the task's own inputs carry it (#3208).
+
+    Two inputs hold it, and neither is rendered into a prompt for this purpose:
+    ``acceptance_workspace_files``, the accepted tree the task's evaluation reads, and
+    ``source_repository.existing_files``, the current content of the files the task names. The
+    second is the squad's latest for a path, so it wins. A path in neither is a new file."""
+    held: dict[str, str] = {}
+    workspace = (inputs or {}).get("acceptance_workspace_files")
+    repository = (inputs or {}).get("source_repository")
+    existing = repository.get("existing_files") if isinstance(repository, Mapping) else None
+    for files in (workspace, existing):
+        if isinstance(files, Mapping):
+            held.update({str(p): t for p, t in files.items() if isinstance(t, str)})
+    return held
+
+
+def _first_change(before: str, after: str) -> tuple[str, str] | None:
+    """The first line a fault changed, as it was and as it is, indentation aside: what a reader
+    of the log needs to see which text was cut, and what a later pass is held to (#3208)."""
+    for was, now in zip(before.split("\n"), after.split("\n"), strict=False):
+        if was != now:
+            return was.strip(), now.strip()
+    return None
+
+
+#: #3208: the line each product-aware fault changed, by task and fault, in this process. A
+#: self-evaluation pass runs in the handler call that took the fault, so the hold reads it here.
+#: Bounded: an agent's process serves many tasks, and only the newest few can still be in a pass.
+_HELD_CHANGES: dict[tuple[str, str], tuple[str, str]] = {}
+_HELD_CHANGES_KEPT = 64
+
+
+def _hold_change(task_id: str, name: str, change: tuple[str, str]) -> None:
+    _HELD_CHANGES[(task_id, name)] = change
+    while len(_HELD_CHANGES) > _HELD_CHANGES_KEPT:
+        del _HELD_CHANGES[next(iter(_HELD_CHANGES))]
+
+
+def _with_change(content: str, change: tuple[str, str]) -> str:
+    """``content`` with the held line as the fault left it. A pass that delivered the line as
+    the model first wrote it has the cut put back; a file that carries the cut, or doesn't
+    hold the line, is returned as it is, so no pass takes a second word."""
+    was, now = change
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        if line.strip() == was:
+            lines[i] = line[: len(line) - len(line.lstrip())] + now
+            return "\n".join(lines)
+    return content
+
+
 def _is_first_attempt(task_id: str, inputs: Mapping[str, Any] | None) -> bool:
     """Whether this emission is the task's first — read off the inputs, never remembered.
 
@@ -994,7 +1067,11 @@ def inject(
                 fault.scope.value,
             )
             continue
-        faulted = fault.transform(content)
+        faulted = (
+            fault.product_transform(content, product_text(inputs))
+            if fault.product_transform is not None
+            else fault.transform(content)
+        )
         if faulted == content:
             # #1300: "applied" and "applied and inert" used to print the same word, so a
             # fault that could not bite read as an exercise. The only signal was the two
@@ -1010,9 +1087,13 @@ def inject(
                 fault.exercises,
             )
             return content
+        change = _first_change(content, faulted)
+        if change is not None and fault.product_transform is not None:
+            _hold_change(task_id, name, change)
         logger.warning(
             "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d scope=%s "
-            "(found_in=%s exercises=%s) — this cycle is a DIAGNOSTIC and must not be counted",
+            "(found_in=%s exercises=%s) — this cycle is a DIAGNOSTIC and must not be counted. "
+            "First line changed: %s",
             name,
             task_id,
             handler_name,
@@ -1021,6 +1102,7 @@ def inject(
             fault.scope.value,
             fault.found_in,
             fault.exercises,
+            f"{change[0][:120]!r} -> {change[1][:120]!r}" if change else "(none read)",
         )
         return faulted
     return content
@@ -1057,7 +1139,7 @@ def held_through_pass(
         (name, fault)
         for name in declared_faults(resolved_config)
         if (fault := FAULTS.get(name)) is not None
-        and fault.file_transform is not None
+        and (fault.file_transform is not None or (task_id, name) in _HELD_CHANGES)
         and task_id.endswith(fault.task)
         and _applies(fault, task_id, inputs)
     ]
@@ -1066,11 +1148,18 @@ def held_through_pass(
     held = [dict(a) for a in artifacts]
     for name, fault in holding:
         before = after = 0
+        change = _HELD_CHANGES.get((task_id, name))
         for artifact in held:
             content, path = artifact.get("content"), str(artifact.get("name") or "")
             if not isinstance(content, str) or not path:
                 continue
-            faulted = fault.file_transform(path, content)
+            if fault.file_transform is not None:
+                faulted = fault.file_transform(path, content)
+            elif change is not None:
+                # #3208: the one line the emission's fault changed, and no other.
+                faulted = _with_change(content, change)
+            else:
+                continue
             if faulted != content:
                 before, after = before + len(content), after + len(faulted)
                 artifact["content"] = faulted

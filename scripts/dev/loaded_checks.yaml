@@ -2713,9 +2713,19 @@ checks:
     code: |
       from squadops.capabilities.handlers.fault_injection import FAULTS
       from squadops.contracts.cycle_request_profiles import load_profile
-      cut = FAULTS["luau_player_text_drops_a_word"].file_transform("src/Client/Hud.local.luau", 'label.Text = "5 lives left"')
-      print(cut, load_profile("campaign-increment-source-wrong-text").defaults["fault_injection"])
-    expect: "label.Text = \"5 lives\" ['luau_player_text_drops_a_word']"
+      cut = FAULTS["luau_player_text_drops_a_word"].transform("```luau:src/Client/Hud.local.luau\nlabel.Text = '5 lives left'\n```")
+      print("'5 lives'" in cut, load_profile("campaign-increment-source-wrong-text").defaults["fault_injection"])
+    expect: "True ['luau_player_text_drops_a_word']"
+  - id: "3208-wrong-text-cuts-added-text"
+    what: the wrong-text fault leaves a text the product already holds and cuts the one the change adds (SIP-0118 R5.7)
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers.fault_injection import FAULTS
+      held = "level.Text = 'LV 1'"
+      emission = "```luau:src/Client/HUD.luau\n" + held + "\nhint.Text = 'The tower is waiting'\n```"
+      cut = FAULTS["luau_player_text_drops_a_word"].product_transform(emission, {"src/Client/HUD.luau": held})
+      print("'LV 1'" in cut, "'The tower is'\n" in cut)
+    expect: "True True"
   - id: "3173-squad-footprint"
     what: a provider's authority is asked about the squad's footprint, without the scenario declarations the framework writes (SIP-0116 §17x)
     container: squadops-runtime-api
