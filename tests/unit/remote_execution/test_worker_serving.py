@@ -261,6 +261,7 @@ async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
         "cancelled): ConnectionError: the editor is not answering"
     )
     assert refused.dispatch_id == "dispatch-2"
+    assert refused.tool_unready is True  # #3192: the worker's tool, never the request
     assert (await w.stored(third.operation_id)).result == passing("dispatch-3")
     assert [r.dispatch_id for r in w.runner.runs] == ["dispatch-1", "dispatch-3"]
     assert w.runner.resets == 2  # at start (#3046), and the one that held before the third

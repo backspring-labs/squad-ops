@@ -236,7 +236,7 @@ class RobloxStudioRunner(OperationRunnerPort):
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                f"nothing was run: {PROVIDER} was given no place files and "
                                "proved-on pins, so the place can't be confirmed as the one the "
-                               "operation was proved on (R2.4)")  # fmt: skip
+                               "operation was proved on (R2.4)", tool_unready=True)  # fmt: skip
         if isinstance(pins, ProvedOn):
             return await self._played(request, declaration, manifest, files, pins)
         try:
@@ -244,7 +244,8 @@ class RobloxStudioRunner(OperationRunnerPort):
             with pins.exclusive():
                 return await self._played(request, declaration, manifest, files, proved)
         except (NotProved, StudioBusy) as e:
-            return self._ended(request, OperationStatus.NOT_EXECUTED, f"nothing was run: {e}")
+            return self._ended(request, OperationStatus.NOT_EXECUTED, f"nothing was run: {e}",
+                               tool_unready=True)  # fmt: skip
 
     async def _played(
         self,
@@ -264,12 +265,13 @@ class RobloxStudioRunner(OperationRunnerPort):
                     OSError) as e:  # fmt: skip
                 return self._ended(request, OperationStatus.NOT_EXECUTED,
                                    f"nothing was run: {drifted}, and the reset failed: "
-                                   f"{type(e).__name__}: {e}")  # fmt: skip
+                                   f"{type(e).__name__}: {e}", tool_unready=True)  # fmt: skip
         try:
             return await self._transaction(request, declaration, manifest, files, proved)
         except _Drifted as drifted:
             return self._ended(request, OperationStatus.NOT_EXECUTED,
-                               f"nothing was run: {drifted}, after a reset")  # fmt: skip
+                               f"nothing was run: {drifted}, after a reset",
+                               tool_unready=True)  # fmt: skip
 
     async def _transaction(
         self,
@@ -287,7 +289,8 @@ class RobloxStudioRunner(OperationRunnerPort):
             if behind:
                 return self._ended(request, OperationStatus.NOT_EXECUTED,
                                    "nothing was run: the scenario acts through Studio's input, "
-                                   f"which acts only on a Studio in front, and {behind}")  # fmt: skip
+                                   f"which acts only on a Studio in front, and {behind}",
+                                   tool_unready=True)  # fmt: skip
         session = self._session(harness=True)
         playing = False
         try:
@@ -326,7 +329,12 @@ class RobloxStudioRunner(OperationRunnerPort):
         except (place.PlaceReadError, place.PlaceSyncError, place.PlaceStateError,
                 StudioSessionError, NotProved) as e:  # fmt: skip
             status = OperationStatus.INTERRUPTED if playing else OperationStatus.NOT_EXECUTED
-            return self._ended(request, status, f"{type(e).__name__}: {e}")
+            # #3192: before play, a Studio that isn't the proved one, one whose session won't
+            # open, or a place it can't read is this Mac's. A sync or a place-state refusal
+            # could be the candidate's, so it stays the work's.
+            environment = isinstance(e, (NotProved, StudioSessionError, place.PlaceReadError))
+            return self._ended(request, status, f"{type(e).__name__}: {e}",
+                               tool_unready=environment and not playing)  # fmt: skip
         finally:
             await session.close()
         changes = place.baseline_changes(before, after)
@@ -401,13 +409,24 @@ class RobloxStudioRunner(OperationRunnerPort):
         return ""
 
     def _ended(
-        self, request: RemoteOperationRequest, status: OperationStatus, reason: str
+        self,
+        request: RemoteOperationRequest,
+        status: OperationStatus,
+        reason: str,
+        *,
+        tool_unready: bool = False,
     ) -> RemoteOperationResult:
+        """``tool_unready`` (#3192) marks a ``not_executed`` whose cause is this Mac's Studio and
+        never the request: not in front, not the proved version, busy, or a place that couldn't
+        be brought back to its baseline. Anything the request or the candidate could have caused
+        (a scenario out of vocabulary, an unplaceable script, a sync, a place play changed)
+        leaves it unset, so the Campaign keeps reading it as the work's."""
         return RemoteOperationResult(
             status=status,
             reason=reason,
             provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
             dispatch_id=request.dispatch_id,
+            tool_unready=tool_unready,
         )
 
     async def live_studio(self) -> tuple[str, ToolCheck]:
