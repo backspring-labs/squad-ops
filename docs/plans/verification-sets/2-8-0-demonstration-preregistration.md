@@ -734,3 +734,26 @@ The owner can narrow or withdraw the delegation at any time. A ruling the owner 
 **Not changed:** the diagnostic's Campaign file, D1 to D4, the pass and the spec-first and did-not-bite readings (§8), and the guard (12d).
 
 **Who ruled:** the Spark approved this amendment on 2026-11-18, under the owner's grant given that day: "I gave you approval rights!". The MacBook lane read it and recommended it.
+
+### 12g. The diagnostic's rerun, on the fault that cuts the text the change adds (2026-11-18, before the rerun)
+
+**Why:** the diagnostic's first attempt (`cmp_31ca1eef7424`, 14:36–14:55 ET; the record's §7) didn't exercise the scenario. `luau_player_text_drops_a_word` cut the first two-word literal in the client script, which was the level label's existing `"LV 1"` at HUD.luau line 106. The hint the increment added, `"The tower is waiting"`, was left whole, so the frozen scenario couldn't fail (#3208). The Spark aborted it under the grant before any candidate played.
+
+**The fix:** #3210, merged at 15:24:12 ET as `1083c158`. It closes #3208 and carries SIP-0118 R5.7.
+- **What it cuts:** the first player-facing text on a line the product doesn't already hold. The product's text comes from the develop task's own inputs, `source_repository.existing_files` and then `acceptance_workspace_files`.
+- **What it reads otherwise:** `DID NOT BITE` when the change adds no such text.
+- **What it logs:** `APPLIED` now names the line it changed.
+- **Its pass:** a self-evaluation pass holds that one line, and no other.
+- **Replayed before the merge,** on the Spark: on the first attempt's own candidate `HUD.luau` (`art_f035cb548def`, with `"LV 1"` restored), against the baseline file, the fixed transform changes only line 252, `"The tower is waiting"` → `"The tower is"` (the PR's comment).
+
+**The deploy:** built from `1083c158`, with `runtime_api` bound. `verify_loaded.py` is expected to read 296 loaded, including `3208-wrong-text-cuts-added-text` and the reworded `3170-wrong-text-fault`. The worker runs on the same commit (check 5). Check 4 is as in 12f: the version, and the channel `zluauordereddensehashmapcontrol`.
+
+**The Campaign:** `2-8-0-repair-diagnostic-campaign.yaml`, unchanged, as attempt 2. The Spark rules its gate under the grant.
+
+**One reading is added to §8, before any candidate play:** the Spark reads the fault's `APPLIED` line.
+- **The cut is on a text no criterion reads** (R5.7's stated limit: the change's first added text may not be the scenario's): the Campaign is aborted, and the attempt is reported as a diagnostic that didn't exercise the scenario.
+- **It reads `DID NOT BITE`:** the same, as §8 already says.
+
+**Not changed:** D1 to D4, the pass and the spec-first reading (§8), the guard (12d) and the channel check (12f).
+
+**Who ruled:** the Spark approved this amendment on 2026-11-18, under the owner's grant ("I gave you approval rights!"). The owner said "ok go ahead with the rerun when ready".
