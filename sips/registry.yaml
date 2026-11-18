@@ -1039,12 +1039,12 @@ sips:
 - sip_uid: '17942318023754850'
   sip_number: 116
   title: Agent Skillsets
-  path: sips/accepted/SIP-0116-Agent-Skillsets.md
-  status: accepted
+  path: sips/implemented/SIP-0116-Agent-Skillsets.md
+  status: implemented
   author: Jason Ladd
   approver: jladd
   created_at: '2026-11-09T00:00:00Z'
-  updated_at: '2026-11-09T17:12:21.451978Z'
+  updated_at: '2026-11-18T22:56:41.153906Z'
 - sip_uid: '17922784453538440'
   sip_number: 117
   title: Game Development Platform Capability
