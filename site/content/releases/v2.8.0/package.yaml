@@ -1,0 +1,1504 @@
+version: 2.8.0
+tag: v2.8.0
+previous_tag: v2.7.0
+date: '2026-11-18'
+commit: 1b523b5720df16583ccceca9f30d7c85df8c751a
+narrative: "A feature release (`docs/plans/2-8-0-plan.md`): a squad builds and plays\
+  \ an existing Roblox game. On the counted\nrun's first attempt it took two consecutive\
+  \ increments of a private copy of Tower Ascension from design to accepted\nsource,\
+  \ each proved in a real play session in Roblox Studio (SIP-0117, SIP-0118); agents\
+  \ carry replay-tested\nskillsets (SIP-0116, implemented). The cut's evidence is\
+  \ `docs/plans/verification-sets/2-8-0-cut-record.md`; the\ndemonstration's record\
+  \ is `2-8-0-demonstration-record.md` beside it.\n\n### Added\n- **A product declares\
+  \ its package roots where its tree names none** (#3134; SIP-0112 H.33): the Development\n\
+  \  Configuration's optional `technical.package_roots` lists repository directories.\
+  \ The derived profile reads each\n  as a `package` surface named by its folder,\
+  \ so a Luau product under Script Sync (`src/Shared`, `src/Server`,\n  `src/Client`\
+  \ on z_tower-ascension) offers surfaces a criterion can name. A root that isn't\
+  \ a directory at the\n  baseline commit is refused as submitted, and one a later\
+  \ tree lacks is disclosed as `package_root_missing`.\n  Before this a Luau product\
+  \ offered no surface, and a Campaign refused every criterion but a scenario.\n-\
+  \ **A Campaign cycle a skill stopped is abandoned for a proposal shown the skill's\
+  \ line** (#3041; SIP-0109 §24dz):\n  a cycle that ends `skill_stopped`, a proposal\
+  \ run's included, is its own ending. Row 20 abandons the increment,\n  counted toward\
+  \ no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's\
+  \ line, from the\n  run's terminal decision, under its own heading. Before this\
+  \ a stopped proposal read as `proposal_failed` and was\n  proposed again unexplained,\
+  \ and a stopped increment was repaired into the same stop.\n- **A fault for the\
+  \ repair diagnostic on a played product** (#3170; SIP-0118 R5.6): `luau_player_text_drops_a_word`\n\
+  \  cuts the last word of the first player-facing text a client script sets, on a\
+  \ developer's first attempt, so\n  an increment's play scenario fails on the candidate\
+  \ and the repair route is exercised. A Campaign declares it\n  through the `campaign-increment-source-wrong-text`\
+  \ request profile.\n- **The repair diagnostic's fault cuts a text the change adds**\
+  \ (#3208; SIP-0118 R5.7): on an existing client\n  script `luau_player_text_drops_a_word`\
+  \ cut the file's first text, an element the product already held, so the\n  increment's\
+  \ scenario passed and no repair was asked for (read live on 2026-11-18). It now\
+  \ cuts the first\n  player-facing text on a line the product doesn't hold, read\
+  \ from the develop task's own inputs, reads DID NOT\n  BITE where the emission adds\
+  \ none, names the changed line in its log, and holds that one line through a\n \
+  \ self-evaluation pass.\n- **A product's owner reserves paths from a cycle's change**\
+  \ (#3155; SIP-0112 H.35): a Development Configuration\n  may declare `technical.reserved_paths`\
+  \ (files, folders, globs). A proposal whose footprint reaches one, a plan\n  whose\
+  \ task names one and a run that changes one are each refused by path, whatever a\
+  \ model argued, and the\n  authors are shown the entries first. A product that declares\
+  \ none is unchanged, to the byte of its prompts.\n- **A goal set's result can be\
+  \ observed on a `scenario` surface** (#3042; SIP-0115 §10h): a result seen only\
+  \ while\n  the product is played, such as a game's HUD in a play session. The other\
+  \ kinds each named something a Roblox\n  game doesn't have, and `none` showed the\
+  \ proposal \"not observed\".\n- **The `game_dev_roblox` development profile** (#3041;\
+  \ SIP-0118 R5.2, SIP-0116 §17q): the first profile whose work\n  requires something\
+  \ of the squad. It declares the platform and, for strategy, development and QA,\
+  \ the Roblox\n  skillset each needs. An operator names it for a Campaign on a Roblox\
+  \ game, and a cycle on a squad that lacks a\n  skillset is refused at creation.\
+  \ It is `product_neutral` in everything a task reads, so the stack's advice comes\n\
+  \  from the skills alone.\n  All three skillsets passed the skills replay on the\
+  \ Spark's models first, the last on `roblox-skills-v3` (§17t).\n  One development\
+  \ answer of three wrote a saved-field rename its skill stops, which #3155 tracks.\n\
+  \  The first cycle under it was read on the Spark through creation preflight and\
+  \ the plan gate (SIP-0118 R5.5):\n  its proposal wrote a `scenario` criterion on\
+  \ the HUD's lives label, and plan expansion appended the play step.\n- **The skills\
+  \ replay: a skillset's skills tested on the deploy's models before a profile requires\
+  \ them** (#3041;\n  SIP-0116 §17p): the authoring replay gains a `skills` arm. A\
+  \ captured task is authored as it stands and again\n  handed what a cycle requiring\
+  \ the skillset would hand it, built from the image's own packaged skillsets. A case\n\
+  \  may swap named inputs to put another task in front of the same seam. Each skills-arm\
+  \ answer is judged by its\n  case: the declared stop read, the handler's acceptance,\
+  \ the files emitted, a scenario criterion accepted, and\n  the emitted specs passing\
+  \ on the product's own runner. `run_authoring_replay.py --skill-cases roblox-skills@1`\n\
+  \  runs the nine Roblox cases; records go to `var/replays/<experiment>/`.\n- **A\
+  \ skill's stop is read, and it ends the run** (#3041; SIP-0116 §17o): a skill declares\
+  \ the opening words of\n  the line it tells the model to refuse a task with (`stops:`\
+  \ in its `SKILL.md` front matter). Every authoring\n  answer is read against the\
+  \ stops its task's skills declare. A task answered with one is not asked again or\n\
+  \  repaired: the run ends `skill_stopped`, and its terminal decision carries the\
+  \ skill and the line. Before this a\n  stopped proposal was asked to revise and\
+  \ failed on its revision budget, and a stopped dev or QA task read as an\n  empty\
+  \ emission. The three Roblox skills declare theirs, and `luau-gameplay`'s stop gains\
+  \ the fixed opening\n  `saved data:` (the owner's approval, 2026-11-16). Migration\
+  \ `2202` adds the ending to `cycle_ends`.\n- **The Roblox squad profile, `game-dev-roblox`**\
+  \ (#3041; SIP-0118 R4.3, R5.4): `full-38-tf`'s roster with no\n  builder, with `roblox-increment-design`\
+  \ on Nat, `roblox-luau-dev` on Neo and `roblox-studio-qa` on Eve. Its skills\n \
+  \ load only on a cycle whose development profile requires them, and no profile does\
+  \ yet. It is the one Roblox\n  squad: every cycle of the game line runs on the Spark.\n\
+  - **A provider's authority is shown the product a cycle runs on, and Roblox Studio's\
+  \ checks its eligibility**\n  (#3042; SIP-0116 §17n, SIP-0118 R5.3): at creation,\
+  \ an authority's `broken_rules` gets a `ProductView`: the\n  seeded tree at the\
+  \ pinned commit and the ruled change request's footprint. An unreadable product\
+  \ refuses creation,\n  naming why. The `roblox-studio` authority refuses a product\
+  \ whose files break the Script Sync layout, or a change\n  whose footprint names\
+  \ anything but scripts and specs. It is found by `create_tool_authorities` in its\
+  \ own package.\n- **Campaign acceptance credits a criterion's test by its id among\
+  \ the candidate's passes** (#3089; SIP-0109\n  §24dy): each test-id reader keeps\
+  \ its passing ids (pytest's `-rfEp` rows, vitest's verbose `✓` lines, the Luau\n\
+  \  contract's `PASS` lines), and acceptance's runs are given those flags. A baseline\
+  \ failure the candidate collected\n  under another id (a test generated from the\
+  \ product's data, renamed by the change) reads `not_run`, never\n  discriminating.\n\
+  - **An operator lease beside a roll is an intervention** (#2287, part 2; SIP-0109\
+  \ §24dx): the verification-set\n  driver reads the operator lease's log over each\
+  \ cycle's window, records each applied acquire on the roll, and says\n  the roll\
+  \ isn't counted.\n- **The operator can take the box between campaigns** (#2287,\
+  \ part 1; SIP-0109 §24dw):\n  - `squadops box lease acquire|release|show`, over\
+  \ `/api/v1/box/lease`, under the new `box:operate` scope.\n  - It holds the box\
+  \ for at most an hour. It is refused while the supervisor holds the box, a run is\
+  \ running or\n    queued, or a campaign is live.\n  - While it's held, a cycle create\
+  \ is refused with `operator_holds_the_box`. A campaign's launch waits without\n\
+  \    spending attempts, and a run start waits out the lease.\n  - Every change is\
+  \ a row of the lease's own log and goes to the security audit. `engine_switch.py`\
+  \ won't move an\n    engine under a held lease.\n- **The operator's assessments\
+  \ reach the digest and the next proposal** (#2954; SIP-0115 §10g): a goal-set\n\
+  \  Campaign's evidence package (version 9) and its digest carry each expected result's\
+  \ latest assessment with its\n  standing, and name the results nobody has assessed.\
+  \ The next proposal is given the same lines. A stale assessment\n  reads as stale,\
+  \ and an assessment still decides nothing.\n- **A repository-backed cycle recalls\
+  \ lessons under its development profile, and a skill can supersede a\n  lesson**\
+  \ (#3038, part 1; SIP-0116 §17i): a cycle with no `build_profile` recalls under\
+  \ the development\n  profile it pinned, and every exposure records which identity\
+  \ recall used. A cycle with a `build_profile`\n  recalls exactly as before. A skill's\
+  \ `supersedes: [pat_…]` keeps those lessons from a task that loads it,\n  each omitted\
+  \ as `superseded_by_skill`.\n- **An operation task's tool is read available again\
+  \ at dispatch** (#3036, part 2; SIP-0116 §17h): a worker\n  that went offline after\
+  \ the cycle was created ends the run `infrastructure_failed`, classified\n  `worker_unavailable`\
+  \ and naming the tool. It doesn't run to an unverified verdict. `create_flow_executor`\n\
+  \  requires the worker registry.\n- **A cycle's tools are checked at creation**\
+  \ (#3036, part 1; SIP-0116 §17h): every tool a required skillset\n  requests is\
+  \ refused as `skillset_authorization` when no authority governs it, or its provider's\
+  \ rule refuses\n  it. It is refused as `skillset_availability` when no provider\
+  \ can run it now: no online worker, no\n  registry, or no sandbox client. The availability\
+  \ refusal says the squad still carries the skillset. No\n  provider registers an\
+  \ authority yet, so a worker tool is refused until one does. A cycle whose work\n\
+  \  requires no tool is unchanged.\n- **Whoever rules on an increment sees what each\
+  \ scenario observes** (#3044; SIP-0117 R5.9): a proposal that\n  names scenarios\
+  \ also emits `scenario_review.md`. For each scenario it shows the claim, the setup\
+  \ and steps,\n  and each assertion's observation and expectation, with the named\
+  \ one marked. The stored change request and\n  its hash are unchanged.\n- **A scenario\
+  \ must fail on the accepted baseline before development starts** (#3044, part 2b;\
+  \ SIP-0117\n  R5.9): an increment's implementation run plays each of its scenarios\
+  \ on the baseline that acceptance\n  judges, through the runtime's own port, and\
+  \ keeps the reading before dispatching anything. A scenario\n  that already passes,\
+  \ or whose world isn't the baseline's, ends the run `criteria_not_checkable`, and\
+  \ the\n  Campaign asks for a new proposal. One not read ends it `infrastructure_failed`,\
+  \ to be retried.\n- **Each scenario criterion is run by an operation step the framework\
+  \ appends** (#3044, part 2; SIP-0117\n  R5.9): plan expansion appends one `qa.run_remote_operation`\
+  \ per scenario criterion after the plan's body,\n  under the operation the cycle's\
+  \ record offers a scenario. It carries the criterion's frozen scenario. At\n  dispatch,\
+  \ its workspace has the declaration laid in as frozen, over any copy the squad wrote\
+  \ there.\n- **A scenario criterion's declaration is the framework's file** (#3044,\
+  \ part 2; SIP-0117 R5.9): it is\n  derived from the approved change request, and\
+  \ delivery lays it over the squad's change, so the delivered\n  candidate holds\
+  \ it as frozen. No qa task is held to write it, the head check never runs it as\
+  \ a test, a\n  planner is never offered it to claim, and the plan gate refuses a\
+  \ task that names it\n  (`validate_increment_scenario_files`).\n- **One resolver\
+  \ names the operation a frozen scenario runs under** (#3044, part 2):\n  `capabilities.operation_supply.scenario_operation(record,\
+  \ catalog)`. It reads the one operation contract the\n  cycle's skillset record\
+  \ offers in `play` mode, with its supplier, and that supplier's one tool from the\n\
+  \  deployment's catalog, checked against the recorded digest. It refuses none, more\
+  \ than one, or a changed\n  skillset by name. The operation handler's tool lookup\
+  \ moved beside it (`tool_request`). Plan expansion, the\n  baseline step and Campaign\
+  \ delivery will call it.\n- **A Campaign increment's criterion can be a frozen scenario**\
+  \ (#3044, part 2; SIP-0117 R5.9): a criterion with\n  `surface_kind: scenario` declares\
+  \ its scenario. On a repository-backed Project it is checked against the\n  vocabulary\
+  \ the cycle's operation supplier keeps, which the runtime now puts on the proposal's\
+  \ input. It is\n  refused as unverifiable with no vocabulary, and as outside the\
+  \ vocabulary when its reader can't run it. It is\n  placed by the framework at `.squadops/scenarios/criterion_<id>.json`.\
+  \ No skillset ships a vocabulary yet, so\n  no proposal can carry one until the\
+  \ rest of part 2 lands.\n- **A skill may hold its provider's scenario vocabulary**\
+  \ (#3044, part 2; SIP-0116 §17g): `scenario_vocabulary.json`\n  at a skill's root\
+  \ is read as the vocabulary of the scenario reader its capability's provider executes.\
+  \ The\n  skillset loader refuses one it can't read, and a capability whose skills\
+  \ hold two. The vocabulary is kept and\n  digested with the cycle like any skill\
+  \ file, and is read from the kept copy\n  (`skillset_content.scenario_vocabulary_for`).\
+  \ No skillset ships one yet.\n- **A frozen scenario is a declaration, read strictly\
+  \ and digested** (#3044, part 1; SIP-0117 R5.8): a scenario\n  declares its reader,\
+  \ setup, steps, assertions and the one assertion its criterion names. It is refused\
+  \ when it\n  steps outside its reader's vocabulary, and frozen as the `sha256` of\
+  \ its canonical text. A remote operation's\n  request now carries the declaration's\
+  \ text and named assertion, and the provider refuses one whose text isn't\n  the\
+  \ frozen one, as `not_executed`. The request's revision is that of exactly the files\
+  \ it stages. Every\n  reading is written in one shape, with its side and the paths\
+  \ it didn't stage. The baseline rule\n  (`baseline_verdict`) lives in one place.\
+  \ The fixture provider's operation is now `fixture/declared_scenario`.\n  Nothing\
+  \ in a live cycle supplies a scenario yet; part 2 does.\n- **An agent's remote operation\
+  \ reaches a worker** (#3023; SIP-0117 phase 2b, part 3, R5.6): the handler of\n\
+  \  `qa.run_remote_operation` now has an adapter behind its port. It queues the operation\
+  \ at the runtime API, under\n  the agent's service identity and a new scope the\
+  \ agent role alone holds (`operations:request`), through three\n  routes under `/api/v1/remote-operations`\
+  \ (create, read, cancel). It returns the worker's result. With no worker\n  being\
+  \ heard from nothing is queued and the operation reads `not_executed` with the reason.\
+  \ An operation with no\n  result in 900 seconds is cancelled and reads `interrupted`.\
+  \ A runtime that refuses the agent fails the task\n  with the reason. **Each call\
+  \ is scoped to the send of its task** (the 2.8 plan's decision 2): the request names\n\
+  \  the task and the dispatch id the runtime minted for this send, and every route\
+  \ answers only while the runtime\n  is waiting on that send. One operation is queued\
+  \ per send (migration 2301), so a create whose answer was lost\n  is sent again\
+  \ and returns the operation it queued. A newer send of the task stops the older\
+  \ sends'\n  operations.\n  **Every deploy's `.env` needs one new line: `SQUADOPS__REMOTE_EXECUTION__PROVIDER=none`**\
+  \ (or `runtime_api`\n  where a worker runs). Compose reads it onto the runtime API\
+  \ and every agent, and stops with the key named when\n  it is absent. `.env.example`\
+  \ ships `none`.\n- **A task is handed its skills and shows them in its prompt**\
+  \ (#3028; SIP-0116 phase 3, part 2): at each\n  dispatch, re-dispatch and repair,\
+  \ the runtime puts the task's skills on its envelope from its cycle's kept copy.\n\
+  \  A repair is handed the skills of the step whose output it revises. They render\
+  \ in a section of their own\n  (`request.skills_section`), after the project's instructions\
+  \ and before the lessons, in every request template\n  that has the instruction\
+  \ slots, and the prompt budget counts them before lessons are given space. A step\
+  \ that\n  runs an operation is handed none. No profile requires a skillset yet,\
+  \ so every prompt renders as before.\n- **A cycle keeps a copy of the skills its\
+  \ work requires** (#3028; SIP-0116 phase 3, part 1): when a cycle is\n  created\
+  \ on a development profile that requires skillsets, the skills its agents were assigned\
+  \ to supply are\n  copied into the vault with it (`skillset_content`), and the cycle's\
+  \ skillset record names each skill and file\n  by digest. The copy is checked against\
+  \ the record before anything is loaded from it, so a redeploy that edits a\n  skill\
+  \ doesn't reach a cycle already created. A skill's files are UTF-8 text. No profile\
+  \ requires a skillset\n  yet, so every cycle keeps nothing and runs as before; a\
+  \ task is handed its skills in part 2.\n- **The remote-execution worker** (#3023;\
+  \ SIP-0117 phase 2b, part 2): `python -m squadops.remote_execution.worker_main`,\n\
+  \  run on the machine that hosts a tool. It connects outward to the runtime API\
+  \ and listens on nothing. It reads\n  its own settings, `SQUADOPS__WORKER__*` (its\
+  \ id, the runtime's address, the token endpoint, its client's id and\n  secret,\
+  \ and `provider`), each required. It claims one operation, runs it, renews its lease\
+  \ and submits the\n  result; a cancel stops the tool and settles the operation `interrupted`.\
+  \ A wrong secret or an address that\n  isn't the runtime stops the worker with the\
+  \ reason. `provider: fixture` checks the files a request stages and\n  drives no\
+  \ tool. No deploy changes: the settings live on the worker's machine.\n- **The runtime's\
+  \ side of remote execution** (#3023; SIP-0117 phase 2b, part 1): a worker on another\
+  \ machine\n  registers a session, claims one queued operation under a lease, renews\
+  \ it and submits the result, through four\n  routes under `/api/v1/workers` (`workers:serve`,\
+  \ held by the new `worker` role alone). A result is accepted only\n  under the current\
+  \ operation, attempt, session and lease ids; one whose ids aren't current is refused\
+  \ with its\n  reason and recorded. The registry's rows are in Postgres (migration\
+  \ 2300), so a lease outlives a runtime\n  restart. **A deploy gains** the Keycloak\
+  \ client `squadops-worker` and one generated credential,\n  `SQUADOPS_WORKER_CLIENT_SECRET`.\
+  \ Nothing queues an operation yet, so every cycle runs as before.\n- **`qa.run_remote_operation`\
+  \ and the game capability contracts** (#3017, #3018; SIP-0117 and SIP-0118 phase\
+  \ 2a): a new task type that runs a provider's operation for a capability contract\
+  \ in a verification mode,\n  behind `squadops.ports.remote_execution`. It is plannable\
+  \ and in no base set, so a cycle plans it only where its\n  requirements name a\
+  \ contract over it. The handler writes one evidence row per assertion the frozen\
+  \ scenario\n  declares: `passed` and `failed` are executed, and a missing record,\
+  \ a setup that didn't establish, an\n  unsupported input, a wrong context, an operation\
+  \ that didn't run or was interrupted, and a result that doesn't\n  answer its request\
+  \ each leave the run `blocked_unverified`. Four engine-neutral contracts are declared\n\
+  \  (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`,\
+  \ `game.scenario_verification`). No\n  provider, skillset or profile ships. **Its\
+  \ correction route** (part 2): a failed assertion is repaired in the\n  application\
+  \ by the dev repair, aimed at the plan's implementation and never at the operation's\
+  \ evidence, and the\n  repair is accepted only when the operation, re-run on the\
+  \ repaired tree, executes every assertion and passes it.\n  Any other failure of\
+  \ the type (an operation that didn't run, a supplier the deployment can't vouch\
+  \ for) ends the\n  run rather than becoming a developer's edit. An accepted repair's\
+  \ source is part of the delivered change.\n- **Skillset coverage at cycle creation\
+  \ and at the plan gate** (#3014, SIP-0116 phase 2): where a development\n  profile\
+  \ requires skillsets, cycle create checks the agent each responsibility routes to\
+  \ and refuses with what is\n  missing (\"Squad skillset requirements not met. Selected\
+  \ squad: … Missing: … for … (agent …)\"), or with what is\n  declared wrongly: an\
+  \ unknown skillset, one the agent's role doesn't allow, two supplying one capability,\
+  \ or a\n  requirement its skillset can't meet for the contract, mode or platform.\
+  \ The cycle's skillset record names which\n  agent supplied which skillset and the\
+  \ contracts offered. `TaskType` gains `plannable`; a plan task may name a\n  `contract`\
+  \ and `mode`, and the plan gate refuses one the record doesn't offer (`validate_against_offered`,\
+  \ on both\n  seams). A role's proposed task carries its contract and mode through\
+  \ the merge. A record with a part missing is\n  refused at the gate as unreadable.\
+  \ No profile requires anything yet, so every existing cycle is created, planned\n\
+  \  and gated as before.\n- **Skillset declarations and each cycle's skillset record,\
+  \ inert** (#3011, SIP-0116 phase 1): an agent in a squad\n  profile may declare\
+  \ the `skillsets` it carries, and a development profile may declare its `platform`\
+  \ and what its\n  work `requires`. Nothing is required or shipped yet, so every\
+  \ cycle runs as before, and every existing squad\n  snapshot ref and development-profile\
+  \ fingerprint is unchanged. A skillset is a directory under\n  `src/squadops/prompts/skillsets/<id>/`\
+  \ (`skillset.yaml` and its skills), validated and digested by\n  `squadops.capabilities.skillsets`\
+  \ against the capability contracts and the six verification modes in\n  `squadops.capabilities.capability_contracts`.\
+  \ The base set is explicit, `base@1`. Each cycle is created with a\n  skillset record\
+  \ (`squadops.skillset-record/v1`: the base set, the squad, the development profile\
+  \ and its\n  requirements, with a digest), stored in `cycle_registry.skillset_record`\
+  \ (migration 2200) and returned by the\n  cycle read route.\n  **One change in behaviour:**\
+  \ cycle create now refuses a `development_profile` this deployment doesn't hold,\n\
+  \  naming it and the known profiles. Such a cycle used to be accepted and fail at\
+  \ its first develop or test task.\n\n### Fixed\n- **A product with no start declaration\
+  \ says which scenarios that stops** (#3152): the gap `no_start_declaration`\n  read\
+  \ \"Outcome Evaluation reads every scenario blocked_unverified\", and a proposal\
+  \ on a Roblox product read\n  \"every scenario\" as its play-scenario criteria too,\
+  \ and wrote a headless check for what a player sees. The\n  sentence now says it\
+  \ stops only the scenarios that start the application, never a play scenario the\
+  \ worker\n  plays. It still ends with the words the strategy skill quotes, so the\
+  \ replay-tested skill is unchanged. A\n  product's stored profile carries the new\
+  \ sentence from its next baseline capture.\n- **A play the worker refuses for its\
+  \ own tool is retried, not repaired** (#3192; SIP-0117 R5.28): a worker that\n \
+  \ took a scenario and couldn't run it for a reason of its own environment (another\
+  \ app in front of Studio, Studio\n  not the proved version, a place it couldn't\
+  \ restore) returned `not_executed`, and the Campaign read the gap as the\n  candidate's\
+  \ and sent the increment to repair, rebuilding work nothing had faulted. The worker\
+  \ now flags such a\n  result `tool_unready`, and the Campaign reads it as it reads\
+  \ a scenario no worker took: a retry, then escalation.\n  A refusal the request\
+  \ or the candidate could have caused keeps the work's routing.\n- **A Studio reset\
+  \ says when Studio updated itself** (#3184; SIP-0117 R5.27): the reset reopens Studio,\
+  \ Studio\n  updates itself at a launch, and an updated Studio comes back holding\
+  \ no place. The reset reported only \"the\n  running Studio holds no place\", and\
+  \ the worker's status file still read ready. The reset now names both\n  versions\
+  \ and the re-qualification to run, refuses before touching anything when Studio\
+  \ isn't the version the\n  worker was proved on, and every reset's outcome goes\
+  \ on the worker's status.\n- **A worker keeps its lease while its tool is busy**\
+  \ (#3185; SIP-0117 R5.26): a worker renewed its lease only\n  after asking its tool\
+  \ for its health, and Roblox Studio answered one such probe a minute late while\
+  \ a play was\n  ending. The lease ran out, the finished play's result was dropped,\
+  \ and the worker reset Studio. A renewal now\n  carries the health read before the\
+  \ claim, the tool is probed only between claims, and an operation that ends\n  while\
+  \ a renewal is out has its result submitted and its tool left as it is.\n- **A large\
+  \ product's source paths stay on its map** (#3178; SIP-0112 H.36): past 400 files\
+  \ the map of a product\n  showed its top-level folders with counts, so a squad on\
+  \ a game with hundreds of art files saw no source path and\n  named a file the game\
+  \ doesn't have. Binary and generated files now fold by folder first, and every other\
+  \ path\n  stays listed. A task that names a file the product doesn't hold is told\
+  \ the file is new.\n- **A scenario-only increment runs no suite step** (#3179; SIP-0109\
+  \ §24eg): an increment whose checks are all play\n  scenarios has no test file to\
+  \ write, and the framework's default QA step was shown every source file of the\n\
+  \  product. An increment now runs the QA tasks its plan names, and its plays.\n\
+  - **The Studio reader reads a screen's visibility** (#3176; SIP-0117 R5.25): a scenario\
+  \ that waits for a whole\n  screen (a `ScreenGui`) to be `visible` stopped at its\
+  \ setup, since the reader read GUI objects alone. A screen now\n  reads as visible\
+  \ when it is enabled. The provider's version is 2, so the worker is requalified\
+  \ before it plays.\n- **A retry or repair of an increment with a play scenario is\
+  \ no longer refused at creation** (#3173; SIP-0116\n  §17x, SIP-0109 §24ef): the\
+  \ provider's footprint rule was asked about the scenario declaration the framework\n\
+  \  itself places. A provider is now asked about the squad's footprint alone, and\
+  \ the plan's authors are told\n  those files are the framework's, so they raise\
+  \ no brief conflict over them.\n- **The plan-review tier doesn't approve past a\
+  \ brief conflict the merge escalated** (#3164; SIP-0109 §24ee): under\n  `plan_gate:\
+  \ tier` a proposer's blocking disagreement with the brief was escalated to the operator\
+  \ by the merge\n  and approved by the tier unseen. The tier now reads the framing's\
+  \ merge decisions as a fourth condition.\n- **A brief conflict a proposer raises\
+  \ in the wrong shape reaches the operator** (#3163; SIP-0093 §15d): it was\n  dropped\
+  \ at the parse, so `merge_decisions.yaml` recorded nothing. It is now an escalated\
+  \ disposition holding what\n  was written, and both task proposers' prompts show\
+  \ one worked entry in place of a bare `brief_conflicts: []`.\n- **A cycle that needs\
+  \ a worker's tool is refused on a runtime that binds no remote execution** (#3159;\
+  \ SIP-0116\n  §17w): creation's check read the worker registry alone, so a deploy\
+  \ with `remote_execution.provider none` and a\n  worker online accepted a cycle\
+  \ whose every scenario then read not executed.\n- **A run cancelled while it was\
+  \ preparing asks no scenario to be played** (#3160): the baseline step ran before\n\
+  \  the task loop's own read of the run's status, so a cancelled cycle's scenario\
+  \ could be sent to the worker.\n- **A Campaign can name a development profile**\
+  \ (#3157; SIP-0109 §24ed): `policy.stack` carries only a scaffold\n  stack, so no\
+  \ Campaign could run under `game_dev_roblox`. A policy now declares `development_profile`\
+  \ beside it,\n  each launch carries that key alone, and a squad lacking the skillsets\
+  \ the profile requires is refused at the\n  Campaign's creation.\n- **A skill's\
+  \ stop is read from the model's own line** (#3154; SIP-0116 §17u): an answer that\
+  \ quoted its skill's\n  template before stopping was recorded as stopped by the\
+  \ template, placeholders and all, and one that quoted it\n  and then did its work\
+  \ would have ended its run. A line the skill itself shows is now passed over.\n\
+  - **The Roblox strategy skill says which scenarios a disclosed gap means** (#3041;\
+  \ SIP-0116 §17s): the second\n  skills replay admitted the development and QA skillsets\
+  \ and failed the strategy one on a HUD-text case. A\n  proposal read the product's\
+  \ `no_start_declaration` gap (\"Outcome Evaluation reads every scenario\n  blocked_unverified\"\
+  ) as covering its play scenarios, and proved a formatter where a player's HUD was\
+  \ asked for.\n  The skill now quotes the gap and says a play scenario is played\
+  \ whatever it says. The gap's own wording is #3152.\n- **The skills replay judges\
+  \ a suite left to the product's runner by that runner** (#3150; SIP-0116 §17r):\
+  \ on a\n  product whose suite only its own runner runs, `qa.test` comes back unsuccessful\
+  \ by design. The replay read that\n  as a refusal and never ran the emitted specs,\
+  \ so every QA case of `roblox-skills-v1` read `not_met`.\n- **The three Roblox skills'\
+  \ stops, revised after the first replay** (#3041; SIP-0116 §17r): every ordinary\
+  \ case\n  passed and each skillset failed on its stop case. The strategy skill now\
+  \ says a `package` criterion is no way\n  round an effect a scenario can't observe.\
+  \ The development skill says its saved-data stop holds when the task\n  itself asks\
+  \ for the change. The QA skill's stop, which asked for a state no cycle reaches,\
+  \ is replaced by \"the\n  product's own specs come first\". The cases are `roblox-skills@2`;\
+  \ version 1's file is kept as it ran.\n- **A `qa.test` prompt shows the module under\
+  \ test when the plan names it by its bare name** (#3146): the second\n  #3041 capture's\
+  \ plan wrote \"the ShopDiscount module\" and nothing longer, so the module-path\
+  \ rule (#3139) had\n  nothing to match. A file among the plan's own sources (`implementation_artifacts`)\
+  \ whose name the task's text\n  holds as a whole word is now code under test. The\
+  \ plan's other sources stay scoped out, and so does every other\n  file of the tree.\n\
+  - **A replay's validity-only pass freezes no manifest** (#3148): it authors nothing,\
+  \ and its generations and seed\n  refused the run it was the check for.\n- **A Luau\
+  \ product's `qa.test` prompt shows the module under test, in Luau fences** (#3136,\
+  \ #3139): a file the\n  prompt shows, and the fence it asks for the suite in, names\
+  \ the file's own language from one table by extension\n  (`fenced_parser.fence_language`),\
+  \ with `text` for one it doesn't hold. Every file that wasn't JavaScript or\n  TypeScript\
+  \ was fenced as Python. And a task's text names code under test by its dotted module\
+  \ path as well as\n  by its file path, so `require(Shared.Modules.SalePricing)`\
+  \ shows `src/Shared/Modules/SalePricing.luau`. A first\n  spec on a Roblox product\
+  \ was shown the tests beside it and never the module. Found by the #3041 capture.\n\
+  - **On a Luau product, a criterion for a module the change adds can be proven**\
+  \ (#3143; SIP-0109 §24ec): the #3041\n  capture's increment was refused though its\
+  \ build was right, because its spec required the new module at the top\n  of the\
+  \ file and the accepted product has none (`only_setup_failures`). Every author of\
+  \ such a spec or of its plan\n  is now told, through `request.increment_added_module_test_luau_appendix`:\
+  \ the framing stages, the brief, the qa\n  proposer, the plan's sole author, and\
+  \ the suite's author and its repair. The spec looks the module up inside each\n\
+  \  test, checks that it is there, and then requires it, so its absence is the test's\
+  \ own failure. The Roblox QA skill\n  shows the idiom, and the skills replay's captured\
+  \ `qa.test` case gains `discriminates`, judged by the Campaign's\n  own rule.\n\
+  - **A failed repair step is named, and spent only when a retry would repeat it**\
+  \ (#3020): a correction\n  round whose repair step's task failed was read as \"\
+  the repair emitted no content\" and refunded. It now\n  names the step and its error\
+  \ in the log and in the next round's carry. A failure that says a retry\n  repeats\
+  \ it (`semantic_failure`, which a missing scripted answer now carries) spends the\
+  \ round. Any other\n  is refunded as before, since a correction step is dispatched\
+  \ once and the refund is its only retry.\n- **A rewind or an abort says what ended\
+  \ the run** (#3020): its failure reason names the round, the attempts\n  left unspent,\
+  \ the classification, the first sentence of the decision's rationale and the plan\
+  \ delta that\n  records it, after the words it carried before (`Rewinding to checkpoint\
+  \ after … failure`).\n- **A scripted cycle's answers survive an agent restart**\
+  \ (#3005): the scripted squad keys each answer by the task's\n  type, its occurrence\
+  \ among the cycle's tasks of that type, and its call. Those counts lived in the\
+  \ agent's\n  process, so an agent that restarted mid-cycle counted from the first\
+  \ task again and answered a later task from\n  an earlier task's entry. They now\
+  \ live in the stack's Redis, per cycle, with the script each cycle named, and a\n\
+  \  restarted agent goes on from its cycle's place. No deploy change: Redis is the\
+  \ one every agent already reaches.\n- **A cancelled remote operation whose worker\
+  \ goes silent is settled** (#3023; SIP-0117 R5.6): its lease runs\n  out and it\
+  \ settles `interrupted`. It was queued again while it had an attempt left, still\
+  \ marked cancelled, so\n  no worker could claim it and nothing ended it.\n- **A\
+  \ stopped remote operation whose earlier attempt had begun reads `interrupted`**\
+  \ (#3023; SIP-0117 R5.6):\n  queued again after that attempt's lease ran out, then\
+  \ cancelled, it read `not_executed`, \"cancelled before a\n  worker claimed it\"\
+  , though the attempt had begun in the tool.\n- **A task instruction for a remote\
+  \ operation stays with the operation** (#3030): `repairs_revising` read the\n  repair-routing\
+  \ entry that phase 2a added for `qa.run_remote_operation` as lineage, so an instruction\
+  \ selecting\n  that type also reached the dev repair its failure is routed to. A\
+  \ step that runs an operation authors nothing,\n  so no repair revises its output.\
+  \ Where its failure is routed is unchanged.\n- **An approved gate's next run always\
+  \ receives the approved run's artifacts** (#3034): an approval writes its\n  decision\
+  \ and then promotes the run's artifacts, and the executor reads the run for the\
+  \ decision every two\n  seconds. A read that landed between the two forwarded the\
+  \ next workload nothing, and an implementation run\n  refused with \"implementation\
+  \ plan required but absent\" while the plan sat in the framing run's artifacts.\
+  \ The\n  gate now promotes the approved run's artifacts itself before it builds\
+  \ the next workload's forwarding."
+pull_requests:
+- number: 3216
+  title: 'chore(release): 2.8.0 — a squad builds and plays an existing Roblox game'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3042
+  - 3043
+  merged_at: '2026-11-18'
+- number: 3215
+  title: 'docs(plans): the 2.8.0 cut record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3214
+  title: 'docs(plans): the 2.8.0 cut''s shakeout pair set configs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3213
+  title: 'docs(plans): the 2.8 record''s repair diagnostic, attempt 2 (pass)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3212
+  title: 'fix(projects): the no_start_declaration gap says which scenarios it stops'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3152
+  merged_at: '2026-11-18'
+- number: 3211
+  title: 'docs(plans): amendment 12g to the 2.8 demonstration''s pre-registration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3210
+  title: 'fix(diagnostics): the wrong-text fault cuts a text the change adds, never
+    one the product holds (SIP-0118 R5.7)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3208
+  merged_at: '2026-11-18'
+- number: 3209
+  title: 'docs(plans): the 2.8 record''s repair diagnostic, attempt 1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3207
+  title: 'docs(plans): amendment 12f to the 2.8 demonstration''s pre-registration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3203
+  title: 'feat(memory): the replay rubric for z_tower''s scenario-check lessons'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3204
+  title: 'chore(evaluator): retire the picomatch acceptance, the advisory having been
+    withdrawn'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3190
+  merged_at: '2026-11-18'
+- number: 3171
+  title: 'feat(diagnostics): a fault for the repair diagnostic on a played product,
+    and its Campaign profile (SIP-0118 R5.6)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3170
+  merged_at: '2026-11-18'
+- number: 3202
+  title: 'docs(plans): the 2.8 demonstration''s record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3198
+  title: 'docs(plans): amendment 12e to the 2.8 demonstration''s pre-registration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3197
+  title: 'docs(plans): amendment 12d to the 2.8 demonstration''s pre-registration
+    (#3043)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+- number: 3196
+  title: 'test(remote-execution): the worker harness and the path''s waits no longer
+    depend on the machine''s speed'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3194
+  merged_at: '2026-11-18'
+- number: 3195
+  title: 'fix(remote-execution): a play the worker refuses for its own tool is retried,
+    not repaired (SIP-0117 R5.28)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3192
+  merged_at: '2026-11-18'
+- number: 3189
+  title: 'docs(plans): amendment 12c to the 2.8 demonstration''s pre-registration
+    (#3043)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3191
+  title: 'chore(evaluator): accept the picomatch advisory on the owner''s ruling'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3187
+  merged_at: '2026-11-17'
+- number: 3188
+  title: 'fix(studio): the reset names a Studio update, and every reset goes on the
+    worker''s status (SIP-0117 R5.27)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3184
+  merged_at: '2026-11-17'
+- number: 3186
+  title: 'fix(remote-execution): a worker''s renewal doesn''t wait on its tool, and
+    a result that ended behind one is submitted (SIP-0117 R5.26)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3185
+  merged_at: '2026-11-17'
+- number: 3183
+  title: 'docs(plans): amendment 12b to the 2.8 demonstration''s pre-registration
+    (#3043)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3180
+  title: 'fix(projects): a large product''s map lists every path a task can change,
+    and a scenario-only increment runs no suite step (SIP-0112 H.36, SIP-0109 §24eg)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3178
+  - 3179
+  merged_at: '2026-11-17'
+- number: 3177
+  title: 'docs(plans): amendment 12a to the 2.8 demonstration''s pre-registration
+    (#3043)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3175
+  title: 'fix(skillsets): a scenario increment''s retry is created, its plan authors
+    are told the framework''s files, and the Studio reader reads a screen''s visibility
+    (SIP-0116 §17x, SIP-0109 §24ef, SIP-0117 R5.25)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3173
+  - 3176
+  merged_at: '2026-11-17'
+- number: 3172
+  title: 'docs(plans): the 2.8 demonstration''s pre-registration and its Campaign
+    files (#3043)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3168
+  title: 'feat(projects): a product''s owner reserves paths from a cycle''s change,
+    refused by path at the proposal, the plan gates and delivery (SIP-0112 H.35)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3155
+  merged_at: '2026-11-17'
+- number: 3167
+  title: 'fix(campaigns): the plan-review tier doesn''t approve past a brief conflict
+    the merge escalated (SIP-0109 §24ee)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3164
+  merged_at: '2026-11-17'
+- number: 3166
+  title: 'feat(goals): a goal set''s result can be observed on a scenario surface
+    (SIP-0115 §10h)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3140
+  title: 'docs(sips): contribution through a service identity the product''s owner
+    approves, ruled and not yet built (SIP-0112 H.34, SIP-0109 §24ea)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3165
+  title: 'fix(planning): a brief conflict that can''t be read is escalated with what
+    was written, and the task proposers are shown the entry''s shape (SIP-0093 §15d)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3163
+  merged_at: '2026-11-17'
+- number: 3162
+  title: 'fix(skillsets): a worker''s tool needs a runtime that binds remote execution,
+    and a cancelled run asks no scenario to be played (SIP-0116 §17w)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3159
+  - 3160
+  merged_at: '2026-11-17'
+- number: 3161
+  title: 'docs(sips): phase 2f''s done-when read on the first cycle under game_dev_roblox
+    (SIP-0118 R5.5; SIP-0116 §17v)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3041
+  merged_at: '2026-11-17'
+- number: 3158
+  title: 'fix(campaigns): a campaign''s policy names the development profile its product
+    is developed under (SIP-0109 §24ed)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3157
+  merged_at: '2026-11-17'
+- number: 3156
+  title: 'fix(skillsets): a skill''s stop is read from the model''s own line, and
+    the skill''s quoted template is passed over (SIP-0116 §17u)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3154
+  merged_at: '2026-11-17'
+- number: 3145
+  title: 'feat(stacks): the game_dev_roblox development profile, the first whose work
+    requires skillsets of the squad (SIP-0118 R5.2, SIP-0116 §17q)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3153
+  title: 'feat(skillsets): the second skills replay read, and the strategy skill told
+    which scenarios a disclosed gap means (SIP-0116 §17s)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3151
+  title: 'feat(skillsets): the first skills replay read, its hand-off misjudgement
+    fixed, and the three Roblox skills'' stops revised (SIP-0116 §17r)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3150
+  merged_at: '2026-11-17'
+- number: 3149
+  title: 'fix(qa): a qa.test prompt shows a plan source its task names by its bare
+    name, and a validity pass freezes no manifest'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3146
+  - 3148
+  merged_at: '2026-11-17'
+- number: 3144
+  title: 'fix(campaigns): on a Luau product, a criterion''s test for a module the
+    change adds reaches an assertion (SIP-0109 §24ec)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3143
+  merged_at: '2026-11-17'
+- number: 3142
+  title: 'fix(qa): a qa.test prompt names each file''s own language, and shows a module
+    the task names by its module path'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3136
+  - 3139
+  merged_at: '2026-11-17'
+- number: 3141
+  title: 'feat(replay): the skills replay, a skills arm on the authoring replay with
+    the nine Roblox cases (SIP-0116 §17p)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-17'
+- number: 3135
+  title: 'feat(projects): a product declares its package roots where its tree names
+    none, read as package surfaces (SIP-0112 H.33)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3134
+  merged_at: '2026-11-16'
+- number: 3133
+  title: 'feat(campaigns): a cycle a skill stopped is abandoned at row 20 for a proposal
+    shown the skill''s line, uncounted (SIP-0109 §24dz)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3132
+  title: 'feat(execution): a skill declares its stops, and a task answered with one
+    ends its run naming the skill and the line (SIP-0116 §17o)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3131
+  title: 'feat(squads): the Roblox squad profile, game-dev-roblox, with the three
+    Roblox skillsets on the agents that carry them (SIP-0118 phase 2f)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3130
+  title: 'docs: the worker''s restart check read and ruled, the Studio gate read as
+    go, and every remaining 2.8 cycle on the Spark'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3046
+  merged_at: '2026-11-16'
+- number: 3129
+  title: 'fix(execution): a file the vault can''t return ends the run by name, never
+    dropped from a task''s tree'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3120
+  merged_at: '2026-11-16'
+- number: 3105
+  title: 'feat(skillsets): draft the Roblox skillsets for the owner''s review: strategy''s
+    scenarios, dev''s gameplay, QA''s tests and scenario play (SIP-0118 phase 2f)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3126
+  title: 'docs: the owner''s rulings on the worker''s restart check and the vault
+    retrieval''s placement in 2.8'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3125
+  title: 'docs(verification-sets): the 2.8 early-read shakeout pair on #3121''s deploy,
+    both stacks accepted'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3124
+  title: 'fix(remote-execution): reinstalling the worker service waits for launchd
+    to let go of the old agent (#3046)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3123
+  title: 'feat(remote-execution): the worker as a service on the MacBook, with doctor''s
+    checks and an optional bootstrap step (SIP-0117 R5.23)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3122
+  merged_at: '2026-11-16'
+- number: 3121
+  title: 'feat(execution): a product the size of z_tower-ascension is carried whole,
+    and a tree past a limit is refused by name (SIP-0112 H.32, SIP-0117 R5.22)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3049
+  - 3118
+  merged_at: '2026-11-16'
+- number: 3119
+  title: 'feat(remote-execution): after a Studio update, a recorded re-qualification
+    moves the worker''s pin (SIP-0117 R5.21)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3048
+  merged_at: '2026-11-16'
+- number: 3117
+  title: 'feat(remote-execution): play_scenario proved on the worker''s own loop,
+    across a Studio restart (SIP-0117 R5.20)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3039
+  merged_at: '2026-11-16'
+- number: 3116
+  title: 'feat(remote-execution): the worker serves roblox-studio from its own settings,
+    held to the Studio it was proved on (SIP-0117 R5.19)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-16'
+- number: 3115
+  title: 'feat(remote-execution): the Studio adapter plays a frozen scenario and records
+    each assertion (SIP-0117 R5.18)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3040
+  merged_at: '2026-11-15'
+- number: 3114
+  title: 'docs(plans): z_tower-ascension registered, configured and baselined, with
+    its comparison'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3113
+  title: 'feat(remote-execution): the Studio adapter resets the place from its pinned
+    baseline file and reopens Studio with no person involved (SIP-0117 R5.17)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3112
+  title: 'feat(remote-execution): the Studio adapter holds the place''s state through
+    play (SIP-0117 R5.16)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3111
+  title: 'feat(remote-execution): a provider''s authority is shown the product, and
+    roblox-studio checks z_tower-ascension''s eligibility (SIP-0116 §17n, SIP-0118
+    R5.3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3109
+  title: 'fix(campaigns): acceptance credits a criterion''s test by its id among the
+    candidate''s passes (SIP-0109 §24dy)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3089
+  merged_at: '2026-11-15'
+- number: 3108
+  title: 'docs(plans): the owner places #3089 in 2.8''s Spark lane and #3101 in 2.9'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3094
+  title: 'deps: refresh ci-constraints.txt and the locks (2026-11-15, on demand after
+    #3092)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3107
+  title: 'feat(remote-execution): the Studio adapter''s own sync through the harness''s
+    fixed programs, read back whole (SIP-0117 R5.15)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3106
+  title: 'fix(deps): pin ruff to the evaluator image''s 0.16.6'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3104
+  title: 'feat(campaigns): the size preflight counts the skills each task is handed,
+    under the profile the first launch pins (SIP-0116 §17m)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3037
+  merged_at: '2026-11-15'
+- number: 3103
+  title: 'docs(sips): #2421''s evaluation secret moves to the next feature line'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3102
+  title: 'fix(deps): cap the three packages that broke the 2026-11-15 refresh'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3100
+  title: 'feat(scripts): an operator lease beside a roll is an intervention, and the
+    roll isn''t counted (#2287, part 2; SIP-0109 §24dx)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2287
+  merged_at: '2026-11-15'
+- number: 3099
+  title: 'feat(campaigns): the operator''s lease on the box, outside every campaign
+    (#2287, part 1; SIP-0109 §24dw)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3098
+  title: 'feat(campaigns): the operator''s assessments reach the digest and the next
+    proposal (SIP-0115 §10g)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2954
+  merged_at: '2026-11-15'
+- number: 3097
+  title: 'test(remote-execution): remote_path''s wait is bounded by the clock, not
+    by event-loop turns'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3096
+  merged_at: '2026-11-15'
+- number: 3095
+  title: 'feat(campaigns): a Campaign pins its equipment at its first launch, a changed
+    one stops the next launch, and the owner''s transition accepts it (SIP-0116 phase
+    5, part 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3093
+  title: 'feat(cycles): the plan gate refuses a planner-written operation; the offered-contracts
+    fragment waits for the first contract a planner names'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3092
+  title: 'fix(deps): CI''s requirements carry the caps the locks'' sources carry,
+    and a guard says so (refresh: #3010)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3010
+  merged_at: '2026-11-15'
+- number: 3091
+  title: 'feat(capabilities): the emission parser reads the two broken formats S6
+    saw on a three-file Luau change (SIP-0118 phase 2f)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3090
+  title: 'feat(projects): a luau runner, the Luau runner contract''s reader, and a
+    Luau worked example (#2906; SIP-0117 phase 2c, R5.13)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2906
+  merged_at: '2026-11-15'
+- number: 3088
+  title: 'feat(remote_execution): the Studio adapter''s read side, on the real place,
+    and the isolation test (the first slice; SIP-0117 R5.11)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3087
+  title: 'feat(campaigns): a launch refused only for want of a worker waits in launch_blocked,
+    counted on the launch (#3045, part B; SIP-0117 R5.12)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3045
+  merged_at: '2026-11-15'
+- number: 3086
+  title: 'feat(campaigns): an increment blocked only for want of a worker is retried,
+    never repaired (#3045, part A; SIP-0117 R5.10)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3085
+  title: 'fix(campaigns): an increment''s scenario criteria are left to their scenarios,
+    not to its tests'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3081
+  merged_at: '2026-11-15'
+- number: 3084
+  title: 'test(campaigns): a scripted two-increment Campaign through a worker — a
+    candidate that breaks an earlier scenario is refused, and its repair accepted
+    (#3050, slice 2 part 2)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3050
+  merged_at: '2026-11-15'
+- number: 3083
+  title: 'feat(memory): a lesson learned under an earlier version of a loaded skill
+    is flagged, and a promoted skill carries its review (SIP-0116 §17j)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3038
+  merged_at: '2026-11-15'
+- number: 3080
+  title: 'test(campaigns): a scripted squad''s increment through a worker, from its
+    run''s start to its judged delivery (#3050, slice 2 part 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3082
+  title: 'fix(deps): OpenTelemetry 1.45.2 / 0.66b2, for CVE-2026-126360 in opentelemetry-api
+    1.45.1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-15'
+- number: 3079
+  title: 'feat(memory): a repository-backed cycle recalls under its development profile,
+    and a skill can supersede a lesson (#3038, part 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3078
+  title: 'feat(execution): an operation task''s tool is read available again at dispatch
+    — SIP-0116 phase 4, part 2'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3036
+  merged_at: '2026-11-12'
+- number: 3077
+  title: 'feat(skillsets): a cycle''s tools are checked at creation — authorization
+    and availability (#3036, part 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3075
+  title: 'feat(campaigns): whoever rules on an increment sees what each scenario observes
+    — the frozen scenario''s last part'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3044
+  merged_at: '2026-11-12'
+- number: 3076
+  title: 'feat(campaigns): delivery credits the baseline step''s stored scenario reading'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3053
+  merged_at: '2026-11-12'
+- number: 3074
+  title: 'test(remote-execution): the path from the squad''s side to the worker''s,
+    end to end, with its faults read by name'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3073
+  title: 'feat(execution): a scenario must fail on the accepted baseline before development
+    starts — #3044, part 2b'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3072
+  title: 'feat(campaigns): one baseline overlay for a scenario criterion, built for
+    the baseline step and delivery alike'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3070
+  title: 'feat(cycles): each scenario criterion is run by an operation step the framework
+    appends — #3044, part 2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3071
+  title: 'test(campaigns): an earlier increment''s scenario is replayed at delivery
+    through the runtime''s own port'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3068
+  title: 'feat(campaigns): a scenario criterion''s declaration is the framework''s
+    file — #3044, part 2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-12'
+- number: 3069
+  title: 'feat(campaigns): a scenario criterion is played at an increment''s delivery,
+    through the runtime''s own remote execution'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3067
+  title: 'feat(capabilities): one resolver names the operation a frozen scenario runs
+    under — #3044, part 2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3066
+  title: 'feat(campaigns): a Campaign increment''s criterion can be a frozen scenario
+    — #3044, part 2, the criterion'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3065
+  title: 'refactor(remote-execution): acceptance_task_id lives in core, so the executor
+    and acceptance name a reading''s task one way'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3063
+  title: 'feat(skillsets): a skill may hold its provider''s scenario vocabulary —
+    #3044, part 2, the vocabulary''s source'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3064
+  title: 'feat(runtime): the runtime composes its own way to a worker, straight into
+    the registry the worker routes serve'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3061
+  title: 'feat(remote-execution): one wait loop for every requester, and a port adapter
+    straight into the registry for Campaign acceptance'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3059
+  title: 'feat(remote-execution): an operator reads the worker registry — GET /api/v1/workers
+    and squadops workers list/show'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3047
+  merged_at: '2026-11-11'
+- number: 3060
+  title: 'refactor(campaigns): scenario acceptance reads with #3044''s baseline rule,
+    ReadingSide and Scenario'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3058
+  title: 'feat(remote-execution): a frozen scenario is a declaration, read strictly,
+    digested and carried on the request — #3044, part 1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3057
+  title: 'feat(campaigns): a scenario criterion''s discrimination and holding, read
+    from its assertion records'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3033
+  title: 'feat(skillsets): SIP-0116 phase 3, part 2 — a task is handed its skills
+    at dispatch and shows them in its prompt'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3028
+  merged_at: '2026-11-11'
+- number: 3032
+  title: 'feat(skillsets): SIP-0116 phase 3, part 1 — a cycle keeps a copy of its
+    skills, named by digest in its record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3035
+  title: 'fix(cycles): the gate promotes an approved run''s artifacts before it forwards
+    them'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3034
+  merged_at: '2026-11-11'
+- number: 3056
+  title: 'fix(execution): a failed repair step is named and spent only when a retry
+    repeats it, and a rewind says what ended the run'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3020
+  merged_at: '2026-11-11'
+- number: 3055
+  title: 'fix(llm): a scripted cycle''s answer positions survive an agent restart'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3005
+  merged_at: '2026-11-11'
+- number: 3054
+  title: 'docs(plans): adopt the 2.8.0 plan — ledgers placed, SIP-0117 R5.7 and SIP-0118
+    R5.1, the portfolio, the ROADMAP row'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3052
+  title: 'feat(remote-execution): an agent''s operation reaches a worker — SIP-0117
+    phase 2b, part 3'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3023
+  merged_at: '2026-11-11'
+- number: 3051
+  title: 'docs(plans): the 2.8 plan draft — a squad develops and tests a Roblox game,
+    for an outside review'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3031
+  title: 'fix(cycles): a task instruction for a remote operation stays with the operation'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3030
+  merged_at: '2026-11-11'
+- number: 3027
+  title: 'feat(remote-execution): the worker — SIP-0117 phase 2b, part 2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3024
+  title: 'feat(remote-execution): SIP-0117 phase 2b, part 1 — the worker registry,
+    the claim, lease and fence rules, /api/v1/workers and the worker''s identity'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3019
+  title: 'feat(remote-operations): SIP-0117 and SIP-0118 phase 2a — qa.run_remote_operation
+    with a fixture provider and its correction route, and the game contracts (draft
+    until 2.8; stacked on the SIP-0116 phase 2 PR)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3017
+  - 3018
+  merged_at: '2026-11-11'
+- number: 3015
+  title: 'feat(skillsets): SIP-0116 phase 2 — coverage on the routed agent at cycle
+    creation and at the plan gate (draft until 2.8 opens; stacked on the phase 1 PR)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3014
+  merged_at: '2026-11-11'
+- number: 3013
+  title: 'feat(skillsets): SIP-0116 phase 1 — skillset declarations and each cycle''s
+    skillset record, inert (draft until 2.8 opens)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3011
+  merged_at: '2026-11-11'
+- number: 3029
+  title: 'docs(release): v2.7.0''s records on the Release, and the cut''s housekeeping'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3026
+  title: 'docs(release): the v2.7.0 package — the cut''s evidence, screenshots, the
+    line''s Campaigns in provenance'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-11'
+- number: 3022
+  title: 'test: the 36 unit tests that failed on a MacBook run there, each on a known
+    platform reading'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2976
+  merged_at: '2026-11-10'
+sip_moves:
+- sip: SIP-0116-Agent-Skillsets
+  from: accepted
+  to: implemented
+sip_amendments:
+- sip: SIP-0072-Stack-Aware-Development-Capabilities
+  status: implemented
+- sip: SIP-0075-Squad-Configuration-Perspective
+  status: implemented
+- sip: SIP-0088-Agent-Runtime-Modes
+  status: accepted
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  status: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  status: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  status: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  status: accepted
+- sip: SIP-0101-Cycle-Replay-Harness
+  status: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+- sip: SIP-0105-Stack-Blueprint-Contract
+  status: accepted
+- sip: SIP-0109-Campaign-Orchestration
+  status: accepted
+- sip: SIP-0110-Cross-Cycle-Memory
+  status: accepted
+- sip: SIP-0111-TensorFold-Provider-Adapter
+  status: accepted
+- sip: SIP-0112-Project-Lifecycle-Management
+  status: accepted
+- sip: SIP-0113-Outcome-Evaluation
+  status: accepted
+- sip: SIP-0115-Project-Goals-Backlog
+  status: accepted
+- sip: SIP-0117-Game-Development-Platform
+  status: accepted
+- sip: SIP-0118-Game-Development-Capability
+  status: accepted
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  status: proposed
+cycles:
+- cycle_id: cyc_e26c45c7747c
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:count_at_least
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - scenario:S1:hint-text
+  - scenario:S1:hud-enabled
+  - scenario:S2:hint-visible
+  - scenario:S2:hud-enabled
+  - tests_pass
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_de850f1b65a6
+  role: counted
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:count_at_least
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - scenario:S3:clock-visible
+  - scenario:S3:hud-visible
+  - scenario:S3:lobby-hint-visible
+  - scenario:S4:clock-advanced
+  - scenario:S4:hud-visible
+  - scenario:S4:lobby-hint-visible
+  - tests_pass
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 4
+- cycle_id: cyc_c0b2f50e8299
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  - scenario:S1:hud-enabled
+  - scenario:S1:lobby-hint-visible
+  - scenario:S2:hud-enabled
+  - scenario:S2:lobby-hint-text
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_8e5dfbde4abb
+  role: void
+  captured: true
+  status: cancelled
+  verdict: blocked_unverified
+  verified:
+  - acceptance:count_at_least
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+screenshots:
+- prefect-flow-run-counted-b-2-the-session-clock-accepted.png
+- prefect-flow-run-repair-diagnostic-the-scenario-fails-a-repair-runs-the-scenario-passes.png
+showcase:
+  cycle_id: cyc_de850f1b65a6
+  reason: the counted run's second increment, whose acceptance met the 2.8 headline;
+    the other picture is the repair diagnostic's run (cyc_c0b2f50e8299), labelled
+    apart, the one timeline that shows a scenario failing, a repair and the scenario
+    passing
+  role: counted
+records:
+  asset: squadops-2.8.0-records.tar.gz
+  sha256: da3c7a4db7489dd8e5a43d7de20b048d0b1b777c103cd69d3a8eafb116baafba
+  files: 12
+  campaigns: []
+  engine_records: []
+  bytes: 109158
+  attached_at: '2026-11-18T23:40:29Z'
+  scanned:
+    secret_values: 71
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
+    heldout_markers: 155
+  withheld: []
