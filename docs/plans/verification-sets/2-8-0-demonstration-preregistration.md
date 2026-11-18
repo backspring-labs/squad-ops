@@ -663,7 +663,7 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 - **#3195 → `e191b89f`** (SIP-0117 R5.28). A worker that refuses a play for its own tool says so on the result (`tool_unready`), and the Campaign reads it as it reads a scenario no worker took: §10 row 10, a retry, then row 11. A refusal the request or the candidate could have caused keeps the work's routing.
 - **#3196** (tests only): the two remote-execution tests that failed in a directory run on the Spark (#3194).
 
-**Not changed:** whether the worker should bring Studio to the front itself is #3193, for the owner's ruling. Until it's ruled, the guard below is the procedure.
+**Not changed:** the worker does not bring Studio to the front itself. On 2026-11-18 the owner ruled #3193 (on the Spark's recommendation, "agree"): the worker keeps refusing through 2.8, the guard below is the procedure, and the activation, with each one recorded in the result, is placed after #3043.
 
 **§3 gains two checks:**
 - **Check 4, the guard.** From the window's first launch to its last play, a loop on the MacBook re-activates Studio within two seconds whenever another app is in front. It logs each time and the app, and the log goes into the window record. A retry for Studio not in front relaunches whether or not the Mac was put right, so the guard is what puts it right.
@@ -686,4 +686,4 @@ The Spark aborted the Campaign at 14:34:56 under the owner's grant for uncounted
 2. The counted run, only on a clean rehearsal 3, on the same deploy and in the same window, under the time rule.
 3. The repair diagnostic, last.
 
-**Who ruled:** the owner, on this amendment: pending.
+**Who ruled:** the owner approved this amendment on 2026-11-18: "approve 12d".
