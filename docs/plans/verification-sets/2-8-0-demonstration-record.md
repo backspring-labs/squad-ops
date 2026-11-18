@@ -156,7 +156,7 @@ v2's criteria:
 
 **The cycle outcome:** `accepted`. Verified: the build checks, `tests_pass` and the six scenario assertions. Failed, unverified, inert and waived: none.
 
-**S4's margin, measured.** Each S4 play ran 25.1 to 25.2 s from Studio's play start to its stop. The candidate's clock read "0:23" in both plays, the reading the MacBook lane predicted from that timing for a clock started at the client's start. That leaves about 3 s below the band and 6 s above it.
+**S4's margin, measured.** Each S4 play ran 25.1 to 25.2 s from Studio's play start to its stop. The candidate's clock read "0:23" in both plays, the reading the MacBook lane predicted from that timing for a clock started at the client's start. That is about 3 s inside the band's low edge (0:20) and 6 s inside its high edge (0:29).
 
 ### 4.3 Every attempt in the counted run (§9)
 
@@ -191,7 +191,7 @@ v2's criteria:
 
 ## 8. Findings from the window
 
-- **#3199** (filed by the MacBook lane): the scenario-writing skill. Across the window, eight of B-2's proposals moved between checks that pass on broken work and checks that fail on working work. The issue carries worked examples and three rules, after #3043.
+- **#3199** (filed by the MacBook lane): the scenario-writing skill. Across the window, seven of eleven proposal versions were returned: six of rehearsal 3's eight (B-1 three versions, B-2 five) and one of the counted run's three (B-1 one, B-2 two). The squad's scenarios moved between checks that pass on broken work and checks that fail on working work. The issue carries worked examples and three rules, after #3043.
 - **#3200:** a candidate's setup failure, where the baseline's identical setup was met, is routed as "not executed". So it goes unrepaired in the run, although the console names the candidate's line (rehearsal 3, B-2).
 - **#3201:** a cycle a Campaign ended at the gate (`rejected_at_gate`) reads `active` on the cycle route, and rehearsal 3's abort later cancelled it.
 - **Lessons, for the owner:** the rehearsals' returns are to be filed as observations for SIP-0110 lessons (the clock that must move; the floor half proved headless). Agreed with the owner on 2026-11-18, after the counted run, so as not to carry anything into it (§6.2).
