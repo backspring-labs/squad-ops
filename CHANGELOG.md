@@ -12,6 +12,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   (`recorded_ending`). A run still live from before the ending, or a cancel after it, is named as a
   `status_conflict` and never hides the other record. The abort, the cycle list and detail, the memory routes and the
   binding fill read it the same way; the list reads every cycle's ending in one query.
+- **A person's decision on an escalated plan gate ends its escalation** (#3174; SIP-0109 §24eh): an approval left
+  the escalation reading `pending` when the run ended before the next sweep, since only the sweep wrote the ending
+  and only for a building campaign.
+  - The gate route writes the ending as soon as the decision is stored, once, with who decided and when. The
+    sweep writes it for a stored decision whose ending is missing, in any state the campaign has reached.
+  - `resolved` is a decision made before the ruling bound, by the decision's own time. One made after it reads
+    `expired` and names the decision, which stands on the run.
 
 ## [2.8.0] — 2026-11-18
 

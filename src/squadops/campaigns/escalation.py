@@ -2,9 +2,14 @@
 
 An escalation is opened when a tier campaign's plan gate is not approved by the tier, and it ends
 exactly once: ``resolved`` (a person decided the gate before the bound), ``expired`` (the bound
-passed with it pending, so its cycle is parked), ``superseded`` (its gate stopped waiting without a
-person's decision, as when a revision re-framed the cycle), or ``cancelled`` (its campaign ended
-while it was pending).
+passed with it pending, so its cycle is parked, or a person decided the gate only after the bound),
+``superseded`` (its gate stopped waiting without a person's decision, as when a revision re-framed
+the cycle), or ``cancelled`` (its campaign ended while it was pending).
+
+**A person's decision ends it where the decision is recorded** (§24eh, #3174): the cycle's gate
+route writes the ending from the decision stored on the run, and the sweep writes the same row for
+a decision whose ending wasn't written (a restart between the two). The row carries who decided
+and when, and the escalation's ``closed_at`` is that time.
 
 The queue is the campaign's control log: an ``escalation_opened`` row keyed by the escalation's
 identity, and one ``escalation_closed`` row whose every ending shares a key, so a second ending of
@@ -128,6 +133,10 @@ class Escalation:
     decision_ids: tuple[str, ...] = ()
     closed_by: str | None = None
     closed_at: datetime | None = None
+    #: The person's decision its ending was read from, as the run stores it (§24eh): on a
+    #: ``resolved`` ending, and on an ``expired`` one whose gate a person decided after the bound.
+    decided_by: str | None = None
+    decided_at: datetime | None = None
     #: The late answer (§24bj, §24bm): recorded against an expired or cancelled escalation, one
     #: answer per decision it names, never one text for all of them.
     answers: Mapping[str, str] = field(default_factory=dict)
@@ -162,11 +171,13 @@ class RecordedAnswer:
 
 @dataclass(frozen=True)
 class RunAtGate:
-    """What the sweep read of an escalation's run: whether it still waits at the gate, and the
-    person's decision on that gate, if one was recorded."""
+    """What was read of an escalation's run: whether it still waits at the gate, and the
+    person's decision on that gate, if one was recorded, as the run stores it."""
 
     waiting: bool
     decided_by: str | None
+    #: When the person decided, from the stored decision. ``None`` only with no decision.
+    decided_at: datetime | None
 
 
 def opening_transition(
@@ -232,7 +243,8 @@ def escalations(log: Sequence[LogRow], campaign_state: CampaignState) -> list[Es
             "opened_at": datetime.fromisoformat(b["opened_at"]),
             "state": state,
             "closed_by": ending.actor if ending is not None else None,
-            "closed_at": ending.committed_at if ending is not None else None,
+            "closed_at": _closed_at(ending),
+            **_decided(ending),
         }
         if kind_of(b) is EscalationKind.BINDING_HOLD:
             # §24bw: what couldn't be bound stands where a plan gate's failed conditions do.
@@ -261,6 +273,28 @@ def escalations(log: Sequence[LogRow], campaign_state: CampaignState) -> list[Es
     return out
 
 
+def _closed_at(ending: LogRow | None) -> datetime | None:
+    """When the escalation ended: the person's decision time for one a decision resolved (§24eh),
+    and the row's own time for every other ending, and for a row written before the decision's
+    time was recorded."""
+    if ending is None:
+        return None
+    decided_at = ending.binding.get("decided_at")
+    if decided_at and ending.binding["state"] == EscalationState.RESOLVED:
+        return datetime.fromisoformat(decided_at)
+    return ending.committed_at
+
+
+def _decided(ending: LogRow | None) -> dict:
+    """The decision an ending names (§24eh), or nothing for an ending that names none."""
+    if ending is None or not ending.binding.get("decided_by"):
+        return {}
+    return {
+        "decided_by": ending.binding["decided_by"],
+        "decided_at": datetime.fromisoformat(ending.binding["decided_at"]),
+    }
+
+
 def kind_of(binding: Mapping) -> EscalationKind:
     """An opening row's kind: a row written before kinds existed is a plan gate's."""
     return EscalationKind(binding.get("kind") or EscalationKind.PLAN_REVIEW)
@@ -276,7 +310,20 @@ def _answer_of(row) -> dict:
     }
 
 
-def _closing(escalation: Escalation, state: EscalationState, actor: str, reason: str):
+def _closing(
+    escalation: Escalation,
+    state: EscalationState,
+    actor: str,
+    reason: str,
+    decision: RunAtGate | None = None,
+):
+    """``decision`` is the person's stored decision the ending was read from (§24eh): the row
+    then says who decided and when."""
+    decided = (
+        {"decided_by": decision.decided_by, "decided_at": decision.decided_at.isoformat()}
+        if decision is not None and decision.decided_by and decision.decided_at
+        else {}
+    )
     return CampaignTransition(
         operation=ControlOperation.ESCALATION_CLOSED,
         actor=actor,
@@ -287,7 +334,7 @@ def _closing(escalation: Escalation, state: EscalationState, actor: str, reason:
         idempotency_key=f"escalation_closed:{escalation.escalation_id}",
         next_state=None,
         target=escalation.run_id,
-        binding={"escalation_id": escalation.escalation_id, "state": str(state)},
+        binding={"escalation_id": escalation.escalation_id, "state": str(state), **decided},
     )
 
 
@@ -299,13 +346,17 @@ def closing_transitions(
 ) -> list[CampaignTransition]:
     """Each pending escalation's ending at ``now``, read against its run (§24bj, §24bk):
 
-    - a person decided its gate: ``resolved``, whatever the decision. A blank-noted approval
-      answers no question (§24ad), and the question is asked again at the next gate;
+    - a person decided its gate before the ruling bound: ``resolved``, whatever the decision. A
+      blank-noted approval answers no question (§24ad), and the question is asked again at the
+      next gate;
+    - a person decided its gate only once the bound had passed since it opened: ``expired``
+      (§24eh), by the decision's own time and never by when the ending is written. The decision
+      stands on the run, and the row names it;
     - its run no longer waits, with no person's decision: ``superseded``;
     - it still waits and the campaign's ruling bound has passed since it opened: ``expired``. The
       sweep then cancels the run, and the cycle ends parked.
 
-    An escalation whose run the sweep could not read is left pending."""
+    An escalation whose run was not read is left pending."""
     if campaign.state is CampaignState.COMPLETED:
         return []
     bound = campaign.policy.ruling_bound_s
@@ -317,12 +368,32 @@ def closing_transitions(
             continue
         run = runs[esc.run_id]
         if run.decided_by is not None:
+            if run.decided_at is None:
+                raise ValueError(
+                    f"{esc.run_id}'s {esc.gate_name} decision by {run.decided_by} was read with "
+                    "no time, so it can't be read against the ruling bound"
+                )
+            if (run.decided_at - esc.opened_at).total_seconds() >= bound:
+                out.append(
+                    _closing(
+                        esc,
+                        EscalationState.EXPIRED,
+                        "squadops",
+                        f"the escalation opened at {esc.opened_at.isoformat()} and the ruling "
+                        f"bound of {bound}s passed before {run.decided_by} decided the "
+                        f"{esc.gate_name} gate on {esc.run_id}, at {run.decided_at.isoformat()}. "
+                        "The decision stands on the run",
+                        run,
+                    )
+                )
+                continue
             out.append(
                 _closing(
                     esc,
                     EscalationState.RESOLVED,
                     run.decided_by,
                     f"{run.decided_by} decided the {esc.gate_name} gate on {esc.run_id}",
+                    run,
                 )
             )
         elif not run.waiting:
@@ -354,13 +425,16 @@ PARK_REASON = "escalation_expired"
 
 def parked_run(log: Sequence[ControlLogEntry], run_id: str) -> bool:
     """Whether an expired escalation parked ``run_id``: the cycle ends parked (§24bj) when its
-    last run is the one an expiry named, and that run was cancelled."""
+    last run is the one an expiry named, and that run was cancelled. An expiry that names a
+    person's decision parked nothing (§24eh): the decision was made after the bound, and it
+    governs the run."""
     expired = {
         e.binding["escalation_id"]
         for e in log
         if e.outcome is ControlOutcome.APPLIED
         and e.operation is ControlOperation.ESCALATION_CLOSED
         and e.binding.get("state") == EscalationState.EXPIRED
+        and not e.binding.get("decided_by")
     }
     return any(
         e.operation is ControlOperation.ESCALATION_OPENED

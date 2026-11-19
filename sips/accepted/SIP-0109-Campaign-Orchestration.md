@@ -7620,3 +7620,71 @@ product. That is read on the next full-path gate.
 
 **Who ruled.** The Spark lane read the record. The MacBook lane read the cause and made the change.
 
+### 24eh. A person's decision ends its escalation where it is recorded, and a decision after the bound reads expired (2026-11-18, §24bj, §24bk, §24da, §4.3; #3174; the 2.8.1 plan's item 2, adopted by the owner)
+
+**What changed.** §24bk has the sweep end every escalation, and "any decision a person records on the gate
+resolves its escalation". Two things are different now.
+1. **The ending is written where the decision is recorded.** The cycle's gate route
+   (`POST …/runs/{run}/gates/{gate}`, the one route a person's gate decision takes, which `squadops runs gate` and
+   the console both post to) writes the `escalation_closed` row as soon as the decision is stored. The sweep
+   writes the same row for a stored decision whose ending is missing, in any state its campaign has reached.
+2. **`resolved` is a decision made before the ruling bound,** read by the decision's own time. A decision made
+   once the bound has passed since the escalation opened ends it `expired`.
+
+**The cause, read first.** No route wrote the ending. Only the sweep did (`CampaignProgress._sweep_escalations`),
+every 60 seconds, and only for a campaign in `calibrating`, `building`, `repairing` or `retrying`.
+
+**The evidence** (#3174, the 2.8 demonstration's full-path gate, 2026-11-17, times UTC):
+- **Attempt 1** (`cmp_c22ad50e1de0`): a person approved the escalated plan gate at 14:23:28. The run failed at
+  14:23:55, and within a second the campaign went `evaluating`, `retrying`, then `escalated` on a refused launch.
+  The sweep's next pass found it `escalated` and read nothing. Ten minutes on the escalation read `pending`, and
+  the abort then read it `cancelled`: the record said nobody answered it.
+- **Attempt 2** (`cmp_1afaeaaacd46`): the same approval, on a run that went on. The sweep wrote `resolved` 27
+  seconds after the decision.
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **One writer** | `campaigns.escalation_ending.end_decided`: each pending plan-gate escalation of a campaign, read against the person's decision **stored on its run**. The route and the sweep both call it, so they write the same row |
+| **Once** | Every ending of one escalation shares a key (§24bk). The same decision posted twice, or the route and the sweep meeting, writes one row |
+| **What the row carries** | `decided_by` and `decided_at` in its binding, from the stored decision. The row's actor is the decider, as before |
+| **`closed_at`** | For a `resolved` ending it is the decision's time. A sweep that finds the decision ten minutes later doesn't date the ending by itself. A row written before this amendment keeps its own time |
+| **A failure to write it** | The decision is already recorded, so the request doesn't fail. It is logged, and the sweep writes the ending from the same stored decision |
+| **The sweep's reach** | In its four building states it reads everything, as before. In every other state but `completed` it ends decided escalations and nothing else: an undecided one isn't superseded or expired there |
+| **A decision after the bound** | Ends the escalation `expired`, naming the decision. The decision stands on the run, as §24bk's late decision does. The cycle isn't parked (`parked_run` reads an expiry that names a decision as no park), so row 15 doesn't apply |
+| **The interventions ledger** (§4.3) | A closing row that names a person's decision is an intervention, `resolved` or `expired` |
+| **The digest** | An expired escalation that names a decision says who decided and when, and the owner isn't asked to answer it late |
+| **A completed campaign** | Nothing is written. Its terminal row is its escalations' record, and one still pending reads `cancelled` (§24bk) |
+
+**What §24bk said, and why it changed.**
+- **"The sweep ends it."** That holds for an escalation nobody decided. For a decided one it left the ending to a
+  timer and a state filter, and the evidence above is what that cost.
+- **"Any decision a person records on the gate resolves its escalation."** §24bk's correction was about a
+  blank-noted approval, and that stands: whatever the decision says, it ends the escalation. What changes is the
+  bound. With the ending written at the decision, a decision made in the minute between the bound and the sweep's
+  next pass would have read `resolved` or `expired` by the sweep's phase. It now reads `expired` by its own time.
+
+**The tests.**
+- `tests/unit/api/test_escalation_ends_at_the_gate_route.py` enters at the cycle's gate route with the real
+  authorization adapter, over the memory registries:
+  - an approval ends the escalation `resolved`, once, with who decided and when;
+  - the same when the run then fails and the campaign escalates, as attempt 1 did, with the row written before
+    the cycle's end moved the campaign;
+  - an ending the route couldn't write is written by a restarted runtime's sweep, dated by the decision;
+  - the same decision posted twice writes one ending;
+  - a decision a minute inside the bound reads `resolved`, and one ten seconds past it reads `expired`, with the
+    run left as it was;
+  - a gate no escalation holds ends nothing.
+- `tests/unit/campaigns/test_plan_gate_escalations.py` enters at `CampaignProgress.sweep_ruling_bounds`: a
+  decided escalation is ended in a campaign that has left its building states; a decision after the bound expires
+  it, parks nothing, and the digest says who decided.
+- `tests/unit/outcomes/test_intervention_ledger.py`: a late decision's row is an intervention.
+- Nine mutations of these rules each fail at least one test.
+
+**Not changed.** The escalations route's response: `closed_by` and `closed_at` are what it had. A late
+decision's `decided_by` is on the control-log row and in the digest.
+
+**Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18. Its item 2 states the fix and its five cases,
+the decision after the bound among them. The three readings that follow from that case (no park, the ledger, the
+digest) are the MacBook lane's, for the owner's reading.
