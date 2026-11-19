@@ -1,0 +1,40 @@
+# The 2.8.1 plan's item 5 (#3222): the Campaign-level repair at SIP-0109 §10 ROW 8 on a played product,
+# pre-registration amendment 12h. NON-COUNTING by construction: its proposal profile declares the fault
+# luau_client_throws_at_start (PR #3225), which makes the first candidate's first client script throw where Roblox
+# loads it, and sets max_correction_attempts 0. The candidate's plays read setup_failed, the cycle
+# blocked_unverified, and the Campaign routes row 8; the repair cycle is launched without the fault (bound_cycles).
+# Run only on a deploy whose verify_loaded reads the 3222 row. Its objective is the 2.8.0 diagnostic's: a static
+# HUD line in the lobby, so the change lives in the HUD's client script, which the client requires at start.
+project_id: prj-z-tower-ascension
+objective:
+  statement: 'While the player stands in the lobby, the HUD shows the line "The tower is waiting" at the top of the screen.'
+  measurement: "one increment: the first candidate's plays read setup_failed where the baseline's setup was met, the Campaign routes §10 row 8, and its repair cycle's candidate passes the same frozen scenarios by digest and is accepted (pre-registration amendment 12h)"
+  allowed_scope:
+    - "src/**"
+    - "tests/**/*.spec.luau"
+  target_accepted_increments: 1
+  requirements: "repo:file:docs/GAME_CONTEXT.md@current"
+  work_class:
+    prd_tier: core
+    attendance: attended
+policy:
+  max_cycles: 4
+  # 12h: well past the increment and its repair, so the elapsed-time guard cannot pause the Campaign before
+  # the repair launches, as it paused both rehearsals that reached row 8.
+  max_elapsed_s: 14400
+  budget_tokens: 6000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 1
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 3
+  calibration_profile: campaign-increment-source
+  proposal_profile: campaign-increment-source-client-stops
+  squad_profile: game-dev-roblox
+  plan_gate: tier
+  development_profile: game_dev_roblox
