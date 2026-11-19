@@ -806,3 +806,26 @@ The adopted 2.8.1 plan makes it item 5 (#3222). It's non-counting by constructio
 **Not changed:** §8's diagnostic and its record (12f, 12g), the guard (12d) and the channel check (12f), now made by the worker itself after #3206.
 
 **Who ruled:** the owner adopted the 2.8.1 plan whose item 5 this is ("Approve the 2.8.1 plan, merge it."). The Spark wrote this amendment under the grant for uncounted runs.
+
+### 12i. The Studio pin moves before the row-8 diagnostic: the tool digest changed with nothing installed (2026-11-19, before it runs)
+
+**What changed:** the pin 12f named (`38:1ba499d8…`) is superseded. The MacBook lane requalified the worker on #3220's merged code (eab34509), which closes #3206:
+- **the record:** `20261119T153501.302189Z-passed.json`, schema `squadops.studio-qualification/2`, provider version 2;
+- **Studio:** `0.748.0.7481526`, on the release channel the record names;
+- **the tools:** `studio_tools` `38:3d29f729…`;
+- **the plays:** play 1 completed, the reset, then play 2 completed. The doctor's `qualified` check passes.
+
+**The evidence:** the first attempt failed and is on record (`20261119T153013.145352Z-failed.json`).
+- **Play 1** completed on the previous day's Studio launch, whose tools read `38:1ba499d8…`.
+- **The reset** reopened Studio. Play 2 read `not_executed` because the reopened Studio's tools read `38:3d29f729…`.
+- **What stayed the same:** the version, the channel and the 38 tool names. So a tool's definition changed between the 2026-11-18 launch and today's, with nothing installed.
+- **The retry:** the second attempt, on the reopened Studio, passed. A third reading after it gave the same digest.
+- **Why the change can't be named:** the record can't say which tool changed, since none was added or removed. That is #3230, unplaced.
+
+**What this changes for 12h's run:**
+- **The window-opening check** reads the tool digest after a fresh Studio launch, alongside the version and the channel, against this pin. A different digest stops the window before the first launch, until the Mac requalifies.
+- **A reset inside the window** can meet a new tool list. Plays after it read `not_executed` with `tool_unready`. That's counted as not executed, never as a failure, and the run is aborted, reported and run again after a requalification. It's not read.
+
+**Not changed:** 12h's fault, profile, Campaign, D1–D4 and outcomes.
+
+**Who ruled:** the MacBook lane found the move and requalified. The owner said "Go" for that requalification, in the MacBook session at 10:27 ET on 2026-11-19. That word covers the requalification only, not a window for this run. The Spark wrote this amendment under the owner's 2026-11-16 grant for uncounted runs.
