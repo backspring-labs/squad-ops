@@ -353,7 +353,7 @@ design, so the shape of a sound criterion had to come from the skill. It had one
 | **Coverage** | every sentence of the item, taken word for word from the objective, is read by a criterion that quotes it | the half left out |
 | **Reachability** | every action, wait and observation names something today's game sets or the footprint adds | the wait on a value nothing sets |
 | **The broken build** | the named check fails on the obvious broken build and on a partial one, and passes on any correct one | the format-only check, the counter read for the text, the exact match |
-| **Timing** | a changing value is read as a band, from a start the criterion states, with margin on both edges | the one-second window, and a band read at its edge |
+| **Timing** | a changing value is read as the first band a stuck value can't show, from a start the criterion states, inside one wait with at least 10 s to spare | the one-second window, and a band read at its edge |
 | **Preservation** | what must still work is read on its own, before any long step | a check tied to where a long walk took the player |
 | **The kind of evidence** | each criterion says played or headless, and a headless one says what no play reached | a weaker played check standing in for an unreachable state |
 
@@ -383,9 +383,22 @@ design, so the shape of a sound criterion had to come from the skill. It had one
   - says the `prd_delta` carries every copied sentence, and that the template's "leave it out" is for something
     the author thought of adding;
   - counts a sentence an earlier increment's frozen criterion reads as covered there.
+- **The band opens early in one wait** (revised 2026-11-19, after the second replay). On the coverage revision
+  the lobby-hint case met its rules in all three generations. One session-clock generation then waited 60 s, the
+  most a wait allows (`MAX_DEADLINE_SECONDS`), for a band that opens 60 s after the count starts, and counted
+  setup's two or three seconds as its margin; the step's wait starts after setup. It chose the minute's rollover to
+  prove the format and the rate (`var/replays/roblox-skills-v4-revised-2`, the write-up on #3199). The two
+  generations that met the rules read a band opening at 50 s under the same 60 s wait. The rule now:
+  - reads the first band a stuck value can't show, which already shows the format and that the value moved;
+  - says a wait's time runs from its own step's start, with none of setup's time coming off it;
+  - asks for a band that opens within 30 s of the count's start and a wait with at least 10 s more than that, in a
+    table of three cases (sound, fragile, failing on correct work);
+  - says an example value in the item shows the format and is never a time to wait for, and that a later value
+    with a sentence of its own is proved headless;
+  - has `Band:` state the arithmetic: the opening, what the wait allows, the seconds to spare.
 - **The examples are invented:** a shield label that counts down and a low-health warning. Neither is in the
   game's goal set, and the replay's cases stay unseen by the skill.
-- **The skill grows from 10,018 to 21,656 characters.** The size preflight counts it for a proposal
+- **The skill grows from 10,018 to 23,275 characters.** The size preflight counts it for a proposal
   (SIP-0116 §17m).
 
 **What isn't built.** A deterministic check of reachability at the proposal seam. It needs a map of the place,
@@ -395,14 +408,16 @@ which is the 2.10 plan's.
 returned shapes as authoring cases beside every `v3` case, today's skill and this one as two arms, judged by rule
 and by play on fixed broken and correct candidates. The 2.8.1 plan states the predictions. If one fails, the skill
 doesn't ship on this text. The first text failed two on 2026-11-19 and didn't ship: the coverage omission above,
-and one development case whose input was byte-identical in both arms. The Spark lane replays this text the same
-way.
+and one development case whose input was byte-identical in both arms. The coverage revision held predictions 2,
+3 and 5 the same day and failed the first in one generation, the late band above. The Spark lane replays each text
+the same way.
 
 **The tests.** `tests/unit/capabilities/test_roblox_skillsets.py`: every whole example in the skill is read by the
 rails under `roblox-studio/1`, with its scenario id its criterion's and its surface its named assertion's path;
 every example answers the self-review in the words the skill asks for; the changing value's example waits for its
 band and reads the same band; the coverage table's sentences are the example item's, word for word, each quoted
-after `Reads:` by the criterion the table names; and the stop stands before the new case.
+after `Reads:` by the criterion the table names; the band example's stated wait and margin are its scenario's
+(the deadline it sets, at least 10 s past a band that opens within 30 s); and the stop stands before the new case.
 
 **Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 4 names the six rules, the self-review
 and the replay. The owner's three rules and two timing notes are on #3199. The MacBook lane wrote the text, under

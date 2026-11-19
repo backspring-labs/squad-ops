@@ -238,6 +238,27 @@ Read a value that changes each second as a band: a part of its text that stays t
 several seconds (a tens digit), never one that changes every second. State where the count starts,
 wait for the band, then read it.
 
+**Read the first band a stuck value can't show.** For a value that moves each second, that band
+opens about 10 s after the count starts. It already shows everything a played check can: the
+text's format (its separators, and each digit in its place) and that the value moved. A later
+band shows nothing more, and costs the wait its margin.
+
+**The band opens early in one wait.** A wait's deadline is at most 60 s, and its time runs from
+the moment its own step starts. Setup has finished by then, so none of setup's time comes off the
+wait. Choose a band that opens within 30 s of the count's start, and give the wait at least 10 s
+more than the band needs to open:
+
+| the band opens | the wait allows | |
+|---|---|---|
+| 11 s after the count starts | 25 s | sound: 14 s to spare |
+| 50 s after | 60 s | fragile: a count that starts 10 s late fails correct work |
+| 60 s after | 60 s | fails on correct work: the band opens as the wait ends |
+
+So never wait for what only shows a minute in, such as a digit rolling over or a rate measured
+over a minute. An example value in the item ("such as 4:10") shows the format: it is never a time
+to wait for. Where the item gives a later value a sentence of its own, no wait reaches it, and
+its rule is proved headless (rule 6).
+
 ```yaml
 criteria:
   - id: S2
@@ -248,8 +269,9 @@ criteria:
       Played. From 11 to 20 s after the HUD shows, the label's text holds "in 1".
       Reads: "The shield label counts down from Shield in 30 s."
       Fails on: a label written once, which stays "Shield in 30 s", and a number with no words.
-      Band: the count starts when the HUD shows, and the band opens 11 s later. The wait allows
-      25 s to reach it, and the read at its opening has 9 s before it closes.
+      Band: the count starts when the HUD shows, and the band opens 11 s later. The wait is the
+      first step, so it starts with the count, and allows 25 s: 14 s to spare. The read at the
+      band's opening has 9 s before it closes.
     scenario:
       schema: squadops.scenario/1
       scenario_id: S2
@@ -357,8 +379,9 @@ Answer these in each criterion's `observable`, in these words, as the examples d
 - `Played.` or `Headless.`, then what is observed;
 - `Reads:` the sentence of the item the criterion reads, quoted word for word;
 - `Fails on:` the obvious broken build, and a partial one;
-- `Band:` for a value that changes: where the count starts, when the band opens, and the margin
-  on each edge;
+- `Band:` for a value that changes: where the count starts, how long after that the band opens,
+  what the wait allows from its own step's start (60 s at most), the seconds to spare (at least
+  10), and how long the band stays open after the read;
 - `Not played:` on a headless criterion: what no play reached, and why.
 
 Then read the item once more, and change the request if an answer is no:
@@ -370,6 +393,8 @@ Then read the item once more, and change the request if an answer is no:
 3. Does each named check fail on the two wrong builds you named, and pass on correct work from
    any start?
 4. Is anything that must still work read before any long step, and by its own criterion?
+5. Does each band open within 30 s of its count's start, with a wait that allows at least 10 s
+   more than that, counted from the wait's own start?
 
 ## Saved state
 

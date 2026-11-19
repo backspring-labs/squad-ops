@@ -44,8 +44,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `play-scenario-authoring` gains six rules, each with a worked example: coverage, reachability, the broken build,
   timing, preservation and the kind of evidence. It ends with a self-review answered in each criterion's
   `observable` (`Played.` or `Headless.`, `Reads:`, `Fails on:`, `Band:`, `Not played:`). Coverage is worked from
-  the objective's own sentences, each quoted by the criterion that reads it and kept in the `prd_delta`. A state no
-  action reaches is played as far as a scenario goes and proved headless for the rest, with the gap declared.
+  the objective's own sentences, each quoted by the criterion that reads it and kept in the `prd_delta`. A value
+  that changes is read as the first band a stuck value can't show, inside one wait with at least 10 s to spare. A
+  state no action reaches is played as far as a scenario goes and proved headless for the rest, with the gap
+  declared.
 
 ### Fixed
 - **A cycle's recorded ending decides its status** (#3201): a cycle a Campaign ended at the gate kept its later

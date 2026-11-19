@@ -196,6 +196,28 @@ def test_the_strategy_skills_coverage_table_and_its_examples_quote_the_items_sen
         assert re.search(r'Reads: ".+?\."', criterion["observable"]), criterion["id"]
 
 
+def test_the_strategy_skills_band_example_states_the_margin_its_scenario_has(catalog):
+    """#3199's second replay: an author waited 60 s, the most a wait allows, for a band that
+    opens 60 s in, and called setup's time its margin. The skill's ``Band:`` answer now shows
+    the arithmetic. Bugs caught: the example's stated wait or margin disagreeing with its own
+    scenario, so the copied arithmetic is wrong; a band that opens late, or with under 10 s to
+    spare; and a deadline over what the reader allows."""
+    from squadops.remote_execution.scenario import MAX_DEADLINE_SECONDS
+
+    [counting] = [c for c in _worked_criteria(catalog) if "Band:" in c["observable"]]
+    band = " ".join(counting["observable"].split()).split("Band:")[1]
+    opens, allows, spare = (
+        int(re.search(pattern, band).group(1))
+        for pattern in (r"opens (\d+) s later", r"allows (\d+) s", r"(\d+) s to spare")
+    )
+    [wait] = counting["scenario"]["steps"]
+
+    assert wait["deadline_s"] == allows <= MAX_DEADLINE_SECONDS
+    assert spare == allows - opens
+    assert spare >= 10
+    assert opens <= 30
+
+
 def test_the_strategy_skill_keeps_its_stop_for_an_effect_nothing_can_observe(catalog):
     """`roblox-skills-v3`'s unobservable case answers with this stop, and #3199 adds a case
     beside it where a `package` criterion is right (a state no action reaches). Bug caught: the
