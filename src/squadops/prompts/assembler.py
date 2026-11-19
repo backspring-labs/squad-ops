@@ -169,9 +169,15 @@ class PromptAssembler(PromptService):
         hook: str,
         task_type: str | None = None,
         recovery: bool = False,
+        variant: str | None = None,
     ) -> AssembledPrompt:
         """
         Assemble a prompt for the given context.
+
+        ``variant`` (#3147) names the task type's fragment for one kind of product, read as
+        ``task_type.<task_type>.<variant>``. It is asked for by name, so one with no fragment
+        raises ``ValueError``: the task type's own fragment never stands in for it, and the
+        task-type layer is never dropped for it.
 
         Implements the deterministic layer ordering from SIP-0057:
         1. Identity Layer: Agent role identity, tone constraints, boundaries
@@ -205,7 +211,15 @@ class PromptAssembler(PromptService):
                 continue
 
             # Resolve fragment for this layer
-            fragment = self._resolve_fragment(layer, role, hook, task_type)
+            if layer == "task_type" and variant:
+                fragment = self._resolve_fragment(layer, role, hook, f"{task_type}.{variant}")
+                if fragment is None:
+                    raise ValueError(
+                        f"no prompt fragment task_type.{task_type}.{variant} is registered for "
+                        f"role {role!r}, and {task_type}'s own fragment doesn't stand in for it"
+                    )
+            else:
+                fragment = self._resolve_fragment(layer, role, hook, task_type)
 
             if fragment:
                 # Verify integrity before adding

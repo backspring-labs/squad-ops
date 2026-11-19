@@ -5,6 +5,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **A Luau product's suite author is told its own runner's rules** (#3147; SIP-0112 H.37): the `qa.test` system
+  prompt named pytest and vitest, with FastAPI, Next.js and JSX examples, on every product. A product that tests
+  only with Luau runners is now sent a fragment written for its runner, with the rules that hold on every stack.
+  Every other run's `qa.test` system prompt is byte for byte what it was.
+
 ### Fixed
 - **A cycle's recorded ending decides its status** (#3201): a cycle a Campaign ended at the gate kept its later
   workloads pending, so the cycle route read it `active`, and rehearsal 3's abort cancelled it 40 minutes after it

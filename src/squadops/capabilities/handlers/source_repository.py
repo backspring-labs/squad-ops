@@ -131,6 +131,20 @@ def suite_language(inputs: Mapping[str, Any]) -> str:
 
 #: The suite language of a product that tests only with Luau runners (``suite_language``).
 LUAU_SUITE = "luau"
+
+
+def qa_test_prompt_variant(inputs: Mapping[str, Any]) -> str | None:
+    """The ``qa.test`` system fragment a run's suite author is given (#3147): ``"luau"`` for a
+    product that tests only with Luau runners, and ``None`` for every other run, which keeps the
+    task type's own fragment.
+
+    That fragment states its rules in pytest's and vitest's terms, with FastAPI, Next.js and JSX
+    examples. They are false on a product whose runner is neither, and its author is shown that
+    runner beside them. A sample application, a product with no runner, and one with runners of
+    more than one language read ``None``, so their prompt is the one they had."""
+    return LUAU_SUITE if suite_language(inputs) == LUAU_SUITE else None
+
+
 ADDED_MODULE_TEST_LUAU = "request.increment_added_module_test_luau_appendix"
 
 
