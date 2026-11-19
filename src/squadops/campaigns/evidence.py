@@ -293,6 +293,13 @@ def _escalation_lines(campaign: dict, rows: list[dict]) -> list[str]:
             # The question carries its own end, often a period: one sentence end, not two (#2305).
             ended = line if line.endswith((".", "?", "!")) else f"{line}."
             line = f"{ended} Answered late by {e.answered_by}: {given}"
+        if e.state is EscalationState.EXPIRED and e.decided_by and e.decided_at:
+            # §24eh: the gate was decided, after the bound. The decision stands on the run.
+            ended = line if line.endswith((".", "?", "!")) else f"{line}."
+            line = (
+                f"{ended} {e.decided_by} decided the gate after its ruling bound, at "
+                f"{e.decided_at.isoformat()}"
+            )
         lines.append(line)
     return lines
 
@@ -309,7 +316,7 @@ def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
                 f"The plan gate on `{e.run_id}` escalated: answer it at the gate before its ruling "
                 f"bound parks the cycle. Asked: {asked}"
             )
-        elif e.state in ANSWERABLE and not e.answers:
+        elif e.state in ANSWERABLE and not e.answers and not e.decided_by:
             asks.append(
                 f"Escalation `{e.escalation_id}` {e.state} with nobody answering. Answer it late "
                 f"with `squadops campaigns answer {campaign['campaign_id']} {e.escalation_id} "

@@ -2828,3 +2828,14 @@ checks:
       import inspect, squadops.campaigns.runner_acceptance as ra
       print(result_from_wire(result_to_wire(r)).tool_unready, reading_for_want_of_a_worker({"tool_unready": True}), reading_for_want_of_a_worker({"unavailable": False}), inspect.getsource(ra).count("reading_for_want_of_a_worker(r"))
     expect: "True True False 2"
+  - id: "3174-escalation-ends-at-the-decision"
+    what: a person's gate decision ends its escalation at the gate route, from the stored decision, and the sweep ends a decided one in any state (SIP-0109 §24eh)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.routes.cycles import runs
+      from squadops.campaigns import progress
+      from squadops.campaigns.escalation import RunAtGate
+      from squadops.campaigns.models import CampaignState
+      print("await _end_decided_escalations(request, registry, cycle_id)" in inspect.getsource(runs.gate_decision), CampaignState.ESCALATED in progress._DECIDED_SWEEP_STATES, CampaignState.COMPLETED in progress._DECIDED_SWEEP_STATES, "decided_at" in RunAtGate.__dataclass_fields__)
+    expect: "True True False True"
