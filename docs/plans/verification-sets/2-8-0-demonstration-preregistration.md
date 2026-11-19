@@ -757,3 +757,52 @@ The owner can narrow or withdraw the delegation at any time. A ruling the owner 
 **Not changed:** D1 to D4, the pass and the spec-first reading (§8), the guard (12d) and the channel check (12f).
 
 **Who ruled:** the Spark approved this amendment on 2026-11-18, under the owner's grant ("I gave you approval rights!"). The owner said "ok go ahead with the rerun when ready".
+
+### 12h. The 2.8.1 plan's row-8 diagnostic: the Campaign-level repair on a played product (2026-11-18, before it runs)
+
+**Why:** the 2.8.0 cut record's §5. The Campaign-level repair at SIP-0109 §10 row 8 has never run on a played product.
+- **Both rehearsals that reached it** were paused by the elapsed-time guard before the repair launched.
+- **The diagnostic's repair** (§8, 12g) was the run's own in-run correction.
+
+The adopted 2.8.1 plan makes it item 5 (#3222). It's non-counting by construction, like §8, and labelled apart.
+
+**Row 8 only.** Rows 8 and 12 both launch a repair cycle, but row 8 repairs a candidate the verifier couldn't read (`blocked_unverified`), and row 12 one it read and refused (`rejected`). A row-12 result doesn't count here.
+
+**The failure, and its expected classification:**
+- **The fault:** `luau_client_throws_at_start` (PR #3225). It adds `if typeof(game) == "Instance" then error("__squadops_injected_fault__ (#3222): …") end` after the leading comments of the first development attempt's first client script.
+- **Why headless can't meet it:** the game's headless loader builds `game` as a table, so the specs load the file and pass.
+- **What Studio meets:** the client stops at start, as rehearsal 3's B-2 candidate did (#3200).
+- **The expected classification:**
+  - every candidate play reads `setup_failed`, which is not executed;
+  - the cycle ends `assessed`, with the verdict `blocked_unverified` and an attribution that isn't the environment's (so not rows 10 or 11);
+  - the continuation reads row 8, `repair`.
+- **The repair cycle** is launched by `bound_launch` without the fault (`bound_cycles`), and builds clean.
+
+**In-run correction is off, and the Campaign's repair is kept:**
+- the profile `campaign-increment-source-client-stops` sets `max_correction_attempts: 0`;
+- the Campaign file `2-8-1-row8-diagnostic-campaign.yaml` keeps `max_repair_cycles_per_increment: 1`, and sets `max_elapsed_s: 14400` so the guard can't pause it before the repair;
+- its objective is §8's, a static HUD line in the lobby, so the change lives in the HUD's client script.
+
+**D1–D4, restated for the Campaign's repair cycle:**
+- **D1:** the fault fires on the increment cycle's first `development.develop` attempt, and its `APPLIED` line names a client script and the line it added;
+- **D2:** the frozen scenarios read not executed on the candidate (`setup_failed`) where the baseline's identical setup was met, on the same place and worker, and the Campaign routes row 8;
+- **D3:** a repair cycle is launched. Its intent and its cycle (`kind repair`) are in the control log, with the original's proposal id and content hash, baseline tree, footprint and frozen scenario hashes, and no fault declared;
+- **D4:** the same frozen scenarios, by the same digests, pass on the repair cycle's candidate, and the increment is accepted (row 7).
+
+**Reading 6, the record:** every attempt, repair action, elapsed time and intervention.
+
+**The outcomes, stated before it runs:**
+- **Pass:** D1–D4 hold.
+- **Did not bite:** the change touches no client script, so the fault reads `DID NOT BITE`. Or the candidate's setup is met anyway, because the faulted script isn't one the client loads at start. Either way it's aborted before the repair, reported, and run again; it's not read.
+- **A finding, not a pass:** the repair cycle launches, but its candidate still fails. That's filed, and the cut record says row 8 is still unproven.
+- **Failed at D2:** the Campaign routes anything but row 8, for example row 12 because a spec met the throw. Reported as such.
+
+**Where and when it runs:**
+- **The deploy:** carries #3201, #3225 and #3206 (whose merged code refuses every play until the Mac is requalified on it). `verify_loaded.py` reads the `3222` row.
+- **The worker:** on the same commit (check 5). Check 4 reads the version and channel from the Mac's requalification record on that code.
+- **The window:** one the owner names, with the Mac unlocked and Studio in front. The guard (12d) runs.
+- **Who rules its gates:** the Spark, under the owner's 2026-11-16 grant for uncounted runs.
+
+**Not changed:** §8's diagnostic and its record (12f, 12g), the guard (12d) and the channel check (12f), now made by the worker itself after #3206.
+
+**Who ruled:** the owner adopted the 2.8.1 plan whose item 5 this is ("Approve the 2.8.1 plan, merge it."). The Spark wrote this amendment under the grant for uncounted runs.
