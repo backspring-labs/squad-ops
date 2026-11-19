@@ -1,6 +1,6 @@
 # 2.8.1 plan — the 2.8 demonstration's follow-ups, fixed small
 
-**Status: DRAFT, revision 2, after the owner's outside review (2026-11-18).**
+**Status: ADOPTED (2026-11-18), revision 2.** The owner: "Approve the 2.8.1 plan, merge it." Revision 2 followed the owner's outside review:
 - **Revision 1:** after the 2.8.0 cut the Spark proposed five items. The owner answered "I agree with the 2.8.1 items proposed", then held this PR's merge for an outside review.
 - **The review:** keep the small-patch scope. Give each item an unambiguous verification result and a definition of done. Dispose of every open risk explicitly. Don't read 2.8.1 shipped as a supervised Campaign ready for unattended game development.
 - **The owner's ask:** "Can you update the 2.8.1 plan and draft the start of 2.9 and 2.10 plan accordingly".
@@ -11,7 +11,7 @@
 - #3174 joins (item 2), and #3147 joins only on a condition (item 7);
 - §4 disposes of every open risk the review named, and §5 says what 2.8.1 doesn't claim.
 
-The review's observations beyond 2.8.1 open two draft plans: `2-9-0-plan.md` (stabilization) and `2-10-0-plan.md` (the next feature line). This plan is adopted when the owner rules.
+The review's observations beyond 2.8.1 open two draft plans: `2-9-0-plan.md` (stabilization) and `2-10-0-plan.md` (the next feature line).
 
 **What 2.8.1 is.** A patch on the 2.8 line (CLAUDE.md, #281: urgent or small fixes, either lane). Each item is something the 2.8.0 windows met:
 - a defect in what 2.8 shipped;
