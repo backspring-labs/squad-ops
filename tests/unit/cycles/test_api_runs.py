@@ -70,6 +70,9 @@ def _focus_lease(agent_id: str, owner_ref: str) -> FocusLease:
 @pytest.fixture
 def mock_cycle_registry():
     mock = AsyncMock()
+    # #3201: the cycle route reads the latest recorded ending; none recorded here.
+    mock.get_cycle_end.return_value = None
+    mock.get_cycle_ends.return_value = {}
     mock.get_cycle.return_value = _CYCLE
     mock.list_runs.return_value = [_RUN]
     mock.create_run.side_effect = lambda r: r

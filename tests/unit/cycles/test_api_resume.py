@@ -114,6 +114,9 @@ _URL_PREFIX = "/api/v1/projects/hello_squad/cycles/cyc_001/runs"
 @pytest.fixture
 def mock_cycle_registry():
     mock = AsyncMock()
+    # #3201: the cycle route reads the latest recorded ending; none recorded here.
+    mock.get_cycle_end.return_value = None
+    mock.get_cycle_ends.return_value = {}
     mock.get_cycle.return_value = _CYCLE
     mock.get_run.return_value = _PAUSED_RUN
     mock.list_runs.return_value = [_PAUSED_RUN]

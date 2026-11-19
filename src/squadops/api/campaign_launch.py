@@ -37,7 +37,7 @@ from squadops.api.routes.cycles.cycles import (
     require_reconciled_upstream,
 )
 from squadops.api.routes.cycles.errors import cycle_error_envelope
-from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.api.routes.cycles.mapping import read_status_of
 from squadops.campaigns.campaign_branch import CampaignHead, NoCampaignHead, head
 from squadops.campaigns.equipment import (
     EQUIPMENT_CHANGED_CODE,
@@ -533,7 +533,7 @@ class CampaignLaunchService:
             return False
         cycles = self._creation.cycle_registry
         cycle = await cycles.get_cycle(cycle_id)
-        if cycle_status_of(cycle, await cycles.list_runs(cycle_id)) in _ENDED:
+        if await read_status_of(cycles, cycle) in _ENDED:
             return False
         bound = await instructions_bound_for(
             missing, self._creation.reference_resolvers or {}, cycle_binding(cycle)

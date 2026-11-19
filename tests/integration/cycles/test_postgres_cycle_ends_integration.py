@@ -107,3 +107,17 @@ async def test_the_endings_refuse_a_rewrite(registry):
             await conn.execute("UPDATE cycle_ends SET last_run_id = 'run_x'")
         with pytest.raises(asyncpg.RaiseError, match="append-only"):
             await conn.execute("DELETE FROM cycle_ends")
+
+
+async def test_the_batch_read_names_each_cycle_s_latest_ending_and_omits_the_unended(registry):
+    """#3201: the cycle list reads every cycle's ending in one query. Bug caught: the batch
+    returning a cycle's first ending rather than its latest (a resumed cycle that ended again),
+    or naming a cycle that recorded none."""
+    reg, _ = registry
+    await reg.record_cycle_end(RecordedEnd("cyc_ce1", "run_1", CycleStopReason.RUN_PAUSED))
+    await reg.record_cycle_end(RecordedEnd("cyc_ce1", "run_1", CycleStopReason.RUN_FAILED))
+
+    ends = await reg.get_cycle_ends(["cyc_ce1", "cyc_never_ended"])
+
+    assert ends == {"cyc_ce1": RecordedEnd("cyc_ce1", "run_1", CycleStopReason.RUN_FAILED)}
+    assert await reg.get_cycle_ends([]) == {}

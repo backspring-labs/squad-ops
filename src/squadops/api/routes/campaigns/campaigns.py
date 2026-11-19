@@ -68,7 +68,7 @@ from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
 from squadops.api.routes.cycles.goal_sets import assessment_response
-from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.api.routes.cycles.mapping import read_status_of
 from squadops.api.runtime.deps import (
     get_artifact_vault,
     get_audit_port,
@@ -1613,7 +1613,9 @@ async def _cancel_launched_cycles(request: Request, campaign_id: str) -> list[st
         # #2214: ended as the cycle route reads it, workloads included. The latest run alone
         # reads a cycle waiting between workloads (its proposal done, its framing pending) as
         # completed, and the abort left it active.
-        status = cycle_status_of(cycle, await cycles.list_runs(cycle.cycle_id))
+        # #3201: and its recorded ending, so a cycle the campaign ended at the gate, whose later
+        # workloads are still pending, isn't read active and cancelled long after it ended.
+        status = await read_status_of(cycles, cycle)
         if status in _TERMINAL_CYCLE:
             continue
         await cancel_cycle_by_the_existing_path(request, cycle.project_id, cycle.cycle_id)
