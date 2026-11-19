@@ -52,6 +52,7 @@ criteria:
     surface: "@player.PlayerGui.TA_HUD.EnergyLabel"   # the path the named assertion observes
     observable: >-
       Played. After Play, the HUD's EnergyLabel's text is exactly "50 / 50".
+      Reads: "The HUD shows the player's energy as 50 / 50."
       Fails on: a label with no text, and one reading "50" alone.
     scenario:
       schema: squadops.scenario/1
@@ -89,7 +90,8 @@ The setup is this game's own title screen: it opens on `TA_Title`, and pressing 
 shows `TA_HUD`, with the player's `Energy` at 50 on the server. On today's game `hud-shown` and
 `energy-full` pass, and `energy-text` fails, because the `EnergyLabel` the example change adds
 isn't there yet. `equals` holds the text to exactly what the criterion promises, where `contains`
-would also accept `150 / 500`.
+would also accept `150 / 500`. `Reads:` quotes the sentence of the item this criterion reads
+(rule 1).
 
 This criterion is about the label's text, and reading text doesn't check that the label is shown.
 That the player sees it is a criterion of its own, beside this one in the same change request, whose
@@ -171,18 +173,30 @@ low-health warning. Yours is another change. Take the shape, never the values.
 
 ### 1. Coverage: every sentence of the item is read by some criterion
 
-Take the item's text one sentence at a time. Each sentence is read by a criterion's check, or a
-criterion's `observable` says it wasn't played and why (rule 6).
+**The item is the objective in your request, word for word.** Before you write anything else, copy
+its sentences out, and work from that copy to the end. Each sentence is read by a criterion of
+yours, whose `observable` quotes it after `Reads:`. A sentence that a criterion an earlier
+increment froze already reads is covered there.
+
+**A criterion reads a sentence when its check fails on a build where that sentence is false.**
+For each sentence, name that build, and find the criterion that fails on it.
 
 > A low-health warning shows on the HUD while the player's health is under 25. It is hidden
 > otherwise.
 
-| the item's sentence | read by |
-|---|---|
-| it shows while health is under 25 | `P1`, headless: no action lowers the player's health |
-| it is hidden otherwise | `S3`, played: at full health the warning is there and not visible |
+| the item's sentence, word for word | a build where it is false | read by |
+|---|---|---|
+| "A low-health warning shows on the HUD while the player's health is under 25." | a warning that never shows | `P1`, headless: no action lowers the player's health |
+| "It is hidden otherwise." | a warning that always shows | `S3`, played: at full health the warning is there and not visible |
 
 A change request holding only `S3` passes on a warning that never shows.
+
+**Your `prd_delta` carries every sentence you copied.** A `prd_delta` saying only "the HUD has a
+low-health warning, hidden at full health" has lost the item's first sentence. The criteria then
+cover that shorter text completely, and the proposal is returned for the half left out. Your
+request says to leave out of `prd_delta` what nothing else in it delivers. That is for something
+you thought of adding. A sentence of the item is delivered: by a played criterion, or by a
+headless one where no play reaches its state (rule 6).
 
 ### 2. Reachability: name only what today's game sets, or your footprint adds
 
@@ -232,6 +246,7 @@ criteria:
     surface: "@player.PlayerGui.TA_HUD.ShieldLabel"
     observable: >-
       Played. From 11 to 20 s after the HUD shows, the label's text holds "in 1".
+      Reads: "The shield label counts down from Shield in 30 s."
       Fails on: a label written once, which stays "Shield in 30 s", and a number with no words.
       Band: the count starts when the HUD shows, and the band opens 11 s later. The wait allows
       25 s to reach it, and the read at its opening has 9 s before it closes.
@@ -293,6 +308,7 @@ criteria:
     surface: "@player.PlayerGui.TA_HUD.LowHealthWarning"
     observable: >-
       Played. After Play, at full health, the warning is there and not visible.
+      Reads: "It is hidden otherwise."
       Fails on: a warning that always shows, and today's game, which has none. A warning that
       never shows passes here: P1 is the criterion that fails on it.
     scenario:
@@ -325,6 +341,7 @@ criteria:
     surface: "Shared.Modules.LowHealthRules"         # a module under a package the product lists
     observable: >-
       Headless. LowHealthRules.shows(24) is true, and shows(25) and shows(100) are false.
+      Reads: "A low-health warning shows on the HUD while the player's health is under 25."
       Not played: no action lowers the player's health, so nobody has watched the warning show.
       Fails on: a rule that never shows, and one that shows at exactly 25.
 ```
@@ -338,13 +355,16 @@ show the warning, so the rule `P1` proves is the one the player's screen uses.
 
 Answer these in each criterion's `observable`, in these words, as the examples do:
 - `Played.` or `Headless.`, then what is observed;
+- `Reads:` the sentence of the item the criterion reads, quoted word for word;
 - `Fails on:` the obvious broken build, and a partial one;
 - `Band:` for a value that changes: where the count starts, when the band opens, and the margin
   on each edge;
 - `Not played:` on a headless criterion: what no play reached, and why.
 
 Then read the item once more, and change the request if an answer is no:
-1. Is every sentence of the item read by a criterion, or declared `Not played:`?
+1. Copy the item's sentences out again, from the objective and not from your `prd_delta`. Is
+   each one quoted after a `Reads:`, by a criterion that fails where that sentence is false, or
+   read by a criterion an earlier increment froze? Does your `prd_delta` hold every one?
 2. Does every action, wait and observation name something today's game sets or your footprint
    adds?
 3. Does each named check fail on the two wrong builds you named, and pass on correct work from

@@ -43,8 +43,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 - **The Roblox scenario-writing skill carries the rules the increment gate applies** (#3199; SIP-0118 R5.8):
   `play-scenario-authoring` gains six rules, each with a worked example: coverage, reachability, the broken build,
   timing, preservation and the kind of evidence. It ends with a self-review answered in each criterion's
-  `observable` (`Played.` or `Headless.`, `Fails on:`, `Band:`, `Not played:`). A state no action reaches is
-  played as far as a scenario goes and proved headless for the rest, with the gap declared.
+  `observable` (`Played.` or `Headless.`, `Reads:`, `Fails on:`, `Band:`, `Not played:`). Coverage is worked from
+  the objective's own sentences, each quoted by the criterion that reads it and kept in the `prd_delta`. A state no
+  action reaches is played as far as a scenario goes and proved headless for the rest, with the gap declared.
 
 ### Fixed
 - **A cycle's recorded ending decides its status** (#3201): a cycle a Campaign ended at the gate kept its later

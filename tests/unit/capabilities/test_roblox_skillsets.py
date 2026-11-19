@@ -10,6 +10,7 @@ the vocabulary, and ``tool_request`` for the tool a scenario's operation runs.
 
 from __future__ import annotations
 
+import re
 from importlib import resources
 from pathlib import Path
 
@@ -111,7 +112,6 @@ def test_a_scenario_isnt_run_by_a_skillset_that_doesnt_supply_it(catalog):
 def _worked_criteria(catalog) -> list[dict]:
     """Every criterion of every whole change-request example in the strategy skill: the fenced
     YAML blocks that hold ``criteria``. A fragment showing one action or assertion isn't one."""
-    import re
 
     import yaml
 
@@ -172,6 +172,28 @@ def test_the_strategy_skills_examples_answer_the_self_review_it_asks_for(catalog
     hidden = criteria["S3"]["scenario"]
     [named] = [a for a in hidden["assertions"] if a["id"] == hidden["named_assertion"]]
     assert named["expect"] == {"op": "equals", "value": False}
+
+
+def test_the_strategy_skills_coverage_table_and_its_examples_quote_the_items_sentences(catalog):
+    """#3199's first replay: an author restated the item without its second sentence and covered
+    the restatement completely. The skill now has each criterion quote the sentence it reads
+    after ``Reads:``, and its coverage table works the invented item one sentence at a time. Bugs
+    caught: an example with no ``Reads:``, so the copied shape drops it; a sentence of the
+    example item missing from the table, which is the omission itself; and the table naming one
+    criterion for a sentence while that criterion's example quotes another."""
+    text = catalog["roblox-increment-design"].skill_files["play-scenario-authoring"]["SKILL.md"]
+    criteria = {c["id"]: c for c in _worked_criteria(catalog)}
+    rule = text[text.index("### 1. Coverage") : text.index("### 2. Reachability")]
+    item = " ".join(line[2:] for line in rule.splitlines() if line.startswith("> "))
+    rows = re.findall(r'^\| "(.+?)" \| .+? \| `(\w+)`', rule, re.M)
+
+    # Joined, the table's sentences are the item: none dropped, none reworded.
+    assert " ".join(sentence for sentence, _ in rows) == item
+    assert [reader for _, reader in rows] == ["P1", "S3"]
+    for sentence, reader in rows:
+        assert f'Reads: "{sentence}"' in " ".join(criteria[reader]["observable"].split())
+    for criterion in criteria.values():
+        assert re.search(r'Reads: ".+?\."', criterion["observable"]), criterion["id"]
 
 
 def test_the_strategy_skill_keeps_its_stop_for_an_effect_nothing_can_observe(catalog):

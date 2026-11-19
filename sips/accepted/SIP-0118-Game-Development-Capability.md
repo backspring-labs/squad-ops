@@ -350,7 +350,7 @@ design, so the shape of a sound criterion had to come from the skill. It had one
 
 | rule | what it asks | the return it answers |
 |---|---|---|
-| **Coverage** | every sentence of the item is read by a criterion, or declared unplayed | the half left out |
+| **Coverage** | every sentence of the item, taken word for word from the objective, is read by a criterion that quotes it | the half left out |
 | **Reachability** | every action, wait and observation names something today's game sets or the footprint adds | the wait on a value nothing sets |
 | **The broken build** | the named check fails on the obvious broken build and on a partial one, and passes on any correct one | the format-only check, the counter read for the text, the exact match |
 | **Timing** | a changing value is read as a band, from a start the criterion states, with margin on both edges | the one-second window, and a band read at its edge |
@@ -368,11 +368,24 @@ design, so the shape of a sound criterion had to come from the skill. It had one
   from any start, and the read at its opening has the band's length before it closes. A held key walks the
   player, which is the preservation rule's case.
 - **The self-review is answered in `observable`,** the criterion's own text, which the supervisor reads as the
-  review aid's "Claims" (`scenario_review.md`): `Played.` or `Headless.`, `Fails on:`, `Band:` and `Not played:`.
-  Every example in the skill answers it in those words.
+  review aid's "Claims" (`scenario_review.md`): `Played.` or `Headless.`, `Reads:`, `Fails on:`, `Band:` and
+  `Not played:`. Every example in the skill answers it in those words.
+- **Coverage is worked from the item's own sentences** (revised 2026-11-19, after the first replay). The first
+  text asked that every sentence of the item be read, and left "the item" undefined. In the replay's revised arm,
+  one generation of three for the lobby-hint case restated the item in its `prd_delta` without the sentence about
+  the state no play reaches, then covered that restatement completely: two played checks, nothing headless
+  (`var/replays/roblox-skills-v4-revised`, the table on #3199). The request template tells an author to leave out
+  of `prd_delta` what nothing else in the request delivers, and the author applied it to a sentence of the item.
+  The rule now:
+  - names the item as the request's objective, copied out sentence by sentence before anything is written;
+  - says a criterion reads a sentence when its check fails on a build where that sentence is false, and has the
+    criterion quote the sentence after `Reads:`;
+  - says the `prd_delta` carries every copied sentence, and that the template's "leave it out" is for something
+    the author thought of adding;
+  - counts a sentence an earlier increment's frozen criterion reads as covered there.
 - **The examples are invented:** a shield label that counts down and a low-health warning. Neither is in the
   game's goal set, and the replay's cases stay unseen by the skill.
-- **The skill grows from 10,018 to 20,021 characters.** The size preflight counts it for a proposal
+- **The skill grows from 10,018 to 21,656 characters.** The size preflight counts it for a proposal
   (SIP-0116 §17m).
 
 **What isn't built.** A deterministic check of reachability at the proposal seam. It needs a map of the place,
@@ -381,12 +394,15 @@ which is the 2.10 plan's.
 **What ships it.** The skills replay under `roblox-skills-v4` (SIP-0116 §17p), which the Spark lane runs: the
 returned shapes as authoring cases beside every `v3` case, today's skill and this one as two arms, judged by rule
 and by play on fixed broken and correct candidates. The 2.8.1 plan states the predictions. If one fails, the skill
-doesn't ship on this text.
+doesn't ship on this text. The first text failed two on 2026-11-19 and didn't ship: the coverage omission above,
+and one development case whose input was byte-identical in both arms. The Spark lane replays this text the same
+way.
 
 **The tests.** `tests/unit/capabilities/test_roblox_skillsets.py`: every whole example in the skill is read by the
 rails under `roblox-studio/1`, with its scenario id its criterion's and its surface its named assertion's path;
 every example answers the self-review in the words the skill asks for; the changing value's example waits for its
-band and reads the same band; and the stop stands before the new case.
+band and reads the same band; the coverage table's sentences are the example item's, word for word, each quoted
+after `Reads:` by the criterion the table names; and the stop stands before the new case.
 
 **Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 4 names the six rules, the self-review
 and the replay. The owner's three rules and two timing notes are on #3199. The MacBook lane wrote the text, under
