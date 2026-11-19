@@ -92,3 +92,45 @@ def test_a_slow_request_is_logged_with_its_path_and_a_fast_one_is_not(slow_app, 
     lines = [r.getMessage() for r in caplog.records if "slow_request" in r.getMessage()]
     assert len(lines) == 1
     assert "path=/api/v1/workers/claim status=200" in lines[0]
+
+
+def test_a_loop_that_stops_running_is_not_a_held_one(caplog):
+    """Bug caught (main's CI on eab34509): a watchdog whose loop stopped kept reading the frozen
+    heartbeat as a stall and logged it into whatever ran next, in a test, into another test's
+    warnings. A loop nobody runs holds no request, and a closed one leaves nothing to watch."""
+    loop = asyncio.new_event_loop()
+    dog = LoopWatchdog(threshold_s=0.1, heartbeat_s=0.02, resample_s=10.0)
+
+    async def start_and_return() -> None:
+        dog.start()
+        await asyncio.sleep(0.05)
+
+    with caplog.at_level(logging.WARNING, logger="squadops.api.runtime.loop_watchdog"):
+        loop.run_until_complete(start_and_return())  # the loop stops; the watchdog doesn't
+        time.sleep(0.4)  # four thresholds with no loop running
+        loop.close()
+        dog._thread.join(timeout=1.0)
+
+    assert not [r for r in caplog.records if "event_loop" in r.getMessage()]
+    assert not dog._thread.is_alive()
+
+
+async def test_a_startup_that_fails_stops_its_watchdog(monkeypatch):
+    """Bug caught: ``_startup`` raising after the watchdog started, with no shutdown to stop it,
+    so its thread outlives the app. Entered at ``_startup``, as the lifespan calls it."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from squadops.api.runtime import main as runtime_main
+
+    class _Boom(RuntimeError):
+        pass
+
+    monkeypatch.setattr(runtime_main, "create_pool", AsyncMock(side_effect=_Boom("no database")))
+    app = MagicMock()
+
+    with pytest.raises(_Boom):
+        await runtime_main._startup(app)
+
+    dog = app.state.loop_watchdog
+    assert isinstance(dog, LoopWatchdog)
+    assert not dog._thread.is_alive()

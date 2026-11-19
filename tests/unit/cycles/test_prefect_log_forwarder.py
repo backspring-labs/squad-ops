@@ -144,7 +144,11 @@ class TestForwarderFailureHandling:
             await fw.close(timeout=0.5)
         assert fw.stats.posted == 0
         assert fw.stats.dropped_on_failure >= 6
-        warn_lines = [r for r in caplog.records if r.levelno == logging.WARNING]
+        warn_lines = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING and r.name == "adapters.cycles.prefect_log_forwarder"
+        ]
         assert len(warn_lines) == 1, f"expected one WARN, got {len(warn_lines)}"
         assert "POST /logs failed" in warn_lines[0].message
 

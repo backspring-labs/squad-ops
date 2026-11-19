@@ -1005,10 +1005,21 @@ async def _startup(app: FastAPI) -> None:
     """Initialize the database pool, then every subsystem, onto ``app.state``. The runtime holds
     no AMQP connection of its own: every publish goes through the queue port, which opens its own
     (#2322)."""
+    # #3218: first, so a start-up that holds the loop is named too. A start-up that fails stops
+    # it again, since no shutdown follows to stop it (a watchdog left reading a loop that no longer
+    # runs logs stalls nobody has).
+    app.state.loop_watchdog = LoopWatchdog()
+    app.state.loop_watchdog.start()
+    try:
+        await _start_subsystems(app)
+    except BaseException:
+        app.state.loop_watchdog.stop()
+        raise
+
+
+async def _start_subsystems(app: FastAPI) -> None:
+    """Everything ``_startup`` starts after the watchdog, in dependency order."""
     state, config = app.state, app.state.config
-    # #3218: first, so a start-up that holds the loop is named too.
-    state.loop_watchdog = LoopWatchdog()
-    state.loop_watchdog.start()
     state.pool = await create_pool(config.database().url, min_size=1, max_size=10)  # #577
     await _init_auth_subsystem(state, config)
     await _init_migrations(config, state.pool)

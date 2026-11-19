@@ -61,12 +61,14 @@ class LoopWatchdog:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._task: asyncio.Task | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def start(self) -> None:
         """Start from inside the running loop: the heartbeat task and the reading thread."""
         self._loop_thread_id = threading.get_ident()
         self._beat = self._clock()
-        self._task = asyncio.get_running_loop().create_task(self._heartbeat())
+        self._loop = asyncio.get_running_loop()
+        self._task = self._loop.create_task(self._heartbeat())
         self._thread = threading.Thread(target=self._watch, name="loop-watchdog", daemon=True)
         self._thread.start()
 
@@ -91,6 +93,14 @@ class LoopWatchdog:
         sampled_at = 0.0
         while not self._stop.wait(self._heartbeat_s):
             now = self._clock()
+            loop = self._loop
+            if loop is None or loop.is_closed() or (self._task is not None and self._task.done()):
+                return  # nothing left to watch: the loop closed, or the heartbeat ended
+            if not loop.is_running():
+                # A stopped loop isn't a held one: nothing waits on it. The heartbeat restarts
+                # with the loop, so the stall clock starts again from now.
+                self._beat, stalled_from = now, None
+                continue
             lag = now - self._beat
             if lag > self._threshold_s:
                 if stalled_from is None or now - sampled_at >= self._resample_s:
