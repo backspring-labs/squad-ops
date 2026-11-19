@@ -239,7 +239,7 @@ class TestCycleToResponseStatus:
         )
         runs = [_make_run("run_001", 1, "completed", "framing")]
 
-        resp = cycle_to_response(cycle, runs)
+        resp = cycle_to_response(cycle, runs, None)
 
         # two workloads in the effective sequence → cycle still active
         assert resp.status == "active"
@@ -257,7 +257,7 @@ class TestCycleToResponseStatus:
         cycle = _make_cycle(workload_sequence=ws)
         runs = [_make_run("run_001", 1, "completed", "framing")]
 
-        resp = cycle_to_response(cycle, runs)
+        resp = cycle_to_response(cycle, runs, None)
 
         assert resp.status == "active"
         assert resp.workload_progress[0].status == "completed"
@@ -273,7 +273,7 @@ class TestCycleToResponseStatus:
         cycle = _make_cycle(workload_sequence=ws)
         runs = [_make_run("run_001", 1, "paused", "framing")]
 
-        resp = cycle_to_response(cycle, runs)
+        resp = cycle_to_response(cycle, runs, None)
 
         assert resp.status == "paused"
         assert resp.workload_progress[0].status == "gate_awaiting"
@@ -293,7 +293,7 @@ class TestCycleToResponseStatus:
         cycle = _make_cycle(workload_sequence=ws)
         runs = [_make_run("run_001", 1, "completed", "framing", gate_decisions=(decision,))]
 
-        resp = cycle_to_response(cycle, runs)
+        resp = cycle_to_response(cycle, runs, None)
 
         assert resp.status == "failed"
 
@@ -309,7 +309,7 @@ class TestCycleToResponseStatus:
             _make_run("run_002", 2, "completed", "implementation"),
         ]
 
-        resp = cycle_to_response(cycle, runs)
+        resp = cycle_to_response(cycle, runs, None)
 
         assert resp.status == "completed"
 
@@ -318,7 +318,7 @@ class TestCycleToResponseStatus:
         cycle = _make_cycle()  # no workload_sequence
         runs = [_make_run("run_001", 1, "completed")]
 
-        resp = cycle_to_response(cycle, runs)
+        resp = cycle_to_response(cycle, runs, None)
 
         assert resp.status == "completed"
         assert resp.workload_progress == []
@@ -328,7 +328,7 @@ class TestCycleToResponseStatus:
         cycle = _make_cycle(cancelled=True)
         runs = [_make_run("run_001", 1, "completed")]
 
-        resp = cycle_to_response(cycle, runs)
+        resp = cycle_to_response(cycle, runs, None)
 
         assert resp.status == "cancelled"
 
@@ -336,7 +336,7 @@ class TestCycleToResponseStatus:
         """cycle.cancelled=True wins even before any runs exist."""
         cycle = _make_cycle(cancelled=True)
 
-        resp = cycle_to_response(cycle, runs=[])
+        resp = cycle_to_response(cycle, runs=[], end=None)
 
         assert resp.status == "cancelled"
 
@@ -346,7 +346,7 @@ class TestCycleOutcomeInResponse:
 
     def test_outcome_omitted_when_not_provided(self):
         """List/legacy callers pass no outcome → the field is None, not fabricated."""
-        resp = cycle_to_response(_make_cycle(), runs=[])
+        resp = cycle_to_response(_make_cycle(), runs=[], end=None)
         assert resp.cycle_outcome is None
 
     def test_outcome_mapped_when_provided(self):
@@ -364,7 +364,7 @@ class TestCycleOutcomeInResponse:
             run_count=2,
         )
 
-        resp = cycle_to_response(_make_cycle(), runs=[], cycle_outcome=outcome)
+        resp = cycle_to_response(_make_cycle(), runs=[], end=None, cycle_outcome=outcome)
 
         assert resp.cycle_outcome is not None
         assert resp.cycle_outcome.verdict == "blocked_unverified"
@@ -394,7 +394,7 @@ class TestCycleOutcomeInResponse:
             ),
         )
 
-        resp = cycle_to_response(_make_cycle(), runs=[], cycle_outcome=outcome)
+        resp = cycle_to_response(_make_cycle(), runs=[], end=None, cycle_outcome=outcome)
 
         assert resp.cycle_outcome.replay is not None
         assert resp.cycle_outcome.replay.source_run_id == "run_src"

@@ -217,4 +217,4 @@ async def test_the_registry_and_the_read_route_return_the_record_a_cycle_was_cre
     stored = await registry.get_cycle("cyc_1")
 
     assert stored.skillset_record == record
-    assert cycle_to_response(stored, []).skillset_record == record
+    assert cycle_to_response(stored, [], None).skillset_record == record

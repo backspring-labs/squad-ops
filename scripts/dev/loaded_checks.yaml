@@ -736,8 +736,22 @@ checks:
       sequence = [{"type": "proposal", "gate": "progress_increment_ruling"}, {"type": "framing"}]
       cycle = Cycle(cycle_id="c", project_id="p", created_at=datetime.now(UTC), created_by="s", prd_ref=None, squad_profile_id="full", squad_profile_snapshot_ref="sha256:x", task_flow_policy=TaskFlowPolicy(mode="sequential"), build_strategy="fresh", applied_defaults={"workload_sequence": sequence})
       run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
-      print(cycle_status_of(cycle, [run]).value, "cycle_status_of" in inspect.getsource(routes._cancel_launched_cycles))
+      print(cycle_status_of(cycle, [run], None).value, "read_status_of" in inspect.getsource(routes._cancel_launched_cycles))
     expect: "active True"
+  - id: "3201"
+    what: a cycle a campaign ended at the gate reads ended from its recorded ending, with its later workloads still pending, so an abort leaves it alone
+    container: squadops-runtime-api
+    code: |
+      from datetime import UTC, datetime
+      from squadops.api.routes.cycles.mapping import cycle_reading_of
+      from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+      from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
+      sequence = [{"type": "proposal", "gate": "progress_increment_ruling"}, {"type": "framing"}, {"type": "implementation"}]
+      cycle = Cycle(cycle_id="c", project_id="p", created_at=datetime.now(UTC), created_by="s", prd_ref=None, squad_profile_id="full", squad_profile_snapshot_ref="sha256:x", task_flow_policy=TaskFlowPolicy(mode="sequential"), build_strategy="fresh", applied_defaults={"workload_sequence": sequence})
+      run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
+      reading = cycle_reading_of(cycle, [run], RecordedEnd("c", "r", CycleStopReason.REVISION_UNAVAILABLE))
+      print(reading.status.value, reading.recorded_ending.value)
+    expect: "failed revision_unavailable"
   - id: "2239"
     what: an agent sends its metrics to the collector over OTLP, and each model call's decode rate is a metric
     container: squadops-neo

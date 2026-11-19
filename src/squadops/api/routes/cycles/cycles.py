@@ -1171,7 +1171,8 @@ async def list_cycles(
     )
     # The page's runs in one read (#1976): one query per cycle made a page of 500 cost 501.
     runs = await registry.list_runs_for_cycles([c.cycle_id for c in cycles])
-    return [cycle_to_response(c, runs[c.cycle_id]) for c in cycles]
+    ends = await registry.get_cycle_ends([c.cycle_id for c in cycles])
+    return [cycle_to_response(c, runs[c.cycle_id], ends.get(c.cycle_id)) for c in cycles]
 
 
 @router.get("/{cycle_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
@@ -1184,7 +1185,8 @@ async def get_cycle(request: Request, project_id: str, cycle_id: str) -> CycleRe
     # kept out of the list path to avoid a per-cycle query), the same
     # derive-on-read pattern as the cycle status above.
     outcome = await resolve_cycle_outcome(registry, cycle_id)
-    return cycle_to_response(cycle, runs, cycle_outcome=outcome)
+    end = await registry.get_cycle_end(cycle_id)
+    return cycle_to_response(cycle, runs, end, cycle_outcome=outcome)
 
 
 @router.get("/{cycle_id}/assessment", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])

@@ -51,6 +51,9 @@ def mock_artifact_vault():
 @pytest.fixture
 def mock_cycle_registry():
     mock = AsyncMock()
+    # #3201: the cycle route reads the latest recorded ending; none recorded here.
+    mock.get_cycle_end.return_value = None
+    mock.get_cycle_ends.return_value = {}
     cycle = Cycle(
         cycle_id="cyc_001",
         project_id="hello_squad",

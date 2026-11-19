@@ -30,7 +30,7 @@ from squadops.api.memory_schemas import (
     SnapshotBindingResponse,
 )
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.api.routes.cycles.mapping import read_status_of
 from squadops.api.routes.memory.interventions import dispatch_turn, record_on_control_log
 from squadops.api.runtime.deps import (
     get_campaign_launch,
@@ -143,7 +143,7 @@ async def _ended(request: Request, kind: UnitKind, unit: Any) -> bool:
     if kind is UnitKind.CAMPAIGN:
         return unit.state is CampaignState.COMPLETED
     cycles = get_cycle_registry(request)
-    return cycle_status_of(unit, await cycles.list_runs(unit.cycle_id)) in _ENDED_CYCLE
+    return await read_status_of(cycles, unit) in _ENDED_CYCLE
 
 
 @router.post("/{unit_kind}/{unit_id}/rebindings", status_code=201)
@@ -286,7 +286,7 @@ async def _bind_running_cycles(
             i.cycle_id for i in intents if i.state is LaunchIntentState.LAUNCHED and i.cycle_id
         ]:
             cycle = await cycles.get_cycle(cycle_id)
-            if cycle_status_of(cycle, await cycles.list_runs(cycle_id)) in _ENDED_CYCLE:
+            if await read_status_of(cycles, cycle) in _ENDED_CYCLE:
                 continue
             bound = await instructions_bound_for((replacement,), resolvers, cycle_binding(cycle))
             if bound:

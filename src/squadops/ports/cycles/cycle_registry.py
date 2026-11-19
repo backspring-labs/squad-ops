@@ -323,6 +323,11 @@ class CycleRegistryPort(ABC):
         """The cycle's latest recorded ending, or ``None`` when it recorded none (a cycle in
         flight, or one that ended before endings were recorded)."""
 
+    @abstractmethod
+    async def get_cycle_ends(self, cycle_ids: Sequence[str]) -> dict[str, RecordedEnd]:
+        """Each cycle's latest recorded ending, in one read; a cycle that recorded none is absent
+        (#3201: a page of cycles reads its status from its endings without a query per cycle)."""
+
     # --- Checkpoint (SIP-0079) ---
 
     @abstractmethod

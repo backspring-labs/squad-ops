@@ -377,6 +377,9 @@ class MemoryCycleRegistry(CycleRegistryPort):
         ends = self._cycle_ends.get(cycle_id)
         return ends[-1] if ends else None
 
+    async def get_cycle_ends(self, cycle_ids: Sequence[str]) -> dict[str, RecordedEnd]:
+        return {c: self._cycle_ends[c][-1] for c in cycle_ids if self._cycle_ends.get(c)}
+
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return a cycle's persisted per-run verification summaries, by run_number."""
         runs = sorted(

@@ -9,8 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
-from enum import Enum
+from dataclasses import dataclass
+from enum import Enum, StrEnum
 
+from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
     CycleStatus,
@@ -183,6 +185,89 @@ def resolve_cycle_status(
         return CycleStatus.ACTIVE
 
     return derived
+
+
+#: How each recorded ending reads on the cycle's status (#3201). The durable ``cycle_ends`` row is
+#: the cycle's own record of how it stopped, so it decides the status once the cycle has ended.
+#: ``None`` marks a stop that isn't an ending of the cycle: a paused run resumes, a run returned
+#: still going is read from its runs, and a single workload's end is how its one run ended.
+STATUS_OF_ENDING: dict[CycleStopReason, CycleStatus | None] = {
+    CycleStopReason.SEQUENCE_COMPLETED: CycleStatus.COMPLETED,
+    CycleStopReason.SINGLE_WORKLOAD_ENDED: None,
+    CycleStopReason.RUN_FAILED: CycleStatus.FAILED,
+    CycleStopReason.RUN_CANCELLED: CycleStatus.CANCELLED,
+    CycleStopReason.RUN_PAUSED: None,
+    CycleStopReason.RUN_NOT_TERMINAL: None,
+    CycleStopReason.PLAN_REJECTED: CycleStatus.FAILED,
+    CycleStopReason.GATE_REJECTED: CycleStatus.FAILED,
+    CycleStopReason.REVISION_UNAVAILABLE: CycleStatus.FAILED,
+    CycleStopReason.GATE_DECISION_UNRECOGNIZED: CycleStatus.FAILED,
+    CycleStopReason.GATE_FAILED: CycleStatus.FAILED,
+    CycleStopReason.CRITERIA_NOT_CHECKABLE: CycleStatus.FAILED,
+    CycleStopReason.SKILL_STOPPED: CycleStatus.FAILED,
+}
+
+_LIVE_RUN = frozenset({RunStatus.QUEUED.value, RunStatus.RUNNING.value, RunStatus.PAUSED.value})
+
+
+class StatusConflict(StrEnum):
+    """Two records of one cycle that disagree, named on the read and never resolved silently."""
+
+    #: The cycle recorded an ending, and a run from before it still reads queued, running or
+    #: paused. The status is the run's, so an end row never hides work that is really going.
+    RUN_LIVE_AFTER_ENDING = "run_live_after_ending"
+    #: The cycle recorded an ending, and was cancelled afterwards (#3201: an abort cancelled a
+    #: cycle that had ended at the gate 40 minutes earlier). The ending came first, so it stands.
+    CANCELLED_AFTER_ENDING = "cancelled_after_ending"
+
+
+@dataclass(frozen=True)
+class CycleReading:
+    """A cycle's status, the recorded ending it reads from (if any), and any conflict."""
+
+    status: CycleStatus
+    recorded_ending: CycleStopReason | None
+    conflict: StatusConflict | None
+
+
+def read_cycle_status(
+    runs: Sequence[Run],
+    cycle_cancelled: bool,
+    workload_statuses: Sequence[str] | None,
+    end: RecordedEnd | None,
+) -> CycleReading:
+    """The cycle's status with its recorded ending authoritative (#3201).
+
+    Precedence, in order:
+    1. no recorded ending, or one that isn't an ending (``STATUS_OF_ENDING`` is ``None``): the
+       runs and workloads decide, as ``resolve_cycle_status`` reads them;
+    2. a run newer than the ending's last run: the cycle was reopened after it ended, so the runs
+       decide and the ending is history;
+    3. a run from before the ending still live: the runs decide, and the conflict is named;
+    4. otherwise the ending decides. A cancellation on top of an ending that wasn't one is named
+       as the conflict, and the ending stands, because it was recorded first: cancelling a live
+       cycle ends its run cancelled, which records ``run_cancelled``.
+    """
+
+    derived = resolve_cycle_status(runs, cycle_cancelled, workload_statuses=workload_statuses)
+    ending_status = STATUS_OF_ENDING[end.stopped_because] if end is not None else None
+    if end is None or ending_status is None:
+        return CycleReading(derived, None, None)
+    last = next((r for r in runs if r.run_id == end.last_run_id), None)
+    if last is not None and any(r.run_number > last.run_number for r in runs):
+        return CycleReading(derived, None, None)
+    if any(r.status in _LIVE_RUN for r in runs):
+        # The latest run alone can read completed while an earlier one still runs: live wins.
+        live = (
+            derived if derived in (CycleStatus.ACTIVE, CycleStatus.PAUSED) else CycleStatus.ACTIVE
+        )
+        return CycleReading(live, end.stopped_because, StatusConflict.RUN_LIVE_AFTER_ENDING)
+    conflict = (
+        StatusConflict.CANCELLED_AFTER_ENDING
+        if cycle_cancelled and ending_status is not CycleStatus.CANCELLED
+        else None
+    )
+    return CycleReading(ending_status, end.stopped_because, conflict)
 
 
 class WorkloadStranding(Enum):

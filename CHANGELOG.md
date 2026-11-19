@@ -5,6 +5,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **A cycle's recorded ending decides its status** (#3201): a cycle a Campaign ended at the gate kept its later
+  workloads pending, so the cycle route read it `active`, and rehearsal 3's abort cancelled it 40 minutes after it
+  ended. The latest `cycle_ends` row now maps onto the status, and the cycle's response names it
+  (`recorded_ending`). A run still live from before the ending, or a cancel after it, is named as a
+  `status_conflict` and never hides the other record. The abort, the cycle list and detail, the memory routes and the
+  binding fill read it the same way; the list reads every cycle's ending in one query.
+
 ## [2.8.0] — 2026-11-18
 
 A feature release (`docs/plans/2-8-0-plan.md`): a squad builds and plays an existing Roblox game. On the counted
