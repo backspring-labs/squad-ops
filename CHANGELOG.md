@@ -30,6 +30,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   that has stopped running as a held one.
 
 ### Changed
+- **The artifact vault no longer holds the runtime's event loop** (#3218, the 2.8.1 plan's item 6): the
+  artifact-id index (92,000 entries, 8 MB on the Spark) is kept in memory, so a lookup reads no file, and every
+  vault operation's file IO runs in a worker thread. Concurrent stores share one index write, and each store
+  still returns only once the index file holds its entry. Before this, each store, promote and retrieve parsed the
+  index on the loop, and each store rewrote it. A run's checkout seeding and a gate's promotion held the API for
+  18 to 41 s.
 - **A Luau product's suite author is told its own runner's rules** (#3147; SIP-0112 H.37): the `qa.test` system
   prompt named pytest and vitest, with FastAPI, Next.js and JSX examples, on every product. A product that tests
   only with Luau runners is now sent a fragment written for its runner, with the rules that hold on every stack.
