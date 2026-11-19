@@ -35,6 +35,13 @@ the chime should play), and it proves the rule: nobody has checked that a player
 So where the effect a player gets is the whole of what was asked, stop as above, however small a
 part of it a test could reach.
 
+**A state no action reaches is another case, and there a `package` criterion is the answer.** The
+effect is one the reader observes (a text, something shown or hidden), but part of what was asked
+holds only in a state the four actions can't bring about: low health, a later level, another place.
+Then play the half a scenario reaches, prove the rest headless on a module that only computes, and
+say what no play reached. Rule 6 below shows it. A weaker played check never stands in for the
+half that can't be played.
+
 ## The criterion in `change_request.yaml`
 
 ```yaml
@@ -43,7 +50,9 @@ criteria:
     statement: The HUD's energy label reads "50 / 50"
     surface_kind: scenario
     surface: "@player.PlayerGui.TA_HUD.EnergyLabel"   # the path the named assertion observes
-    observable: "after Play, the HUD's EnergyLabel's text is exactly 50 / 50"
+    observable: >-
+      Played. After Play, the HUD's EnergyLabel's text is exactly "50 / 50".
+      Fails on: a label with no text, and one reading "50" alone.
     scenario:
       schema: squadops.scenario/1
       scenario_id: S1                                 # the criterion's id
@@ -154,6 +163,193 @@ this skill, is the reader's own declaration of all of this.
   in setup. Put what the criterion's player does in steps.
 - **Wait for what you then read.** After a step whose effect takes time, add a `wait_until` on it
   before the assertions.
+
+## Six rules, each with an example
+
+The examples are about two changes this game doesn't have: a shield label that counts down, and a
+low-health warning. Yours is another change. Take the shape, never the values.
+
+### 1. Coverage: every sentence of the item is read by some criterion
+
+Take the item's text one sentence at a time. Each sentence is read by a criterion's check, or a
+criterion's `observable` says it wasn't played and why (rule 6).
+
+> A low-health warning shows on the HUD while the player's health is under 25. It is hidden
+> otherwise.
+
+| the item's sentence | read by |
+|---|---|
+| it shows while health is under 25 | `P1`, headless: no action lowers the player's health |
+| it is hidden otherwise | `S3`, played: at full health the warning is there and not visible |
+
+A change request holding only `S3` passes on a warning that never shows.
+
+### 2. Reachability: name only what today's game sets, or your footprint adds
+
+Every setup action, wait and observation names something the product's map or instructions show
+the game setting today, or something a file in your `footprint` adds. A wait on anything else never
+comes true. In setup that holds the increment. In steps the wait times out, the scenario goes on,
+and the assertions read a world the wait never reached, so correct work fails.
+
+```yaml
+# Wrong: nothing in the game sets a Zone attribute, and no action walks to the arena.
+- action: wait_until
+  observe: {kind: attribute, path: "@player", name: Zone, context: server}
+  expect: {op: equals, value: Arena}
+  deadline_s: 30
+```
+
+Where no action reaches the state, don't play it: prove its rule headless (rule 6).
+
+### 3. The broken build: the named check fails on broken work, and passes on correct work
+
+Before you write the named assertion, name two wrong builds of the change:
+- **the obvious broken one:** the text written once and never updated, the warning that never
+  hides, the counter that never moves;
+- **a partial one:** half of what was asked, such as the right number with its words missing.
+
+The named assertion fails on both, and on today's game. It passes on every correct build, whatever
+start point or timing the item leaves open. For "the shield label counts down from `Shield in 30 s`":
+
+| a named check | what is wrong with it |
+|---|---|
+| `contains "Shield in"` | passes on a label stuck at its first text: it reads the format only |
+| `not_equals "Shield in 30 s"` | passes on any other text, and where the label is missing |
+| `equals "Shield in 15 s"` | fails on correct work: that text holds for one second |
+| an attribute `ShieldSeconds` `less_than 30` | passes with no label at all: the player reads the text, not a counter |
+
+### 4. Timing: a band, from a start the criterion states, with margin on both edges
+
+Read a value that changes each second as a band: a part of its text that stays the same for
+several seconds (a tens digit), never one that changes every second. State where the count starts,
+wait for the band, then read it.
+
+```yaml
+criteria:
+  - id: S2
+    statement: The HUD's shield label counts down by one each second from "Shield in 30 s", starting when the HUD shows
+    surface_kind: scenario
+    surface: "@player.PlayerGui.TA_HUD.ShieldLabel"
+    observable: >-
+      Played. From 11 to 20 s after the HUD shows, the label's text holds "in 1".
+      Fails on: a label written once, which stays "Shield in 30 s", and a number with no words.
+      Band: the count starts when the HUD shows, and the band opens 11 s later. The wait allows
+      25 s to reach it, and the read at its opening has 9 s before it closes.
+    scenario:
+      schema: squadops.scenario/1
+      scenario_id: S2
+      reader: roblox-studio/1
+      setup:
+        - action: wait_until
+          observe: {kind: gui_state, path: "@player.PlayerGui.TA_Title.Content.Column.Play", state: visible, context: client}
+          expect: {op: equals, value: true}
+          deadline_s: 20
+        - action: click_gui
+          path: "@player.PlayerGui.TA_Title.Content.Column.Play"
+        - action: wait_until
+          observe: {kind: property, path: "@player.PlayerGui.TA_Title", name: Name, context: client}
+          expect: {op: absent}
+          deadline_s: 10
+      steps:
+        - action: wait_until                          # time passes, and the player doesn't move
+          observe: {kind: gui_state, path: "@player.PlayerGui.TA_HUD.ShieldLabel", state: text, context: client}
+          expect: {op: contains, value: "in 1"}
+          deadline_s: 25
+      assertions:
+        - id: hud-shown
+          observe: {kind: property, path: "@player.PlayerGui.TA_HUD", name: Enabled, context: client}
+          expect: {op: equals, value: true}
+        - id: shield-counting
+          observe: {kind: gui_state, path: "@player.PlayerGui.TA_HUD.ShieldLabel", state: text, context: client}
+          expect: {op: contains, value: "in 1"}
+      named_assertion: shield-counting
+```
+
+The wait is on the label the footprint adds, so on today's game it times out and `shield-counting`
+fails, as it must. A stuck label never reaches the band, and fails the same way. A working one
+reaches `Shield in 19 s` from any start within the first seconds, and the read comes straight after.
+
+If you let time pass with a `hold_key` instead, hold to the middle of the band (15 s for a band of
+11 to 20 s), never to its edge: a count that starts a little late reads the second before. And the
+key moves the player (rule 5).
+
+### 5. Preservation: read what must still work on its own
+
+A check that something from before still works (another criterion's label, an earlier screen) is
+read where nothing unrelated has happened yet: with the shortest setup, and before any long step.
+Holding `W` for 15 seconds walks the player, and can take them through a door into another place,
+where a label that was right no longer shows. So let time pass with a `wait_until`, as above, and
+never make one criterion's scenario read another criterion's element after a walk.
+
+### 6. The kind of evidence: say played or headless, and what no play reached
+
+Each criterion's `observable` starts `Played.` or `Headless.` The warning's two criteria:
+
+```yaml
+criteria:
+  - id: S3
+    statement: At full health the low-health warning is on the HUD and hidden
+    surface_kind: scenario
+    surface: "@player.PlayerGui.TA_HUD.LowHealthWarning"
+    observable: >-
+      Played. After Play, at full health, the warning is there and not visible.
+      Fails on: a warning that always shows, and today's game, which has none. A warning that
+      never shows passes here: P1 is the criterion that fails on it.
+    scenario:
+      schema: squadops.scenario/1
+      scenario_id: S3
+      reader: roblox-studio/1
+      setup:
+        - action: wait_until
+          observe: {kind: gui_state, path: "@player.PlayerGui.TA_Title.Content.Column.Play", state: visible, context: client}
+          expect: {op: equals, value: true}
+          deadline_s: 20
+        - action: click_gui
+          path: "@player.PlayerGui.TA_Title.Content.Column.Play"
+        - action: wait_until
+          observe: {kind: property, path: "@player.PlayerGui.TA_Title", name: Name, context: client}
+          expect: {op: absent}
+          deadline_s: 10
+      steps: []
+      assertions:
+        - id: hud-shown
+          observe: {kind: property, path: "@player.PlayerGui.TA_HUD", name: Enabled, context: client}
+          expect: {op: equals, value: true}
+        - id: warning-hidden
+          observe: {kind: gui_state, path: "@player.PlayerGui.TA_HUD.LowHealthWarning", state: visible, context: client}
+          expect: {op: equals, value: false}
+      named_assertion: warning-hidden
+  - id: P1
+    statement: The warning's rule shows it under 25 health, and hides it at 25 and above
+    surface_kind: package
+    surface: "Shared.Modules.LowHealthRules"         # a module under a package the product lists
+    observable: >-
+      Headless. LowHealthRules.shows(24) is true, and shows(25) and shows(100) are false.
+      Not played: no action lowers the player's health, so nobody has watched the warning show.
+      Fails on: a rule that never shows, and one that shows at exactly 25.
+```
+
+`warning-hidden` expects `false` with `equals`, which a missing warning fails, so it fails on
+today's game. No played check can fail on a warning that never shows, since no play lowers
+health. `P1` fails on it, and says what it doesn't prove. The HUD asks `LowHealthRules` whether to
+show the warning, so the rule `P1` proves is the one the player's screen uses.
+
+## Before you submit
+
+Answer these in each criterion's `observable`, in these words, as the examples do:
+- `Played.` or `Headless.`, then what is observed;
+- `Fails on:` the obvious broken build, and a partial one;
+- `Band:` for a value that changes: where the count starts, when the band opens, and the margin
+  on each edge;
+- `Not played:` on a headless criterion: what no play reached, and why.
+
+Then read the item once more, and change the request if an answer is no:
+1. Is every sentence of the item read by a criterion, or declared `Not played:`?
+2. Does every action, wait and observation name something today's game sets or your footprint
+   adds?
+3. Does each named check fail on the two wrong builds you named, and pass on correct work from
+   any start?
+4. Is anything that must still work read before any long step, and by its own criterion?
 
 ## Saved state
 

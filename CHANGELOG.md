@@ -40,6 +40,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   prompt named pytest and vitest, with FastAPI, Next.js and JSX examples, on every product. A product that tests
   only with Luau runners is now sent a fragment written for its runner, with the rules that hold on every stack.
   Every other run's `qa.test` system prompt is byte for byte what it was.
+- **The Roblox scenario-writing skill carries the rules the increment gate applies** (#3199; SIP-0118 R5.8):
+  `play-scenario-authoring` gains six rules, each with a worked example: coverage, reachability, the broken build,
+  timing, preservation and the kind of evidence. It ends with a self-review answered in each criterion's
+  `observable` (`Played.` or `Headless.`, `Fails on:`, `Band:`, `Not played:`). A state no action reaches is
+  played as far as a scenario goes and proved headless for the rest, with the gap declared.
 
 ### Fixed
 - **A cycle's recorded ending decides its status** (#3201): a cycle a Campaign ended at the gate kept its later

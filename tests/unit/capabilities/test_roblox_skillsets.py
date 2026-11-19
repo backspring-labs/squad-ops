@@ -108,25 +108,83 @@ def test_a_scenario_isnt_run_by_a_skillset_that_doesnt_supply_it(catalog):
         tool_request(catalog, operation)
 
 
-def test_the_strategy_skills_worked_example_is_one_the_rails_accept(catalog):
-    """Bug caught: the vocabulary or the rails changing under the skill, so the one example the
-    strategy model copies from teaches a scenario every proposal is refused for (an action the
-    reader no longer takes, a surface that isn't the named assertion's path)."""
+def _worked_criteria(catalog) -> list[dict]:
+    """Every criterion of every whole change-request example in the strategy skill: the fenced
+    YAML blocks that hold ``criteria``. A fragment showing one action or assertion isn't one."""
     import re
 
     import yaml
 
+    text = catalog["roblox-increment-design"].skill_files["play-scenario-authoring"]["SKILL.md"]
+    examples = [yaml.safe_load(block) for block in re.findall(r"```yaml\n(.*?)```", text, re.S)]
+    return [
+        criterion
+        for example in examples
+        if isinstance(example, dict) and "criteria" in example
+        for criterion in example["criteria"]
+    ]
+
+
+def test_every_worked_example_in_the_strategy_skill_is_one_the_rails_accept(catalog):
+    """Bug caught: the vocabulary or the rails changing under the skill, or an example added
+    that they refuse, so an example the strategy model copies from teaches a scenario every
+    proposal is refused for (an action the reader no longer takes, a surface that isn't the
+    named assertion's path, a scenario id that isn't its criterion's)."""
     from squadops.remote_execution.scenario import read_declaration
 
+    scenarios = [c for c in _worked_criteria(catalog) if c["surface_kind"] == "scenario"]
+
+    assert [c["id"] for c in scenarios] == ["S1", "S2", "S3"]
+    for criterion in scenarios:
+        declaration = read_declaration(criterion["scenario"], studio_vocabulary.VOCABULARY)
+        named = next(
+            a for a in declaration.assertions if a.assertion_id == declaration.named_assertion
+        )
+        assert declaration.scenario_id == criterion["id"]
+        assert named.observe.arguments["path"] == criterion["surface"], criterion["id"]
+
+
+def test_the_strategy_skills_examples_answer_the_self_review_it_asks_for(catalog):
+    """#3199: the skill ends by asking each criterion's ``observable`` to say, in fixed words,
+    whether it is played or headless, the wrong builds it fails on, a changing value's band,
+    and what a headless criterion left unplayed. The model copies the examples. Bugs caught: an
+    example that leaves an answer out, so the copied shape does too; the headless example
+    declaring no gap; and the example of a changing value named by an exact match or a
+    format-only check, the two shapes the 2.8 gate returned."""
+    criteria = {c["id"]: c for c in _worked_criteria(catalog)}
+
+    for criterion in criteria.values():
+        kind = "Headless." if criterion["surface_kind"] == "package" else "Played."
+        assert criterion["observable"].startswith(kind), criterion["id"]
+        assert "Fails on:" in criterion["observable"], criterion["id"]
+    assert "Band:" in criteria["S2"]["observable"]
+    assert "Not played:" in criteria["P1"]["observable"]
+    assert [c["surface_kind"] for c in criteria.values()].count("package") == 1
+    # The changing value is waited for and then read as a band, and never moved to by a key.
+    counting = criteria["S2"]["scenario"]
+    [wait] = counting["steps"]
+    [named] = [a for a in counting["assertions"] if a["id"] == counting["named_assertion"]]
+    assert (wait["action"], wait["expect"], wait["observe"]) == (
+        "wait_until", named["expect"], named["observe"],
+    )  # fmt: skip
+    assert named["expect"] == {"op": "contains", "value": "in 1"}
+    # The played half of the two-part result fails on today's game: a missing warning fails equals.
+    hidden = criteria["S3"]["scenario"]
+    [named] = [a for a in hidden["assertions"] if a["id"] == hidden["named_assertion"]]
+    assert named["expect"] == {"op": "equals", "value": False}
+
+
+def test_the_strategy_skill_keeps_its_stop_for_an_effect_nothing_can_observe(catalog):
+    """`roblox-skills-v3`'s unobservable case answers with this stop, and #3199 adds a case
+    beside it where a `package` criterion is right (a state no action reaches). Bug caught: the
+    new rule read as lifting the stop, so a sound is "proved" by a headless test of its rule."""
     text = catalog["roblox-increment-design"].skill_files["play-scenario-authoring"]["SKILL.md"]
-    criterion = yaml.safe_load(re.search(r"```yaml\n(.*?)```", text, re.S).group(1))["criteria"][0]
+    stop = text.index("If the criterion's effect is one `roblox-studio/1` can't observe, stop.")
+    no_way_round = text.index("A `package` criterion is no way round that.")
+    unreachable = text.index("A state no action reaches is another case")
 
-    declaration = read_declaration(criterion["scenario"], studio_vocabulary.VOCABULARY)
-
-    named = next(a for a in declaration.assertions if a.assertion_id == declaration.named_assertion)
-    assert criterion["surface_kind"] == "scenario"
-    assert declaration.scenario_id == criterion["id"]
-    assert named.observe.arguments["path"] == criterion["surface"]
+    assert stop < no_way_round < unreachable
+    assert 'stops: ["no scenario:"]' in text.split("---")[1]
 
 
 def test_the_roblox_profile_is_the_neutral_profile_with_a_platform_and_requirements():

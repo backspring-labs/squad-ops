@@ -2877,3 +2877,13 @@ checks:
       held = inspect.getsource(RobloxStudioRunner._reset_held)
       print(sorted(ProvedOn("v", "t", "c").named("qualified")), q.SCHEMA[-2:], "names no channel" in inspect.getsource(q.Qualifications.current), held.count("self._moved_channel("), hasattr(StudioApp, "channel"))
     expect: "['qualified.studio_channel', 'qualified.studio_tools', 'qualified.studio_version'] /2 True 2 True"
+  - id: "3199-scenario-skill-rules"
+    what: the strategy agent's packaged scenario skill carries the six rules, its self-review, and whole examples the rails read (SIP-0118 R5.8)
+    container: squadops-nat
+    code: |
+      import re, yaml
+      from squadops.capabilities.skillsets import load_skillsets
+      md = load_skillsets()["roblox-increment-design"].skill_files["play-scenario-authoring"]["SKILL.md"]
+      whole = [d for d in map(yaml.safe_load, re.findall(r"```yaml\n(.*?)```", md, re.S)) if isinstance(d, dict)]
+      print(len(re.findall(r"^### [1-6]\. ", md, re.M)), "## Before you submit" in md, [c["id"] for d in whole for c in d["criteria"]], 'stops: ["no scenario:"]' in md)
+    expect: "6 True ['S1', 'S2', 'S3', 'P1'] True"
