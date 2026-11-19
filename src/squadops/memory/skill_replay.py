@@ -423,7 +423,7 @@ def meets(expect: Mapping[str, Any], reading: Any) -> bool:
     (``remote_execution.scenario.expectation_met``). A ``null`` reading is an absent value. An
     expectation the reader wouldn't read meets nothing."""
     try:
-        expectation = Expectation(ExpectOp(expect.get("op")), expect.get("value"))
+        expectation = Expectation(ExpectOp(str(expect.get("op"))), expect.get("value"))
     except ValueError:
         return False
     return expectation_met(expectation, ABSENT if reading is None else reading)
