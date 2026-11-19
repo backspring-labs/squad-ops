@@ -157,3 +157,41 @@ def test_the_registry_factory_builds_the_retry_from_the_config_and_requires_it()
     assert registry._retry == TransientRetry(attempts=4, backoff_seconds=0.2)
     with pytest.raises(ValueError, match="retry is required"):
         create_cycle_registry("postgres", pool=MagicMock())
+
+
+class _SlowAcquire(_Acquire):
+    async def __aenter__(self) -> _Conn:
+        import asyncio
+
+        await asyncio.sleep(self._pool.wait_s)
+        return await super().__aenter__()
+
+
+class _SlowPool(_Pool):
+    """A pool whose ten connections are all out: ``acquire`` waits before it hands one over."""
+
+    def __init__(self, wait_s: float) -> None:
+        super().__init__()
+        self.wait_s = wait_s
+
+    def acquire(self) -> _Acquire:
+        return _SlowAcquire(self)
+
+
+@pytest.mark.parametrize(("wait_s", "logged"), [(0.15, True), (0.0, False)])
+async def test_a_slow_pool_acquire_is_logged_and_a_quick_one_is_not(
+    monkeypatch, caplog, wait_s, logged
+):
+    """#3218. Bug caught: a request that waited on a spent pool reading the same as one that
+    waited on a held loop, so the stall after a gate entry can't be told apart."""
+    import logging
+
+    from adapters.persistence import transient
+
+    monkeypatch.setattr(transient, "SLOW_ACQUIRE_S", 0.1)
+    with caplog.at_level(logging.WARNING, logger="adapters.persistence.transient"):
+        async with NO_PAUSE.acquire(_SlowPool(wait_s)):
+            pass
+
+    lines = [r.getMessage() for r in caplog.records if "slow_pool_acquire" in r.getMessage()]
+    assert len(lines) == (1 if logged else 0)
