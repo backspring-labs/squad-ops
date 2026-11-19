@@ -2816,7 +2816,7 @@ checks:
       from squadops.remote_execution.serving import Worker
       held = inspect.getsource(RobloxStudioRunner._reset_held)
       reset = inspect.getsource(Worker._reset)
-      print("self._proved_version()" in held, held.count("self._replaced_since(before)"), reset.count("self._record(tool_ready="))
+      print("self._proof()" in held, held.count("self._replaced_since(before)"), reset.count("self._record(tool_ready="))
     expect: "True 2 2"
   - id: "3192-tool-unready-retries"
     what: a not_executed the worker returns for its own tool is flagged, crosses the wire, and delivery reads it as a scenario no worker took (SIP-0117 R5.28)
@@ -2866,3 +2866,14 @@ checks:
       d = load_profile("campaign-increment-source-client-stops").defaults
       print(LUAU_CLIENT_THROW.startswith('if typeof(game) == "Instance"'), FAULTS["luau_client_throws_at_start"].bound_cycles, bound_cycle_faults(d["fault_injection"]), d["max_correction_attempts"])
     expect: "True False [] 0"
+  - id: "3206-studio-channel-in-proof"
+    what: Studio's qualification identity is its version, channel and tool list; a pin naming no channel is refused, and the channel is held across a reset (SIP-0117 R5.29)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.remote_execution.game_dev_roblox_studio import qualification as q
+      from adapters.remote_execution.game_dev_roblox_studio.runner import ProvedOn, RobloxStudioRunner
+      from adapters.remote_execution.game_dev_roblox_studio.studio_app import StudioApp
+      held = inspect.getsource(RobloxStudioRunner._reset_held)
+      print(sorted(ProvedOn("v", "t", "c").named("qualified")), q.SCHEMA[-2:], "names no channel" in inspect.getsource(q.Qualifications.current), held.count("self._moved_channel("), hasattr(StudioApp, "channel"))
+    expect: "['qualified.studio_channel', 'qualified.studio_tools', 'qualified.studio_version'] /2 True 2 True"

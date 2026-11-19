@@ -3,8 +3,9 @@
 
 # Platform: dev-mac (Roblox Studio and its StudioMCP run on the worker's Mac)
 
-After Studio updates itself, every claim reads ``not_executed`` naming the version or tool list
-that changed (R2.4). This run is the only way to move the pin: the qualification scenario played,
+After Studio updates itself or moves release channel, every claim reads ``not_executed`` naming
+the version, channel or tool list that changed (R2.4, R5.29). This run is the only way to move
+the pin: the qualification scenario played,
 the place reset (Studio quit, the place restored and Studio reopened), and the scenario played
 again. The record is written to the worker's qualifications directory, passed or failed, and the
 worker's next claim reads the newest passing one. A failed run leaves the pin where it was and
@@ -26,7 +27,10 @@ import sys
 from pathlib import Path
 
 from adapters.remote_execution.game_dev_roblox_studio import worker as studio_worker
-from adapters.remote_execution.game_dev_roblox_studio.qualification import requalify
+from adapters.remote_execution.game_dev_roblox_studio.qualification import (
+    QualificationRecord,
+    requalify,
+)
 from adapters.remote_execution.game_dev_roblox_studio.runner import OPERATION, PROVIDER
 from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
 from squadops.remote_execution.models import RemoteOperationRequest
@@ -56,9 +60,9 @@ async def _main(repo: Path, scenario_file: Path) -> int:
         )  # fmt: skip
 
     pinned = records.pinned()
-    print(f"pinned before: {pinned.studio_version if pinned else 'nothing'}")
+    print("pinned before: " + (_studio(pinned) if pinned else "nothing"))
     record, path = await requalify(records, runner_for, request_for)
-    print(f"{'passed' if record.passed else 'FAILED'}: Studio {record.studio_version}, "
+    print(f"{'passed' if record.passed else 'FAILED'}: Studio {_studio(record)}, "
           f"tools {record.studio_tools[:24]}…")  # fmt: skip
     print(f"  tools added {list(record.tools_added)}, removed {list(record.tools_removed)}")
     for step in record.steps:
@@ -69,6 +73,12 @@ async def _main(repo: Path, scenario_file: Path) -> int:
         print(f"  failing: {record.failing}")
     print(f"recorded: {path}")
     return 0 if record.passed else 1
+
+
+def _studio(record: QualificationRecord) -> str:
+    """A record's Studio: its version, and its channel or that it names none (#3206)."""
+    channel = f"channel {record.studio_channel}" if record.studio_channel else "no channel named"
+    return f"{record.studio_version or 'no version read'}, {channel}"
 
 
 def main() -> int:

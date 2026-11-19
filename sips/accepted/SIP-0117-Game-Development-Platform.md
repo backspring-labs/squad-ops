@@ -157,7 +157,7 @@ in the portfolio's §4).
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
   `docs/ideas/Doc traceability.txt`; the repository's SIP template, `sips/TEMPLATE.md`.
 
-## Delivery ledger (current as of 2026-11-18, the 2.8.0 cut)
+## Delivery ledger (current as of 2026-11-18, the 2.8.1 line)
 
 One row per part that ships separately. Statuses: *shipped* (the release, the PR, and the issue it closed),
 *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once numbered), *unplaced* (said
@@ -197,6 +197,7 @@ phases are in its own ledger.
 | The worker's lease: a renewal carries the health read before the claim and never probes a running tool, and an operation that ended while a renewal was out submits its result and isn't reset (R5.26) | **shipped** | 2.8 (PR #3186, closing #3185) |
 | The reset names a Studio update: Studio's version is read before the quit and after the reopening, a Studio that isn't the proved version is refused before anything is touched, and every reset's outcome goes on the worker's status (R5.27) | **shipped** | 2.8 (PR #3188, closing #3184) |
 | A worker whose tool isn't ready is read as an absent one: `tool_unready` on a `not_executed` the worker returns for its own environment, so an increment blocked only by it is retried, never repaired (R5.28) | **shipped** | 2.8 (PR #3195, closing #3192) |
+| Studio's qualification identity includes its release channel: read from the running Studio's startup log, held to the proof at every claim and across every reset, recorded in the qualification record and in each result's `ran_with` beside the proof's (R5.29) | **shipped** | 2.8.1 (PR #3220, closing #3206) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1534,6 +1535,96 @@ off on a request's own defect. `test_worker_serving.py` holds it on a reset that
 
 **Who ruled.** The owner, 2026-11-17: "go ahead and fix 3192". The Spark lane built it. Whether the provider should
 bring Studio to the front itself is #3193, for the owner's ruling, and isn't this.
+
+## R5.29 Studio's qualification identity includes its release channel (#3206, 2026-11-18; R2.4, R5.19, R5.21, R5.27, R5.28)
+
+**What changed.** The Studio a worker is proved on was its version and its tool list (R5.19, R5.21). It is now its
+version, its release channel and its tool list.
+
+| Point | As built |
+|---|---|
+| **Where the channel is read** | From the startup log the running Studio holds open (`[FLog::ClientRunInfo] The channel is …`), found through `lsof` on Studio's one process. So it is the channel of the Studio a play would run on, never of an earlier launch whose log is in the same directory |
+| **When it's compared** | At every claim, before any tool is called, with the version and the tool list (`_held_to_proof`). At a reset, before anything is touched and again after the reopening (R5.27's two readings). A claim replayed after a reset is checked again |
+| **A channel that differs** | The claim reads `not_executed`, naming both channels, and is flagged `tool_unready` (R5.28). So the increment is retried and the candidate never repaired |
+| **A channel that can't be read** | Refused the same way, naming why: no Studio running, more than one, no startup log held open or more than one, a log naming no channel, or `lsof` failing. No channel is assumed |
+| **A proof that names no channel** | The newest passing record is the pin (R5.21). One made before this amendment names no channel, and the worker runs nothing on it. An older record that does name one is never used in its place |
+| **The record** | Schema `squadops.studio-qualification/2` adds `studio_channel`. A `/1` record is still read as the run it was, with the digest it was written with, so the directory stays readable and a re-qualification can say what it replaces |
+| **Each result** | `ran_with` carries the proof's identity (`qualified.studio_version`, `qualified.studio_channel`, `qualified.studio_tools`) and the identity the play ran on (`played.…`), beside `qualified_by` |
+| **The worker's registration** | `tool_versions` gains `studio_channel`. A worker registers before its Studio is up when its first reset fails (R5.23), so a channel not read then registers as `unread`. Each claim reads it again |
+| **`squadops doctor`** | The `qualified` check names the pin's channel, fails a pin that names none, and fails when a running Studio is on another channel or doesn't say its channel. With no Studio running it has no channel to compare, and says so |
+
+**The evidence.**
+- **The move that prompted it** (#3206): on 2026-11-18, after the 2.8 demonstration's window closed, Studio on the
+  worker's Mac restarted through its installer. Its version (`0.748.0.7481526`) and tool list (`38:1ba499d8…`) were
+  unchanged, and its channel went from `production` to `zluauordereddensehashmapcontrol`. Every check the worker made
+  passed. The channel was read by hand, and the worker re-qualified before it played again.
+- **It wasn't the first.** The Mac's kept startup logs (44 launches, 2026-10-29 to 2026-11-18) name five channels.
+  At `0.747.0.7471481` alone Studio launched on three:
+
+  | launches (UTC) | version | channel |
+  |---|---|---|
+  | 2026-11-10 (2 launches) | `0.747.0.7471481` | `production` |
+  | 2026-11-14 to 2026-11-16 (11 launches) | `0.747.0.7471481` | `zmimalloc747control` |
+  | 2026-11-17, 15:13 and 15:31 | `0.747.0.7471481` | `zliveforbeta` |
+  | 2026-11-17 19:28 | `0.747.0.7471481` | `production` |
+  | 2026-11-17 19:29 to 2026-11-18 13:06 (9 launches) | `0.748.0.7481526` | `production` |
+  | 2026-11-18 18:36 onward | `0.748.0.7481526` | `zluauordereddensehashmapcontrol` |
+
+  Read against the qualification records' times, no play of the 2.8 line ran on a channel other than its
+  record's. One launch did differ: 2026-11-17 19:28, on `production` under a record made on `zliveforbeta`. It
+  exited into the 0.748 update before it played (R5.27). Nothing recorded any of this, and nothing would have
+  refused a play had a move fallen between a record and a run.
+- **Every kept log names its channel once,** on the same line, within the first second of the launch.
+
+**The rules.**
+- **A channel move is a change of the proved Studio,** as an update is. A channel can carry another build or flag
+  set at one version number. Only a recorded re-qualification moves the pin (R5.21).
+- **Missing evidence refuses.** The owner's ruling against silent fallbacks: an unread channel, and a proof that
+  names none, each run nothing and say so.
+- **The reset's reopening is a launch, and Roblox's updater moves channels at a launch.** R5.27's rule for a
+  version is applied to the channel:
+  - a running Studio on a channel the proof doesn't name is refused before anything is touched, with the
+    re-qualification it needs;
+  - a Studio that comes back on another channel is named with both, whether or not the place came back. On
+    2026-11-18 the moved Studio came back holding no place, as an updated one does;
+  - a reopened Studio that doesn't say its channel is refused.
+- **The Studio a reset is about to quit may not say its channel,** and that stops nothing. It is being reset
+  because its state is unknown, and the reopened Studio is the one a play would run on.
+- **With no proof at all** (the reset run by hand) the channel is compared across the reopening alone, as the
+  version is.
+- **The provider's version stays 2.** What the harness reads of a game is unchanged. A re-qualification is forced
+  by the pin naming no channel, which the refusal says, and a version move would have said less.
+
+**What isn't known.** Whether any of these channels' builds behaves differently from `production`'s at the same
+version. Nothing compared them. The rule doesn't rest on it.
+
+**Its limits.**
+- **The read is the Mac's.** `lsof` and Studio's log naming are behind `StudioApp.channel()`, and another platform's
+  worker supplies its own.
+- **Studio's log format is Roblox's.** A Studio that stops writing the line, or renames its log, reads as a channel
+  that can't be read, and every claim is refused by name until the reader is changed.
+
+**The tests.**
+- `tests/unit/remote_execution/test_roblox_studio_play_scenario.py`, entered at `RobloxStudioRunner.run`, each on a
+  Studio at the proved version: another channel, a channel that can't be read and a proof naming no channel each
+  run nothing, flagged, with no tool called; a Studio that comes back from the reset's relaunch on another channel,
+  or not saying its channel, runs nothing. A completed play's `ran_with` carries both identities.
+- `test_roblox_studio_requalification.py`: a Studio that moved channel runs nothing, a failed re-qualification on
+  the new channel leaves the pin and the worker refusing, and a passed one moves it and the plays run. A
+  re-qualification on a Studio that doesn't say its channel fails at its tool check. The 2.8 worker's own record,
+  byte for byte, is read with its digest, is refused as a pin, and no older record stands in. The wiring test
+  enters at `Worker.serve()` with the runner as `create_runner` builds it, over the real registry, and reads the
+  reason and the flag the runtime stores, for a pin from 2.8 and for a Studio on another channel.
+- `test_roblox_studio_reset.py`, entered at `RobloxStudioRunner.reset`: a move at the reopening with the place
+  back, with no place, and with no proof; a reopened Studio that doesn't say its channel; a running Studio on
+  another channel refused with nothing touched; and a Studio that doesn't say its channel before the quit, reset.
+- `test_roblox_studio_channel.py`, entered at `MacStudioApp.channel` with `pgrep` and `lsof` answered as the Mac's
+  answered: the running Studio's log among another launch's, a log open on two descriptors, a line a game script
+  printed, and each way of not reading it.
+- Fifteen mutations of these rules each fail at least one test.
+
+**Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 3 states the identity, the comparisons,
+the refusal and the record. The MacBook lane built it and owns the Studio adapter.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 
