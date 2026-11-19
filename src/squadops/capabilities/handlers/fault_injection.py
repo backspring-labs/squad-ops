@@ -527,7 +527,7 @@ def _luau_player_text_drops_a_word(content: str, product: Mapping[str, str] | No
     return content
 
 
-#: #3222 (the 2.8.1 plan's item 5): the line a client script gets, which throws where Roblox loads
+#: #3222 (the 2.8.1 plan's item 5): the line a client script gets, which throws where the engine loads
 #: the script and nowhere else. ``typeof(game)`` is ``"Instance"`` only where ``game`` is the
 #: engine's DataModel: the product's headless loader builds ``game`` as a table (z_tower's
 #: ``tests/loader.luau``), so its specs load the file and pass, and only the play meets the throw.
@@ -539,7 +539,7 @@ LUAU_CLIENT_THROW = (
 
 
 def _luau_client_throws_at_start(content: str) -> str:
-    """The emission with its first client script made to throw where Roblox loads it, or
+    """The emission with its first client script made to throw where the engine loads it, or
     unchanged when the change touches no client script.
 
     Rehearsal 3's B-2 shape (#3200): the candidate's ``HUD.luau`` threw at the client's start, so

@@ -1,5 +1,5 @@
 name: campaign-increment-source-client-stops
-description: "#3222: `campaign-increment-source` verbatim, and TWO differences: it declares the `luau_client_throws_at_start` fault, so each increment's first development emission carries a client script that throws where Roblox loads it, and `max_correction_attempts` is 0, so no in-run correction stands in. The candidate's plays read setup_failed, the cycle blocked_unverified, and a Campaign routes §10 row 8: the 2.8.1 plan's item 5. A diagnostic: a cycle that declares a fault is never counted. Its parity with `campaign-increment-source` is asserted by a test."
+description: "#3222: `campaign-increment-source` verbatim, and TWO differences: it declares the `luau_client_throws_at_start` fault, so each increment's first development emission carries a client script that throws where the engine loads it, and `max_correction_attempts` is 0, so no in-run correction stands in. The candidate's plays read setup_failed, the cycle blocked_unverified, and a Campaign routes §10 row 8: the 2.8.1 plan's item 5. A diagnostic: a cycle that declares a fault is never counted. Its parity with `campaign-increment-source` is asserted by a test."
 defaults:
   fault_injection: [luau_client_throws_at_start]
   correction_steps: [analyze, decide, repair]
