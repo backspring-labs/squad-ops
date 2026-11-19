@@ -2,18 +2,24 @@
 
 # Platform: dev-mac (Roblox Studio and its StudioMCP run on the worker's Mac)
 
-Studio updates itself, unasked, and its tool list changes with it. The worker is pinned to the
-Studio version and tool list its operation was proved on, so after an update each claim reads
-``not_executed`` with the difference named (R2.4). The only way to move the pin is a
-re-qualification on the updated Studio, and its record is the pin:
+Studio updates itself, unasked, and its tool list changes with it. Roblox's updater also moves
+an install to another release channel at one version number (#3206). The worker is pinned to
+the Studio version, channel and tool list its operation was proved on, so after either each
+claim reads ``not_executed`` with the difference named (R2.4). The only way to move the pin is
+a re-qualification on the Studio as it is now, and its record is the pin:
 - **the run:** the qualification scenario played on the live Studio, the place reset (Studio
   quit, the place restored, Studio reopened), and the scenario played again. It passes when both
   plays complete with every assertion passed, and the reset succeeds;
 - **the record:** one JSON document per run, passed or failed, in the worker's qualifications
-  directory. It names the Studio version and tool list it ran on, the tools added and removed
-  since the pin it replaces, the scenario and source it played, and each step's outcome;
+  directory. It names the Studio version, channel and tool list it ran on, the tools added and
+  removed since the pin it replaces, the scenario and source it played, and each step's
+  outcome;
 - **the pin:** the newest passing record for this provider version. A failed run leaves the pin
   where it was, and names the step that failed.
+
+**A record made before the channel was recorded** (schema ``/1``) is still read, as the run it
+was, and names no channel. When it is the newest passing record the worker runs nothing, and
+says so (R5.29): an older record is never used in its place, and no channel is assumed for it.
 
 Each record carries the digest of its own body, and a record whose digest doesn't match is
 refused by name, as is any record that can't be read. A pin isn't moved by editing a file.
@@ -49,15 +55,23 @@ from adapters.remote_execution.game_dev_roblox_studio.runner import (
 from adapters.remote_execution.game_dev_roblox_studio.session import StudioSessionError
 from squadops.remote_execution.models import OperationStatus, RemoteOperationRequest
 
-SCHEMA = "squadops.studio-qualification/1"
+#: A record names Studio's channel from ``/2`` (#3206).
+SCHEMA = "squadops.studio-qualification/2"
+#: The schema before it: the same record with no channel.
+SCHEMA_WITHOUT_CHANNEL = "squadops.studio-qualification/1"
 LOCK_NAME = "studio.lock"
-_KEYS = frozenset(
+_KEYS_WITHOUT_CHANNEL = frozenset(
     {
         "schema", "provider", "provider_version", "recorded_at", "passed", "failing",
         "studio_version", "studio_tools", "tool_names", "replaces", "tools_added",
         "tools_removed", "scenario_digest", "source_revision", "steps", "digest",
     }
 )  # fmt: skip
+#: Each schema's keys. A record is read under the schema it names, with exactly its keys.
+_KEYS = {
+    SCHEMA: _KEYS_WITHOUT_CHANNEL | {"studio_channel"},
+    SCHEMA_WITHOUT_CHANNEL: _KEYS_WITHOUT_CHANNEL,
+}
 
 
 @dataclass(frozen=True)
@@ -99,6 +113,9 @@ class QualificationRecord:
     studio_version: str
     #: ``<count>:<schema digest>``, as the runner holds Studio to it.
     studio_tools: str
+    #: Studio's release channel, from its startup log (#3206). Empty for a record made before
+    #: the channel was recorded, and for a run whose tool check failed.
+    studio_channel: str
     tool_names: tuple[str, ...]
     #: The digest of the passing record whose pin this run would replace, or empty for the first.
     replaces: str
@@ -108,10 +125,16 @@ class QualificationRecord:
     source_revision: str
     steps: tuple[Step, ...]
     provider_version: str = PROVIDER_VERSION
+    #: The schema the record was written under, so a record read back has the body, and the
+    #: digest, it was written with.
+    schema: str = SCHEMA
 
     def body(self) -> dict[str, Any]:
+        channel = {} if self.schema == SCHEMA_WITHOUT_CHANNEL else {
+            "studio_channel": self.studio_channel
+        }  # fmt: skip
         return {
-            "schema": SCHEMA,
+            "schema": self.schema,
             "provider": PROVIDER,
             "provider_version": self.provider_version,
             "recorded_at": self.recorded_at,
@@ -119,6 +142,7 @@ class QualificationRecord:
             "failing": self.failing,
             "studio_version": self.studio_version,
             "studio_tools": self.studio_tools,
+            **channel,
             "tool_names": list(self.tool_names),
             "replaces": self.replaces,
             "tools_added": list(self.tools_added),
@@ -136,7 +160,9 @@ class QualificationRecord:
         return _digest(self.body())
 
     def pins(self) -> ProvedOn:
-        return ProvedOn(self.studio_version, self.studio_tools, record=self.digest)
+        return ProvedOn(
+            self.studio_version, self.studio_tools, self.studio_channel, record=self.digest
+        )
 
     def to_document(self) -> dict[str, Any]:
         return {**self.body(), "digest": self.digest}
@@ -148,13 +174,25 @@ def _digest(body: Mapping[str, Any]) -> str:
 
 def record_from_document(document: Any, where: str) -> QualificationRecord:
     """The record, or :class:`NotProved` naming what is wrong with it. Nothing is defaulted."""
-    if not isinstance(document, dict) or set(document) != _KEYS:
-        keys = sorted(document) if isinstance(document, dict) else type(document).__name__
-        raise NotProved(f"the qualification record {where} isn't one: its keys are {keys}")
-    if document["schema"] != SCHEMA or document["provider"] != PROVIDER:
+    if not isinstance(document, dict):
         raise NotProved(
-            f"the qualification record {where} is {document['schema']} for "
-            f"{document['provider']}, not {SCHEMA} for {PROVIDER}"
+            f"the qualification record {where} isn't one: it is a {type(document).__name__}"
+        )
+    schema = document.get("schema")
+    if not isinstance(schema, str) or schema not in _KEYS:
+        raise NotProved(
+            f"the qualification record {where} isn't one: it names the schema {schema!r}, and "
+            f"a record is {' or '.join(sorted(_KEYS))}"
+        )
+    keys = _KEYS[schema]
+    if set(document) != keys:
+        raise NotProved(
+            f"the qualification record {where} isn't one: its keys are {sorted(document)}"
+        )
+    if document["provider"] != PROVIDER:
+        raise NotProved(
+            f"the qualification record {where} is {schema} for {document['provider']}, not "
+            f"for {PROVIDER}"
         )
     body = {k: v for k, v in document.items() if k != "digest"}
     if _digest(body) != document["digest"]:
@@ -173,6 +211,7 @@ def record_from_document(document: Any, where: str) -> QualificationRecord:
             failing=document["failing"],
             studio_version=document["studio_version"],
             studio_tools=document["studio_tools"],
+            studio_channel=document["studio_channel"] if "studio_channel" in keys else "",
             tool_names=tuple(document["tool_names"]),
             replaces=document["replaces"],
             tools_added=tuple(document["tools_added"]),
@@ -181,6 +220,7 @@ def record_from_document(document: Any, where: str) -> QualificationRecord:
             source_revision=document["source_revision"],
             steps=steps,
             provider_version=document["provider_version"],
+            schema=schema,
         )
     except (KeyError, TypeError) as e:
         raise NotProved(f"the qualification record {where} can't be read: {e!r}") from e
@@ -219,6 +259,13 @@ class Qualifications:
                 f"no passing qualification of {PROVIDER} {PROVIDER_VERSION} is recorded in "
                 f"{self.directory}, so nothing says which Studio {OPERATION} was proved on "
                 "(R2.4); re-qualify"
+            )
+        if not record.studio_channel:
+            raise NotProved(
+                f"the newest passing qualification of {PROVIDER} {PROVIDER_VERSION}, recorded "
+                f"{record.recorded_at}, names no channel: it was made before Studio's channel "
+                "was part of what an operation is proved on (#3206). No older record and no "
+                "assumed channel stands in for it; re-qualify (scripts/dev/studio_requalify.py)"
             )
         return record.pins()
 
@@ -264,14 +311,17 @@ async def requalify(
         steps: list[Step] = []
         names: tuple[str, ...] = ()
         try:
-            probe = runner_for(ProvedOn("", ""))
-            version, check = await probe.live_studio()
+            probe = runner_for(ProvedOn("", "", ""))
+            live, check = await probe.live_studio()
         except (StudioSessionError, ValueError, OSError) as e:
-            version, tools = "", ""
+            # The channel is part of what is read here (#3206): a Studio that doesn't say its
+            # channel fails the run, and the pin stays where it was.
+            version, tools, channel = "", "", ""
             steps.append(Step("tool check", "failed", f"{type(e).__name__}: {e}"))
         else:
-            tools, names = f"{check.count}:{check.schema_digest}", check.names
-            runner = runner_for(ProvedOn(version, tools))
+            version, tools, channel = live.studio_version, live.studio_tools, live.studio_channel
+            names = check.names
+            runner = runner_for(ProvedOn(version, tools, channel))
             for name in ("play 1", "reset", "play 2"):
                 if steps and not steps[-1].passed:
                     break
@@ -284,6 +334,7 @@ async def requalify(
             failing=failed[0].failure() if failed else "",
             studio_version=version,
             studio_tools=tools,
+            studio_channel=channel,
             tool_names=tuple(names),
             replaces=previous.digest if previous else "",
             tools_added=tuple(sorted(set(names) - set(previous.tool_names if previous else ()))),

@@ -25,7 +25,11 @@ from adapters.remote_execution.game_dev_roblox_studio.runner import (
     RobloxStudioRunner,
     studio_version,
 )
-from adapters.remote_execution.game_dev_roblox_studio.studio_app import PlaceFiles
+from adapters.remote_execution.game_dev_roblox_studio.studio_app import (
+    MacStudioApp,
+    PlaceFiles,
+    StudioApp,
+)
 from squadops.remote_execution.workers import HostCheck
 
 __all__ = ["PROVIDER", "SETTINGS", "create_qualifier", "create_runner", "host_checks"]
@@ -81,15 +85,17 @@ def _place(settings: Mapping[str, str]) -> tuple[PlaceFiles, Path]:
     return files, paths["roblox_studio_mcp"]
 
 
-def host_checks(settings: Mapping[str, str]) -> list[HostCheck]:
+def host_checks(settings: Mapping[str, str], app: StudioApp | None = None) -> list[HostCheck]:
     """What ``squadops doctor`` checks of the Mac a Studio worker runs on (#3046). Reads only:
-    nothing is opened, started or written.
+    nothing is opened, started or written. ``app`` is the Mac's Studio, for a test to stand
+    in for.
 
     - **Studio:** installed where the settings say, with a version that can be read;
     - **StudioMCP:** the proxy present and executable;
     - **the place:** the place file there, and the baseline file there and equal to its pin;
-    - **qualified:** a passing re-qualification of the Studio installed now (#3048). An update
-      that hasn't been re-qualified fails here before it fails a claim."""
+    - **qualified:** a passing re-qualification of the Studio installed now (#3048), on the
+      channel a running Studio is on (#3206). An update or a channel move that hasn't been
+      re-qualified fails here before it fails a claim."""
     mcp = Path(settings.get("roblox_studio_mcp") or "").expanduser()
     checks = []
     try:
@@ -108,7 +114,10 @@ def host_checks(settings: Mapping[str, str]) -> list[HostCheck]:
         )
     )
     checks.append(_place_check(settings))
-    checks.append(_qualified_check(settings, version))
+    if app is None and len(mcp.parents) > 2:
+        # ``StudioMCP`` sits at ``…/RobloxStudio.app/Contents/MacOS/StudioMCP``.
+        app = MacStudioApp(mcp.parents[2])
+    checks.append(_qualified_check(settings, version, app))
     return checks
 
 
@@ -129,7 +138,9 @@ def _place_check(settings: Mapping[str, str]) -> HostCheck:
     return HostCheck("place", True, f"{place.name}, and its baseline equal to its pin")
 
 
-def _qualified_check(settings: Mapping[str, str], installed: str | None) -> HostCheck:
+def _qualified_check(
+    settings: Mapping[str, str], installed: str | None, app: StudioApp | None
+) -> HostCheck:
     directory = Path(settings.get("roblox_studio_qualifications") or "").expanduser()
     try:
         pins = Qualifications(directory).current()
@@ -142,6 +153,28 @@ def _qualified_check(settings: Mapping[str, str], installed: str | None) -> Host
             f"Studio is {installed}, and the worker was qualified on {pins.studio_version}: "
             "re-qualify (scripts/dev/studio_requalify.py)",
         )
-    return HostCheck(
-        "qualified", True, f"qualified on Studio {pins.studio_version} ({pins.record[:16]}…)"
+    qualified = (
+        f"qualified on Studio {pins.studio_version}, channel {pins.studio_channel} "
+        f"({pins.record[:16]}…)"
     )
+    # A channel is a running Studio's (#3206): with none running there is none to compare,
+    # and the next claim reads it.
+    try:
+        running = app.channel() if app is not None and app.pids() else None
+    except OSError as e:
+        return HostCheck(
+            "qualified",
+            False,
+            f"the running Studio's channel can't be read ({e}), so every claim is refused: "
+            f"the worker was {qualified}",
+        )
+    if running is None:
+        return HostCheck("qualified", True, f"{qualified}; no Studio is running to compare")
+    if running != pins.studio_channel:
+        return HostCheck(
+            "qualified",
+            False,
+            f"Studio is on channel {running}, and the worker was qualified on channel "
+            f"{pins.studio_channel}: re-qualify (scripts/dev/studio_requalify.py)",
+        )
+    return HostCheck("qualified", True, qualified)

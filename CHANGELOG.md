@@ -33,6 +33,16 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     sweep writes it for a stored decision whose ending is missing, in any state the campaign has reached.
   - `resolved` is a decision made before the ruling bound, by the decision's own time. One made after it reads
     `expired` and names the decision, which stands on the run.
+- **A Studio that moved release channel runs nothing until it is re-qualified** (#3206; SIP-0117 R5.29): Roblox's
+  updater moves an install between channels at one version number, and the worker's proof held only the version
+  and the tool list. The proof is now the version, the channel and the tool list.
+  - The channel is read from the startup log the running Studio holds open, at every claim and on both sides of
+    every reset. One that differs or can't be read reads `not_executed`, flagged as the worker's own (R5.28).
+  - The qualification record (schema `/2`) names the channel. A record from before it is still read, and as the
+    newest passing record it runs nothing: **a worker upgraded from the 2.8 line's first release is re-qualified once**
+    (`scripts/dev/studio_requalify.py`).
+  - Each result's `ran_with` carries the proof's Studio (`qualified.*`) and the one the play ran on (`played.*`).
+  - `squadops doctor`'s `qualified` check and the worker's registration name the channel.
 
 ## [2.8.0] — 2026-11-18
 

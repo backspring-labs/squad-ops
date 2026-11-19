@@ -9,6 +9,8 @@ The Studio adapter's reset (SIP-0117 R3.6), run by hand:
 3. Studio is opened on the place again.
 4. The reopened place must be an unpublished local one in Edit, holding the pinned non-script
    baseline.
+5. The reopened Studio's version and release channel are printed, to read against the worker's
+   qualification (#3206). A Studio that changed either across the reopening is refused by name.
 
 The pins are given, never read from the files, so a changed baseline file is refused.
 
@@ -26,8 +28,11 @@ import time
 from pathlib import Path
 
 from adapters.remote_execution.game_dev_roblox_studio import place
-from adapters.remote_execution.game_dev_roblox_studio.runner import RobloxStudioRunner
-from adapters.remote_execution.game_dev_roblox_studio.studio_app import PlaceFiles
+from adapters.remote_execution.game_dev_roblox_studio.runner import (
+    RobloxStudioRunner,
+    studio_version,
+)
+from adapters.remote_execution.game_dev_roblox_studio.studio_app import MacStudioApp, PlaceFiles
 
 STUDIO_MCP = Path("/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP")
 
@@ -47,6 +52,9 @@ async def _main(args: argparse.Namespace) -> int:
         print(f"refused: {e}")
         return 1
     print(f"reset and reopened in {time.monotonic() - started:.1f}s, holding the pinned baseline")
+    # ``StudioMCP`` sits at ``…/RobloxStudio.app/Contents/MacOS/StudioMCP``.
+    channel = MacStudioApp(args.studio_mcp.parents[2]).channel()
+    print(f"Studio {studio_version(args.studio_mcp)} on channel {channel}")
     return 0
 
 

@@ -78,12 +78,26 @@ def _session(world: Path, **kw) -> StudioMcpSession:
     return StudioMcpSession([sys.executable, str(STANDIN), str(world)], **kw)
 
 
-def _runner(world: Path) -> RobloxStudioRunner:
+class _Channel:
+    """The Mac, as far as the read side asks of it: the running Studio's release channel, or
+    the ``OSError`` that says why it can't be read."""
+
+    def __init__(self, channel: str | OSError = "production") -> None:
+        self._channel = channel
+
+    def channel(self) -> str:
+        if isinstance(self._channel, OSError):
+            raise self._channel
+        return self._channel
+
+
+def _runner(world: Path, channel: str | OSError = "production") -> RobloxStudioRunner:
     return RobloxStudioRunner(
         Path("/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP"),
         session_factory=lambda: _session(world),
         studio_version_of=lambda _: "0.747.0",
         discover_seconds=0.2,
+        app=_Channel(channel),
     )
 
 
@@ -249,16 +263,20 @@ async def test_read_back_names_each_way_the_place_differs_from_the_manifest(tmp_
 
 
 async def test_the_runner_registers_what_it_runs_with_and_serves_play_scenario_alone(tmp_path):
-    """R4.6 and R2.4. Bugs caught: a worker registered without Studio's version, the tool digest,
-    the harness's programs or the vocabulary's reader, so a changed Studio or harness runs
-    unnoticed; or an operation it doesn't run answered as run."""
+    """R4.6 and R2.4. Bugs caught: a worker registered without Studio's version, its channel
+    (#3206), the tool digest, the harness's programs or the vocabulary's reader, so a changed
+    Studio or harness runs unnoticed; a worker whose Studio isn't up yet failing to register
+    at all, or registering a channel nobody read; or an operation it doesn't run answered as
+    run."""
     runner = _runner(_world(tmp_path))
 
     versions = await runner.tool_versions()
     result = await runner.run(request(ServedOperation("roblox-studio", "capture")))
+    not_up = await _runner(_world(tmp_path), OSError("0 Studio processes")).tool_versions()
 
     # 2 since #3176: gui_state visible reads a screen as enabled.
     assert versions["roblox-studio"] == "2" and versions["studio"] == "0.747.0"
+    assert (versions["studio_channel"], not_up["studio_channel"]) == ("production", "unread")
     assert versions["studio_tools"].startswith(f"{len(_tools())}:")
     assert (versions["reader"], len(versions["harness.observe"])) == ("roblox-studio/1", 16)
     assert runner.serves() == (ServedOperation("roblox-studio", "play_scenario"),)
