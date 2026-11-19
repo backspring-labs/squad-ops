@@ -434,11 +434,26 @@ def spec_discrimination(
     return found
 
 
-def judge_records(records: list[dict], notes: dict, specs_for) -> list[dict]:
+_SETS_ATTRIBUTE = re.compile(r'SetAttribute\(\s*"([A-Za-z_][A-Za-z0-9_]*)"')
+
+
+def baseline_attribute_names(checkout: Path) -> frozenset[str]:
+    """Every attribute name the product's own code sets by a literal name (``SetAttribute("X",
+    …)``), read from its checkout. The names stay out of the cases file: a product's code is its
+    repository's (SIP-0116 §17y). A name set from a variable isn't read."""
+    names: set[str] = set()
+    for path in sorted((checkout / "src").rglob("*.luau")):
+        names.update(_SETS_ATTRIBUTE.findall(path.read_text(encoding="utf-8", errors="replace")))
+    return frozenset(names)
+
+
+def judge_records(
+    records: list[dict], notes: dict, specs_for, baseline_attributes=None
+) -> list[dict]:
     """Each authoring record's judgement. The skills arm is held to its case's expectation; the
     baseline is recorded for contrast and held to nothing, since it was handed no skill.
     ``specs_for(record)`` runs a record's emitted specs, or is ``None`` when no product checkout
-    was given."""
+    was given; ``baseline_attributes`` are the checkout's attribute names, or ``None``."""
     from squadops.memory.replay import Arm
     from squadops.memory.skill_replay import judge
 
@@ -465,7 +480,7 @@ def judge_records(records: list[dict], notes: dict, specs_for) -> list[dict]:
                 or (expect.get("accepted") and handed_off)
             )
             specs = specs_for(record) if wants_specs and (record["success"] or handed_off) else None
-            row.update(judge(expect, record, specs=specs))
+            row.update(judge(expect, record, specs=specs, baseline_attributes=baseline_attributes))
             if specs is not None:
                 row["specs"] = specs
         judged.append(row)
@@ -491,7 +506,10 @@ def _judge_and_report(args, cases, case_envelopes, records, notes, directory) ->
                 ),
             }
 
-    judged = judge_records(records, notes, specs_for)
+    attributes = (
+        baseline_attribute_names(Path(args.product_checkout)) if args.product_checkout else None
+    )
+    judged = judge_records(records, notes, specs_for, attributes)
     with (directory / "judged.jsonl").open("w") as out:
         for row in judged:
             out.write(json.dumps(row) + "\n")
