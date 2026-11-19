@@ -35,6 +35,7 @@ from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.capabilities.handlers.skills import skills_section
 from squadops.capabilities.handlers.source_repository import (
     product_conventions_template,
+    qa_test_prompt_variant,
     source_backed,
     source_repository_section,
 )
@@ -2070,8 +2071,13 @@ class QATestHandler(_CycleTaskHandler):
         # externalized owner of task-content guidance — not inline literals.
         # SIP-0108 §10m: the identity layer is what the process IS (``context.role_id``); the
         # task-type fragment is the step's and is unchanged.
+        # #3147: a product that tests only with Luau runners is given the fragment written for
+        # its runner. Every other run keeps the task type's own, byte for byte.
         assembled = context.ports.prompt_service.assemble(
-            context.role_id, "agent_start", task_type=TaskType.QA_TEST
+            context.role_id,
+            "agent_start",
+            task_type=TaskType.QA_TEST,
+            variant=qa_test_prompt_variant(inputs),
         )
         system_prompt = assembled.content
 

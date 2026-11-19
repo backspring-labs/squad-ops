@@ -137,6 +137,7 @@ class NoOpPromptService(PromptService):
         hook: str,
         task_type: str | None = None,
         recovery: bool = False,
+        variant: str | None = None,
     ) -> AssembledPrompt:
         raise NotImplementedError(
             "NoOpPromptService: prompt assembly not expected in cycle task handlers"

@@ -2839,3 +2839,21 @@ checks:
       from squadops.campaigns.models import CampaignState
       print("await _end_decided_escalations(request, registry, cycle_id)" in inspect.getsource(runs.gate_decision), CampaignState.ESCALATED in progress._DECIDED_SWEEP_STATES, CampaignState.COMPLETED in progress._DECIDED_SWEEP_STATES, "decided_at" in RunAtGate.__dataclass_fields__)
     expect: "True True False True"
+  - id: "3147-qa-prompt-names-the-runner"
+    what: the QA agent's qa.test system prompt for a Luau-only product names no other stack's runner, every other run keeps the task type's own fragment, and a variant with no fragment is refused (SIP-0112 H.37)
+    container: squadops-eve
+    code: |
+      import hashlib
+      from adapters.prompts.factory import create_prompt_repository
+      from squadops.capabilities.handlers.source_repository import qa_test_prompt_variant
+      from squadops.prompts.assembler import PromptAssembler
+      a = PromptAssembler(create_prompt_repository("filesystem"))
+      luau = {"source_repository": {"runners": [{"runner": "luau"}]}}
+      own = a.assemble("qa", "agent_start", task_type="qa.test").content
+      sent = a.assemble("qa", "agent_start", task_type="qa.test", variant=qa_test_prompt_variant(luau)).content
+      try:
+          a.assemble("qa", "agent_start", task_type="qa.test", variant="godot"); refused = False
+      except ValueError:
+          refused = True
+      print(hashlib.sha256(own.encode()).hexdigest()[:8], "pytest" in sent, "```luau" in sent, qa_test_prompt_variant({}), refused)
+    expect: "a0c6f5ef False True None True"

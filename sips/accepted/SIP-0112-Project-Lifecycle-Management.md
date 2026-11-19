@@ -3992,3 +3992,62 @@ a proposal for its approver today: the approver reads the stored change request.
 full-path gate.
 
 **Who ruled.** The Spark lane read the record. The MacBook lane read the cause and made the change.
+
+## H.37 A product that tests only with Luau runners gets a `qa.test` fragment written for its runner (2026-11-18; H.13, H.26; SIP-0118 R4.3; SIP-0116 §17p; #3147; the MacBook lane, on the 2.8.1 plan's condition)
+
+**What changed.** The `qa.test` system prompt ends in the task type's fragment (`task_type.qa.test`). On a product
+that tests only with Luau runners it now ends in `task_type.qa.test.luau`. Every other run's prompt is byte for
+byte what it was.
+
+**The evidence** (#3147, from the #3041 capture on the Spark, `cmp_2b1aa826d5bb`, envelope `550d7a31…`, which
+reconstructs exactly). The task type's fragment states its rules in pytest's and vitest's terms:
+- "Your suite runs in the test runner's own process — pytest or vitest", with FastAPI `TestClient` and Next.js
+  route-handler idioms;
+- discovery as pytest's `test_*.py` and vitest's `__tests__/**`;
+- dependencies as `requirements.txt` and `package.json`;
+- a JSX `MemoryRouter` example, and a fixture example in JavaScript and in Python.
+
+A Luau product's suite author was sent all of it, beside the product's own runner (`lune run tests/run.luau`,
+`*.spec.luau`). The capture's spec was right anyway and its increment was accepted, so this was a false statement
+in the prompt and about 3,100 characters of it, not yet a failure.
+
+**The condition it is in 2.8.1 on** (the plan's item 7): every existing stack's rendered `qa.test` system prompt
+stays byte-identical. Since those stacks are sent the same bytes, their behaviour can't move, and no replay of them
+is owed.
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **Which run** | `qa_test_prompt_variant(inputs)`: `"luau"` where `suite_language(inputs)` reads Luau, the seam that already chooses a Luau product's worked suite examples (#2876, #2906). A sample application, a product with no runner, and one with runners of more than one language read none, and keep the task type's own fragment |
+| **By the runner, never by the profile** | A cycle under `game_dev_roblox` and the skills replay's capture under `product_neutral` (SIP-0116 §17p) render the same prompt, so the replay reads what a cycle sends |
+| **How it is asked for** | `PromptService.assemble(…, variant=…)` reads `task_type.<task_type>.<variant>`. A variant with no registered fragment raises. The task type's own fragment never stands in for it, and the task-type layer is never dropped |
+| **What the Luau fragment keeps** | The rules that hold on every stack, under the same headings: no server or game session and nothing that starts one; discovery by the runner's own pattern and roots; declared dependencies only; test isolation; a test per criterion, each naming the fault it catches; and the assertion on a collection before a loop over it, with its example in Luau |
+| **What it leaves out** | pytest, vitest, FastAPI, Next.js, JSX, `requirements.txt`, `package.json` and the frontend section |
+| **The task type's own fragment** | Untouched: its file's sha256 is `4918b9e0…`, as tagged in v2.8.0 |
+| **The size preflight** | Still counts the task type's own fragment for every `qa.test` (`prompt_budget.system_prompt_tokens`). It is the larger of the two, so the count stays an upper bound |
+
+**The digests.** The `qa.test` system prompt for the `qa` role, assembled from the shipped fragments:
+- at v2.8.0, and on this change for every run that isn't Luau-only: sha256 `a0c6f5ef…c79aa0da`, 8,326 characters;
+- for a Luau-only product: `a30c4542…baf3babd`, 5,211 characters.
+
+**Not done: moving each stack's idioms to its own profile.** #3147 proposes it. A FastAPI product is sent the
+Next.js idioms today, and the reverse, so the move changes those stacks' prompts and owes them a replay. #3147
+stays open for it, unplaced.
+
+**What reads it.** The Luau prompt's effect on a suite's author is read by the `roblox-skills-v4` replay's QA
+cases, under its new experiment id.
+
+**The tests.** `tests/unit/capabilities/test_qa_test_prompt_names_the_products_runner.py` enters at
+`QATestHandler._generation_request`, with the real assembler over the shipped fragments:
+- a FastAPI and React application, a Next.js one, a vitest product, a pytest-and-vitest product, a product with
+  Luau and pytest runners and one with none are each sent the prompt they were, and the task type's fragment
+  holds its v2.8.0 digest;
+- a Luau-only product, under `game_dev_roblox` and under `product_neutral`, is sent a prompt naming none of the
+  other stacks' runners or examples, with each rule that holds on every stack;
+- a variant no fragment is registered for is refused by name.
+
+Five mutations each fail a test, among them the task type's fragment edited and a missing variant falling back.
+
+**Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 7 states the condition. The MacBook
+lane read that it holds and built it.
