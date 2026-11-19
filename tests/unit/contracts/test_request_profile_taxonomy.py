@@ -103,6 +103,7 @@ def test_every_profile_is_the_operators_the_campaigns_or_a_released_one():
     assert set(CAMPAIGN_PROFILES) - set(RELEASED) == {
         "campaign-increment-source",
         "campaign-increment-source-wrong-text",
+        "campaign-increment-source-client-stops",
     }
 
 

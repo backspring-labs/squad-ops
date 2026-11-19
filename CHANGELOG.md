@@ -5,6 +5,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **A fault whose client stops at start, for the Campaign-level repair diagnostic** (#3222, the 2.8.1 plan's item 5):
+  `luau_client_throws_at_start` adds a throw to the candidate's first client script that fires only where Roblox
+  loads it (`typeof(game) == "Instance"`), so the product's headless specs pass and every play reads `setup_failed`.
+  The cycle reads `blocked_unverified` and the Campaign routes §10 row 8. A fault can now stay out of a Campaign's
+  repair and retry cycles (`bound_cycles`), so the repair builds without it. The request profile
+  `campaign-increment-source-client-stops` declares it, with `max_correction_attempts: 0`.
+
 ### Changed
 - **A Luau product's suite author is told its own runner's rules** (#3147; SIP-0112 H.37): the `qa.test` system
   prompt named pytest and vitest, with FastAPI, Next.js and JSX examples, on every product. A product that tests

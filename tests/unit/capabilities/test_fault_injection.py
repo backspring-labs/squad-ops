@@ -18,11 +18,13 @@ from squadops.capabilities.handlers.fault_injection import (
     DECLARATION_KEY,
     FAULTS,
     INJECTED_TASKS,
+    LUAU_CLIENT_THROW,
     RUNTIME_SEAMS,
     FaultScope,
     UnknownFault,
     UnreachableFault,
     _luau_text_drops_a_word,
+    bound_cycle_faults,
     declared_faults,
     held_through_pass,
     inject,
@@ -1896,3 +1898,109 @@ def test_the_wrong_text_profile_is_the_source_increment_with_the_fault_and_nothi
 
     assert faulted.pop(DECLARATION_KEY) == [_WRONG_TEXT]
     assert faulted == plain
+
+
+_CLIENT_STOPS = "luau_client_throws_at_start"
+
+
+class TestTheClientThatStopsAtStart:
+    """#3222, the 2.8.1 plan's item 5: a candidate whose client throws where Roblox loads it, so
+    its plays read setup_failed (not executed) and the Campaign routes §10 row 8."""
+
+    def test_the_first_client_script_throws_after_its_leading_comments(self):
+        """Bugs caught: the throw landing in a shared module a headless spec loads (the spec
+        fails, the cycle reads rejected and routes row 12, not row 8); landing above a
+        ``--!strict`` directive, which must stay first; or in a spec."""
+        emission = _LUAU_EMISSION.replace(
+            "```luau:src/Client/UI/HUD.local.luau\n",
+            "```luau:src/Client/UI/HUD.local.luau\n--!strict\n",
+        )
+        faulted = FAULTS[_CLIENT_STOPS].transform(emission)
+
+        client = faulted.split("```luau:src/Client/UI/HUD.local.luau\n")[1].split("```")[0]
+        assert client.split("\n")[:3] == [
+            "--!strict",
+            '-- shows "5 lives left" for a player with five lives',
+            LUAU_CLIENT_THROW,
+        ]
+        assert faulted.replace(LUAU_CLIENT_THROW + "\n", "", 1) == emission
+
+    def test_the_throw_fires_only_where_game_is_the_engines_instance(self):
+        """Bug caught: a guard the headless loader satisfies. z_tower's loader builds ``game``
+        as a table, which ``typeof`` reads ``"table"``; only Roblox's DataModel reads
+        ``"Instance"``."""
+        assert LUAU_CLIENT_THROW.startswith('if typeof(game) == "Instance" then error(')
+        assert "__squadops_injected_fault__" in LUAU_CLIENT_THROW
+
+    def test_a_change_with_no_client_script_is_unchanged(self):
+        """Inert, not mis-aimed: with no client script the fault reads unapplied, which the
+        diagnostic's reading 1 refuses, rather than landing where a spec meets it."""
+        server_only = _LUAU_EMISSION.split("```luau:src/Client")[0]
+
+        assert FAULTS[_CLIENT_STOPS].transform(server_only) == server_only
+
+    @pytest.mark.parametrize(
+        ("declared", "carried"),
+        [
+            ([_CLIENT_STOPS], []),
+            ([_WRONG_TEXT], [_WRONG_TEXT]),
+            (f"{_CLIENT_STOPS},{_WRONG_TEXT}", [_WRONG_TEXT]),
+            (None, []),
+        ],
+    )
+    def test_a_repair_cycle_carries_every_fault_but_one_meant_for_the_first_candidate(
+        self, declared, carried
+    ):
+        """Bug caught: the repair cycle, launched under the increment's profile, building the
+        same throw into its candidate, so no Campaign repair can pass; or the filter dropping a
+        fault a bound cycle should keep."""
+        assert bound_cycle_faults(declared) == carried
+
+
+def test_the_client_stops_profile_is_the_source_increment_with_the_fault_and_no_correction():
+    """Bug caught: `campaign-increment-source` changing and its row-8 diagnostic copy not, so the
+    diagnostic runs on a cycle that differs from a real increment in more than its two keys."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    plain = dict(load_profile("campaign-increment-source").defaults)
+    faulted = dict(load_profile("campaign-increment-source-client-stops").defaults)
+
+    assert faulted.pop(DECLARATION_KEY) == [_CLIENT_STOPS]
+    assert (faulted.pop("max_correction_attempts"), plain.pop("max_correction_attempts")) == (0, 3)
+    assert faulted == plain
+
+
+@pytest.mark.parametrize(
+    ("profile", "carried"),
+    [
+        ("campaign-increment-source-client-stops", []),
+        ("campaign-increment-source-wrong-text", [_WRONG_TEXT]),
+    ],
+)
+@pytest.mark.parametrize("kind_name", ["REPAIR", "RETRY"])
+def test_a_campaigns_repair_and_retry_launch_states_the_faults_it_carries(
+    profile, carried, kind_name
+):
+    """#3222, entered at ``bound_launch``, which builds every Campaign repair and retry. Bug
+    caught: the repair cycle of the row-8 diagnostic built with the same client throw, so the
+    repair the diagnostic is about could never pass; or the wrong-text fault, whose repair runs
+    in the same cycle, losing its declaration on a bound one."""
+    from squadops.campaigns.launch_requests import bound_launch
+    from squadops.campaigns.models import CycleKind
+    from tests.unit.campaigns.builders import campaign, policy
+
+    launched = bound_launch(
+        campaign(policy=policy(proposal_profile=profile)),
+        CycleKind[kind_name],
+        {"proposal_id": "prop_1"},
+        plan_artifact_refs=[],
+        contract_ref=None,
+    )
+
+    # An override equal to the profile's default isn't restated, so the cycle resolves it from
+    # the profile: read what it resolves to.
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    overrides = launched.cycle_request["body"]["execution_overrides"]
+    resolved = overrides.get(DECLARATION_KEY, load_profile(profile).defaults[DECLARATION_KEY])
+    assert resolved == carried

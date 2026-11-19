@@ -527,6 +527,47 @@ def _luau_player_text_drops_a_word(content: str, product: Mapping[str, str] | No
     return content
 
 
+#: #3222 (the 2.8.1 plan's item 5): the line a client script gets, which throws where Roblox loads
+#: the script and nowhere else. ``typeof(game)`` is ``"Instance"`` only where ``game`` is the
+#: engine's DataModel: the product's headless loader builds ``game`` as a table (z_tower's
+#: ``tests/loader.luau``), so its specs load the file and pass, and only the play meets the throw.
+#: Named for the marker, so a console line or a diff reads as injected, never as the squad's.
+LUAU_CLIENT_THROW = (
+    f'if typeof(game) == "Instance" then error("{INJECTED_CLAIM_MARKER} (#3222): the client '
+    'stops at start") end'
+)
+
+
+def _luau_client_throws_at_start(content: str) -> str:
+    """The emission with its first client script made to throw where Roblox loads it, or
+    unchanged when the change touches no client script.
+
+    Rehearsal 3's B-2 shape (#3200): the candidate's ``HUD.luau`` threw at the client's start, so
+    the title screen never appeared and every play read ``setup_failed`` where the baseline's had
+    been met. Not executed, so the cycle reads ``blocked_unverified`` and a Campaign routes it to
+    §10 row 8, which is what the diagnostic is about. A spec that failed would read ``rejected``
+    and route row 12 instead, which is why the throw is held out of the headless loader.
+
+    The line goes after the file's leading comments and directives (``--!strict`` stays first),
+    so it runs when the script loads."""
+    for block in _ADDRESSED_BLOCK.finditer(content):
+        path = block.group("info").partition(":")[2]
+        if not (_LUAU_SOURCE.search(path) and _LUAU_CLIENT.search(path)) or _is_suite_path(path):
+            continue
+        lines = block.group("body").split("\n")
+        at = next(
+            (
+                i
+                for i, line in enumerate(lines)
+                if line.strip() and not line.lstrip().startswith("--")
+            ),
+            len(lines),
+        )
+        lines.insert(at, LUAU_CLIENT_THROW)
+        return content[: block.start("body")] + "\n".join(lines) + content[block.end("body") :]
+    return content
+
+
 #: SIP-0096 §17a's diagnostic: the 2026-09-01 false positive — a correct `@/lib` alias import
 #: refused by `declared_imports`, which the model then degraded to a relative path to comply.
 _ALIAS_IMPORT = re.compile(r"""from\s+['"](?P<spec>@/lib/[^'"]+)['"]""")
@@ -658,6 +699,10 @@ class Fault:
     #: calls it, and ``held_through_pass`` holds the one line it changed: a per-file transform
     #: run again on a file that already carries the cut would cut it a second time.
     product_transform: Callable[[str, Mapping[str, str]], str] | None = None
+    #: #3222: whether a Campaign's repair and retry cycles of the increment carry it too. They
+    #: run under the increment's profile, so without this a fault meant for the increment's first
+    #: candidate would be built into the repair's as well, and no repair could pass.
+    bound_cycles: bool = True
 
     @property
     def transforms_emission(self) -> bool:
@@ -786,6 +831,19 @@ FAULTS: dict[str, Fault] = {
         "same scenario, by digest, passes",
         stacks=PLAYED_PROFILES,
     ),
+    # #3222, the 2.8.1 plan's item 5: the Campaign-level repair at §10 row 8 on a played product.
+    # A campaign's increments declare it through `campaign-increment-source-client-stops`.
+    "luau_client_throws_at_start": Fault(
+        task=TaskType.DEVELOPMENT_DEVELOP,
+        transform=_luau_client_throws_at_start,
+        found_in="#3200 — the 2.8 demonstration's rehearsal 3, B-2 (cyc_4c0ec08c327d): the "
+        "candidate's HUD.luau threw at the client's start and every play read setup_failed",
+        exercises="#3222: the increment's plays read not executed where the baseline's setup was "
+        "met, the cycle ends blocked_unverified, the Campaign routes §10 row 8, and its repair "
+        "cycle, built without the fault, passes the same frozen scenarios",
+        stacks=PLAYED_PROFILES,
+        bound_cycles=False,
+    ),
     # 1.8.2 plan §4.1 `false-criterion`: SIP-0096 §17a's first case, on the task's own rows.
     "false_criterion_alias_import": Fault(
         task=TaskType.DEVELOPMENT_DEVELOP,
@@ -860,6 +918,14 @@ def declared_faults(resolved_config: Mapping[str, Any] | None) -> tuple[str, ...
     if isinstance(declared, str):
         declared = [part for part in (p.strip() for p in declared.split(",")) if part]
     return tuple(str(name) for name in declared)
+
+
+def bound_cycle_faults(declared: Sequence[str] | str | None) -> list[str]:
+    """The faults a Campaign's repair or retry cycle of the increment carries: those declared,
+    less each whose ``bound_cycles`` is False (#3222). Unknown names pass through, so
+    ``validate_declaration`` still refuses them by name at the cycle's preflight."""
+    names = declared_faults({DECLARATION_KEY: declared} if declared else None)
+    return [n for n in names if n not in FAULTS or FAULTS[n].bound_cycles]
 
 
 def validate_declaration(resolved_config: Mapping[str, Any] | None) -> tuple[str, ...]:
