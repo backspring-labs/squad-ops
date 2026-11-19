@@ -49,7 +49,10 @@ async def test_startup_opens_no_amqp_connection_outside_the_queue_port(monkeypat
         monkeypatch.setattr(runtime_main, name, AsyncMock())
     app = SimpleNamespace(state=SimpleNamespace(config=MagicMock()))
 
-    await runtime_main._startup(app)
+    try:
+        await runtime_main._startup(app)
+    finally:
+        app.state.loop_watchdog.stop()  # no shutdown follows here to stop it (#3232)
 
     assert opened == []
     assert [slot for slot in vars(app.state) if "rabbitmq" in slot] == []

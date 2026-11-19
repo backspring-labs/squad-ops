@@ -12,6 +12,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   The cycle reads `blocked_unverified` and the Campaign routes §10 row 8. A fault can now stay out of a Campaign's
   repair and retry cycles (`bound_cycles`), so the repair builds without it. The request profile
   `campaign-increment-source-client-stops` declares it, with `max_correction_attempts: 0`.
+- **The runtime names what holds its event loop, and its slow requests** (#3218's instruments, the 2.8.1 plan's
+  item 6): a loop held for over a second is logged with the loop thread's stack (`event_loop_stalled`), and how
+  long it was held when it clears. A request or a database connection slower than a second is logged too
+  (`slow_request`, `slow_pool_acquire`). The watchdog stops with a start-up that fails, and doesn't read a loop
+  that has stopped running as a held one.
 
 ### Changed
 - **A Luau product's suite author is told its own runner's rules** (#3147; SIP-0112 H.37): the `qa.test` system
