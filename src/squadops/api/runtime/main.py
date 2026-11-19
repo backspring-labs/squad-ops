@@ -35,6 +35,7 @@ from squadops.api.campaign_launch import (
 )
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+from squadops.api.middleware.timing import SlowRequestMiddleware
 from squadops.api.routes.agent_status import HEARTBEAT_PATH
 from squadops.api.routes.agent_status import router as agent_status_router
 from squadops.api.routes.assignments import router as assignments_router
@@ -66,6 +67,7 @@ from squadops.api.routes.scenarios import evaluations_router as scenario_evaluat
 from squadops.api.routes.scenarios import router as scenarios_router
 from squadops.api.routes.worker_readings import router as worker_readings_router
 from squadops.api.routes.workers import router as workers_router
+from squadops.api.runtime.loop_watchdog import LoopWatchdog
 from squadops.api.runtime.startup_reaps import (
     detect_stranded_cycles,
     reap_stranded_activities,
@@ -147,6 +149,8 @@ def _add_middleware(app: FastAPI, auth_config) -> None:
             expose_docs=auth_config.expose_docs,
         )
     app.add_middleware(RequestIDMiddleware)
+    # #3218: outside auth, so a slow token check counts in the request's time.
+    app.add_middleware(SlowRequestMiddleware)
     # CORS outermost (added last) — ensures CORS headers on 401/403 responses too
     if cors_origins:
         app.add_middleware(
@@ -1002,6 +1006,9 @@ async def _startup(app: FastAPI) -> None:
     no AMQP connection of its own: every publish goes through the queue port, which opens its own
     (#2322)."""
     state, config = app.state, app.state.config
+    # #3218: first, so a start-up that holds the loop is named too.
+    state.loop_watchdog = LoopWatchdog()
+    state.loop_watchdog.start()
     state.pool = await create_pool(config.database().url, min_size=1, max_size=10)  # #577
     await _init_auth_subsystem(state, config)
     await _init_migrations(config, state.pool)
@@ -1165,6 +1172,8 @@ async def _stop_work(state) -> None:
         state.campaign_sweep_task.cancel()
     if state.memory_reconcile_task:
         state.memory_reconcile_task.cancel()
+    if getattr(state, "loop_watchdog", None) is not None:
+        state.loop_watchdog.stop()
 
 
 async def _shutdown(app: FastAPI) -> None:
