@@ -24,6 +24,7 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.campaigns.product_routes import ACCEPTED_PAGES
+from squadops.capabilities.handlers.fault_injection import DECLARATION_KEY, bound_cycle_faults
 from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
 from squadops.llm.script import LLM_SCRIPT_KEY
 
@@ -363,11 +364,8 @@ def bound_launch(
 
     policy = campaign.policy
     keep = BOUND_WORKLOADS[kind]
-    sequence = [
-        dict(w)
-        for w in load_profile(policy.proposal_profile).defaults["workload_sequence"]
-        if w.get("type") in keep
-    ]
+    defaults = load_profile(policy.proposal_profile).defaults
+    sequence = [dict(w) for w in defaults["workload_sequence"] if w.get("type") in keep]
     if [w["type"] for w in sequence] != list(keep):
         raise ValueError(
             f"profile {policy.proposal_profile!r} cannot run a {kind}: it does not hold the "
@@ -381,6 +379,10 @@ def bound_launch(
     }
     if contract_ref:
         user_values["contract_ref"] = contract_ref
+    # #3222: a fault meant for the increment's first candidate stays out of its repair and retry,
+    # stated on the cycle so its record shows what it ran without.
+    if defaults.get(DECLARATION_KEY):
+        user_values[DECLARATION_KEY] = bound_cycle_faults(defaults[DECLARATION_KEY])
     return LaunchRequest(
         kind,
         {

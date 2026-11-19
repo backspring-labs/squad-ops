@@ -2857,3 +2857,12 @@ checks:
           refused = True
       print(hashlib.sha256(own.encode()).hexdigest()[:8], "pytest" in sent, "```luau" in sent, qa_test_prompt_variant({}), refused)
     expect: "a0c6f5ef False True None True"
+  - id: "3222"
+    what: the row-8 diagnostic's fault throws only in a real Roblox client, and a Campaign's repair of the increment is launched without it
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.handlers.fault_injection import FAULTS, LUAU_CLIENT_THROW, bound_cycle_faults
+      from squadops.contracts.cycle_request_profiles import load_profile
+      d = load_profile("campaign-increment-source-client-stops").defaults
+      print(LUAU_CLIENT_THROW.startswith('if typeof(game) == "Instance"'), FAULTS["luau_client_throws_at_start"].bound_cycles, bound_cycle_faults(d["fault_injection"]), d["max_correction_attempts"])
+    expect: "True False [] 0"

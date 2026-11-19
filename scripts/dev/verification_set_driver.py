@@ -3624,6 +3624,19 @@ def _wrong_text_repair_reading(rec: dict) -> tuple[bool | None, Any]:
     return patches >= 1, evidence
 
 
+def _client_stops_reading(rec: dict) -> tuple[bool | None, Any]:
+    """#3222: whether the faulted increment's own cycle shows the row-8 shape: the candidate
+    unread (``blocked_unverified``) with no in-run correction standing in. The repair is the
+    campaign's, in another cycle's record, so a cycle read as anything else is a NO here and a
+    cycle with no verdict yet is unaskable."""
+    verdict = rec.get("verdict")
+    rounds = value_at(rec, "correction_rounds", 0) or 0
+    evidence = {"verdict": verdict, "correction_rounds": rounds}
+    if verdict is None:
+        return None, {**evidence, "note": "no verdict yet: read the campaign's control log"}
+    return verdict == "blocked_unverified" and rounds == 0, evidence
+
+
 SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
     # 1.8.2 plan §4.1 `compile-loop`: the faulted develop task compiled clean through its own
     # passes — at least one pass, and no correction round.
@@ -3803,6 +3816,16 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
         "then passing, by digest",
         ("correction_rounds", "loop_texture.applied_patches", "loop_texture.faults_applied"),
         lambda rec: _wrong_text_repair_reading(rec),
+    ),
+    # #3222, the 2.8.1 plan's item 5 (pre-registration 12h). The diagnostic is a campaign: its
+    # control log holds row 8 and the repair cycle. What the faulted increment's own cycle record
+    # shows is the candidate left unread, with no in-run correction.
+    "luau_client_throws_at_start": (
+        "§10 row 8's input: the faulted increment's candidate read blocked_unverified (its plays "
+        "setup_failed) with no correction round; the campaign's record carries row 8 and the "
+        "repair cycle passing the same frozen scenarios",
+        ("verdict", "correction_rounds", "loop_texture.faults_applied"),
+        lambda rec: _client_stops_reading(rec),
     ),
     "analyzer_false_source_claim": (
         "A1: the framework refuted the claim against the workspace, a decision was reached, "

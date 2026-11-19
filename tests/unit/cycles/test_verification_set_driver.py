@@ -7771,3 +7771,21 @@ def test_a_roll_the_operator_took_the_box_beside_is_recorded_as_not_counted(
     ]
     [window] = asked
     assert ">= '2026-11-15T09:00:00Z' and committed_at <= '2026-11-15T11:00:00Z'" in window
+
+
+@pytest.mark.parametrize(
+    ("rec", "reached"),
+    [
+        ({"verdict": "blocked_unverified", "correction_rounds": 0}, True),
+        ({"verdict": "rejected", "correction_rounds": 0}, False),
+        ({"verdict": "blocked_unverified", "correction_rounds": 1}, False),
+        ({}, None),
+    ],
+    ids=["row 8's input", "a spec met the throw (row 12)", "a correction stood in", "no verdict"],
+)
+def test_the_client_stops_readout_is_row_8s_input_and_nothing_else(driver, rec, reached):
+    """#3222. Bug caught: a cycle a spec failed (routed row 12) or one an in-run correction
+    repaired reading as the row-8 diagnostic's seam reached."""
+    _, _, read = driver.SEAM_READOUTS["luau_client_throws_at_start"]
+
+    assert read(rec)[0] is reached

@@ -32,6 +32,8 @@ CAMPAIGN_PROFILES = (
     "campaign-increment-source",
     # #3170: its diagnostic copy, declaring the played product's wrong-text fault (#3043).
     "campaign-increment-source-wrong-text",
+    # #3222: its row-8 diagnostic copy, whose client stops at start and which corrects nothing in-run.
+    "campaign-increment-source-client-stops",
 )
 
 _PROFILES_PACKAGE = "squadops.contracts.cycle_request_profiles.profiles"
