@@ -1787,6 +1787,45 @@ same footprint are each still refused by path; a first cycle shows no footprint.
 
 **Who ruled.** The Spark lane found it in the demonstration's window. The fix is the MacBook lane's.
 
+### 17y. The skills replay reads the gate's rules by rule: `roblox-skills@3` (2026-11-19, §17p; SIP-0118 R4.3; the 2.8.1 plan's item 4; #3199)
+
+**What changed.** §17p judges an answer by the handler's verdict and the stop its skill declares, and parses
+nothing by a rule of its own. A new expectation, `scenario_rules`, does read the accepted change request, by
+rules stated in the case before the run (`memory/skill_replay.scenario_rule_findings`):
+- **the words:** each criterion's `observable` opens `Played.` (`Headless.` for a package criterion) and names
+  its broken build (`Fails on:`). A headless one says what no play reached (`Not played:`);
+- **coverage:** each of the item's sentences the case lists is read by a criterion's statement or observable;
+- **reachability:** no wait or observation reads a state the case says no action reaches, or an attribute the
+  baseline doesn't set and the change's `prd_delta` doesn't say it adds;
+- **the named check:** it rejects every reading the case says a broken build shows where it reads, and accepts a
+  reading a correct build shows (`skill_replay.meets`, which reads an absent value as `roblox-studio/1` does).
+  On a value that changes it is no exact match, and its observable states a `Band:`.
+
+A reading is written in the case, not played. Playing each named check on the case's candidates is the plan's
+other half, and is the demonstration's (this SIP's "What the replay doesn't show").
+
+**The evidence.** The 2.8 demonstration's window returned 7 of 11 proposal versions (the 2.8.0 demonstration
+record, §3 and §4). Each was one of these mistakes, and §17p's expectations read every one of them as met,
+since the handler accepted each. Read against `roblox-skills@3`'s two new cases (z_tower's goal set revision 1,
+B-1 and B-2), with the wording rules set aside, since no proposal on record had the revised skill:
+- **all 8 returned versions on record are flagged,** each for the reviewer's own reason:
+  - a lobby-only request (B-1 v1);
+  - a wait on a `Floor` attribute nothing sets (B-1 v2);
+  - a check that passes on a clock stuck at "0:00" (B-2: four versions);
+  - an exact match on the clock (B-2);
+  - an attribute standing in for the text the player reads (B-2);
+- **all 7 approved or accepted versions meet them.**
+
+One sentence first read by keyword (B-2's "and counts up each second") failed an approved version that said it
+in other words. It is read by the named-check rule instead, which is what the sentence asks, and the cases file
+says so.
+
+**Not changed:** every `roblox-skills@2` case, which `@3` holds unchanged; §17p's arms, generations and
+manifest; the rule that a skills arm is held to its case and the baseline to nothing.
+
+**Who ruled.** The owner adopted the 2.8.1 plan, whose item 4 names these rules ("Approve the 2.8.1 plan, merge
+it", 2026-11-18). The Spark lane wrote the rules and the cases.
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each

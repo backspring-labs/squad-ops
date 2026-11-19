@@ -708,3 +708,53 @@ def test_the_first_cases_file_is_kept_as_roblox_skills_v1_ran_it():
         "b3e3b9a1462f46e8639c2b68decc8b75f4a5395728df55747d2f487ce73014c8"
     )
     assert [c.id for c in cases.cases][-1] == "qa-no-runner" and len(cases.cases) == 9
+
+
+def test_the_attribute_rule_reads_the_names_the_checkout_sets(tmp_path):
+    """Bug caught (SIP-0116 §17y): the attribute rule read against names written in the public
+    cases file, or against none, so a wait on an attribute the product never sets passes. Entered
+    at ``judge_records`` with the names ``baseline_attribute_names`` reads, as the report does."""
+    (tmp_path / "src" / "Server").mkdir(parents=True)
+    (tmp_path / "src" / "Server" / "Boat.luau").write_text(
+        'boat:SetAttribute("Anchored", true)\nplayer:SetAttribute( "Stamina", 10)\nx:SetAttribute(key, 1)\n'
+    )
+    names = runner.baseline_attribute_names(tmp_path)
+    assert names == {"Anchored", "Stamina"}
+
+    def proposal(attribute):
+        criterion = {
+            "id": "S1",
+            "statement": "The dock sign shows",
+            "surface_kind": "scenario",
+            "observable": "Played. The sign shows. Fails on: no sign.",
+            "scenario": {
+                "steps": [
+                    {
+                        "action": "wait_until",
+                        "observe": {"kind": "attribute", "path": "@player", "name": attribute},
+                        "expect": {"op": "equals", "value": True},
+                    }
+                ],
+                "assertions": [{"id": "a", "observe": {"kind": "gui_state"}, "expect": {}}],
+                "named_assertion": "a",
+            },
+        }
+        content = json.dumps({"criteria": [criterion]})
+        return {
+            "record": "authoring",
+            "envelope_id": "env#c",
+            "case": "c",
+            "arm": "skills",
+            "generation": 1,
+            "success": True,
+            "artifacts": [{"name": "change_request.yaml", "content": content}],
+        }
+
+    notes = {"env#c": {"expect": {"scenario_rules": {"baseline_attributes": True}}}}
+    judged = runner.judge_records([proposal("Anchored"), proposal("Docked")], notes, None, names)
+
+    assert [j["verdict"] for j in judged] == ["met", "not_met"]
+    assert judged[1]["findings"] == [
+        "S1: steps 1 reads the attribute Docked, which the baseline doesn't set and the change "
+        "doesn't say it adds"
+    ]

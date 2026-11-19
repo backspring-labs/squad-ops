@@ -6,6 +6,17 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The skills replay reads the gate's rules** (#3199; SIP-0116 §17y; the 2.8.1 plan's item 4): the cases
+  version `roblox-skills@3` adds the 2.8 window's two items. A new expectation, `scenario_rules`, reads the
+  accepted change request against facts its case states before the run:
+  - the revised skill's fixed words;
+  - each of the item's sentences read by a criterion;
+  - no wait on a state no action reaches, or on an attribute nothing sets;
+  - a named check that rejects what the broken builds show, accepts a correct reading, and reads a changing
+    value as a stated band.
+
+  Read against every B-1 and B-2 proposal on record, it flags all 8 returned versions, each for the reviewer's
+  reason, and meets all 7 approved ones.
 - **A fault whose client stops at start, for the Campaign-level repair diagnostic** (#3222, the 2.8.1 plan's item 5):
   `luau_client_throws_at_start` adds a throw to the candidate's first client script that fires only where Roblox
   loads it (`typeof(game) == "Instance"`), so the product's headless specs pass and every play reads `setup_failed`.
