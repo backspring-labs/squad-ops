@@ -1,6 +1,6 @@
 # 2.9 plan — stabilization: a supervised Roblox Campaign attributes failures on evidence, and plays unattended and faster
 
-**Status: DRAFT, revision 1 (2026-11-20, after the v2.8.1 cut). Not adopted.** It places nothing: SIP ledgers and issue labels move when the owner adopts it.
+**Status: DRAFT, revision 1 (2026-11-20, after the v2.8.1 cut), in the owner's outside review. Not adopted.** It places nothing: SIP ledgers and issue labels move when the owner adopts it.
 - **Revision 1:** 2.8.1 settled two drafted items and placed one.
   - **Settled:** #3147's condition held (#3229), and #3218's threshold held (32 entries, no worker request over 2 s).
   - **Placed:** #3244, by the owner's ruling at the cut.
