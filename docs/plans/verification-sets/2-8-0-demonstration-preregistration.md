@@ -829,3 +829,35 @@ The adopted 2.8.1 plan makes it item 5 (#3222). It's non-counting by constructio
 **Not changed:** 12h's fault, profile, Campaign, D1–D4 and outcomes.
 
 **Who ruled:** the MacBook lane found the move and requalified. The owner said "Go" for that requalification, in the MacBook session at 10:27 ET on 2026-11-19. That word covers the requalification only, not a window for this run. The Spark wrote this amendment under the owner's 2026-11-16 grant for uncounted runs.
+
+### 12j. The 2.8.1 closing window: the Studio pin moves to the production channel, and #3218's threshold and the Luau QA capture are read (2026-11-20, before it runs)
+
+**What changed: the pin.** The pin 12i named is superseded. The MacBook lane requalified the worker at 08:12 ET:
+- **the record:** `20261120T131244.965787Z-passed.json`;
+- **Studio:** `0.748.0.7481526`, the same version, now on the `production` channel;
+- **the tools:** `studio_tools` `39:b7cd2a22…` (12i's read `38:3d29f729…`).
+
+**The evidence:** Studio came up on another release channel than the one 12i's pin names, and #3220's identity check refused it, as R5.29 says it must. The requalification on the new channel passed. The 2.8.1 plan's item 4 plays (32, 08:14–09:10 ET) ran on this pin, and every one completed.
+
+**The window, on the final deploy** (`a67dace4`, with the provider switched as below). It holds two uncounted Campaigns on `prj-z-tower-ascension`. The Spark rules their gates under the owner's 2026-11-16 grant, and neither outcome is counted.
+- **A, the QA capture** (the 2.8.1 plan's item 7). Capture 5's objective, word for word, with no development profile, so no skill loads. Since #3229 changed the Luau `qa.test` prompt, the last capture no longer matches today's rendering (`roblox-skills-v4-revised-3`'s validity record reads `baseline_exact: false` for `qa-capture`). This Campaign gives the replay a `qa.test` envelope rendered by the deploy, and the replay's QA case is then run on it.
+- **B, a played Campaign:** the 2.8 profile capture's objective (a HUD label a player sees), word for word, under `game_dev_roblox`, with its plays on the Mac's worker. It is the first live Campaign under the revised scenario skill (#3228). Its result is reported, not counted, and it isn't evidence for #3199's predictions, which were read by replay and play.
+
+**#3218's threshold, as item 6 fixed it:** across at least 20 gate entries and Campaign transitions with the worker polling, every worker request is answered within 2 s, and none times out.
+- **What counts as an entry:** a row of `campaign_control_log` with outcome `applied`, and a row of `cycle_gate_decisions`. Both Campaigns' entries are summed.
+- **What's read:**
+  - the runtime-api's `slow_request` lines on `/api/v1/workers/*` (each request over 1 s);
+  - the loop watchdog's held-loop lines and slow pool acquires, each with its time;
+  - the worker's own log of request timeouts and lease renewals (the MacBook lane).
+- **The outcomes:**
+  - **holds:** no worker request over 2 s, and no timeout, with 20 or more entries. Item 6 is done.
+  - **fails:** any worker request over 2 s, or any timeout. That is reported with its stack, and the owner disposes of it as item 6 says.
+  - **not read:** fewer than 20 entries. A further uncounted Campaign runs; nothing is inferred from fewer.
+
+**The window's checks, as in 12i:**
+- **The window-opening check:** Studio's version, channel and tool digest after a fresh launch, against this pin. A difference stops the window before the first launch.
+- **A reset that meets a new tool list:** the plays read `not_executed`, and are never counted as failures.
+
+**The provider:** `SQUADOPS__REMOTE_EXECUTION__PROVIDER` is `runtime_api` for the window, on the runtime-api and on the QA agent both. The row-8 window's first attempt switched only the runtime-api. It returns to `none` after the window.
+
+**Who ruled:** the MacBook lane found the move and requalified, under the owner's "go" of 2026-11-19 for the item 4 plays. The owner named this window in the Spark session at 10:56 ET on 2026-11-20: "Ok let's open the next window now". The Spark wrote this amendment.
