@@ -5,6 +5,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.8.1] — 2026-11-20
+
+The 2.8 line's first patch (`docs/plans/2-8-1-plan.md`; the cut record is `docs/plans/verification-sets/2-8-1-cut-record.md`): what the 2.8 windows met, fixed.
+
 ### Added
 - **The skills replay reads the gate's rules** (#3199; SIP-0116 §17y; the 2.8.1 plan's item 4): the cases
   version `roblox-skills@3` adds the 2.8 window's two items. A new expectation, `scenario_rules`, reads the

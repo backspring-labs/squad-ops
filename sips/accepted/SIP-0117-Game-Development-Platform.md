@@ -157,7 +157,7 @@ in the portfolio's §4).
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
   `docs/ideas/Doc traceability.txt`; the repository's SIP template, `sips/TEMPLATE.md`.
 
-## Delivery ledger (current as of 2026-11-18, the 2.8.1 line)
+## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
 
 One row per part that ships separately. Statuses: *shipped* (the release, the PR, and the issue it closed),
 *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once numbered), *unplaced* (said
