@@ -4,7 +4,7 @@
 - **Revision 1:** 2.8.1 settled two drafted items and placed one.
   - **Settled:** #3147's condition held (#3229), and #3218's threshold held (32 entries, no worker request over 2 s).
   - **Placed:** #3244, by the owner's ruling at the cut.
-  - **Proposed for the owner's adoption:** two issues 2.8.1 filed (§2, D4).
+  - **Proposed for the owner's adoption:** three issues the 2.8.1 windows met (§2, D4).
 
   The cut record is `verification-sets/2-8-1-cut-record.md`.
 - **Where it came from:** the owner's outside review of the 2.8.1 plan. The owner asked: "Can you update the 2.8.1 plan and draft the start of 2.9 and 2.10 plan accordingly".
@@ -132,12 +132,20 @@ FastAPI 0.163 with Starlette 1.10, aio-pika 10.2 and ruff 0.17. It changes two l
     Otherwise the play is refused, as today. A locked screen stays a refusal.
 - **D2, #3200's evidence:** the error must be in a file the candidate changed. Must it also be within the footprint? **The Spark recommends yes:** it's the narrower rule, and every case read so far meets it.
 - **D3, #3182:** both rules, or one? **The Spark recommends both.** The plan gate refuses what no runner would collect, and the cap bounds what's left.
-- **D4, two issues 2.8.1 filed, each small and feature-free.** Should 2.9 carry them?
-  - **#3240:** the skills section ranks a declared stop below the task's own requirements. It caused the one
-    run-to-run miss the owner ruled variance in #3199's replay. Its fix is prompt text, so it owes a skills replay.
+- **D4, three issues the 2.8.1 windows met, each small and feature-free.** Should 2.9 carry them?
+  - **#3240:** the skills section ranks a declared stop below the task's own requirements. In #3199's replay, the
+    one miss the owner ruled run-to-run variance came on an input byte-identical in all four arms (3/3, 1/3, 3/3,
+    2/3), and the missed reply cites that ordering. The fix is prompt text, so it owes a skills replay, and that replay
+    tests the cause.
   - **#3243:** the hand-play script prints each result's `ran_with`. 2.8.1 item 3's 32 plays were read without it.
+  - **#3230:** a qualification record names tools added and removed, but not a tool whose definition changed. The
+    2.8.1 windows met it twice:
+    - on 2026-11-19 the digest moved with nothing added or removed;
+    - on 2026-11-20 two changed descriptions were found only by diffing the MacBook lane's own dumps.
 
-  **The Spark recommends both.** Each is a defect the 2.8.1 windows met, and neither changes what a squad can be asked to build.
+    It bears on item 2: with nobody at the Mac, nobody diffs the dumps by hand.
+
+  The MacBook lane owns #3243 and #3230. **The Spark recommends all three.** Each is a defect the 2.8.1 windows met, and neither changes what a squad can be asked to build.
 
 ## 3. The cut's evidence (drafted)
 
