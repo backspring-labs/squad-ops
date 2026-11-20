@@ -412,6 +412,47 @@ and one development case whose input was byte-identical in both arms. The covera
 3 and 5 the same day and failed the first in one generation, the late band above. The Spark lane replays each text
 the same way.
 
+**The third text shipped (2026-11-20).** Its replay (`roblox-skills-v4-revised-3`) held predictions 1 to 3 in
+every generation. Each session-clock generation read the band "0:1", which opens 10 s after the count starts,
+inside a 25 s wait. Each lobby-hint generation played the lobby half and carried the floor sentence as a headless
+criterion with its `Not played:` line. Two predictions are read as the owner ruled on 2026-11-20 ("I agree with
+your recommendations go", to the MacBook lane's two recommendations):
+
+- **Prediction 5** (no `v3` case the current skill meets goes unmet) failed as written: one development case
+  scored 2 of 3. Its input is byte-identical in every arm, and four arms on that input scored 3 of 3, 1 of 3,
+  3 of 3 and 2 of 3. **Ruled:** a case whose input is byte-identical in both arms is reported as run-to-run
+  variance and doesn't count against the skill.
+- **Prediction 4** (every named check fails on the broken candidates and passes on the correct one) can't hold
+  check by check: on a result with a half no action reaches, no played check fails on the build that holds the
+  reachable half alone, which the skill itself says. **Ruled:** each named check passes on the correct build and
+  fails on today's game; each broken build is failed by at least one criterion of its proposal, played or
+  headless; and the lobby half alone is reported as the gap the proposal declares as not played.
+
+**The plays** (the MacBook, 2026-11-20, Studio 0.748.0.7481526 on channel `production`, requalified that
+morning). The ten named checks the six generations authored, nine of them distinct, were played on the counted
+run's accepted tree, on each broken tree and on today's game: 32 plays, each completed, each as predicted before
+any play.
+
+| build | what read it |
+|---|---|
+| the correct tree | every named check passed |
+| today's game | every named check failed, its element absent |
+| the stuck timer | failed by the counting check of every clock generation: "0:00" observed, where correct work read "0:10" |
+| a rule that never hides the hint | failed by the headless criterion of every lobby-hint generation |
+| the lobby half alone | failed by no criterion: the gap each proposal declares as not played |
+
+**How the plays were made comparable,** agreed between the lanes and frozen with the trees' hashes before any
+play:
+- **One path per generation is mapped.** Each generation names the element it would add in its own words. Its
+  checks were played with that one path replaced by the accepted tree's element in the same role, and every other
+  word of the scenario as authored. Nothing went unmapped.
+- **A headless criterion became a spec written from its `observable` alone:** the function mapped to the accepted
+  module's, a word that names a place mapped to that module's word for it, numbers and expected values as written.
+  The specs ran on the Spark in a container from the sandbox image with no network, and on today's game on the
+  MacBook.
+- **A third broken candidate was added** to the plan's two: a rule that never hides the hint, which the headless
+  half exists to catch.
+
 **The tests.** `tests/unit/capabilities/test_roblox_skillsets.py`: every whole example in the skill is read by the
 rails under `roblox-studio/1`, with its scenario id its criterion's and its surface its named assertion's path;
 every example answers the self-review in the words the skill asks for; the changing value's example waits for its

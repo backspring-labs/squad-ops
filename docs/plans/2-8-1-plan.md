@@ -140,6 +140,10 @@ None changes a design beyond a numbered SIP amendment it names.
     Today's skill's answers are recorded beside them.
   - The held working-work lesson (`pat_0e0dfc199afe0bed@2`) is withdrawn once this ships, since the skill supersedes it.
 - **Done when:** the replay's record shows the predictions holding, with both arms' answers kept. A prediction that fails is reported as failed, and the skill doesn't ship on that version.
+- **As run and ruled (2026-11-20).** Two texts failed a prediction and didn't ship. The third held the first three in every generation. The owner ruled how the other two are read ("I agree with your recommendations go", to the MacBook lane's recommendations); SIP-0118 R5.8 holds the record.
+  - **The fourth prediction** is read per build: each named check passes on the correct build and fails on today's game, and each broken build is failed by at least one criterion of its proposal, played or headless. The lobby half alone is failed by no criterion, and is reported as the gap each proposal declares as not played. The 32 plays and the headless runs held this reading.
+  - **The fifth prediction** failed as written on one development case, 2 of 3. Its input is byte-identical in both arms, so it is reported as run-to-run variance and doesn't count against the skill.
+  - **Added to the method above,** agreed between the lanes before any play: a third broken candidate (a rule that never hides the hint), and a table, frozen with the trees' hashes, that maps the one element each generation names to the accepted tree's.
 
 ### 5. The Campaign-level repair of a blocked candidate, played (§10 row 8) — both lanes
 
