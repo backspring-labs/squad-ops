@@ -1,6 +1,12 @@
 # 2.9 plan — stabilization: a supervised Roblox Campaign attributes failures on evidence, and plays unattended and faster
 
-**Status: DRAFT START (2026-11-18). Not adopted.** It places nothing: SIP ledgers and issue labels move when the owner adopts it.
+**Status: DRAFT, revision 1 (2026-11-20, after the v2.8.1 cut). Not adopted.** It places nothing: SIP ledgers and issue labels move when the owner adopts it.
+- **Revision 1:** 2.8.1 settled two drafted items and placed one.
+  - **Settled:** #3147's condition held (#3229), and #3218's threshold held (32 entries, no worker request over 2 s).
+  - **Placed:** #3244, by the owner's ruling at the cut.
+  - **Proposed for the owner's adoption:** two issues 2.8.1 filed (§2, D4).
+
+  The cut record is `verification-sets/2-8-1-cut-record.md`.
 - **Where it came from:** the owner's outside review of the 2.8.1 plan. The owner asked: "Can you update the 2.8.1 plan and draft the start of 2.9 and 2.10 plan accordingly".
 - **The review's sequencing:**
   1. 2.8.1's fixes;
@@ -74,9 +80,20 @@ This draft takes steps 2 and 3. #3174, which the review placed in step 2, is in 
   - **at the prompt:** a task whose expected files match no directory is shown the files its text names and its suite imports, under a stated cap. It's never shown the whole tree.
 - **Done when:** a plan whose `qa.test` names a source file or a note is refused at the plan gate. A replay of the 2.8 counted run's `qa.test` envelope shows the prompt under the cap, with the files the suite needs.
 
-### 4. The QA prompt names only the product's runner (#3147) — the MacBook lane, if 2.8.1's condition failed
+### 4. A single-workload cycle's route names its ending (#3244) — the Spark lane; placed by the owner, 2026-11-20
 
-The split from 2.8.1 item 7, with a replay of the existing stacks' QA cases, since their bytes would change.
+- **What the 2.8.1 cut read:** 26 of the Roblox project's 28 cycles name the same ending in all four views. The two
+  Campaign repair cycles, which have one workload each, end `single_workload_ended`. `STATUS_OF_ENDING` maps that stop to
+  `None`, so the route reads their status from their one run, which is right, and names no ending.
+- **The fix:** the route names the recorded stop even where the runs decide the status. For a one-workload cycle,
+  `single_workload_ended` is its ending.
+- **Tests:** a one-workload cycle ended completed, failed and cancelled; the multi-workload case unchanged; a wiring test
+  at the cycle route.
+- **Done when:** the cut's re-read of 2.8.1 item 1's four views names the same ending for every Roblox cycle, the two
+  repair cycles included.
+
+*#3147, drafted here if 2.8.1's condition failed, isn't needed: the condition held (#3229). The per-stack move stays
+open and unplaced (SIP-0112 H.37).*
 
 ### 5. One Studio session for many plays, measured — the lane that owns the Studio runner
 
@@ -100,7 +117,7 @@ The split from 2.8.1 item 7, with a replay of the existing stacks' QA cases, sin
 
 FastAPI 0.163 with Starlette 1.10, aio-pika 10.2 and ruff 0.17. It changes two live paths, the `app.routes` readers and the publisher's return handling, which is a stabilization release's work (the 2.8 plan §7).
 
-### 7. #3218 — only if the owner moves it from 2.8.1
+*#3218, drafted here in case the owner moved it, isn't needed: its threshold held in 2.8.1's closing window.*
 
 ---
 
@@ -115,6 +132,12 @@ FastAPI 0.163 with Starlette 1.10, aio-pika 10.2 and ruff 0.17. It changes two l
     Otherwise the play is refused, as today. A locked screen stays a refusal.
 - **D2, #3200's evidence:** the error must be in a file the candidate changed. Must it also be within the footprint? **The Spark recommends yes:** it's the narrower rule, and every case read so far meets it.
 - **D3, #3182:** both rules, or one? **The Spark recommends both.** The plan gate refuses what no runner would collect, and the cap bounds what's left.
+- **D4, two issues 2.8.1 filed, each small and feature-free.** Should 2.9 carry them?
+  - **#3240:** the skills section ranks a declared stop below the task's own requirements. It caused the one
+    run-to-run miss the owner ruled variance in #3199's replay. Its fix is prompt text, so it owes a skills replay.
+  - **#3243:** the hand-play script prints each result's `ran_with`. 2.8.1 item 3's 32 plays were read without it.
+
+  **The Spark recommends both.** Each is a defect the 2.8.1 windows met, and neither changes what a squad can be asked to build.
 
 ## 3. The cut's evidence (drafted)
 
@@ -122,6 +145,9 @@ FastAPI 0.163 with Starlette 1.10, aio-pika 10.2 and ruff 0.17. It changes two l
 - **Row 8, re-read:** 2.8.1's row-8 diagnostic re-run with in-run correction off, to show #3200 didn't move it.
 - **#3193:** a window with nobody at the Mac (item 2).
 - **Throughput:** the before-and-after measurement (item 5).
+- **#3244:** the four-view read of every Roblox cycle, re-run (item 4).
+- **#3174, read live:** the first escalation a person answers in a 2.9 window is read against 2.8.1 item 2's
+  done-when. That is the owner's ruling at the 2.8.1 cut, which accepted the item on its route tests.
 - **The existing stacks:** a shakeout pair on the final deploy, with its exit rule stated before the first launch.
 - **The cut record** says what the evidence doesn't cover.
 
