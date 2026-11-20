@@ -332,6 +332,138 @@ the hint, and without it the level label.
 the candidate and stopped the run under the owner's 2026-11-16 grant for uncounted runs. A rerun needs this
 merged, a deploy, and an amendment to the demonstration's pre-registration (§8).
 
+### R5.8 The scenario-writing skill carries the rules the increment gate applies (2026-11-18; R4.3; SIP-0116 §7, §17p; #3199; the 2.8.1 plan's item 4)
+
+**What changed.** `roblox-increment-design`'s `play-scenario-authoring` skill gains six rules, each with a worked
+example, and a self-review its author answers in each criterion's own text. The scenario vocabulary, the change
+request's schema and the skill's stop are unchanged.
+
+**The evidence.** Across the 2.8 demonstration's rehearsal 3 and its counted run, 7 of 11 proposal versions were
+returned at the increment gate (the demonstration's record, §3 and §4). The return reasons name defects only, by
+design, so the shape of a sound criterion had to come from the skill. It had one worked example, a label read once.
+- **Checks that passed on broken work:** a clock read by its format alone; a counter attribute read in place of
+  the text; a result's reachable half with nothing on the half no play reaches.
+- **Checks that failed on working work:** a wait on a value nothing sets; an exact match on a value that changes
+  each second.
+
+**The rules.**
+
+| rule | what it asks | the return it answers |
+|---|---|---|
+| **Coverage** | every sentence of the item, taken word for word from the objective, is read by a criterion that quotes it | the half left out |
+| **Reachability** | every action, wait and observation names something today's game sets or the footprint adds | the wait on a value nothing sets |
+| **The broken build** | the named check fails on the obvious broken build and on a partial one, and passes on any correct one | the format-only check, the counter read for the text, the exact match |
+| **Timing** | a changing value is read as the first band a stuck value can't show, from a start the criterion states, inside one wait with at least 10 s to spare | the one-second window, and a band read at its edge |
+| **Preservation** | what must still work is read on its own, before any long step | a check tied to where a long walk took the player |
+| **The kind of evidence** | each criterion says played or headless, and a headless one says what no play reached | a weaker played check standing in for an unreachable state |
+
+**As built.**
+- **A state no action reaches is told apart from an effect nothing observes.** The stop stands for a sound, an
+  effect, a colour and the rest (`no scenario:`). Where the effect is one the reader observes but part of it holds
+  only in a state the four actions can't bring about, the skill plays the reachable half, proves the rule headless
+  with a `package` criterion on a module that only computes, and declares the gap. That is the 2.8 demonstration's
+  pre-registered shape for its first item (§7.1).
+- **Time passes by a `wait_until` on the band, not a held key.** The wait is on the element the footprint adds,
+  so on today's game and on a stuck value it times out and the named check fails. A working value reaches the band
+  from any start, and the read at its opening has the band's length before it closes. A held key walks the
+  player, which is the preservation rule's case.
+- **The self-review is answered in `observable`,** the criterion's own text, which the supervisor reads as the
+  review aid's "Claims" (`scenario_review.md`): `Played.` or `Headless.`, `Reads:`, `Fails on:`, `Band:` and
+  `Not played:`. Every example in the skill answers it in those words.
+- **Coverage is worked from the item's own sentences** (revised 2026-11-19, after the first replay). The first
+  text asked that every sentence of the item be read, and left "the item" undefined. In the replay's revised arm,
+  one generation of three for the lobby-hint case restated the item in its `prd_delta` without the sentence about
+  the state no play reaches, then covered that restatement completely: two played checks, nothing headless
+  (`var/replays/roblox-skills-v4-revised`, the table on #3199). The request template tells an author to leave out
+  of `prd_delta` what nothing else in the request delivers, and the author applied it to a sentence of the item.
+  The rule now:
+  - names the item as the request's objective, copied out sentence by sentence before anything is written;
+  - says a criterion reads a sentence when its check fails on a build where that sentence is false, and has the
+    criterion quote the sentence after `Reads:`;
+  - says the `prd_delta` carries every copied sentence, and that the template's "leave it out" is for something
+    the author thought of adding;
+  - counts a sentence an earlier increment's frozen criterion reads as covered there.
+- **The band opens early in one wait** (revised 2026-11-19, after the second replay). On the coverage revision
+  the lobby-hint case met its rules in all three generations. One session-clock generation then waited 60 s, the
+  most a wait allows (`MAX_DEADLINE_SECONDS`), for a band that opens 60 s after the count starts, and counted
+  setup's two or three seconds as its margin; the step's wait starts after setup. It chose the minute's rollover to
+  prove the format and the rate (`var/replays/roblox-skills-v4-revised-2`, the write-up on #3199). The two
+  generations that met the rules read a band opening at 50 s under the same 60 s wait. The rule now:
+  - reads the first band a stuck value can't show, which already shows the format and that the value moved;
+  - says a wait's time runs from its own step's start, with none of setup's time coming off it;
+  - asks for a band that opens within 30 s of the count's start and a wait with at least 10 s more than that, in a
+    table of three cases (sound, fragile, failing on correct work);
+  - says an example value in the item shows the format and is never a time to wait for, and that a later value
+    with a sentence of its own is proved headless;
+  - has `Band:` state the arithmetic: the opening, what the wait allows, the seconds to spare.
+- **The examples are invented:** a shield label that counts down and a low-health warning. Neither is in the
+  game's goal set, and the replay's cases stay unseen by the skill.
+- **The skill grows from 10,018 to 23,275 characters.** The size preflight counts it for a proposal
+  (SIP-0116 §17m).
+
+**What isn't built.** A deterministic check of reachability at the proposal seam. It needs a map of the place,
+which is the 2.10 plan's.
+
+**What ships it.** The skills replay under `roblox-skills-v4` (SIP-0116 §17p), which the Spark lane runs: the
+returned shapes as authoring cases beside every `v3` case, today's skill and this one as two arms, judged by rule
+and by play on fixed broken and correct candidates. The 2.8.1 plan states the predictions. If one fails, the skill
+doesn't ship on this text. The first text failed two on 2026-11-19 and didn't ship: the coverage omission above,
+and one development case whose input was byte-identical in both arms. The coverage revision held predictions 2,
+3 and 5 the same day and failed the first in one generation, the late band above. The Spark lane replays each text
+the same way.
+
+**The third text shipped (2026-11-20).** Its replay (`roblox-skills-v4-revised-3`) held predictions 1 to 3 in
+every generation. Each session-clock generation read the band "0:1", which opens 10 s after the count starts,
+inside a 25 s wait. Each lobby-hint generation played the lobby half and carried the floor sentence as a headless
+criterion with its `Not played:` line. Two predictions are read as the owner ruled on 2026-11-20 ("I agree with
+your recommendations go", to the MacBook lane's two recommendations):
+
+- **Prediction 5** (no `v3` case the current skill meets goes unmet) failed as written: one development case
+  scored 2 of 3. Its input is byte-identical in every arm, and four arms on that input scored 3 of 3, 1 of 3,
+  3 of 3 and 2 of 3. **Ruled:** a case whose input is byte-identical in both arms is reported as run-to-run
+  variance and doesn't count against the skill.
+- **Prediction 4** (every named check fails on the broken candidates and passes on the correct one) can't hold
+  check by check: on a result with a half no action reaches, no played check fails on the build that holds the
+  reachable half alone, which the skill itself says. **Ruled:** each named check passes on the correct build and
+  fails on today's game; each broken build is failed by at least one criterion of its proposal, played or
+  headless; and the lobby half alone is reported as the gap the proposal declares as not played.
+
+**The plays** (the MacBook, 2026-11-20, Studio 0.748.0.7481526 on channel `production`, requalified that
+morning). The ten named checks the six generations authored, nine of them distinct, were played on the counted
+run's accepted tree, on each broken tree and on today's game: 32 plays, each completed, each as predicted before
+any play.
+
+| build | what read it |
+|---|---|
+| the correct tree | every named check passed |
+| today's game | every named check failed, its element absent |
+| the stuck timer | failed by the counting check of every clock generation: "0:00" observed, where correct work read "0:10" |
+| a rule that never hides the hint | failed by the headless criterion of every lobby-hint generation |
+| the lobby half alone | failed by no criterion: the gap each proposal declares as not played |
+
+**How the plays were made comparable,** agreed between the lanes and frozen with the trees' hashes before any
+play:
+- **One path per generation is mapped.** Each generation names the element it would add in its own words. Its
+  checks were played with that one path replaced by the accepted tree's element in the same role, and every other
+  word of the scenario as authored. Nothing went unmapped.
+- **A headless criterion became a spec written from its `observable` alone:** the function mapped to the accepted
+  module's, a word that names a place mapped to that module's word for it, numbers and expected values as written.
+  The specs ran on the Spark in a container from the sandbox image with no network, and on today's game on the
+  MacBook.
+- **A third broken candidate was added** to the plan's two: a rule that never hides the hint, which the headless
+  half exists to catch.
+
+**The tests.** `tests/unit/capabilities/test_roblox_skillsets.py`: every whole example in the skill is read by the
+rails under `roblox-studio/1`, with its scenario id its criterion's and its surface its named assertion's path;
+every example answers the self-review in the words the skill asks for; the changing value's example waits for its
+band and reads the same band; the coverage table's sentences are the example item's, word for word, each quoted
+after `Reads:` by the criterion the table names; the band example's stated wait and margin are its scenario's
+(the deadline it sets, at least 10 s past a band that opens within 30 s); and the stop stands before the new case.
+
+**Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 4 names the six rules, the self-review
+and the replay. The owner's three rules and two timing notes are on #3199. The MacBook lane wrote the text, under
+the owner's 2026-11-15 word on Roblox skill drafts (Q47).
+
 ## R4. Revision 4 (2026-11-09): the composition as requirements and supply
 
 **What prompted it.** SIP-0116, Agent Skillsets, was accepted on 2026-11-09. The owner split it from Capability-Backed
