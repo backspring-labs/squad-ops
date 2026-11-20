@@ -205,6 +205,10 @@ None changes a design beyond a numbered SIP amendment it names.
   - the cut record names the risk that remains: a stall long enough reads as an absent worker, on #3045's launch-blocked path;
   - the cut record also names the safeguard in place: the claim and lease rules held through all 17 stalls, and the worker retries at its next poll.
 - **Done when:** the threshold holds on the final deploy, or the owner's disposition is on the record. Measurement alone doesn't close it.
+- **As run (2026-11-20).** The threshold holds. #3238's fix (`5a7cc8d3`) was deployed at `a67dace4`, and the closing window ran
+  with the MacBook's worker polling throughout (amendment 12j). Across 32 entries, no worker request took more than 2 s (the
+  slowest was a 1.06 s heartbeat), none timed out, and the loop watchdog's longest stall was 1.08 s. The record is
+  `verification-sets/2-8-1-closing-window-record.md` §3.
 
 ### 7. The QA prompt names only the product's runner (#3147) — the MacBook lane, on a condition
 
@@ -216,6 +220,9 @@ None changes a design beyond a numbered SIP amendment it names.
   - The Luau prompt's change is read by the `roblox-skills-v4` replay's QA cases, under its new experiment id.
 - **Otherwise** it moves to 2.9 with a replay of its own (`2-9-0-plan.md`).
 - **Done when:** both render tests pass and the replay's QA cases meet their expectations, or the move is recorded.
+- **As run (2026-11-20).** #3229 shipped the split, with both render tests. Its Luau prompt was read on a fresh capture
+  from the closing window: `roblox-skills-v4-capture-6`'s `qa-capture` met 3 of 3, every spec passing and discriminating.
+  #3147 stays open for the per-stack move, unplaced. The record is `verification-sets/2-8-1-closing-window-record.md` §4.
 
 ---
 
