@@ -109,7 +109,7 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09, and again for revision 2 (CLA
 - **Conflicts:** one, **resolved by the owner on 2026-10-09** (Q1). 2.3 is feature-free by rule, and G0–G2 are placed
   there, dark, under SIP-0106 §4.3's waiver.
 
-## Delivery ledger (current as of 2026-11-18, the 2.8.0 cut)
+## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
 
 Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work runs.
 

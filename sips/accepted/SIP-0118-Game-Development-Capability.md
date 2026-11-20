@@ -73,7 +73,7 @@ Agent Skillsets, accepted 2026-11-09.
 - **One question, shared with the companion (Q68), ruled 2026-11-09:** skillset ids keep SIP-0116's platform-first
   form, and the Roblox dev skillset is `roblox-luau-dev`.
 
-## Delivery ledger (current as of 2026-11-18, the 2.8.0 cut)
+## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
 
 The rows follow the adopted plan's phases, as revision 4 orders them (R4.5). The 2.8 plan placed them, and 2.8.0
 shipped all but F6. SIP-0116's phases are in its own ledger.
