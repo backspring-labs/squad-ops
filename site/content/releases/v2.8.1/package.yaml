@@ -1,0 +1,353 @@
+version: 2.8.1
+tag: v2.8.1
+previous_tag: v2.8.0
+date: '2026-11-20'
+commit: 3924863d6bb69ca8b2763d558d5bf312da91faaf
+narrative: "The 2.8 line's first patch (`docs/plans/2-8-1-plan.md`; the cut record\
+  \ is `docs/plans/verification-sets/2-8-1-cut-record.md`): what the 2.8 windows met,\
+  \ fixed.\n\n### Added\n- **The skills replay reads the gate's rules** (#3199; SIP-0116\
+  \ §17y; the 2.8.1 plan's item 4): the cases\n  version `roblox-skills@3` adds the\
+  \ 2.8 window's two items. A new expectation, `scenario_rules`, reads the\n  accepted\
+  \ change request against facts its case states before the run:\n  - the revised\
+  \ skill's fixed words;\n  - each of the item's sentences read by a criterion;\n\
+  \  - no wait on a state no action reaches, or on an attribute nothing sets;\n  -\
+  \ a named check that rejects what the broken builds show, accepts a correct reading,\
+  \ and reads a changing\n    value as a stated band.\n\n  Read against every B-1\
+  \ and B-2 proposal on record, it flags all 8 returned versions, each for the reviewer's\n\
+  \  reason, and meets all 7 approved ones.\n- **A fault whose client stops at start,\
+  \ for the Campaign-level repair diagnostic** (#3222, the 2.8.1 plan's item 5):\n\
+  \  `luau_client_throws_at_start` adds a throw to the candidate's first client script\
+  \ that fires only where Roblox\n  loads it (`typeof(game) == \"Instance\"`), so\
+  \ the product's headless specs pass and every play reads `setup_failed`.\n  The\
+  \ cycle reads `blocked_unverified` and the Campaign routes §10 row 8. A fault can\
+  \ now stay out of a Campaign's\n  repair and retry cycles (`bound_cycles`), so the\
+  \ repair builds without it. The request profile\n  `campaign-increment-source-client-stops`\
+  \ declares it, with `max_correction_attempts: 0`.\n- **The runtime names what holds\
+  \ its event loop, and its slow requests** (#3218's instruments, the 2.8.1 plan's\n\
+  \  item 6): a loop held for over a second is logged with the loop thread's stack\
+  \ (`event_loop_stalled`), and how\n  long it was held when it clears. A request\
+  \ or a database connection slower than a second is logged too\n  (`slow_request`,\
+  \ `slow_pool_acquire`). The watchdog stops with a start-up that fails, and doesn't\
+  \ read a loop\n  that has stopped running as a held one.\n\n### Changed\n- **The\
+  \ artifact vault no longer holds the runtime's event loop** (#3218, the 2.8.1 plan's\
+  \ item 6): the\n  artifact-id index (92,000 entries, 8 MB on the Spark) is kept\
+  \ in memory, so a lookup reads no file, and every\n  vault operation's file IO runs\
+  \ in a worker thread. Concurrent stores share one index write, and each store\n\
+  \  still returns only once the index file holds its entry. Before this, each store,\
+  \ promote and retrieve parsed the\n  index on the loop, and each store rewrote it.\
+  \ A run's checkout seeding and a gate's promotion held the API for\n  18 to 41 s.\n\
+  - **A Luau product's suite author is told its own runner's rules** (#3147; SIP-0112\
+  \ H.37): the `qa.test` system\n  prompt named pytest and vitest, with FastAPI, Next.js\
+  \ and JSX examples, on every product. A product that tests\n  only with Luau runners\
+  \ is now sent a fragment written for its runner, with the rules that hold on every\
+  \ stack.\n  Every other run's `qa.test` system prompt is byte for byte what it was.\n\
+  - **The Roblox scenario-writing skill carries the rules the increment gate applies**\
+  \ (#3199; SIP-0118 R5.8):\n  `play-scenario-authoring` gains six rules, each with\
+  \ a worked example: coverage, reachability, the broken build,\n  timing, preservation\
+  \ and the kind of evidence. It ends with a self-review answered in each criterion's\n\
+  \  `observable` (`Played.` or `Headless.`, `Reads:`, `Fails on:`, `Band:`, `Not\
+  \ played:`). Coverage is worked from\n  the objective's own sentences, each quoted\
+  \ by the criterion that reads it and kept in the `prd_delta`. A value\n  that changes\
+  \ is read as the first band a stuck value can't show, inside one wait with at least\
+  \ 10 s to spare. A\n  state no action reaches is played as far as a scenario goes\
+  \ and proved headless for the rest, with the gap\n  declared.\n\n### Fixed\n- **A\
+  \ cycle's recorded ending decides its status** (#3201): a cycle a Campaign ended\
+  \ at the gate kept its later\n  workloads pending, so the cycle route read it `active`,\
+  \ and rehearsal 3's abort cancelled it 40 minutes after it\n  ended. The latest\
+  \ `cycle_ends` row now maps onto the status, and the cycle's response names it\n\
+  \  (`recorded_ending`). A run still live from before the ending, or a cancel after\
+  \ it, is named as a\n  `status_conflict` and never hides the other record. The abort,\
+  \ the cycle list and detail, the memory routes and the\n  binding fill read it the\
+  \ same way; the list reads every cycle's ending in one query.\n- **A person's decision\
+  \ on an escalated plan gate ends its escalation** (#3174; SIP-0109 §24eh): an approval\
+  \ left\n  the escalation reading `pending` when the run ended before the next sweep,\
+  \ since only the sweep wrote the ending\n  and only for a building campaign.\n \
+  \ - The gate route writes the ending as soon as the decision is stored, once, with\
+  \ who decided and when. The\n    sweep writes it for a stored decision whose ending\
+  \ is missing, in any state the campaign has reached.\n  - `resolved` is a decision\
+  \ made before the ruling bound, by the decision's own time. One made after it reads\n\
+  \    `expired` and names the decision, which stands on the run.\n- **A Studio that\
+  \ moved release channel runs nothing until it is re-qualified** (#3206; SIP-0117\
+  \ R5.29): Roblox's\n  updater moves an install between channels at one version number,\
+  \ and the worker's proof held only the version\n  and the tool list. The proof is\
+  \ now the version, the channel and the tool list.\n  - The channel is read from\
+  \ the startup log the running Studio holds open, at every claim and on both sides\
+  \ of\n    every reset. One that differs or can't be read reads `not_executed`, flagged\
+  \ as the worker's own (R5.28).\n  - The qualification record (schema `/2`) names\
+  \ the channel. A record from before it is still read, and as the\n    newest passing\
+  \ record it runs nothing: **a worker upgraded from the 2.8 line's first release\
+  \ is re-qualified once**\n    (`scripts/dev/studio_requalify.py`).\n  - Each result's\
+  \ `ran_with` carries the proof's Studio (`qualified.*`) and the one the play ran\
+  \ on (`played.*`).\n  - `squadops doctor`'s `qualified` check and the worker's registration\
+  \ name the channel."
+pull_requests:
+- number: 3246
+  title: 'chore(release): 2.8.1 — what the 2.8 windows met, fixed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-20'
+- number: 3245
+  title: 'docs(verification-sets): the 2.8.1 cut record, each item''s done-when read'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-20'
+- number: 3242
+  title: 'docs(verification-sets): the 2.8.1 closing window record, #3218''s threshold
+    and the Luau QA capture'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3218
+  merged_at: '2026-11-20'
+- number: 3241
+  title: 'docs(plans): amendment 12j, the 2.8.1 closing window on the production-channel
+    Studio pin'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-20'
+- number: 3228
+  title: 'feat(skills): the Roblox scenario-writing skill carries the rules the increment
+    gate applies (SIP-0118 R5.8)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-20'
+- number: 3239
+  title: 'docs(verification-sets): the 2.8.1 cut''s shakeout pair, its exit rule stated
+    before the first launch'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3238
+  title: 'fix(vault): the artifact index lives in memory and the vault''s file IO
+    runs off the event loop'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3237
+  title: 'docs(verification-sets): the 2.8.1 row-8 diagnostic record, D1–D4 on the
+    second attempt'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3222
+  merged_at: '2026-11-19'
+- number: 3234
+  title: 'feat(replay): the skills replay reads the gate''s rules by rule, roblox-skills@3'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3231
+  title: 'docs(plans): amendment 12i, the Studio pin moves before the row-8 diagnostic'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3233
+  title: 'fix(api): the loop watchdog stops with a start-up that fails, and a stopped
+    loop isn''t a held one'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3232
+  merged_at: '2026-11-19'
+- number: 3220
+  title: 'fix(studio): the worker''s proof names Studio''s release channel, and a
+    Studio on another runs nothing (SIP-0117 R5.29)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3206
+  merged_at: '2026-11-19'
+- number: 3225
+  title: 'feat(faults): a client that stops at start, kept out of a Campaign''s repair'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3229
+  title: 'fix(prompts): a Luau product''s suite author is sent a qa.test fragment
+    written for its runner (SIP-0112 H.37)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3227
+  title: 'fix(campaigns): a person''s gate decision ends its escalation where it is
+    recorded (SIP-0109 §24eh)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3174
+  merged_at: '2026-11-19'
+- number: 3226
+  title: 'docs(plans): amendment 12h, the 2.8.1 row-8 diagnostic, pre-registered before
+    it runs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3223
+  title: 'fix(cycles): a cycle''s recorded ending decides its status, and the abort
+    leaves an ended cycle'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 3201
+  merged_at: '2026-11-19'
+- number: 3221
+  title: 'feat(runtime): name what holds the event loop, and slow requests and pool
+    acquires'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3219
+  title: 'docs(plans): the 2.8.1 plan, revision 2, and the 2.9 and 2.10 plans'' draft
+    starts'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-19'
+- number: 3217
+  title: 'docs(release): the v2.8.0 package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-11-18'
+sip_moves: []
+sip_amendments:
+- sip: SIP-0088-Agent-Runtime-Modes
+  status: accepted
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  status: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  status: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  status: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  status: accepted
+- sip: SIP-0101-Cycle-Replay-Harness
+  status: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+- sip: SIP-0105-Stack-Blueprint-Contract
+  status: accepted
+- sip: SIP-0109-Campaign-Orchestration
+  status: accepted
+- sip: SIP-0110-Cross-Cycle-Memory
+  status: accepted
+- sip: SIP-0111-TensorFold-Provider-Adapter
+  status: accepted
+- sip: SIP-0112-Project-Lifecycle-Management
+  status: accepted
+- sip: SIP-0113-Outcome-Evaluation
+  status: accepted
+- sip: SIP-0115-Project-Goals-Backlog
+  status: accepted
+- sip: SIP-0116-Agent-Skillsets
+  status: implemented
+- sip: SIP-0117-Game-Development-Platform
+  status: accepted
+- sip: SIP-0118-Game-Development-Capability
+  status: accepted
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  status: proposed
+cycles:
+- cycle_id: cyc_e8260793f781
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: blocked_unverified
+  verified:
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  failed: []
+  required_unmet:
+  - scenario:S1:hud-visible
+  - scenario:S1:tower-waiting-text
+  - scenario:S2:hud-visible
+  - scenario:S2:tower-waiting-shown
+  unverified:
+  - scenario:S1:hud-visible
+  - scenario:S1:tower-waiting-text
+  - scenario:S2:hud-visible
+  - scenario:S2:tower-waiting-shown
+  run_count: 3
+- cycle_id: cyc_aeb6c8e22b64
+  role: diagnostic
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  - scenario:S1:hud-visible
+  - scenario:S1:tower-waiting-text
+  - scenario:S2:hud-visible
+  - scenario:S2:tower-waiting-shown
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+- cycle_id: cyc_15ba8b7b7589
+  role: void
+  captured: true
+  status: completed
+  verdict: blocked_unverified
+  verified:
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  failed: []
+  required_unmet:
+  - scenario:S1:hud-visible
+  - scenario:S1:lobby-hint-text
+  unverified:
+  - scenario:S1:hud-visible
+  - scenario:S1:lobby-hint-text
+  run_count: 3
+- cycle_id: cyc_bd5078b22c8e
+  role: void
+  captured: true
+  status: cancelled
+  verdict: blocked_unverified
+  verified: []
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+screenshots:
+- prefect-flow-run-row-8-repair-cycle-its-candidate-plays-and-is-accepted.png
+showcase:
+  cycle_id: cyc_aeb6c8e22b64
+  reason: 'the 2.8.1 line''s new proof is the Campaign-level repair of a blocked candidate
+    on a played product (SIP-0109 §10 row 8): this is the repair cycle, launched without
+    the fault, whose candidate passed the same frozen scenarios by digest and was
+    accepted'
+  role: diagnostic
+records:
+  asset: squadops-2.8.1-records.tar.gz
+  sha256: 8a2d87938f6bba12f5d51ff79fc541a2c776a0fd2e4d4e5ddafbd435b2f487b0
+  files: 8
+  campaigns: []
+  engine_records: []
+  bytes: 80316
+  attached_at: '2026-11-20T17:59:11Z'
+  scanned:
+    secret_values: 71
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
+    heldout_markers: 155
+  withheld: []
