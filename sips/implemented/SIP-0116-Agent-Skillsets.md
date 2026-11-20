@@ -127,7 +127,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
   changes the first and the last, so it builds in 2.8 at the earliest.
 - **Questions:** Q52–Q67, ruled 2026-11-09 (§13 and the portfolio).
 
-## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
+## Delivery ledger (current as of 2026-11-18, the 2.8.0 cut)
 
 | part | status | where |
 |---|---|---|
