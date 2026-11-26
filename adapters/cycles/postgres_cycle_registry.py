@@ -799,12 +799,13 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
             await conn.execute(
                 "INSERT INTO cycle_ends "
-                "(cycle_id, end_index, last_run_id, stopped_because, recorded_at) "
-                "VALUES ($1, $2, $3, $4, now())",
+                "(cycle_id, end_index, last_run_id, stopped_because, detail, recorded_at) "
+                "VALUES ($1, $2, $3, $4, $5, now())",
                 end.cycle_id,
                 end_index,
                 end.last_run_id,
                 end.stopped_because.value,
+                end.detail,
             )
             return end_index
 
@@ -813,7 +814,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
     async def get_cycle_end(self, cycle_id: str) -> RecordedEnd | None:
         async with self._retry.acquire(self._pool) as conn:
             row = await conn.fetchrow(
-                "SELECT last_run_id, stopped_because FROM cycle_ends WHERE cycle_id = $1 "
+                "SELECT last_run_id, stopped_because, detail FROM cycle_ends WHERE cycle_id = $1 "
                 "ORDER BY end_index DESC LIMIT 1",
                 cycle_id,
             )
@@ -823,6 +824,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             cycle_id=cycle_id,
             last_run_id=row["last_run_id"],
             stopped_because=CycleStopReason(row["stopped_because"]),
+            detail=row["detail"],
         )
 
     async def get_cycle_ends(self, cycle_ids: Sequence[str]) -> dict[str, RecordedEnd]:
@@ -830,7 +832,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             return {}
         async with self._retry.acquire(self._pool) as conn:
             rows = await conn.fetch(
-                "SELECT DISTINCT ON (cycle_id) cycle_id, last_run_id, stopped_because "
+                "SELECT DISTINCT ON (cycle_id) cycle_id, last_run_id, stopped_because, detail "
                 "FROM cycle_ends WHERE cycle_id = ANY($1) ORDER BY cycle_id, end_index DESC",
                 list(cycle_ids),
             )
@@ -839,6 +841,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 cycle_id=row["cycle_id"],
                 last_run_id=row["last_run_id"],
                 stopped_because=CycleStopReason(row["stopped_because"]),
+                detail=row["detail"],
             )
             for row in rows
         }

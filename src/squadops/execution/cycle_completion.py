@@ -41,13 +41,22 @@ class CycleCompletion:
             return getattr(self._executor(), name)
         raise AttributeError(name)
 
-    async def end(self, cycle_id: str, last_run: Any, stopped_because: CycleStopReason) -> CycleEnd:
+    async def end(
+        self,
+        cycle_id: str,
+        last_run: Any,
+        stopped_because: CycleStopReason,
+        *,
+        detail: str | None = None,
+    ) -> CycleEnd:
+        """``detail`` is what the stop names beyond its reason (#3128: the artifact a gate
+        couldn't read). It is recorded with the ending, before the campaign is told."""
         summary = await self._cycle_registry.get_run_loop_summary(last_run.run_id)
         # #2890: a failed run whose raise site declared the cycle's own ending (a criterion already
         # met on the head) is recorded and heard as that ending, never as a failed build.
         stopped_because = declared_stop_reason(stopped_because, getattr(summary, "terminal", None))
         await self._record_failures(cycle_id, last_run.run_id)
-        await self._record_end(cycle_id, last_run.run_id, stopped_because)
+        await self._record_end(cycle_id, last_run.run_id, stopped_because, detail)
         await self._hear_campaign(cycle_id, last_run, stopped_because)
         return CycleEnd(
             cycle_id=cycle_id,
@@ -83,14 +92,18 @@ class CycleCompletion:
             )
 
     async def _record_end(
-        self, cycle_id: str, last_run_id: str, stopped_because: CycleStopReason
+        self,
+        cycle_id: str,
+        last_run_id: str,
+        stopped_because: CycleStopReason,
+        detail: str | None = None,
     ) -> None:
         """Record how the cycle ended before its campaign is told (SIP-0109 §12a, #1803), so a
         campaign the telling did not move is re-heard at startup from this record. A failed write
         is logged loudly and does not stop the ending: that ending then cannot be re-heard."""
         try:
             await self._cycle_registry.record_cycle_end(
-                RecordedEnd(cycle_id, last_run_id, stopped_because)
+                RecordedEnd(cycle_id, last_run_id, stopped_because, detail)
             )
         except Exception:
             logger.exception(

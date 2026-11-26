@@ -687,6 +687,20 @@ async def test_a_cycle_that_can_still_continue_is_not_decided(calibrating, stopp
             (workload, "failed", CycleStopReason.SKILL_STOPPED, CycleEnding.SKILL_STOPPED, False)
             for workload in ("proposal", "framing", "implementation")
         ],
+        # §24ei (#3128): the gate couldn't read an artifact the run's record names. The run it
+        # judged had completed. Read as ``proposal_failed`` it is proposed again by row 6, and as
+        # ``stopped_at_plan_gate`` the increment is abandoned by row 18: both charge the vault's
+        # fault to the squad.
+        *[
+            (
+                workload,
+                "completed",
+                CycleStopReason.GATE_INPUT_UNAVAILABLE,
+                CycleEnding.GATE_INPUT_UNAVAILABLE,
+                False,
+            )
+            for workload in ("proposal", "framing")
+        ],
         # A framing run that failed stopped on its own run, not its gate: its summary judges it.
         ("framing", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
         # §24bj: the expired escalation's run, cancelled for it.

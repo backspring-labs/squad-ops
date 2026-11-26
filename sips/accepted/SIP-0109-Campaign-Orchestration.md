@@ -7688,3 +7688,68 @@ decision's `decided_by` is on the control-log row and in the digest.
 **Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18. Its item 2 states the fix and its five cases,
 the decision after the bound among them. The three readings that follow from that case (no park, the ledger, the
 digest) are the MacBook lane's, for the owner's reading.
+
+### 24ei. A gate that can't read its recorded input ends the cycle as the environment's (2026-11-26, §10 rows 10 and 11, §12a, §24bw, §24cb; #3128; the 2.9 plan's item 4)
+
+**What changed.** A cycle's gate between workloads reads artifacts the run it judges has recorded: its plan, its
+manifest, its merge decisions, and the contract the cycle is bound to. When the vault can't return one of them,
+the cycle now ends `gate_input_unavailable`. A Campaign reads that as an infrastructure ending:
+- **rows 10 and 11 gain an ending.** The cycle is retried while retry cycles remain, and escalated when they are
+  spent, as a cycle held on the store until its bound passed is (§24bw). No row is added to §10.
+- **It is counted nowhere.** It is no unaccepted increment, no failed proposal and no rejected one.
+- **The ending names the artifact.** The cycle's recorded ending (§12a) carries it as `detail`, and the
+  decision's control-log row carries it as `ending_detail`, so an escalation on row 11 says which artifact
+  couldn't be read. Only a row that has a detail carries the key, and every other row hashes as before.
+
+**The cause, read first** (main at `5c93b8ba`). Five reads at the gate treated an artifact the vault couldn't
+return as one that wasn't there:
+
+| Read | What a failed retrieval read as |
+|---|---|
+| the framing gate's scan of the run's artifacts (`FramingGateCheck.reject_invalid_plan_before_workload_gate`) | no plan, or no manifest: the plan check rejects, and the squad re-rolls its framing |
+| the manifest a run authored (`_run_manifest_content`) | the seeded manifest, or none |
+| the seeded manifest, for the gate (`load_seeded_manifest_content`) | no manifest seeded |
+| the run's merge decisions (`_run_artifact_text`) | the framing stored none, which the plan-review tier can't approve |
+| the contract the cycle is bound to (`_load_contract_for_run`) | "missing or unparseable": one more plan error |
+
+Each was #1990's rule, "an artifact that cannot be read reads as absent, with a warning naming it". The 2.9 plan's
+item 4 rules the opposite for the executor: a retrieval failure is never read as absence. Failing closed at the
+gate needed an ending to fail to. A raise there ended the cycle `gate_failed`, which `cycle_ending` reads as
+`stopped_at_plan_gate` for a framing run (row 18 abandons the increment, row 2 ends a calibration) and as
+`proposal_failed` for a proposal run (row 6 proposes again). Both charge the vault's fault to the squad's work,
+and the artifact was named only in a log line.
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **The stop reason** | `CycleStopReason.GATE_INPUT_UNAVAILABLE`, recorded by the executor's gate handler for `ArtifactUnavailable` alone. Every other raise at the gate is still `gate_failed` (#2213) |
+| **The cycle's status** | `failed`, as `gate_failed` reads (`lifecycle.STATUS_OF_ENDING`) |
+| **The record** | `RecordedEnd.detail`, written by the completion boundary with the ending, before the Campaign is told. `cycle_ends.detail` and the stop reason's place in the CHECK list are migration 2203 |
+| **The Campaign's ending** | `CycleEnding.GATE_INPUT_UNAVAILABLE`, declared in `progress._ENDING_DECLARED_BY_STOP`, which is asked before the proposal's and the framing run's endings |
+| **Rows 10 and 11** | `continuation.ENVIRONMENT_ENDINGS` holds `held_store` and this ending. The rows ask the set, so a third environment ending is one entry |
+| **The decision row** | `ending_detail`, read from the cycle's recorded ending by `CampaignProgress._ending_detail` |
+| **The reads** | Each goes through `cycles.vault_reads.retrieve_recorded`, which raises `ArtifactUnavailable` naming the artifact, what it is to the run, and how the read failed (`artifact_missing`, `artifact_unreadable`, `artifact_unretrieved`). The executor's manifest lookup is `load_recorded_manifest_content`; the create path keeps `load_seeded_manifest_content`, since it has no cycle to end |
+| **A standalone cycle** | Ends `gate_input_unavailable`, status `failed`, with the detail on its recorded ending. Nothing retries it |
+
+**What stays.** A plan, manifest or contract that is read and doesn't parse is decided as before: by the plan
+check, for the squad to re-roll. An artifact the run's record doesn't name is absent, and reads so.
+
+**Who ruled it.** The Spark lane, 2026-11-26, as a call the adopted 2.9 plan leaves open under its D11,
+implementing item 4's rule. The alternative was to leave the five gate reads under #1990's rule and say so in
+the plan, which would have changed item 4's done-when (the owner's, D16) and kept charging a vault fault to the
+squad. The MacBook lane built it; the Spark lane reviewed the Campaign's side. The owner is told afterwards.
+
+**The tests.**
+- `tests/unit/cycles/test_execute_cycle.py` enters at `execute_cycle` with the real gate and the real completion
+  boundary: a framing run whose artifact the vault can't return ends the cycle `gate_input_unavailable`, with the
+  artifact on the recorded ending, and no implementation run is created. Its neighbour holds that any other raise
+  still ends `gate_failed`.
+- `tests/unit/campaigns/test_gate_input_unavailable.py` enters at `CampaignProgress.cycle_ended` over the memory
+  registries, for a framing run and a proposal run: row 10 retries, the decision row names the artifact, and
+  nothing is promoted on the vacuous `accepted` such a cycle reads.
+- `tests/unit/campaigns/test_continuation.py`: rows 10 and 11 for each ending of `ENVIRONMENT_ENDINGS`, with
+  retries left and spent, at the unaccepted limit and after a failed proposal.
+- `tests/unit/campaigns/test_progress.py`: `cycle_ending` for both workloads.
+- `tests/integration/cycles/test_postgres_cycle_ends_integration.py`: the detail and the new reason round-trip.
+- `tests/unit/architecture/test_executor_vault_reads_are_declared.py`: its pending list is gone.

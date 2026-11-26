@@ -459,6 +459,66 @@ async def test_the_router_accepts_a_product_suite_judged_passed_without_routing_
     assert state.correction.accepted_repair_task_ids == {"t_qa"}
 
 
+async def test_a_hand_offs_verdict_is_read_once_and_its_routing_takes_it_from_there():
+    """#3000 wiring: enters at the two calls the dispatcher makes for a hand-off, in its order:
+    ``hand_off_accepted`` (its ``HandOff.accepted``), then ``route`` with the same reply. Bugs
+    caught: the attempt admitted and run on the product's runner twice, once for the verdict and
+    once for the routing; or a verdict kept for one reply applied to another."""
+    executor = _executor()
+    admitted: list[Any] = []
+
+    async def admit(result, *_a, read_hand_off, **_k):
+        admitted.append(result)
+        await read_hand_off(result)
+        return result
+
+    executor._admit_failed_emission = admit
+
+    async def next_action(*_args):
+        return "continue"
+
+    envelope = _envelope(_INPUTS)
+    state = SimpleNamespace(
+        produced=SimpleNamespace(all_artifact_refs=[], stored_artifacts=[]),
+        ownership=SimpleNamespace(bound_record=None, compliance_counter={}),
+        correction=SimpleNamespace(
+            accepted_repair_task_ids=set(),
+            refused_on_head=set(),
+            rejection_carry={},
+            head_readings={},
+        ),
+    )
+    router = _TaskOutcomeRouter(
+        executor=executor,
+        state=state,
+        envelope=envelope,
+        enriched=envelope,
+        cycle=_CYCLE,
+        run_id="run_1",
+        flow_run_id=None,
+        profile=None,
+        interface_manifest=None,
+        budget_guard=lambda: None,
+        ledger=None,
+    )
+    object.__setattr__(router, "next_action", next_action)
+    object.__setattr__(router, "record_evidence", lambda _r: None)
+    reply = _failed(_TESTS_PASS_RED)
+
+    accepted = await router.hand_off_accepted(reply)
+    action = await router.route(reply)
+
+    assert (accepted, action) == (True, "accept_patch")
+    assert admitted == [reply]
+    assert router.held["patched_result"].status == TaskResultStatus.SUCCEEDED
+
+    # Another reply is admitted for itself: nothing kept for the first is read for it.
+    another = _failed(_TESTS_PASS_RED)
+    await router.hand_off_accepted(reply)
+    await router.route(another)
+    assert admitted == [reply, reply, another]
+
+
 async def test_a_repaired_suites_retest_is_judged_on_the_products_runner():
     """Review P2, wiring: enters at ``CorrectionRunner.reexecute_repaired_suite``, the retest
     patch acceptance reads, with the judgement the executor hands the runner. The retest's suite

@@ -2909,29 +2909,25 @@ checks:
       o = resolve_terminal_outcome(ArtifactUnreadableError("art_1: bad hash"), "run_1")
       print(sum("retrieve_recorded(" in inspect.getsource(m) for m in (criterion_head_check, product_acceptance, product_proposal, source_delivery)), o.terminal.kind.value, o.terminal.failure_classification)
     expect: "4 infrastructure_failed artifact_unreadable"
-  - id: "3101-runtime-moved"
-    what: the runtime API runs the FastAPI and Starlette the caps of 2026-11-15 held back, and serves its routes through the included-router table (#3101)
+  - id: "3128-gate-input-unavailable"
+    what: a gate that can't read a recorded artifact ends the cycle gate_input_unavailable, which a Campaign reads on rows 10 and 11, and the ending carries its detail (SIP-0109 §24ei)
     container: squadops-runtime-api
     code: |
-      import importlib.metadata as m
-      from fastapi import APIRouter, FastAPI
-      from fastapi.routing import iter_route_contexts
-      v = lambda n: tuple(int(p) for p in m.version(n).split(".")[:2])
-      r = APIRouter(prefix="/api/v1/x")
-      r.add_api_route("/a", lambda: 1)
-      app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-      app.include_router(r)
-      print(v("fastapi") >= (0, 163), v("starlette") >= (1, 0), [c.path for c in iter_route_contexts(app.routes)])
-    expect: "True True ['/api/v1/x/a']"
-  - id: "3101-publisher-names-a-failure"
-    what: an agent publishes on aio-pika 10.2 or later, and a publish failure whose own text can't be built is still named by its type and arguments (#3101)
-    container: squadops-max
+      from squadops.campaigns.continuation import ENVIRONMENT_ENDINGS, CycleEnding
+      from squadops.campaigns.progress import _ENDING_DECLARED_BY_STOP
+      from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+      from squadops.cycles.lifecycle import STATUS_OF_ENDING
+      stop = CycleStopReason.GATE_INPUT_UNAVAILABLE
+      print(_ENDING_DECLARED_BY_STOP[stop] in ENVIRONMENT_ENDINGS, sorted(e.value for e in ENVIRONMENT_ENDINGS), STATUS_OF_ENDING[stop].value, RecordedEnd("c", "r", stop, "art_1").detail)
+    expect: "True ['gate_input_unavailable', 'held_store'] failed art_1"
+  - id: "3000-hand-off-ends-on-the-verdict"
+    what: a qa hand-off's reply is task.handed_off, and the dispatcher ends the task on the product runner's verdict (SIP-0077 §24a)
+    container: squadops-runtime-api
     code: |
-      import importlib.metadata as m
-      from adapters.comms.rabbitmq import _said
-      class Unsayable(Exception):
-          def __str__(self):
-              raise AttributeError("no frame")
-      v = lambda n: tuple(int(p) for p in m.version(n).split(".")[:2])
-      print(v("aio-pika") >= (10, 2), _said(Unsayable("NO_ROUTE", "q")))
-    expect: "True Unsayable('NO_ROUTE', 'q')"
+      import inspect
+      from squadops.events.types import EventType
+      from squadops.execution import dispatched_flow_executor as e
+      from squadops.execution.task_dispatcher import HandOff, TaskDispatcher
+      sig = inspect.signature(TaskDispatcher.dispatch_with_retry)
+      print(EventType.TASK_HANDED_OFF, len(EventType.all()), sig.parameters["hand_off"].default is inspect.Parameter.empty, sorted(f.name for f in __import__("dataclasses").fields(HandOff)), hasattr(e._TaskOutcomeRouter, "hand_off_accepted"))
+    expect: "task.handed_off 32 True ['accepted', 'left'] True"

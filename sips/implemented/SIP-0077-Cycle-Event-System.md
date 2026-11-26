@@ -169,7 +169,7 @@ The complete catalog of event types across all entity lifecycles (cycle, run, ga
 |-------|-------------------|------------------------|
 | `gate.decided` | `CycleRegistryPort.record_gate_decision()` returns | `gate_name`, `decision`, `decided_by`, `decided_at`, `notes` |
 
-### 7.4 Task Events (3)
+### 7.4 Task Events (3; a fourth is §24a)
 
 | Event | Emission Boundary | Required Payload Fields |
 |-------|-------------------|------------------------|
@@ -1069,3 +1069,61 @@ These phases are described for architectural context. They are separate work ite
 ## 23. Source Ideas
 
 - `docs/plans/cycle-event-system-v0.md` — full design note with event taxonomy, envelope schema, migration phases, and event sequences.
+
+------------------------------------------------------------------------
+
+## 24. Post-implementation amendments
+
+### 24a. A hand-off is its own task event, and the task ends on the verdict (2026-11-26, §3.3, §7.4, §11.3, §12; #3000; the 2.9 plan's item 5, adopted by the owner)
+
+**What changed.** §7.4 says `task.failed` is emitted when a TaskResult is received with status FAILED. One
+reply of that status is no ending of its task: a product's `qa.test` whose suite the qa image left to the
+product's own runner (#2949, SIP-0112 H.26). Three things are different now.
+1. **A fourth task event, `task.handed_off`.** It is emitted when such a reply is received, and records the
+   attempt. Its payload is `task_type`. §3.3 allows the addition: the taxonomy is append-only.
+2. **The task's ending event follows the verdict.** The runner's pass, accepted on the head, ends the task
+   `task.succeeded`. Anything else ends it `task.failed`: the runner failed the suite, couldn't run it, or its
+   pass was refused. A verdict that can't be read ends it `task.failed` too, naming why. Both ending events
+   carry `handed_off: true` in their payload, which §3.3 also allows.
+3. **`task.failed` is no longer emitted for the hand-off's reply itself.** A reply is `task.failed` when its
+   status is FAILED and it leaves its verdict to nobody.
+
+The emitter is unchanged (§12.2): the task dispatcher, which received the reply and reads the verdict before
+it routes the attempt.
+
+**The evidence** (#3000; read on main at `f5cf69e0` on 2026-11-26, entered at `dispatch_with_retry` with a
+reply left to the product's runner and a router that accepts the runner's pass):
+
+| Signal | What an accepted hand-off read |
+|---|---|
+| the Prefect task run | `Running`, then `Failed`. Nothing set it again |
+| the agent's activity | failed, with the reply's error, "left to the product's runner" |
+| the task's events | `task.failed`, with no `task.succeeded` after it |
+| `tasks_failed_total` (§11.3) | counted it |
+
+Each was set from the reply, before the runtime had asked the product's runner anything. The 2.8.0 release
+package's flow-run screenshot shows the result: a red QA bar in a run that was accepted.
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **Who says a reply is a hand-off** | The executor, through `HandOff.left`, which is `product_suite.left_to_the_product_runner`. The dispatcher holds no rule of its own about suites |
+| **Who reads the verdict** | The executor, through `HandOff.accepted`: the first step of the attempt's routing (`_TaskOutcomeRouter.admit`), asked before the routing and kept for it, so nothing is admitted or run twice |
+| **The task run** (§11.2's lifecycle is the dispatcher's since #506) | Left running and named `HandedOff` while the verdict is read, then `Completed` or `Failed` |
+| **The activity** | Left open, then completed, or failed with the reply's error |
+| **The order** | The task ends before its attempt is routed. A rejected hand-off's task run is therefore failed before the correction that follows it starts, and the flow-run timeline shows the correction beside it, not inside it |
+| **`MetricsBridge`** | Unchanged. It counts `task.succeeded` and `task.failed`, so an accepted hand-off is one success and no failure. `task.handed_off` is counted by nothing |
+| **A failed attempt the runner overrules** (#2818) | Not a hand-off: the image ran the suite and failed it. It is `task.failed`, as before, and its routing accepts the runner's pass as before |
+| **A verified repair** (`accept_patch`, #389) | Unchanged: the task's attempt failed, and its repair is its own task |
+| **Every other dispatch** | `dispatch_task` keeps its signature and settles from the reply's status. The correction's, the repair's and the pulse checks' dispatches are never held |
+
+**What this amendment does not cover.** While the verdict is read, the product runner's own log lines are not
+scoped to the task's Prefect pane (SIP-0087): the dispatcher's log scope ends with the reply.
+
+**The tests.** `tests/unit/cycles/test_accepted_handoff_reads_accepted.py` enters at
+`TaskDispatcher.dispatch_with_retry` with a real dispatcher, and reads the task run, the activity, the events
+and the metrics bridge's counts: an accepted hand-off, a rejected one, a verdict that can't be read, a reply
+that is no hand-off, a task dispatched with no `HandOff`, and a correction's dispatch made while the attempt is
+routed. `tests/unit/cycles/test_product_suite_runner.py` enters at the router's two calls and holds that the
+attempt is admitted once.

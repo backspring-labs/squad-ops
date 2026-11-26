@@ -36,6 +36,7 @@ class has a real use for it.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import dataclasses
 import json
 import logging
@@ -81,6 +82,49 @@ _HEARTBEAT_PERIOD = 600.0
 #: declared bound — 1,800 s on deploy A — and then retried and finalized the cancelled run
 #: while the next cycle ran. One registry read per in-flight task per interval.
 CANCEL_PROBE_SECONDS = 10.0
+
+
+@dataclasses.dataclass(frozen=True)
+class HandOff:
+    """How a reply that leaves the task's verdict to another reader is told, and read (#3000).
+
+    The executor supplies it for a task that can hand off (a product's ``qa.test``, whose suite
+    the product's own runner judges, #2949). The transport owns the task's terminal signals
+    (#506), and a hand-off's reply is no verdict: its Prefect task run, its activity and its
+    ending event are held until ``accepted`` answers.
+    """
+
+    #: Whether a failed reply is a hand-off. Pure: it reads the reply and nothing else.
+    left: Callable[[TaskResult], bool]
+    #: Whether the reader the reply was left to accepted it. Asked once, before the attempt is
+    #: routed, so the task ends on the verdict and not on the correction that may follow.
+    accepted: Callable[[TaskResult], Awaitable[bool]]
+
+
+@dataclasses.dataclass(frozen=True)
+class _OpenTask:
+    """A dispatched task whose terminal signals are still to be set: a hand-off's."""
+
+    activity_id: str | None
+    task_run_id: str | None
+
+
+@dataclasses.dataclass
+class _Hold:
+    """One ``dispatch_with_retry`` attempt's request that a hand-off be left open, and the open
+    task ``dispatch_task`` left for it."""
+
+    left: Callable[[TaskResult], bool]
+    open: _OpenTask | None = None
+
+
+#: The hold of the attempt being dispatched, set by ``dispatch_with_retry`` for the one
+#: ``dispatch_task`` call it makes and cleared before anything else is dispatched (#3000).
+#: ``dispatch_task`` keeps its signature, which the correction, repair and pulse paths call and
+#: every test double of it mirrors; no other caller sets this, so they settle as they always did.
+_ATTEMPT_HOLD: contextvars.ContextVar[_Hold | None] = contextvars.ContextVar(
+    "squadops_task_attempt_hold", default=None
+)
 
 
 def heartbeat_milestones(interval: float):
@@ -341,6 +385,18 @@ class TaskDispatcher:
                 lint = (result.outputs or {}).get("lint_findings") if result is not None else None
                 if isinstance(lint, dict):
                     self._run_lint_findings[run_id] = {"task_id": envelope.task_id, **lint}
+                hold = _ATTEMPT_HOLD.get()
+                if (
+                    hold is not None
+                    and result is not None
+                    and result.status != TaskResultStatus.SUCCEEDED
+                    and hold.left(result)
+                ):
+                    # #3000: the reply left the verdict to another reader. The task isn't
+                    # failed, and nothing here says it is: ``dispatch_with_retry`` ends it on
+                    # the verdict (``_settle``).
+                    hold.open = _OpenTask(activity_id, task_run_id)
+                    return result
                 await self._finish_task_activity(activity_id, result)
                 if result is not None and result.status == TaskResultStatus.SUCCEEDED:
                     await self._set_task_run_state(task_run_id, "COMPLETED", "Completed")
@@ -403,6 +459,29 @@ class TaskDispatcher:
                 await self._activity_port.fail_activity(activity_id, reason)
         except Exception:
             logger.warning("best-effort finish_activity failed for %s", activity_id, exc_info=True)
+
+    async def _settle(self, open_task: _OpenTask, *, accepted: bool, reason: str) -> None:
+        """End a held task on its verdict (#3000): its activity and its Prefect task run read
+        completed for an accepted hand-off, and failed, with ``reason``, for any other.
+        Best-effort and never raises, as every signal here is."""
+        if self._activity_port is not None and open_task.activity_id is not None:
+            try:
+                if accepted:
+                    await self._activity_port.complete_activity(open_task.activity_id)
+                else:
+                    await self._activity_port.fail_activity(
+                        open_task.activity_id, reason or reasons.ACTIVITY_FAILED
+                    )
+            except Exception:
+                logger.warning(
+                    "best-effort finish_activity failed for %s",
+                    open_task.activity_id,
+                    exc_info=True,
+                )
+        if accepted:
+            await self._set_task_run_state(open_task.task_run_id, "COMPLETED", "Completed")
+        else:
+            await self._set_task_run_state(open_task.task_run_id, "FAILED", "Failed")
 
     async def _record_envelope(self, run_id: str, envelope: dict[str, Any]) -> None:
         """Record one authoring envelope (SIP-0110 §0.11). Beside execution: a failure to record
@@ -594,6 +673,69 @@ class TaskDispatcher:
                 )
                 raise _CancellationError(run_id)
 
+    async def _end_on_the_verdict(
+        self,
+        held: _OpenTask,
+        hand_off: HandOff,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        *,
+        task_context: dict[str, str],
+    ) -> None:
+        """A hand-off's attempt, then the task's ending on the verdict (#3000, SIP-0077 §24a).
+
+        The task run is named for the hand-off while the verdict is read. A verdict that can't
+        be read ends the task failed and raises, as the read did: an open task run or activity
+        is never left behind.
+        """
+        bus = self._event_bus
+        if bus is None:
+            raise RuntimeError(
+                "a hand-off's attempt and ending are cycle events, and this dispatcher was built "
+                "with no event bus"
+            )
+        bus.emit(
+            EventType.TASK_HANDED_OFF,
+            entity_type="task",
+            entity_id=envelope.task_id,
+            context=task_context,
+            payload={"task_type": envelope.task_type},
+        )
+        await self._set_task_run_state(held.task_run_id, "RUNNING", "HandedOff")
+        error = result.error or ""
+        try:
+            accepted = await hand_off.accepted(result)
+        except BaseException as unread:
+            await self._settle(held, accepted=False, reason=f"{type(unread).__name__}: {unread}")
+            bus.emit(
+                EventType.TASK_FAILED,
+                entity_type="task",
+                entity_id=envelope.task_id,
+                context=task_context,
+                payload={
+                    "task_type": envelope.task_type,
+                    "error": f"the hand-off's verdict couldn't be read: {unread}",
+                },
+            )
+            raise
+        await self._settle(held, accepted=accepted, reason=error)
+        if accepted:
+            bus.emit(
+                EventType.TASK_SUCCEEDED,
+                entity_type="task",
+                entity_id=envelope.task_id,
+                context=task_context,
+                payload={"task_type": envelope.task_type, "handed_off": True},
+            )
+        else:
+            bus.emit(
+                EventType.TASK_FAILED,
+                entity_type="task",
+                entity_id=envelope.task_id,
+                context=task_context,
+                payload={"task_type": envelope.task_type, "error": error, "handed_off": True},
+            )
+
     async def dispatch_with_retry(
         self,
         enriched: TaskEnvelope,
@@ -605,6 +747,7 @@ class TaskDispatcher:
         task_run_id: str | None = None,
         handle_task_outcome: Callable[[TaskResult], Awaitable[str]],
         screen_success: Callable[[TaskResult], Awaitable[TaskResult]],
+        hand_off: HandOff | None,
     ) -> tuple[bool, TaskResult]:
         """Dispatch a task with retry loop for retryable failures.
 
@@ -621,14 +764,28 @@ class TaskDispatcher:
         ``screen_success`` is the executor's last word on an attempt the agent reported
         succeeded, before anything accepts it (SIP-0109 §24do): it returns the result, or the
         failure the executor refuses it as, which is routed as any failed attempt is.
+
+        ``hand_off`` is how a reply that leaves the task's verdict to another reader is told and
+        read (#3000, SIP-0077 §24a), or ``None`` for a task that never hands off. Such a reply
+        ends nothing: ``task.handed_off`` records the attempt, the verdict is asked for, and the
+        task then ends on it, as succeeded or failed, in its task run, its activity and its event
+        alike. The attempt is routed afterwards, as any failed reply is.
         """
         while True:
-            result = await self.dispatch_task(
-                enriched,
-                run_id,
-                flow_run_id=flow_run_id,
-                task_run_id=task_run_id,
-            )
+            hold = _Hold(hand_off.left) if hand_off is not None else None
+            holding = _ATTEMPT_HOLD.set(hold)
+            try:
+                result = await self.dispatch_task(
+                    enriched,
+                    run_id,
+                    flow_run_id=flow_run_id,
+                    task_run_id=task_run_id,
+                )
+            finally:
+                # Cleared before the attempt is routed: the correction's own dispatches settle
+                # themselves.
+                _ATTEMPT_HOLD.reset(holding)
+            held = hold.open if hold is not None else None
             if result.status == TaskResultStatus.SUCCEEDED:
                 result = await screen_success(result)
 
@@ -639,7 +796,11 @@ class TaskDispatcher:
                 "run_id": run_id,
                 "task_run_id": task_run_id or "",
             }
-            if result.status == TaskResultStatus.SUCCEEDED:
+            if held is not None and hand_off is not None:
+                await self._end_on_the_verdict(
+                    held, hand_off, result, envelope, task_context=task_context
+                )
+            elif result.status == TaskResultStatus.SUCCEEDED:
                 self._event_bus.emit(
                     EventType.TASK_SUCCEEDED,
                     entity_type="task",

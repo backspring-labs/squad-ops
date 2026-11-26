@@ -23,6 +23,11 @@ from squadops.campaigns.change_request import (
     validate_proposal,
 )
 from squadops.campaigns.increment_tree import increment_criterion_files
+from squadops.cycles.contract_derivation import (
+    CONTRACT_ARTIFACT_TYPE,
+    CONTRACT_FILENAME,
+    derive_contract_bytes,
+)
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -211,6 +216,13 @@ class _Vault:
             "art_cr": (
                 ref("art_cr", "change_request", "change_request.yaml", "run_p"),
                 STORED.encode(),
+            ),
+            # The contract the cycle is bound to, derived from its seeded manifest as the
+            # proposal's approval derives it. These tests ran in bind mode without one until
+            # #3128: the gate read the missing contract as one more plan error and went on.
+            "art_contract": (
+                ref("art_contract", CONTRACT_ARTIFACT_TYPE, CONTRACT_FILENAME, "run_p"),
+                derive_contract_bytes(CANDIDATE),
             ),
         }
 
