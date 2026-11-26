@@ -15,7 +15,7 @@ updated_at: '2026-05-07T00:00:00Z'
 
 **Relationship:** This SIP **is** the implementation path for SIP-0092 M2. The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged in PR #117 on 2026-05-05) selected the multi-role authoring path; SIP-0093 supplants M2-as-originally-written. The original single-author `_produce_plan` body is retained only as the implementation of `PlanAuthoringService` — the function the merger calls when there are no proposals to merge (either by config or by all-proposals-failed). It is not a separate runtime route. SIP-0092 M1 (typed acceptance) and M3 (plan changes) are orthogonal to plan authorship and stand unchanged.
 
-## Delivery ledger (current as of 2026-11-10)
+## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -30,6 +30,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.10 or later (the 2.8 plan's decision 9, the owner, 2026-11-11: 2.8 already changes the plan gate; before it, the 2.7 plan's R1), #950 (the 2.4 plan's D10; re-read at the 2.4.0 cut, with 93.4) |
 | §5.11 parallel fan-out | **dropped** by §15a: built sequential | `task_plan.py:147-149` |
 | §15b: an increment's criterion file that a development task and a qa task both claim is the qa task's at the merge | **shipped** | 2.5.0, PR #2802, closes #2795 |
+| §15d: a brief conflict that can't be read is escalated with what was written, and both task proposers are shown the entry's shape | **shipped** | 2.8.0, PR #3165, closes #3163 |
 
 **What closes this SIP:** **Ready to promote** with §15a (ruled 2026-10-04): 93.4 and its tests go to #950, rules 2–5 are dropped, and the fan-out is sequential.
 
@@ -704,3 +705,49 @@ The provenance reason names both counts: the checks dropped, and the whole-proje
 
 **Who ruled.** The owner, 2026-11-03, gave the go on 2.5.1's contents ("go ahead"), which include #2804. The fixes
 are the issue's.
+
+### 15d. A brief conflict that can't be read is escalated, and the proposers are shown the entry (2026-11-17, §5.5, §5.8 rule 1; #3163)
+
+**What changed.**
+1. **A `brief_conflicts` entry the proposer wrote in a shape that can't be read is escalated to the operator,**
+   with why it couldn't be read and what was written. It was dropped at the parse (#187's tolerant parsing), with
+   a log line and a name in `degraded_sections` that nothing read.
+2. **Both task proposers' output examples show one worked entry,** with the four field names and the two
+   severities. They showed `brief_conflicts: []` and a pointer to §5.5.
+3. **An advisory section dropped at the parse** (assumptions, risks, the two others) is named in
+   `operator_notes`.
+
+**The evidence.** The first cycle under `game_dev_roblox` (`cyc_33b04e40d806`, the Spark, #3041 run plan part 5).
+The development proposer raised a disagreement with the brief as a `brief_conflicts` entry, in field names of
+its own: `requirement: "M5"`, `issue`, `proposed_resolution`. The parser dropped it twice, at the proposer and
+at the merger's read ("skipping malformed brief_conflicts[0] — missing required field: brief_field").
+`merge_decisions.yaml` held no disposition and empty `operator_notes`, and the plan gate approved. On its
+substance the conflict looks moot. Nobody was in a position to say so.
+
+**The rule.**
+- **The parse keeps what it couldn't read** (`ProposedRoleTasks.unread_brief_conflicts`): the section, the
+  reason, and the entry as written, whole up to 2,000 characters and cut with the count beyond that. The
+  proposal's tasks are kept, as #187 wanted.
+- **The merger records each as a disposition** (§5.7): `brief_field` "unread: brief_conflicts[i]",
+  `escalated_to_operator`, with the reason and the text. Its severity is unread, so it is held to the stricter
+  of the two. `operator_notes` carries it, as it carries every escalation.
+- **The shape is one asset** (`request.plan_proposal_brief_conflicts_shape`) rendered into both proposers'
+  examples: the empty list, and in comments one entry in the parser's field names. A test parses the shown
+  entry with the proposal's own parser, so the asset can't show a field the parser doesn't read.
+- The strategy proposer writes guidance, which holds no such list, and is shown nothing.
+
+**What it does not change.** What the plan-review tier approves on. Under `plan_gate: tier` an escalated
+conflict, read or unread, is on the record and the tier still approves. That is #3164, for the owner: §24bj's
+conditions are the owner's ruling (SIP-0109), and §15a dropped "conflicts block the gate" for merge conflicts
+until a failure was traced to its absence.
+
+**The evidence it works.**
+- **`test_merge_plan_handler.py`,** entered at `GovernanceMergePlanHandler.handle`: the entry as that cycle
+  raised it, a severity outside the two, and prose in place of the list are each one escalated disposition
+  holding the reason and the text, with the plan still merged. A dropped advisory section is named.
+- **`test_propose_plan_tasks.py`,** entered at each task proposer's `handle` with the real renderer: the prompt
+  sent holds the shape, and its shown entry parses to a conflict with nothing unread.
+- Two loaded-check rows, `3163-unread-conflict-escalated` and `3163-conflict-shape-asset`.
+
+**Who ruled.** The Spark lane found it and proposed both halves (#3163). The change is the MacBook lane's, under
+the owner's standing rule against silent fallbacks (2026-11-10).

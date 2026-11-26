@@ -821,6 +821,13 @@ class CycleResponse(BaseModel):
     skillset_record: dict[str, Any] | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
+    # #3201: the recorded ending the status reads from (a ``cycle_ends`` stop reason), so no
+    # client infers why a cycle ended from its status; None while it runs, or when the ending
+    # isn't one (a paused run).
+    recorded_ending: str | None = None
+    # #3201: two records of the cycle that disagree, named rather than resolved silently:
+    # ``run_live_after_ending`` or ``cancelled_after_ending``.
+    status_conflict: str | None = None
     runs: list[RunResponse] = Field(default_factory=list)
     workload_progress: list[WorkloadProgressEntry] = Field(default_factory=list)
     cycle_outcome: CycleOutcomeDTO | None = None  # SIP-0096 §10, derived on the detail GET

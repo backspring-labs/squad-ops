@@ -92,7 +92,6 @@
 "src/squadops/capabilities/handlers/cycle/develop.py\toverride\tSignature of \"_build_user_prompt\" incompatible with supertype \"squadops.capabilities.handlers.cycle.base._CycleTaskHandler\"": 1,
 "src/squadops/capabilities/handlers/cycle/qa_test.py\toverride\tSignature of \"_build_user_prompt\" incompatible with supertype \"squadops.capabilities.handlers.cycle.base._CycleTaskHandler\"": 1,
 "src/squadops/capabilities/handlers/cycle/qa_test.py\tunion-attr\tItem \"None\" of \"TransactionOutcome | None\" has no attribute \"changed_files\"": 1,
-"src/squadops/capabilities/handlers/fault_injection.py\tmisc\t\"None\" not callable": 1,
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tattr-defined\t\"_RepairPromptMixin\" has no attribute \"_build_artifacts_from_content\"": 1,
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tattr-defined\t\"_RepairPromptMixin\" has no attribute \"_disputed_checks_section\"; maybe \"_render_disputed_checks_section\"?": 1,
 "src/squadops/capabilities/handlers/impl/repair_handlers.py\tattr-defined\t\"_RepairPromptMixin\" has no attribute \"_evaluate_typed_acceptance\"": 1,

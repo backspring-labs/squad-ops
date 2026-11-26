@@ -52,6 +52,9 @@ _SCENARIO_KEYS = frozenset({"scenario_id", "digest", "assertions", "named_assert
 _RESULT_KEYS = frozenset(
     {"status", "reason", "records", "evidence", "provider_version", "ran_with", "dispatch_id"}
 )
+#: Keys a result may lack. ``tool_unready`` (#3192) is absent from a result stored before it was
+#: written, and that reads as not flagged: the routing the result had then.
+_RESULT_OPTIONAL_KEYS = frozenset({"tool_unready"})
 _RECORD_KEYS = frozenset({"assertion_id", "outcome", "observed", "expected", "context"})
 _EVIDENCE_KEYS = frozenset({"name", "content", "media_type"})
 
@@ -121,11 +124,21 @@ def result_to_wire(result: RemoteOperationResult) -> dict[str, Any]:
         "provider_version": result.provider_version,
         "ran_with": dict(result.ran_with),
         "dispatch_id": result.dispatch_id,
+        "tool_unready": result.tool_unready,
     }
 
 
 def result_from_wire(document: Any) -> RemoteOperationResult:
-    body = _object(document, "result", _RESULT_KEYS)
+    body = _object(document, "result", _RESULT_KEYS, optional=_RESULT_OPTIONAL_KEYS)
+    status = _member(OperationStatus, body["status"], "result.status")
+    tool_unready = body.get("tool_unready", False)
+    if not isinstance(tool_unready, bool):
+        raise ValueError(
+            f"result.tool_unready is {type(tool_unready).__name__}, and a bool is needed"
+        )
+    if tool_unready and status is not OperationStatus.NOT_EXECUTED:
+        # #3192: a tool that wasn't ready ran nothing, so only ``not_executed`` can say so.
+        raise ValueError(f"result.tool_unready is set on a {status.value} result")
     records = []
     for index, raw in enumerate(_list(body["records"], "result.records")):
         where = f"result.records[{index}]"
@@ -151,21 +164,24 @@ def result_from_wire(document: Any) -> RemoteOperationResult:
             )
         )
     return RemoteOperationResult(
-        status=_member(OperationStatus, body["status"], "result.status"),
+        status=status,
         reason=_text(body, "reason", "result"),
         records=tuple(records),
         evidence=tuple(evidence),
         provider_version=_text(body, "provider_version", "result"),
         ran_with=_text_map(body["ran_with"], "result.ran_with"),
         dispatch_id=_text(body, "dispatch_id", "result"),
+        tool_unready=tool_unready,
     )
 
 
-def _object(document: Any, where: str, keys: frozenset[str]) -> Mapping[str, Any]:
+def _object(
+    document: Any, where: str, keys: frozenset[str], *, optional: frozenset[str] = frozenset()
+) -> Mapping[str, Any]:
     if not isinstance(document, Mapping):
         raise ValueError(f"{where} is {type(document).__name__}, and an object is needed")
     missing = sorted(keys - document.keys())
-    unknown = sorted(str(key) for key in document.keys() - keys)
+    unknown = sorted(str(key) for key in document.keys() - keys - optional)
     if missing or unknown:
         parts = []
         if missing:

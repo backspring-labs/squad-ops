@@ -1,0 +1,238 @@
+# Skill cases `roblox-skills@3`
+#
+# The replay cases for the three Roblox skillsets (SIP-0118 R4.3; SIP-0116 §17p; Q47), on
+# z_tower-ascension. Run by `run_authoring_replay.py --skill-cases roblox-skills@2` against a capture
+# run that loaded no skill. Each case starts from the capture's one envelope of its task type. A case
+# with swaps puts another task in front of the same seam, and its record says no capture stands
+# behind its prompt.
+#
+# A build task is shown the plan's words for its work and never the Campaign's objective, so a
+# develop or qa case swaps the task's description, its focus, its criteria and its expected files
+# together.
+#
+# The swapped objectives are changes to this game that the demonstration's goal set does not hold:
+# the replay tests the skills, and the demonstration's increments stay unseen by it.
+#
+# Version 2, after `roblox-skills-v1` (SIP-0116 §17r): the three skills' stops were revised, and
+# `qa-no-runner` is gone with the stop it tested. The QA skill's stop asked for a state no cycle
+# reaches, and the case's own tree still showed a spec written for the runner.
+#
+# Version 3, for `roblox-skills-v4` (#3199; the 2.8.1 plan's item 4): every version-2 case unchanged, and
+# two cases from the 2.8 demonstration's window, B-1 and B-2 of z_tower's goal set revision 1, whose
+# proposals were returned 7 times in 11. They carry the window's own items: the counted run is over,
+# its increments are accepted, and the plays judge an authored check on that run's accepted trees,
+# so the case has to be the item they were built for. The objective is the backlog item's
+# description, word for word, as the goal set holds it.
+#
+# Each new case's `scenario_rules` are the gate's rules, read by rule from the accepted change
+# request, and fixed before the run (`skill_replay.scenario_rule_findings`):
+# - **the words:** each criterion's observable opens `Played.` or `Headless.` and names its broken
+#   build (`Fails on:`); a headless one says what no play reached (`Not played:`);
+# - **coverage:** each of the item's sentences is read by a criterion's statement or observable;
+# - **reachability:** no wait or observation reads a state no action reaches, or an attribute the
+#   baseline doesn't set and the change doesn't say it adds. The baseline's attribute names are read
+#   from the product checkout the replay is given (`--product-checkout`), never written here: the
+#   product's code stays in its own repository. With no checkout the rule reads as not judged. A
+#   name set from a variable isn't read, and would show as a finding to check by hand;
+# - **the named check:** it rejects what each broken build shows where it reads, and accepts a
+#   reading a correct build shows; on a value that changes it isn't an exact match, and the
+#   observable states its band.
+# A reading is written here, not played. Playing each named check on the accepted tree and its
+# mechanical breakages is the other half, on the Mac.
+#
+# What each case can and can't show is in its `why`. A proposal's scenario is read against the
+# vocabulary here and never played. The proposal is shown the product's map and instructions, not
+# its instance tree, so an instance path it names for something the change adds is the proposal's
+# choice, and nothing here checks that today's game holds the paths its setup uses.
+cases:
+  - id: strategy-capture
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      The captured proposal as it stands, a pure rule with no play-session effect of its own, handed
+      the scenario skill. The skill must not cost an ordinary proposal its acceptance. This is the
+      one strategy case checked byte for byte against its capture.
+    expect: {accepted: true}
+
+  - id: strategy-hud-text
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      A text a player reads on the HUD after pressing Play: the representative scenario criterion.
+      The accepted change request holds a scenario the rails read against roblox-studio/1.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: >-
+          The HUD's lives label says how many lives are left, as in "5 lives left" for a player
+          with five lives.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {accepted: true, scenario_criterion: true}
+
+  - id: strategy-title-screen
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      An effect on the title screen itself, so the scenario's setup must not press Play as the
+      skill's worked example does. It shows whether the example is followed or copied.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: The title screen shows a Credits button below its Settings button.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {accepted: true, scenario_criterion: true}
+
+  - id: strategy-unobservable
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      The skill's prerequisite failure: a sound is an effect roblox-studio/1 can't observe, so the
+      skill writes no change request and says why in one line.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: A chime plays each time the player's gold goes up.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {stop: "no scenario:"}
+
+  - id: strategy-saved-state
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      A change that adds to what a player's save holds. Read by hand: the accepted change
+      request's prd_delta must say what an existing save holds for the new count. The judgement
+      here is only that the proposal was accepted.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: >-
+          The game remembers, from one session to the next, how many potions a player has drunk,
+          and the character menu shows that count.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect: {accepted: true}
+
+  - id: dev-capture
+    task_type: development.develop
+    skillset: roblox-luau-dev
+    why: >-
+      The captured build task as it stands. The skill must not cost an ordinary task its
+      acceptance, and each file the plan expected of the task lands where the plan put it. The
+      files are the captured task's own, so a capture taken again needs no change here. Checked
+      byte for byte against its capture.
+    expect: {accepted: true, emits_expected: true}
+
+  - id: dev-saved-field
+    task_type: development.develop
+    skillset: roblox-luau-dev
+    why: >-
+      The skill's stop: a task that renames a field of the saved profile. The task isn't shown
+      the file, so the stop is read from the task's own words. The baseline, handed no skill,
+      is expected to write the file.
+    swaps:
+      - path: [subtask_description]
+        value: |-
+          Change src/Server/Util/ProfileSchema.luau so the saved profile's gold is held in a
+          field named Coins. Rename the Gold field of DEFAULT_PROFILE to Coins, and change every
+          read and write of profile.Gold in the file to profile.Coins. Every other field stays
+          as it is.
+      - path: [subtask_focus]
+        value: ProfileSchema field rename
+      - path: [expected_artifacts]
+        value: ["src/Server/Util/ProfileSchema.luau"]
+      - path: [acceptance_criteria]
+        value:
+          - check: count_at_least
+            params: {glob: "src/Server/Util/ProfileSchema.luau", min_count: 1}
+            severity: error
+            description: ""
+            id: ""
+          - "DEFAULT_PROFILE holds a Coins field with the value 0, and no Gold field."
+          - "No file other than src/Server/Util/ProfileSchema.luau is created or modified by this task."
+    expect: {stop: "saved data:"}
+
+  - id: qa-capture
+    task_type: qa.test
+    skillset: roblox-studio-qa
+    why: >-
+      The captured test task as it stands: the spec the plan expected, written for the product's
+      own runner. The emitted spec is run on the product with the capture's own implementation
+      laid over it, so a pass is the spec loading and passing under tests/run.luau. A wrong
+      implementation in the capture would read here as a failing spec. The spec is also run
+      alone without that implementation, and the two readings are judged by the Campaign's own
+      rule: a spec that requires, at the top of its file, a module the change adds reads
+      only_setup_failures there (SIP-0109 §24ec). Checked byte for byte against its capture.
+    expect: {accepted: true, emits_expected: true, specs_pass: true, discriminates: true}
+
+  - id: b1-lobby-hint
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      The window's B-1, returned twice in rehearsal 3. Version 1 read only the lobby half, so a hint
+      that never hides passed (the lobby half alone, a partial build). Version 2 waited for a player
+      attribute named Floor, which nothing in the game sets, so correct work failed (a wait on a
+      value nothing sets). The floor is a state no action reaches: the right answer plays the lobby
+      half and proves the floor half headless, saying what no play reached.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: In the lobby the HUD shows "Step into the portal to climb". It is hidden on a floor.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect:
+      accepted: true
+      scenario_criterion: true
+      scenario_rules:
+        sentences:
+          - says: In the lobby the HUD shows "Step into the portal to climb"
+            read_by: ["Step into the portal to climb"]
+          - says: It is hidden on a floor
+            read_by: ["floor"]
+        headless_half: true
+        unreachable:
+          - {kind: attribute, path: "@player", name: Floor}
+        baseline_attributes: true
+        named:
+          - match: {kind: gui_state, state: text, path: "@player.PlayerGui.TA_HUD.*"}
+            fails_on: [null, ""]
+            passes_on: ["Step into the portal to climb"]
+
+  - id: b2-session-clock
+    task_type: strategy.propose_increment
+    skillset: roblox-increment-design
+    vocabulary_skillset: roblox-studio-qa
+    why: >-
+      The window's B-2, returned five times across rehearsal 3 and the counted run. Its named check
+      read only the colon, so a clock written once at "0:00" passed; then the exact text at one
+      instant, which fails on a working clock; then a check no reading of the text reached. The
+      approved shape read a band of the text after a stated wait. Readings are what a play shows at
+      the named check's path: a clock written once reads "0:00", one with no minutes "23", and a
+      working one any of "0:01" to "0:59" within a play's deadlines.
+    swaps:
+      - path: [resolved_config, campaign_proposal, objective, statement]
+        value: >-
+          The HUD shows the time since the session began as m:ss, such as 1:05, and counts up each
+          second.
+      - path: [resolved_config, campaign_proposal, objective, allowed_scope]
+        value: ["src/**", "tests/**/*.spec.luau"]
+    expect:
+      accepted: true
+      scenario_criterion: true
+      scenario_rules:
+        sentences:
+          - says: The HUD shows the time since the session began as m:ss
+            read_by: ["m:ss", "0:", "1:05"]
+          # "and counts up each second" is read by the named rule below: a check that rejects a
+          # clock written once and accepts a working one is the check that it counts. A sentence
+          # read by keyword failed an approved version that said it in other words.
+        baseline_attributes: true
+        changing:
+          - {kind: gui_state, state: text, path: "@player.PlayerGui.TA_HUD.*"}
+        named:
+          - match: {kind: gui_state, state: text, path: "@player.PlayerGui.TA_HUD.*"}
+            fails_on: ["0:00", "23", null, ""]
+            passes_on: ["0:01", "0:02", "0:03", "0:04", "0:05", "0:06", "0:07", "0:08", "0:09", "0:10", "0:11", "0:12", "0:13", "0:14", "0:15", "0:16", "0:17", "0:18", "0:19", "0:20", "0:21", "0:22", "0:23", "0:24", "0:25", "0:26", "0:27", "0:28", "0:29", "0:30", "0:31", "0:32", "0:33", "0:34", "0:35", "0:36", "0:37", "0:38", "0:39", "0:40", "0:41", "0:42", "0:43", "0:44", "0:45", "0:46", "0:47", "0:48", "0:49", "0:50", "0:51", "0:52", "0:53", "0:54", "0:55", "0:56", "0:57", "0:58", "0:59"]

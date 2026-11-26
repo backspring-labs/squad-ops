@@ -114,13 +114,25 @@ async def authorization_findings(
     return findings
 
 
+#: Why a worker's tool can't run on a runtime that binds no remote execution: the words every
+#: reader of that state uses, a cycle's creation and a scenario's reading alike (#3159).
+NO_REMOTE_EXECUTION = "this runtime binds no remote execution (remote_execution.provider none)"
+
+
 async def availability_findings(
-    tools: tuple[RequiredTool, ...], *, worker_registry: Any, sandbox_client: Any
+    tools: tuple[RequiredTool, ...],
+    *,
+    worker_registry: Any,
+    sandbox_client: Any,
+    remote_execution: Any,
 ) -> list[CoverageFinding]:
     findings = []
     for required in tools:
         why = await unavailable(
-            required.tool, worker_registry=worker_registry, sandbox_client=sandbox_client
+            required.tool,
+            worker_registry=worker_registry,
+            sandbox_client=sandbox_client,
+            remote_execution=remote_execution,
         )
         if why is not None:
             findings.append(
@@ -134,13 +146,20 @@ async def availability_findings(
 
 
 async def unavailable(
-    tool: ToolRequest, *, worker_registry: Any, sandbox_client: Any
+    tool: ToolRequest, *, worker_registry: Any, sandbox_client: Any, remote_execution: Any
 ) -> str | None:
-    """Why no provider can run ``tool`` now, or ``None`` when one can."""
+    """Why no provider can run ``tool`` now, or ``None`` when one can.
+
+    A worker's tool needs both halves of the way to it (#3159): this runtime binds remote
+    execution (``remote_execution``, its own port: ``None`` under ``remote_execution.provider
+    none``), and a worker serves the tool. The registry takes a worker's session whatever the
+    provider is, so a worker online says nothing of whether an operation would be sent to it."""
     if tool.location == "agent":
         return None
     if tool.location == "sandbox":
         return None if sandbox_client is not None else "this runtime binds no sandbox client"
+    if remote_execution is None:
+        return NO_REMOTE_EXECUTION
     if worker_registry is None:
         return "this runtime holds no worker registry"
     no_worker = await worker_registry.no_worker_for(tool.provider, tool.id)

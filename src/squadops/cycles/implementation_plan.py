@@ -39,6 +39,7 @@ from squadops.cycles.acceptance_check_spec import (
     reserved_keys_for,
 )
 from squadops.cycles.agent_config import served_roles
+from squadops.projects.reserved_paths import naming, reserved_among
 from squadops.stacks.development_profiles import (
     collected_test_patterns_for,
     matches_test_file_patterns,
@@ -1101,6 +1102,28 @@ class ImplementationPlan:
             )
         return errors
 
+    def validate_reserved_paths(self, profile: DerivedProfile | None) -> list[str]:
+        """SIP-0112 H.35 (#3155): no task's expected artifact is a path the product's owner
+        reserves from a cycle's change (its Development Configuration's ``reserved_paths``, on
+        the derived profile). Decided from the declaration and the path, whatever a task's
+        description argues. ``None``, a Project with no profile, checks nothing, and so does a
+        product that reserves none."""
+        if profile is None or not profile.reserved_paths:
+            return []
+        errors = []
+        for task in self.tasks:
+            found = reserved_among(task.expected_artifacts, profile.reserved_paths)
+            if found:
+                errors.append(
+                    f"reserved_path: Task {task.task_index} ({task.focus}) declares "
+                    f"{naming(found)}, which the product's owner reserves from a cycle's change "
+                    f"(its Development Configuration, revision "
+                    f"{profile.development_configuration_revision}, technical.reserved_paths). "
+                    "No task writes there: plan the change without it, or leave the work to "
+                    "the owner."
+                )
+        return errors
+
     def validate_increment_footprint(self, footprint: tuple[str, ...] | None) -> list[str]:
         """SIP-0109 §7.3 (#1705): an increment's plan covers only its approved change.
 
@@ -1116,13 +1139,16 @@ class ImplementationPlan:
         if not footprint:
             return []
         # deferred (pair): cycles and campaigns would import each other at load
-        from squadops.campaigns.change_request import in_footprint
+        from squadops.campaigns.change_request import in_footprint, is_scenario_path
 
+        # #3173: the files a task may plan are named without the scenario declarations, which
+        # the framework writes. Listed with the rest, they read to a re-rolled framing as files
+        # to plan, and ``validate_increment_scenario_files`` then refuses the task that does.
+        plannable = ", ".join(p for p in footprint if not is_scenario_path(p))
         return [
             f"Task {task.task_index} ({task.focus}): {task.task_type} declares {artifact!r}, "
             f"which this increment's approved change does not touch. The accepted application "
-            f"keeps that file as it is; plan only the files the change touches: "
-            f"{', '.join(footprint)}"
+            f"keeps that file as it is; plan only the files the change touches: {plannable}"
             for task in self.tasks
             for artifact in task.expected_artifacts
             if not in_footprint(artifact, footprint)

@@ -5,7 +5,143 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.8.1] — 2026-11-20
+
+The 2.8 line's first patch (`docs/plans/2-8-1-plan.md`; the cut record is `docs/plans/verification-sets/2-8-1-cut-record.md`): what the 2.8 windows met, fixed.
+
 ### Added
+- **The skills replay reads the gate's rules** (#3199; SIP-0116 §17y; the 2.8.1 plan's item 4): the cases
+  version `roblox-skills@3` adds the 2.8 window's two items. A new expectation, `scenario_rules`, reads the
+  accepted change request against facts its case states before the run:
+  - the revised skill's fixed words;
+  - each of the item's sentences read by a criterion;
+  - no wait on a state no action reaches, or on an attribute nothing sets;
+  - a named check that rejects what the broken builds show, accepts a correct reading, and reads a changing
+    value as a stated band.
+
+  Read against every B-1 and B-2 proposal on record, it flags all 8 returned versions, each for the reviewer's
+  reason, and meets all 7 approved ones.
+- **A fault whose client stops at start, for the Campaign-level repair diagnostic** (#3222, the 2.8.1 plan's item 5):
+  `luau_client_throws_at_start` adds a throw to the candidate's first client script that fires only where Roblox
+  loads it (`typeof(game) == "Instance"`), so the product's headless specs pass and every play reads `setup_failed`.
+  The cycle reads `blocked_unverified` and the Campaign routes §10 row 8. A fault can now stay out of a Campaign's
+  repair and retry cycles (`bound_cycles`), so the repair builds without it. The request profile
+  `campaign-increment-source-client-stops` declares it, with `max_correction_attempts: 0`.
+- **The runtime names what holds its event loop, and its slow requests** (#3218's instruments, the 2.8.1 plan's
+  item 6): a loop held for over a second is logged with the loop thread's stack (`event_loop_stalled`), and how
+  long it was held when it clears. A request or a database connection slower than a second is logged too
+  (`slow_request`, `slow_pool_acquire`). The watchdog stops with a start-up that fails, and doesn't read a loop
+  that has stopped running as a held one.
+
+### Changed
+- **The artifact vault no longer holds the runtime's event loop** (#3218, the 2.8.1 plan's item 6): the
+  artifact-id index (92,000 entries, 8 MB on the Spark) is kept in memory, so a lookup reads no file, and every
+  vault operation's file IO runs in a worker thread. Concurrent stores share one index write, and each store
+  still returns only once the index file holds its entry. Before this, each store, promote and retrieve parsed the
+  index on the loop, and each store rewrote it. A run's checkout seeding and a gate's promotion held the API for
+  18 to 41 s.
+- **A Luau product's suite author is told its own runner's rules** (#3147; SIP-0112 H.37): the `qa.test` system
+  prompt named pytest and vitest, with FastAPI, Next.js and JSX examples, on every product. A product that tests
+  only with Luau runners is now sent a fragment written for its runner, with the rules that hold on every stack.
+  Every other run's `qa.test` system prompt is byte for byte what it was.
+- **The Roblox scenario-writing skill carries the rules the increment gate applies** (#3199; SIP-0118 R5.8):
+  `play-scenario-authoring` gains six rules, each with a worked example: coverage, reachability, the broken build,
+  timing, preservation and the kind of evidence. It ends with a self-review answered in each criterion's
+  `observable` (`Played.` or `Headless.`, `Reads:`, `Fails on:`, `Band:`, `Not played:`). Coverage is worked from
+  the objective's own sentences, each quoted by the criterion that reads it and kept in the `prd_delta`. A value
+  that changes is read as the first band a stuck value can't show, inside one wait with at least 10 s to spare. A
+  state no action reaches is played as far as a scenario goes and proved headless for the rest, with the gap
+  declared.
+
+### Fixed
+- **A cycle's recorded ending decides its status** (#3201): a cycle a Campaign ended at the gate kept its later
+  workloads pending, so the cycle route read it `active`, and rehearsal 3's abort cancelled it 40 minutes after it
+  ended. The latest `cycle_ends` row now maps onto the status, and the cycle's response names it
+  (`recorded_ending`). A run still live from before the ending, or a cancel after it, is named as a
+  `status_conflict` and never hides the other record. The abort, the cycle list and detail, the memory routes and the
+  binding fill read it the same way; the list reads every cycle's ending in one query.
+- **A person's decision on an escalated plan gate ends its escalation** (#3174; SIP-0109 §24eh): an approval left
+  the escalation reading `pending` when the run ended before the next sweep, since only the sweep wrote the ending
+  and only for a building campaign.
+  - The gate route writes the ending as soon as the decision is stored, once, with who decided and when. The
+    sweep writes it for a stored decision whose ending is missing, in any state the campaign has reached.
+  - `resolved` is a decision made before the ruling bound, by the decision's own time. One made after it reads
+    `expired` and names the decision, which stands on the run.
+- **A Studio that moved release channel runs nothing until it is re-qualified** (#3206; SIP-0117 R5.29): Roblox's
+  updater moves an install between channels at one version number, and the worker's proof held only the version
+  and the tool list. The proof is now the version, the channel and the tool list.
+  - The channel is read from the startup log the running Studio holds open, at every claim and on both sides of
+    every reset. One that differs or can't be read reads `not_executed`, flagged as the worker's own (R5.28).
+  - The qualification record (schema `/2`) names the channel. A record from before it is still read, and as the
+    newest passing record it runs nothing: **a worker upgraded from the 2.8 line's first release is re-qualified once**
+    (`scripts/dev/studio_requalify.py`).
+  - Each result's `ran_with` carries the proof's Studio (`qualified.*`) and the one the play ran on (`played.*`).
+  - `squadops doctor`'s `qualified` check and the worker's registration name the channel.
+
+## [2.8.0] — 2026-11-18
+
+A feature release (`docs/plans/2-8-0-plan.md`): a squad builds and plays an existing Roblox game. On the counted
+run's first attempt it took two consecutive increments of a private copy of Tower Ascension from design to accepted
+source, each proved in a real play session in Roblox Studio (SIP-0117, SIP-0118); agents carry replay-tested
+skillsets (SIP-0116, implemented). The cut's evidence is `docs/plans/verification-sets/2-8-0-cut-record.md`; the
+demonstration's record is `2-8-0-demonstration-record.md` beside it.
+
+### Added
+- **A product declares its package roots where its tree names none** (#3134; SIP-0112 H.33): the Development
+  Configuration's optional `technical.package_roots` lists repository directories. The derived profile reads each
+  as a `package` surface named by its folder, so a Luau product under Script Sync (`src/Shared`, `src/Server`,
+  `src/Client` on z_tower-ascension) offers surfaces a criterion can name. A root that isn't a directory at the
+  baseline commit is refused as submitted, and one a later tree lacks is disclosed as `package_root_missing`.
+  Before this a Luau product offered no surface, and a Campaign refused every criterion but a scenario.
+- **A Campaign cycle a skill stopped is abandoned for a proposal shown the skill's line** (#3041; SIP-0109 §24dz):
+  a cycle that ends `skill_stopped`, a proposal run's included, is its own ending. Row 20 abandons the increment,
+  counted toward no unaccepted limit, as rows 16 and 19 are. The next proposal is shown the skill's line, from the
+  run's terminal decision, under its own heading. Before this a stopped proposal read as `proposal_failed` and was
+  proposed again unexplained, and a stopped increment was repaired into the same stop.
+- **A fault for the repair diagnostic on a played product** (#3170; SIP-0118 R5.6): `luau_player_text_drops_a_word`
+  cuts the last word of the first player-facing text a client script sets, on a developer's first attempt, so
+  an increment's play scenario fails on the candidate and the repair route is exercised. A Campaign declares it
+  through the `campaign-increment-source-wrong-text` request profile.
+- **The repair diagnostic's fault cuts a text the change adds** (#3208; SIP-0118 R5.7): on an existing client
+  script `luau_player_text_drops_a_word` cut the file's first text, an element the product already held, so the
+  increment's scenario passed and no repair was asked for (read live on 2026-11-18). It now cuts the first
+  player-facing text on a line the product doesn't hold, read from the develop task's own inputs, reads DID NOT
+  BITE where the emission adds none, names the changed line in its log, and holds that one line through a
+  self-evaluation pass.
+- **A product's owner reserves paths from a cycle's change** (#3155; SIP-0112 H.35): a Development Configuration
+  may declare `technical.reserved_paths` (files, folders, globs). A proposal whose footprint reaches one, a plan
+  whose task names one and a run that changes one are each refused by path, whatever a model argued, and the
+  authors are shown the entries first. A product that declares none is unchanged, to the byte of its prompts.
+- **A goal set's result can be observed on a `scenario` surface** (#3042; SIP-0115 §10h): a result seen only while
+  the product is played, such as a game's HUD in a play session. The other kinds each named something a Roblox
+  game doesn't have, and `none` showed the proposal "not observed".
+- **The `game_dev_roblox` development profile** (#3041; SIP-0118 R5.2, SIP-0116 §17q): the first profile whose work
+  requires something of the squad. It declares the platform and, for strategy, development and QA, the Roblox
+  skillset each needs. An operator names it for a Campaign on a Roblox game, and a cycle on a squad that lacks a
+  skillset is refused at creation. It is `product_neutral` in everything a task reads, so the stack's advice comes
+  from the skills alone.
+  All three skillsets passed the skills replay on the Spark's models first, the last on `roblox-skills-v3` (§17t).
+  One development answer of three wrote a saved-field rename its skill stops, which #3155 tracks.
+  The first cycle under it was read on the Spark through creation preflight and the plan gate (SIP-0118 R5.5):
+  its proposal wrote a `scenario` criterion on the HUD's lives label, and plan expansion appended the play step.
+- **The skills replay: a skillset's skills tested on the deploy's models before a profile requires them** (#3041;
+  SIP-0116 §17p): the authoring replay gains a `skills` arm. A captured task is authored as it stands and again
+  handed what a cycle requiring the skillset would hand it, built from the image's own packaged skillsets. A case
+  may swap named inputs to put another task in front of the same seam. Each skills-arm answer is judged by its
+  case: the declared stop read, the handler's acceptance, the files emitted, a scenario criterion accepted, and
+  the emitted specs passing on the product's own runner. `run_authoring_replay.py --skill-cases roblox-skills@1`
+  runs the nine Roblox cases; records go to `var/replays/<experiment>/`.
+- **A skill's stop is read, and it ends the run** (#3041; SIP-0116 §17o): a skill declares the opening words of
+  the line it tells the model to refuse a task with (`stops:` in its `SKILL.md` front matter). Every authoring
+  answer is read against the stops its task's skills declare. A task answered with one is not asked again or
+  repaired: the run ends `skill_stopped`, and its terminal decision carries the skill and the line. Before this a
+  stopped proposal was asked to revise and failed on its revision budget, and a stopped dev or QA task read as an
+  empty emission. The three Roblox skills declare theirs, and `luau-gameplay`'s stop gains the fixed opening
+  `saved data:` (the owner's approval, 2026-11-16). Migration `2202` adds the ending to `cycle_ends`.
+- **The Roblox squad profile, `game-dev-roblox`** (#3041; SIP-0118 R4.3, R5.4): `full-38-tf`'s roster with no
+  builder, with `roblox-increment-design` on Nat, `roblox-luau-dev` on Neo and `roblox-studio-qa` on Eve. Its skills
+  load only on a cycle whose development profile requires them, and no profile does yet. It is the one Roblox
+  squad: every cycle of the game line runs on the Spark.
 - **A provider's authority is shown the product a cycle runs on, and Roblox Studio's checks its eligibility**
   (#3042; SIP-0116 §17n, SIP-0118 R5.3): at creation, an authority's `broken_rules` gets a `ProductView`: the
   seeded tree at the pinned commit and the ruled change request's footprint. An unreadable product refuses creation,
@@ -165,6 +301,94 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   naming it and the known profiles. Such a cycle used to be accepted and fail at its first develop or test task.
 
 ### Fixed
+- **A product with no start declaration says which scenarios that stops** (#3152): the gap `no_start_declaration`
+  read "Outcome Evaluation reads every scenario blocked_unverified", and a proposal on a Roblox product read
+  "every scenario" as its play-scenario criteria too, and wrote a headless check for what a player sees. The
+  sentence now says it stops only the scenarios that start the application, never a play scenario the worker
+  plays. It still ends with the words the strategy skill quotes, so the replay-tested skill is unchanged. A
+  product's stored profile carries the new sentence from its next baseline capture.
+- **A play the worker refuses for its own tool is retried, not repaired** (#3192; SIP-0117 R5.28): a worker that
+  took a scenario and couldn't run it for a reason of its own environment (another app in front of Studio, Studio
+  not the proved version, a place it couldn't restore) returned `not_executed`, and the Campaign read the gap as the
+  candidate's and sent the increment to repair, rebuilding work nothing had faulted. The worker now flags such a
+  result `tool_unready`, and the Campaign reads it as it reads a scenario no worker took: a retry, then escalation.
+  A refusal the request or the candidate could have caused keeps the work's routing.
+- **A Studio reset says when Studio updated itself** (#3184; SIP-0117 R5.27): the reset reopens Studio, Studio
+  updates itself at a launch, and an updated Studio comes back holding no place. The reset reported only "the
+  running Studio holds no place", and the worker's status file still read ready. The reset now names both
+  versions and the re-qualification to run, refuses before touching anything when Studio isn't the version the
+  worker was proved on, and every reset's outcome goes on the worker's status.
+- **A worker keeps its lease while its tool is busy** (#3185; SIP-0117 R5.26): a worker renewed its lease only
+  after asking its tool for its health, and Roblox Studio answered one such probe a minute late while a play was
+  ending. The lease ran out, the finished play's result was dropped, and the worker reset Studio. A renewal now
+  carries the health read before the claim, the tool is probed only between claims, and an operation that ends
+  while a renewal is out has its result submitted and its tool left as it is.
+- **A large product's source paths stay on its map** (#3178; SIP-0112 H.36): past 400 files the map of a product
+  showed its top-level folders with counts, so a squad on a game with hundreds of art files saw no source path and
+  named a file the game doesn't have. Binary and generated files now fold by folder first, and every other path
+  stays listed. A task that names a file the product doesn't hold is told the file is new.
+- **A scenario-only increment runs no suite step** (#3179; SIP-0109 §24eg): an increment whose checks are all play
+  scenarios has no test file to write, and the framework's default QA step was shown every source file of the
+  product. An increment now runs the QA tasks its plan names, and its plays.
+- **The Studio reader reads a screen's visibility** (#3176; SIP-0117 R5.25): a scenario that waits for a whole
+  screen (a `ScreenGui`) to be `visible` stopped at its setup, since the reader read GUI objects alone. A screen now
+  reads as visible when it is enabled. The provider's version is 2, so the worker is requalified before it plays.
+- **A retry or repair of an increment with a play scenario is no longer refused at creation** (#3173; SIP-0116
+  §17x, SIP-0109 §24ef): the provider's footprint rule was asked about the scenario declaration the framework
+  itself places. A provider is now asked about the squad's footprint alone, and the plan's authors are told
+  those files are the framework's, so they raise no brief conflict over them.
+- **The plan-review tier doesn't approve past a brief conflict the merge escalated** (#3164; SIP-0109 §24ee): under
+  `plan_gate: tier` a proposer's blocking disagreement with the brief was escalated to the operator by the merge
+  and approved by the tier unseen. The tier now reads the framing's merge decisions as a fourth condition.
+- **A brief conflict a proposer raises in the wrong shape reaches the operator** (#3163; SIP-0093 §15d): it was
+  dropped at the parse, so `merge_decisions.yaml` recorded nothing. It is now an escalated disposition holding what
+  was written, and both task proposers' prompts show one worked entry in place of a bare `brief_conflicts: []`.
+- **A cycle that needs a worker's tool is refused on a runtime that binds no remote execution** (#3159; SIP-0116
+  §17w): creation's check read the worker registry alone, so a deploy with `remote_execution.provider none` and a
+  worker online accepted a cycle whose every scenario then read not executed.
+- **A run cancelled while it was preparing asks no scenario to be played** (#3160): the baseline step ran before
+  the task loop's own read of the run's status, so a cancelled cycle's scenario could be sent to the worker.
+- **A Campaign can name a development profile** (#3157; SIP-0109 §24ed): `policy.stack` carries only a scaffold
+  stack, so no Campaign could run under `game_dev_roblox`. A policy now declares `development_profile` beside it,
+  each launch carries that key alone, and a squad lacking the skillsets the profile requires is refused at the
+  Campaign's creation.
+- **A skill's stop is read from the model's own line** (#3154; SIP-0116 §17u): an answer that quoted its skill's
+  template before stopping was recorded as stopped by the template, placeholders and all, and one that quoted it
+  and then did its work would have ended its run. A line the skill itself shows is now passed over.
+- **The Roblox strategy skill says which scenarios a disclosed gap means** (#3041; SIP-0116 §17s): the second
+  skills replay admitted the development and QA skillsets and failed the strategy one on a HUD-text case. A
+  proposal read the product's `no_start_declaration` gap ("Outcome Evaluation reads every scenario
+  blocked_unverified") as covering its play scenarios, and proved a formatter where a player's HUD was asked for.
+  The skill now quotes the gap and says a play scenario is played whatever it says. The gap's own wording is #3152.
+- **The skills replay judges a suite left to the product's runner by that runner** (#3150; SIP-0116 §17r): on a
+  product whose suite only its own runner runs, `qa.test` comes back unsuccessful by design. The replay read that
+  as a refusal and never ran the emitted specs, so every QA case of `roblox-skills-v1` read `not_met`.
+- **The three Roblox skills' stops, revised after the first replay** (#3041; SIP-0116 §17r): every ordinary case
+  passed and each skillset failed on its stop case. The strategy skill now says a `package` criterion is no way
+  round an effect a scenario can't observe. The development skill says its saved-data stop holds when the task
+  itself asks for the change. The QA skill's stop, which asked for a state no cycle reaches, is replaced by "the
+  product's own specs come first". The cases are `roblox-skills@2`; version 1's file is kept as it ran.
+- **A `qa.test` prompt shows the module under test when the plan names it by its bare name** (#3146): the second
+  #3041 capture's plan wrote "the ShopDiscount module" and nothing longer, so the module-path rule (#3139) had
+  nothing to match. A file among the plan's own sources (`implementation_artifacts`) whose name the task's text
+  holds as a whole word is now code under test. The plan's other sources stay scoped out, and so does every other
+  file of the tree.
+- **A replay's validity-only pass freezes no manifest** (#3148): it authors nothing, and its generations and seed
+  refused the run it was the check for.
+- **A Luau product's `qa.test` prompt shows the module under test, in Luau fences** (#3136, #3139): a file the
+  prompt shows, and the fence it asks for the suite in, names the file's own language from one table by extension
+  (`fenced_parser.fence_language`), with `text` for one it doesn't hold. Every file that wasn't JavaScript or
+  TypeScript was fenced as Python. And a task's text names code under test by its dotted module path as well as
+  by its file path, so `require(Shared.Modules.SalePricing)` shows `src/Shared/Modules/SalePricing.luau`. A first
+  spec on a Roblox product was shown the tests beside it and never the module. Found by the #3041 capture.
+- **On a Luau product, a criterion for a module the change adds can be proven** (#3143; SIP-0109 §24ec): the #3041
+  capture's increment was refused though its build was right, because its spec required the new module at the top
+  of the file and the accepted product has none (`only_setup_failures`). Every author of such a spec or of its plan
+  is now told, through `request.increment_added_module_test_luau_appendix`: the framing stages, the brief, the qa
+  proposer, the plan's sole author, and the suite's author and its repair. The spec looks the module up inside each
+  test, checks that it is there, and then requires it, so its absence is the test's own failure. The Roblox QA skill
+  shows the idiom, and the skills replay's captured `qa.test` case gains `discriminates`, judged by the Campaign's
+  own rule.
 - **A failed repair step is named, and spent only when a retry would repeat it** (#3020): a correction
   round whose repair step's task failed was read as "the repair emitted no content" and refunded. It now
   names the step and its error in the log and in the next round's carry. A failure that says a retry

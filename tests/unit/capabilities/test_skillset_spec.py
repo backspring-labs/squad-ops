@@ -23,6 +23,7 @@ from squadops.capabilities.skillsets import (
     load_skillsets,
     skill_digest,
     skill_files_digest,
+    skill_stops,
 )
 from squadops.tasks.task_types import TaskType
 
@@ -250,6 +251,45 @@ def test_a_skill_without_its_name_and_description_is_refused(root):
         load_skillset(root / "fixture-qa", contracts=CONTRACTS)
 
 
+@pytest.mark.parametrize(
+    ("stops", "says"),
+    [
+        ("no-scenario", "stops is a list of a line's opening words"),
+        ("[no scenario]", "ending in a colon"),
+        ('["`no scenario:`"]', "ending in a colon"),
+        ('[":"]', "ending in a colon"),
+        ('["no scenario:", "No Scenario:"]', "declared more than once"),
+        ('["no runner:"]', "declares the stop 'no runner:' and its text never shows it"),
+    ],
+    ids=["not-a-list", "no-colon", "backticks", "nothing-before-colon", "twice", "unshown"],
+)
+def test_a_stop_declared_wrongly_refuses_the_skillset_by_name(root, stops, says):
+    """SIP-0116 §17o. Bug caught: a stop a seam can never match (no colon, quoted in backticks)
+    or one the skill's text never teaches, loading as if the skill's refusal were readable."""
+    (root / "fixture-qa/skills/play-scenario/SKILL.md").write_text(
+        f"---\nname: play-scenario\ndescription: d\nstops: {stops}\n---\n"
+        "Play it, or say `no scenario: <why>`.\n"
+    )
+
+    with pytest.raises(SkillsetError, match=says):
+        load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+
+def test_a_skills_declared_stops_are_read_from_its_text(root):
+    """Bug caught: the declaration loading and then reading back as none, so every seam's
+    reader sees a skill with no stops."""
+    text = (
+        '---\nname: play-scenario\ndescription: d\nstops: ["no scenario:", "no place:"]\n---\n'
+        "Play it, or say `no scenario: <why>` or `No place: <why>`.\n"
+    )
+    (root / "fixture-qa/skills/play-scenario/SKILL.md").write_text(text)
+
+    load_skillset(root / "fixture-qa", contracts=CONTRACTS)
+
+    assert skill_stops(text) == ("no scenario:", "no place:")
+    assert skill_stops("---\nname: n\ndescription: d\n---\nDo the work.\n") == ()
+
+
 def test_a_skillset_may_specialize_a_planned_task_type_as_its_own_contract(root):
     """§6.1: the three existing planned types are their own contracts. They carry no
     verification mode, so a skillset declares none for them."""
@@ -273,9 +313,27 @@ def test_one_invalid_skillset_fails_the_catalog_rather_than_vanishing_from_it(ro
         load_skillsets(root, contracts=CONTRACTS)
 
 
-def test_no_skillset_is_shipped_and_a_missing_directory_is_an_empty_catalog(tmp_path):
+def test_the_packaged_skillsets_load_and_only_the_profile_built_for_them_requires_one(tmp_path):
+    """The packaged catalog is SIP-0118 phase 2f's Roblox skillsets (#3041): every one loads (the
+    loader refuses an invalid one whole), and one development profile requires them. Every other
+    profile requires nothing, so no other cycle is offered them. Bugs caught: a skillset that
+    doesn't load breaking every cycle's catalog read; a second profile gaining a requirement
+    unnoticed; and the profile requiring a skillset the catalog doesn't hold, which would refuse
+    every cycle that names it."""
+    from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+
     assert load_skillsets(tmp_path / "absent") == {}
-    assert load_skillsets() == {}, f"phase 1 ships none; found one under {PACKAGED_SKILLSETS_DIR}"
+    packaged = load_skillsets()
+    required = {
+        name: sorted(r.skillset for entry in profile.requires for r in entry.any_of)
+        for name, profile in DEVELOPMENT_PROFILES.items()
+        if profile.requires
+    }
+    assert packaged, f"no skillset under {PACKAGED_SKILLSETS_DIR}"
+    assert required == {
+        "game_dev_roblox": ["roblox-increment-design", "roblox-luau-dev", "roblox-studio-qa"]
+    }
+    assert set(required["game_dev_roblox"]) <= set(packaged)
 
 
 def test_a_planned_task_type_resolves_as_its_own_contract_and_others_dont():

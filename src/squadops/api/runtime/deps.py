@@ -215,6 +215,13 @@ def get_worker_registry(request: Request):
     return _slot(request, "worker_registry")
 
 
+def get_remote_execution(request: Request):
+    """#3159: the runtime's own remote-execution port, or ``None`` when it binds none
+    (``remote_execution.provider none``). Read beside the worker registry: a worker listed
+    there is reached only through this."""
+    return _slot(request, "remote_execution")
+
+
 def get_reply_router(request: Request):
     """SIP-0094: the per-agent reply router, which holds each task's current send (#2932)."""
     return _slot(request, "reply_router")

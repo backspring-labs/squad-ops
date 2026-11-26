@@ -16,6 +16,7 @@ from squadops.campaigns.plan_review_tier import (
     plan_footprint,
     plan_review_tier,
 )
+from tests.fixtures.merge_decisions import BLOCKING, UNREAD, WARNING, merge_decisions_yaml
 
 SCOPE = ("backend/**", "frontend/**")
 #: The calibration footprint this line's plans named (`cyc_17cd76a351a0`): the builder's notes sit
@@ -32,6 +33,7 @@ def _verdict(**overrides):
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     values.update(overrides)
     return plan_review_tier(**values)
@@ -244,3 +246,87 @@ def test_a_product_increments_design_is_its_ruled_change_request(
 
     assert tuple(c.condition for c in verdict.failed) == failed
     assert verdict.approves is (failed == ())
+
+
+# --- §24ee (#3164): a conflict the merge escalated is the operator's, not the tier's -------------
+
+
+@pytest.mark.parametrize(
+    ("merge_decisions", "reads"),
+    [
+        (
+            merge_decisions_yaml(BLOCKING),
+            "1 escalated to the operator: must_cover_requirements: Blocking conflict raised by "
+            "development on must_cover_requirements: The PRD requires a waitlist and the brief "
+            "omits it.",
+        ),
+        (
+            merge_decisions_yaml(UNREAD),
+            "1 escalated to the operator: unread: brief_conflicts[0]: development raised a brief "
+            "conflict that couldn't be read",
+        ),
+        (
+            None,
+            "the framing wrote no merge decisions, so the tier can establish nothing about a "
+            "conflict a proposer raised with the brief",
+        ),
+        ("", "the framing wrote no merge decisions"),
+        ("version: 1\n", "the merge decisions can't be read: merge_decisions missing required"),
+        ("::: not yaml :::", "the merge decisions can't be read: "),
+    ],
+    ids=[
+        "a blocking conflict",
+        "an unread conflict",
+        "none written",
+        "empty",
+        "partial",
+        "not yaml",
+    ],
+)
+def test_a_plan_whose_merge_escalated_a_conflict_or_left_no_record_is_not_the_tiers(
+    merge_decisions, reads
+):
+    """Bugs caught (#3164): a proposer's blocking disagreement with the brief escalated to an
+    operator by the merge and approved by the tier with no operator having seen it; an unread
+    conflict (#3163) treated as settled; and merge decisions that are absent or unreadable read
+    as "no conflict", which approves on nothing."""
+    verdict = _verdict(merge_decisions=merge_decisions)
+
+    assert not verdict.approves
+    [failed] = verdict.failed
+    assert failed.condition is TierCondition.NO_ESCALATED_CONFLICT
+    assert failed.reading.startswith(reads)
+    assert f"no_escalated_conflict: FAILED: {reads}" in verdict.notes()
+
+
+def test_an_unread_conflict_reaches_the_gates_ruler_in_the_proposers_own_words():
+    """Bug caught: the escalation naming a conflict and dropping what the proposer wrote, so
+    whoever rules the gate has to find the stored proposal to learn what was raised."""
+    [failed] = _verdict(merge_decisions=merge_decisions_yaml(UNREAD)).failed
+
+    assert "missing required field: brief_field" in failed.reading
+    assert "requirement: M5" in failed.reading
+    assert "outside the paths a task may write" in failed.reading
+
+
+@pytest.mark.parametrize(
+    ("raised", "reads"),
+    [
+        ("", "the merge escalated no brief conflict"),
+        (WARNING, "the merge escalated no brief conflict (1 raised and settled by the merge)"),
+    ],
+    ids=["none raised", "a warning the merge accepted"],
+)
+def test_a_conflict_the_merge_settled_leaves_the_tier_free_to_approve(raised, reads):
+    """The edge the condition must leave alone. Bug caught: every raised conflict escalating,
+    warnings included, so one cautious proposer parks every increment."""
+    verdict = _verdict(merge_decisions=merge_decisions_yaml(raised))
+
+    assert verdict.approves
+    assert [c.condition for c in verdict.checks] == [
+        TierCondition.NO_OPEN_QUESTION,
+        TierCondition.INSIDE_SCOPE,
+        TierCondition.FRAMED_ONCE,
+        TierCondition.NO_ESCALATED_CONFLICT,
+    ]
+    assert f"no_escalated_conflict: held: {reads}" in verdict.notes()

@@ -38,7 +38,25 @@ def test_a_request_and_a_result_read_back_as_they_were_sent():
         "provider_version": "",
         "ran_with": {},
         "dispatch_id": "d-1",
+        "tool_unready": False,
     }
+
+
+def test_a_tool_not_ready_crosses_the_wire_and_a_result_stored_before_the_key_reads_unflagged():
+    """#3192. Bugs caught: the flag dropped between the worker and the store, so a refusal for
+    the worker's own Studio routes to repair; or every result stored before the key (each
+    settled row is read through here) refused for lacking it."""
+    unready = RemoteOperationResult(
+        status=OperationStatus.NOT_EXECUTED,
+        reason="nothing was run: the scenario acts through Studio's input, ...",
+        dispatch_id="d-2",
+        tool_unready=True,
+    )
+    assert result_from_wire(json.loads(json.dumps(result_to_wire(unready)))) == unready
+
+    before_the_key = result_to_wire(passing())
+    del before_the_key["tool_unready"]
+    assert result_from_wire(before_the_key).tool_unready is False
 
 
 def _result(**changes):
@@ -73,6 +91,8 @@ _ABSENT = object()
         (_result(records={}), "result.records is dict, and a list is needed"),
         (_result(ran_with={"worker": 3}), r"result.ran_with\['worker'\] is not text to text"),
         (_result(reason=None), "result.reason is NoneType, and text is needed"),
+        (_result(tool_unready="yes"), "result.tool_unready is str, and a bool is needed"),
+        (_result(tool_unready=True), "result.tool_unready is set on a completed result"),
         ("completed", "result is str, and an object is needed"),
     ],
     ids=[
@@ -85,6 +105,8 @@ _ABSENT = object()
         "records that aren't a list",
         "a version that isn't text",
         "a null reason",
+        "a flag that isn't a bool",
+        "a tool not ready that ran",
         "not an object",
     ],
 )

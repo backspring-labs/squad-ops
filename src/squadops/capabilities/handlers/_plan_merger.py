@@ -611,11 +611,15 @@ def _unresolved_through_notes(unresolved: list[tuple[int, str, str]]) -> list[st
     ]
 
 
+#: The proposal section a brief conflict stands in, as ``degraded_sections`` names its entries.
+_CONFLICTS = "brief_conflicts"
+
+
 def _resolve_brief_conflicts(
     dev_proposal: ProposedRoleTasks | None,
     qa_proposal: ProposedRoleTasks | None,
 ) -> list[BriefConflictDisposition]:
-    """Apply §5.8 rule 1: warning → accepted, blocking → escalated.
+    """Apply §5.8 rule 1: warning → accepted, blocking → escalated, unread → escalated.
 
     The Rev 1 policy is conservative: the merger does not arbitrate
     warning-severity conflicts on substantive grounds (that would require
@@ -627,6 +631,22 @@ def _resolve_brief_conflicts(
     for proposal in (dev_proposal, qa_proposal):
         if proposal is None:
             continue
+        # #3163: a conflict raised in a shape that couldn't be read is still a conflict raised.
+        # Its severity is unread, so it is held to the stricter of the two and escalated, with
+        # what the proposer wrote, rather than dropped where no one answers it.
+        for unread in proposal.unread_brief_conflicts:
+            out.append(
+                BriefConflictDisposition(
+                    brief_field=f"unread: {unread.section}",
+                    severity="blocking",
+                    disposition="escalated_to_operator",
+                    reason=(
+                        f"{proposal.proposing_role} raised a brief conflict that couldn't be "
+                        f"read ({unread.why}), so its severity is unread and it is escalated. "
+                        f"As written:\n{unread.as_written}"
+                    ),
+                )
+            )
         for bc in proposal.brief_conflicts:
             if bc.severity == "blocking":
                 out.append(
@@ -700,6 +720,18 @@ def _build_operator_notes(
     for d in brief_conflicts_disposition:
         if d.disposition == "escalated_to_operator":
             parts.append(f"Brief conflict escalated ({d.brief_field}): {d.reason}")
+
+    # #3163: an advisory section a proposal wrote in a shape that couldn't be read was dropped
+    # at its parse. It is said here, so what the plan was merged without is on the record.
+    for proposal in (dev_proposal, qa_proposal):
+        if proposal is None:
+            continue
+        dropped = [s for s in proposal.degraded_sections if not s.startswith(_CONFLICTS)]
+        if dropped:
+            parts.append(
+                f"The {proposal.proposing_role} proposal's {', '.join(dropped)} couldn't be "
+                "read and the plan was merged without it."
+            )
 
     # Unresolved cross-proposal dependencies (rule 7 gap-fill candidates).
     # Rev 1 surfaces these as operator notes rather than auto-filling — the

@@ -47,6 +47,7 @@ from squadops.cycles.models import (
 )
 from squadops.events.types import EventType
 from squadops.execution.workload_gate import GateOutcome
+from tests.fixtures.merge_decisions import BLOCKING, merge_decisions_yaml
 from tests.unit.campaigns.builders import campaign, move, policy
 
 NOW = datetime(2026, 10, 8, 14, 0, tzinfo=UTC)
@@ -78,6 +79,10 @@ def _answered(manifest_yaml: str) -> str:
             d["warrant"] = "PRD §x"
             d.pop("question", None)
     return yaml.dump(data, sort_keys=False)
+
+
+#: A framing whose merge escalated nothing: the gate's default in these tests.
+_NO_CONFLICT = merge_decisions_yaml()
 
 
 def _plan(*paths: str) -> str:
@@ -119,7 +124,7 @@ def _artifact(artifact_id: str, artifact_type: str, filename: str, content: str)
 
 
 class _Vault:
-    def __init__(self, plan: str, manifest: str) -> None:
+    def __init__(self, plan: str, manifest: str, merge: str | None) -> None:
         self.stored = dict(
             [
                 _artifact(
@@ -130,6 +135,12 @@ class _Vault:
                 ),
             ]
         )
+        # The framing's merge decisions, as the merge step stores them (§24ee). ``None`` is a
+        # framing that stored none.
+        if merge is not None:
+            self.stored.update(
+                [_artifact("art_merge", "merge_decisions", "merge_decisions.yaml", merge)]
+            )
 
     async def retrieve(self, artifact_id):
         return self.stored[artifact_id]
@@ -153,7 +164,7 @@ def _run(run_id: str, *decisions: GateDecision) -> Run:
         initiated_by="system",
         resolved_config_hash="cfg",
         workload_type="framing",
-        artifact_refs=("art_plan", "art_manifest"),
+        artifact_refs=("art_plan", "art_manifest", "art_merge"),
         gate_decisions=decisions,
     )
 
@@ -186,6 +197,7 @@ async def _a_late_answer_on_record(campaigns: MemoryCampaignRegistry) -> None:
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         PRIOR, opening_transition(identity, verdict, ((DECISION, QUESTION),), NOW)
@@ -242,6 +254,7 @@ async def _reach_the_gate(
     answered_late: bool = False,
     manifest: str | None = None,
     allowed_scope: tuple[str, ...] = ("backend/**", "frontend/**"),
+    merge: str | None = _NO_CONFLICT,
 ):
     campaigns = MemoryCampaignRegistry()
     if answered_late:
@@ -271,7 +284,9 @@ async def _reach_the_gate(
     executor = DispatchedFlowExecutor(
         cycle_registry=registry,
         artifact_vault=_Vault(
-            plan, manifest if manifest is not None else (_ASKING if asks else _answered(_ASKING))
+            plan,
+            manifest if manifest is not None else (_ASKING if asks else _answered(_ASKING)),
+            merge,
         ),
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
@@ -364,8 +379,18 @@ async def test_a_plans_criterion_test_is_the_frameworks_under_a_scope_of_one_rou
         ({"plan": _plan("backend/routes.py", "docker-compose.yml")}, ["inside_scope"]),
         ({"earlier_framings": (_run("run_refused", _REFUSED),)}, ["framed_once"]),
         ({"asks": True}, ["no_open_question"]),
+        # §24ee (#3164): the merge escalated a proposer's blocking conflict to the operator.
+        ({"merge": merge_decisions_yaml(BLOCKING)}, ["no_escalated_conflict"]),
+        # ... or the framing stored no merge decisions at all, which establishes nothing.
+        ({"merge": None}, ["no_escalated_conflict"]),
     ],
-    ids=["outside scope", "a re-rolled framing", "an open question"],
+    ids=[
+        "outside scope",
+        "a re-rolled framing",
+        "an open question",
+        "an escalated brief conflict",
+        "no merge decisions stored",
+    ],
 )
 async def test_a_plan_the_tier_cannot_approve_waits_for_a_person(reach, failed):
     """§24bj: the tier may only approve, and anything else escalates. Bug caught: a plan outside
@@ -388,6 +413,10 @@ async def test_a_plan_the_tier_cannot_approve_waits_for_a_person(reach, failed):
     [esc] = escalations(await campaigns.control_log(CID), CampaignState.CALIBRATING)
     assert (esc.run_id, esc.gate_name, esc.state) == ("run_frame", GATE, EscalationState.PENDING)
     assert [condition for condition, _ in esc.failed] == failed
+    if reach.get("merge"):
+        # The conflict's own words reach whoever rules the gate, on the escalation's row.
+        [(_condition, reading)] = esc.failed
+        assert "The PRD requires a waitlist and the brief omits it." in reading
     assert esc.questions == ((QUESTION,) if reach.get("asks") else ())
     assert esc.decision_ids == ((DECISION,) if reach.get("asks") else ())
 

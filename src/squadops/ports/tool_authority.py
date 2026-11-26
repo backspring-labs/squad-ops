@@ -34,10 +34,12 @@ class ProductView:
     - ``paths``: every file the checkout seeds a run with.
     - ``text(path)``: a file's text, decoded only when asked, so an authority that reads paths
       alone decodes nothing.
-    - ``footprint``: the paths and globs the cycle's ruled change request lets it touch, or
-      ``None`` when the cycle holds no change request yet: an increment's proposal run authors
-      it, so an increment's own cycle has none at creation. A repair or a retry carries the ruled
-      one, and one that can't be read refuses creation rather than reading as ``None``.
+    - ``footprint``: the paths and globs the cycle's ruled change request lets the squad's
+      change touch, or ``None`` when the cycle holds no change request yet: an increment's
+      proposal run authors it, so an increment's own cycle has none at creation. A repair or a
+      retry carries the ruled one, and one that can't be read refuses creation rather than
+      reading as ``None``. The files the framework itself writes for the increment (a scenario
+      criterion's declaration) are left out: they are no part of the squad's change (#3173).
 
     An authority asked about a cycle with no repository-backed product (a sample application) is
     given ``None`` for the view, never a view of nothing."""

@@ -4,9 +4,10 @@
 It serves one operation, **``play_scenario``**: a frozen scenario played on the candidate, as one
 transaction (R3.6), under the one lease the worker holds for the call:
 1. The scenario is checked as frozen, under ``roblox-studio/1``, and Studio as the app in front.
-2. Studio is held to what the operation was proved on: its version and its tool list (R2.4). The
-   worker reads them, at each claim, from the newest passing qualification record (#3048), and a
-   re-qualification holds Studio while it runs, so the two never use it at once.
+2. Studio is held to what the operation was proved on: its version, its release channel and
+   its tool list (R2.4, R5.29). The worker reads them, at each claim, from the newest passing
+   qualification record (#3048), and a re-qualification holds Studio while it runs, so the two
+   never use it at once. A channel that can't be read is a Studio nothing was proved on.
 3. The place's non-script baseline is held to its pin. A place that drifted is reset from its
    baseline file (R5.17) and the transaction begun again, once.
 4. The candidate's scripts are synced, the place confirmed unpublished, and the scripts read back.
@@ -18,8 +19,8 @@ transaction (R3.6), under the one lease the worker holds for the call:
 Sync, the console and the capture are steps of that transaction, never operations of their own:
 every request carries a scenario. The rest stands beside it:
 - ``health`` reads identity and the tool check;
-- ``tool_versions`` registers the provider's version, Studio's version, the tool-schema digest,
-  the harness's program digests and the vocabulary's reader (R4.6);
+- ``tool_versions`` registers the provider's version, Studio's version and channel, the
+  tool-schema digest, the harness's program digests and the vocabulary's reader (R4.6);
 - ``reset`` restores the place from its read-only baseline file and reopens Studio (R5.17). A
   runner given no place files refuses to reset;
 - ``read_back``, ``sync`` and ``play_round`` are the transaction's parts, run by hand from
@@ -75,8 +76,11 @@ from squadops.remote_execution.workers import ServedOperation
 from squadops.runtime.models import RuntimeStatus
 
 PROVIDER = "roblox-studio"
-#: This provider's version: what each operation's evidence records it ran with (R4.6).
-PROVIDER_VERSION = "1"
+#: This provider's version: what each operation's evidence records it ran with (R4.6). A
+#: qualification pins it, so a change to what the harness reads moves it and the worker is
+#: requalified on its Studio before it plays again.
+#: - 2 (#3176): ``gui_state`` ``visible`` reads a screen (a ``ScreenGui``) as enabled.
+PROVIDER_VERSION = "2"
 OPERATION = "play_scenario"
 RUN_LOG_NAME = "play_log.json"
 CONSOLE_NAME = "console.txt"
@@ -101,12 +105,29 @@ def studio_version(studio_mcp: Path) -> str:
 
 
 @dataclass(frozen=True)
-class ProvedOn:
-    """What the operation was proved on (R2.4): Studio's version, and its tool list as
-    ``<count>:<schema digest>``. A Studio that differs from either reads ``not_executed``."""
+class StudioIdentity:
+    """A Studio, as a qualification proves it (R5.29): its version, its tool list as
+    ``<count>:<schema digest>``, and its release channel. Roblox moves an install between
+    channels at one version number, so the version alone doesn't say which Studio it is."""
 
     studio_version: str
     studio_tools: str
+    studio_channel: str
+
+    def named(self, role: str) -> dict[str, str]:
+        """The identity as a result's ``ran_with`` carries it, under ``<role>.``."""
+        return {
+            f"{role}.studio_version": self.studio_version,
+            f"{role}.studio_channel": self.studio_channel,
+            f"{role}.studio_tools": self.studio_tools,
+        }
+
+
+@dataclass(frozen=True)
+class ProvedOn(StudioIdentity):
+    """What the operation was proved on (R2.4). A Studio that differs from it in version,
+    channel or tool list reads ``not_executed``."""
+
     #: The digest of the qualification record these pins came from (#3048), recorded with
     #: every result. Empty only for pins handed in directly: a qualification's own runs.
     record: str = ""
@@ -131,6 +152,15 @@ class Pins(Protocol):
     def exclusive(self) -> AbstractContextManager[None]:
         """Studio, held for one transaction or reset. Raises :class:`StudioBusy` when another
         process holds it."""
+
+
+#: What a person does after Studio updates itself or moves channel (#3048, #3184, #3206).
+_REQUALIFY = (
+    "Re-qualify the worker on {version} with the place open in it "
+    "(scripts/dev/studio_requalify.py, #3048)"
+)
+#: Why an unread channel refuses (#3206).
+_UNREAD_CHANNEL = "a Studio whose channel isn't known is one nothing was proved on"
 
 
 class _Drifted(RuntimeError):
@@ -182,9 +212,16 @@ class RobloxStudioRunner(OperationRunnerPort):
             check = await session.open()
         finally:
             await session.close()
+        try:
+            channel = self._app.channel()
+        except OSError:
+            # A worker registers before its Studio is up (its first reset can fail), so the
+            # registration says the channel wasn't read. Every claim reads it again.
+            channel = "unread"
         return {
             PROVIDER: PROVIDER_VERSION,
             "studio": self._studio_version_of(self._studio_mcp),
+            "studio_channel": channel,
             "studio_tools": f"{check.count}:{check.schema_digest}",
             "reader": VOCABULARY.reader,
             **{f"harness.{name}": digest[:16] for name, digest in harness.digests().items()},
@@ -226,7 +263,7 @@ class RobloxStudioRunner(OperationRunnerPort):
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                f"nothing was run: {PROVIDER} was given no place files and "
                                "proved-on pins, so the place can't be confirmed as the one the "
-                               "operation was proved on (R2.4)")  # fmt: skip
+                               "operation was proved on (R2.4)", tool_unready=True)  # fmt: skip
         if isinstance(pins, ProvedOn):
             return await self._played(request, declaration, manifest, files, pins)
         try:
@@ -234,7 +271,8 @@ class RobloxStudioRunner(OperationRunnerPort):
             with pins.exclusive():
                 return await self._played(request, declaration, manifest, files, proved)
         except (NotProved, StudioBusy) as e:
-            return self._ended(request, OperationStatus.NOT_EXECUTED, f"nothing was run: {e}")
+            return self._ended(request, OperationStatus.NOT_EXECUTED, f"nothing was run: {e}",
+                               tool_unready=True)  # fmt: skip
 
     async def _played(
         self,
@@ -254,12 +292,13 @@ class RobloxStudioRunner(OperationRunnerPort):
                     OSError) as e:  # fmt: skip
                 return self._ended(request, OperationStatus.NOT_EXECUTED,
                                    f"nothing was run: {drifted}, and the reset failed: "
-                                   f"{type(e).__name__}: {e}")  # fmt: skip
+                                   f"{type(e).__name__}: {e}", tool_unready=True)  # fmt: skip
         try:
             return await self._transaction(request, declaration, manifest, files, proved)
         except _Drifted as drifted:
             return self._ended(request, OperationStatus.NOT_EXECUTED,
-                               f"nothing was run: {drifted}, after a reset")  # fmt: skip
+                               f"nothing was run: {drifted}, after a reset",
+                               tool_unready=True)  # fmt: skip
 
     async def _transaction(
         self,
@@ -277,12 +316,13 @@ class RobloxStudioRunner(OperationRunnerPort):
             if behind:
                 return self._ended(request, OperationStatus.NOT_EXECUTED,
                                    "nothing was run: the scenario acts through Studio's input, "
-                                   f"which acts only on a Studio in front, and {behind}")  # fmt: skip
+                                   f"which acts only on a Studio in front, and {behind}",
+                                   tool_unready=True)  # fmt: skip
         session = self._session(harness=True)
         playing = False
         try:
             check = await session.open()
-            self._held_to_proof(check, proved)
+            live = self._held_to_proof(check, proved)
             studio = await place.identity(session, discover_seconds=self._discover_seconds)
             sid = studio.studio_id
             pinned = await place.baseline(session, sid)
@@ -316,7 +356,12 @@ class RobloxStudioRunner(OperationRunnerPort):
         except (place.PlaceReadError, place.PlaceSyncError, place.PlaceStateError,
                 StudioSessionError, NotProved) as e:  # fmt: skip
             status = OperationStatus.INTERRUPTED if playing else OperationStatus.NOT_EXECUTED
-            return self._ended(request, status, f"{type(e).__name__}: {e}")
+            # #3192: before play, a Studio that isn't the proved one, one whose session won't
+            # open, or a place it can't read is this Mac's. A sync or a place-state refusal
+            # could be the candidate's, so it stays the work's.
+            environment = isinstance(e, (NotProved, StudioSessionError, place.PlaceReadError))
+            return self._ended(request, status, f"{type(e).__name__}: {e}",
+                               tool_unready=environment and not playing)  # fmt: skip
         finally:
             await session.close()
         changes = place.baseline_changes(before, after)
@@ -349,14 +394,18 @@ class RobloxStudioRunner(OperationRunnerPort):
             ran_with={
                 **self._ran_with(before.digest, request.source_revision),
                 "play_session": log.session_id,
+                # R5.29: the Studio the qualification names, and the one this play ran on.
+                **proved.named("qualified"),
+                **live.named("played"),
                 **({"qualified_by": proved.record[:16]} if proved.record else {}),
             },
             dispatch_id=request.dispatch_id,
         )
 
-    def _held_to_proof(self, check: ToolCheck, proved: ProvedOn) -> None:
-        """Raises :class:`NotProved` naming each way Studio differs from what the operation was
-        proved on."""
+    def _held_to_proof(self, check: ToolCheck, proved: ProvedOn) -> StudioIdentity:
+        """The running Studio's identity, which is the one the operation was proved on. Raises
+        :class:`NotProved` naming each way it differs. A channel that can't be read differs
+        (#3206): no older proof and no assumed channel stands in for it."""
         version = self._studio_version_of(self._studio_mcp)
         tools = f"{check.count}:{check.schema_digest}"
         differs = []
@@ -366,8 +415,21 @@ class RobloxStudioRunner(OperationRunnerPort):
         if tools != proved.studio_tools:
             differs.append(f"Studio's tools read {tools[:24]}…, and the operation was proved on "
                            f"{proved.studio_tools[:24]}…")  # fmt: skip
+        channel = ""
+        try:
+            channel = self._app.channel()
+        except OSError as e:
+            differs.append(f"Studio's channel can't be read ({e}), and {_UNREAD_CHANNEL}")
+        else:
+            if not proved.studio_channel:
+                differs.append(f"Studio is on channel {channel}, and the operation's proof "
+                               "names no channel")  # fmt: skip
+            elif channel != proved.studio_channel:
+                differs.append(f"Studio is on channel {channel}, and the operation was proved "
+                               f"on channel {proved.studio_channel}")  # fmt: skip
         if differs:
             raise NotProved("; ".join(differs) + " (R2.4: a mode not proved reads not executed)")
+        return StudioIdentity(version, tools, channel)
 
     def _ran_with(self, baseline_digest: str, source_revision: str) -> dict[str, str]:
         return {
@@ -391,24 +453,43 @@ class RobloxStudioRunner(OperationRunnerPort):
         return ""
 
     def _ended(
-        self, request: RemoteOperationRequest, status: OperationStatus, reason: str
+        self,
+        request: RemoteOperationRequest,
+        status: OperationStatus,
+        reason: str,
+        *,
+        tool_unready: bool = False,
     ) -> RemoteOperationResult:
+        """``tool_unready`` (#3192) marks a ``not_executed`` whose cause is this Mac's Studio and
+        never the request: not in front, not the proved version, channel or tool list, busy, or
+        a place that couldn't be brought back to its baseline. Anything the request or the candidate could have caused
+        (a scenario out of vocabulary, an unplaceable script, a sync, a place play changed)
+        leaves it unset, so the Campaign keeps reading it as the work's."""
         return RemoteOperationResult(
             status=status,
             reason=reason,
             provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
             dispatch_id=request.dispatch_id,
+            tool_unready=tool_unready,
         )
 
-    async def live_studio(self) -> tuple[str, ToolCheck]:
-        """The running Studio's version and its live tool check, as a harness session reads it:
-        what a re-qualification would pin (#3048)."""
+    async def live_studio(self) -> tuple[StudioIdentity, ToolCheck]:
+        """The running Studio's identity and its live tool check, as a harness session reads
+        it: what a re-qualification would pin (#3048, #3206). Raises ``OSError`` for a channel
+        that can't be read, so a re-qualification pins none it didn't read."""
         session = self._session(harness=True)
         try:
             check = await session.open()
         finally:
             await session.close()
-        return self._studio_version_of(self._studio_mcp), check
+        return (
+            StudioIdentity(
+                self._studio_version_of(self._studio_mcp),
+                f"{check.count}:{check.schema_digest}",
+                self._app.channel(),
+            ),
+            check,
+        )
 
     async def reset(self) -> None:
         """:meth:`_reset_held`, with Studio held against a re-qualification (#3048). Raises
@@ -424,11 +505,26 @@ class RobloxStudioRunner(OperationRunnerPort):
         """Restore the place from its baseline file and reopen Studio on it (R3.6). Raises
         :class:`place.PlaceStateError`, naming why, when it can't do so safely, and then a person
         is needed:
-        - before anything is touched, for a baseline file whose digest isn't the pinned one, more
-          than one Studio, a Studio that doesn't answer, or one holding another file;
+        - before anything is touched, for a baseline file whose digest isn't the pinned one, a
+          Studio that isn't the version or on the channel the worker's proof names (#3184,
+          #3206), more than one Studio, a Studio that doesn't answer, or one holding another
+          file;
         - for a Studio that won't quit, or a lock a running Studio holds;
-        - after reopening, for a place that doesn't come back unpublished, in Edit, holding the
-          pinned non-script baseline."""
+        - after reopening, for a Studio that replaced itself with another version as it
+          launched (#3184), one that came back on another channel or whose channel can't be
+          read (#3206), and for a place that doesn't come back unpublished, in Edit, holding
+          the pinned non-script baseline.
+
+        **Studio updates itself at a launch, and the reset's reopening is one.** Studio's
+        version is read before the quit and again after the reopening. A Studio that changed
+        between them is named with both versions, whatever the reopened Studio then read: an
+        updated Studio comes back holding no place, and "holds no place" is the least of what
+        happened.
+
+        **The channel is held the same way** (#3206): Roblox's updater moves an install to
+        another channel at a launch, with the version unchanged. The running Studio's channel
+        is read before the quit and the reopened Studio's after it. The Studio about to be
+        quit may not say its channel, and that stops nothing; the reopened one must."""
         files = self._files
         if files is None:
             raise place.PlaceStateError(
@@ -440,11 +536,119 @@ class RobloxStudioRunner(OperationRunnerPort):
                 f"the baseline file {files.baseline} is {held[:16]}…, not the pinned "
                 f"{files.baseline_sha256[:16]}…; nothing was touched"
             )
+        before = self._installed_version("nothing was touched")
+        proved = self._proof()
+        if proved is not None and proved.studio_version and before != proved.studio_version:
+            raise place.PlaceStateError(
+                f"Studio is {before}, and the operation was proved on {proved.studio_version}: "
+                f"Studio has updated itself. {_REQUALIFY.format(version=before)}; nothing was "
+                "touched"
+            )
+        held = proved.studio_channel if proved is not None else ""
+        was = self._running_channel()
+        if held and was is not None and was != held:
+            raise place.PlaceStateError(
+                f"Studio is on channel {was}, and the operation was proved on channel {held}: "
+                f"Studio moved channel at {before}. "
+                f"{_REQUALIFY.format(version=f'{before} on channel {was}')}; nothing was touched"
+            )
         await self._quit_studio(files)
         self._clear_lock(files)
         self._restore(files)
         self._app.open(files.place)
-        await self._confirm_reopened(files)
+        try:
+            await self._confirm_reopened(files)
+        except (place.PlaceStateError, place.PlaceReadError, StudioSessionError) as e:
+            replaced = self._replaced_since(before) or self._moved_channel(before, was, held)
+            if replaced:
+                raise place.PlaceStateError(
+                    f"{replaced} The reopened Studio then read: {type(e).__name__}: {e}"
+                ) from e
+            raise
+        replaced = self._replaced_since(before) or self._moved_channel(
+            before, was, held, must_read=True
+        )
+        if replaced:
+            raise place.PlaceStateError(
+                f"{replaced} The place was restored and reopened in it at its baseline."
+            )
+
+    def _installed_version(self, then: str) -> str:
+        """Studio's installed version. One that can't be read is refused by name: the reset
+        compares versions, and has nothing to compare an unread one with."""
+        try:
+            return self._studio_version_of(self._studio_mcp)
+        except ValueError as e:
+            raise place.PlaceStateError(f"{e}; {then}") from e
+
+    def _proof(self) -> ProvedOn | None:
+        """What the worker's proof names, or ``None`` when there is no proof to read. Then
+        every play is refused by name (R2.4), and the reset has nothing to hold Studio to.
+        Pins handed in may name no version or channel (a re-qualification's probe), and the
+        reset holds Studio to what they do name."""
+        pins = self._proved
+        if pins is None or isinstance(pins, ProvedOn):
+            return pins
+        try:
+            return pins.current()
+        except NotProved:
+            return None
+
+    def _running_channel(self) -> str | None:
+        """The channel of the Studio a reset is about to quit, or ``None`` when no Studio
+        runs or this one doesn't say. The reopened Studio's channel is the one a play would
+        run on, and that one must be read (:meth:`_moved_channel`)."""
+        try:
+            return self._app.channel() if self._app.pids() else None
+        except OSError:
+            return None
+
+    def _moved_channel(
+        self, version: str, was: str | None, held: str, *, must_read: bool = False
+    ) -> str:
+        """What to say when the reopened Studio isn't on the channel the proof names (``held``)
+        or, with no proof, the one it was on before the reset (``was``); ``""`` when it is.
+        ``must_read`` is for a place that reopened: a channel that can't be read then is said.
+        Without it the reopening already failed, and an unread channel adds nothing to that."""
+        try:
+            now = self._app.channel()
+        except OSError as e:
+            if not must_read:
+                return ""
+            return (
+                f"Studio's channel can't be read after the reset reopened it ({e}), and "
+                f"{_UNREAD_CHANNEL}."
+            )
+        expected = held or was
+        if expected is None or now == expected:
+            return ""
+        remedy = _REQUALIFY.format(version=f"{version} on channel {now}")
+        if was is not None and was != now:
+            return (
+                f"Studio moved channel as the reset reopened it: it was on {was} and is now on "
+                f"{now} at {version}, which no operation is proved on. {remedy}."
+            )
+        return (
+            f"The reopened Studio is on channel {now}, and the operation was proved on channel "
+            f"{expected}. {remedy}."
+        )
+
+    def _replaced_since(self, before: str) -> str:
+        """What to say when Studio's installed version is no longer ``before``, or ``""``."""
+        try:
+            after = self._studio_version_of(self._studio_mcp)
+        except ValueError as e:
+            return (
+                f"Studio was {before} before the reset reopened it, and its version can't be "
+                f"read now ({e}): it is replacing itself with an update. "
+                f"{_REQUALIFY.format(version='the version it comes back as')}."
+            )
+        if after == before:
+            return ""
+        return (
+            f"Studio replaced itself as the reset reopened it: it was {before} and is now "
+            f"{after}, which no operation is proved on. {_REQUALIFY.format(version=after)}."
+        )
 
     async def _quit_studio(self, files: PlaceFiles) -> None:
         """Quit the one Studio, which must hold the place file, asking first and killing only

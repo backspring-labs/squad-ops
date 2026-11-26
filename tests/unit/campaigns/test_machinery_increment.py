@@ -72,18 +72,6 @@ DONE = {
     "required_artifacts": [WORLD_PATH],
 }
 
-DOOR_CHECK = f"""import json
-import unittest
-from pathlib import Path
-
-WORLD = Path(__file__).resolve().parents[1] / "{WORLD_PATH}"
-
-
-class DoorWorld(unittest.TestCase):
-    def test_the_door_is_in_the_world(self):
-        world = json.loads(WORLD.read_text())
-        self.assertIn("Workspace.Door", world["server"])"""
-
 ANALYSIS = {
     "classification": "work_product",
     "analysis_summary": "door-open fails: Workspace.Door still collides in the world.",
@@ -104,7 +92,6 @@ PATCH = {
 ANSWERS = [
     answer("governance.define_done", 1, emitted("definition_of_done.json", _world(DONE))),
     answer("development.develop", 1, emitted(WORLD_PATH, _world(HALF_OPEN))),
-    answer("qa.test", 1, emitted("checks/check_door_test.py", DOOR_CHECK, "python")),
     answer("data.analyze_failure", 1, json.dumps(ANALYSIS)),
     answer("governance.correction_decision", 1, json.dumps(PATCH)),
     answer(
@@ -144,7 +131,8 @@ async def test_a_scenario_that_fails_on_the_worker_is_repaired_and_its_candidate
     assert machinery.dispatched() == [
         "governance.define_done",
         "development.develop",
-        "qa.test",
+        # #3179: the plan authors no suite, so no suite step stands between the developer's
+        # task and the play. The workload's own had no file to author on an increment.
         "qa.run_remote_operation",
         "data.analyze_failure",
         "governance.correction_decision",
@@ -152,7 +140,7 @@ async def test_a_scenario_that_fails_on_the_worker_is_repaired_and_its_candidate
         "qa.run_remote_operation",
     ]
     replies = machinery.replies()
-    assert replies[3] == (
+    assert replies[2] == (
         "FAILED",
         "scenario:C-2:door-open: observed 'true', expected 'equals false'",
     )

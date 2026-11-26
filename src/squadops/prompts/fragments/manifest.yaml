@@ -89,6 +89,11 @@ fragments:
   layer: task_type
   roles:
   - qa
+- fragment_id: task_type.qa.test.luau
+  path: shared/task_type/task_type.qa.test.luau.md
+  layer: task_type
+  roles:
+  - qa
 - fragment_id: task_type.strategy.propose_increment
   path: shared/task_type/task_type.strategy.propose_increment.md
   layer: task_type

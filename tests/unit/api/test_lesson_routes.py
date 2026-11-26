@@ -86,6 +86,9 @@ class _Units:
             applied_defaults={"workload_sequence": [{"type": t} for t in self.WORKLOADS]},
         )
 
+    async def get_cycle_end(self, cycle_id: str) -> None:
+        return None  # #3201: no recorded ending; the runs and workloads decide
+
     async def list_runs(self, cycle_id: str, **_) -> list[Run]:
         return [
             Run(

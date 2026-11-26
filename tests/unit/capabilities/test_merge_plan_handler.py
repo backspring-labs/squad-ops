@@ -722,6 +722,124 @@ async def test_handler_emits_both_artifacts_on_multi_role_merge():
     assert decisions.authoring_mode == "multi_role"
 
 
+#: The entry the first cycle under ``game_dev_roblox`` raised (#3163, ``cyc_33b04e40d806``): a
+#: real disagreement, in field names of the model's own.
+_M5_AS_RAISED = """
+brief_conflicts:
+  - requirement: "M5"
+    issue: |
+      The brief asks a task to emit .squadops/scenarios/criterion_S1.json, outside the
+      paths a task may write.
+    proposed_resolution: >
+      Leave the scenario document to the step that lays it.
+"""
+
+
+@pytest.mark.parametrize(
+    ("raised", "field", "why", "written"),
+    [
+        (
+            _M5_AS_RAISED,
+            "unread: brief_conflicts[0]",
+            "missing required field: brief_field",
+            "requirement: M5",
+        ),
+        (
+            """
+brief_conflicts:
+  - brief_field: scope_cuts
+    proposed_change: Keep the export.
+    reason: The PRD requires it.
+    severity: urgent
+""",
+            "unread: brief_conflicts[0]",
+            "severity must be one of ['blocking', 'warning'], got 'urgent'",
+            "severity: urgent",
+        ),
+        (
+            "\nbrief_conflicts: the brief pins a stack this product can't use\n",
+            "unread: brief_conflicts",
+            "expected a YAML list, got str",
+            "the brief pins a stack this product can't use",
+        ),
+    ],
+    ids=["field names of its own", "a severity outside the two", "prose in place of a list"],
+)
+async def test_a_brief_conflict_that_cant_be_read_is_escalated_with_what_was_written(
+    raised, field, why, written
+):
+    """Entered at ``GovernanceMergePlanHandler.handle``, the call framing makes with the
+    proposers' outcomes. Bug caught (#3163): a disagreement the proposer raised in a shape of its
+    own dropped at the parse, so ``merge_decisions.yaml`` records no conflict and nobody at the
+    gate knows one was raised."""
+    ctx = _make_merger_context()
+    inputs = {
+        "prd": "PRD",
+        "resolved_config": {"plan_authoring_contributors": ["development", "qa"]},
+        "prior_outputs": {
+            "lead": {"brief_outcome": {"status": "success", "yaml_content": _BRIEF_YAML}},
+            "dev": {
+                "proposal_outcome": {
+                    "status": "success",
+                    "proposing_role": "development",
+                    "yaml_content": _DEV_PROPOSAL_YAML.rstrip("\n") + raised,
+                },
+            },
+            "qa": {
+                "proposal_outcome": {
+                    "status": "success",
+                    "proposing_role": "qa",
+                    "yaml_content": _QA_PROPOSAL_YAML,
+                },
+            },
+        },
+    }
+
+    result = await GovernanceMergePlanHandler().handle(ctx, inputs)
+
+    assert result.success is True
+    plan = ImplementationPlan.from_yaml(result.outputs["artifacts"][0]["content"])
+    decisions = MergeDecisions.from_yaml(result.outputs["artifacts"][1]["content"])
+    assert len(plan.tasks) == 2
+    [disposition] = decisions.brief_conflicts_disposition
+    assert (disposition.brief_field, disposition.severity, disposition.disposition) == (
+        field,
+        "blocking",
+        "escalated_to_operator",
+    )
+    assert why in disposition.reason
+    assert written in disposition.reason
+    assert f"Brief conflict escalated ({field})" in decisions.operator_notes
+    assert written in decisions.operator_notes
+
+
+def test_an_advisory_section_dropped_at_the_parse_is_named_to_the_operator(brief):
+    """Bug caught: a proposal's risks or assumptions written as prose dropped with a log line
+    alone, so the plan reads as merged from a proposal that raised none."""
+    dev_proposal = ProposedRoleTasks.from_yaml(
+        _DEV_PROPOSAL_YAML.rstrip("\n") + "\nrisks: the join route races the lobby clock\n"
+    )
+
+    _plan, decisions = merge_proposals(
+        brief=brief,
+        dev_proposal=dev_proposal,
+        qa_proposal=None,
+        strategy_guidance=None,
+        project_id="p",
+        cycle_id="c",
+        prd_hash="h",
+        configured_contributors=["development"],
+        missing_proposals=[],
+        criterion_files=(),
+    )
+
+    assert decisions.brief_conflicts_disposition == []
+    assert (
+        "The development proposal's risks couldn't be read and the plan was merged without it."
+        in decisions.operator_notes
+    )
+
+
 async def test_handler_fails_loudly_when_brief_missing():
     """The brief is mandatory upstream context. Missing brief = wiring
     bug, not a recoverable runtime condition. Surface explicitly."""

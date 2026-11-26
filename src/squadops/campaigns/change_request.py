@@ -261,6 +261,8 @@ class RefusalKind(StrEnum):
     MANIFEST_DELTA_ON_PRODUCT = "manifest_delta_on_product"
     #: §24bv point 5: no runner of the product's can host the criterion's own test file.
     UNPLACEABLE_CRITERION = "unplaceable_criterion"
+    #: SIP-0112 H.35 (#3155): the footprint names a path the product's owner reserves.
+    RESERVED_PATH = "reserved_path"
     #: §24cj: one id named by two criteria of one request.
     DUPLICATE_CRITERION = "duplicate_criterion"
     #: §24cj: two criteria whose own test files would be one file (``T-1`` and ``T_1``).
@@ -1019,6 +1021,9 @@ class ProductContext:
     placements: tuple[RunnerPlacement, ...]
     #: Contract 8's ``files.test``: the globs that class the product's own test files.
     test_files: tuple[str, ...] = ()
+    #: SIP-0112 H.35 (#3155): the paths the product's owner reserves from a cycle's change. A
+    #: footprint that names one is refused (``RESERVED_PATH``).
+    reserved_paths: tuple[str, ...] = ()
     #: §24cp: the client routes the profile pins (SIP-0112 H.7), each judged at acceptance by its
     #: approved manifest's anchor (§24co item 5). A page criterion on any other route adds it, and
     #: names its view's anchor.
@@ -1265,6 +1270,7 @@ def _validate_product_proposal(
             else ""
         )
         placed.append(PlacedCriterionFile(c.id, path, loader))
+    refusals.extend(_reserved_path_refusals(footprint, placed, product))
     if not any(r.kind in _IDENTITY_REFUSALS for r in refusals):
         # A collision the ids already show is named once, by them.
         refusals.extend(_placed_collision_refusals(placed))
@@ -1278,6 +1284,43 @@ def _validate_product_proposal(
         goals_revision=context.backlog.revision if context.backlog is not None else None,
     )
     return ProposalVerdict(dataclasses.replace(final, content_hash=content_hash(final)), ())
+
+
+def _reserved_path_refusals(
+    footprint: Sequence[str], placed: Sequence[PlacedCriterionFile], product: ProductContext
+) -> list[ProposalRefusal]:
+    """SIP-0112 H.35 (#3155): a change request that reaches a path the product's owner reserves
+    from a cycle's change is refused, by path. Two ways to reach one: the authored footprint
+    (``reserved_paths.reached_by``), and a criterion's own file, or a page's loader, which the
+    framework would place there."""
+    # deferred (pair): projects imports campaigns at load
+    from squadops.projects.reserved_paths import naming, reached_by, reserved_among
+
+    refusals = []
+    reached = reached_by(footprint, product.reserved_paths)
+    if reached:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.RESERVED_PATH,
+                f"the footprint reaches {naming(reached)}, which the product's owner reserves "
+                "from a cycle's change; a proposal is refused, never trimmed. Name the files "
+                "the change touches without them. If the change can't be made without one, it "
+                "is the owner's to make",
+            )
+        )
+    files = reserved_among(
+        (p for f in placed for p in (f.path, f.page_loader) if p), product.reserved_paths
+    )
+    if files:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.RESERVED_PATH,
+                f"a criterion's own test file would be placed at {naming(files)}, which the "
+                "product's owner reserves from a cycle's change. Name each criterion's `paths` "
+                "so its runner places the file elsewhere, or leave the criterion to the owner",
+            )
+        )
+    return refusals
 
 
 def _product_surface_refusals(

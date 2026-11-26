@@ -259,6 +259,9 @@ def profile_view(profile: DerivedProfile, tree_paths: Any) -> dict[str, Any]:
             for g in profile.gaps
             if g.kind == DISCLOSED
         ],
+        # SIP-0112 H.35 (#3155): the paths the product's owner reserves from a cycle's change.
+        # Written only when declared, so every other product's input is the one it was.
+        **({"reserved_paths": list(profile.reserved_paths)} if profile.reserved_paths else {}),
     }
 
 

@@ -40,6 +40,7 @@ from squadops.campaigns.models import (
 from squadops.campaigns.plan_review_tier import TierCondition, plan_review_tier
 from squadops.campaigns.progress import CampaignProgress
 from squadops.cycles.models import Gate, GateDecision, Run, RunStatus, TaskFlowPolicy
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import campaign, cycle_for, move, policy
 
 S = CampaignState
@@ -137,6 +138,7 @@ async def _world():
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         CID,
@@ -268,6 +270,67 @@ async def test_a_person_deciding_the_gate_resolves_it_and_the_run_goes_on():
     assert not parked_run(await campaigns.control_log(CID), "run_f")
 
 
+async def test_a_decision_made_after_the_bound_expires_it_and_the_run_is_left_to_the_decision():
+    """§24eh (#3174): resolved is a person deciding before the bound, read by the decision's own
+    time. Bugs caught: a late decision reading ``resolved`` because it landed before the sweep's
+    next pass; and the run parked under a person's decision (§24bk: the decision wins the run)."""
+    campaigns, cycles, progress, now, _ = await _world()
+    late = OPENED + timedelta(seconds=BOUND + 5)
+    await cycles.record_gate_decision(
+        "run_f", GateDecision(GATE, "approved", "human:owner", late, "an answer")
+    )
+    now[0] = late + timedelta(seconds=30)
+
+    rows = await progress.sweep_ruling_bounds()
+
+    assert _closings(rows) == [("expired", "squadops")]
+    assert (rows[0].binding["decided_by"], rows[0].binding["decided_at"]) == (
+        "human:owner", late.isoformat(),
+    )  # fmt: skip
+    assert (await cycles.get_run("run_f")).status == RunStatus.COMPLETED.value
+    log = await campaigns.control_log(CID)
+    assert not parked_run(log, "run_f")  # a decided gate's cycle doesn't end parked (row 15)
+    [escalation] = escalations(log, S.BUILDING)
+    assert (escalation.state, escalation.decided_by, escalation.decided_at) == (
+        EscalationState.EXPIRED, "human:owner", late,
+    )  # fmt: skip
+    # The owner's digest (§24bj) says the gate was decided, and asks nobody to answer it late.
+    from squadops.campaigns.evidence import digest, package
+
+    read = digest(
+        package(
+            await campaigns.get_campaign(CID), log, [], [],
+            outcomes=None, interventions=None, assessments=None,
+        )
+    )  # fmt: skip
+    assert f"human:owner decided the gate after its ruling bound, at {late.isoformat()}" in read
+    assert "with nobody answering" not in read
+
+
+async def test_a_decided_escalation_is_ended_whatever_state_its_campaign_has_reached():
+    """#3174 at the sweep, as ``cmp_c22ad50e1de0`` left it: decided, then the cycle ended and the
+    campaign escalated before the next sweep. Bugs caught: the sweep reading only building
+    campaigns, so the escalation stays ``pending`` until an abort reads it ``cancelled``; and
+    the ending dated by the sweep, not by the decision."""
+    campaigns, cycles, progress, now, _ = await _world()
+    answered = _run("run_f", 2, "framing", decided="human:owner")
+    await cycles.record_gate_decision("run_f", answered.gate_decisions[0])
+    await campaigns.transition(CID, move(S.EVALUATING, "ended"))
+    await campaigns.transition(CID, move(S.RETRYING, "row-10"))
+    await campaigns.transition(
+        CID, move(S.ESCALATED, "refused", operation=ControlOperation.LAUNCH_REFUSED)
+    )
+
+    rows = await progress.sweep_ruling_bounds()
+    again = await progress.sweep_ruling_bounds()
+
+    assert _closings(rows) == [("resolved", "human:owner")] and again == []
+    [escalation] = escalations(await campaigns.control_log(CID), S.ESCALATED)
+    assert (escalation.state, escalation.closed_by, escalation.closed_at) == (
+        EscalationState.RESOLVED, "human:owner", OPENED,
+    )  # fmt: skip
+
+
 async def test_a_run_that_stopped_waiting_with_no_decision_supersedes_it():
     """A supervisor's return re-framed the cycle, or an operator cancelled the run: the gate the
     escalation was opened for is no longer waiting, and nobody answered it."""
@@ -293,7 +356,10 @@ async def test_an_escalation_ends_exactly_once():
     # The same escalation, read as if it were still pending and a person had decided its gate.
     reopened = [e for e in log if e.operation is not ControlOperation.ESCALATION_CLOSED]
     [late] = closing_transitions(
-        campaign_now, reopened, {"run_f": RunAtGate(waiting=True, decided_by="human:late")}, now[0]
+        campaign_now,
+        reopened,
+        {"run_f": RunAtGate(waiting=True, decided_by="human:late", decided_at=OPENED)},
+        now[0],
     )
 
     with pytest.raises(ControlOperationRefused):
@@ -313,6 +379,7 @@ def test_an_escalation_pending_when_its_campaign_ended_reads_cancelled():
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     opening = opening_transition(
         _identity("cyc_x"), verdict, (("list-ordering", QUESTION),), OPENED
@@ -428,6 +495,7 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         CID, opening_transition(_identity("cyc_x"), verdict, (("list-ordering", question),), OPENED)

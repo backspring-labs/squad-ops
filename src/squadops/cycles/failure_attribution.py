@@ -182,6 +182,7 @@ PLAN_VALIDATORS: tuple[str, ...] = (
     "validate_qa_artifact_ownership",
     "validate_qa_suite_namespace",
     "validate_qa_tasks_author_a_suite",
+    "validate_reserved_paths",
     "validate_unique_expected_artifacts",
 )
 
@@ -534,6 +535,10 @@ class TerminalKind(StrEnum):
     #: campaign branch's head, read as soon as the qa task's test for it existed, before the run
     #: delivered. The run ended there: nothing it built can make that criterion discriminate.
     CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
+    #: SIP-0116 §17o: a task's model answered with a stop one of its skills declares
+    #: (``SKILL_STOP_EVIDENCE`` on its reply), and the run ended at once: the work as asked is
+    #: one its equipment refuses, so a re-ask or a repair would ask for the refused thing again.
+    SKILL_STOPPED = "skill_stopped"
     COMPLETED = "completed"
     OTHER = "other"
 
@@ -545,6 +550,11 @@ WORKER_UNAVAILABLE = "worker_unavailable"
 #: #3118 (SIP-0112 H.32): the ``failure_classification`` of an ``input_refused`` run ended at
 #: dispatch because a task's tree would carry more than a resolution's limit. It would every time.
 CONTENTS_OVER_LIMIT = "contents_over_limit"
+#: #3120: the ``failure_classification``s of an ``infrastructure_failed`` run ended at dispatch
+#: because a file of a task's tree couldn't be read from the vault, by how it failed.
+ARTIFACT_MISSING = "artifact_missing"
+ARTIFACT_UNREADABLE = "artifact_unreadable"
+ARTIFACT_UNRETRIEVED = "artifact_unretrieved"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -692,6 +702,8 @@ _PRIMARY_DECLARED_BY_KIND: dict[TerminalKind, AttributionClass] = {
     TerminalKind.INFRASTRUCTURE_FAILED: AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE,
     TerminalKind.INPUT_REFUSED: AttributionClass.INPUT_CONTRACT_FAILURE,
     TerminalKind.CRITERIA_NOT_CHECKABLE: AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
+    # SIP-0116 §17o: what was asked is at fault, as an uncheckable criterion is, not the work.
+    TerminalKind.SKILL_STOPPED: AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
 }
 
 

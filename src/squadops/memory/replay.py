@@ -5,11 +5,18 @@ by the intervention:
 - **baseline:** today's prompt at the seam, with its within-cycle rung, and no cross-cycle memory;
 - **scoped memory:** the same ordinary inputs, plus the eligible historical guidance;
 - **static guidance:** the same guidance under a fixed policy (secondary: selectivity, unnecessary
-  injection, token cost).
+  injection, token cost);
+- **skills:** the same ordinary inputs, plus the equipment a cycle whose development profile
+  required the task's skillset would hand it (SIP-0116 §7, §17p). It is how a skill is tested on
+  the models that will run it before any profile requires it.
 
 **Instrument validity** comes first (``validity``): the baseline arm reproduces the captured prompt
-byte for byte, and the memory arm differs from it only by the lessons' section. A case that fails
-either is excluded, never scored.
+byte for byte, and an intervention arm differs from it only by its own section: the lessons' for
+a memory arm, the skills' for the skills arm. A case that fails either is excluded, never scored.
+
+**A swapped case** (``swapped_inputs``) is a captured envelope with named inputs changed, to put
+a task the capture didn't hold in front of the same seam. No capture stands behind its prompt, so
+it is never checked against one: its baseline is the swapped inputs with no intervention.
 
 **Temporal validity, by evidence time** (``temporal_validity``): every observation a lesson rests on
 predates the target's pre-authoring cutoff, its envelope's capture. An earlier admission of the
@@ -27,6 +34,7 @@ Pure: the in-container runner authors, and the host runner reads the records.
 
 from __future__ import annotations
 
+import copy
 import difflib
 import hashlib
 import json
@@ -44,6 +52,7 @@ class Arm(StrEnum):
     BASELINE = "baseline"
     SCOPED_MEMORY = "scoped_memory"
     STATIC_GUIDANCE = "static_guidance"
+    SKILLS = "skills"
 
 
 class ClaimKind(StrEnum):
@@ -105,12 +114,21 @@ def arm_inputs(
     experiment_id: str,
     lessons: Sequence[ReplayLesson] = (),
     static_guidance: str = "",
+    equipment: Sequence[tuple[Sequence[str], Any]] = (),
 ) -> dict[str, Any]:
     """The inputs one arm hands the handler: the envelope's own inputs, which never carry lessons,
-    and for a memory arm the intervention on ``LESSONS_INPUT``, as a live seam is handed it."""
+    and for a memory arm the intervention on ``LESSONS_INPUT``, as a live seam is handed it.
+
+    The skills arm is handed ``equipment``: each an input's path and the value a cycle that
+    required the task's skillset would put there. A path the envelope already holds is refused:
+    it was captured from a cycle that had the equipment, so it is no baseline for it."""
     inputs = {k: v for k, v in own_inputs.items() if k != LESSONS_INPUT}
     if arm is Arm.BASELINE:
         return inputs
+    if arm is Arm.SKILLS:
+        if not equipment:
+            raise ValueError("the skills arm has no equipment to hand")
+        return _equipped(inputs, equipment)
     if arm is Arm.SCOPED_MEMORY:
         handed = [{"revision_id": r.revision_id, "text": r.text} for r in lessons]
     else:
@@ -119,6 +137,79 @@ def arm_inputs(
         raise ValueError(f"the {arm.value} arm has no guidance to hand")
     inputs[LESSONS_INPUT] = {"snapshot": f"replay:{experiment_id}:{arm.value}", "lessons": handed}
     return inputs
+
+
+def _equipped(
+    inputs: Mapping[str, Any], equipment: Sequence[tuple[Sequence[str], Any]]
+) -> dict[str, Any]:
+    out = copy.deepcopy(dict(inputs))
+    for path, value in equipment:
+        holder, key = _holder(out, path)
+        if key in holder:
+            raise ValueError(
+                f"the envelope's inputs already hold {'.'.join(path)}: it was captured with the "
+                "equipment, so it is no baseline for it"
+            )
+        holder[key] = copy.deepcopy(value)
+    return out
+
+
+def _holder(inputs: Any, path: Sequence[Any]) -> tuple[Any, Any]:
+    """The mapping or list ``path``'s last part lives in, and that part. Every part before the
+    last must already be there."""
+    if not path:
+        raise ValueError("an input's path names at least one key")
+    holder = inputs
+    for depth, part in enumerate(path[:-1]):
+        try:
+            holder = holder[part]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ValueError(
+                f"the inputs hold no {'.'.join(str(p) for p in path[: depth + 1])}"
+            ) from exc
+    if not isinstance(holder, (dict, list)):
+        raise ValueError(f"{'.'.join(str(p) for p in path[:-1])} holds no keys")
+    return holder, path[-1]
+
+
+def swapped_inputs(own_inputs: Mapping[str, Any], swaps: Sequence[Mapping[str, Any]]) -> dict:
+    """``own_inputs`` with each of ``swaps`` applied in order, for a case the capture didn't hold.
+
+    A swap names an input by ``path`` (keys, and indexes into lists) and does one thing to it:
+    - ``value``: put this in its place;
+    - ``replace``: ``[old, new]``, within the text it holds;
+    - ``delete``: remove it.
+
+    The input must be there, and a ``replace``'s old text must occur in it. A swap that changed
+    nothing would leave the capture's own task in front of the seam under the case's name."""
+    out = copy.deepcopy(dict(own_inputs))
+    for swap in swaps:
+        does = [k for k in ("value", "replace", "delete") if k in swap]
+        if len(does) != 1:
+            raise ValueError(
+                f"a swap does exactly one of value, replace and delete: {dict(swap)!r}"
+            )
+        path = swap["path"]
+        where = ".".join(str(p) for p in path)
+        holder, key = _holder(out, path)
+        try:
+            held = holder[key]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ValueError(f"the inputs hold no {where} to swap") from exc
+        if "value" in swap:
+            if held == swap["value"]:
+                raise ValueError(f"{where} already holds the value its swap gives")
+            holder[key] = copy.deepcopy(swap["value"])
+        elif "replace" in swap:
+            old, new = swap["replace"]
+            if not isinstance(held, str) or old not in held:
+                raise ValueError(f"{where} holds no {old!r} to replace")
+            holder[key] = held.replace(old, new)
+        elif swap["delete"] is True:
+            del holder[key]
+        else:
+            raise ValueError(f"{where}: delete is true, not {swap['delete']!r}")
+    return out
 
 
 @dataclass(frozen=True)
@@ -265,7 +356,12 @@ def manifest(
     rubric_text: str | None,
     framework_git_sha: str,
     excluded: Sequence[Mapping[str, Any]] = (),
+    case_notes: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ExperimentManifest:
+    """``case_notes`` gives a case more to be frozen with, by its id: a skills case's name, its
+    swaps, the digests of the skills it is handed and what it is judged by. A case with none
+    is written as it was before notes existed, so an earlier experiment's manifest still
+    matches its own."""
     cases, settings = [], {}
     for e in envelopes:
         cases.append(
@@ -275,6 +371,7 @@ def manifest(
                 "seam": e["seam"],
                 "messages_sha256": e["messages_sha256"],
                 "captured_at": e["captured_at"],
+                **dict((case_notes or {}).get(e["envelope_id"]) or {}),
             }
         )
         kwargs = e.get("chat_kwargs") or {}

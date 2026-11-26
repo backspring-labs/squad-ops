@@ -1,0 +1,12 @@
+api_version: squadops.skillset/v1
+skillset:
+  id: roblox-increment-design
+  version: 1
+  description: Writes a Roblox game's change request, with each player-facing criterion as a play scenario the Studio harness runs
+  roles: [strat]
+  platform: {id: roblox, variants: [studio-place]}
+  prerequisites: []
+  capabilities:
+    - contract: game.increment_design
+      modes: []
+      skills: [play-scenario-authoring]

@@ -163,6 +163,64 @@ async def test_a_manifest_delta_on_a_product_is_returned_to_the_proposer_and_rev
     assert result.success
 
 
+def _reserving(*reserved: str) -> dict:
+    """The run's input for Tally, with ``reserved`` declared by its Development Configuration:
+    composed as ``execution.product_proposal`` composes it, through ``profile_view``."""
+    import dataclasses
+
+    profile = dataclasses.replace(
+        parse_profile(recorded("derived_profile", "valid")), reserved_paths=reserved
+    )
+    inputs = _inputs()
+    inputs["product_proposal"]["profile"] = profile_view(profile, product_files())
+    return inputs
+
+
+async def test_a_proposal_reaching_a_reserved_path_is_shown_it_refused_by_path_and_revises():
+    """SIP-0112 H.35 (#3155). Wiring, entered at ``handle()`` with the input the run composes,
+    so the declaration is followed from the derived profile to the prompt and to the rails. Bugs
+    caught: the reserved paths composed and never shown, so the proposer is refused for a path
+    nobody named; or shown and never read by the rails, so the refusal is the model's to make."""
+    reaching = yaml.safe_load(_REQUEST)
+    beside = yaml.safe_load(_REQUEST)
+    beside["footprint"] = ["tally/ledger.py"]
+    beside["criteria"][0]["surface"] = "tally.ledger"
+    ctx = _ctx(_fenced(yaml.safe_dump(reaching)), _fenced(yaml.safe_dump(beside)))
+
+    result = await StrategyProposeIncrementHandler().handle(
+        ctx, _reserving("tally/report.py", "docs")
+    )
+
+    first, second = _prompts(ctx)
+    assert (
+        "**Paths the product's owner reserves.** The owner changes these themselves, and no "
+        "cycle writes\nthem."
+    ) in first
+    assert first.rstrip().count("- `tally/report.py`\n- `docs`") == 1
+    assert (
+        "the footprint reaches tally/report.py, which the product's owner reserves from a "
+        "cycle's change"
+    ) in second
+    assert result.success, result.error
+    [artifact] = result.outputs["artifacts"]
+    assert yaml.safe_load(artifact["content"])["footprint"][0] == "tally/ledger.py"
+
+
+async def test_a_product_reserving_nothing_is_sent_the_request_it_always_was():
+    """The edge every product is today. Bugs caught: the section rendered empty, a blank line
+    added where it would stand, or a key added to the input, any of which changes a captured
+    proposal's prompt and so every replay taken from it."""
+    with_none, as_before = _ctx(_fenced(_REQUEST)), _ctx(_fenced(_REQUEST))
+
+    await StrategyProposeIncrementHandler().handle(with_none, _reserving())
+    await StrategyProposeIncrementHandler().handle(as_before, _inputs())
+
+    assert _prompts(with_none) == _prompts(as_before)
+    assert "reserves" not in _prompts(with_none)[0]
+    assert "reserved_paths" not in _reserving()["product_proposal"]["profile"]
+    assert _reserving("docs")["product_proposal"]["profile"]["reserved_paths"] == ["docs"]
+
+
 async def test_a_branch_proposal_given_no_product_input_fails_and_never_reads_as_a_manifests():
     """The edge. Bug caught: a campaign-branch proposal with no ``product_proposal`` input read as
     a sample application's, whose rails would refuse it for want of a manifest, or worse, propose
@@ -453,6 +511,30 @@ def _naming(item: str | None) -> str:
     return _fenced(yaml.safe_dump(request, sort_keys=False))
 
 
+async def test_a_result_seen_in_play_is_shown_to_the_proposal_as_a_scenario_surface():
+    """Wiring, entered at ``handle()`` with the input the run composes. Bug caught (#3042): a
+    result on a ``scenario`` surface rendered as "not observed", or with its kind dropped, so
+    the proposer is steered off the scenario criterion the result needs."""
+    import copy
+
+    inputs = copy.deepcopy(_on_goals())
+    inputs["product_proposal"]["goals"]["expected_results"][0]["surface"] = {
+        "kind": "scenario",
+        "ref": "the HUD in a play session",
+    }
+    ctx = _ctx(_naming("B-3"))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    assert result.success, result.error
+    [prompt] = _prompts(ctx)
+    assert (
+        "- `ER-total`: The report ends in the total of its amounts "
+        "(scenario `the HUD in a play session`)"
+    ) in prompt
+    assert "- `ER-plain`: The report reads plainly (not observed: judged by the owner)" in prompt
+
+
 async def test_a_goal_set_proposal_is_shown_the_goal_set_and_names_the_next_item():
     """Wiring (anti-pattern 6a), entered at ``handle()`` with the input the run composes. Bugs
     caught: the goal set composed and never rendered, so the proposer is shown no requirements at
@@ -606,3 +688,40 @@ async def test_a_scenario_proposal_emits_what_each_scenario_observes_for_its_rul
         "| equals `false` |"
     ) in review["content"]
     assert "| `spawned` (precondition) |" in review["content"]
+
+
+_SCENARIO_SKILL = [
+    {
+        "skillset": "fixture-design",
+        "version": 1,
+        "skill": "scenario-authoring",
+        "digest": "0" * 64,
+        "files": {
+            "SKILL.md": (
+                '---\nname: scenario-authoring\ndescription: d\nstops: ["no scenario:"]\n---\n'
+                "Write the scenario. If its effect can't be observed, write no change request "
+                "and say in one line: `no scenario: <why>`.\n"
+            )
+        },
+    }
+]
+
+
+async def test_a_proposal_answered_with_its_skills_stop_is_not_asked_to_revise():
+    """SIP-0116 §17o, at the seam the outside review named: the proposal's revision loop. Bug
+    caught: the stop read as a missing ``change_request.yaml`` block, so the model is asked
+    again for the change request its skill told it to refuse, and the task fails as "refused
+    after its revision budget" with the reason lost."""
+    from squadops.capabilities.skill_stops import SkillStop
+
+    line = "no scenario: the total line shows itself as a sound, which fixture/1 can't observe"
+    ctx = _ctx(f"`{line}`", _fenced(_REQUEST))
+    ctx.task_id = "task-proposal"
+
+    result = await StrategyProposeIncrementHandler().handle(
+        ctx, {**_inputs(), "skills": _SCENARIO_SKILL}
+    )
+
+    assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+    assert result.success is False
+    assert ctx.skill_stop == SkillStop("fixture-design", "scenario-authoring", "no scenario:", line)

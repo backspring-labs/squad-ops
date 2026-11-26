@@ -16,7 +16,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.stacks.requirements import PlatformTarget, ResponsibilityRequirement
+from squadops.stacks.requirements import (
+    ContractNeed,
+    PlatformTarget,
+    ResponsibilityRequirement,
+    SkillsetRequirement,
+)
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOBS
 
@@ -637,6 +642,50 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         test_timeout_seconds=180,
     ),
 }
+
+
+#: A Roblox game as a product (SIP-0118 R4.1, R5.2; SIP-0116 §5.1): the first profile whose
+#: work requires something of the squad. It is ``product_neutral`` in everything a task reads,
+#: so a cycle under it is the cycle the skills replay captured (SIP-0116 §17p) with the skills
+#: added: the stack's advice is in the skills its skillsets load, and none is here. Only an
+#: operator names it. No runner derives it, since a Luau runner says nothing of the platform.
+GAME_DEV_ROBLOX = "game_dev_roblox"
+DEVELOPMENT_PROFILES[GAME_DEV_ROBLOX] = dataclasses.replace(
+    DEVELOPMENT_PROFILES["product_neutral"],
+    name=GAME_DEV_ROBLOX,
+    platform=PlatformTarget("roblox", "studio-place"),
+    requires=(
+        ResponsibilityRequirement(
+            "strat",
+            (
+                SkillsetRequirement(
+                    "roblox-increment-design", needs=(ContractNeed("game.increment_design"),)
+                ),
+            ),
+        ),
+        ResponsibilityRequirement(
+            "dev",
+            (
+                SkillsetRequirement(
+                    "roblox-luau-dev", needs=(ContractNeed("game.gameplay_implementation"),)
+                ),
+            ),
+        ),
+        ResponsibilityRequirement(
+            "qa",
+            (
+                SkillsetRequirement(
+                    "roblox-studio-qa",
+                    version=">=1",
+                    needs=(
+                        ContractNeed("game.unit_tests", "headless"),
+                        ContractNeed("game.scenario_verification", "play"),
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
 
 
 def get_development_profile(name: str) -> DevelopmentProfile:

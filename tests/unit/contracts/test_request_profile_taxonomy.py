@@ -97,8 +97,14 @@ def test_every_profile_is_the_operators_the_campaigns_or_a_released_one():
     """Bug caught: a new profile minted outside the taxonomy, a name per stack or per pulse
     setting, the combinatorial trap the taxonomy closes (§2)."""
     assert set(list_profiles()) == set(OPERATOR_PROFILES) | set(CAMPAIGN_PROFILES) | set(RELEASED)
-    # Each campaign profile was released, but the one H.4's recipe added in 2.5 (SIP-0112 H.11).
-    assert set(CAMPAIGN_PROFILES) - set(RELEASED) == {"campaign-increment-source"}
+    # Each campaign profile was released, but the one H.4's recipe added in 2.5 (SIP-0112 H.11)
+    # and its diagnostic copy (#3170), which is to it what `campaign-increment-asks` is to
+    # `campaign-increment`.
+    assert set(CAMPAIGN_PROFILES) - set(RELEASED) == {
+        "campaign-increment-source",
+        "campaign-increment-source-wrong-text",
+        "campaign-increment-source-client-stops",
+    }
 
 
 async def test_the_operators_listing_is_the_seven_names():

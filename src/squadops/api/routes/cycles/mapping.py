@@ -33,7 +33,8 @@ from squadops.api.cycle_schemas import (
     WorkloadProgressEntry,
 )
 from squadops.api.runtime.agent_labels import get_role_label
-from squadops.cycles.lifecycle import resolve_cycle_status
+from squadops.cycles.cycle_end import RecordedEnd
+from squadops.cycles.lifecycle import CycleReading, read_cycle_status
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -45,6 +46,7 @@ from squadops.cycles.models import (
     SquadProfile,
 )
 from squadops.cycles.verification_integrity import CycleOutcome
+from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 
 def project_to_response(project: Project) -> ProjectResponse:
@@ -201,17 +203,32 @@ def compute_workload_progress(
     return entries
 
 
-def cycle_status_of(cycle: Cycle, runs: list[Run]) -> CycleStatus:
-    """The cycle's status as the cycle route reads it: its runs, and its workload progress
-    (SIP-0083 D5). One reading for every caller that asks whether a cycle has ended: a campaign's
-    abort read only the latest run (``derive_cycle_status``), so a cycle waiting between workloads
-    read ``completed`` there and ``active`` here, and the abort left it running (#2214)."""
+def cycle_reading_of(cycle: Cycle, runs: list[Run], end: RecordedEnd | None) -> CycleReading:
+    """The cycle's status as the cycle route reads it: its recorded ending first, then its runs
+    and its workload progress (SIP-0083 D5). One reading for every caller that asks whether a
+    cycle has ended:
+    - a campaign's abort read only the latest run (``derive_cycle_status``), so a cycle waiting
+      between workloads read ``completed`` there and ``active`` here, and the abort left it
+      running (#2214);
+    - a cycle a campaign ended at the gate kept pending workloads, so it read ``active`` until an
+      abort cancelled it 40 minutes after it ended (#3201). Its ``cycle_ends`` row now decides.
+
+    ``end`` is required, never defaulted: a caller that skips the end record reads #3201 again."""
     ws = cycle.resolved_config().get("workload_sequence", [])
     progress = compute_workload_progress(ws, runs)
     workload_statuses = [e.status for e in progress] if progress else None
-    return resolve_cycle_status(
-        runs, cycle_cancelled=cycle.cancelled, workload_statuses=workload_statuses
-    )
+    return read_cycle_status(runs, cycle.cancelled, workload_statuses, end)
+
+
+def cycle_status_of(cycle: Cycle, runs: list[Run], end: RecordedEnd | None) -> CycleStatus:
+    """``cycle_reading_of``'s status alone."""
+    return cycle_reading_of(cycle, runs, end).status
+
+
+async def read_status_of(cycles: CycleRegistryPort, cycle: Cycle) -> CycleStatus:
+    """Read a cycle's runs and its latest recorded ending from the registry, then its status."""
+    runs = await cycles.list_runs(cycle.cycle_id)
+    return cycle_status_of(cycle, runs, await cycles.get_cycle_end(cycle.cycle_id))
 
 
 def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
@@ -301,11 +318,15 @@ def assessment_to_response(assessment) -> CycleAssessmentResponse:
 
 
 def cycle_to_response(
-    cycle: Cycle, runs: list[Run], cycle_outcome: CycleOutcome | None = None
+    cycle: Cycle,
+    runs: list[Run],
+    end: RecordedEnd | None,
+    cycle_outcome: CycleOutcome | None = None,
 ) -> CycleResponse:
     ws = cycle.resolved_config().get("workload_sequence", [])
     progress = compute_workload_progress(ws, runs)
-    status = cycle_status_of(cycle, runs)
+    reading = cycle_reading_of(cycle, runs, end)
+    status = reading.status
     return CycleResponse(
         cycle_id=cycle.cycle_id,
         project_id=cycle.project_id,
@@ -333,6 +354,10 @@ def cycle_to_response(
         skillset_record=cycle.skillset_record,
         notes=cycle.notes,
         status=status.value,
+        recorded_ending=(
+            reading.recorded_ending.value if reading.recorded_ending is not None else None
+        ),
+        status_conflict=reading.conflict.value if reading.conflict is not None else None,
         runs=[run_to_response(r) for r in runs],
         workload_progress=progress,
         cycle_outcome=_cycle_outcome_to_dto(cycle_outcome) if cycle_outcome else None,

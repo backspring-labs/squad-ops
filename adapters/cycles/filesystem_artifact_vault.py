@@ -17,6 +17,15 @@ fsynced, renamed into place, and followed by an fsync of its directory:
 disk didn't keep. A crash before step 2 leaves content with no metadata, which is no artifact.
 The baselines file and the index are written the same way.
 
+Off the event loop (#3218). Every operation's file IO runs in a worker thread. The index (92,000
+entries and 8 MB on the Spark by 2.8) is held in memory: a lookup reads the dict, and stats the
+file only to see whether another process replaced it since. Before #3218 every store, promote and
+retrieve parsed it, and every store rewrote it, on the loop: a run's checkout seeding and a gate's
+promotion held the runtime API 18 to 41 s. A store adds its entry to the dict and waits for an
+index write that includes it, so concurrent stores share one write and step 3 still precedes the
+return. The small read-modify-write records (a run's listing summary, a project's baselines, a
+promotion's metadata) are serialized by one lock, since the loop no longer serializes them.
+
 A record that exists but can't be read whole (metadata that doesn't parse; content missing, or not
 the size or hash its metadata records) is ``ArtifactUnreadableError`` to a read that needs it: a
 retrieve, a metadata read, a baseline's resolution. A listing skips it and names it in a structured
@@ -59,6 +68,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 from typing import NamedTuple
 
@@ -136,6 +146,20 @@ class FilesystemArtifactVault(ArtifactVaultPort):
     def __init__(self, base_dir: str | Path | None = None) -> None:
         self._base_dir = Path(base_dir) if base_dir else _DEFAULT_BASE_DIR
         self._base_dir.mkdir(parents=True, exist_ok=True)
+        #: The index as this vault holds it (#3218): ``None`` until a lookup or store loads it.
+        self._index: dict[str, str] | None = None
+        #: The file's identity when ``_index`` was read from it or last written to it.
+        self._index_identity: tuple[int, int, int] | None = None
+        #: Updates made to ``_index``, and how many of them the file holds.
+        self._index_version = 0
+        self._index_written = 0
+        #: Guards the five fields above.
+        self._index_lock = threading.Lock()
+        #: One index write at a time, so a write never replaces a newer one.
+        self._index_commit_lock = threading.Lock()
+        #: The small records read, changed and written whole: listing summaries, baselines and a
+        #: promotion's metadata. The loop serialized these before #3218; the worker threads don't.
+        self._records_lock = threading.Lock()
         if not self._index_path.exists():
             self._rebuild_index()
 
@@ -146,6 +170,8 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         return self._base_dir / "_index.json"
 
     def _load_index(self) -> dict[str, str]:
+        """The index as its file holds it: read only when ``_current_index`` finds the file
+        replaced since this vault last read or wrote it."""
         if not self._index_path.exists():
             return {}
         try:
@@ -169,10 +195,51 @@ class FilesystemArtifactVault(ArtifactVaultPort):
     def _save_index(self, index: dict[str, str]) -> None:
         _write_json_atomically(self._index_path, index)
 
+    def _file_identity(self) -> tuple[int, int, int] | None:
+        try:
+            return _identity(self._index_path.stat())
+        except FileNotFoundError:
+            return None
+
+    def _current_index(self) -> dict[str, str]:
+        """The index, from memory (#3218). The caller holds ``_index_lock``.
+
+        It is read from the file the first time, and again when another process has replaced the
+        file since (the host's scripts open the same vault), unless this vault holds updates the
+        file doesn't have yet: those are written over it, as a store always overwrote the file."""
+        identity = self._file_identity()
+        pending = self._index_version != self._index_written
+        if self._index is None or (identity != self._index_identity and not pending):
+            self._index = self._load_index()
+            self._index_identity = self._file_identity()
+        return self._index
+
+    def _lookup(self, artifact_id: str) -> str | None:
+        with self._index_lock:
+            return self._current_index().get(artifact_id)
+
     def _update_index(self, artifact_id: str, rel_path: str) -> None:
-        index = self._load_index()
-        index[artifact_id] = rel_path
-        self._save_index(index)
+        """``artifact_id``'s entry, returned only once the file holds it (step 3)."""
+        with self._index_lock:
+            self._current_index()[artifact_id] = rel_path
+            self._index_version += 1
+            version = self._index_version
+        self._commit_index(version)
+
+    def _commit_index(self, version: int) -> None:
+        """Writes the index unless a write since ``version`` already holds it. A store that waited
+        for another's write finds its own entry in it, so concurrent stores share one write."""
+        with self._index_commit_lock:
+            with self._index_lock:
+                if self._index_written >= version or self._index is None:
+                    return
+                snapshot_version = self._index_version
+                snapshot = dict(self._index)
+            self._save_index(snapshot)
+            identity = self._file_identity()
+            with self._index_lock:
+                self._index_written = snapshot_version
+                self._index_identity = identity
 
     def _rebuild_index(self) -> None:
         self._save_index(self._index_from_tree())
@@ -216,6 +283,9 @@ class FilesystemArtifactVault(ArtifactVaultPort):
     # --- Port implementation ---
 
     async def store(self, artifact: ArtifactRef, content: bytes) -> ArtifactRef:
+        return await asyncio.to_thread(self._store, artifact, content)
+
+    def _store(self, artifact: ArtifactRef, content: bytes) -> ArtifactRef:
         art_dir = self._artifact_dir_for_ref(artifact)
         content_path = self._contained_content_path(art_dir, artifact.filename)
         art_dir.mkdir(parents=True, exist_ok=True)
@@ -245,6 +315,9 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         return updated
 
     async def retrieve(self, artifact_id: str) -> tuple[ArtifactRef, bytes]:
+        return await asyncio.to_thread(self._retrieve, artifact_id)
+
+    def _retrieve(self, artifact_id: str) -> tuple[ArtifactRef, bytes]:
         art_dir = self._resolve_artifact_dir(artifact_id)
         meta_path = art_dir / "metadata.json"
         if not meta_path.exists():
@@ -268,6 +341,9 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         return ref, content
 
     async def get_metadata(self, artifact_id: str) -> ArtifactRef:
+        return await asyncio.to_thread(self._get_metadata, artifact_id)
+
+    def _get_metadata(self, artifact_id: str) -> ArtifactRef:
         art_dir = self._resolve_artifact_dir(artifact_id)
         meta_path = art_dir / "metadata.json"
         if not meta_path.exists():
@@ -275,17 +351,21 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         return self._load_metadata(meta_path)
 
     async def promote_artifact(self, artifact_id: str) -> ArtifactRef:
+        return await asyncio.to_thread(self._promote_artifact, artifact_id)
+
+    def _promote_artifact(self, artifact_id: str) -> ArtifactRef:
         art_dir = self._resolve_artifact_dir(artifact_id)
         meta_path = art_dir / "metadata.json"
         if not meta_path.exists():
             raise ArtifactNotFoundError(f"Artifact not found: {artifact_id}")
 
-        ref = self._load_metadata(meta_path)
-        if ref.promotion_status == "promoted":
-            return ref  # Idempotent
+        with self._records_lock:
+            ref = self._load_metadata(meta_path)
+            if ref.promotion_status == "promoted":
+                return ref  # Idempotent
 
-        updated = dataclasses.replace(ref, promotion_status="promoted")
-        self._write_metadata(meta_path, updated)
+            updated = dataclasses.replace(ref, promotion_status="promoted")
+            self._write_metadata(meta_path, updated)
         self._record_in_listing(art_dir)
         return updated
 
@@ -309,17 +389,21 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         return await asyncio.to_thread(self._listing, filters, limit, offset)
 
     async def set_baseline(self, project_id: str, artifact_type: str, artifact_id: str) -> None:
+        await asyncio.to_thread(self._set_baseline, project_id, artifact_type, artifact_id)
+
+    def _set_baseline(self, project_id: str, artifact_type: str, artifact_id: str) -> None:
         # Verify artifact exists via index
         art_dir = self._resolve_artifact_dir(artifact_id)
         if not (art_dir / "metadata.json").exists():
             raise ArtifactNotFoundError(f"Artifact not found: {artifact_id}")
 
-        baselines = self._load_baselines(project_id)
-        baselines[artifact_type] = artifact_id
-        self._save_baselines(project_id, baselines)
+        with self._records_lock:
+            baselines = self._load_baselines(project_id)
+            baselines[artifact_type] = artifact_id
+            self._save_baselines(project_id, baselines)
 
     async def get_baseline(self, project_id: str, artifact_type: str) -> ArtifactRef | None:
-        baselines = self._load_baselines(project_id)
+        baselines = await asyncio.to_thread(self._load_baselines, project_id)
         artifact_id = baselines.get(artifact_type)
         if artifact_id is None:
             return None
@@ -329,7 +413,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             return None
 
     async def list_baselines(self, project_id: str) -> dict[str, ArtifactRef]:
-        baselines = self._load_baselines(project_id)
+        baselines = await asyncio.to_thread(self._load_baselines, project_id)
         result = {}
         for art_type, artifact_id in baselines.items():
             try:
@@ -343,8 +427,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
     def _resolve_artifact_dir(self, artifact_id: str) -> Path:
         """Look up artifact_id in the index and return its directory."""
-        index = self._load_index()
-        rel_path = index.get(artifact_id)
+        rel_path = self._lookup(artifact_id)
         if rel_path is None:
             raise ArtifactNotFoundError(f"Artifact not found: {artifact_id}")
         return self._base_dir / rel_path
@@ -479,10 +562,11 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         named, not raised: the store did not fail."""
         group = art_dir.parent
         try:
-            listed = self._listed_from_metadata(art_dir / "metadata.json")
-            summary = self._load_listing_summary(group)
-            summary[art_dir.name] = listed
-            self._save_listing_summary(group, summary)
+            with self._records_lock:
+                listed = self._listed_from_metadata(art_dir / "metadata.json")
+                summary = self._load_listing_summary(group)
+                summary[art_dir.name] = listed
+                self._save_listing_summary(group, summary)
         except (OSError, ArtifactUnreadableError) as e:
             self._name_unwritten_summary(group, e)
 

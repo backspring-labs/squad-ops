@@ -38,6 +38,7 @@ from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, Ru
 from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.models import ArtifactRef, Cycle, Gate, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import campaign, move, policy
 
 NOW = datetime(2026, 10, 2, 15, 0, tzinfo=UTC)
@@ -680,6 +681,12 @@ async def test_a_cycle_that_can_still_continue_is_not_decided(calibrating, stopp
             CycleEnding.CRITERIA_NOT_CHECKABLE,
             False,
         ),
+        # §24dz (SIP-0116 §17o): a run a task's skill stopped, the proposal run included. A stopped
+        # proposal read as ``proposal_failed`` is proposed again unexplained by row 6.
+        *[
+            (workload, "failed", CycleStopReason.SKILL_STOPPED, CycleEnding.SKILL_STOPPED, False)
+            for workload in ("proposal", "framing", "implementation")
+        ],
         # A framing run that failed stopped on its own run, not its gate: its summary judges it.
         ("framing", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
         # §24bj: the expired escalation's run, cancelled for it.
@@ -722,6 +729,8 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
         decided("assessed", action="abandon_and_propose", row=16),
         # #2890 (§24cz): nor row 19's (criteria already met on the head, before delivery).
         decided("criteria_not_checkable", action="abandon_and_propose", row=19),
+        # §24dz: nor row 20's (a skill stopped the work).
+        decided("skill_stopped", action="abandon_and_propose", row=20),
         decided("rejected_at_gate"),
     ]
     launched = [
@@ -754,8 +763,16 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
         (["proposal_failed", "rejected_at_gate"], CycleEnding.PROPOSAL_FAILED, 1, 0),
         (["proposal_failed"], CycleEnding.REJECTED_AT_GATE, 0, 1),
         (["proposal_failed"], CycleEnding.ASSESSED, 0, 0),
+        # §24dz: a proposal a skill stopped didn't fail; it ends the run of failures.
+        (["proposal_failed"], CycleEnding.SKILL_STOPPED, 0, 0),
     ],
-    ids=["a-run-of-failures", "a-rejection-breaks-it", "a-rejection-ends-it", "a-build-ends-it"],
+    ids=[
+        "a-run-of-failures",
+        "a-rejection-breaks-it",
+        "a-rejection-ends-it",
+        "a-build-ends-it",
+        "a-skill-stop-ends-it",
+    ],
 )
 def test_failed_proposals_in_a_row_are_read_back_until_another_ending(
     earlier, ending, failed, rejected
@@ -2052,6 +2069,7 @@ async def _a_late_answer_on_record(
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     await campaigns.transition(
         prior, opening_transition(identity, verdict, ((decision_id, question),), NOW)
@@ -2951,6 +2969,54 @@ async def test_a_cycle_ended_for_criteria_met_on_the_head_goes_to_a_new_proposal
             "surface": "POST /runs",
         }
     ]
+
+
+async def test_a_proposal_a_skill_stopped_goes_to_a_new_proposal_shown_the_line(calibrating):
+    """§24dz (row 20, SIP-0116 §17o), entered at the completion boundary as the executor ends a
+    failed proposal run whose terminal decision carries the skill's stop. Bugs caught: the
+    boundary recording ``run_failed``, so the campaign reads ``proposal_failed``, counts it
+    toward the failed-proposals pause and has row 6 propose again unexplained, from the same
+    inputs, into the same stop; or the next proposal shown the stop under the template for an
+    increment that was built and failed, or not shown the skill's line at all."""
+    from squadops.cycles.failure_attribution import TerminalKind
+    from squadops.cycles.llm_usage import RunUsage
+    from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
+
+    stop = {
+        "skillset": "roblox-increment-design",
+        "skill": "play-scenario-authoring",
+        "opening": "no scenario:",
+        "line": "no scenario: the criterion names a value no player can see in play",
+    }
+    w, run = await calibrating(RunVerdict.ACCEPTED, max_proposal_run_retries=0)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    w.verdict = None
+    proposal_run = await w.launched_cycle("increment", "cyc_inc", "proposal", "failed")
+    await w.cycles.record_run_loop_summary(
+        proposal_run.run_id,
+        RunLoopSummary(
+            run_id=proposal_run.run_id,
+            usage=RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=()),
+            terminal=RunTerminalDecision(kind=TerminalKind.SKILL_STOPPED, skill_stop=stop),
+        ),
+    )
+
+    await w.end("cyc_inc", proposal_run, CycleStopReason.RUN_FAILED)
+
+    recorded_end = await w.cycles.get_cycle_end("cyc_inc")
+    assert recorded_end is not None
+    assert recorded_end.stopped_because is CycleStopReason.SKILL_STOPPED
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert (
+        decision.binding["row"],
+        decision.binding["action"],
+        decision.binding["ending"],
+        decision.binding["guard"],
+    ) == (20, "abandon_and_propose", "skill_stopped", "proceed")
+    *_, launched = await w.campaigns.launch_intents(CID)
+    launched_block = launched.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert launched.cycle_kind is CycleKind.INCREMENT
+    assert launched_block["abandoned_increment"]["skill_stop"] == stop
 
 
 async def test_a_run_failed_for_a_test_that_passes_on_the_head_is_repaired_and_never_already_met(

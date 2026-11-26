@@ -25,6 +25,7 @@ class PromptService(ABC):
         hook: str,
         task_type: str | None = None,
         recovery: bool = False,
+        variant: str | None = None,
     ) -> AssembledPrompt:
         """
         Assemble a prompt for the given context.
@@ -41,6 +42,9 @@ class PromptService(ABC):
             hook: Lifecycle hook (e.g., "agent_start", "task_complete")
             task_type: Optional ACI task type (e.g., "code_generate")
             recovery: Whether to include recovery layer
+            variant: The task type's fragment for one kind of product (#3147), read as
+                ``task_type.<task_type>.<variant>``. A variant with no such fragment raises:
+                the task type's own fragment never stands in for it.
 
         Returns:
             AssembledPrompt with content and lineage

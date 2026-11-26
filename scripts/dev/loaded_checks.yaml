@@ -524,10 +524,11 @@ checks:
       verdict = plan_review_tier(
           kind=CycleKind.CALIBRATION, open_questions=(), footprint=("assembly_notes.md",),
           allowed_scope=("backend/**",), stack="fullstack_fastapi_react", refused_framing_runs=(),
-          answered_on_record={},
+          answered_on_record={}, merge_decisions=None,
       )
-      print(verdict.approves)
-    expect: "True"
+      # The scope's own check: the row reads its condition, and §24ee's has a row of its own.
+      print([c.held for c in verdict.checks if c.condition == "inside_scope"])
+    expect: "[True]"
   - id: "2754"
     what: a declared catch-all client route is read where no declared route is served
     container: squadops-eve
@@ -567,10 +568,10 @@ checks:
           kind=CycleKind.INCREMENT, open_questions=(),
           footprint=("backend/routes.py", "backend/tests/criteria/test_c1.py"),
           allowed_scope=("backend/routes.py",), stack="fullstack_fastapi_react",
-          refused_framing_runs=(), answered_on_record={},
+          refused_framing_runs=(), answered_on_record={}, merge_decisions=None,
       )
-      print(verdict.approves)
-    expect: "True"
+      print([c.held for c in verdict.checks if c.condition == "inside_scope"])
+    expect: "[True]"
   - id: "1708-queue"
     what: the escalation queue's operations, the late answer included
     container: squadops-runtime-api
@@ -735,8 +736,22 @@ checks:
       sequence = [{"type": "proposal", "gate": "progress_increment_ruling"}, {"type": "framing"}]
       cycle = Cycle(cycle_id="c", project_id="p", created_at=datetime.now(UTC), created_by="s", prd_ref=None, squad_profile_id="full", squad_profile_snapshot_ref="sha256:x", task_flow_policy=TaskFlowPolicy(mode="sequential"), build_strategy="fresh", applied_defaults={"workload_sequence": sequence})
       run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
-      print(cycle_status_of(cycle, [run]).value, "cycle_status_of" in inspect.getsource(routes._cancel_launched_cycles))
+      print(cycle_status_of(cycle, [run], None).value, "read_status_of" in inspect.getsource(routes._cancel_launched_cycles))
     expect: "active True"
+  - id: "3201"
+    what: a cycle a campaign ended at the gate reads ended from its recorded ending, with its later workloads still pending, so an abort leaves it alone
+    container: squadops-runtime-api
+    code: |
+      from datetime import UTC, datetime
+      from squadops.api.routes.cycles.mapping import cycle_reading_of
+      from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+      from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
+      sequence = [{"type": "proposal", "gate": "progress_increment_ruling"}, {"type": "framing"}, {"type": "implementation"}]
+      cycle = Cycle(cycle_id="c", project_id="p", created_at=datetime.now(UTC), created_by="s", prd_ref=None, squad_profile_id="full", squad_profile_snapshot_ref="sha256:x", task_flow_policy=TaskFlowPolicy(mode="sequential"), build_strategy="fresh", applied_defaults={"workload_sequence": sequence})
+      run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="proposal")
+      reading = cycle_reading_of(cycle, [run], RecordedEnd("c", "r", CycleStopReason.REVISION_UNAVAILABLE))
+      print(reading.status.value, reading.recorded_ending.value)
+    expect: "failed revision_unavailable"
   - id: "2239"
     what: an agent sends its metrics to the collector over OTLP, and each model call's decode rate is a metric
     container: squadops-neo
@@ -2542,3 +2557,333 @@ checks:
       a = create_tool_authorities()
       print(sorted(a), "product" in inspect.signature(a["roblox-studio"].broken_rules).parameters)
     expect: "['roblox-studio'] True"
+  - id: "3041-skill-stopped-row"
+    what: a Campaign cycle a skill stopped is abandoned at row 20, counted toward no unaccepted limit (SIP-0109 §24dz)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.continuation import _ABANDONED_BEFORE_VERDICT, UNCOUNTED_ABANDONMENT_ROWS, CycleEnding
+      print(_ABANDONED_BEFORE_VERDICT[CycleEnding.SKILL_STOPPED], 20 in UNCOUNTED_ABANDONMENT_ROWS)
+    expect: "20 True"
+  - id: "3041-skill-stopped-brief"
+    what: the next proposal is shown the stopped increment's skill line (SIP-0109 §24dz)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.prior_cycle import brief_lines
+      stop = {"skillset": "s", "skill": "k", "opening": "o:", "line": "o: why"}
+      print("Stopped by a skill, with this line:" in brief_lines({"cycle_id": "c", "skill_stop": stop}))
+    expect: "True"
+  - id: "3134-package-roots"
+    what: a product's declared package roots are its package surfaces (SIP-0112 H.33)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.development_configuration import parse_package_roots
+      from squadops.projects.derived_profile import GAPS
+      print(parse_package_roots({"package_roots": ["src/Shared"]}), "package_root_missing" in GAPS)
+    expect: "('src/Shared',) True"
+  - id: "3136-fence-language"
+    what: a qa.test prompt names each file's own language on its fence, and text for one it doesn't know
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.handlers.fenced_parser import fence_language
+      print(fence_language("tests/criterion_T1.spec.luau"), fence_language("art/tower.blend"))
+    expect: luau text
+  - id: "3139-module-path"
+    what: a qa.test prompt shows a module its task names by its module path
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.qa_prompt_contents import code_under_test
+      tree = {"src/Shared/Modules/SalePricing.luau": "return {}", "src/Shared/Modules/Sale.luau": "return {}"}
+      print(list(code_under_test({}, tree, "require(Shared.Modules.SalePricing)")))
+    expect: "['src/Shared/Modules/SalePricing.luau']"
+  - id: "3143-added-module-asset"
+    what: the asset that tells a Luau product's authors how a test reaches a module the change adds is in the image (SIP-0109 §24ec)
+    container: squadops-neo
+    code: |
+      from importlib.resources import files
+      from squadops.capabilities.handlers.source_repository import ADDED_MODULE_TEST_LUAU
+      print((files("squadops.prompts") / "request_templates" / f"{ADDED_MODULE_TEST_LUAU}.md").is_file())
+    expect: "True"
+  - id: "3143-skill-section"
+    what: the Roblox QA skill shows how a spec reaches a module the change adds, and declares no stop since roblox-skills-v1 (SIP-0109 §24ec, SIP-0116 §17r)
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.skillsets import load_skillsets, skill_stops
+      md = load_skillsets()["roblox-studio-qa"].skill_files["luau-test-loader"]["SKILL.md"]
+      print("## A module the change adds" in md, skill_stops(md))
+    expect: "True ()"
+  - id: "3146-bare-name"
+    what: a qa.test prompt shows a plan source its task names by its bare name, and no other
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.qa_prompt_contents import code_under_test
+      tree = {"src/Shared/Modules/ShopDiscount.luau": "return {}", "src/Server/Services/Shop.luau": "return {}"}
+      print(list(code_under_test({}, tree, "the ShopDiscount module, as the Shop shows it", plan_sources=["src/Shared/Modules/ShopDiscount.luau"])))
+    expect: "['src/Shared/Modules/ShopDiscount.luau']"
+  - id: "3041-roblox-profile"
+    what: the game_dev_roblox development profile requires the three Roblox skillsets (SIP-0116 §17q)
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+      p = DEVELOPMENT_PROFILES["game_dev_roblox"]
+      print(p.platform.id, sorted(r.skillset for e in p.requires for r in e.any_of))
+    expect: "roblox ['roblox-increment-design', 'roblox-luau-dev', 'roblox-studio-qa']"
+  - id: "3154-quoted-template"
+    what: a stop is read from the model's own line when its answer quotes the skill's template first, and the template alone is no stop (SIP-0116 §17u)
+    container: squadops-nat
+    code: |
+      from squadops.capabilities.skill_stops import read_stop
+      from squadops.capabilities.skillsets import load_skillsets
+      md = load_skillsets()["roblox-increment-design"].skill_files["play-scenario-authoring"]["SKILL.md"]
+      handed = [{"skillset": "roblox-increment-design", "skill": "play-scenario-authoring", "files": {"SKILL.md": md}}]
+      shown = [line for line in md.splitlines() if line.startswith("`no scenario:")][0]
+      own = "no scenario: a chime shows itself as a sound, which roblox-studio/1 can't observe"
+      stop = read_stop(handed, "> " + shown + "\n\n`" + own + "`")
+      print(stop.line == own, read_stop(handed, "> " + shown))
+    expect: "True None"
+  - id: "3157-campaign-development-profile"
+    what: a Campaign's policy names a development profile, and its launches carry that key alone (SIP-0109 §24ed)
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace
+      from squadops.campaigns.launch_requests import _profile_values
+      from squadops.campaigns.models import CampaignPolicy
+      policy = SimpleNamespace(stack=None, development_profile="game_dev_roblox")
+      print("development_profile" in CampaignPolicy.__dataclass_fields__, _profile_values(SimpleNamespace(policy=policy)))
+    expect: "True {'development_profile': 'game_dev_roblox'}"
+  - id: "3159-remote-execution-bound"
+    what: a worker's tool is unavailable on a runtime that binds no remote execution, whatever its registry lists (SIP-0116 §17w)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from squadops.capabilities.skillsets import ToolRequest
+      from squadops.capabilities.tool_checks import unavailable
+      tool = ToolRequest("play_scenario", "fixture-editor", "worker")
+      print(asyncio.run(unavailable(tool, worker_registry=object(), sandbox_client=None, remote_execution=None)))
+    expect: "this runtime binds no remote execution (remote_execution.provider none)"
+  - id: "3160-cancelled-run-asks-nothing"
+    what: the scenario baseline step reads the run's status before it asks a provider
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+      source = inspect.getsource(DispatchedFlowExecutor._judge_scenario_baselines)
+      print(0 < source.index("self._is_cancelled(run_id)") < source.index("await judge_scenario_baselines("))
+    expect: "True"
+  - id: "3163-unread-conflict-escalated"
+    what: a brief conflict raised in field names of the proposer's own is kept as unread, with what was written (SIP-0093 §15d)
+    container: squadops-max
+    code: |
+      from squadops.cycles.proposed_role_tasks import _parse_brief_conflicts
+      degraded, unread = [], []
+      parsed = _parse_brief_conflicts([{"requirement": "M5", "issue": "x"}], degraded, unread)
+      print(parsed, degraded, [(u.section, u.why) for u in unread], "requirement: M5" in unread[0].as_written)
+    expect: "[] ['brief_conflicts[0]'] [('brief_conflicts[0]', 'brief_conflicts[0] missing required field: brief_field')] True"
+  - id: "3163-conflict-shape-asset"
+    what: the asset that shows a task proposer the shape a brief conflict is read in is in the image (SIP-0093 §15d)
+    container: squadops-neo
+    code: |
+      from importlib import resources
+      text = resources.files("squadops.prompts").joinpath("request_templates/request.plan_proposal_brief_conflicts_shape.md").read_text()
+      print(all(f"#     {name}:" in text or f"#   - {name}:" in text for name in ("brief_field", "proposed_change", "reason", "severity")))
+    expect: "True"
+  - id: "3042-scenario-goal-surface"
+    what: a goal set's expected result can be observed on a scenario surface (SIP-0115 §10h)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.goal_set import parse_goal_set
+      doc = {"goal": "g", "expected_results": [{"id": "ER-1", "statement": "s", "surface": {"kind": "scenario", "ref": "the HUD in a play session"}}]}
+      surface = parse_goal_set(doc).expected_results[0].surface
+      print(surface.kind, surface.ref)
+    expect: "scenario the HUD in a play session"
+  - id: "3164-tier-reads-merge-decisions"
+    what: the plan-review tier holds a fourth condition, and merge decisions it can't read fail it (SIP-0109 §24ee)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.plan_review_tier import conflict_check
+      check = conflict_check(None)
+      print(check.condition, check.held)
+    expect: "no_escalated_conflict False"
+  - id: "3155-reserved-path-reading"
+    what: a reserved entry is read as a file, a folder with what is beneath it, or a glob, and a plan naming one is refused (SIP-0112 H.35)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.reserved_paths import reached_by, reserved_among
+      reserved = ("src/Server/Data", "**/SaveConfig.luau")
+      paths = ["src/Server/Data/P.luau", "src/Server/DataStore.luau", "SaveConfig.luau"]
+      print(reserved_among(paths, reserved), reached_by(["src/**"], reserved))
+    expect: "[('src/Server/Data/P.luau', 'src/Server/Data'), ('SaveConfig.luau', '**/SaveConfig.luau')] [('src/**', 'src/Server/Data')]"
+  - id: "3155-reserved-paths-assets"
+    what: the two assets that show a plan's authors and a proposal the product's reserved paths are in the image (SIP-0112 H.35)
+    container: squadops-nat
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      names = ("request.plan_reserved_paths_appendix.md", "request.proposal_reserved_paths.md")
+      print([("owner reserves" in templates.joinpath(n).read_text()) for n in names])
+    expect: "[True, True]"
+  - id: "3170-wrong-text-fault"
+    what: the played product's wrong-text fault cuts a client script's player-facing text, and its Campaign profile declares it (SIP-0118 R5.6)
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers.fault_injection import FAULTS
+      from squadops.contracts.cycle_request_profiles import load_profile
+      cut = FAULTS["luau_player_text_drops_a_word"].transform("```luau:src/Client/Hud.local.luau\nlabel.Text = '5 lives left'\n```")
+      print("'5 lives'" in cut, load_profile("campaign-increment-source-wrong-text").defaults["fault_injection"])
+    expect: "True ['luau_player_text_drops_a_word']"
+  - id: "3208-wrong-text-cuts-added-text"
+    what: the wrong-text fault leaves a text the product already holds and cuts the one the change adds (SIP-0118 R5.7)
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers.fault_injection import FAULTS
+      held = "level.Text = 'LV 1'"
+      emission = "```luau:src/Client/HUD.luau\n" + held + "\nhint.Text = 'The tower is waiting'\n```"
+      cut = FAULTS["luau_player_text_drops_a_word"].product_transform(emission, {"src/Client/HUD.luau": held})
+      print("'LV 1'" in cut, "'The tower is'\n" in cut)
+    expect: "True True"
+  - id: "3173-squad-footprint"
+    what: a provider's authority is asked about the squad's footprint, without the scenario declarations the framework writes (SIP-0116 §17x)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.change_request import is_scenario_path, scenario_criterion_path
+      from squadops.execution import product_view
+      path = scenario_criterion_path("T1")
+      print(is_scenario_path(path), "footprint=squad_footprint(document)" in inspect.getsource(product_view.product_view))
+    expect: "True True"
+  - id: "3173-framework-files-assets"
+    what: the two assets that tell an increment's framing roles a scenario declaration is the framework's are in the image (SIP-0109 §24ef)
+    container: squadops-max
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      section = templates.joinpath("request.increment_framework_files_section.md").read_text()
+      appendix = templates.joinpath("request.increment_scenario_criteria_appendix.md").read_text()
+      print("framework writes itself" in section, "declaration file, which the framework writes itself" in appendix)
+    expect: "True True"
+  - id: "3176-screen-visibility"
+    what: the Studio harness reads a screen's visibility, and the provider's version is 2 (SIP-0117 R5.25)
+    container: squadops-runtime-api
+    code: |
+      from importlib import resources
+      from adapters.remote_execution.game_dev_roblox_studio.runner import PROVIDER_VERSION
+      observe = resources.files("adapters.remote_execution.game_dev_roblox_studio").joinpath("harness/observe.luau").read_text()
+      print(PROVIDER_VERSION, 'instance:IsA("LayerCollector")' in observe)
+    expect: "2 True"
+  - id: "3178-map-lists-source-paths"
+    what: a product past the map's limit folds binary files by directory and lists every other path, and a task's view names its new files (SIP-0112 H.36)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.checkout import MAP_PATH_LIMIT, manifest_of, repository_map, source_repository_input
+      files = {f"art/a{n}.png": b"\xff" for n in range(MAP_PATH_LIMIT)} | {"src/UI/Screens/HUD.luau": b"hud"}
+      manifest = manifest_of("c" * 40, files, (), (), classify=lambda path: "source")
+      view = source_repository_input(manifest, {"src/UI/Screens/HUD.luau": "hud"}, ["src/UI/HUD.luau"])
+      print(repository_map(manifest).split("\n"), view["new_files"])
+    expect: "['- `art/` (400 binary or generated files)', '- `src/UI/Screens/HUD.luau` (3 bytes)'] ['src/UI/HUD.luau']"
+  - id: "3178-new-files-asset"
+    what: the block that tells a task which of its files the product doesn't hold is in the image (SIP-0112 H.36)
+    container: squadops-neo
+    code: |
+      from importlib import resources
+      templates = resources.files("squadops.prompts").joinpath("request_templates")
+      block = templates.joinpath("request.source_repository_new_files_block.md").read_text()
+      appendix = templates.joinpath("request.source_repository_appendix.md").read_text()
+      print("The product holds no file at these paths" in block, "{{new_files}}" in appendix)
+    expect: "True True"
+  - id: "3179-increment-suite-steps"
+    what: an increment's plan that authors no suite gets no suite step re-appended, and any other cycle keeps the workload's (SIP-0109 §24eg)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.cycles import task_plan
+      source = inspect.getsource(task_plan._replace_build_steps_with_plan)
+      print("increment and authors_qa_suite(task_type)" in source, "increment" in inspect.signature(task_plan._replace_build_steps_with_plan).parameters)
+    expect: "True True"
+  - id: "3185-renewal-without-probe"
+    what: a worker's renewal carries the health read before the claim, and an operation that ended behind a renewal returns its result (SIP-0117 R5.26)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.remote_execution.serving import Worker
+      watch = inspect.getsource(Worker._watch)
+      print("self._runner.health()" in watch, "self._health_held()" in watch, watch.count("if task.done():"))
+    expect: "False True 3"
+  - id: "3184-reset-names-update"
+    what: the Studio reset reads Studio's version on both sides of its reopening, and every reset's outcome goes on the worker's status (SIP-0117 R5.27)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.remote_execution.game_dev_roblox_studio.runner import RobloxStudioRunner
+      from squadops.remote_execution.serving import Worker
+      held = inspect.getsource(RobloxStudioRunner._reset_held)
+      reset = inspect.getsource(Worker._reset)
+      print("self._proof()" in held, held.count("self._replaced_since(before)"), reset.count("self._record(tool_ready="))
+    expect: "True 2 2"
+  - id: "3192-tool-unready-retries"
+    what: a not_executed the worker returns for its own tool is flagged, crosses the wire, and delivery reads it as a scenario no worker took (SIP-0117 R5.28)
+    container: squadops-runtime-api
+    code: |
+      from squadops.remote_execution.models import OperationStatus, RemoteOperationResult, reading_for_want_of_a_worker
+      from squadops.remote_execution.wire import result_from_wire, result_to_wire
+      r = RemoteOperationResult(OperationStatus.NOT_EXECUTED, "not in front", tool_unready=True)
+      import inspect, squadops.campaigns.runner_acceptance as ra
+      print(result_from_wire(result_to_wire(r)).tool_unready, reading_for_want_of_a_worker({"tool_unready": True}), reading_for_want_of_a_worker({"unavailable": False}), inspect.getsource(ra).count("reading_for_want_of_a_worker(r"))
+    expect: "True True False 2"
+  - id: "3174-escalation-ends-at-the-decision"
+    what: a person's gate decision ends its escalation at the gate route, from the stored decision, and the sweep ends a decided one in any state (SIP-0109 §24eh)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.routes.cycles import runs
+      from squadops.campaigns import progress
+      from squadops.campaigns.escalation import RunAtGate
+      from squadops.campaigns.models import CampaignState
+      print("await _end_decided_escalations(request, registry, cycle_id)" in inspect.getsource(runs.gate_decision), CampaignState.ESCALATED in progress._DECIDED_SWEEP_STATES, CampaignState.COMPLETED in progress._DECIDED_SWEEP_STATES, "decided_at" in RunAtGate.__dataclass_fields__)
+    expect: "True True False True"
+  - id: "3147-qa-prompt-names-the-runner"
+    what: the QA agent's qa.test system prompt for a Luau-only product names no other stack's runner, every other run keeps the task type's own fragment, and a variant with no fragment is refused (SIP-0112 H.37)
+    container: squadops-eve
+    code: |
+      import hashlib
+      from adapters.prompts.factory import create_prompt_repository
+      from squadops.capabilities.handlers.source_repository import qa_test_prompt_variant
+      from squadops.prompts.assembler import PromptAssembler
+      a = PromptAssembler(create_prompt_repository("filesystem"))
+      luau = {"source_repository": {"runners": [{"runner": "luau"}]}}
+      own = a.assemble("qa", "agent_start", task_type="qa.test").content
+      sent = a.assemble("qa", "agent_start", task_type="qa.test", variant=qa_test_prompt_variant(luau)).content
+      try:
+          a.assemble("qa", "agent_start", task_type="qa.test", variant="godot"); refused = False
+      except ValueError:
+          refused = True
+      print(hashlib.sha256(own.encode()).hexdigest()[:8], "pytest" in sent, "```luau" in sent, qa_test_prompt_variant({}), refused)
+    expect: "a0c6f5ef False True None True"
+  - id: "3222"
+    what: the row-8 diagnostic's fault throws only in a real Roblox client, and a Campaign's repair of the increment is launched without it
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.handlers.fault_injection import FAULTS, LUAU_CLIENT_THROW, bound_cycle_faults
+      from squadops.contracts.cycle_request_profiles import load_profile
+      d = load_profile("campaign-increment-source-client-stops").defaults
+      print(LUAU_CLIENT_THROW.startswith('if typeof(game) == "Instance"'), FAULTS["luau_client_throws_at_start"].bound_cycles, bound_cycle_faults(d["fault_injection"]), d["max_correction_attempts"])
+    expect: "True False [] 0"
+  - id: "3206-studio-channel-in-proof"
+    what: Studio's qualification identity is its version, channel and tool list; a pin naming no channel is refused, and the channel is held across a reset (SIP-0117 R5.29)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.remote_execution.game_dev_roblox_studio import qualification as q
+      from adapters.remote_execution.game_dev_roblox_studio.runner import ProvedOn, RobloxStudioRunner
+      from adapters.remote_execution.game_dev_roblox_studio.studio_app import StudioApp
+      held = inspect.getsource(RobloxStudioRunner._reset_held)
+      print(sorted(ProvedOn("v", "t", "c").named("qualified")), q.SCHEMA[-2:], "names no channel" in inspect.getsource(q.Qualifications.current), held.count("self._moved_channel("), hasattr(StudioApp, "channel"))
+    expect: "['qualified.studio_channel', 'qualified.studio_tools', 'qualified.studio_version'] /2 True 2 True"
+  - id: "3199-scenario-skill-rules"
+    what: the strategy agent's packaged scenario skill carries the six rules, its self-review, and whole examples the rails read, each quoting the sentence it reads (SIP-0118 R5.8)
+    container: squadops-nat
+    code: |
+      import re, yaml
+      from squadops.capabilities.skillsets import load_skillsets
+      md = load_skillsets()["roblox-increment-design"].skill_files["play-scenario-authoring"]["SKILL.md"]
+      whole = [d for d in map(yaml.safe_load, re.findall(r"```yaml\n(.*?)```", md, re.S)) if isinstance(d, dict)]
+      print(len(re.findall(r"^### [1-6]\. ", md, re.M)), "## Before you submit" in md, [c["id"] for d in whole for c in d["criteria"]], sum('Reads: "' in c["observable"] for d in whole for c in d["criteria"]), 'stops: ["no scenario:"]' in md)
+    expect: "6 True ['S1', 'S2', 'S3', 'P1'] 4 True"

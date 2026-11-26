@@ -87,6 +87,11 @@ class CampaignPolicyDTO(BaseModel):
     #: launches, in launch order. Each must be a script this deploy holds at that version, or the
     #: creation is refused. Omitted or empty, the campaign names no script.
     llm_scripts: list[str] = []
+    #: §24ed (#3157): the development profile a repository-backed Project's product is developed
+    #: under, named by the operator and carried by every cycle the campaign launches. Omitted,
+    #: each cycle derives it from the product. Refused with ``stack``, on a sample application,
+    #: for a name this deploy doesn't hold, and on a squad that lacks a skillset it requires.
+    development_profile: str | None = None
 
 
 class CampaignDefinitionDTO(BaseModel):

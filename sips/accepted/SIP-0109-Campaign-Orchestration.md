@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-11-10)
+## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -160,12 +160,19 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a read-only signal for a Campaign's accepted work not yet in its Project's integrated commit: `GET /api/v1/projects/{id}/unintegrated-increments` (§24dc item 7) | **shipped** (§24dc): `GET /api/v1/projects/{id}/unintegrated-increments` and `projects unintegrated` | 2.6.0, PR #2920, closes #2863 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a criterion's test credited on the candidate by its id among the passes, never by its absence from the failures: each test-id reader keeps its passing ids, and a baseline failure the candidate never collected reads `not_run` (§24ci (a); as built: §24dy) | **shipped** | 2.8.0, PR #3109, closes #3089 |
+| a cycle a skill stopped (SIP-0116 §17o), a proposal run's included, abandoned at row 20, counted toward no unaccepted limit, for a proposal shown the skill's line from the run's terminal decision (§24dz) | **shipped** | 2.8.0, PR #3133, refs #3041 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
 | a Campaign on a goal set (SIP-0115 slice 2): `objective.goals`, the one-item rail, `goals_revised` at the ruling, `stop_when: backlog_done` at row 3, and nothing pending escalating (§24cy) | **shipped** | 2.6.0, PR #2901, closes #2885 |
 | the owner's goal delegation (SIP-0115 slice 3): `goal_delegation_granted`, the first record a completed Campaign refuses (§24dd) | **shipped** | 2.6.0, PR #2908 |
 | a goal-set Campaign's ledger rows name the backlog item and bound revision, and carry the goal evidence while a gate can be open on them (SIP-0115 slice 5, §24df) | **shipped** | 2.6.0, PR #2927, closes #2888 |
 | the owner's dismissal of a closed, unmerged Campaign contribution: `contribution_dismissed`, clearing it from the unintegrated set (§24dg) | **shipped** | 2.6.0, PR #2930, closes #2926 |
+| on a Luau product, a criterion's test for a module the change adds reaches an assertion on the accepted tree: every author of the spec or of its plan is told, through one asset, and the QA skill shows the idiom (§24ec) | **shipped** | 2.8.0, PR #3144, closes #3143 |
+| a campaign's policy names the development profile its product is developed under, every launch carries it alone, and a squad lacking what it requires is refused at creation (§24ed) | **shipped** | 2.8.0, PR #3158, closes #3157 |
+| the plan-review tier's fourth condition: no brief conflict the merge escalated to the operator, read from the framing's merge decisions (§24ee) | **shipped** | 2.8.0, PR #3167, closes #3164 |
+| an increment's framing roles are told which footprint files the framework writes, so a scenario criterion's declaration raises no brief conflict (§24ef) | **shipped** | 2.8.0, PR #3175, closes #3173 |
+| an increment whose plan authors no suite dispatches no suite step: each criterion's test file is a plan task's and each scenario's play is the framework's (§24eg) | **shipped** | 2.8.0, PR #3180, closes #3179 |
+| a Campaign's push and contribution carrying the token of its Project's declared contribution identity, with the forge identity on their rows and the accepted head beside the contribution commit (§24ea, ruled 2026-11-17, not yet built; SIP-0112 H.34) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
 | a re-open: a fresh contribution from a dismissed or closed Campaign's accepted state (§24dg) | **unplaced**, deliberately: the owner chose dismiss first (2026-11-05) | — |
 | a criterion file a qa repair rewrote into a pass on the head is refused as that repair, spending the round, and a later pass on the head fails the run rather than abandon it at row 19 (§24dh) | **shipped** | 2.6.0, PR #2934, refs #2933 |
 | a product proposal is shown that what the product already does stays inside the criterion that changes it (§24di); whether row 19 re-queues a goal-set item waits for the owner (SIP-0115 §5.3) | **shipped** | 2.6.0, PR #2936, refs #2935 |
@@ -7234,3 +7241,450 @@ Now:
   - not storing the ids.
 
 **Who ruled.** The owner placed #3089 in 2.8's Spark lane on 2026-11-15. The shape is #3089's own "What closes it".
+
+### 24dz. A cycle a skill stopped is abandoned at row 20, uncounted, for a proposal shown the skill's line (2026-11-16, §7, §10 rows 2, 6, 8 and 16, §24cz; SIP-0116 §17o; #3041; the Spark lane)
+
+**What changed.** SIP-0116 §17o ends a run when a task's model answers with a stop one of its skills declares. The
+run's terminal kind is `skill_stopped`, and its terminal decision carries the stop. The completion boundary records
+the cycle's stop reason as `skill_stopped`. Before this, the campaign read that cycle as one of two things:
+- **a proposal run:** `proposal_failed`, since the run's status is failed. Row 6 proposed again with no brief, from
+  the same inputs, and each failure counted toward `max_proposal_run_retries`'s pause;
+- **an increment, repair or retry:** an assessed run, `blocked_unverified`, attributed `criteria_or_contract_failure`.
+  That isn't the environment's, so row 8 repaired the same work, the same skill stopped it again, and row 9 escalated
+  once the repairs were spent.
+
+Now:
+1. **The ending.** `skill_stopped` is a cycle ending of its own. It is read from the recorded stop reason before the
+   proposal's endings, so a stopped proposal run reads as the stop. The stop reasons a run declares for its cycle are
+   one table (`_ENDING_DECLARED_BY_STOP`), beside `criteria_not_checkable`.
+2. **Row 20.** It is asked before row 6, beside rows 15, 18 and 19, for an increment, a repair or a retry:
+   `abandon_and_propose`. A calibration a skill stopped wasn't accepted, so row 2 ends the campaign first.
+3. **Uncounted.** Row 20's abandonment counts toward no unaccepted limit (`UNCOUNTED_ABANDONMENT_ROWS`), as rows 16
+   and 19's do: what was asked crosses the skill's rule, and the work wasn't at fault.
+   - It still counts toward the cycles and the budget (row 4), so stops can't continue past them.
+   - A stopped proposal isn't a failed one, so it ends a run of failed proposals.
+4. **The next proposal is shown the line.** The brief carries the stop from the run's terminal decision: the
+   skillset, the skill, the opening words and the line, bounded as a reason is. It is never read from the failure
+   reason's text.
+   - The proposal shows it under its own heading, `request.proposal_stopped_by_skill`, in place of
+     `request.proposal_abandoned_increment`. That one says the increment was built and failed, which a stop isn't.
+   - The two are alternatives in the proposal's prompt contract, so the composer counts the larger.
+5. **A goal-set Campaign** abandons the item on row 20 as on any `abandon_and_propose` (SIP-0115 §5.3), with no
+   change here. It is skipped until a revision changes the item.
+
+**What didn't change.** A repair task's stop inside a correction chain ends that repair, and the correction runner
+reads it as a failed repair (SIP-0116 §17o). Only a run that ends `skill_stopped` reaches row 20.
+
+**The evidence.**
+- **`test_continuation.py`:** row 20 for an increment, a repair and a retry, with repairs left and at the unaccepted
+  limit's edge, and row 2 for a calibration.
+- **`test_progress.py`:**
+  - the ending, read from a stopped proposal, framing or implementation run;
+  - row 20, counted toward no limit;
+  - a stop ending a run of failed proposals;
+  - entered at the completion boundary as the executor ends a stopped proposal run: the recorded end, row 20's
+    decision and the launch's brief carrying the stop.
+- **`test_prior_cycle.py` and `test_strategy_propose_increment.py`:**
+  - the last run's stop, carried and shown fenced;
+  - no stop for any other failure;
+  - the proposal rendered through the real handler under the new heading.
+- **Mutation:** five mutations each fail the tests:
+  - the ending left unmapped;
+  - row 20 counted;
+  - row 20 removed;
+  - the stop not carried;
+  - the old heading used.
+- **The render:** the section is 764 characters, about 190 tokens, on the reference proposal.
+- **Not yet read live:** no stop has happened in a live run. The replay's stop cases on the Spark come first
+  (#3041).
+
+**Who ruled.** The MacBook lane proposed the question on #3041 (issuecomment-6925771589) and the Spark lane answered
+with this shape (issuecomment-6925831386), under the 2.8 plan the owner adopted on 2026-11-11. The MacBook lane built
+the terminal kind first (PR #3132).
+
+### 24ea. A Campaign's push and contribution may carry the token of its Project's contribution identity: ruled, not yet built (2026-11-16, ruled 2026-11-17, §13, §24ci (b), §24cn, §24dc, §24dg; SIP-0112 H.34; #3137; the MacBook lane's draft on the owner's brief, ruled by the owner as drafted)
+
+**Status: ruled, not yet built.** The owner ruled this text as drafted on 2026-11-17, with SIP-0112 H.34. Nothing
+here is built. It takes effect when #3137 ships, and until then §24ci (b), §24cn and §24dc read as they do.
+
+**Why.** Three sections and two ledger rows say whose token a Campaign's outward act carries:
+- §24ci (b): "passing the token with the request … (`--token-from-gh`, the box's `gh` login)";
+- §24cn item 4 and its evidence: "The CLI sends the caller's own token";
+- §24dc: "Only the supervisor's request opens one, with the supervisor's own token".
+
+Under SIP-0112 H.34 a Project may declare a contribution identity: a forge account its owner approved,
+such as a GitHub App's. Under it the token a request carries is that identity's, and the supervisor's own is
+refused for that Project.
+
+**What changes.** Where those sections and rows say the supervisor's own token, read: **the token the request
+carries, which is the caller's own, or the declared contribution identity's for a Project that declares one**
+(SIP-0112 H.34 items 1 and 2). Their text stays as the record of what was ruled then.
+
+**What stands.** Each is a ruling this leaves as it is:
+1. **The act is a person's.** A review push and a contribution are requests by an authenticated caller holding
+   `campaigns:manage` (§24cn, §24dc item 2). Holding the identity's token confers nothing.
+2. **The token comes with the request, and only with it** (§24cn item 4, §24dc item 2). Neither route reads
+   `projects.review_request_tokens`. The token is used in memory for the push and the forge call.
+3. **Nothing leaves the deploy on its own** (the owner, 2026-10-28 and 2026-11-04). A close, an abort, startup, a
+   sweep and a retry open nothing and push nothing. A service identity changes none of it: its key is outside the
+   deploy, which mints no token (SIP-0112 H.34 item 6).
+4. **A close records what is due, and that is all it does** (§24dc item 1).
+5. **The pushes** (§24cn items 2, 3 and 6; §24dc item 3):
+   - the first review push is never forced;
+   - each later one is leased on the last recorded push, and one after a rebase rewrites under that lease;
+   - a branch someone else moved is refused;
+   - the contribution is never forced;
+   - the per-Campaign serialization, the replay by idempotency key, the crash recovery and the one review request
+     hold as built.
+6. **The owner's dismissal** (§24dg) and **the draft gate's integration check** (§24ds).
+
+**What is added.**
+7. **The rows name the forge identity.** `review_pushed`, the contribution's record and `contribution_failed`
+   carry the account as the forge reported it, beside `actor` and `actor_role`, and the authority revision the
+   token was checked against (SIP-0112 H.34 item 5). Never the token.
+8. **The accepted head and the contribution commit are both named.** §24dc item 3 can add one commit to the
+   branch's head, moving the criterion files, so the two differ. Today the contribution's record holds the
+   contribution commit and the base, and the accepted head is read from the Campaign's log. The contribution's
+   document gains the accepted head. The review request is opened on the contribution commit, so a product's
+   review is of that commit.
+9. **No second approval.** A goal-set Campaign under the owner's delegation (§24dd; SIP-0115 §10c) runs as it
+   does. What it binds is its goal revisions and its instruction snapshot (SIP-0110). A product's own signal that
+   an issue is ready, a label for one, is that product's process and no key the framework reads. Work past the
+   delegation returns to the owner as it does today. The contribution stays a separate, explicit act.
+
+**Outside this SIP.** A crew's review of a contribution and its supervision of a Campaign are the crew's. This
+section names no reviewer.
+
+**The evidence.** SIP-0112 H.34's, read on main at `28a7a0df`. Its eight checks cover this section: checks 5 and 6
+are items 3 to 5 here, under the identity's token.
+
+**Who ruled.** The owner brought the brief (2026-11-16) and placed the build after the 2.8 cut. The text is the
+MacBook lane's draft, which the owner ruled as drafted on 2026-11-17, with SIP-0112 H.34.
+
+### 24ec. A criterion's test for a module the change adds, on a Luau product: its absence is an assertion the spec makes (2026-11-16, §8.2, §24ci (a), §24dp; SIP-0112 H.31; SIP-0118 R4.3; #3143; the MacBook lane, on the Spark lane's finding)
+
+**What was wrong.** The #3041 capture Campaign `cmp_22ca0525782c` on z_tower-ascension (uncounted) ended at row 4
+with its one increment refused, though the build was right:
+- **the baseline:** the criterion's spec ran alone on the accepted product and the runner reported the file
+  `[setup]`, with none of its tests;
+- **the candidate:** six of six passed;
+- **the reading:** `only_setup_failures`, by §24ci (a), and rightly. The test never reached what it asserts.
+
+The spec required the module the change adds at the top of its file, and the accepted product has no such module.
+The design stage's draft of the spec had that shape. The brief and both proposers carried the draft, and the plan's
+qa criterion asked for it: "The spec begins with `local SalePricing = require(Shared.Modules.SalePricing)`". This is
+§24dp's shape on a fourth stack.
+
+**What changed.** §24ci (a) is unchanged, and the framework places no file. A Roblox product's own instance tree
+already tells an absent module from a broken one: `FindFirstChild` gives `nil` for a child that isn't there. So a
+spec looks the new module up inside each test, checks that it is there, and only then requires it. Read from
+z_tower's runner under Lune, at `0beaac0`:
+- **module absent:** `FAIL … > <test> [assertion] Shared.Modules.StreakRules exists: got nil`, the test's own
+  failure;
+- **module present:** `PASS`;
+- **module present and failing to load** (it asks for an engine service): `[setup]`, as before. Only absence becomes
+  an assertion, as §24dp has it.
+
+Two things carry that to the authors:
+1. **One asset, for every author of the spec or of its plan**
+   (`request.increment_added_module_test_luau_appendix`, through `source_repository.added_module_test_section`),
+   on a product that tests only with Luau runners:
+   - the framing stages and the brief, after the approved change request. The design stage drafts the spec, and
+     the plan follows its draft;
+   - the qa proposer and the plan's sole author, with the criterion files' appendix (§8.1). The development
+     proposer is shown its own appendix, which leaves those files to qa (§24cr);
+   - the suite's author and its repair, in the test scope (#1884), where the increment has a criterion a test
+     proves.
+   It states the rule in the runner's terms and names `FindFirstChild` for an instance tree. It shows no code:
+   the spec's globals are the product's runner's, and the platform's name stays in its skillset (SIP-0118 R4.6).
+   It also says that each folder the change adds is looked up and checked like the module, and that an observable
+   written as `require(<the new module>)…` says what to call, not where the `require` goes.
+2. **The Roblox QA skill shows the idiom** (`roblox-studio-qa/luau-test-loader`, "A module the change adds"), with
+   the spec whose lines are quoted above. The skill is the one that knows the product's runner.
+
+**Not changed, and for the owner.** The same shape holds on every stack: a criterion's test that imports, at the top
+of its file, a module its change adds can't load on the accepted tree. §24dp answered it for a vitest page with a
+loader the framework places, and this answers it for a Luau product with the product's own tree. Whether the rails
+should handle "the module this change adds is absent on the baseline" once for every stack is recorded on #3143 for
+the owner.
+
+**The evidence.**
+- **`test_added_module_test_luau.py`:**
+  - entered at `discrimination_on_runner` with the framework's `luau` reading of the runner's own lines: the
+    idiom discriminates, by its test's id, and a file-level require reads `only_setup_failures`;
+  - the skill's example is the spec those lines came from;
+  - each of the five seams, entered at the handler's own section with the real assets: told on a Luau product,
+    and not on a pytest one;
+  - the development proposer and an increment no test proves aren't told.
+- **Read live, the asset alone (2026-11-17).** The Spark's second #3041 capture, Campaign `cmp_2b1aa826d5bb`
+  (uncounted, no skill loaded), on deploy `dep_4601ff9093d7` at `460eee5a`:
+  - the asset was in the design stage's, the brief's, the qa proposer's and the suite author's prompts, and in no
+    other;
+  - the plan's qa task listed a top-level `require` of the new module as a fault to avoid;
+  - the spec looked the module up with `FindFirstChild` inside each test. On the baseline all six tests failed as
+    `assertion`, on the candidate all six passed, and the increment was accepted. The first capture, on the same
+    goal before this change, read `only_setup_failures`.
+- **Read live a second time,** on deploy `dep_aa7d76fa46a7` at `a4bb41d6`: capture Campaign `cmp_6f3664949d4c`,
+  again with no skill loaded. Its spec looked up each level down to the new module with `FindFirstChild`, five of
+  five tests failed as `assertion` on the baseline and passed on the candidate, and the increment was accepted.
+- **The skill's section** is read by the skills replay. Its captured `qa.test` case expects `discriminates`:
+  each emitted spec is run alone on the product at the pin and again with the task's implementation laid
+  beneath, and the two readings go through `discrimination_on_runner`. In `roblox-skills-v2` all three
+  generations' specs discriminated, on the record (SIP-0116 §17s). In `roblox-skills-v1` all six authorings' did,
+  read by hand since that run misjudged the case (SIP-0116 §17r).
+
+**Who ruled.** The Spark lane found it and proposed the shape on #3143 (2026-11-16), tracing the plan's wording
+to the design stage's draft. The MacBook lane built it, under the 2.8 plan the owner adopted on 2026-11-11.
+
+
+### 24ed. A campaign names the development profile its product is developed under (2026-11-17, §24bs, §24bv point 5; SIP-0112 H.4 point 3; SIP-0116 §9, §17q; SIP-0118 R5.2; #3157; the MacBook lane, on the Spark lane's finding)
+
+**What changed.** A campaign's policy may declare `development_profile`, beside `stack` and separate from it.
+Every cycle the campaign launches carries it as the cycle's `development_profile` and nothing else.
+
+**The evidence.** The `game_dev_roblox` profile (SIP-0116 §17q) is one "an operator names, for a Campaign on a
+Roblox game". At the first Campaign that was to name it, the Spark lane found no way to (#3157):
+- §24bs's `stack` is passed to each launch as both `build_profile` and `development_profile`, and the policy
+  refuses a stack that is no scaffold stack. With `stack: game_dev_roblox` the refusal reads "is not a stack a
+  campaign can run on: it needs a scaffold that declares where a criterion's test file lives (§8.1)".
+- Were it accepted, a `build_profile` would be set too. A repository-backed campaign refuses that (§24bv
+  point 5: its increments seed no skeleton), and a cycle with one pins no development profile.
+- The increment's request profile names neither key, deliberately (SIP-0112 H.4 point 3), and nothing else in
+  a policy or an objective reaches a launch's values.
+
+So no campaign could run under the profile, and the Roblox squad's first cycle and the 2.8 demonstration both
+need one.
+
+**The rule.**
+1. **What it names:** a development profile this deployment holds. A name it doesn't hold is refused at
+   creation, with the names it does.
+2. **What a launch carries:** `development_profile` alone, on the increment and on every repair and retry
+   (`launch_requests._profile_values`, the one place a policy's stack or profile becomes a launch's values).
+   The cycle's own pin then records it with the operator as its origin (SIP-0112 H.4), and its preflight
+   refuses one that contradicts the product's runners, as it does for a cycle an operator creates.
+3. **Never with `stack`.** A stack sets both of a cycle's keys, so a policy declaring both is refused.
+4. **A repository-backed Project's only.** A sample application's campaign builds on a scaffold stack and
+   names that as `stack`. It is refused the field, by name.
+5. **The squad carries what the profile requires, or the creation is refused.** The policy's squad is read
+   and compared as each launch's preflight compares it (SIP-0116 §9, `skillset_coverage_decision`), and the
+   refusal is that decision's words under `policy.development_profile`. A squad the deployment doesn't hold is
+   refused under `policy.squad_profile`. A policy naming no development profile is left to its launches, as
+   before.
+6. **The creation hash names it only when declared,** as it does the stack, so a stored campaign's replayed
+   creation is unchanged. A stored policy without the field reads as naming none.
+
+**What needed no change.** The start's size preflight builds the campaign's first launch through
+`increment_launch` and pins its profile through `development_profile_pin`, so it measures each task with the
+skills the named profile hands it (SIP-0116 §17m). The equipment pin (SIP-0116 §10) is taken from the first
+launch's cycle, which now carries the profile.
+
+**Considered and set aside:** a request profile that carries the development profile. It works on the launch
+path as it stood, and it ties what an operator names to one request profile per product family.
+
+**The evidence it works** (`tests/unit/api/test_campaign_development_profile.py`, entered at
+`POST /api/v1/campaigns`):
+- A campaign naming `game_dev_roblox` on the seeded `game-dev-roblox` squad is created and read back. From the
+  stored campaign, the increment's launch and a repair's each resolve a configuration that holds the profile
+  and no `build_profile`, seeds nothing, is pinned as the operator's on a Luau product's derived profile, and
+  is assigned all three skillsets.
+- A campaign naming none launches as before, and a Luau product's cycle derives `product_neutral`.
+- Refused at creation, each naming its field: a squad lacking the skillsets, a squad the deployment doesn't
+  hold, a profile it doesn't hold, an empty name, a profile with a stack, and a sample application.
+- The creation hash of a policy naming none is the digest pinned before the field existed, and two profiles
+  hash apart.
+- A loaded-check row, `3157-campaign-development-profile`.
+
+**Not shown:** a campaign's cycle under the profile. That is the Spark lane's, as #3041's run plan part 5.
+
+**Who ruled.** The Spark lane found the gap and recommended a policy field over a request profile. The design
+is the MacBook lane's, within §24bs and the 2.8 plan.
+
+### 24ee. The plan-review tier doesn't approve past a brief conflict the merge escalated (2026-11-17, §24bj; SIP-0093 §5.8 rule 1, §15d; #3164; ruled by the owner)
+
+**What changed.** §24bj's tier approves when every condition holds. It gains a fourth: the plan's merge
+escalated no brief conflict to the operator.
+
+**The evidence.** Reading #3163, where a proposer's disagreement with the brief was dropped before anyone saw it,
+the MacBook lane followed where one that parses goes:
+- The merge gives each raised brief conflict a disposition (SIP-0093 §5.8 rule 1): a `warning` is accepted, and a
+  `blocking` one is `escalated_to_operator`, with a line in `merge_decisions.yaml`'s `operator_notes`. Since
+  SIP-0093 §15d a conflict that couldn't be read is escalated too.
+- The tier read the design's open questions, the plan's footprint and the framing's runs. It read no merge
+  decision. So on a Campaign with `plan_gate: tier`, a conflict escalated to an operator was approved by the
+  tier with no operator having seen it.
+
+This was read in the code. No run showed it: the one conflict a live cycle raised was dropped earlier, at the
+parse (#3163).
+
+**The rule.**
+- **The condition, `no_escalated_conflict`:** the tier reads the framing run's `merge_decisions.yaml`. It holds
+  when no disposition is `escalated_to_operator`. A conflict the merge settled (a `warning`, accepted) leaves it
+  held, and the reading says how many were raised.
+- **It fails with each escalated conflict's field and reason,** which for an unread one is why it couldn't be
+  read and what the proposer wrote. The gate then escalates as it does for any failed condition (§24bj), and the
+  escalation's row carries the reading to whoever rules the gate.
+- **Merge decisions that are absent or can't be read fail it too.** Every framing that reaches the plan gate
+  ran the merge, so their absence establishes nothing, as a cycle with no manifest does for the open questions.
+- **Fourth, after §24bj's three.** A verdict lists every condition, and the gate's notes carry each reading.
+
+**What it does not change.** The tier still only approves. A supervised campaign's gate reads as it did. The
+merge's own rules (SIP-0093 §5.8) are untouched: which conflicts are escalated is the merge's, and SIP-0093 §15a's
+dropped rule 5 (conflicts between proposals blocking the gate) stays dropped.
+
+**The evidence it works.**
+- **`test_plan_review_tier.py`:** against merge decisions the merger itself writes, a blocking conflict and an
+  unread one each fail the condition with the conflict's words; none written, an empty document, a partial one
+  and one that isn't YAML each fail it; no conflict and an accepted warning hold it, with all four conditions in
+  the verdict in order.
+- **`test_plan_review_tier_wiring.py`,** entered at the gate's `decide` with the framing run's artifacts in a
+  vault: an escalated conflict, and a framing that stored no merge decisions, each leave the gate waiting for a
+  person with one escalation naming `no_escalated_conflict`, the first carrying the proposer's reason.
+- A loaded-check row, `3164-tier-reads-merge-decisions`.
+
+**Who ruled.** §24bj's policy is the owner's (2026-10-08). The MacBook lane found the gap and recommended the
+condition (#3164), and the owner ruled it on 2026-11-17 ("use recommendations on the others as well").
+
+### 24ef. A plan's authors are told which footprint files the framework writes (2026-11-17, §7.3, §24ee; SIP-0093 §15d; SIP-0116 §17x; #3173)
+
+**What changed.** An increment whose change request holds a scenario criterion tells its framing roles that the
+criterion's declaration, which the footprint names, is the framework's file.
+
+**The evidence.** On the same full-path gate attempt (§17x's), both task proposers raised a blocking brief
+conflict, and the plan gate escalated under §24ee, as designed. The brief listed the two scenario declarations
+among the files the increment changes; the increment's own constraint named the client script alone; and nothing
+said who writes the declarations. The proposers asked an operator to add the files or confirm them provisioned
+elsewhere. On its substance the conflict was moot, as #3163's was. With §24ee, every increment with a scenario
+criterion would stop at its plan gate for a person.
+
+**The rule.**
+- **The stages shown the change request** (§7.3: the design, the brief's author) get a short section after it,
+  `request.increment_framework_files_section`, naming the footprint's files the framework writes itself and
+  saying to plan no task for them and that they are no conflict with the brief.
+- **Every plan author** is told the same in the scenario-criteria appendix they are already shown
+  (`request.increment_scenario_criteria_appendix`, #3081), since the proposers read the brief and not the change
+  request.
+- **Only on an increment that holds a scenario criterion.** Every other increment's framing requests are the
+  ones they were.
+- The plan gate still refuses a task that names a declaration (`validate_increment_scenario_files`), and §24ee
+  still escalates a conflict a proposer raises anyway.
+
+**The evidence it works** (the same test file): the brief author's section names both declarations after the
+change request; an increment with none renders the section it always did; a document that is no change request
+names none; and the proposers' and the merger's surfaces carry the appendix's new paragraph.
+
+**Not shown:** a framing that raises no such conflict. That is read on the next full-path gate.
+
+**Who ruled.** The Spark lane named the gap. The fix is the MacBook lane's.
+
+### 24eg. An increment's suites are its plan's (2026-11-17, §8.1, §8.2, §24bv point 5; SIP-0117 R5.14; SIP-0118 R5.5; #3179)
+
+**What changed.** An increment whose plan authors no `qa.test` dispatches none. The workload's own suite step is
+re-appended to every other cycle, as before.
+
+**The evidence.** The 2.8 demonstration's full-path gate, attempt 3 (`cmp_35659d2394a3`, `run_178243ba831b`).
+The plan gate passed, both baseline plays read as they should, and the developer's task completed. Then
+`qa.test` failed three times before any model call: `PROMPT_EXCEEDS_CONTEXT_WINDOW`, 570,726 estimated tokens
+against a 65,536 window. The run was aborted as a model limitation and no candidate play ran.
+- **The plan held one task,** a developer's. Every criterion of the increment was a scenario criterion, which
+  the framing is told to give no test (#3081).
+- **`task_plan` re-appended the workload's `qa.test`** (the #439 tail), which no plan task stood in for. It
+  carries no subtask, so its prompt is the monolithic one: every source and support file of the stack. On the
+  game's tree that is 181 files and 2,249,267 characters.
+- **It was the first increment to reach that step on a product.** Every earlier one had a criterion with its own
+  test file, which the plan gate requires a `qa.test` task to author (§8.1).
+
+**The rule.**
+- **Each file of an increment has an owner.** The footprint's source files are the plan's tasks'. A criterion's
+  test file is a plan `qa.test` task's, and the plan gate refuses a plan that leaves one unplanned
+  (`validate_increment_criterion_files`). A scenario's declaration is the framework's, and its play is the
+  framework's step (SIP-0117 R5.14).
+- **So a plan that authors no suite has none to author,** and `_replace_build_steps_with_plan` re-appends no
+  suite step for an increment (`TaskType.authors_qa_suite`, `increment_tree.is_increment`). A repair or a retry
+  of an increment is an increment.
+- **#439's rule stands where it was made.** A cycle that is no increment and whose plan drops verification
+  still ends in the workload's `qa.test`.
+
+**What the step produced, and who read it.** On a scenario-only increment the workload's `qa.test` wrote a suite
+no criterion named and ran it. The machinery Campaign's scripted squad answered it with a check file outside
+the footprint. Acceptance never read it: it reads each criterion's own test file and each scenario's plays
+(§8.2). The cycle's own verification keeps the plays, which fail the task and route to the developer's repair.
+
+**Not changed, and open (#3182).** A plan's own `qa.test` is shown the top-level directories its expected files
+live in, and the whole tree when none matches. On the game a spec under `tests/` is shown 18,182 characters. A
+task naming a file under `src/` would be shown all of `src/`, and nothing at the plan gate refuses it there: the
+game's profile declares no test namespace for `validate_qa_suite_namespace` to hold it to. No run has planned
+one, and the prompt guard refuses such a prompt by name, as it did here.
+
+**Not shown:** a scenario-only increment that runs its developer's task and then its candidate plays on a real
+product. That is read on the next full-path gate.
+
+**Who ruled.** The Spark lane read the record. The MacBook lane read the cause and made the change.
+
+### 24eh. A person's decision ends its escalation where it is recorded, and a decision after the bound reads expired (2026-11-18, §24bj, §24bk, §24da, §4.3; #3174; the 2.8.1 plan's item 2, adopted by the owner)
+
+**What changed.** §24bk has the sweep end every escalation, and "any decision a person records on the gate
+resolves its escalation". Two things are different now.
+1. **The ending is written where the decision is recorded.** The cycle's gate route
+   (`POST …/runs/{run}/gates/{gate}`, the one route a person's gate decision takes, which `squadops runs gate` and
+   the console both post to) writes the `escalation_closed` row as soon as the decision is stored. The sweep
+   writes the same row for a stored decision whose ending is missing, in any state its campaign has reached.
+2. **`resolved` is a decision made before the ruling bound,** read by the decision's own time. A decision made
+   once the bound has passed since the escalation opened ends it `expired`.
+
+**The cause, read first.** No route wrote the ending. Only the sweep did (`CampaignProgress._sweep_escalations`),
+every 60 seconds, and only for a campaign in `calibrating`, `building`, `repairing` or `retrying`.
+
+**The evidence** (#3174, the 2.8 demonstration's full-path gate, 2026-11-17, times UTC):
+- **Attempt 1** (`cmp_c22ad50e1de0`): a person approved the escalated plan gate at 14:23:28. The run failed at
+  14:23:55, and within a second the campaign went `evaluating`, `retrying`, then `escalated` on a refused launch.
+  The sweep's next pass found it `escalated` and read nothing. Ten minutes on the escalation read `pending`, and
+  the abort then read it `cancelled`: the record said nobody answered it.
+- **Attempt 2** (`cmp_1afaeaaacd46`): the same approval, on a run that went on. The sweep wrote `resolved` 27
+  seconds after the decision.
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **One writer** | `campaigns.escalation_ending.end_decided`: each pending plan-gate escalation of a campaign, read against the person's decision **stored on its run**. The route and the sweep both call it, so they write the same row |
+| **Once** | Every ending of one escalation shares a key (§24bk). The same decision posted twice, or the route and the sweep meeting, writes one row |
+| **What the row carries** | `decided_by` and `decided_at` in its binding, from the stored decision. The row's actor is the decider, as before |
+| **`closed_at`** | For a `resolved` ending it is the decision's time. A sweep that finds the decision ten minutes later doesn't date the ending by itself. A row written before this amendment keeps its own time |
+| **A failure to write it** | The decision is already recorded, so the request doesn't fail. It is logged, and the sweep writes the ending from the same stored decision |
+| **The sweep's reach** | In its four building states it reads everything, as before. In every other state but `completed` it ends decided escalations and nothing else: an undecided one isn't superseded or expired there |
+| **A decision after the bound** | Ends the escalation `expired`, naming the decision. The decision stands on the run, as §24bk's late decision does. The cycle isn't parked (`parked_run` reads an expiry that names a decision as no park), so row 15 doesn't apply |
+| **The interventions ledger** (§4.3) | A closing row that names a person's decision is an intervention, `resolved` or `expired` |
+| **The digest** | An expired escalation that names a decision says who decided and when, and the owner isn't asked to answer it late |
+| **A completed campaign** | Nothing is written. Its terminal row is its escalations' record, and one still pending reads `cancelled` (§24bk) |
+
+**What §24bk said, and why it changed.**
+- **"The sweep ends it."** That holds for an escalation nobody decided. For a decided one it left the ending to a
+  timer and a state filter, and the evidence above is what that cost.
+- **"Any decision a person records on the gate resolves its escalation."** §24bk's correction was about a
+  blank-noted approval, and that stands: whatever the decision says, it ends the escalation. What changes is the
+  bound. With the ending written at the decision, a decision made in the minute between the bound and the sweep's
+  next pass would have read `resolved` or `expired` by the sweep's phase. It now reads `expired` by its own time.
+
+**The tests.**
+- `tests/unit/api/test_escalation_ends_at_the_gate_route.py` enters at the cycle's gate route with the real
+  authorization adapter, over the memory registries:
+  - an approval ends the escalation `resolved`, once, with who decided and when;
+  - the same when the run then fails and the campaign escalates, as attempt 1 did, with the row written before
+    the cycle's end moved the campaign;
+  - an ending the route couldn't write is written by a restarted runtime's sweep, dated by the decision;
+  - the same decision posted twice writes one ending;
+  - a decision a minute inside the bound reads `resolved`, and one ten seconds past it reads `expired`, with the
+    run left as it was;
+  - a gate no escalation holds ends nothing.
+- `tests/unit/campaigns/test_plan_gate_escalations.py` enters at `CampaignProgress.sweep_ruling_bounds`: a
+  decided escalation is ended in a campaign that has left its building states; a decision after the bound expires
+  it, parks nothing, and the digest says who decided.
+- `tests/unit/outcomes/test_intervention_ledger.py`: a late decision's row is an intervention.
+- Nine mutations of these rules each fail at least one test.
+
+**Not changed.** The escalations route's response: `closed_by` and `closed_at` are what it had. A late
+decision's `decided_by` is on the control-log row and in the digest.
+
+**Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18. Its item 2 states the fix and its five cases,
+the decision after the bound among them. The three readings that follow from that case (no park, the ledger, the
+digest) are the MacBook lane's, for the owner's reading.

@@ -1,0 +1,16 @@
+{
+  "reader": "roblox-studio/1",
+  "contexts": ["server", "client"],
+  "actions": {
+    "click_gui": {"path": "text"},
+    "hold_key": {"key": "text", "seconds": "seconds"},
+    "move_to": {"point": "point", "deadline_s": "seconds"},
+    "wait_until": {"observe": "observation", "expect": "expectation", "deadline_s": "seconds"}
+  },
+  "observations": {
+    "property": {"path": "text", "name": "text"},
+    "attribute": {"path": "text", "name": "text"},
+    "gui_state": {"path": "text", "state": "text"},
+    "value": {"path": "text"}
+  }
+}

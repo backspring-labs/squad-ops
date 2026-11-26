@@ -868,6 +868,63 @@ async def test_a_round_that_repairs_nothing_fails_the_run_naming_the_checks(
     assert [d["verdict"] for _id, d in _verifications(vault)] == ["regressed"]
 
 
+@pytest.mark.parametrize(
+    ("reserved", "changed", "named"),
+    [
+        (("tally/report.py",), {"tally/report.py": b"x = 1\n"}, "tally/report.py"),
+        # A folder, and a second file the run was free to change: the whole run is refused.
+        (
+            ("tally",),
+            {"tally/report.py": b"x = 1\n", "checks/check_new.py": b"assert True\n"},
+            "tally/report.py (tally)",
+        ),
+        (("**/report.py",), {"tally/report.py": b"x = 1\n"}, "tally/report.py (**/report.py)"),
+    ],
+    ids=["the file", "its folder, beside a free file", "a glob"],
+)
+async def test_a_run_that_changes_a_reserved_path_is_refused_at_delivery_and_nothing_is_kept(
+    world, reserved, changed, named
+):
+    """SIP-0112 H.35 (#3155), entered at the end of the plan, where ``_execute_sequential``
+    delivers. Bug caught: a developer that quotes the product's rule and writes the saved
+    profile's schema anyway, because a typed criterion expects a file, has its change verified
+    and captured for the owner to find in review."""
+    _repo, vault, executor, cycle, run = world
+    configuration = executor._project_registry.get_development_configuration.return_value
+    executor._project_registry.get_development_configuration.return_value = dataclasses.replace(
+        configuration, reserved_paths=reserved
+    )
+
+    with pytest.raises(_ExecutionError) as refused:
+        await _end_of_plan(executor, cycle, run, vault, changed)
+
+    assert (
+        f"source delivery: the run changed {named}, which the product's owner reserves from a "
+        f"cycle's change (Development Configuration revision {configuration.revision}, "
+        "technical.reserved_paths). Nothing of the run is verified or captured"
+    ) in str(refused.value)
+    assert _of_type(vault, SOURCE_VERIFICATION_TYPE) == []
+    assert _of_type(vault, SOURCE_PATCH_TYPE) == []
+    # Refused before a candidate is built: no workspace is seeded and nothing is mapped.
+    assert executor._project_registry.record_source_mapping.call_args_list == []
+
+
+async def test_a_run_beside_a_reserved_path_is_delivered_as_before(world):
+    """The edge: a product that reserves a path the run leaves alone. Bug caught: every run on
+    a product refused once it declares one reservation."""
+    repo, vault, executor, cycle, run = world
+    configuration = executor._project_registry.get_development_configuration.return_value
+    executor._project_registry.get_development_configuration.return_value = dataclasses.replace(
+        configuration, reserved_paths=("tally/ledger.py", "docs")
+    )
+    report = tracked_files(repo.path, repo.second_commit)["tally/report.py"]
+
+    await _end_of_plan(executor, cycle, run, vault, {"tally/report.py": report + _SUMMARY_LINE})
+
+    [(_ref, raw)] = _of_type(vault, SOURCE_VERIFICATION_TYPE)
+    assert json.loads(raw)["verdict"] == "accepted"
+
+
 async def test_a_run_that_changed_nothing_delivers_nothing(world):
     """Bug caught: a feature request that produced no change reported as delivered."""
     _repo, vault, executor, cycle, run = world

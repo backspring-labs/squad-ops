@@ -1093,27 +1093,29 @@ class TestQAUnknownCapability:
         assert "Unknown" in result.error
 
 
-class TestQAFenceLang:
-    def test_py_gets_python_fence(self):
-        assert QATestHandler._fence_lang("backend/main.py") == "python"
+@pytest.mark.parametrize(
+    ("path", "language"),
+    [
+        ("backend/main.py", "python"),
+        ("frontend/App.jsx", "javascript"),
+        ("module.mjs", "javascript"),
+        ("Component.tsx", "typescript"),
+        ("tests/criterion_T1.spec.luau", "luau"),
+        ("console/package.json", "json"),
+        ("data.YAML", "yaml"),
+        # No table entry and no extension: the neutral word, never another language's name.
+        ("art/tower.blend", "text"),
+        ("Makefile", "text"),
+        ("releases/v1.2/notes", "text"),
+    ],
+)
+def test_a_files_fence_names_its_own_language(path, language):
+    """Bug caught (#3136): every file that wasn't JavaScript or TypeScript fenced as Python, so a
+    Luau product's spec was asked for as ``python:tests/….spec.luau``; and a dot in a folder's
+    name read as the file's extension."""
+    from squadops.capabilities.handlers.fenced_parser import fence_language
 
-    def test_jsx_gets_javascript_fence(self):
-        assert QATestHandler._fence_lang("frontend/App.jsx") == "javascript"
-
-    def test_js_gets_javascript_fence(self):
-        assert QATestHandler._fence_lang("utils.js") == "javascript"
-
-    def test_ts_gets_typescript_fence(self):
-        assert QATestHandler._fence_lang("app.ts") == "typescript"
-
-    def test_tsx_gets_typescript_fence(self):
-        assert QATestHandler._fence_lang("Component.tsx") == "typescript"
-
-    def test_mjs_gets_javascript_fence(self):
-        assert QATestHandler._fence_lang("module.mjs") == "javascript"
-
-    def test_unknown_defaults_to_python(self):
-        assert QATestHandler._fence_lang("data.yaml") == "python"
+    assert fence_language(path) == language
 
 
 class TestQAUserPromptFenceLang:

@@ -567,6 +567,8 @@ async def test_proposer_provides_every_required_template_variable(handler_cls, t
     provided = set(handler._build_render_variables("PRD", None, {}))
     # #2876: the worked example is rendered from a managed asset, so it joins asynchronously.
     provided |= set(await handler._task_example_variables(_Renderer(), {}))
+    # #3163: so is the shape a brief conflict is written in, for the two task proposers.
+    provided |= set(await handler._brief_conflict_variables(_Renderer()))
     missing = required - provided
     assert not missing, f"{handler_cls.__name__} misses required template vars: {sorted(missing)}"
 
@@ -630,6 +632,7 @@ async def test_a_sample_applications_qa_request_is_byte_identical_to_the_example
         "proposal_id": "prop_1",
         "source_brief_id": "brief_1",
         **await QaProposePlanTasksHandler()._task_example_variables(renderer, {}),
+        **await QaProposePlanTasksHandler()._brief_conflict_variables(renderer),
     }
     rendered = (await renderer.render("request.qa_propose_plan_tasks", variables)).content
 
@@ -675,3 +678,65 @@ async def test_a_vitest_products_qa_proposer_is_sent_the_javascript_example():
     sent = repr(ctx.ports.llm.chat_stream_with_usage.call_args)
     assert '"test/users.test.js"' in sent
     assert "Backend user-CRUD pytest suite" not in sent
+
+
+# --- #3163: a proposer is shown the one shape a brief conflict is read in --------------------
+
+
+def _shown_conflict_example(shape: str) -> str:
+    """The worked entry the shape shows in comments, as a proposer would write it."""
+    lines = shape.splitlines()
+    start = lines.index("# brief_conflicts:")
+    return "\n".join(line[2:] for line in lines[start:])
+
+
+@pytest.mark.parametrize(
+    ("handler_cls", "role"),
+    [(DevelopmentProposePlanTasksHandler, "dev"), (QaProposePlanTasksHandler, "qa")],
+)
+async def test_a_task_proposer_is_shown_a_brief_conflict_entry_its_parser_reads(handler_cls, role):
+    """Wiring: enters at the proposer's ``handle``, the call framing makes, with the real
+    renderer, and reads the user prompt the model was sent. Bugs caught (#3163): the output
+    example showing no entry, so a proposer with a disagreement invents field names and the
+    entry is dropped; or the asset showing a field the parser doesn't read."""
+    import yaml
+
+    from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
+    from squadops.cycles.proposed_role_tasks import _parse_brief_conflicts
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    ctx = _make_context(_DEV_PROPOSAL_RESPONSE)
+    ctx.role_id = role
+    renderer = RequestTemplateRenderer(
+        create_prompt_asset_source("filesystem", templates_path=DEFAULT_TEMPLATES_PATH)
+    )
+    ctx.ports.request_renderer = renderer
+
+    await handler_cls().handle(ctx, _seeded_inputs())
+
+    sent = ctx.ports.llm.chat_stream_with_usage.call_args
+    prompt = "\n".join(m.content for m in sent.args[0]) if sent.args else repr(sent)
+    shape = (await handler_cls()._brief_conflict_variables(renderer))["brief_conflicts_shape"]
+    assert shape in prompt
+    assert shape.startswith("brief_conflicts: []\n")
+    assert "Raise structured disagreements here if needed" not in prompt
+
+    degraded, unread = [], []
+    [conflict] = _parse_brief_conflicts(
+        yaml.safe_load(_shown_conflict_example(shape))["brief_conflicts"], degraded, unread
+    )
+    assert (degraded, unread) == ([], [])
+    assert (conflict.brief_field, conflict.severity) == ("must_cover_requirements", "warning")
+    assert conflict.proposed_change and conflict.reason
+    assert conflict.affected_proposal_task_keys == []
+
+
+async def test_the_strategy_proposer_is_shown_no_brief_conflict_shape():
+    """The edge: guidance holds no such list. Bug caught: the shape rendered into a template
+    that declares no variable for it, which the renderer warns of on every strategy proposal."""
+
+    class _Renderer:
+        async def render(self, template_id, variables):
+            raise AssertionError(f"rendered {template_id}")
+
+    assert await StrategyProposePlanGuidanceHandler()._brief_conflict_variables(_Renderer()) == {}

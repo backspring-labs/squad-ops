@@ -330,6 +330,12 @@ class TestThePrimaryIsTheTerminalEvidence:
                 AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
                 [],
             ),
+            # SIP-0116 §17o: a skill stopped the task; what was asked is the fault.
+            (
+                TerminalEvidence(kind=TerminalKind.SKILL_STOPPED),
+                AttributionClass.CRITERIA_OR_CONTRACT_FAILURE,
+                [],
+            ),
             (
                 TerminalEvidence(kind=TerminalKind.OTHER),
                 AttributionClass.UNATTRIBUTED,

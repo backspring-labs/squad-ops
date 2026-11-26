@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import Request
 
-from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.api.routes.cycles.mapping import read_status_of
 from squadops.api.runtime.deps import get_campaign_registry, get_cycle_registry
 from squadops.campaigns.models import CampaignState
 from squadops.cycles.models import CycleStatus
@@ -34,7 +34,7 @@ async def _still_runs(request: Request, s: Snapshot) -> bool:
             return campaign.state is not CampaignState.COMPLETED
         cycles = get_cycle_registry(request)
         cycle = await cycles.get_cycle(s.unit_id)
-        return cycle_status_of(cycle, await cycles.list_runs(s.unit_id)) in _RUNNING_CYCLE
+        return await read_status_of(cycles, cycle) in _RUNNING_CYCLE
     except Exception:  # noqa: BLE001 — unreadable is named, never dropped
         return True
 

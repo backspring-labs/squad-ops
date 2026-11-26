@@ -177,6 +177,13 @@ class RemoteOperationResult:
     #: wait, and never on a result a worker returned. A worker that claimed it and then went
     #: silent is not this (its lease lapsing is ``interrupted``; whether it ran is unknown).
     unavailable: bool = False
+    #: #3192: a worker took it, and its tool couldn't run it now, for a reason of the worker's
+    #: own environment and never of the request: the tool not in front, not the version it was
+    #: proved on, busy, or not reset to a known state. Set only by a worker (the provider, or the
+    #: serving loop for a tool it couldn't reset), and only on ``not_executed``: nothing ran, so
+    #: building the candidate again changes nothing. A fact about the worker, never the work,
+    #: which the Campaign reads as it reads ``unavailable``.
+    tool_unready: bool = False
 
 
 def request_size_defect(request: RemoteOperationRequest) -> str | None:
@@ -260,6 +267,16 @@ def reading_unavailable(reading: Mapping | None) -> bool:
     return reading is not None and reading.get("unavailable") is True
 
 
+def reading_for_want_of_a_worker(reading: Mapping | None) -> bool:
+    """Whether a stored reading went unread for the workers' sake, never the work's: no worker
+    took its operation (#3045), or the one that took it found its tool not ready to run it
+    (#3192). A reading kept before either key was written reads as not flagged, as
+    :func:`reading_unavailable` says."""
+    return reading_unavailable(reading) or (
+        reading is not None and reading.get("tool_unready") is True
+    )
+
+
 def records_document(
     request: RemoteOperationRequest,
     result: RemoteOperationResult,
@@ -300,6 +317,8 @@ def records_document(
         "reason": result.reason,
         # #3045: written on every reading, so "not flagged" is read, never inferred.
         "unavailable": result.unavailable,
+        # #3192: written on every reading too, for the same reason.
+        "tool_unready": result.tool_unready,
         "provider_version": result.provider_version,
         "ran_with": dict(result.ran_with),
         "assertions": [

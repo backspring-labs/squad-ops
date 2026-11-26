@@ -33,6 +33,7 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.llm.script import script_version
+from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import cycle_for, move, quiet_box
 
 pytestmark = pytest.mark.auth
@@ -467,6 +468,78 @@ async def test_abort_cancels_the_launched_cycle_by_the_existing_path(world):
     assert (resp["campaign"]["state"], resp["campaign"]["outcome"]) == ("completed", "aborted")
 
 
+async def test_abort_leaves_a_cycle_the_campaign_ended_at_the_gate(world):
+    """#3201: entered at the abort route. The campaign's increment cycle ended at the gate
+    (``revision_unavailable``: its proposal returned with no revision left), so its framing and
+    implementation workloads stay pending. Bug caught: the abort read it active by its pending
+    workloads and cancelled it, 40 minutes after it ended (rehearsal 3, ``cyc_929c449744f1``),
+    giving the cycle two endings. A second abort cancels nothing more."""
+    from squadops.api.routes.cycles.mapping import cycle_reading_of
+    from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+    from squadops.cycles.models import Run
+
+    _create(world)
+    await world.campaigns.transition(
+        "cmp_api000000001",
+        move(
+            CampaignState.CALIBRATING,
+            "k-start",
+            launch=LaunchRequest(CycleKind.CALIBRATION),
+        ),
+    )
+    sequence = [
+        {"type": "proposal", "gate": "progress_increment_ruling"},
+        {"type": "framing", "gate": "progress_plan_review"},
+        {"type": "implementation"},
+    ]
+
+    async def build(intent):
+        return dataclasses.replace(
+            cycle_for(intent), applied_defaults={"workload_sequence": sequence}
+        )
+
+    [launched] = await CampaignLauncher(
+        world.campaigns, world.cycles, build, actor="l1", box_verdict=quiet_box
+    ).drain()
+    for n, status in ((1, "cancelled"), (2, "cancelled"), (3, "completed")):
+        await world.cycles.create_run(
+            Run(
+                run_id=f"run_proposal_{n}",
+                cycle_id=launched.cycle_id,
+                run_number=n,
+                status=status,
+                initiated_by="campaign",
+                resolved_config_hash="h",
+                workload_type="proposal",
+            )
+        )
+    await world.cycles.record_cycle_end(
+        RecordedEnd(launched.cycle_id, "run_proposal_3", CycleStopReason.REVISION_UNAVAILABLE)
+    )
+
+    resp = _control(world, "abort", "k-abort").json()
+
+    assert resp["cancelled_cycles"] == []
+    cycle = await world.cycles.get_cycle(launched.cycle_id)
+    assert not cycle.cancelled
+    reading = cycle_reading_of(
+        cycle,
+        await world.cycles.list_runs(launched.cycle_id),
+        await world.cycles.get_cycle_end(launched.cycle_id),
+    )
+    assert (reading.status.value, reading.recorded_ending, reading.conflict) == (
+        "failed",
+        CycleStopReason.REVISION_UNAVAILABLE,
+        None,
+    )
+    again = _control(world, "abort", "k-abort-2")
+    assert (again.status_code, again.json()["detail"]["error"]["details"]["refusal"]) == (
+        409,
+        "campaign_completed",
+    )
+    assert not (await world.cycles.get_cycle(launched.cycle_id)).cancelled
+
+
 async def test_abort_cancels_a_cycle_waiting_between_workloads(world):
     """#2214: entered at the abort route. The campaign's increment cycle has finished its proposal
     run, and its framing workload is pending: where a supervisor aborts from. Bug caught: the
@@ -730,6 +803,7 @@ async def _escalation(world: _World, *, ended: str | None) -> str:
         stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
+        merge_decisions=merge_decisions_yaml(),
     )
     opening = opening_transition(
         identity,

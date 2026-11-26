@@ -40,7 +40,7 @@ class _World:
         self.clock = Clock()
         self.store = MemoryWorkerRegistryStore()
         self.registry = WorkerRegistry(self.store, clock=self.clock)
-        self.api = RegistryWorkerApi(self.registry)
+        self.api = RegistryWorkerApi(self.registry, self.clock)
         self.runner = ScriptedRunner(self.clock)
         self.worker = Worker(
             self.api,
@@ -109,6 +109,50 @@ async def test_a_queued_operation_is_run_and_settled_with_the_tools_result(w):
     assert session.tool_versions == {"scripted-editor": "7.2"}
     assert w.runner.runs == [queued.request]
     assert w.runner.resets == 1  # at start (#3046), and none for a run that ended cleanly
+
+
+async def test_a_tool_that_answers_a_probe_late_while_it_runs_keeps_its_lease(w):
+    """#3185, entered at ``Worker.serve()``. Bug caught: a renewal that waits on a probe of the
+    tool. Roblox Studio answered one after 60 seconds while a play was ending, the 60-second
+    lease ran out behind it, and a finished play was taken from the worker. Here a probe made
+    while the tool runs lasts 90 seconds, and the 150-second operation is accepted on its
+    first attempt because the tool is never probed while it runs."""
+    queued = await w.enqueue()
+    w.runner.run_seconds = 150
+    w.runner.busy_probe_seconds = 90
+
+    async with Serving(w.worker) as serving:
+        await serving.until(w.settled(queued.operation_id))
+
+    assert await w.attempts() == [(1, "accepted")]
+    assert (await w.stored(queued.operation_id)).result == passing("dispatch-1")
+    assert w.runner.probes_while_running == 0
+    assert w.runner.resets == 1  # the start's (#3046), and none for a claim that was kept
+    ((_, health),) = await w.registry.sessions()
+    assert health == "online"
+
+
+async def test_an_operation_that_ends_while_a_refused_renewal_is_out_submits_and_isnt_reset(w):
+    """#3185's second half. Bug caught: a worker that reads a refused renewal as "the tool is
+    still running", so it resets a tool that had returned (the reset is what relaunched Studio
+    into an update, #3184) and tells the runtime nothing of the finished result. The renewal
+    here is 70 seconds in flight against a 60-second lease, and the 20-second operation ends
+    inside it. The late result reaches the runtime, which refuses and records it; the tool
+    isn't stopped or reset; and the second attempt runs on it as it stands."""
+    queued = await w.enqueue(max_attempts=2)
+    w.runner.run_seconds = 20
+    w.api.renewal_takes = [70]
+
+    async with Serving(w.worker) as serving:
+        await serving.until(w.settled(queued.operation_id))
+
+    assert await w.attempts() == [(1, "expired"), (2, "accepted")]
+    refused = await w.registry.refusals(queued.operation_id)
+    assert [(r.fence.attempt, r.refusal.value) for r in refused] == [(1, "not_claimed")]
+    assert w.runner.stopped_at == []
+    assert w.runner.resets == 1  # the start's only
+    assert len(w.runner.runs) == 2
+    assert (await w.stored(queued.operation_id)).result == passing("dispatch-1")
 
 
 async def test_a_cancel_stops_the_tool_resets_it_and_settles_the_operation_interrupted(w):
@@ -217,9 +261,43 @@ async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
         "cancelled): ConnectionError: the editor is not answering"
     )
     assert refused.dispatch_id == "dispatch-2"
+    assert refused.tool_unready is True  # #3192: the worker's tool, never the request
     assert (await w.stored(third.operation_id)).result == passing("dispatch-3")
     assert [r.dispatch_id for r in w.runner.runs] == ["dispatch-1", "dispatch-3"]
     assert w.runner.resets == 2  # at start (#3046), and the one that held before the third
+
+
+async def test_a_reset_that_fails_at_a_claim_reads_not_ready_on_the_status_until_one_holds(w):
+    """#3184. In the rehearsal the worker's status file read ``tool_ready: true`` with no note
+    after two failed resets, while the runtime's row for it read offline. Bug caught: a status
+    that records the reset made at the start alone, so a host reading it (``squadops doctor``,
+    the service's own check) is told a tool is ready that every claim is refused on."""
+    reports = []
+    worker = Worker(
+        w.api, w.runner, worker_id="macbook", platform="darwin-arm64", clock=w.clock,
+        sleep=sleeping_on(w.clock), report=reports.append,
+    )  # fmt: skip
+    first = await w.enqueue(dispatch_id="dispatch-1")
+    w.runner.run_seconds = None
+
+    async with Serving(worker) as serving:
+        await serving.until(w.claimed(first.operation_id))
+        assert (reports[-1].tool_ready, reports[-1].tool_note) == (True, "")
+        w.runner.reset_raises = ConnectionError("the editor is not answering")
+        await w.registry.cancel(first.operation_id)
+        await serving.until(w.settled(first.operation_id))
+        assert (reports[-1].tool_ready, reports[-1].tool_note) == (
+            False,
+            "ConnectionError: the editor is not answering",
+        )
+
+        w.runner.reset_raises = None
+        w.runner.run_seconds = 0
+        second = await w.enqueue(dispatch_id="dispatch-2")
+        await serving.until(w.settled(second.operation_id))
+
+    assert (reports[-1].tool_ready, reports[-1].tool_note) == (True, "")
+    assert (await w.stored(second.operation_id)).result == passing("dispatch-2")
 
 
 async def test_a_worker_whose_session_was_ended_stops_its_tool_and_registers_again(w):

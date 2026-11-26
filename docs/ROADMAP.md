@@ -23,7 +23,42 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.7.0 (2026-11-10) — Current — the 2.6 line's debts closed
+### v2.8.1 (2026-11-20) — Current — what the 2.8 windows met, fixed
+
+**v2.8.1, the 2.8 line's first patch** (`docs/plans/2-8-1-plan.md`, adopted 2026-11-18; the cut record is
+`docs/plans/verification-sets/2-8-1-cut-record.md`):
+- **the scenario-writing skill carries the gate's rules** (#3199, SIP-0118 R5.8): six rules with worked examples and
+  a self-review. Its third text held the replay's predictions, and the MacBook lane's 32 plays and 16 headless runs
+  on the counted run's trees and their broken builds matched every frozen prediction;
+- **the runtime no longer stalls a worker after a gate** (#3218): the vault's index is kept in memory, with its file
+  IO off the event loop. In the closing window, no worker request took over 2 s across 32 gate entries;
+- **the Campaign-level repair of a blocked candidate, proved on a played product** (§10 row 8): D1–D4 hold;
+- **Studio's release channel is part of the worker's proof** (#3206, SIP-0117 R5.29), **a cycle's recorded ending
+  decides its status** (#3201), **an answered escalation reads answered** (#3174), and **a Luau product's suite
+  author is sent its own runner's rules** (#3147, SIP-0112 H.37);
+- **the existing stacks are unchanged:** one shakeout pair, both accepted.
+
+### v2.8.0 (2026-11-18) — a squad builds and plays an existing Roblox game
+
+**v2.8.0, a feature release** (`docs/plans/2-8-0-plan.md`, adopted 2026-11-11; the cut record is
+`docs/plans/verification-sets/2-8-0-cut-record.md`, the demonstration's record `2-8-0-demonstration-record.md`):
+- **the headline holds:** a squad on the Spark took two consecutive increments of Tower Ascension, a private copy of
+  an existing Roblox game, from design to accepted source, each proved in a real play session in Roblox Studio. It
+  held on the counted run's first attempt (`cmp_7ec826c9ec22`): the lobby hint and the session clock (SIP-0118,
+  #3043);
+- **game development on the platform** (SIP-0117): remote execution on a worker that serves Studio, the Luau runner,
+  Studio sync, read-back, reset and play, frozen play scenarios read through a closed vocabulary, Campaign delivery
+  on revision-bound Studio evidence, and re-qualification when Studio changes;
+- **agent skillsets** (SIP-0116, implemented): a squad's agents carry versioned skillsets, replay-tested on the
+  models that run them, and a cycle keeps and loads the skills its work requires;
+- **the correction route on a played product:** the repair diagnostic passed D1–D4 on its second attempt, after its
+  first found the seeded fault cutting the wrong text (#3208, #3210);
+- **the existing stacks are unchanged:** the shakeout pair took one round, both stacks accepted.
+
+The evidence doesn't cover feel, visuals, multiplayer, parts built in Studio, effects outside the scenario
+vocabulary, or the Campaign-level repair on a played product (the cut record's §5).
+
+### v2.7.0 (2026-11-10) — the 2.6 line's debts closed
 
 **v2.7.0, stabilization, feature-free by rule** (`docs/plans/2-7-0-plan.md`, adopted 2026-11-08; the cut record is
 `docs/plans/verification-sets/2-7-0-cut-record.md`):
@@ -1184,10 +1219,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-11-10 (v2.7.0):*
+*As of 2026-11-20 (v2.8.1):*
 
-- **Framework version**: 2.7.0
-- **SIPs** (2026-11-10, after the 2.7.0 sweep, which like 2.6.x's promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.8.1
+- **SIPs** (2026-11-20, after the 2.8.1 sweep, which promoted none; unchanged since the 2.8.0 sweep, which promoted SIP-0116): 71 implemented, 16 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113, 0115, 0117, 0118), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

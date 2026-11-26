@@ -291,6 +291,54 @@ class TestArtifactContentsPreResolution:
         )
         assert "qa.test's context would carry 6,291,456 bytes" in terminal.termination_reason
 
+    @pytest.mark.parametrize(
+        ("error", "kind"),
+        [
+            ("not-found", "artifact_missing"),
+            ("unreadable", "artifact_unreadable"),
+            ("unreachable", "artifact_unretrieved"),
+        ],
+    )
+    async def test_a_file_the_vault_cant_return_ends_the_run_naming_it(self, executor, error, kind):
+        """#3120, entered at ``_enrich_envelope``, the call every dispatch makes. Bugs caught: a
+        file the vault failed to return dropped with a warning, so the task is handed the tree
+        without it and reads the rest as the whole; a missing artifact reported as the vault not
+        answering, or the other way round."""
+        from squadops.cycles.failure_attribution import TerminalKind
+        from squadops.cycles.models import ArtifactNotFoundError, ArtifactUnreadableError
+        from squadops.execution.execution_errors import _ExecutionError
+        from squadops.tasks.models import TaskEnvelope
+
+        raised = {
+            "not-found": ArtifactNotFoundError("art_2"),
+            "unreadable": ArtifactUnreadableError("art_2: content doesn't match its hash"),
+            "unreachable": ConnectionError("the vault didn't answer"),
+        }[error]
+        kept = self._source_ref("art_1", "src/Shared/Rules.luau")
+        lost = self._source_ref("art_2", "src/Server/Main.server.luau")
+
+        async def retrieve(art_id):
+            if art_id == "art_2":
+                raise raised
+            return kept, b"return {}"
+
+        executor._artifact_vault.retrieve = AsyncMock(side_effect=retrieve)
+        envelope = TaskEnvelope(
+            task_id="t-qa", agent_id="eve", cycle_id="c", pulse_id="p", project_id="proj",
+            task_type="qa.test", correlation_id="x", causation_id="x", trace_id="x", span_id="x",
+        )  # fmt: skip
+
+        with pytest.raises(_ExecutionError) as ended:
+            await executor._enrich_envelope(envelope, {}, [], [("art_1", kept), ("art_2", lost)])
+
+        terminal = ended.value.terminal
+        assert (terminal.kind, terminal.failure_classification, terminal.task_id) == (
+            TerminalKind.INFRASTRUCTURE_FAILED,
+            kind,
+            "t-qa",
+        )
+        assert "src/Server/Main.server.luau (artifact art_2)" in terminal.termination_reason
+
     async def test_repair_patch_wins_over_original_on_filename_collision(self, executor):
         """RC3 (pf-23): when stored_artifacts accumulates a correction repair's
         patched file AFTER the original (same filename), re-resolution returns the

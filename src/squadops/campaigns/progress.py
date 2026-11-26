@@ -62,6 +62,7 @@ from squadops.campaigns.escalation import (
     parked_run,
     recorded_answers,
 )
+from squadops.campaigns.escalation_ending import end_decided, person_decision
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.evidence import CycleRecords, digest, package, serialized
 from squadops.campaigns.gate import (
@@ -157,6 +158,12 @@ _GATE_SWEEP_STATES = (
     CampaignState.REPAIRING,
     CampaignState.RETRYING,
 )
+#: Every other state a campaign can hold a decided escalation in (§24eh, #3174): the sweep ends
+#: one a person decided there, from the stored decision, and nothing else. A completed campaign's
+#: terminal row is its escalations' record (§24bk).
+_DECIDED_SWEEP_STATES = tuple(
+    state for state in CampaignState if state not in (*_GATE_SWEEP_STATES, CampaignState.COMPLETED)
+)
 
 #: How many repairs back a framing answer is looked for: a repair of a repair is bounded by the
 #: policy's per-increment repairs, and a cycle naming itself must not loop (#1902).
@@ -184,6 +191,16 @@ _RUNNING_STATES = frozenset(
 )
 
 
+#: The cycle endings a run declares in its terminal decision, by the stop reason the completion
+#: boundary records for it (``cycle_end.STOP_REASON_FOR_TERMINAL_KIND``). Each is asked before the
+#: proposal's endings, so a proposal run a skill stopped reads as the stop, never as a failed
+#: proposal that row 6 proposes again unexplained.
+_ENDING_DECLARED_BY_STOP: dict[CycleStopReason, CycleEnding] = {
+    CycleStopReason.CRITERIA_NOT_CHECKABLE: CycleEnding.CRITERIA_NOT_CHECKABLE,
+    CycleStopReason.SKILL_STOPPED: CycleEnding.SKILL_STOPPED,
+}
+
+
 def cycle_ending(
     stopped_because: CycleStopReason,
     last_run: Run,
@@ -201,8 +218,9 @@ def cycle_ending(
     ``binding_hold.held_expiry``); a framing run stopped at its plan gate is
     ``stopped_at_plan_gate`` (§24cb, #2704); an implementation run that ended at its qa task
     because a criterion's test already passes on the head is ``criteria_not_checkable`` (§24cz,
-    #2890; the completion boundary reads it from the run's terminal decision); everything else
-    reached its assessment."""
+    #2890; the completion boundary reads it from the run's terminal decision); any run, a
+    proposal's included, that a task's skill stopped is ``skill_stopped`` (§24dz, SIP-0116 §17o;
+    read the same way); everything else reached its assessment."""
     if parked and last_run.status == RunStatus.CANCELLED.value:
         return CycleEnding.PARKED
     if held is not None and last_run.status == RunStatus.CANCELLED.value:
@@ -211,8 +229,9 @@ def cycle_ending(
             if held is binding_hold.HoldClass.STORE
             else CycleEnding.HELD_INPUT
         )
-    if stopped_because is CycleStopReason.CRITERIA_NOT_CHECKABLE:
-        return CycleEnding.CRITERIA_NOT_CHECKABLE
+    declared = _ENDING_DECLARED_BY_STOP.get(stopped_because)
+    if declared is not None:
+        return declared
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE
@@ -224,19 +243,6 @@ def cycle_ending(
     if last_run.workload_type == WorkloadType.FRAMING and stopped_because in _GATE_STOPS:
         return CycleEnding.STOPPED_AT_PLAN_GATE
     return CycleEnding.ASSESSED
-
-
-def _person_decision(run: Run, gate_name: str) -> str | None:
-    """Who decided ``gate_name`` on ``run``, when a person (or a declared agent) did; ``None`` when
-    nobody has, or only a machine path has."""
-    return next(
-        (
-            d.decided_by
-            for d in run.gate_decisions
-            if d.gate_name == gate_name and not is_machine_decision(d.decided_by)
-        ),
-        None,
-    )
 
 
 def decision_transition(
@@ -1355,12 +1361,27 @@ class CampaignProgress:
         resolved when a person decided its gate, superseded when its run stopped waiting without
         one, expired when the ruling bound passed with it still waiting. An expiry cancels the
         run, so the cycle ends parked; a person's decision that lands first wins, and the run is
-        left to it. One campaign that cannot be swept does not stop the rest."""
+        left to it. One campaign that cannot be swept does not stop the rest.
+
+        §24eh (#3174): a person's decision ends its escalation at the gate route. A decision
+        whose ending wasn't written there (the runtime stopped between the two) is ended here,
+        in whatever state its campaign has reached since."""
         written = []
         for state in _GATE_SWEEP_STATES:
             for campaign in await self._campaigns.campaigns_in_state(state):
                 try:
                     written.extend(await self._end_escalations(campaign))
+                except Exception:
+                    logger.exception(
+                        "campaign_escalation_sweep_failed",
+                        extra={"campaign_id": campaign.campaign_id},
+                    )
+        for state in _DECIDED_SWEEP_STATES:
+            for campaign in await self._campaigns.campaigns_in_state(state):
+                try:
+                    written.extend(
+                        await end_decided(self._campaigns, self._cycles, campaign, self._clock())
+                    )
                 except Exception:
                     logger.exception(
                         "campaign_escalation_sweep_failed",
@@ -1381,11 +1402,12 @@ class CampaignProgress:
         waiting = await self._waiting_gate(campaign)
         runs = {}
         for esc in pending:
-            run = await self._cycles.get_run(esc.run_id)
+            decision = person_decision(await self._cycles.get_run(esc.run_id), esc.gate_name)
             runs[esc.run_id] = RunAtGate(
                 waiting=waiting is not None
                 and (waiting.run_id, waiting.gate_name) == (esc.run_id, esc.gate_name),
-                decided_by=_person_decision(run, esc.gate_name),
+                decided_by=decision.decided_by if decision is not None else None,
+                decided_at=decision.decided_at if decision is not None else None,
             )
         for transition in closing_transitions(campaign, log, runs, self._clock()):
             try:

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
@@ -27,6 +28,16 @@ import asyncpg
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+#: #3218: a connection slower than this to come from the pool is logged. Beside the runtime's
+#: event loop watchdog it says whether a slow request waited on the pool or on a held loop.
+SLOW_ACQUIRE_S = 1.0
+
+
+def _log_if_slow_acquire(waited_s: float) -> None:
+    if waited_s > SLOW_ACQUIRE_S:
+        logger.warning("slow_pool_acquire waited_s=%.2f", waited_s)
+
 
 #: Taking a connection failed before anything ran on it: refused or unreachable (``OSError``), the
 #: server starting or stopping (57P03), or out of connections (53300).
@@ -76,8 +87,10 @@ class TransientRetry:
         """A connection from ``pool``, taking it again when it could not be made."""
         async with contextlib.AsyncExitStack() as stack:
             for attempt in range(1, self.attempts + 1):
+                started = time.monotonic()
                 try:
                     conn = await stack.enter_async_context(pool.acquire())
+                    _log_if_slow_acquire(time.monotonic() - started)
                     break
                 except CONNECT_FAILURES as error:
                     if attempt == self.attempts:

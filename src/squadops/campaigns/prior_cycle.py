@@ -124,6 +124,11 @@ def prior_cycle_brief(
     ended = [s.terminal.termination_reason for s in summaries if s.terminal is not None]
     if any(ended):
         brief["correction_ended"] = next(r for r in reversed(ended) if r)
+    # §24dz (SIP-0116 §17o): the stop a ``skill_stopped`` run ended on, read from its terminal
+    # decision, never from the failure reason's text. The last one, when more than one run stopped.
+    stops = [s.terminal.skill_stop for s in summaries if s.terminal and s.terminal.skill_stop]
+    if stops:
+        brief["skill_stop"] = {**stops[-1], "line": _bounded(stops[-1]["line"])}
     return brief
 
 
@@ -200,6 +205,7 @@ def brief_lines(brief: Any) -> str:
     for name in (*BRIEF_INDICATORS, "primary_cause"):
         if name in brief:
             lines.append(f"- {name.replace('_', ' ')}: {_value(brief[name])}")
+    lines.extend(_stop_lines(brief.get("skill_stop")))
     met = brief.get("already_met") or ()
     if met:
         # #2315: its evaluation found these already met. Each one's test passed on the accepted
@@ -226,6 +232,17 @@ def brief_lines(brief: Any) -> str:
     if brief.get("correction_ended"):
         lines.append(f"- the chain ended: `{brief['correction_ended']}`")
     return "\n".join(lines)
+
+
+def _stop_lines(stop: Any) -> list[str]:
+    """§24dz (SIP-0116 §17o): the skill's own line, as the model wrote it, under the skill that
+    declares it. None when the cycle wasn't stopped by a skill."""
+    if not isinstance(stop, dict) or not stop.get("line"):
+        return []
+    return [
+        "\nStopped by a skill, with this line:",
+        verbatim_block(f"{stop['skillset']}/{stop['skill']}", stop["line"]),
+    ]
 
 
 def _evaluation_lines(findings: Any, already_shown: set[str]) -> list[str]:

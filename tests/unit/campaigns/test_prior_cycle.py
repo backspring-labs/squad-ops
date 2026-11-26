@@ -375,6 +375,54 @@ def test_a_row_written_before_rounds_were_recorded_has_none_to_show():
     assert "correction_rounds" not in prior_cycle_brief(_failed(), (), [_loop(None)])
 
 
+def test_a_skill_stop_is_read_from_the_runs_terminal_decision_and_shown_verbatim():
+    """§24dz (SIP-0116 §17o). Bugs caught: the next proposal told the increment failed but not
+    the skill's line, so it proposes into the same stop; the line taken from an earlier run's
+    stop rather than the last; or a line carrying backticks breaking out of its block."""
+    from squadops.cycles.failure_attribution import TerminalKind
+    from squadops.cycles.llm_usage import RunUsage
+    from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
+
+    def stopped(run_id, line):
+        return RunLoopSummary(
+            run_id=run_id,
+            usage=RunUsage(by_task_type={}, tasks_reported=0, tasks_unreported=()),
+            terminal=RunTerminalDecision(
+                kind=TerminalKind.SKILL_STOPPED,
+                skill_stop={
+                    "skillset": "roblox-luau-dev",
+                    "skill": "luau-gameplay",
+                    "opening": "saved data:",
+                    "line": line,
+                },
+            ),
+        )
+
+    last = "saved data: `Coins` would be renamed"
+    brief = prior_cycle_brief(
+        _failed(),
+        (),
+        [stopped("run_1", "saved data: Lives would be removed"), stopped("run_2", last)],
+    )
+    lines = brief_lines(brief)
+
+    assert brief["skill_stop"]["line"] == last
+    assert "Stopped by a skill, with this line:" in lines
+    assert (
+        "`roblox-luau-dev/luau-gameplay`:\n```\nsaved data: `Coins` would be renamed\n```" in lines
+    )
+    assert "Lives would be removed" not in lines
+
+
+def test_a_cycle_no_skill_stopped_carries_no_stop():
+    """Edge: only a ``skill_stopped`` decision carries one. Bug caught: a stop section shown for
+    a cycle that failed some other way, sending its proposal to the wrong template."""
+    brief = prior_cycle_brief(_failed(), (), [_loop(None)])
+
+    assert "skill_stop" not in brief
+    assert "Stopped by a skill" not in brief_lines(brief)
+
+
 def test_the_criteria_already_met_are_shown_with_what_each_asserts():
     """#2315. Bug caught: the next proposal shown only that the last increment was abandoned, not
     that its criteria were met already, so it proposes the same behaviour again."""

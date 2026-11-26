@@ -1,0 +1,21 @@
+api_version: squadops.skillset/v1
+skillset:
+  id: roblox-studio-qa
+  version: 1
+  description: Writes a Roblox game's headless Luau tests for the product's own runner, and plays its frozen scenarios in Studio on the worker
+  roles: [qa]
+  platform: {id: roblox, variants: [studio-place]}
+  # The unit tests' runner and Lune are the product's (SIP-0117 R5.13), installed by its own setup.
+  # The scenarios need the Studio worker, whose availability is read at creation and at dispatch
+  # through the tool's provider (SIP-0116 §8, #3036).
+  prerequisites:
+    - provider: roblox-studio
+  capabilities:
+    - contract: game.unit_tests
+      modes: [headless]
+      skills: [luau-test-loader, shared/luau-conventions]
+    - contract: game.scenario_verification
+      modes: [play]
+      skills: [studio-play-scenario]
+      tools:
+        - {id: play_scenario, provider: roblox-studio, location: worker}

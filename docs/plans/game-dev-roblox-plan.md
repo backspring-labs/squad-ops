@@ -28,6 +28,9 @@
   worker;
 - §5's counted run is in an attended window, after the worker service's reboot check (#3046);
 - a read-only Studio first slice is an early read on the 2.8 plan's Studio gate (its §5).
+- every cycle runs on the Spark: the `game-dev-roblox-lite-14b` squad profile is dropped, and phase 3's rehearsal
+  and repair diagnostic run on the Spark with the MacBook's worker (the 2.8 plan's revision 4, 2026-11-16; SIP-0118
+  R5.4).
 
 ## Revision log
 

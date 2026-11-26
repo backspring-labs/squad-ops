@@ -161,6 +161,9 @@ def product_context(
         ),
         placements=tuple(RunnerPlacement.from_dict(p) for p in profile.get("placements") or ()),
         test_files=tuple(str(g) for g in profile.get("test_files") or ()),
+        # SIP-0112 H.35 (#3155): absent from an input composed before it, or for a product
+        # that reserves none; then nothing is reserved, as before.
+        reserved_paths=tuple(str(e) for e in profile.get("reserved_paths") or ()),
         judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
         route_anchors=_route_anchors(product.get("approved_manifest")),
         accepted_pages=tuple(page_inventory(accepted_pages, required=required).items()),
@@ -295,12 +298,18 @@ async def _context_sections(
             {"proposed_lines": proposal_lines(proposed)},
         )
         out["qa_proposed_behaviours_section"] = section.content
-    abandoned = brief_lines(block.get("abandoned_increment"))
+    brief = block.get("abandoned_increment")
+    abandoned = brief_lines(brief)
     if abandoned:
         # SIP-0109 §7, row 13 (#1692): a fresh proposal is shown why the last increment was
-        # abandoned, so it does not propose the same failure again unchanged.
+        # abandoned, so it does not propose the same failure again unchanged. §24dz, row 20: one
+        # a skill stopped is shown as stopped, with the skill's line, since nothing was built.
+        stopped = isinstance(brief, dict) and bool(brief.get("skill_stop"))
         section = await renderer.render(
-            "request.proposal_abandoned_increment", {"brief_lines": abandoned}
+            "request.proposal_stopped_by_skill"
+            if stopped
+            else "request.proposal_abandoned_increment",
+            {"brief_lines": abandoned},
         )
         out["abandoned_increment_section"] = section.content
     return out
@@ -528,6 +537,16 @@ async def product_sections(
         )
         rendered = await renderer.render("request.proposal_product_gaps", {"gap_lines": lines})
         profile_variables["gaps_section"] = rendered.content
+    reserved = profile.get("reserved_paths") or []
+    if reserved:
+        # SIP-0112 H.35 (#3155): shown before the rails refuse a footprint that names one.
+        rendered = await renderer.render(
+            "request.proposal_reserved_paths",
+            {"reserved_lines": "\n".join(f"- `{entry}`" for entry in reserved)},
+        )
+        # On the gaps' own line in the template, so a product that reserves nothing renders the
+        # request it always did, to the byte. Its paragraph break is carried here.
+        profile_variables["reserved_paths_section"] = "\n\n" + rendered.content.strip("\n")
     head = str(product["head"]["commit"])
     approved = product.get("approved_manifest")
     sections: dict[str, str] = {}

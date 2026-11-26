@@ -145,6 +145,31 @@ class ArtifactFilter:
 ARTIFACT_CONTENTS_LIMIT_BYTES = 4 * 1024 * 1024
 
 
+class ContentsUnavailable(RuntimeError):
+    """A file the resolution selected couldn't be read from the vault (#3120). The task is never
+    handed the tree without it: it would read the rest as the whole. ``kind`` says which way it
+    failed, so a missing artifact is never taken for a vault that didn't answer:
+    - ``artifact_missing``: the vault doesn't hold the artifact the run's record names;
+    - ``artifact_unreadable``: it holds it, and its content doesn't match its record;
+    - ``artifact_unretrieved``: the retrieval failed otherwise, such as the vault not answering.
+    """
+
+    def __init__(
+        self, task_type: str, artifact_id: str, filename: str, kind: str, error: Exception
+    ):
+        self.task_type, self.artifact_id, self.filename, self.kind = (
+            task_type,
+            artifact_id,
+            filename,
+            kind,
+        )
+        super().__init__(
+            f"{task_type}'s context includes {filename} (artifact {artifact_id}), and the vault "
+            f"didn't return it ({kind}): {type(error).__name__}: {error}. A task is never handed "
+            "a tree without one of its files"
+        )
+
+
 class ContentsOverLimit(ValueError):
     """A resolution would carry more than :data:`ARTIFACT_CONTENTS_LIMIT_BYTES` (#3118)."""
 
@@ -292,6 +317,7 @@ _SHARED_CONTEXT_TEMPLATES = (
     "request.source_repository_appendix",
     "request.source_repository_checks_block",
     "request.source_repository_existing_files_block",
+    "request.source_repository_new_files_block",
     "request.source_repository_instructions_block",
     "request.source_repository_runners_block",
     # #2612: how a step that may remove a file does, in its grant's terms, one at a time.
@@ -325,7 +351,11 @@ _DEVELOP_APPENDIX_TEMPLATES = (
 _PLANNING_TEMPLATES = (
     "request.planning_task_base",
     "request.increment_framing_section",
+    # #3173: the footprint's files the framework writes itself, beside the change request.
+    "request.increment_framework_files_section",
     "request.increment_ruling_notes_section",
+    # #3143: on a Luau product, how a criterion's test reaches a module the change adds.
+    "request.increment_added_module_test_luau_appendix",
     "request.plan_reroll_rejected_plan_appendix",
     "request.plan_reroll_rejection_appendix",
     "request.target_stack_section",
@@ -334,14 +364,20 @@ _PLANNING_TEMPLATES = (
 )
 _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_authoring_rules_appendix",
+    # #3163: the shape a brief conflict is read in, in both task proposers' output examples.
+    "request.plan_proposal_brief_conflicts_shape",
     "request.plan_bind_criteria_appendix",
     "request.plan_blocking_gaps_appendix",
+    # #3155: the paths the product's owner reserves, shown beside where its checks can't run.
+    "request.plan_reserved_paths_appendix",
     "request.plan_frozen_surface_appendix",
     # #2795: the qa proposer's, and the development proposer's, which tells it the files are qa's.
     (
         "request.plan_increment_criteria_appendix",
         "request.plan_increment_criteria_development_appendix",
     ),
+    # #3143: shown with the criterion files' appendix, on a Luau product.
+    "request.increment_added_module_test_luau_appendix",
     "request.plan_increment_footprint_appendix",
     "request.plan_increment_frozen_appendix",
     "request.plan_increment_regenerated_appendix",
@@ -455,6 +491,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.increment_views_appendix",
             # #2799: a page criterion's test on a vitest product, from its test scope.
             "request.increment_page_loader_appendix",
+            # #3143: a criterion's test for a module the change adds, on a Luau product.
+            "request.increment_added_module_test_luau_appendix",
             *_SHARED_CONTEXT_TEMPLATES,
             *_CYCLE_TASK_RETRY_TEMPLATES,
         ),
@@ -609,7 +647,9 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.proposal_accepted_prd",
             "request.proposal_outcome_goals",
             "request.proposal_quality_moves",
-            "request.proposal_abandoned_increment",
+            # SIP-0109 §24dz: one section, under the heading for an increment a skill stopped
+            # when its brief carries the stop. Alternatives: the larger is counted.
+            ("request.proposal_abandoned_increment", "request.proposal_stopped_by_skill"),
             "request.proposal_frozen_conventions",
             "request.proposal_prd_section",
             "request.proposal_qa_proposed_behaviours",
@@ -621,6 +661,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.strategy_propose_product_increment",
             "request.proposal_product_profile",
             "request.proposal_product_gaps",
+            # SIP-0112 H.35 (#3155): the paths the product's owner reserves from a cycle's change.
+            "request.proposal_reserved_paths",
             # SIP-0109 §24cp: the pages acceptance already reads, which a criterion names no
             # anchor on.
             "request.proposal_judged_routes",
@@ -747,6 +789,8 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         "request.increment_views_appendix",
         # #2799: a qa repair of a page criterion's test on a vitest product, from its test scope.
         "request.increment_page_loader_appendix",
+        # #3143: a qa repair of a criterion's test for a module the change adds, on a Luau product.
+        "request.increment_added_module_test_luau_appendix",
         *_DEVELOP_APPENDIX_TEMPLATES,
     ),
     # #2810: it carries the whole accepted tree for its own evaluation (#1229) and the failed

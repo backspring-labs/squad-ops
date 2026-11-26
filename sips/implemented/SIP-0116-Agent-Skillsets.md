@@ -1,11 +1,11 @@
 ---
 sip_uid: '17942318023754850'
 title: Agent Skillsets
-status: accepted
+status: implemented
 author: Jason Ladd
 created_at: '2026-11-09T00:00:00Z'
 sip_number: 116
-updated_at: '2026-11-09T17:12:21.413769Z'
+updated_at: '2026-11-18T22:56:41.151631Z'
 ---
 # SIP-0116: Agent Skillsets
 
@@ -17,7 +17,7 @@ they can be rulings"); revision 3 applied the review's refinement on specializat
 be built in a MacBook worktree during 2.7, as the 2.7 plan's §5a records (the owner's D6 ruling on PR #2972,
 2026-11-08). Nothing merges until 2.8 opens and its plan places them.
 **Revision:** 3
-**Target:** unplaced. A 2.8 feature and the MacBook lane's input to the 2.8 plan. It creates no exception for the stabilization line before it.
+**Target:** shipped in 2.8.0, all six phases, with every existing stack's cycles unchanged (the 2.8.0 cut's shakeout pair).
 **Authors:** Jason Ladd (Backspring Labs / SquadOps)
 **Split from:** Capability-Backed Agents (proposed, deferred to 3.x), as the first of the bounded SIPs its §17 plans.
 This SIP takes that SIP's four layers (its §21) and its assembly rules (its §27) into 2.x, restated against the
@@ -127,7 +127,7 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
   changes the first and the last, so it builds in 2.8 at the earliest.
 - **Questions:** Q52–Q67, ruled 2026-11-09 (§13 and the portfolio).
 
-## Delivery ledger (current as of 2026-11-10)
+## Delivery ledger (current as of 2026-11-18, the 2.8.0 cut)
 
 | part | status | where |
 |---|---|---|
@@ -141,6 +141,14 @@ Checked against `sips/PORTFOLIO.md`: every live SIP, plan placement and recorded
 | Phase 5, part 2: size preflight counts the skills a Campaign's start would assign (§17f point 6, §17l, §17m) | **shipped** | 2.8 (PR #3104, closing #3037) |
 | Phase 6, part 1: lessons, the recall identity and declared supersession: a repository-backed cycle recalls under its pinned development profile and records the identity it used, and a lesson a loaded skill supersedes is omitted with its reason (§10a, §17i) | **shipped** | 2.8 (PR #3079; #3038 tracks part 2) |
 | Phase 6, part 2: lessons flagged when learned under an earlier version of a skill the task loads, and the promotion review (§10a, §17i, §17j) | **shipped** | 2.8 (PR #3083, closing #3038) |
+| A skill's stops: declared in its front matter, read from every authoring answer, and a stopped task ending its run as `skill_stopped` with the stop carried (§17o). The Campaign's handling of that ending is SIP-0109's | **shipped** | 2.8 (PR #3132; #3041 tracks the Roblox squad's rest) |
+| The skills replay: a `skills` arm on the authoring replay, the equipment built as a cycle builds it, swapped cases, and each answer judged by its case's declared stop, acceptance, emitted files, scenario criterion and passing specs; the nine Roblox cases (§17p). Its run on the Spark's models is #3041's | **shipped** | 2.8 (PR #3141; #3041 tracks the Roblox squad's rest) |
+| The first skills replay read (`roblox-skills-v1`: every ordinary case passed, each skillset failed on its stop case), the three skills' stops revised for `roblox-skills@2`, and a suite left to the product's runner judged by that runner (§17r) | **shipped** | 2.8 (PR #3151, closing #3150; #3041 tracks the second replay) |
+| The second skills replay read (`roblox-skills-v2`: `roblox-luau-dev` and `roblox-studio-qa` admitted, `roblox-increment-design` failing on one case), and the strategy skill told which scenarios a disclosed gap means (§17s) | **shipped** | 2.8 (PR #3153; #3041 tracks the third replay) |
+| The third skills replay read (`roblox-skills-v3`: all three skillsets pass, one stop overridden in one answer of three), and the `game_dev_roblox` profile registered on it (§17t, §17q) | **shipped** | 2.8 (PR #3145; #3041 tracks the first cycle under the profile, #3154 the stop's recorded line, #3155 the reserved paths) |
+| A stop is read from the model's own line, and a line the skill itself shows is passed over (§17u) | **shipped** | 2.8 (PR #3156, closing #3154) |
+| A worker's tool is available only on a runtime that binds remote execution, at creation and at dispatch (§17w) | **shipped** | 2.8 (PR #3162, closing #3159) |
+| A provider's authority is asked about the squad's footprint, without the scenario declarations the framework writes (§17x) | **shipped** | 2.8 (PR #3175, closing #3173) |
 
 **What closes this SIP:** phases 1–6 shipped, with the first consumer's stack (Roblox) switched on and every existing
 stack's cycles unchanged.
@@ -1231,6 +1239,592 @@ is as it was. `tool_checks.authorization_findings` became async, and its one cal
 three cases apart, the footprint's absence explicit, the text read lazy and bounded, and a wiring test). The owner
 handed #3042's registration part to the Spark lane the same day, as the MacBook lane relayed it ("yes hand it to
 spark").
+
+### 17o. A skill declares its stops, and a stopped task ends its run (2026-11-16, §7; #3041)
+
+**What changed.** §7 says what a skill is and how it is loaded. It says nothing of a skill that tells the model to
+refuse a task. The three Roblox skills each do: a criterion whose effect the scenario reader can't observe, a product
+with no test runner, a change that would rename a saved field. Each asks for the reason in one line. A skill may now
+declare those lines, one reader finds them in an answer, and a task whose model answers with one ends its run there.
+
+**The evidence.**
+- **Nothing read the lines.** The prompt standard's rule 7 holds that a line inviting the model to object is a
+  contract, and a lie when nothing consumes it. The outside review of #3105 named it for the proposal (call c).
+- **What each stop became, read in the code:**
+  - a proposal with no `change_request.yaml` block was asked again, then failed as "refused after its revision
+    budget", with the model's reason lost;
+  - a dev or QA answer with no file read as an empty emission and went to correction.
+
+  So the model was asked again for what its skill told it to refuse.
+
+**The declaration.** A skill's `SKILL.md` front matter may carry `stops`, a list. Each entry is the opening words of
+the one line, ending in a colon: `stops: ["no scenario:"]`. A skillset's load refuses:
+- a value that isn't a list of strings;
+- an entry with no colon at its end, or with a backtick or a line break in it;
+- an entry declared twice, without regard to case;
+- an entry the skill's own text never shows, since the text is how the model learns the line.
+
+Core holds no skill's words (the companion's R4.6). It reads what a task's handed skills declare.
+
+**The reader** (`capabilities/skill_stops.read_stop`) takes a task's handed skills and an answer:
+- a line is compared without the decoration around it (a list marker, a quote mark, inline code, bold) and without
+  regard to case, since a model shown the line in inline code may write it in a list or with a capital;
+- the opening words must open the line. A mention of them inside a sentence is no stop;
+- an opening with nothing after it is no stop, because the line exists to carry a reason;
+- the first such line in the answer is the one read.
+
+**A stop line is the stop, with or without an emission beside it.** An answer that says its effect can't be observed
+and also writes the scenario has told the reader not to trust the scenario.
+
+**Where it is read: the one call every authoring answer passes** (`_llm_call`), after the call is accounted, logged
+and recorded as any other, and before any parser reads the answer.
+- The stop is set on the task's context, and the call raises `SkillStopped`, an `LLMError`. So each seam's own
+  `except LLMError` ends its task, as it does for a failed call.
+- A seam whose own loop asks again (the proposal's revision loop) is refused before the model is called.
+- **The handler executor ends the task with the stop,** whatever the handler returned or raised: the result fails,
+  its error names the skill and the line, and its evidence carries the stop under `SKILL_STOP_EVIDENCE`.
+
+**The run ends at once,** as it does for a refused input (#2553): no retry, no correction.
+- Its terminal decision is a kind of its own, `skill_stopped`, carrying the stop (`RunTerminalDecision.skill_stop`:
+  the skillset, the skill, the opening words and the line). Whoever continues from the run reads the line from the
+  decision, never from the failure reason's text. A decision with no stop is stored as it was before.
+- It is attributed `criteria_or_contract_failure`: what was asked is at fault, as an uncheckable criterion is
+  (`criteria_not_checkable`), not the work. `input_refused` would misread it, since that names an envelope its
+  handler refuses every time, and a stop is the model's judgement under its equipment.
+- The cycle's stop reason is `skill_stopped`, read from the terminal decision as `criteria_not_checkable` is.
+
+- A cycle's ending is stored under a CHECK list of the stop reasons, so migration `2202` replaces that list with
+  `skill_stopped` in it. The guard that holds the list equal to `CycleStopReason` found it.
+
+**The packaged skills.**
+- `play-scenario-authoring` declares `no scenario:` and `luau-test-loader` declares `no tests/run.luau:`. The front
+  matter is shown to no model (§7), so what each of those two models reads is unchanged.
+- **`luau-gameplay`'s stop gains a fixed opening,** `saved data:`, and declares it. Its text asked for the saved
+  field "in one line" with no fixed form, so there was nothing a reader could match. The line is now
+  `saved data: <field> would be <renamed, moved or removed>`, with "Write no file" before it, as the other two
+  skills say. This edits a skill the owner approved, and the owner approved the edit (2026-11-16: "yes to the dev
+  skill recommendaiton"). Its replay on the Spark's models reads the new wording.
+
+**Not built here, deliberately:**
+- **What a Campaign does with a run that ended this way.** It is the Spark lane's, with a numbered amendment to
+  SIP-0109's continuation table: abandoned before a verdict, uncounted against the repair budget, and the next
+  proposal shown the stop's line. Until it is built, a stopped proposal run reads `proposal_failed` and a stopped
+  increment run reaches its assessment, as before, with the run's ending naming the stop.
+- **A repair task's stop.** The repair's task ends naming the stop, and the correction runner reads a failed repair
+  as it did. It reads no refused input there either.
+
+**The evidence it works.**
+- **Wiring:** `test_skill_stop_ends_the_task.py` enters at `HandlerExecutor.execute`, with the real develop and dev
+  repair handlers and prompt assets. One model call, the task failed, the skill and line named, the stop in its
+  evidence. The same words from a task handed no such skill are no stop, and a task handed the skill that does its
+  work is not stopped.
+- **The proposal's loop:** `test_a_proposal_answered_with_its_skills_stop_is_not_asked_to_revise` enters at the
+  proposal handler's `handle()` with two attempts allowed, and the model is called once.
+- **The run:** `test_a_task_stopped_by_its_skill_ends_the_run_carrying_the_stop` enters at `execute_run`. One
+  dispatch, the run failed naming the stop, and the terminal decision carries it.
+- **The packaged skills:** each of the three's own stop line is read from what a task is handed through the cycle's
+  supply (`kept_document`, `skills_for`, `skills_input`).
+- **The stored forms:** the run-ending characterization's golden gains `"skill_stop": null` on its two terminal
+  decisions and nothing else. It records the decision's every field, and a stored decision writes the key only when
+  it has a stop.
+
+**Who ruled.** The MacBook lane, under the owner's delegation, after the outside review's call c. The shape and the
+split with the Campaign's side were agreed with the Spark lane on 2026-11-16 (#3041). The owner approved
+`luau-gameplay`'s new wording the same day.
+
+### 17p. The skills replay: how a skill is tested before a profile requires it (2026-11-16, §7; #3041)
+
+**What changed.** §7 says each skill is replay-tested on the models that will run it before it is used (Q47's rule).
+It doesn't say how, and the order makes it awkward: a skill loads only where a development profile requires its
+skillset, and a profile may require it only once it has passed. So the test can't be a cycle on that profile. This
+section says what the test is. It adds one arm to the authoring replay SIP-0110 built (its §0.11), and no second
+runner.
+
+**The instrument.**
+- **The capture.** One cycle on the product with no skill loaded: the squad that will carry the skillsets, under a
+  development profile that requires none. Its authoring envelopes are the cases' starting points: one of each task
+  type a case names. A Campaign's cycle holds them in two runs, the proposal's and the build's, so the runner
+  takes them by envelope id.
+- **Two arms.** The baseline is the captured task as it stands. The `skills` arm is the same task handed what a
+  cycle requiring the case's skillset would hand it.
+- **The equipment is built as a cycle builds it** (`cycles/skillset_replay.task_equipment`): the skillset assigned to
+  the envelope's agent, the copy a cycle keeps of it, and the skills that copy loads for the task's type, through
+  `kept_document` and `skills_for`. A proposal is also handed the scenario vocabulary its cycle would keep, from the
+  skillset that supplies the scenario operation. It is built inside the agent's container, from the image's own
+  packaged skillsets, so the text tested is the text deployed.
+- **Validity, before any model call.** An unswapped case's baseline must reconstruct its captured prompt byte for
+  byte. Every case's skills arm must differ from its baseline only by the rendered skills section. A capture that
+  already holds skills is refused as their baseline.
+- **A swapped case** puts a task the capture didn't hold in front of the same seam, by changing named inputs: a
+  value replaced, text replaced within one, or an input removed. No capture stands behind its prompt, so it is
+  checked against its own baseline and says so in its record. A swap that changes nothing is refused.
+- **Where it runs.** In the agent container of the envelope's role, with the image's own handler and prompt assets,
+  on the deploy's own model configuration. Nothing is written to a store. The records go to
+  `var/replays/<experiment>/`.
+
+**The cases** are a file under `scripts/dev/skill_replay_cases/`, headed by its name and version. An experiment's
+manifest pins the file by its text, and each case's skillset, swaps and expectation are frozen with it. A changed
+file is a new version and a new experiment.
+
+**What a skills-arm authoring is judged by** (`memory/skill_replay.judge`). Nothing here parses an answer by a rule
+of its own:
+- `stop`: the declared stop `_llm_call` read from the answer (§17o), by its opening words;
+- `accepted`: the handler's own verdict on the answer;
+- `emits`: the paths of the files the handler accepted;
+- `emits_expected`: every file the task's own `expected_artifacts` names is among them. A captured case names no
+  file of its own, since a capture taken again brings another proposal and another plan;
+- `scenario_criterion`: the accepted change request holds a scenario criterion. The proposal's rails have already
+  read each one strictly against the vocabulary;
+- `specs_pass`: the emitted specs, laid over a copy of a product checkout and run by the product's own runner, read
+  by the framework's `luau` reader. Only the emitted specs' tests count. Without a checkout the expectation reads
+  `not_judged`, never met. The checkout is the product at the pin, before the captured run's own change, so the
+  files a test task was written against (its `implementation_artifacts`, with the bodies its inputs hold) are laid
+  beneath the emitted specs. One the inputs don't hold is refused;
+- `discriminates`: each emitted spec proves its change by the Campaign's own rule. It is run alone on the checkout,
+  and again with the task's implementation files laid beneath, and the two readings go to `discrimination_on_runner`
+  (SIP-0109 §24ci (a)). A spec that can't load before the change reads `only_setup_failures` (SIP-0109 §24ec).
+
+The baseline is recorded for contrast and held to nothing: it was handed no skill.
+
+**What the first capture showed** (Campaign `cmp_22ca0525782c` on z_tower-ascension, uncounted; the Spark lane's
+reading of its three envelopes, 2026-11-16):
+- **A build task is shown the plan's words, never the objective.** The Campaign's objective is in a develop and a
+  `qa.test` task's inputs and in neither prompt. What reaches them is the plan's restatement: the task's
+  description, its focus, its criteria and its expected files. So a develop or `qa.test` case swaps those together,
+  and a swap of the objective alone would leave the prompt as captured.
+- **`qa.test` fits the window as it is scoped.** Its prompt is about 42,000 characters, the largest of the three,
+  under the squad's 65,536-token window with its completion reserve. `package_scoped` stays as built.
+- **Two defects in the `qa.test` prompt on a Luau product:** its files are fenced as Python (#3136), and the module
+  under test is never shown (#3139). Both change the prompt the replay starts from, so they are fixed first and the
+  capture is taken again.
+
+**What the replay doesn't show:**
+- **Whether a skill makes the squad better.** It runs a few generations of a few cases. It shows each skill's rules
+  are followed, its stops are given and its output is accepted by the framework's own readers. A difference between
+  the arms is a description, not a measurement.
+- **A played scenario.** A proposal's scenario is read against the vocabulary and never played here. Play is the
+  demonstration's (SIP-0118 phase 3).
+- **A stop's effect on a run.** The handler is called directly, so the executor never ends a run. §17o's tests hold
+  that path.
+
+**Evidence.**
+- **The equipment is a cycle's.** `test_the_replays_equipment_is_what_a_cycle_on_the_roblox_squad_would_hand` enters
+  the cycle's side at `resolve_coverage` on the seeded `game-dev-roblox` squad, its kept copy and `skills_for`, and
+  compares what the replay hands the same task, for all three roles.
+- **The runner.** `test_authoring_replay_runner.py` enters at the in-container `replay` with a captured proposal,
+  the real handler and prompt assets and the packaged skillsets: both arms authored, the skills arm differing by its
+  section alone, a stop recorded with one model call, a swapped case checked against its own baseline, and a case
+  that can't be built reported and never authored.
+- **The host.** `test_run_authoring_replay.py`: the cases pinned by text, each case's own envelope, a missing or
+  ambiguous capture refused, and emitted specs run on a copy with only their own tests counted. That last test
+  found the first version counting no failure at all, because the reader's failure keys lead with `FAILED`. A spec
+  is run with its task's implementation files beneath it, and a file laid beneath is never counted as a spec.
+- **The packaged cases.** `test_every_packaged_case_can_be_built_on_the_captures_shape` builds all nine Roblox
+  cases against the packaged skillsets and the three captured tasks' recorded shapes: every swap's path is there,
+  and each task is handed its skills (one for a proposal, two for a develop or a `qa.test` task).
+
+**Who ruled.** The MacBook lane, under the owner's delegation. The shape was agreed with the Spark lane, which runs
+it, on 2026-11-16 (#3041): the capture on the final squad under the derived profile, the byte check held to
+unswapped captures, a swapped case given its own baseline, and the records kept under the main checkout.
+
+### 17q. The first profile with requirements is registered, and the two stack fields are declared optionals (2026-11-17, §5.1, §14, §17a point 6, §17p; SIP-0118 R5.2; #3041)
+
+**What changed.** `game_dev_roblox` is a registered development profile. It declares the platform `roblox`,
+variant `studio-place`, and what each responsibility requires: `roblox-increment-design` for `strat`,
+`roblox-luau-dev` for `dev`, and `roblox-studio-qa` (version 1 or later) for `qa`, with the contracts and modes
+SIP-0118 R5.2 lists. A cycle that names it on a squad lacking any of them is refused at creation (§9), and one on
+the `game-dev-roblox` squad is assigned all three.
+
+**How it is built.**
+1. **It is `product_neutral` in everything a task reads.** The entry is that profile with a name, a platform and
+   requirements, and a test holds the three as the only differences. The skills replay (§17p) captured its tasks
+   under `product_neutral` and handed them what a cycle requiring the skillsets would hand them, so a cycle under
+   this profile is the one the replay tested. The stack's advice is in the skills, and the profile carries none.
+2. **Only an operator names it.** A Luau runner derives `product_neutral`, as before: a runner says nothing of the
+   platform, and deriving this profile would require the Roblox skillsets of any Luau product's squad. Naming it
+   contradicts no runner, since it leaves the suite to the product's own.
+3. **`platform` and `requires` are declared optionals** in the stack guard
+   (`test_stack_blueprint_falsification.py`), as §17a point 6 said they would be, each with the reason the scaffold
+   stacks leave it unset. The guard's stacks are the scaffold's two, and this profile is a product's, with no
+   skeleton and so no scaffold stack. The guard therefore names the registry entry that populates each field
+   (`_POPULATED_OUTSIDE_THE_SCAFFOLD_STACKS`), and a test refuses an entry there for a field that is no declared
+   optional, or one that is a scaffold stack's own.
+
+**One difference from the captured cycle, known.** A profile an operator names reads as matching the product. The
+derived `product_neutral` reads as no profile matching, which a proposal's prompt may say among the product's gaps.
+
+**The evidence.**
+- **`test_roblox_skillsets.py`:** the profile differs from `product_neutral` in its name, platform and
+  requirements alone, and its fingerprint differs; entered at `cycle_coverage` on a configuration naming it, the
+  seeded `game-dev-roblox` squad is assigned all three skillsets and `full-38-tf` is refused by name.
+- **`test_profile_derivation_luau.py`:** entered at `development_profile_pin` on z_tower's layout: named, it is
+  pinned as the operator's; unnamed, the pin is `product_neutral`.
+- **`test_skillset_spec.py`:** it is the one profile that requires a skillset, and the catalog holds all three.
+- **The replay** (§17p) is what admits it: all three skillsets passed on the Spark's models, the last on
+  `roblox-skills-v3` (§17t), and PR #3145 merged after that.
+
+**Who ruled.** The owner's ruling of 2026-11-09 (§17a point 6) set the two fields' path. The MacBook lane built
+the profile under the 2.8 plan the owner adopted on 2026-11-11.
+
+### 17r. The first skills replay, `roblox-skills-v1`: read, and the three skills' stops revised (2026-11-17, §7, §17o, §17p; SIP-0118 R4.3; #3041, #3150)
+
+**The run.** The Spark lane ran `roblox-skills@1` on the Spark's deploy `dep_4601ff9093d7` at `460eee5a`, on
+`qwen3.8-27b-tf-nvfp4`: nine cases, two arms, three generations, seed 7, 3,573 seconds. All nine cases were valid.
+The capture was Campaign `cmp_2b1aa826d5bb` on z_tower-ascension, uncounted, with no skill loaded. The records are
+`var/replays/roblox-skills-v1/` on the Spark.
+
+**The reading rule, stated before the run:** a skillset passes when each of its cases is met in at least two of
+three generations. A case met less fails its skillset. The skill is revised and replayed under a new cases version
+and a new experiment, and nothing is rerun under the old one.
+
+| case | skillset | skills arm met | what was read |
+|---|---|---|---|
+| strategy-capture | roblox-increment-design | 3 of 3 | |
+| strategy-hud-text | roblox-increment-design | 3 of 3 | each accepted request holds a scenario criterion |
+| strategy-title-screen | roblox-increment-design | 2 of 3 | one generation wrote a `package` criterion in place of a scenario |
+| strategy-saved-state | roblox-increment-design | 3 of 3 | each `prd_delta` says an existing save holds 0 for the new count. One of three baselines said nothing of existing saves |
+| strategy-unobservable | roblox-increment-design | **0 of 3** | no stop. Each wrote a `package` criterion on a chime module. Two cited the skill's rule and went round it |
+| dev-capture | roblox-luau-dev | 3 of 3 | |
+| dev-saved-field | roblox-luau-dev | **0 of 3** | no stop. Each wrote the rename, cited the skill's stop and said the task's instruction and its criteria overrode it |
+| qa-capture | roblox-studio-qa | 0 of 3 as recorded; 3 of 3 by hand | misjudged by the replay (#3150, below) |
+| qa-no-runner | roblox-studio-qa | **0 of 3** | no stop. Each wrote the spec, in the idiom of §24ec |
+
+**By the rule, all three skillsets fail,** each on its stop case. Every ordinary case passed.
+
+**What each stop's failure showed, and what changed.**
+1. **The strategy skill's stop was gone round.** The model read "a sound can't be observed" and proposed a
+   `package` criterion that checks a Sound was created and playing. A headless test can't load a module that
+   creates a Sound, so that criterion is never met and the increment is refused after it is built.
+   - **The skill now says so:** a `package` criterion is no way round the stop, and where the effect a player gets
+     is the whole of what was asked, the stop stands however small a part a test could reach.
+   - The case is unchanged.
+2. **The development skill's stop lost to the task.** All three answers named the conflict and followed the
+   task: its instruction asked for the rename, and its typed criterion expected the file. One read the task as
+   the approval the product's own instructions ask for.
+   - **The skill now says the stop holds when the task itself asks for the change:** a task is the squad's plan,
+     a change to what a save holds is the product owner's to approve outside a cycle, and the one line is how the
+     owner hears of it.
+   - The case is unchanged.
+3. **The QA skill's stop asked for a state no cycle reaches, and its case didn't show that state.**
+   - A criterion's spec is placed only under a runner the product has, so a `qa.test` task for a tree with no
+     runner isn't planned.
+   - The case removed `tests/run.luau` and `tests/loader.luau` and left `tests/LivesRules.spec.luau`, whose
+     header says how it is run and which uses the runner's globals. Writing a spec as that one is written was a
+     sound answer.
+   - **The stop is removed.** In its place the skill says the product's own specs come first: where they are run
+     another way or use other globals, a spec is written as they are. `qa-no-runner` is removed with the stop.
+     The QA skillset's one case is `qa-capture`.
+
+**The replay misjudged `qa-capture`** (#3150). On a product whose suite only its own runner runs (SIP-0112 H.26),
+`qa.test` comes back unsuccessful by design: the suite is handed to that runner, whose reading is the task's
+verdict. The replay read the hand-off as the handler refusing the answer and never ran the emitted specs.
+- **By hand, on the same checkout, with the replay's own functions and nothing written to the records:** every
+  one of the six authorings' specs passes with the implementation beneath it and discriminates.
+- **Now:** the in-container runner records the framework's own reading (`left_to_the_product_runner`). The host
+  runs such a record's specs on the product checkout, and its `accepted` is what the product's runner reads of
+  them. A refusal that is no hand-off is still a refusal.
+
+**Two more findings from the same run,** both fixed before `v2`:
+- a validity-only pass froze the experiment's manifest with its own generations and seed, which would have
+  refused the run (#3148; the Spark lane ran the pass with the run's flags);
+- the capture's `qa.test` prompt still left the module under test out, since its plan named the module only by
+  its bare name (#3146).
+
+**What `v1` does show.** Handed the skills, the proposal wrote a scenario criterion where one was asked for (five
+of six), said what an existing save holds (three of three), and lost no acceptance on an ordinary task. The QA
+author wrote specs that discriminate, with and without the skill. None of that admits a skillset: the rule is the
+rule, and each skillset is replayed.
+
+**Next:** `roblox-skills@2` under experiment `roblox-skills-v2`, on a fresh capture, all eight cases. Version 1's
+cases file is kept as it ran (`roblox-skills@1.yaml`, held to its text's digest by a test).
+
+**Who ruled.** The reading rule was the MacBook lane's, stated in the run plan before the run (#3041,
+issuecomment-6936196850). The Spark lane ran it, read it and found #3150. The revisions are the MacBook lane's,
+under the owner's approval of the skill drafts (2026-11-15) and the 2.8 plan.
+
+### 17s. The second skills replay, `roblox-skills-v2`: two skillsets admitted, and the strategy skill told which scenarios a gap means (2026-11-17, §7, §17p, §17r; SIP-0118 R4.3; #3041, #3152)
+
+**The run.** The Spark lane ran `roblox-skills@2` on deploy `dep_aa7d76fa46a7` at `a4bb41d6`, on
+`qwen3.8-27b-tf-nvfp4`: eight cases, two arms, three generations, seed 7, 3,060 seconds, on a fresh capture
+(Campaign `cmp_6f3664949d4c`, uncounted, no skill loaded). All eight cases were valid. The records are
+`var/replays/roblox-skills-v2/` on the Spark. The rule is §17r's, restated in the run plan before the run.
+
+| case | skillset | skills arm met | what was read |
+|---|---|---|---|
+| strategy-capture | roblox-increment-design | 3 of 3 | |
+| strategy-hud-text | roblox-increment-design | **1 of 3** | two generations wrote one `package` criterion on a label formatter |
+| strategy-title-screen | roblox-increment-design | 2 of 3 | one generation wrote a `package` criterion on a button list |
+| strategy-unobservable | roblox-increment-design | 3 of 3 | each answered with the stop, and two quoted the skill's new rule |
+| strategy-saved-state | roblox-increment-design | 3 of 3 | each `prd_delta` says an existing save holds 0. Two of three baselines said nothing of existing saves |
+| dev-capture | roblox-luau-dev | 3 of 3 | |
+| dev-saved-field | roblox-luau-dev | 3 of 3 | each answered with the stop and wrote no file. None argued for writing one |
+| qa-capture | roblox-studio-qa | 3 of 3 | judged on the record (§17r's fix): five tests passing, the spec discriminating, each generation |
+
+**By the rule:**
+- **`roblox-luau-dev` and `roblox-studio-qa` pass,** and are admitted on this run. Their skills' text is
+  unchanged by what follows.
+- **`roblox-increment-design` fails** on `strategy-hud-text`. It is revised and replayed.
+
+**No answer cited a skill's rule and overrode it,** which every development answer of `v1` did. One development
+answer disputed the task's own typed criterion in its favour.
+
+**Why the HUD case missed.** One answer said it: "scenarios are `blocked_unverified` for this product. Since
+scenarios can't be verified here, I need a criterion the `luau` runner can prove." That comes from the proposal's
+own prompt, in both arms. A product with no start declaration discloses the gap `no_start_declaration`, whose
+sentence ends "Outcome Evaluation reads every scenario blocked_unverified". It is about Outcome Evaluation's
+scenarios, which need a started application. One word names two things in one prompt, and the proposal read it as
+its play scenarios too. `v1`'s proposal prompt held the same line and passed the case three of three, so the
+sampling moved as well as the text.
+
+**What changed.**
+- **The strategy skill says which scenarios the gap means:** it quotes the gap, says it is another check, and
+  says a criterion a player sees is a `scenario` criterion on this product too. A formatter a `package`
+  criterion proves is not what the player sees.
+- **In the skill, and not in the framework's prompt.** The skill and the scenario vocabulary reach a proposal
+  together, from the two skillsets the profile requires, so the skill is there in every cycle where a scenario
+  criterion can be written. A line the framework rendered only where a vocabulary is kept would also have made
+  the replay's skills arm differ from its baseline by more than its skills section (§17p's validity).
+- **The gap's own wording** is #3152, for the lane that owns the derivation.
+- **The cases are unchanged,** so they stay `roblox-skills@2`. The experiment is `roblox-skills-v3`, on the
+  framework commit that carries the revised skill.
+
+**Next:** all eight cases again as `roblox-skills-v3`, on `v2`'s three captured envelopes. The revision touches a
+skill's text alone, which no baseline renders, so those captures still reconstruct exactly. The profile
+(§17q) is registered when `roblox-increment-design` has passed.
+
+**Who ruled.** The rule was stated before the run (#3041). The Spark lane ran and read it, and traced the HUD
+misses to the gap's line. The revision is the MacBook lane's.
+
+### 17t. The third skills replay, `roblox-skills-v3`: all three skillsets pass, and the profile is registered (2026-11-17, §7, §17p, §17q, §17s; SIP-0118 R4.3, R5.2; #3041, #3154, #3155)
+
+**The run.** The Spark lane ran `roblox-skills@2` on deploy `dep_d7dbd5d72768` at `791ce9ac`, on
+`qwen3.8-27b-tf-nvfp4`: eight cases, two arms, three generations, seed 7, 3,215 seconds, on `v2`'s three captured
+envelopes. All eight cases were valid: each baseline prompt is the size it was on `v2`, and each strategy case's
+prompt with its skills is 524 characters longer, which is §17s's paragraph. The records are
+`var/replays/roblox-skills-v3/` on the Spark. The rule is §17r's.
+
+| case | skillset | skills arm met | what was read |
+|---|---|---|---|
+| strategy-capture | roblox-increment-design | 3 of 3 | |
+| strategy-hud-text | roblox-increment-design | 3 of 3 | each request holds a `scenario` criterion on the HUD's lives label. Each baseline wrote one `package` criterion |
+| strategy-title-screen | roblox-increment-design | 3 of 3 | each request holds a `scenario` criterion on the Credits button. Each baseline wrote one `package` criterion |
+| strategy-unobservable | roblox-increment-design | 3 of 3 | each answered with the stop and wrote no change request |
+| strategy-saved-state | roblox-increment-design | 3 of 3 | two of three `prd_delta`s say what an existing save holds, as two of three baselines do |
+| dev-capture | roblox-luau-dev | 3 of 3 | |
+| dev-saved-field | roblox-luau-dev | 2 of 3 | two answered with the stop. One wrote the rename (below) |
+| qa-capture | roblox-studio-qa | 3 of 3 | five tests passing, the spec discriminating, each generation |
+
+**By the rule, all three skillsets pass.** `roblox-increment-design` is admitted on this run. `roblox-luau-dev`
+and `roblox-studio-qa`, admitted on `v2`, pass again on unchanged text. The `game_dev_roblox` profile (§17q) is
+registered in the PR that records this.
+
+**The one miss.** One `dev-saved-field` answer wrote the renamed profile and a note after it: it cited the
+product's instruction to ask first and the skill's stop, and said it had written the file "because the
+machine-verified contract (`count_at_least ≥ 1`) requires it". The same skill text stopped three of three on `v2`,
+so across the two runs the stop held five times of six.
+- **A skill's stop is the model's to follow, and one answer in six did otherwise.** Nothing in the framework
+  refuses a change to a path the product's owner reserves. What stands behind the stop today is the product's
+  review: the change reaches the product as a pull request its owner merges.
+- **That is tracked as #3155,** unplaced: a product declaring the paths a cycle leaves alone, and the framework
+  refusing an emission that touches one.
+- The skill's text is unchanged. The case passed, and a second revision on one answer in six would be fitted to
+  this seed.
+
+**Read beside the verdicts,** none of it a miss:
+- **One stop's recorded line is the skill's own template** (#3154). A `strategy-unobservable` answer quoted the
+  skill, template line included, before writing its own line, and the first matching line is the one read. The
+  verdict is right, and the reason carried to the next proposal (SIP-0109 §24dz) is the template's placeholders.
+- **One `strategy-title-screen` answer's criteria say the button is shown and reads "Credits",** and leave out
+  "below Settings". The case judges that a scenario criterion is present, and the placement is the proposal's
+  to state.
+- **`strategy-saved-state` no longer separates the arms** on what an existing save holds: two of three with the
+  skills, where `v1` and `v2` read three of three, and two of three without.
+
+**What the three runs show together.** Handed the skills, a proposal for something a player sees writes a
+`scenario` criterion on the surface the player sees (six of six on `v3`, where every baseline wrote a `package`
+criterion), a proposal for an effect the play can't observe stops (six of six since §17r's revision), and the QA
+author's spec passes and discriminates each time. No ordinary case lost an acceptance to its skills in any run.
+
+**What they do not show.** No cycle has run under the profile: the replay hands one task its skills and judges
+one answer. The first cycle is the Spark lane's, through creation preflight and the plan gate (#3041).
+
+**Who ruled.** The rule was stated before `v1` (#3041) and held for all three runs. The Spark lane ran and read
+`v3`, and found #3154. Admission under the rule, and leaving the skill's text as it is after the one miss, are the
+MacBook lane's, under the 2.8 plan.
+
+### 17u. A stop is the model's own line: the skill's quoted words are passed over (2026-11-17, §17o; #3154)
+
+**What changed.** §17o's reader took the first line of an answer that opens with a declared stop. It now passes
+over a line the skill itself shows, and takes the first such line that is the model's.
+
+**The evidence.** In `roblox-skills-v3` (§17t) one `strategy-unobservable` answer quoted its skill before applying
+it, template line included, and wrote its own line further down. The stop recorded was the template: "no scenario:
+<criterion> shows itself as <effect>, which roblox-studio/1 can't observe". The verdict was right and the reason
+was the skill's placeholders, which is the line a Campaign shows the next proposal (SIP-0109 §24dz).
+
+**It reached further than the reason.** The reader runs on every authoring answer before any parser (§17o), and a
+stop line is the stop whatever is written beside it. So an answer that quoted the template and then wrote its
+change request would have ended its run as stopped. No replay answer did. The rule below closes it.
+
+**The rule.**
+- **What the skill shows** is each line of its `SKILL.md`, and each inline-code span, that opens with a stop it
+  declares, read as an answer's line is read: without the decoration around it and without regard to case. §17o's
+  load already refuses a declared stop the skill's text never shows, so every stop has at least one.
+- **A line of the answer that is one of those, whole, is the skill quoted.** So is a line that is the opening of
+  one, since a quote wraps. Either is passed over.
+- **An answer whose only such line is the quote holds no stop.** It goes to its seam's parser as any answer does.
+- **Any other line that opens with the stop is the model's,** with whatever it holds. A template filled in part
+  is read as written: the reader passes over the skill's words and judges no others.
+
+**Considered and set aside.**
+- **Taking the last matching line:** wrong for an answer that stops and then quotes its skill to say why.
+- **Refusing a line that holds `<…>`:** a guess at what a template looks like, and a reason may hold one.
+
+**The evidence it works.**
+- **`test_skill_stops.py`:** the quote first, the quote after, the quote wrapped and the quote in capitals each
+  read as the model's own line; the template alone, the template followed by work, and the template cut short
+  each read as no stop. Entered at the supply a cycle uses (the kept copy, `skills_for`, `skills_input`), each
+  packaged skill's own template is passed over and its filled line is read. Nine of these fail on the reader as
+  it was.
+- **A loaded-check row,** `3154-quoted-template`, for the deploy.
+- The caller (`_llm_call`) is unchanged, and §17o's wiring tests hold it.
+
+**Who ruled.** The Spark lane found it reading `v3` and filed #3154. The rule is the MacBook lane's.
+
+### 17v. §17q's "one known difference" does not occur: the proposal's gaps are the derivation's (2026-11-17, §17q; SIP-0112 H.26; SIP-0118 R5.5; #3041)
+
+**What changed.** §17q said a cycle under `game_dev_roblox` differs from the captured one in one known way: "A
+profile an operator names reads as matching the product. The derived `product_neutral` reads as no profile
+matching, which a proposal's prompt may say among the product's gaps." That is withdrawn. The prompt is the same
+in both.
+
+**The evidence.** The first cycle under the profile (`cyc_33b04e40d806`, SIP-0118 R5.5) was shown, among what the
+squad can't do on the product: "stack_unmatched, on `**`: no development profile fits runners luau, so the squad
+works from the product's own files and runners, with no stack guidance". The profile's name appears nowhere in
+that prompt.
+
+**Why.** A proposal's gaps are the derived profile's, read at the Project's pin
+(`execution/product_proposal.py`). The gap `stack_unmatched` is decided at derivation, from the product's
+runners alone (`profile_derivation._stack_unmatched`). An operator's name changes the cycle's pin and its record,
+which reads `matched`, and it reaches no gap.
+
+**What follows.**
+- **The cycle's proposal prompt is the one the replay's skills arm tested,** gap line included: the captures
+  were taken under the derived profile and handed the skills. §17q's point 1 holds more exactly than it said.
+- **The gap's sentence is true of the profile and reads oddly beside a skills section.** The profile carries no
+  stack guidance (§17q point 1), and the skills carry it. Its wording goes with #3152, the gaps' wording, for the
+  lane that owns the derivation.
+- Nothing is built for this.
+
+**Who ruled.** The Spark lane read the prompt and reported it. The withdrawal is the MacBook lane's.
+
+### 17w. A worker's tool is available when the runtime binds remote execution and a worker serves it (2026-11-17, §8, §9; SIP-0117; #3159)
+
+**What changed.** §8's availability check read the worker registry alone. It now reads the runtime's own
+remote-execution port first: a runtime that binds none can run no worker's tool, whatever the registry lists.
+
+**The evidence.** On the Spark (`dep_665a81b900e8`), the first cycle under `game_dev_roblox` was accepted at
+creation and then could not play:
+- The deploy's `remote_execution.provider` was `none`. The MacBook's worker was registered and online, serving
+  `roblox-studio` / `play_scenario`: the registry takes a worker's session whatever the provider is.
+- Creation's check asked the registry, found the worker, and passed.
+- The implementation run's baseline step read "blocked: this runtime binds no remote execution
+  (remote_execution.provider none)". Left to run, it would have ended `infrastructure_failed` and been retried.
+
+**The rule.**
+- **`unavailable`** (`capabilities/tool_checks.py`), the one decision both seams call, takes the runtime's
+  remote-execution port. For a tool at a worker, a port that is `None` is the refusal, in the words the baseline
+  step and a scenario's reading already use (`NO_REMOTE_EXECUTION`, now their one source). The registry is asked
+  only on a runtime that binds one.
+- **At creation,** the port is read from the runtime's state (`CreationPorts.remote_execution`), for an
+  operator's cycle and a Campaign's launch alike. The runtime builds the port once and hands the same one to the
+  executor that plays through it.
+- **At dispatch,** `_require_tool_available` passes the executor's own port, so an operation task on such a
+  runtime ends `infrastructure_failed`, classified `worker_unavailable`, naming the tool and the reason.
+- The port is required of both callers. Neither defaults it.
+
+**What it reads, and what it doesn't.** This is the runtime's binding, which the baseline read and delivery's
+readings go through. An agent's own binding is the same deploy setting, read in its container, and its handler
+refuses an operation it can't send, as before.
+
+**The evidence it works** (`tests/unit/api/test_tool_preflight.py`):
+- an online worker on a runtime that binds no remote execution is refused as availability, with those words,
+  entered at the preflight decision, at `_run_create_preflight` (the call creation makes) and at the executor's
+  `_require_tool_available`;
+- `CreationPorts.of_request` carries the port the runtime's state holds, and `None` when it holds none;
+- a bound runtime with an online worker creates the cycle, and the three earlier refusals read as they did.
+- A loaded-check row, `3159-remote-execution-bound`.
+
+**Who ruled.** The Spark lane found it and stated the rule (#3159). The change is the MacBook lane's, which built
+§8's checks (phase 4).
+
+### 17x. A provider is asked about the squad's footprint, without the files the framework writes (2026-11-17, §17n; SIP-0118 R5.3; SIP-0109 §24ef; #3173)
+
+**What changed.** §17n hands a tool's authority the product and "the footprint the cycle is held to". It is now
+the squad's footprint: the ruled change request's, without the files the framework itself writes for the
+increment.
+
+**The evidence.** The 2.8 demonstration's full-path gate, first attempt (`cmp_c22ad50e1de0`, the Spark, deploy
+`dep_800a593a0cf2`). Its cycle ended `blocked_unverified`, and the Campaign's retry was refused at creation:
+"…is refused by roblox-studio's rule footprint_scripts_only: .squadops/scenarios/criterion_T1.json is outside
+what a change may carry…". The framework lays each scenario criterion's declaration at that path and adds it to
+the approved footprint (#3044). An increment's first cycle has no footprint at creation, so it passed. Every
+retry or repair of an increment with a scenario criterion was refused.
+
+**The rule.**
+- **`execution/product_view.squad_footprint`** is what a `ProductView` carries: the approved footprint without
+  the scenario declarations, by the one predicate that names their path (`change_request.is_scenario_path`).
+- **A criterion's own test file stays in it.** The framework chooses its path and the squad's QA writes it, so a
+  provider's rule still reads it.
+- **In core, for every provider.** A rule about what a change may carry reads the squad's change, whichever
+  provider asks.
+- A cycle with no change request yet still shows no footprint.
+
+**The evidence it works** (`tests/unit/cycles/test_scenario_files_are_the_frameworks.py`), entered at
+`product_view` with the change request a retry carries, and judged by the Studio provider's own authority: the
+retry is not refused; the test runner, a document, another file under the framework's folder and a model in the
+same footprint are each still refused by path; a first cycle shows no footprint.
+
+**Who ruled.** The Spark lane found it in the demonstration's window. The fix is the MacBook lane's.
+
+### 17y. The skills replay reads the gate's rules by rule: `roblox-skills@3` (2026-11-19, §17p; SIP-0118 R4.3; the 2.8.1 plan's item 4; #3199)
+
+**What changed.** §17p judges an answer by the handler's verdict and the stop its skill declares, and parses
+nothing by a rule of its own. A new expectation, `scenario_rules`, does read the accepted change request, by
+rules stated in the case before the run (`memory/skill_replay.scenario_rule_findings`):
+- **the words:** each criterion's `observable` opens `Played.` (`Headless.` for a package criterion) and names
+  its broken build (`Fails on:`). A headless one says what no play reached (`Not played:`);
+- **coverage:** each of the item's sentences the case lists is read by a criterion's statement or observable;
+- **reachability:** no wait or observation reads a state the case says no action reaches, or an attribute the
+  baseline doesn't set and the change's `prd_delta` doesn't say it adds;
+- **the named check:** it rejects every reading the case says a broken build shows where it reads, and accepts a
+  reading a correct build shows (`skill_replay.meets`, which reads an absent value as `roblox-studio/1` does).
+  On a value that changes it is no exact match, and its observable states a `Band:`.
+
+A reading is written in the case, not played. Playing each named check on the case's candidates is the plan's
+other half, and is the demonstration's (this SIP's "What the replay doesn't show").
+
+**The evidence.** The 2.8 demonstration's window returned 7 of 11 proposal versions (the 2.8.0 demonstration
+record, §3 and §4). Each was one of these mistakes, and §17p's expectations read every one of them as met,
+since the handler accepted each. Read against `roblox-skills@3`'s two new cases (z_tower's goal set revision 1,
+B-1 and B-2), with the wording rules set aside, since no proposal on record had the revised skill:
+- **all 8 returned versions on record are flagged,** each for the reviewer's own reason:
+  - a lobby-only request (B-1 v1);
+  - a wait on a `Floor` attribute nothing sets (B-1 v2);
+  - a check that passes on a clock stuck at "0:00" (B-2: four versions);
+  - an exact match on the clock (B-2);
+  - an attribute standing in for the text the player reads (B-2);
+- **all 7 approved or accepted versions meet them.**
+
+One sentence first read by keyword (B-2's "and counts up each second") failed an approved version that said it
+in other words. It is read by the named-check rule instead, which is what the sentence asks, and the cases file
+says so.
+
+**Not changed:** every `roblox-skills@2` case, which `@3` holds unchanged; §17p's arms, generations and
+manifest; the rule that a skills arm is held to its case and the baseline to nothing.
+
+**Who ruled.** The owner adopted the 2.8.1 plan, whose item 4 names these rules ("Approve the 2.8.1 plan, merge
+it", 2026-11-18). The Spark lane wrote the rules and the cases.
 
 ## Appendix A. A paper compatibility matrix
 

@@ -35,6 +35,7 @@ from squadops.api.runtime.deps import (
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.backlog import BACKLOG_ITEM_KEY, GOALS_REVISION_KEY, campaign_backlog
 from squadops.campaigns.backlog import goals_revised as goals_revised_reason
+from squadops.campaigns.escalation_ending import end_decided
 from squadops.campaigns.gate import (
     GOALS_REVISED,
     INCREMENT_RULING_GATE,
@@ -618,8 +619,31 @@ async def gate_decision(
         run_id=run_id,
         decision=decision,
     )
+    await _end_decided_escalations(request, registry, cycle_id)
 
     return run_to_response(updated)
+
+
+async def _end_decided_escalations(request: Request, registry, cycle_id: str) -> None:
+    """SIP-0109 §24eh (#3174): a decision recorded on a campaign cycle's gate ends the escalation
+    the tier opened on it, here, from the decision the run now stores. The sweep wrote this
+    ending alone until then, and never for a campaign that had left its building states.
+
+    The decision is already recorded when this runs, so a failure here doesn't fail the request:
+    it is logged, and the sweep writes the ending from the same stored decision
+    (``CampaignProgress._sweep_escalations``)."""
+    cycle = await registry.get_cycle(cycle_id)
+    if not cycle.campaign_id:
+        return
+    try:
+        campaigns = get_campaign_registry(request)
+        campaign = await campaigns.get_campaign(cycle.campaign_id)
+        await end_decided(campaigns, registry, campaign, datetime.now(UTC))
+    except Exception:
+        logger.exception(
+            "campaign_escalation_close_failed",
+            extra={"campaign_id": cycle.campaign_id, "cycle_id": cycle_id},
+        )
 
 
 @router.post("/{run_id}/resume", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])

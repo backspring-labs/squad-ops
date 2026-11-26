@@ -62,6 +62,29 @@ async def test_the_developer_is_shown_the_product_its_instructions_and_the_file_
     assert "{{" not in prompt
 
 
+async def test_a_file_the_task_names_that_the_product_doesnt_hold_is_said_to_be_new():
+    """#3178. Bug caught: a plan carried a proposal's guess at a path, and its developer was told
+    to read a file in full with nothing shown and nothing said."""
+    repository = {**REPOSITORY, "existing_files": {}, "new_files": ["tally/report.py"]}
+
+    prompt = await _handler()._build_focused_prompt(
+        _inputs(source_repository=repository, expected_artifacts=["tally/report.py"]), _renderer()
+    )
+
+    assert "The product holds no file at these paths this task names:\n\n- `tally/report.py`" in (
+        prompt
+    )
+    assert "{{" not in prompt
+
+
+async def test_a_task_naming_only_files_the_product_holds_is_shown_no_new_file_block():
+    prompt = await _handler()._build_focused_prompt(
+        _inputs(source_repository={**REPOSITORY, "new_files": []}), _renderer()
+    )
+
+    assert "The product holds no file" not in prompt
+
+
 async def test_the_qa_author_is_shown_where_the_products_runners_find_a_test():
     """SIP-0112 H.4 point 3. Bug caught: a test written where no runner of the product looks, or
     named as none takes it, which the product's checks never run, so it verifies nothing."""

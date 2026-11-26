@@ -1609,6 +1609,34 @@ class TestADiagnosticIsReadByTheSeamItReached:
 
         assert set(driver.SEAM_READOUTS) == set(FAULTS)
 
+    @pytest.mark.parametrize(
+        ("rounds", "patches", "reached"),
+        [(1, 1, True), (2, 0, False), (0, 0, None)],
+        ids=["repaired in the cycle", "a round and no patch applied", "no round in this cycle"],
+    )
+    def test_the_wrong_text_faults_readout_is_the_repair_route_or_unaskable(
+        self, driver, rounds, patches, reached
+    ):
+        """#3170. Bug caught: a faulted increment the campaign repaired in a repair cycle read
+        as "the repair was not routed", from a cycle record that holds no correction round."""
+        rec = {
+            "correction_rounds": rounds,
+            "loop_texture": {
+                "applied_patches": patches,
+                "faults_applied": {
+                    "luau_player_text_drops_a_word": {
+                        "applied": [{"task": "t-development.develop"}]
+                    }
+                },
+            },
+        }
+
+        out = driver.seam_readouts(["luau_player_text_drops_a_word"], rec)
+
+        reading = out["luau_player_text_drops_a_word"]
+        assert reading["reached"] is reached
+        assert "the repair route on a played product" in reading["seam"]
+
     def test_the_texture_carries_the_retests_as_facts(self, driver):
         line = (
             "PFX patch_retest task=task-run_x-m006-qa.test status=SUCCEEDED passed=True reason=ok"
@@ -7743,3 +7771,21 @@ def test_a_roll_the_operator_took_the_box_beside_is_recorded_as_not_counted(
     ]
     [window] = asked
     assert ">= '2026-11-15T09:00:00Z' and committed_at <= '2026-11-15T11:00:00Z'" in window
+
+
+@pytest.mark.parametrize(
+    ("rec", "reached"),
+    [
+        ({"verdict": "blocked_unverified", "correction_rounds": 0}, True),
+        ({"verdict": "rejected", "correction_rounds": 0}, False),
+        ({"verdict": "blocked_unverified", "correction_rounds": 1}, False),
+        ({}, None),
+    ],
+    ids=["row 8's input", "a spec met the throw (row 12)", "a correction stood in", "no verdict"],
+)
+def test_the_client_stops_readout_is_row_8s_input_and_nothing_else(driver, rec, reached):
+    """#3222. Bug caught: a cycle a spec failed (routed row 12) or one an in-run correction
+    repaired reading as the row-8 diagnostic's seam reached."""
+    _, _, read = driver.SEAM_READOUTS["luau_client_throws_at_start"]
+
+    assert read(rec)[0] is reached

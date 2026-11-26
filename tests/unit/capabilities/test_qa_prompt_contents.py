@@ -67,7 +67,7 @@ _MONOLITHIC_HEAD = (
     "### orbit/app.py\n```python\ndef start():\n    return 'orbit'\n\n```\n\n\n"
     "### orbit/store.py\n```python\nROWS = []\n\n```\n\n\n"
     "### console/src/Panel.jsx\n```javascript\nexport const Panel = () => null;\n\n```\n\n\n"
-    '### console/package.json\n```python\n{"name": "console"}\n\n```\n\n\n'
+    '### console/package.json\n```json\n{"name": "console"}\n\n```\n\n\n'
     "### tests/conftest.py\n```python\nimport pytest\n\n```\n\n"
 )
 #: The tree the suite runs against, on both paths, as the handler selected it before #2805.
@@ -89,13 +89,13 @@ def _inputs(**extra) -> dict:
     }
 
 
-async def _composed(inputs: dict):
+async def _composed(inputs: dict, profile: str = _PROFILE):
     """The handler's step 1a (``_compose_user_prompt``), with no renderer, so the prompt is the
     handler's own text."""
     context = MagicMock()
     context.ports.request_renderer = None
     return await QATestHandler()._compose_user_prompt(
-        context, inputs, get_development_profile(_PROFILE), _PROFILE, inputs["prd"], None, 0.0
+        context, inputs, get_development_profile(profile), profile, inputs["prd"], None, 0.0
     )
 
 
@@ -396,3 +396,200 @@ def test_the_composer_counts_the_imported_code_the_handler_shows():
     fewer = rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=bare))
 
     assert counted > fewer
+
+
+#: A Luau product's first spec, as the #3041 capture's ``qa.test`` task was handed it: the plan
+#: names the module by its instance path, and no suite beside the new spec requires it.
+_LUAU_TREE = {
+    "run_report.md": "# Run\n",
+    "src/Shared/Modules/SalePricing.luau": "return { computeSaleTotal = function() end }\n",
+    "src/Shared/Modules/LivesRules.luau": "return { New = function() end }\n",
+    "src/Shared/Modules/Sale.luau": "return {}\n",
+    "src/Shared/Util/init.luau": "return { clamp = math.clamp }\n",
+    "tests/LivesRules.spec.luau": "local Rules = require(Shared.Modules.LivesRules)\n",
+    "tests/run.luau": "-- the product's runner\n",
+}
+_LUAU_SUITE = {
+    "prd": "",
+    "subtask_focus": "criterion T1 spec suite",
+    "subtask_description": (
+        "Author tests/criterion_T1.spec.luau, a Lune spec that requires\n"
+        "Shared.Modules.SalePricing and asserts the three T1 observables."
+    ),
+    "expected_artifacts": ["tests/criterion_T1.spec.luau"],
+    "implementation_artifacts": ["src/Shared/Modules/SalePricing.luau"],
+    "acceptance_criteria": ["M1: The spec begins with require(Shared.Modules.SalePricing)."],
+    "artifact_contents": _LUAU_TREE,
+    "resolved_config": {"development_profile": "product_neutral"},
+}
+
+
+async def test_a_luau_products_first_spec_is_shown_the_module_it_tests_in_luau_fences():
+    """Entered at ``_compose_user_prompt``, the handler's own step, on the #3041 capture's shape.
+    Bugs caught: the module under test shown nowhere, so the spec is written from the criterion's
+    words alone (#3139); and the product's Luau fenced, and its spec asked for, as Python
+    (#3136)."""
+    prompt = (await _composed(_LUAU_SUITE, "product_neutral")).user_prompt
+
+    section = _shown_section(prompt)
+    assert _section_names(section) == [
+        "tests/LivesRules.spec.luau",
+        "tests/run.luau",
+        "src/Shared/Modules/SalePricing.luau",
+    ]
+    assert (
+        "**src/Shared/Modules/SalePricing.luau:**\n```luau\n"
+        "return { computeSaleTotal = function() end }\n\n```\n"
+    ) in section
+    assert "```python" not in prompt
+    assert "```luau:tests/criterion_T1.spec.luau```" in prompt
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"),
+    [
+        ("require(Shared.Modules.SalePricing)", ["src/Shared/Modules/SalePricing.luau"]),
+        (
+            "game.ReplicatedStorage.Shared.Modules.SalePricing.computeSaleTotal(lines)",
+            ["src/Shared/Modules/SalePricing.luau"],
+        ),
+        # As the product's own comments write an instance path.
+        ("Lives in Shared > Modules > SalePricing.", ["src/Shared/Modules/SalePricing.luau"]),
+        ("the module src.Shared.Modules.LivesRules", ["src/Shared/Modules/LivesRules.luau"]),
+        # A package's init file is its folder's module.
+        ("require(Shared.Util).clamp", ["src/Shared/Util/init.luau"]),
+        # Each names nothing: a tail below the source root, one word, a longer name, a shorter
+        # name inside this one, and a name the tree doesn't hold.
+        ("Modules.SalePricing and Modules.LivesRules", []),
+        ("SalePricing computes the total", []),
+        ("require(Shared.Modules.SalePricingV2)", []),
+        ("require(Shared.Modules.Sal)", []),
+        ("require(Shared.Modules.Pricing)", []),
+        ("", []),
+    ],
+    ids=[
+        "require",
+        "full-instance-path",
+        "arrow-separated",
+        "from-the-root",
+        "package-init",
+        "tail-below-the-root",
+        "bare-word",
+        "longer-name",
+        "shorter-name-inside",
+        "absent",
+        "no-text",
+    ],
+)
+def test_a_task_names_code_under_test_by_its_dotted_module_path(text, shown):
+    """Bug caught (#3139): a module the task names as the product's code does left out, or a
+    loose match pulling in a file the task never named, which costs pf-33's scoping."""
+    assert list(code_under_test({}, _LUAU_TREE, text)) == shown
+
+
+def test_a_longer_modules_name_does_not_show_the_shorter_one_inside_it():
+    """``Sale.luau`` sits beside ``SalePricing.luau``. Bug caught: a name matched as a prefix, so
+    a task about SalePricing is shown Sale too."""
+    assert list(code_under_test({}, _LUAU_TREE, "require(Shared.Modules.SalePricing)")) == [
+        "src/Shared/Modules/SalePricing.luau"
+    ]
+    assert list(code_under_test({}, _LUAU_TREE, "require(Shared.Modules.Sale)")) == [
+        "src/Shared/Modules/Sale.luau"
+    ]
+
+
+def test_a_python_module_is_named_by_its_import_path():
+    """The same rule on another stack: a plan writes ``app.services.pricing``."""
+    tree = {"backend/app/services/pricing.py": "def total(): ...\n", "backend/app/main.py": ""}
+
+    assert list(code_under_test({}, tree, "Test app.services.pricing.total for a bulk sale.")) == [
+        "backend/app/services/pricing.py"
+    ]
+
+
+def test_the_composer_counts_the_module_a_task_names_by_its_module_path():
+    """Entered at ``rendered_input_tokens``. Bug caught: the prompt showing the module while the
+    budget counts the suite's package alone."""
+    unnamed = {**_LUAU_SUITE, "subtask_description": "Author the spec.", "acceptance_criteria": []}
+
+    named = rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=_LUAU_SUITE))
+    fewer = rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=unnamed))
+
+    assert list(qa_test_prompt_contents(unnamed)) == [
+        "tests/LivesRules.spec.luau",
+        "tests/run.luau",
+    ]
+    assert named > fewer
+
+
+#: The second #3041 capture's shape (#3146): the plan names the module by its bare name alone.
+_BARE_TREE = {
+    "src/Shared/Modules/ShopDiscount.luau": "return { calcBulkDiscount = function() end }\n",
+    "src/Shared/Modules/ShopRules.luau": "return {}\n",
+    "src/Server/Services/Shop.luau": "return {}\n",
+    "src/Shared/Util/init.luau": "return {}\n",
+    "tests/LivesRules.spec.luau": "-- the product's own\n",
+    "tests/run.luau": "-- the product's runner\n",
+}
+_BARE_SUITE = {
+    "prd": "",
+    "subtask_focus": "criterion T1 spec suite",
+    "subtask_description": (
+        "Author tests/criterion_T1.spec.luau proving criterion T1: the ShopDiscount\n"
+        "module's calcBulkDiscount function, as the Shop shows it."
+    ),
+    "expected_artifacts": ["tests/criterion_T1.spec.luau"],
+    "implementation_artifacts": [
+        "src/Shared/Modules/ShopDiscount.luau",
+        "src/Shared/Modules/ShopRules.luau",
+    ],
+    "acceptance_criteria": ["The spec does NOT require the ShopDiscount module at file top."],
+    "artifact_contents": _BARE_TREE,
+    "resolved_config": {"development_profile": "product_neutral"},
+}
+
+
+async def test_a_plan_source_the_task_names_by_its_bare_name_is_shown():
+    """Entered at ``_compose_user_prompt`` on the capture's shape. Bugs caught: the module under
+    test left out when the plan says "the ShopDiscount module" and nothing longer (#3146); the
+    plan's other sources shown with it, which undoes the package scoping; and a file outside the
+    plan's sources shown for a word the text happens to hold ("Shop")."""
+    prompt = (await _composed(_BARE_SUITE, "product_neutral")).user_prompt
+
+    assert _section_names(_shown_section(prompt)) == [
+        "tests/LivesRules.spec.luau",
+        "tests/run.luau",
+        "src/Shared/Modules/ShopDiscount.luau",
+    ]
+    assert "calcBulkDiscount = function() end" in prompt
+
+
+@pytest.mark.parametrize(
+    ("text", "sources", "shown"),
+    [
+        ("the ShopDiscount module", ["src/Shared/Modules/ShopDiscount.luau"], True),
+        # A longer word, another word, and no text name nothing.
+        ("the ShopDiscounts table", ["src/Shared/Modules/ShopDiscount.luau"], False),
+        ("the discount module", ["src/Shared/Modules/ShopDiscount.luau"], False),
+        ("", ["src/Shared/Modules/ShopDiscount.luau"], False),
+        # Named, and no source of the plan's: the tree's other files stay scoped out.
+        ("the ShopDiscount module", [], False),
+        # A plan source the tree doesn't hold yet is not shown, and nothing is raised.
+        ("the Pricing module", ["src/Shared/Modules/Pricing.luau"], False),
+    ],
+    ids=["named", "longer-word", "another-word", "no-text", "not-a-plan-source", "not-in-the-tree"],
+)
+def test_a_bare_name_counts_only_for_the_plans_own_sources(text, sources, shown):
+    found = code_under_test({}, _BARE_TREE, text, plan_sources=sources)
+
+    assert ("src/Shared/Modules/ShopDiscount.luau" in found) is shown
+    assert set(found) <= {"src/Shared/Modules/ShopDiscount.luau"}
+
+
+def test_a_package_named_by_its_folder_is_its_init_file():
+    """A plan source that is its folder's module is named by the folder."""
+    found = code_under_test(
+        {}, _BARE_TREE, "the Util module's clamp", plan_sources=["src/Shared/Util/init.luau"]
+    )
+
+    assert list(found) == ["src/Shared/Util/init.luau"]

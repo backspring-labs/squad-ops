@@ -221,6 +221,12 @@ retry, as `build_profile` and `development_profile`. Leave it out and the campai
 profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
 creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
 
+**A repository-backed Project's campaign may name its development profile** (`policy.development_profile`,
+§24ed, #3157). Every cycle it launches carries it, and the cycle pins it as the operator's. Leave it out and each
+cycle derives its profile from the product. It is declared without `policy.stack`, never beside it. A profile
+that requires skillsets (`game_dev_roblox`) needs a squad that carries them (`game-dev-roblox`): any other squad
+is refused at creation, naming what is missing.
+
 **A scripted Campaign names its scripts** (`policy.llm_scripts`, SIP-0109 §24dt; #2892). On the `machinery`
 squad every call is answered from a recorded script (#2495), and a Campaign names one pinned script,
 `<name>@<version>`, per cycle it launches, in launch order: its first launch takes the first, a repair or a retry
@@ -246,7 +252,9 @@ definition declares it; one that does not is refused at creation:
 - `supervised`: as above. A design that asks nothing passes on its own (#807), and a question waits
   for you;
 - `tier`: the plan-review tier approves when the design asks nothing, the plan's files are inside the
-  objective's `allowed_scope` (a calibration is exempt), and the framing ran once. It records
+  objective's `allowed_scope` (a calibration is exempt), the framing ran once, and the plan's merge
+  escalated no brief conflict to the operator (§24ee: a proposer's blocking disagreement with the brief, or one
+  that couldn't be read, waits for a person). It records
   `system:plan_review_tier`, with what each condition read in the notes. **Anything else escalates**
   (§24bj, §24bk): an `escalation_opened` row names the conditions that failed and the questions, and
   the gate waits for you as above. Answer it within `ruling_bound_s`; any decision you record resolves

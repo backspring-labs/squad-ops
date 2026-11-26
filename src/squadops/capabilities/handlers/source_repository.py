@@ -71,6 +71,15 @@ async def source_repository_section(
             "request.source_repository_existing_files_block", {"files": _files(existing)}
         )
         variables["existing_files"] = block.content
+    # #3178: a file the task names that the product doesn't hold is said to be new. A plan carried
+    # a proposal's guess at a path, and its developer was shown no content and no reason.
+    new_files = repository.get("new_files") or []
+    if new_files:
+        block = await renderer.render(
+            "request.source_repository_new_files_block",
+            {"files": "\n".join(f"- `{path}`" for path in new_files)},
+        )
+        variables["new_files"] = block.content
     deletion = await _deletion_block(renderer, repository, task_type)
     if deletion:
         variables["deletion"] = deletion
@@ -116,8 +125,42 @@ def suite_language(inputs: Mapping[str, Any]) -> str:
         if runners and runners <= JAVASCRIPT_RUNNERS:
             return "javascript"
         if runners and runners <= LUAU_RUNNERS:
-            return "luau"
+            return LUAU_SUITE
     return "python"
+
+
+#: The suite language of a product that tests only with Luau runners (``suite_language``).
+LUAU_SUITE = "luau"
+
+
+def qa_test_prompt_variant(inputs: Mapping[str, Any]) -> str | None:
+    """The ``qa.test`` system fragment a run's suite author is given (#3147): ``"luau"`` for a
+    product that tests only with Luau runners, and ``None`` for every other run, which keeps the
+    task type's own fragment.
+
+    That fragment states its rules in pytest's and vitest's terms, with FastAPI, Next.js and JSX
+    examples. They are false on a product whose runner is neither, and its author is shown that
+    runner beside them. A sample application, a product with no runner, and one with runners of
+    more than one language read ``None``, so their prompt is the one they had."""
+    return LUAU_SUITE if suite_language(inputs) == LUAU_SUITE else None
+
+
+ADDED_MODULE_TEST_LUAU = "request.increment_added_module_test_luau_appendix"
+
+
+async def added_module_test_section(renderer: Any, inputs: Mapping[str, Any]) -> str:
+    """How a criterion's test reaches a module the change adds, on a product that tests only with
+    Luau runners (#3143), or ``""``. The caller knows the run is an increment.
+
+    A spec that requires an absent module at the top of its file can't load on the accepted
+    product, the runner reports the file and none of its tests, and §24ci (a) reads
+    ``only_setup_failures``: the increment is refused however correct the build. One rendering
+    for every author of the spec and of its plan: the framing stages, the brief, the qa proposer,
+    the plan's sole author, and the suite's author and its repair."""
+    if renderer is None or suite_language(inputs) != LUAU_SUITE:
+        return ""
+    rendered = await renderer.render(ADDED_MODULE_TEST_LUAU, {})
+    return rendered.content
 
 
 def product_conventions_template(inputs: Mapping[str, Any]) -> str:

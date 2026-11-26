@@ -18,11 +18,15 @@ from squadops.capabilities.handlers.fault_injection import (
     DECLARATION_KEY,
     FAULTS,
     INJECTED_TASKS,
+    LUAU_CLIENT_THROW,
     RUNTIME_SEAMS,
     FaultScope,
     UnknownFault,
     UnreachableFault,
+    _luau_text_drops_a_word,
+    bound_cycle_faults,
     declared_faults,
+    held_through_pass,
     inject,
     validate_declaration,
 )
@@ -1534,3 +1538,469 @@ class TestTheDeployADiagnosticsFaults:
         (contested,) = evidence["contested_rows"]
         assert contested["criterion_id"] == "vc-declared-imports-lib-alias"
         assert contested["contested"]["by"] == "dev"
+
+
+# --- #3170: a played product's client script shows a player a text cut by its last word ----------
+
+_LUAU_EMISSION = """Here is the change.
+
+```luau:src/Shared/LivesRules.luau
+local LivesRules = {}
+function LivesRules.text(lives: number): string
+    return string.format("%d lives left", lives)
+end
+return LivesRules
+```
+
+```luau:src/Client/UI/HUD.local.luau
+-- shows "5 lives left" for a player with five lives
+local Players = game:GetService("Players")
+local label = Instance.new("TextLabel")
+label.Name = "LivesLabel"
+label.Text = `{lives} lives left` -- the "lives left" text
+label.Parent = gui
+```
+
+```luau:tests/LivesRules.spec.luau
+test("says how many", function() check.equal(LivesRules.text(5), "5 lives left") end)
+```
+"""
+_WRONG_TEXT = "luau_player_text_drops_a_word"
+_PLAYED = {"development_profile": "game_dev_roblox"}
+#: #3208's shape: a client script the product already holds, with player-facing text in it,
+#: and the same script with one text added below.
+_HUD_PATH = "src/Client/UI/Screens/HUD.luau"
+_HUD_BASELINE = """local HUD = {}
+function HUD.new(parent)
+    local level = Instance.new("TextLabel")
+    level.Name = "LevelLabel"
+    level.Text = "LV 1"
+    level.Parent = parent
+    return level
+end
+return HUD
+"""
+_HUD_CANDIDATE = _HUD_BASELINE.replace(
+    "    level.Parent = parent\n",
+    "    level.Parent = parent\n"
+    '    local hint = Instance.new("TextLabel")\n'
+    '    hint.Name = "LobbyHint"\n'
+    '    hint.Text = "The tower is waiting"\n'
+    "    hint.Parent = parent\n",
+)
+
+
+class TestThePlayedProductsWrongTextFault:
+    """#3043's repair diagnostic needs a defect the increment's play scenario fails on as an
+    executed assertion. A headless spec loads no client script, so the fault goes there first."""
+
+    def test_the_client_scripts_first_player_facing_text_loses_its_last_word(self):
+        """Bugs caught: the fault landing in a comment or a spec (applied and inert, so the
+        diagnostic proves nothing); a one-word name cut, which breaks the script and reads as
+        an error where the diagnostic needs an executed assertion; the shared module cut while
+        a client script was there, so a headless spec meets it and no scenario does."""
+        faulted = FAULTS[_WRONG_TEXT].transform(_LUAU_EMISSION)
+
+        before, after = _LUAU_EMISSION.splitlines(), faulted.splitlines()
+        changed = [(a, b) for a, b in zip(before, after, strict=True) if a != b]
+        assert changed == [
+            (
+                'label.Text = `{lives} lives left` -- the "lives left" text',
+                'label.Text = `{lives} lives` -- the "lives left" text',
+            )
+        ]
+
+    @pytest.mark.parametrize(
+        ("path", "body", "expected"),
+        [
+            # No client script holds a text: the first other source that does is cut.
+            (
+                "src/Shared/LivesRules.luau",
+                'return string.format("%d lives left", n)\n',
+                'return string.format("%d lives", n)\n',
+            ),
+            ("src/Client/A.client.luau", "x = 'it\\'s a tie game'", "x = 'it\\'s a tie'"),
+            (
+                "src/Client/A.luau",
+                'a = "Players"\nb = "Step into the portal"',
+                'a = "Players"\nb = "Step into the"',
+            ),
+            # Left alone: a spec, another language, a comment, and a file with no such text.
+            ("tests/A.spec.luau", 'check.equal(t, "5 lives left")', None),
+            ("src/app.py", 'x = "5 lives left"', None),
+            ("src/Client/A.luau", '-- "5 lives left"\nlocal s = game:GetService("Players")', None),
+            ("src/Client/A.luau", 'label.Name = "LivesLabel"', None),
+        ],
+        ids=[
+            "a shared module",
+            "an escaped quote",
+            "the first text of two words, not the first literal",
+            "a spec",
+            "not luau",
+            "a comment",
+            "one-word names only",
+        ],
+    )
+    def test_one_file_is_cut_only_where_a_player_would_read_the_difference(
+        self, path, body, expected
+    ):
+        assert _luau_text_drops_a_word(path, body) == (expected or body)
+
+    def test_with_no_client_text_the_first_other_source_is_cut_and_a_textless_emission_isnt(self):
+        """The fallback, and the edge that must read as DID NOT BITE. Bug caught: an emission
+        with nothing to cut returned changed, so an inert fault reads as applied."""
+        shared_only = _LUAU_EMISSION.replace(
+            'label.Text = `{lives} lives left` -- the "lives left" text',
+            "label.Text = LivesRules.text(lives)",
+        )
+        textless = '```luau:src/Client/A.luau\nlocal s = game:GetService("Players")\n```\n'
+
+        faulted = FAULTS[_WRONG_TEXT].transform(shared_only)
+
+        assert 'return string.format("%d lives", lives)' in faulted
+        assert faulted.count("lives left") == shared_only.count("lives left") - 1
+        assert FAULTS[_WRONG_TEXT].transform(textless) == textless
+
+    @pytest.mark.parametrize(
+        ("held", "expected"),
+        [
+            (
+                {_HUD_PATH: _HUD_BASELINE},
+                [('hint.Text = "The tower is waiting"', 'hint.Text = "The tower is"')],
+            ),
+            # A path the product doesn't hold is a new file, and its first text is the change's.
+            ({}, [('level.Text = "LV 1"', 'level.Text = "LV"')]),
+            # The file as the product holds it: nothing in it is the change's.
+            ({_HUD_PATH: _HUD_CANDIDATE}, []),
+        ],
+        ids=["an existing script with a text added", "a new script", "nothing added"],
+    )
+    def test_the_cut_lands_on_a_text_the_change_adds_never_one_the_product_holds(
+        self, held, expected
+    ):
+        """#3208, read live on 2026-11-18: z_tower's HUD holds the level label's text 146
+        lines above the hint the increment added, the cut landed on the label, the scenario
+        that reads the hint passed and no repair was asked for. Bugs caught: the file's first
+        text cut where the product already holds it; and an emission that adds no text cut
+        anyway, so a fault no criterion can read is logged as applied."""
+        emission = f"Done.\n\n```luau:{_HUD_PATH}\n{_HUD_CANDIDATE}```\n"
+
+        faulted = FAULTS[_WRONG_TEXT].product_transform(emission, held)
+
+        before, after = emission.splitlines(), faulted.splitlines()
+        changed = [(a.strip(), b.strip()) for a, b in zip(before, after, strict=True) if a != b]
+        assert changed == expected
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            # An existing text reworded: the line is the change's, and it is the one cut.
+            (
+                _HUD_BASELINE.replace('"LV 1"', '"Level 1 of 9"'),
+                _HUD_BASELINE.replace('"LV 1"', '"Level 1 of"'),
+            ),
+            # A text added on a line the product's file already has elsewhere: nothing to cut.
+            (_HUD_BASELINE.replace("return level", 'level.Text = "LV 1"\n    return level'), None),
+        ],
+        ids=["an existing text reworded", "a line the product already has"],
+    )
+    def test_a_reworded_text_is_the_changes_and_a_repeated_line_is_the_products(
+        self, body, expected
+    ):
+        """The two edges of "a line the product holds". Bugs caught: a text the change reworded
+        skipped as the product's, so the criterion that reads the new wording never meets the
+        defect; and a line the product already has cut because it appears a second time."""
+        cut = _luau_text_drops_a_word(_HUD_PATH, body, {_HUD_PATH: _HUD_BASELINE})
+
+        assert cut == (expected or body)
+
+    @pytest.mark.parametrize(
+        ("config", "refused"),
+        [
+            ({**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}, None),
+            (
+                {"development_profile": "fullstack_fastapi_react", DECLARATION_KEY: [_WRONG_TEXT]},
+                "transform a file shape this cycle's stack does not emit",
+            ),
+            ({DECLARATION_KEY: [_WRONG_TEXT]}, "transform a file shape this cycle's stack"),
+        ],
+        ids=["a played product", "a web stack", "no profile named"],
+    )
+    def test_it_is_declared_only_where_a_play_scenario_would_read_it(self, config, refused):
+        """Bug caught: the fault declared on a cycle whose product is never played, where it
+        cuts nothing a verifier reads and the diagnostic reports a green cycle."""
+        if refused:
+            with pytest.raises(UnreachableFault, match=refused):
+                validate_declaration(config)
+            return
+        assert validate_declaration(config) == (_WRONG_TEXT,)
+
+    async def _develop(self, declaration, inputs=None, emission=_LUAU_EMISSION):
+        import time
+        from unittest.mock import AsyncMock, MagicMock
+
+        from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+        from squadops.llm.models import ChatMessage
+
+        ctx = MagicMock()
+        ctx.task_id = "task-run_ab12cd34-m000-development.develop"
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=emission)
+        )
+        ctx.ports.llm_observability = None
+        ctx.correlation_context = None
+        _message, content = await DevelopmentDevelopHandler()._llm_call(
+            ctx,
+            [ChatMessage(role="user", content="build it")],
+            {},
+            inputs=inputs or {},
+            started=time.perf_counter(),
+            apply_fault=True,
+            fault_config=declaration,
+        )
+        return content
+
+    async def test_the_developers_first_emission_takes_it_and_its_repair_runs_clean(self, caplog):
+        """Wiring, entered at ``_llm_call`` on the real develop handler, the seam its emission
+        passes. Bugs caught: the declaration validating and the fault never reaching the
+        developer's emission; or the re-dispatch after the scenario fails taking it again, so
+        the repair can never be seen passing the same scenario."""
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+
+        with caplog.at_level("WARNING"):
+            first = await self._develop(declared)
+        again = await self._develop(declared, {"prior_attempts": 1})
+        control = await self._develop(_PLAYED)
+
+        assert "label.Text = `{lives} lives` --" in first
+        assert any(
+            f"fault_injection: APPLIED {_WRONG_TEXT}" in r.getMessage() for r in caplog.records
+        )
+        assert again == _LUAU_EMISSION
+        assert control == _LUAU_EMISSION
+
+    @pytest.mark.parametrize(
+        "inputs",
+        [
+            {"source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}}},
+            {"acceptance_workspace_files": {_HUD_PATH: _HUD_BASELINE}},
+            {
+                "acceptance_workspace_files": {_HUD_PATH: "an older copy of the script"},
+                "source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}},
+            },
+        ],
+        ids=["the files the task names", "the accepted tree", "both, the task's own winning"],
+    )
+    async def test_the_developer_is_cut_on_the_text_it_added_as_its_own_inputs_show_the_product(
+        self, inputs, caplog
+    ):
+        """Wiring for #3208, entered at ``_llm_call`` on the real develop handler with the
+        inputs dispatch gives it. Bugs caught: the product's text never reaching the fault, so
+        the level label is cut as it was live; and the log not saying which line was cut, so
+        the record of a diagnostic that proved nothing can't show why."""
+        emission = f"Done.\n\n```luau:{_HUD_PATH}\n{_HUD_CANDIDATE}```\n"
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+
+        with caplog.at_level("WARNING"):
+            first = await self._develop(declared, inputs, emission)
+
+        assert 'hint.Text = "The tower is"\n' in first
+        assert 'level.Text = "LV 1"\n' in first
+        applied = [r.getMessage() for r in caplog.records if "APPLIED" in r.getMessage()]
+        assert len(applied) == 1
+        assert applied[0].endswith(
+            "First line changed: 'hint.Text = \"The tower is waiting\"' -> "
+            "'hint.Text = \"The tower is\"'"
+        )
+
+    async def test_an_emission_that_adds_no_text_reads_did_not_bite(self, caplog):
+        """Bug caught: the product's own script, handed back unchanged, cut on a text it
+        already held, and the diagnostic reading as an exercise."""
+        emission = f"```luau:{_HUD_PATH}\n{_HUD_BASELINE}```\n"
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+        inputs = {"source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}}}
+
+        with caplog.at_level("WARNING"):
+            out = await self._develop(declared, inputs, emission)
+
+        assert out == emission
+        assert any(
+            f"fault_injection: DID NOT BITE {_WRONG_TEXT}" in r.getMessage() for r in caplog.records
+        )
+
+    @pytest.mark.parametrize(
+        ("delivered", "expected"),
+        [
+            # The pass wrote the script again, the text whole: the cut is put back, once.
+            (_HUD_CANDIDATE, _HUD_CANDIDATE.replace("The tower is waiting", "The tower is")),
+            # The pass carried the cut script: a second word is not taken.
+            (
+                _HUD_CANDIDATE.replace("The tower is waiting", "The tower is"),
+                _HUD_CANDIDATE.replace("The tower is waiting", "The tower is"),
+            ),
+        ],
+        ids=["the pass restored the text", "the pass carried the cut"],
+    )
+    async def test_a_self_evaluation_pass_hands_on_the_one_cut_and_no_other(
+        self, delivered, expected
+    ):
+        """The hold (#1716) for a fault that reads the product. Bugs caught: the per-file cut
+        run again after each pass, which takes a further word every time and cuts every other
+        script's text too; and a pass that rewrote the script delivering it repaired, so the
+        scenario never meets the defect."""
+        task_id = "task-run_ab12cd34-m000-development.develop"
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+        inputs = {"source_repository": {"existing_files": {_HUD_PATH: _HUD_BASELINE}}}
+        await self._develop(declared, inputs, f"```luau:{_HUD_PATH}\n{_HUD_CANDIDATE}```\n")
+        rules = 'return { text = "Welcome back climber" }\n'
+        artifacts = [
+            {"name": _HUD_PATH, "content": delivered},
+            {"name": "src/Shared/Modules/Rules.luau", "content": rules},
+        ]
+
+        held = held_through_pass(
+            artifacts,
+            handler_name="development_develop_handler",
+            task_id=task_id,
+            resolved_config=declared,
+            inputs=inputs,
+            pass_index=1,
+        )
+
+        assert [a["content"] for a in held] == [expected, rules]
+
+    def test_a_task_that_took_no_cut_is_not_held(self):
+        """Bug caught: a pass in a task the fault never bit (or in a process that didn't run
+        its emission) cut by a per-file rule, on whatever text it found."""
+        declared = {**_PLAYED, DECLARATION_KEY: [_WRONG_TEXT]}
+        artifacts = [{"name": _HUD_PATH, "content": _HUD_CANDIDATE}]
+
+        held = held_through_pass(
+            artifacts,
+            handler_name="development_develop_handler",
+            task_id="task-run_ffffffff-m000-development.develop",
+            resolved_config=declared,
+            inputs={},
+            pass_index=1,
+        )
+
+        assert held is artifacts
+
+
+def test_the_wrong_text_profile_is_the_source_increment_with_the_fault_and_nothing_else():
+    """Bug caught: `campaign-increment-source` changing and its diagnostic copy not, so the
+    repair diagnostic runs on a cycle that differs from a real increment in more than the
+    seeded text."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    plain = dict(load_profile("campaign-increment-source").defaults)
+    faulted = dict(load_profile("campaign-increment-source-wrong-text").defaults)
+
+    assert faulted.pop(DECLARATION_KEY) == [_WRONG_TEXT]
+    assert faulted == plain
+
+
+_CLIENT_STOPS = "luau_client_throws_at_start"
+
+
+class TestTheClientThatStopsAtStart:
+    """#3222, the 2.8.1 plan's item 5: a candidate whose client throws where Roblox loads it, so
+    its plays read setup_failed (not executed) and the Campaign routes §10 row 8."""
+
+    def test_the_first_client_script_throws_after_its_leading_comments(self):
+        """Bugs caught: the throw landing in a shared module a headless spec loads (the spec
+        fails, the cycle reads rejected and routes row 12, not row 8); landing above a
+        ``--!strict`` directive, which must stay first; or in a spec."""
+        emission = _LUAU_EMISSION.replace(
+            "```luau:src/Client/UI/HUD.local.luau\n",
+            "```luau:src/Client/UI/HUD.local.luau\n--!strict\n",
+        )
+        faulted = FAULTS[_CLIENT_STOPS].transform(emission)
+
+        client = faulted.split("```luau:src/Client/UI/HUD.local.luau\n")[1].split("```")[0]
+        assert client.split("\n")[:3] == [
+            "--!strict",
+            '-- shows "5 lives left" for a player with five lives',
+            LUAU_CLIENT_THROW,
+        ]
+        assert faulted.replace(LUAU_CLIENT_THROW + "\n", "", 1) == emission
+
+    def test_the_throw_fires_only_where_game_is_the_engines_instance(self):
+        """Bug caught: a guard the headless loader satisfies. z_tower's loader builds ``game``
+        as a table, which ``typeof`` reads ``"table"``; only Roblox's DataModel reads
+        ``"Instance"``."""
+        assert LUAU_CLIENT_THROW.startswith('if typeof(game) == "Instance" then error(')
+        assert "__squadops_injected_fault__" in LUAU_CLIENT_THROW
+
+    def test_a_change_with_no_client_script_is_unchanged(self):
+        """Inert, not mis-aimed: with no client script the fault reads unapplied, which the
+        diagnostic's reading 1 refuses, rather than landing where a spec meets it."""
+        server_only = _LUAU_EMISSION.split("```luau:src/Client")[0]
+
+        assert FAULTS[_CLIENT_STOPS].transform(server_only) == server_only
+
+    @pytest.mark.parametrize(
+        ("declared", "carried"),
+        [
+            ([_CLIENT_STOPS], []),
+            ([_WRONG_TEXT], [_WRONG_TEXT]),
+            (f"{_CLIENT_STOPS},{_WRONG_TEXT}", [_WRONG_TEXT]),
+            (None, []),
+        ],
+    )
+    def test_a_repair_cycle_carries_every_fault_but_one_meant_for_the_first_candidate(
+        self, declared, carried
+    ):
+        """Bug caught: the repair cycle, launched under the increment's profile, building the
+        same throw into its candidate, so no Campaign repair can pass; or the filter dropping a
+        fault a bound cycle should keep."""
+        assert bound_cycle_faults(declared) == carried
+
+
+def test_the_client_stops_profile_is_the_source_increment_with_the_fault_and_no_correction():
+    """Bug caught: `campaign-increment-source` changing and its row-8 diagnostic copy not, so the
+    diagnostic runs on a cycle that differs from a real increment in more than its two keys."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    plain = dict(load_profile("campaign-increment-source").defaults)
+    faulted = dict(load_profile("campaign-increment-source-client-stops").defaults)
+
+    assert faulted.pop(DECLARATION_KEY) == [_CLIENT_STOPS]
+    assert (faulted.pop("max_correction_attempts"), plain.pop("max_correction_attempts")) == (0, 3)
+    assert faulted == plain
+
+
+@pytest.mark.parametrize(
+    ("profile", "carried"),
+    [
+        ("campaign-increment-source-client-stops", []),
+        ("campaign-increment-source-wrong-text", [_WRONG_TEXT]),
+    ],
+)
+@pytest.mark.parametrize("kind_name", ["REPAIR", "RETRY"])
+def test_a_campaigns_repair_and_retry_launch_states_the_faults_it_carries(
+    profile, carried, kind_name
+):
+    """#3222, entered at ``bound_launch``, which builds every Campaign repair and retry. Bug
+    caught: the repair cycle of the row-8 diagnostic built with the same client throw, so the
+    repair the diagnostic is about could never pass; or the wrong-text fault, whose repair runs
+    in the same cycle, losing its declaration on a bound one."""
+    from squadops.campaigns.launch_requests import bound_launch
+    from squadops.campaigns.models import CycleKind
+    from tests.unit.campaigns.builders import campaign, policy
+
+    launched = bound_launch(
+        campaign(policy=policy(proposal_profile=profile)),
+        CycleKind[kind_name],
+        {"proposal_id": "prop_1"},
+        plan_artifact_refs=[],
+        contract_ref=None,
+    )
+
+    # An override equal to the profile's default isn't restated, so the cycle resolves it from
+    # the profile: read what it resolves to.
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    overrides = launched.cycle_request["body"]["execution_overrides"]
+    resolved = overrides.get(DECLARATION_KEY, load_profile(profile).defaults[DECLARATION_KEY])
+    assert resolved == carried

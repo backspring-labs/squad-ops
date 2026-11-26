@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-11-10)
+## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -138,8 +138,13 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | a regression a source-backed run's end-of-plan verification finds gets one repair round inside the correction budget | **shipped** (H.20): one round through the plan's correction chain, on the product runner's reading, then delivered again | 2.6.0, PR #2918, closes #2613 |
 | a merged contribution syncs its Project, so the integrated commit includes the work | **shipped** (H.30, the draft's integration check, superseding H.28's host timer, which the owner ruled against on 2026-11-08 and which was never installed; kept in 2.7 by the 2.7 plan's R2, the owner, 2026-11-08) | 2.7.0, PR #3002, closes #2862 |
 | a product the size of z_tower-ascension carried whole: the checkout cap and the resolution's limit raised together, a tree past either refused by name and never cut short, and the steps that render no prompt counted as none (H.32) | **shipped** | 2.8 (PR #3121, closing #3118) |
+| a product's package roots declared in its Development Configuration where its tree names none (a Luau product under Script Sync), read by the derivation as package surfaces, with `package_root_missing` for one the tree lacks (H.33) | **shipped** | 2.8 (PR #3135, closing #3134) |
+| a product's reserved paths declared in its Development Configuration, carried on its derived profile, and refused by path at a proposal's rails, both plan gates, an operator's plan at create and delivery (H.35) | **shipped** | 2.8 (PR #3168, closes #3155) |
+| the repository map past its limit folds binary and generated files first and lists every other path, and a task is told which files it names the product doesn't hold (H.36) | **shipped** | 2.8 (PR #3180, closes #3178) |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23; then re-placed from 2.7.0 by the 2.7 plan's R1 (the owner, 2026-11-08): its additional lifecycle operations are new capabilities. The authorization, idempotency and conflict protections already required of existing operations are kept, and concurrency hardening comes into 2.7 only on a concrete defect; then re-placed from 2.8 by the 2.8 plan's decision 9 (the owner, 2026-11-11): the MacBook lane holds the 2.8 headline, and its files are that lane's) | 2.10.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
+| a Project's declared contribution identity: the request's token checked against it at the forge before anything is pushed, another's refused, and the forge identity recorded beside the caller (H.34, ruled 2026-11-17, not yet built) | **unplaced**, deliberately: the owner ruled the text as drafted (2026-11-17) and placed its build after the 2.8 cut (2026-11-16), for the next line's plan | #3137 |
+| a test-id reader validated on vitest 4, which the first real product's Campaign needs (H.10 reads vitest 2 alone; H.34) | **unplaced**, deliberately: the owner placed it after the 2.8 cut (2026-11-16), for the next line's plan | #3138 |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional, and not in 2.6 (H.27). The line that closes this SIP ships it or drops it by a numbered amendment | — |
 
 **What closes this SIP:** the shared fixture, E.4.1–E.4.6, H.4 and H.4's remainder shipped, and E.4.7 shipped or dropped. It was to close in 2.6
@@ -3645,3 +3650,404 @@ its own silent fallback, recorded as #3120 for the owner to place.
 **Who ruled.** The owner placed #3118 in 2.8 with #3049 (2026-11-16: "put 3118 in 2.8 with 3049"). The design is
 the MacBook lane's, under that ruling.
 
+
+## H.33 A product declares its package roots where its tree names none (2026-11-16; §B.5, H.6, H.7, H.31; SIP-0109 §24bv point 5; #3134; the Spark lane)
+
+**What changed.** A criterion names one of the product's public surfaces (SIP-0109 §24bv point 5). The derivation
+(H.7) finds those surfaces in three places only:
+- the start declaration's base URLs;
+- `pyproject.toml`'s scripts and the Python packages;
+- `package.json`'s `bin` and `name`.
+
+A Luau product under Roblox's Script Sync has none of them: its folders are mapped in Studio by hand, and no file in
+the repository says so. So it offered no surface, and a Campaign refused every criterion but a scenario.
+
+The capture Campaign `cmp_b7df13549e3d` on z_tower-ascension found this. Two proposal runs, three attempts each,
+were refused `[unknown_surface] … (it declares none of that kind)`.
+
+Now:
+1. **The configuration declares them.** `technical.package_roots` is optional in the Development Configuration
+   (§B.5): a list of repository directories, each a package named by its last part, as a Python package is.
+   - **Refused as submitted, naming the entry:**
+     - anything but a list of paths;
+     - a path that is absolute, leaves the repository or ends in `/`;
+     - two roots whose last parts are one name;
+     - a root that holds no files at the baseline commit.
+   - **The stored document** carries `package_roots` only when roots are declared, so every earlier revision's
+     document, and its digest, is unchanged. No version moves.
+2. **The derivation reads them** (H.7): each declared root the tree holds is a `package` surface named by its
+   folder.
+   - A criterion on `Shared.Modules.ShopRules`, or on a new `Shared.Modules.Pricing`, passes by prefix, as a name
+     inside a Python package does.
+   - A root the tree no longer holds is no surface. A new disclosed gap, `package_root_missing` (stops
+     `criterion_surfaces`), names it.
+3. **Nothing is guessed.** A product that declares no roots has no package surface from them, and the refusal
+   already says so.
+   - A rule of "every top-level folder holding Luau" would name z_tower's `art/blender` and `art/studio-bridge`,
+     Studio tooling that is never synced.
+   - A fixed `src/` happens to be right on z_tower and wrong on any other layout.
+
+**z_tower's roots** are `src/Shared`, `src/Server` and `src/Client`. Each is one instance named for its folder
+(`ReplicatedStorage.Shared`, `ServerScriptService.Server`, `StarterPlayer.StarterPlayerScripts.Client`), and a spec
+requires a module by that path (`require(Shared.Modules.LivesRules)`). This is the MacBook lane's read of the
+product at `0beaac0`. `X/init.luau` is the module `X`.
+
+**Not changed here:**
+- H.31's `covers` for a Script Sync product is still "the top-level folders holding `.luau` sources", so z_tower's
+  luau runner covers `art/**` beside `src/**`. Recorded on #3134.
+- A consistency check on the adapter's side, the `roblox-studio` authority's Script Sync layout rule refusing
+  declared roots it doesn't sync, is recorded on #3134 for later.
+
+**The evidence.**
+- **`test_profile_derivation_luau.py`:**
+  - z_tower's layout, with art/'s tooling, under declared roots: three package surfaces, and the gap for a missing
+    root;
+  - no roots declared: no surface and no gap;
+  - wiring: the profile's document read by the proposal's rails (`planning.proposal.product_context`), admitting
+    `Shared.Modules.ShopRules`, `Shared.Modules.Pricing` and `Shared`, and refusing `blender.studio_pull` and
+    `SharedModules.X`.
+- **`test_configuration.py`:** entered at `configure_project`:
+  - the roots recorded and read back by `parse_configuration`;
+  - each refusal, naming its entry, with nothing recorded.
+
+**Who ruled.** #3134 is the 2.8 capture's blocker under #3041, in the plan the owner adopted on 2026-11-11. The
+MacBook lane, which holds the Roblox layout, recommended the declaration over a derivation (2026-11-16). The
+mechanics are the Spark lane's.
+
+## H.34 A contribution through a service identity the product's owner approves: ruled, not yet built (2026-11-16, ruled 2026-11-17; FR-06, FR-13, FR-14, §B.5.1, E.4.3, H.22, H.30; SIP-0109 §24ea; #3137, #3138; the MacBook lane's draft on the owner's brief, ruled by the owner as drafted)
+
+**Status: ruled, not yet built.** The owner ruled items 1 to 9 as drafted on 2026-11-17, with the three points
+under "What the owner ruled". Nothing in this section is built. It takes effect when #3137 ships, and until then
+E.4.3 and H.22 read as they do.
+
+**Why.** A contribution (E.4.3, H.22) takes a forge token with the request, and this SIP and SIP-0109 call it the
+contributor's or the supervisor's own. The owner's first real product for a Campaign, GuideRail, is to take its
+contributions from a GitHub App installed on its repository. Two identities then stand behind one contribution:
+- **the caller:** the person SquadOps authenticated, who holds the authority and asked for it;
+- **the forge identity:** the account whose token pushes the branch and opens the review request.
+
+FR-13 and FR-14 name the first. Nothing names the second, and main never reads it.
+
+**What main does today, and what this section adds** (read at `28a7a0df`):
+
+| | today | with H.34 built |
+|---|---|---|
+| who may ask | the route's scope: `admin:write` for a run's contribution, `campaigns:manage` for a Campaign's push and contribution. `delegated_actions` is recorded and isn't read on this path | the same scopes. A Project that declares a contribution identity refuses a caller the deploy didn't authenticate (item 4) |
+| who is recorded | the caller: `contributed_by` on the contribution, `actor` and `actor_role` on a Campaign's rows. `anonymous` where the deploy authenticated no one | the caller, and beside it the forge identity as the forge reported it (item 5) |
+| whose token | unread. Any token the forge accepts pushes and opens the request | a Project may declare one contribution identity. The token's identity is read from the forge before anything is pushed, and another's is refused (items 1 and 2) |
+| where it can go | the Project's own `repo_uri`, its base branch, and a `squadops/…` branch the path names. The request names none of them, and `push_campaign_branch` refuses any other ref (SIP-0109 §24cn item 7) | the same, and a token that reaches a repository other than the Project's is refused where the forge can say (item 3) |
+| how the token travels | in the request's body, into the push and the forge call, in memory. `Bearer` on the forge call and `x-access-token` on the push, which is the form an App's installation token takes | the same |
+| where the token comes from | the request. A run's contribution falls back to `projects.review_request_tokens`; a Campaign's path has no fallback (H.22 item 4). The CLI's only source is `--token-from-gh`, the box's `gh` login | the same, and the CLI takes one on standard input (item 6). The check covers whichever token the path uses |
+| the key behind a service identity | no such identity exists | never in the deploy, which mints nothing (item 6) |
+
+**Proposed.**
+1. **A Project may declare one contribution identity.** It is part of the Project Record's product authority
+   (§B.5.1), an owner decision: the forge's host, and the account as the forge reports it (its login and its
+   numeric id).
+   - It is recorded by an `admin:write` caller, with the caller and the time. Each change is a new revision of the
+     Record's authority, and a contribution names the revision it was checked against. The Record's authority has
+     no revision today: it is set at registration. The build adds one for this.
+   - It lives in the Record, since the Development Configuration is an execution binding and no source of product
+     policy (§B.5.1's precedence).
+   - **It grants nothing else.** Candidate acceptance, baseline promotion, integration, release, publication and
+     the repository's administration stay where FR-13 and the product's own policy put them. `delegated_actions`
+     is unchanged, and so is `direct_push`'s refusal (E.4.3).
+   - A Project that declares none keeps today's rule: the token is the caller's own.
+2. **The token's identity is read from the forge, before anything is pushed.** A token that isn't the declared
+   identity's is refused (`409 CONTRIBUTION_REFUSED`, naming both accounts), with nothing pushed or opened.
+   - The identity is never taken from the request, from a commit's author or committer, or from the token's
+     form. A commit's author can be checked for consistency and proves nothing.
+   - So a Project that declares an identity refuses the owner's own token and the supervisor's own. No path falls
+     back to another credential when the declared one is missing, expired or refused.
+   - The opened request's author, as the forge returns it, is what the record carries. One that differs from the
+     declared identity is recorded as a failed attempt naming both, and the request is left for the owner.
+3. **The token's reach.** Where the forge answers which repositories a token reaches, one that reaches any but the
+   Project's is refused. Where the forge can't say, the record says the reach was unread. It is never assumed
+   narrow: a token's short life says nothing about what it can do.
+4. **The caller.** A contribution under a declared identity needs a caller the deploy authenticated, holding the
+   route's scope. Holding the identity's token confers no authority: a request with a valid token and no such
+   caller is refused at the route, as any request without the scope is.
+5. **The record** (FR-14). The contribution's document gains the forge identity as the forge reported it and the
+   authority revision. `contributed_by` stays the caller. The token is in no row, response or log, as today.
+   - A Project that declares no identity has the forge identity recorded too, and nothing refused on it.
+   - `patch_export` pushes nothing and records none.
+6. **Credentials** (FR-13).
+   - A service identity's private key is never in the deploy, the Project Record, the Development Configuration, a
+     prompt, a task's input, evidence, a response or a log. The deploy mints no token. One token is minted per
+     request, outside the deploy, and passed with it.
+   - No agent container and no task is given a forge credential, as today: the push and the forge call are the
+     runtime API's adapters', from the request.
+   - The CLI takes the token on standard input (`--token-stdin`) on `projects contribute`,
+     `campaigns push-review` and `campaigns contribute`, beside `--token-from-gh`. It prints none.
+   - The rules for evaluation and test credentials are untouched.
+7. **A failure opens nothing and widens nothing.** A missing token, an expired one, a refused identity, a token
+   that reaches too far, a moved branch and a forge error each end in the refusal or the failed record the path
+   already makes (E.4.3; SIP-0109 §24cn item 5, §24dc item 5). The contribution stays due for the next request.
+8. **Reads are outside the check.** A sync, a validation and H.30's integration check take any token that can
+   read the product, in the order they read one today.
+9. **A review the forge recorded is the product's.** The contribution's `commit` is the head the review request is
+   opened on. Whether a moved head needs a new review is the product's forge setting. SquadOps reads integration
+   from the merge (E.4.4) and reads no approval as authority for anything.
+
+**What the framework checks, and what it leaves to the forge.** A claim about a product's protection says which of
+the three it rests on:
+- **the framework's checks:** items 2 to 5, the refs the port pushes, the lease on a Campaign's push, and a
+  contribution that is never forced;
+- **the forge's settings, which are the product's:** what the identity's token may do, branch protection, required
+  review and whether a moved head dismisses it, and who may create a tag or a release. GitHub's permission to
+  write contents, which a push needs, also allows creating tags and releases. So a rule that only the owner
+  updates the main branch doesn't show that only the owner can release. The product's settings answer that, and
+  its record says what was shown and what is left as the owner's accepted exposure;
+- **instructions only:** anything neither enforces. It is named as that.
+
+**What the owner ruled (2026-11-16, in conversation with the MacBook lane).**
+- **(a) GuideRail may take one contribution.** The owner's rule of 2026-10-21, "I don't want to be pushing actual
+  change to Continuum until we have the framework solid", has held for every real product since, and this is its
+  first record in a SIP. It is lifted for GuideRail only: one supervised issue, contributed as a review request,
+  which the owner merges. Continuum and every other real product stay under it.
+- **(b) The App's private key** is kept on a host the owner controls, outside the deploy and outside both lanes'
+  sessions, and one token is minted per request.
+- **(c) Placement.** This text lands as proposed. The build is placed after the 2.8 cut, by the next line's plan.
+
+**And on 2026-11-17,** with the draft's five questions in front of them ("use recommendations on the others as
+well"), the owner took each as drafted:
+1. items 1 to 9 and SIP-0109 §24ea stand as written;
+2. the identity lives in the Project Record's authority, with a revision of its own, and not in the Development
+   Configuration;
+3. a token that reaches any repository but the Project's is refused, where the forge can say;
+4. a Project that declares no identity has the forge identity recorded too, with nothing refused;
+5. the refusal of a caller the deploy didn't authenticate covers Projects that declare an identity, and leaves
+   the rest as they are.
+
+**What the build needs.**
+- **#3137:** items 1 to 6, and SIP-0109 §24ea's rows.
+- **#3138, first for GuideRail and independent of the rest:** a test-id reader validated on vitest 4. H.10's reader
+  is validated on vitest 2, and the derivation refuses a package that doesn't pin vitest 2 alone. GuideRail's two
+  packages declare vitest `^4.1.12`, and SIP-0109 §24ci (a) accepts no criterion under a runner with no reader.
+  The brief also reads GuideRail's root test script as going through Turborepo, which discovery doesn't follow.
+
+**The checks that show it built,** each entered at the route:
+1. a valid token of the declared identity with no authenticated caller holding the scope: refused;
+2. a caller with the scope can name no repository, base or branch: the request carries none;
+3. a permitted request opens the review request as the declared identity, and its record names the run or the
+   Campaign, the commit, the caller, the forge identity and the authority revision;
+4. a missing or expired token fails by name, with no stored token read on a Campaign's path and no other
+   credential tried;
+5. a Campaign's close, abort and startup open nothing (SIP-0109 §24dc item 1, unchanged);
+6. the lease, the moved-branch refusal, the replay and the crash recovery hold under the identity's token, with
+   one review request;
+7. a commit authored under the declared identity's name, pushed with another account's token: refused;
+8. the token and the key are in no task input, log, response or stored evidence.
+
+The product's own checks are its pilot's, on disposable refs: what the App can do and is denied, what the owner
+still needs to merge, and who can create a tag or a release.
+
+**Outside this SIP.** GuideRail's forge settings and its policy. A crew's review procedure and its supervision
+(the Nostromo crew's). A general broker for forge credentials, forge access for agents, and issue management:
+each would be its own proposal.
+
+**The evidence.**
+- **Read on main at `28a7a0df`:**
+  - `projects/contribution.py`: `_review_target`, `_open_review_request` and `contributed_by`;
+  - the three routes, their scopes and their `anonymous` actor;
+  - `campaigns/close_contribution.py` and `campaigns/review_push.py`: the token required and no stored one read;
+  - `adapters/tools/github_review_request.py` (`Bearer`) and `adapters/tools/git_source.py` (`x-access-token`);
+  - `cli/forge_token.py`: `gh auth token` alone;
+  - `projects/profile_derivation.py`: `_VITEST_2_ONLY`.
+- **Not done:**
+  - no App's installation token has been passed to a deploy;
+  - how GitHub answers an installation token's identity and reach is the build's to show;
+  - GuideRail's repository, its issue #90, its PR #92 and its settings weren't read here;
+  - the Turborepo reading is the brief's.
+
+**Who ruled.** The owner brought the brief and ruled (a), (b) and (c) on 2026-11-16. Items 1 to 9 are the MacBook
+lane's draft from it, which the owner ruled as drafted on 2026-11-17. SIP-0109 §24ea is the Campaign's side.
+
+## H.35 A product's owner reserves paths from a cycle's change (2026-11-17; E.4.3, H.4, H.6, H.8, FR-06; SIP-0109 §9.1, §24bv point 5; SIP-0116 §17t; #3155; the MacBook lane, ruled by the owner)
+
+**What changed.** A product's Development Configuration may declare `technical.reserved_paths`: files, folders
+and globs its owner changes themselves. No cycle changes one. A proposal that reaches one, a plan that names
+one and a run that changes one are each refused by path, naming the entry, whatever a model argued.
+
+**The evidence.** z_tower-ascension's own instructions put anything touching saved data behind its owner's
+approval. The development skill tells the model to stop on such a change, and the skills replay measured how
+well that holds (SIP-0116 §17r to §17t): no answer of three on the first run, three of three on the second,
+two of three on the third. The answer that didn't stop quoted the instruction and the skill, then wrote the
+schema anyway because a typed criterion expected a file. The file it wrote held the renamed field alone. A
+skill's stop is the model's to follow, and nothing in the framework refused the change. It would have reached
+the product as a review request for its owner to notice.
+
+**The declaration.**
+- **`technical.reserved_paths`,** a list, in the Development Configuration, beside H.33's `package_roots`. It is
+  recorded with a revision as every declaration there is, a cycle pins the revision it runs under, and the
+  derived profile at that pin carries the entries (contract 8 gains an optional `reserved_paths`).
+- **An entry** is a file, a folder with everything beneath it, or a glob. `*` is the one wildcard and crosses
+  `/`, as in a footprint; `**/` also stands for no folder; case is kept; `[` and `?` are literal (#2512).
+  `squadops.projects.reserved_paths` is the one reading.
+- **Refused at submission, naming the entry:** one that is empty, absolute, leaves the repository or is
+  declared twice; one that reserves every file; and one that reserves no file at the baseline commit, which is
+  what a misspelt path looks like and would protect nothing.
+- **None declared, nothing is reserved.** A stored configuration or profile without the key reads as before
+  and is written back without it.
+
+**The Project Record was the other home considered** (#3155 asked). The configuration is where every seam
+below already reads the product's declarations at the cycle's own pin. A record-level declaration would need a
+second pin for a cycle to hold to.
+
+**Where a reserved path is refused.** Each seam that accepts a path, the tree it sees, and its outcome:
+
+| seam | what it reads | a reserved path |
+|---|---|---|
+| a proposal's rails (SIP-0109 §9.1; `validate_proposal`) | the authored `footprint`, as globs, and the criterion files the framework would place | refused `reserved_path` and returned to the proposer: a footprint entry that is reserved, lies in a reserved folder or holds a reserved file, and a criterion's own file placed at one. A reserved glob against a footprint glob that only might share a file is left to the seams below, which read paths |
+| the plan gates (H.8's two: the promotion seam and the in-run gate) | each task's `expected_artifacts` | `validate_reserved_paths` refuses the plan, naming the task, the path and the revision; the framing re-rolls told which |
+| cycle create, for an operator's plan | the plan's `expected_artifacts` | refused before anything is persisted |
+| a task's emission, an agent-side repair, the verifier's tree | the task's own files | not refused here. Each is a part of the run's change, which delivery reads whole |
+| delivery (E.4.3; `deliver_source_change`) | every path the delivery would write: the squad's change at its latest accepted content, removals included, with the framework's placed files | the run is refused before a candidate is built: nothing is seeded, verified or captured. It reads the configuration at the cycle's pinned revision |
+| a Campaign's acceptance, its branch and its contribution | the captured commit | nothing reaches them: they take what delivery captured |
+
+**Taught before it is enforced** (#686), and only where declared:
+- the plan's authors are shown the entries through `request.plan_reserved_paths_appendix`, on the same inputs
+  step that shows H.8's blocked paths;
+- a Campaign's proposal is shown them in its product section (`request.proposal_reserved_paths`).
+
+A product that declares none is sent the requests it always was, to the byte: its proposal's input holds no new
+key and no template renders a blank.
+
+**What it does not do.**
+- It does not stop a change outside a cycle. The owner's own commits are theirs.
+- It does not read a rename of the folder that holds a reserved file as reaching it, unless the plan or the
+  run names the file.
+- A repair round is not offered for a run refused at delivery. Its plan passed the gate without naming the
+  path, so its change strayed from its plan.
+
+**The evidence it works.**
+- **`tests/unit/cycles/test_reserved_paths.py`:** the reading of an entry in each form; both plan gates
+  entered as the live run reaches them, each refusing a plan that names one with the path, the entry and the
+  revision; an operator's plan at `prepare_cycle`; the authors shown the entries by the run's inputs step and
+  both authoring paths rendering the asset; a profile derived from a configuration that reserves, written and
+  read back; one stored before the key; a damaged one refused.
+- **`tests/unit/projects/test_configuration.py`,** entered at `configure_project`: the entries recorded and
+  read back; none declared stored as before; ten refusals naming the entry.
+- **`tests/unit/campaigns/test_product_change_request.py`,** entered at `validate_proposal`: a footprint that
+  names, lies in or holds a reserved path; a criterion file placed at one; requests beside them accepted.
+- **`test_strategy_propose_product_increment.py`,** entered at the proposal's `handle()` with the input the
+  run composes: the entries shown, a reaching request returned with the refusal and the revised one accepted;
+  and a product reserving nothing sent the same prompt as before.
+- **`tests/unit/cycles/test_source_backed_run.py`,** entered at the end of the plan: a run changing a reserved
+  file, one under a reserved folder beside a free file, and one a glob matches are each refused with nothing
+  stored or mapped; a run beside the reserved paths is delivered.
+- Loaded-check rows `3155-reserved-path-reading` and `3155-reserved-paths-assets`.
+
+**Not shown.** No product declares a reserved path yet. z_tower-ascension's revision is the Spark lane's to
+submit, and the first cycle on it reads the rule live.
+
+**Who ruled.** The MacBook lane proposed the rule from the replay's reading (#3155). The owner ruled it on
+2026-11-17: "let's go with the proposed rule for 3155."
+
+## H.36 The map lists every path a task can change, and a task is told which of its files are new (2026-11-17; E.4.3, H.13; SIP-0109 §7.3; #3178; the MacBook lane)
+
+**What changed.** A product past the map's limit of 400 paths folds the files no task's view carries first, by
+directory, and every other path stays listed with its size. A task that names a file the product doesn't hold
+is told so.
+
+**The evidence.** The 2.8 demonstration's full-path gate, attempt 3 (`cmp_35659d2394a3`, `run_178243ba831b`),
+on z_tower-ascension at `0beaac09c606`:
+- **The tree holds 619 files,** 385 of them binary art and documents. Past its limit the map showed each
+  top-level directory with a count, so every author read `src/ (137 files)` and no source path. The proposal's
+  prompt calls that map "every file the product holds", and says a footprint names its paths.
+- **The proposals named a path the product doesn't hold.** Two of four approved footprints were
+  `src/Client/UI/HUD.luau`, and a third's plan named it under a glob. The game's HUD is
+  `src/Client/UI/Screens/HUD.luau`.
+- **The developer was shown nothing.** `existing_files` is keyed by the files a task names, so it was empty, and
+  the prompt gave no reason. The task wrote a new 42-line module that builds its own `TA_HUD`. Nothing requires
+  it, so no candidate play could have passed.
+- **The approver didn't read the path against the tree** (the Spark lane, under the owner's grant for uncounted
+  runs, attempts 1 and 3).
+
+**The rule.**
+- **Up to the limit, the map is unchanged:** every path with its size.
+- **Past it, binary and generated files fold** (`projects.checkout.repository_map`). A directory whose every file
+  is one of them is a single line with its count, at the shallowest such directory. One that also holds a listed
+  file gets a line counting its own, "beside the files listed". A root-level file and a file the run removed are
+  listed as themselves. On the game's tree that is 250 lines and 13,275 characters, with all 234 text files
+  listed.
+- **A tree still past the limit then** shows each top-level directory with its count, as before, under a
+  sentence saying its files aren't listed (`MAP_FOLDED_NOTE`). It read as a complete map before.
+- **`source_repository.new_files`** names the files a task names that neither the product nor the run holds,
+  and the appendix states them (`request.source_repository_new_files_block`): each is a new file, and a change to
+  a file the product holds goes at that file's own path, as the map writes it. A task that names none is shown
+  no such block, so its prompt is unchanged.
+
+**Considered and left out.** A refusal of a footprint path whose file name the product holds elsewhere. A new
+file that shares its name with another (`init.luau`, `index.ts`, `__init__.py`) is ordinary, so the rule would
+refuse honest changes.
+
+**Not built here.** A proposal's footprint shown to its approver with each new path marked. No surface renders
+a proposal for its approver today: the approver reads the stored change request. It is its own issue.
+
+**What it costs.** The map is in every authoring prompt on the product. On the game it grows from 11 lines to
+250, about 3,300 tokens. The Campaign's size preflight measures it, since it reads the same view.
+
+**Not shown:** a proposal on the game that names `src/Client/UI/Screens/HUD.luau`. That is read on the next
+full-path gate.
+
+**Who ruled.** The Spark lane read the record. The MacBook lane read the cause and made the change.
+
+## H.37 A product that tests only with Luau runners gets a `qa.test` fragment written for its runner (2026-11-18; H.13, H.26; SIP-0118 R4.3; SIP-0116 §17p; #3147; the MacBook lane, on the 2.8.1 plan's condition)
+
+**What changed.** The `qa.test` system prompt ends in the task type's fragment (`task_type.qa.test`). On a product
+that tests only with Luau runners it now ends in `task_type.qa.test.luau`. Every other run's prompt is byte for
+byte what it was.
+
+**The evidence** (#3147, from the #3041 capture on the Spark, `cmp_2b1aa826d5bb`, envelope `550d7a31…`, which
+reconstructs exactly). The task type's fragment states its rules in pytest's and vitest's terms:
+- "Your suite runs in the test runner's own process — pytest or vitest", with FastAPI `TestClient` and Next.js
+  route-handler idioms;
+- discovery as pytest's `test_*.py` and vitest's `__tests__/**`;
+- dependencies as `requirements.txt` and `package.json`;
+- a JSX `MemoryRouter` example, and a fixture example in JavaScript and in Python.
+
+A Luau product's suite author was sent all of it, beside the product's own runner (`lune run tests/run.luau`,
+`*.spec.luau`). The capture's spec was right anyway and its increment was accepted, so this was a false statement
+in the prompt and about 3,100 characters of it, not yet a failure.
+
+**The condition it is in 2.8.1 on** (the plan's item 7): every existing stack's rendered `qa.test` system prompt
+stays byte-identical. Since those stacks are sent the same bytes, their behaviour can't move, and no replay of them
+is owed.
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **Which run** | `qa_test_prompt_variant(inputs)`: `"luau"` where `suite_language(inputs)` reads Luau, the seam that already chooses a Luau product's worked suite examples (#2876, #2906). A sample application, a product with no runner, and one with runners of more than one language read none, and keep the task type's own fragment |
+| **By the runner, never by the profile** | A cycle under `game_dev_roblox` and the skills replay's capture under `product_neutral` (SIP-0116 §17p) render the same prompt, so the replay reads what a cycle sends |
+| **How it is asked for** | `PromptService.assemble(…, variant=…)` reads `task_type.<task_type>.<variant>`. A variant with no registered fragment raises. The task type's own fragment never stands in for it, and the task-type layer is never dropped |
+| **What the Luau fragment keeps** | The rules that hold on every stack, under the same headings: no server or game session and nothing that starts one; discovery by the runner's own pattern and roots; declared dependencies only; test isolation; a test per criterion, each naming the fault it catches; and the assertion on a collection before a loop over it, with its example in Luau |
+| **What it leaves out** | pytest, vitest, FastAPI, Next.js, JSX, `requirements.txt`, `package.json` and the frontend section |
+| **The task type's own fragment** | Untouched: its file's sha256 is `4918b9e0…`, as tagged in v2.8.0 |
+| **The size preflight** | Still counts the task type's own fragment for every `qa.test` (`prompt_budget.system_prompt_tokens`). It is the larger of the two, so the count stays an upper bound |
+
+**The digests.** The `qa.test` system prompt for the `qa` role, assembled from the shipped fragments:
+- at v2.8.0, and on this change for every run that isn't Luau-only: sha256 `a0c6f5ef…c79aa0da`, 8,326 characters;
+- for a Luau-only product: `a30c4542…baf3babd`, 5,211 characters.
+
+**Not done: moving each stack's idioms to its own profile.** #3147 proposes it. A FastAPI product is sent the
+Next.js idioms today, and the reverse, so the move changes those stacks' prompts and owes them a replay. #3147
+stays open for it, unplaced.
+
+**What reads it.** The Luau prompt's effect on a suite's author is read by the `roblox-skills-v4` replay's QA
+cases, under its new experiment id.
+
+**The tests.** `tests/unit/capabilities/test_qa_test_prompt_names_the_products_runner.py` enters at
+`QATestHandler._generation_request`, with the real assembler over the shipped fragments:
+- a FastAPI and React application, a Next.js one, a vitest product, a pytest-and-vitest product, a product with
+  Luau and pytest runners and one with none are each sent the prompt they were, and the task type's fragment
+  holds its v2.8.0 digest;
+- a Luau-only product, under `game_dev_roblox` and under `product_neutral`, is sent a prompt naming none of the
+  other stacks' runners or examples, with each rule that holds on every stack;
+- a variant no fragment is registered for is refused by name.
+
+Five mutations each fail a test, among them the task type's fragment edited and a missing variant falling back.
+
+**Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 7 states the condition. The MacBook
+lane read that it holds and built it.

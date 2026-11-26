@@ -189,13 +189,15 @@ async def _until(check, *args, seconds: float = 30.0) -> None:
     """Wait for ``check(*args)``, asking again after every turn of the event loop. A failure
     names the check.
 
-    It asks at every turn, never after a real-time sleep (#3110). The path's actors pass the
-    test's clock on each round they take, so a real-time sleep let them take as many rounds as
-    the machine's speed allowed: a worker cut off mid-lease had already spent about 220 s of its
-    requester's 300 s wait by the time the test saw it running. Asked at every turn, the check
-    is seen at the first round where it holds, whatever the machine's speed. The bound is still
-    in real seconds, not turns (#3096): on Postgres each check is a network round trip that a
-    turn doesn't wait for."""
+    - **It never sleeps in real time** (#3194, #3110). The path's actors pass the test's clock
+      on every round they take, so a real-time sleep let them take as many rounds as the
+      machine's speed allowed: a worker cut off mid-lease had spent about 220 s of its
+      requester's 300 s wait by the time the test saw it running, and on a fast or loaded box
+      a correct path read ``interrupted``. Asked at every turn, a check is seen at the first
+      round where it holds, whatever the machine's speed.
+    - **The bound is in real seconds, not turns** (#3096): on Postgres each check is a network
+      round trip that a turn doesn't wait for, so a bound in turns failed a correct path on a
+      slower database."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + seconds
     while not await check(*args):

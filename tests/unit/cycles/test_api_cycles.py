@@ -48,6 +48,9 @@ def mock_project_registry():
 @pytest.fixture
 def mock_cycle_registry():
     mock = AsyncMock()
+    # #3201: the cycle route reads the latest recorded ending; none recorded here.
+    mock.get_cycle_end.return_value = None
+    mock.get_cycle_ends.return_value = {}
     mock.create_cycle.side_effect = lambda c: c
     mock.create_run.side_effect = lambda r: r
     mock.list_cycles.return_value = []
@@ -256,6 +259,82 @@ class TestCreateCycleCodeLineage:
             "1.7.5",
             "072672ef-dirty",
         )
+
+
+class TestCycleReadsItsRecordedEnding:
+    """#3201, entered at the cycle routes the CLI's ``cycles show`` and ``cycles list`` read."""
+
+    @staticmethod
+    def _ended_at_gate():
+        from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+
+        cycle = Cycle(
+            cycle_id="cyc_001",
+            project_id="hello_squad",
+            created_at=NOW,
+            created_by="campaign",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            applied_defaults={
+                "workload_sequence": [
+                    {"type": "proposal", "gate": "progress_increment_ruling"},
+                    {"type": "framing", "gate": "progress_plan_review"},
+                    {"type": "implementation"},
+                ]
+            },
+        )
+        runs = [
+            Run(
+                run_id=f"run_{n}",
+                cycle_id="cyc_001",
+                run_number=n,
+                status=status,
+                initiated_by="campaign",
+                resolved_config_hash="h",
+                workload_type="proposal",
+            )
+            for n, status in ((1, "cancelled"), (2, "cancelled"), (3, "completed"))
+        ]
+        end = RecordedEnd("cyc_001", "run_3", CycleStopReason.REVISION_UNAVAILABLE)
+        return cycle, runs, end
+
+    def test_the_detail_route_reads_a_cycle_ended_at_the_gate_as_ended(
+        self, client, mock_cycle_registry
+    ):
+        """Bug caught: rehearsal 3's cycle read ``active`` here for 40 minutes after the
+        Campaign ended it, because its later workloads were still pending."""
+        cycle, runs, end = self._ended_at_gate()
+        mock_cycle_registry.get_cycle.return_value = cycle
+        mock_cycle_registry.list_runs.return_value = runs
+        mock_cycle_registry.get_cycle_end.return_value = end
+
+        body = client.get("/api/v1/projects/hello_squad/cycles/cyc_001").json()
+
+        assert (body["status"], body["recorded_ending"], body["status_conflict"]) == (
+            "failed",
+            "revision_unavailable",
+            None,
+        )
+
+    def test_the_list_route_reads_the_same_ending_from_one_batch_read(
+        self, client, mock_cycle_registry
+    ):
+        """Bug caught: the list and the detail disagreeing on one cycle, or the list reading
+        its endings with a query per cycle (#1976's cost)."""
+        cycle, runs, end = self._ended_at_gate()
+        mock_cycle_registry.list_cycles.return_value = [cycle]
+        mock_cycle_registry.list_runs_for_cycles.side_effect = None
+        mock_cycle_registry.list_runs_for_cycles.return_value = {"cyc_001": runs}
+        mock_cycle_registry.get_cycle_ends.return_value = {"cyc_001": end}
+
+        [body] = client.get("/api/v1/projects/hello_squad/cycles").json()
+
+        assert (body["status"], body["recorded_ending"]) == ("failed", "revision_unavailable")
+        mock_cycle_registry.get_cycle_ends.assert_awaited_once_with(["cyc_001"])
+        mock_cycle_registry.get_cycle_end.assert_not_awaited()
 
 
 class TestCreateCycleDeployLineage:

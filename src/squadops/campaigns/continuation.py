@@ -9,7 +9,7 @@ that by its import closure.
 
 Three ordered steps, the first match winning in each:
 1. **terminal outcomes** (rows 1–4) end the campaign;
-2. **the pending action** (rows 5–14, and the rows the amendments added: 15–19);
+2. **the pending action** (rows 5–14, and the rows the amendments added: 15–20);
 3. **the guard**, for a guardable action only: a pausing limit holds it (``paused``), otherwise
    ``proceed``. ``escalate`` has no guard, so escalation wins over a simultaneous pausing limit.
 
@@ -62,6 +62,12 @@ class CycleEnding(StrEnum):
     #: new proposal told which criteria the head meets, counted toward no unaccepted limit, as
     #: row 16's abandonment is (§24ct).
     CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
+    #: §24dz (SIP-0116 §17o): a task's model answered with a stop one of its skills declares, and
+    #: the run ended there, before any change reached the campaign branch. A proposal run that
+    #: stopped reads this, never ``proposal_failed``. Row 20 abandons the increment for a new
+    #: proposal shown the skill's line, counted toward no unaccepted limit: the stop says the work
+    #: asked for crosses the skill's rule, which no repair of the same work can change.
+    SKILL_STOPPED = "skill_stopped"
 
 
 @dataclass(frozen=True)
@@ -220,17 +226,20 @@ def latest_primary(latest: CycleAssessment) -> AttributionClass | None:
 #: - §24bj, row 15: parked, its plan gate's escalation expired with nobody deciding it.
 #: - §24cb, row 18 (#2704): stopped at its plan gate, its plan refused or the gate failed.
 #: - §24cz, row 19 (#2890): ended at its qa task, a criterion's test already passing on the head.
+#: - §24dz, row 20 (SIP-0116 §17o): ended when a task's skill stopped it, naming why.
 _ABANDONED_BEFORE_VERDICT: dict[CycleEnding, int] = {
     CycleEnding.PARKED: 15,
     CycleEnding.STOPPED_AT_PLAN_GATE: 18,
     CycleEnding.CRITERIA_NOT_CHECKABLE: 19,
+    CycleEnding.SKILL_STOPPED: 20,
 }
 
 #: The rows whose ``abandon_and_propose`` counts toward no unaccepted limit, at its own decision
 #: or from the log: the criteria were the fault, not the work (#2849, §24ct). Row 16: rejected at
 #: acceptance only for criteria the accepted application already meets. Row 19 (#2890, §24cz):
-#: ended before delivery because a criterion's test already passes on the head.
-UNCOUNTED_ABANDONMENT_ROWS: frozenset[int] = frozenset({16, 19})
+#: ended before delivery because a criterion's test already passes on the head. Row 20 (§24dz):
+#: ended when a task's skill stopped it, so what was asked crosses the skill's rule.
+UNCOUNTED_ABANDONMENT_ROWS: frozenset[int] = frozenset({16, 19, 20})
 
 
 def campaign_continuation_decision(
@@ -261,9 +270,10 @@ def campaign_continuation_decision(
     # Rows 13, 15 and 18: this decision abandons the increment, and the abandonment counts as
     # unaccepted at this decision, so the one that reaches the limit stops rather than proposing
     # once more (#2294). A parked calibration, or one stopped at its plan gate, never reaches row
-    # 4: row 2 ends the campaign. Rows 16 and 19's abandonments (criteria the head already meets,
-    # told to the next proposal) count toward no limit but the cycles and the budget
-    # (``UNCOUNTED_ABANDONMENT_ROWS``; #2849, §24ct; #2890, §24cz): the criteria were the fault.
+    # 4: row 2 ends the campaign. Rows 16, 19 and 20's abandonments (criteria the head already
+    # meets, or a skill's stop, told to the next proposal) count toward no limit but the cycles
+    # and the budget (``UNCOUNTED_ABANDONMENT_ROWS``; #2849, §24ct; #2890, §24cz; §24dz): what
+    # was asked was the fault, not the work.
     row_before_verdict = _ABANDONED_BEFORE_VERDICT.get(cycle.ending)
     abandons = (rejected and not environment and not already_met and not repairs_remain) or (
         row_before_verdict is not None and row_before_verdict not in UNCOUNTED_ABANDONMENT_ROWS
@@ -349,11 +359,13 @@ def _pending(
 ) -> tuple[int, PendingAction]:
     if cycle.kind is CycleKind.CALIBRATION:
         return 5, PendingAction.PROPOSE
-    # Rows 15, 18 and 19, asked before row 6, which would propose without abandoning the
+    # Rows 15, 18, 19 and 20, asked before row 6, which would propose without abandoning the
     # increment. Row 19 (#2890, §24cz): a criterion's test passed on the campaign branch's head
     # before the increment's work was delivered. Nothing built can make it discriminate, so the
     # increment is abandoned for a new proposal told which criteria the head already meets, as
-    # row 16's is, and counted toward no unaccepted limit (§24ct).
+    # row 16's is, and counted toward no unaccepted limit (§24ct). Row 20 (§24dz): a skill
+    # stopped the work, so a repair or retry of the same work would stop again. A stopped
+    # proposal run is abandoned the same way, rather than proposed again unexplained by row 6.
     if cycle.ending in _ABANDONED_BEFORE_VERDICT:
         return _ABANDONED_BEFORE_VERDICT[cycle.ending], PendingAction.ABANDON_AND_PROPOSE
     # §24bw, asked before row 6: a hold that expired said nothing about the squad's work. The

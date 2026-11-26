@@ -46,6 +46,9 @@ class CycleStopReason(StrEnum):
     #: test already passes on the campaign branch's head. The run declares it in its terminal
     #: decision (``TerminalKind.CRITERIA_NOT_CHECKABLE``); the completion boundary reads it.
     CRITERIA_NOT_CHECKABLE = "criteria_not_checkable"
+    #: SIP-0116 §17o: a task of the run was stopped by one of its skills. The run declares it
+    #: in its terminal decision (``TerminalKind.SKILL_STOPPED``), with the stop it read.
+    SKILL_STOPPED = "skill_stopped"
 
 
 #: Why the sequence stops on a run that did not complete — every ``RunStatus`` but ``COMPLETED``
@@ -64,6 +67,7 @@ STOP_REASON_FOR_UNCOMPLETED_RUN: dict[RunStatus, CycleStopReason] = {
 #: the run decided rather than an assessment of a build that never delivered.
 STOP_REASON_FOR_TERMINAL_KIND: dict[TerminalKind, CycleStopReason] = {
     TerminalKind.CRITERIA_NOT_CHECKABLE: CycleStopReason.CRITERIA_NOT_CHECKABLE,
+    TerminalKind.SKILL_STOPPED: CycleStopReason.SKILL_STOPPED,
 }
 
 

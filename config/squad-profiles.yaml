@@ -81,6 +81,23 @@ profiles:
       - { agent_id: eve, role: qa, model: "Qwen/Qwen3.8-27B-FP8", enabled: true, config_overrides: { max_completion_tokens: 12288 }, serves_roles: [qa] }
       - { agent_id: data, role: data, model: "Qwen/Qwen3.8-27B-FP8", enabled: true, serves_roles: [data] }
 
+  # SIP-0118 phase 2f (#3041): the Roblox squad, for the Spark. `full-38-tf`'s roster without the
+  # builder, which has no step in the first milestone (the game plan's §2.8), and with the three
+  # Roblox skillsets on the agents that carry them. A skillset is loaded only where a cycle's
+  # development profile requires it (SIP-0116 §5.3), so under any other profile this squad
+  # authors exactly as `full-38-tf` does. There is no MacBook twin: every cycle of the game line
+  # runs on the Spark (SIP-0118 R5.4).
+  - profile_id: game-dev-roblox
+    name: "Roblox Game Squad"
+    description: "The Roblox squad on the Spark: full-38-tf's models and completion budget with no builder. Nat carries roblox-increment-design, Neo roblox-luau-dev and Eve roblox-studio-qa (SIP-0118 R4.3). Its skills load only on a cycle whose development profile requires them."
+    version: 1
+    agents:
+      - { agent_id: max, role: lead, model: "qwen3.8-27b-tf-nvfp4", enabled: true, serves_roles: [lead], config_overrides: { max_completion_tokens: 12288 } }
+      - { agent_id: neo, role: dev, model: "qwen3.8-27b-tf-nvfp4", enabled: true, serves_roles: [dev], config_overrides: { max_completion_tokens: 12288 }, skillsets: [roblox-luau-dev] }
+      - { agent_id: nat, role: strat, model: "qwen3.8-27b-tf-nvfp4", enabled: true, serves_roles: [strat], config_overrides: { max_completion_tokens: 12288 }, skillsets: [roblox-increment-design] }
+      - { agent_id: eve, role: qa, model: "qwen3.8-27b-tf-nvfp4", enabled: true, config_overrides: { max_completion_tokens: 12288 }, serves_roles: [qa], skillsets: [roblox-studio-qa] }
+      - { agent_id: data, role: data, model: "qwen3.8-27b-tf-nvfp4", enabled: true, config_overrides: { max_completion_tokens: 12288 }, serves_roles: [data] }
+
   - profile_id: full
     name: "Full Squad"
     description: "All 6 roles incl. builder on qwen3.6:27b — uniform single-loaded model on Spark (no swap overhead), max reasoning depth at the ~16 tps ceiling. The quality squad. (Consolidates the former full-squad + spark-squad-with-builder; #173.)"

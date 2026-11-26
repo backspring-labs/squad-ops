@@ -104,8 +104,11 @@ def is_intervention(entry: ControlLogEntry) -> bool:
     if entry.operation is ControlOperation.RULE:
         return entry.binding.get("decision") in _RETURNING
     if entry.operation is ControlOperation.ESCALATION_CLOSED:
-        # An escalated plan gate that a person decided: the design question was answered.
-        return entry.binding.get("state") == EscalationState.RESOLVED
+        # An escalated plan gate that a person decided: the design question was answered. One
+        # decided after its bound reads expired and names the decision (SIP-0109 §24eh).
+        return entry.binding.get("state") == EscalationState.RESOLVED or bool(
+            entry.binding.get("decided_by")
+        )
     return entry.operation in _ACTED and entry.actor_role not in SYSTEM_ROLES
 
 

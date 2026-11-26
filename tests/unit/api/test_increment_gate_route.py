@@ -314,8 +314,12 @@ async def test_the_supervisor_answers_no_plan_gate_outside_a_campaign(world):
 # --- SIP-0109 §24da (#2891): the plan_gate class, at the gate's answer path ----------------------
 
 
-async def _escalated_gate(declared: tuple[str, ...], *, owner_paused: bool = False) -> _World:
-    """A campaign whose plan gate on ``run_prop`` the tier escalated, declaring ``declared``."""
+async def _escalated_gate(
+    declared: tuple[str, ...], *, owner_paused: bool = False, opened_at: datetime | None = None
+) -> _World:
+    """A campaign whose plan gate on ``run_prop`` the tier escalated, declaring ``declared``.
+    The escalation opened ``opened_at``: just now unless a test says when, since a decision is
+    read against the ruling bound from its opening (§24eh)."""
     from squadops.campaigns.models import CampaignTransition
 
     w = _World()
@@ -343,7 +347,7 @@ async def _escalated_gate(declared: tuple[str, ...], *, owner_paused: bool = Fal
                 "escalation_id": "esc_plangate001", "identity": identity,
                 "failed": [{"condition": "no_open_question", "reading": "a question"}],
                 "questions": ["which order?"], "decision_ids": ["order"],
-                "opened_at": NOW.isoformat(),
+                "opened_at": (opened_at or datetime.now(UTC)).isoformat(),
             },
         ),
     )  # fmt: skip
@@ -380,7 +384,10 @@ async def test_the_operator_answers_an_escalated_plan_gate_only_under_its_grant(
     )
 
     assert resp.status_code == status, resp.json()
-    *_, row = await w.campaigns.control_log(CID)
+    # The answer's own row. A decided gate then ends its escalation, in a row after it (§24eh).
+    *_, row = [
+        e for e in await w.campaigns.control_log(CID) if e.operation is ControlOperation.RESUME
+    ]
     assert (row.operation, row.outcome, row.binding["class"], row.binding["move"]) == (
         ControlOperation.RESUME, outcome, "plan_gate", "gate_answer",
     )  # fmt: skip

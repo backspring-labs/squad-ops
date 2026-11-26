@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from squadops.capabilities.handlers.source_repository import added_module_test_section
 from squadops.stacks.scaffold import (
     criterion_page_harness_for,
     criterion_route_harness_for,
@@ -86,6 +87,12 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
             },
         )
         sections.append(how.content)
+    # #3143: on a Luau product, a criterion's test for a module the change adds. Only where the
+    # increment has a criterion a test proves.
+    if scope.get("criteria"):
+        added = await added_module_test_section(renderer, inputs)
+        if added:
+            sections.append(added)
     return "\n\n".join(sections)
 
 

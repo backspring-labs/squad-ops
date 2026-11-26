@@ -9,6 +9,7 @@ character's navigation and the console. The live runs on the real game are in th
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import sys
@@ -133,14 +134,23 @@ def _played(tmp_path: Path, **changes) -> Path:
 
 
 class _Mac:
-    """The Mac, as ``play_scenario`` asks of it: which app is in front, and Studio's process.
-    A reset's reopening puts the pinned baseline back in the world, unless ``reopens_drifted``."""
+    """The Mac, as ``play_scenario`` asks of it: which app is in front, Studio's process, and
+    the release channel Studio started on (an ``OSError`` for one that can't be read). A
+    reset's reopening puts the pinned baseline back in the world, unless ``reopens_drifted``,
+    and brings Studio back on ``reopens_on`` when that is given."""
 
     def __init__(self, front: int | None | OSError = 4242, *, world: Path | None = None,
-                 reopens_drifted: bool = False) -> None:  # fmt: skip
+                 reopens_drifted: bool = False, channel: str | OSError = "production",
+                 reopens_on: str | OSError | None = None) -> None:  # fmt: skip
         self.front, self.world, self.reopens_drifted = front, world, reopens_drifted
+        self.studio_channel, self.reopens_on = channel, reopens_on
         self.pid: int | None = 4242
         self.done: list[str] = []
+
+    def channel(self) -> str:
+        if isinstance(self.studio_channel, OSError):
+            raise self.studio_channel
+        return self.studio_channel
 
     def frontmost(self) -> int | None:
         if isinstance(self.front, OSError):
@@ -160,6 +170,8 @@ class _Mac:
     def open(self, place_file: Path) -> None:
         self.done.append(f"open {place_file.name}")
         self.pid = 4242
+        if self.reopens_on is not None:
+            self.studio_channel = self.reopens_on
         doc = json.loads(self.world.read_text())
         doc["studios"] = [{**doc["studios"][0], "id": "s-2"}]
         if not self.reopens_drifted:
@@ -168,9 +180,9 @@ class _Mac:
 
 
 PRISTINE = b"<roblox place, as downloaded>"
-#: What the operation was proved on: the stand-in's Studio and its tool list.
+#: What the operation was proved on: the stand-in's Studio, its tool list and its channel.
 PROVED = ProvedOn(
-    "0.747.0", "{0.count}:{0.schema_digest}".format(tool_check(_tools(), frozenset()))
+    "0.747.0", "{0.count}:{0.schema_digest}".format(tool_check(_tools(), frozenset())), "production"
 )
 
 
@@ -237,6 +249,13 @@ async def test_play_scenario_runs_the_transaction_and_records_each_assertion(tmp
         "rev_candidate",
     )
     assert result.ran_with["harness.observe"] == harness.digests()["observe"][:16]
+    # R5.29: the Studio the proof names and the one the play ran on, each in full.
+    for role in ("qualified", "played"):
+        assert {k: v for k, v in result.ran_with.items() if k.startswith(f"{role}.")} == {
+            f"{role}.studio_version": "0.747.0",
+            f"{role}.studio_channel": "production",
+            f"{role}.studio_tools": PROVED.studio_tools,
+        }
     log = json.loads(next(e.content for e in result.evidence if e.name == "play_log.json"))
     assert log["play_session"] == result.ran_with["play_session"] and len(log["play_session"]) == 32
 
@@ -302,6 +321,7 @@ async def test_a_scenario_using_studios_input_needs_studio_in_front(tmp_path, fr
 
     assert result.status is OperationStatus.NOT_EXECUTED
     assert says in result.reason
+    assert result.tool_unready is True  # #3192: this Mac's Studio, never the candidate
     assert not (tmp_path / "calls.log").exists()
 
 
@@ -385,6 +405,8 @@ async def test_what_cant_be_run_as_frozen_is_never_started(tmp_path, scenario, s
     result = await _runner(world).run(request)
 
     assert (result.status, says in result.reason) == (OperationStatus.NOT_EXECUTED, True)
+    # #3192: the request's own defect stays the work's, so the Campaign doesn't retry it.
+    assert result.tool_unready is False
     assert (
         not (tmp_path / "calls.log").exists()
         or "execute_luau:sync" not in (tmp_path / "calls.log").read_text()
@@ -426,24 +448,48 @@ async def test_the_observe_program_runs_only_in_a_play_session(tmp_path):
         await session.close()
 
 
+_NO_LOG = "Studio (pid 4242) holds 0 startup logs open (none)"
+
+
 @pytest.mark.parametrize(
-    ("proved_on", "says"),
+    ("proved_on", "channel", "says"),
     [
-        (ProvedOn("0.746.0", PROVED.studio_tools), "Studio is 0.747.0, and the operation was proved on 0.746.0"),
-        (ProvedOn("0.747.0", "37:" + "0" * 64), "Studio's tools read"),
+        (dataclasses.replace(PROVED, studio_version="0.746.0"), "production",
+         "Studio is 0.747.0, and the operation was proved on 0.746.0"),
+        (dataclasses.replace(PROVED, studio_tools="37:" + "0" * 64), "production",
+         "Studio's tools read"),
+        (PROVED, "zbeta",
+         "Studio is on channel zbeta, and the operation was proved on channel production"),
+        (PROVED, OSError(_NO_LOG),
+         f"Studio's channel can't be read ({_NO_LOG}), and a Studio whose channel isn't known "
+         "is one nothing was proved on"),
+        (dataclasses.replace(PROVED, studio_channel=""), "production",
+         "Studio is on channel production, and the operation's proof names no channel"),
     ],
-    ids=["another-studio-version", "another-tool-list"],
+    ids=["another-studio-version", "another-tool-list", "another-channel-at-the-same-version",
+         "a-channel-that-cant-be-read", "a-proof-naming-no-channel"],
 )  # fmt: skip
-async def test_a_studio_other_than_the_one_proved_on_runs_nothing(tmp_path, proved_on, says):
-    """R2.4: a mode not proved reads not executed. Bug caught: Studio updated itself (it does,
-    unasked) or its tools changed, and the worker kept passing scenarios on a Studio nothing was
-    proved on."""
+async def test_a_studio_other_than_the_one_proved_on_runs_nothing(
+    tmp_path, proved_on, channel, says
+):
+    """R2.4: a mode not proved reads not executed. Bugs caught:
+    - Studio updated itself (it does, unasked) or its tools changed, and the worker kept
+      passing scenarios on a Studio nothing was proved on;
+    - #3206, found on 2026-11-18: Roblox's updater moved the Mac's Studio from ``production``
+      to another channel at one version number, and the version and tool checks both passed;
+    - a channel that couldn't be read taken as the proved one, or a proof made before the
+      channel was recorded taken as naming whatever channel Studio is on;
+    - the refusal read as the candidate's, so the Campaign repairs a build nothing faulted
+      (R5.28)."""
     world = _played(tmp_path)
 
-    result = await _runner(world, proved_on=proved_on).run(_request())
+    result = await _runner(world, _Mac(world=world, channel=channel), proved_on=proved_on).run(
+        _request()
+    )
 
     assert result.status is OperationStatus.NOT_EXECUTED
     assert says in result.reason and "R2.4" in result.reason
+    assert result.tool_unready is True
     assert not (tmp_path / "calls.log").exists()  # not a tool was called
 
 
@@ -481,12 +527,23 @@ async def test_a_place_that_drifted_from_its_pin_is_reset_and_then_played(tmp_pa
     [
         ({"reopens_drifted": True}, "the reset failed: PlaceStateError: the reopened place holds"),
         ({"front": None}, "no app is in front"),
+        ({"reopens_on": "zbeta"},
+         "the reset failed: PlaceStateError: Studio moved channel as the reset reopened it: it "
+         "was on production and is now on zbeta at 0.747.0, which no operation is proved on. "
+         "Re-qualify the worker on 0.747.0 on channel zbeta with the place open in it"),
+        ({"reopens_on": OSError(_NO_LOG)},
+         "the reset failed: PlaceStateError: Studio's channel can't be read after the reset "
+         f"reopened it ({_NO_LOG}), and a Studio whose channel isn't known is one nothing was "
+         "proved on."),
     ],
-    ids=["still-drifted-after-the-reset", "studio-not-in-front-after-the-reset"],
-)
+    ids=["still-drifted-after-the-reset", "studio-not-in-front-after-the-reset",
+         "another-channel-after-the-relaunch", "an-unreadable-channel-after-the-relaunch"],
+)  # fmt: skip
 async def test_a_drifted_place_the_reset_doesnt_restore_runs_nothing(tmp_path, mac, says):
     """Bugs caught: a reset tried forever; or the second attempt skipping the checks the first
-    one made, so a reopened Studio behind Terminal hangs on its first click."""
+    one made, so a reopened Studio behind Terminal hangs on its first click; or (#3206) a
+    Studio that came back from the reset's relaunch on another channel, at the same version,
+    played as the one the claim's first check had passed."""
     world = _played(tmp_path, baseline=DRIFTED)
     front = mac.pop("front", 4242)
     machine = _Mac(4242, world=world, **mac)
@@ -503,6 +560,7 @@ async def test_a_drifted_place_the_reset_doesnt_restore_runs_nothing(tmp_path, m
 
     assert result.status is OperationStatus.NOT_EXECUTED
     assert says in result.reason
+    assert result.tool_unready is True  # #3192: a place this Mac couldn't restore
     assert "execute_luau:sync" not in (tmp_path / "calls.log").read_text()
 
 

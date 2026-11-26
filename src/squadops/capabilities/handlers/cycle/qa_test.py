@@ -35,6 +35,7 @@ from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.capabilities.handlers.skills import skills_section
 from squadops.capabilities.handlers.source_repository import (
     product_conventions_template,
+    qa_test_prompt_variant,
     source_backed,
     source_repository_section,
 )
@@ -99,7 +100,7 @@ from squadops.capabilities.handlers.emitted_deletions import (
     read_deletions,
     without_removed,
 )
-from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.capabilities.handlers.fenced_parser import extract_fenced_files, fence_language
 from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
 from squadops.capabilities.handlers.stub_detection import (
     detect_self_mocking_tests,
@@ -795,15 +796,6 @@ class QATestHandler(_CycleTaskHandler):
         )
         return source_files(inputs.get("artifact_contents", {}), capability)
 
-    @staticmethod
-    def _fence_lang(path: str) -> str:
-        """Return the appropriate code fence language for a file path."""
-        if path.endswith((".js", ".jsx", ".mjs")):
-            return "javascript"
-        if path.endswith((".ts", ".tsx")):
-            return "typescript"
-        return "python"
-
     def _build_user_prompt(
         self,
         prd: str,
@@ -822,7 +814,7 @@ class QATestHandler(_CycleTaskHandler):
         if sources:
             parts.append("\n\n## Source Files to Test\n")
             for path, code in sources.items():
-                lang = self._fence_lang(path)
+                lang = fence_language(path)
                 parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
 
         parts.append(capability.test_prompt_supplement)
@@ -1617,7 +1609,7 @@ class QATestHandler(_CycleTaskHandler):
         if artifact_contents:
             parts.append("\n### Source Artifacts to Test\n")
             for name, content in artifact_contents.items():
-                lang = self._fence_lang(name)
+                lang = fence_language(name)
                 parts.append(f"**{name}:**\n```{lang}\n{content}\n```\n")
 
         # The "ONLY" clause is the direct negation of fill mode: it forbids emitting
@@ -1642,7 +1634,7 @@ class QATestHandler(_CycleTaskHandler):
         # competes with — so the concrete example is the non-fill path's alone.
         expected = [str(e) for e in (inputs.get("expected_artifacts") or []) if str(e).strip()]
         example = (
-            f"```{self._fence_lang(expected[0])}:{expected[0]}```"
+            f"```{fence_language(expected[0])}:{expected[0]}```"
             if expected and not fill_mode
             else "```<language>:<that file's own path>```"
         )
@@ -2079,8 +2071,13 @@ class QATestHandler(_CycleTaskHandler):
         # externalized owner of task-content guidance — not inline literals.
         # SIP-0108 §10m: the identity layer is what the process IS (``context.role_id``); the
         # task-type fragment is the step's and is unchanged.
+        # #3147: a product that tests only with Luau runners is given the fragment written for
+        # its runner. Every other run keeps the task type's own, byte for byte.
         assembled = context.ports.prompt_service.assemble(
-            context.role_id, "agent_start", task_type=TaskType.QA_TEST
+            context.role_id,
+            "agent_start",
+            task_type=TaskType.QA_TEST,
+            variant=qa_test_prompt_variant(inputs),
         )
         system_prompt = assembled.content
 
@@ -2543,7 +2540,7 @@ class QATestHandler(_CycleTaskHandler):
             if sources:
                 source_parts = ["\n\n## Source Files to Test\n"]
                 for path, code in sources.items():
-                    lang = self._fence_lang(path)
+                    lang = fence_language(path)
                     source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
                 variables["source_files"] = "\n".join(source_parts)
             if not source_backed(task_inputs):

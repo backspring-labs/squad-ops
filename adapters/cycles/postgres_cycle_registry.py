@@ -825,6 +825,24 @@ class PostgresCycleRegistry(CycleRegistryPort):
             stopped_because=CycleStopReason(row["stopped_because"]),
         )
 
+    async def get_cycle_ends(self, cycle_ids: Sequence[str]) -> dict[str, RecordedEnd]:
+        if not cycle_ids:
+            return {}
+        async with self._retry.acquire(self._pool) as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT ON (cycle_id) cycle_id, last_run_id, stopped_because "
+                "FROM cycle_ends WHERE cycle_id = ANY($1) ORDER BY cycle_id, end_index DESC",
+                list(cycle_ids),
+            )
+        return {
+            row["cycle_id"]: RecordedEnd(
+                cycle_id=row["cycle_id"],
+                last_run_id=row["last_run_id"],
+                stopped_because=CycleStopReason(row["stopped_because"]),
+            )
+            for row in rows
+        }
+
     async def get_failure_records(self, cycle_id: str) -> tuple[FailureRecord, ...] | None:
         async with self._retry.acquire(self._pool) as conn:
             set_index = await conn.fetchval(

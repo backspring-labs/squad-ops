@@ -3608,6 +3608,35 @@ def _qa_own_frame_routed_reading(rec: Mapping[str, Any]) -> tuple[bool, list[str
     return bool(loci), loci
 
 
+def _wrong_text_repair_reading(rec: dict) -> tuple[bool | None, Any]:
+    """#3170: whether the faulted increment's own cycle shows the repair routed. ``None`` when
+    it shows no correction round: the campaign may have repaired it in a repair cycle, which
+    is another cycle's record."""
+    rounds = value_at(rec, "correction_rounds", 0) or 0
+    patches = value_at(rec, "loop_texture.applied_patches", 0) or 0
+    evidence = {"correction_rounds": rounds, "applied_patches": patches}
+    if not rounds:
+        return None, {
+            **evidence,
+            "note": "no correction round in this cycle: read the campaign's control log for a "
+            "repair cycle",
+        }
+    return patches >= 1, evidence
+
+
+def _client_stops_reading(rec: dict) -> tuple[bool | None, Any]:
+    """#3222: whether the faulted increment's own cycle shows the row-8 shape: the candidate
+    unread (``blocked_unverified``) with no in-run correction standing in. The repair is the
+    campaign's, in another cycle's record, so a cycle read as anything else is a NO here and a
+    cycle with no verdict yet is unaskable."""
+    verdict = rec.get("verdict")
+    rounds = value_at(rec, "correction_rounds", 0) or 0
+    evidence = {"verdict": verdict, "correction_rounds": rounds}
+    if verdict is None:
+        return None, {**evidence, "note": "no verdict yet: read the campaign's control log"}
+    return verdict == "blocked_unverified" and rounds == 0, evidence
+
+
 SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
     # 1.8.2 plan §4.1 `compile-loop`: the faulted develop task compiled clean through its own
     # passes — at least one pass, and no correction round.
@@ -3774,6 +3803,29 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
             ),
             [(r.get("workload"), r.get("status")) for r in value_at(rec, "runs", []) or []],
         ),
+    ),
+    # #3170, #3043's repair diagnostic on a played product. The diagnostic is a campaign: its
+    # control log and the increment's scenario readings hold the frozen scenario failing, then
+    # passing, by digest. What the faulted increment's own cycle record shows is the route: a
+    # correction round entered and a repair's patch applied. A cycle that shows neither may
+    # have been repaired by a repair cycle of the campaign, which this record can't say, so
+    # that reading is unaskable here, never a NO.
+    "luau_player_text_drops_a_word": (
+        "the repair route on a played product: the faulted increment entered correction and a "
+        "repair's patch was applied; the campaign's record carries the frozen scenario failing, "
+        "then passing, by digest",
+        ("correction_rounds", "loop_texture.applied_patches", "loop_texture.faults_applied"),
+        lambda rec: _wrong_text_repair_reading(rec),
+    ),
+    # #3222, the 2.8.1 plan's item 5 (pre-registration 12h). The diagnostic is a campaign: its
+    # control log holds row 8 and the repair cycle. What the faulted increment's own cycle record
+    # shows is the candidate left unread, with no in-run correction.
+    "luau_client_throws_at_start": (
+        "§10 row 8's input: the faulted increment's candidate read blocked_unverified (its plays "
+        "setup_failed) with no correction round; the campaign's record carries row 8 and the "
+        "repair cycle passing the same frozen scenarios",
+        ("verdict", "correction_rounds", "loop_texture.faults_applied"),
+        lambda rec: _client_stops_reading(rec),
     ),
     "analyzer_false_source_claim": (
         "A1: the framework refuted the claim against the workspace, a decision was reached, "

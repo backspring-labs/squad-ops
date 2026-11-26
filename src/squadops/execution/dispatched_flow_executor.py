@@ -41,6 +41,7 @@ from squadops.capabilities.context_assembly import (
     RETAKE_CURRENT_FILES_KEY,
     ArtifactFilter,
     ContentsOverLimit,
+    ContentsUnavailable,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
@@ -51,6 +52,7 @@ from squadops.capabilities.context_assembly import (
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.lesson_supply import supply_the_dispatch
 from squadops.capabilities.operation_supply import OperationSupplyError, tool_request
+from squadops.capabilities.skill_stops import describe_stop
 from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.capabilities.tool_checks import unavailable
 from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
@@ -77,6 +79,9 @@ from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EmissionStatus, banked_as
 from squadops.cycles.failure_attribution import (
+    ARTIFACT_MISSING,
+    ARTIFACT_UNREADABLE,
+    ARTIFACT_UNRETRIEVED,
     CONTENTS_OVER_LIMIT,
     WORKER_UNAVAILABLE,
     TerminalKind,
@@ -93,7 +98,9 @@ from squadops.cycles.manifest_authoring import (
 )
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
+    ArtifactNotFoundError,
     ArtifactRef,
+    ArtifactUnreadableError,
     Cycle,
     DerivedProfileNotFoundError,
     FlowMode,
@@ -218,6 +225,7 @@ from squadops.stacks.verification_scaffold_emission import (
 from squadops.stacks.verification_scaffold_gate import validate_execution_readiness
 from squadops.tasks.models import (
     INPUT_REFUSAL_EVIDENCE,
+    SKILL_STOP_EVIDENCE,
     TaskEnvelope,
     TaskResult,
     TaskResultStatus,
@@ -864,6 +872,30 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
         increment_id=cycle.increment_id,
         kind=cycle.kind,
         replay_of=replay.source_run_id if replay else None,
+    )
+
+
+def _unavailable_kind(error: Exception) -> str:
+    """How a retrieval failed (#3120): a missing artifact and a damaged one are facts about the
+    vault's contents, and anything else is the vault not answering, or failing otherwise."""
+    if isinstance(error, ArtifactNotFoundError):
+        return ARTIFACT_MISSING
+    if isinstance(error, ArtifactUnreadableError):
+        return ARTIFACT_UNREADABLE
+    return ARTIFACT_UNRETRIEVED
+
+
+def _contents_unavailable(envelope: TaskEnvelope, missing: ContentsUnavailable) -> _ExecutionError:
+    """#3120: the run ends ``infrastructure_failed``, a fault outside the work, when a file of a
+    task's tree can't be read from the vault, classified by how the retrieval failed."""
+    return _ExecutionError(
+        f"task {envelope.task_id} ({envelope.task_type}) can't be handed its tree: {missing}",
+        terminal=RunTerminalDecision(
+            kind=TerminalKind.INFRASTRUCTURE_FAILED,
+            termination_reason=str(missing),
+            failure_classification=missing.kind,
+            task_id=envelope.task_id,
+        ),
     )
 
 
@@ -1987,15 +2019,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         an unreadable artifact degrades the re-roll context to reasons-only,
         never blocks the re-roll.
         """
+        return await self._run_artifact_text(
+            run,
+            lambda ref: (
+                ref.filename == "implementation_plan.yaml"
+                or getattr(ref, "artifact_type", None) == "control_implementation_plan"
+            ),
+        )
+
+    async def _load_run_merge_decisions(self, run: Run) -> str | None:
+        """The run's ``merge_decisions.yaml`` content, or None when it wrote none: what the
+        plan-review tier reads a proposer's escalated brief conflict from (SIP-0109 §24ee)."""
+        return await self._run_artifact_text(
+            run, lambda ref: ref.filename == "merge_decisions.yaml"
+        )
+
+    async def _run_artifact_text(self, run: Run, matches: Callable[[Any], bool]) -> str | None:
+        """The text of the first of ``run``'s artifacts ``matches`` holds for, or None."""
         for ref_id in tuple(run.artifact_refs or ()):
             got = await retrieve_or_absent(self._artifact_vault, ref_id)
             if got is None:
                 continue
             ref, content_bytes = got
-            if (
-                ref.filename == "implementation_plan.yaml"
-                or getattr(ref, "artifact_type", None) == "control_implementation_plan"
-            ):
+            if matches(ref):
                 return content_bytes.decode(errors="replace")
         return None
 
@@ -2022,6 +2068,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return await self._resolve_artifact_contents(envelope.task_type, stored_artifacts)
         except ContentsOverLimit as e:
             raise _contents_refused(envelope, e) from e
+        except ContentsUnavailable as e:
+            raise _contents_unavailable(envelope, e) from e
 
     async def _resolve_artifact_contents(
         self,
@@ -2100,17 +2148,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         sizes: dict[str, int] = {}
         seeded_holder: set[str] = set()
 
+        selected_refs = dict(stored_artifacts)
         for art_id in selected_ids:
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(art_id)
-            except Exception:
-                logger.warning(
-                    "Failed to retrieve artifact %s for build task %s",
-                    art_id,
+            except Exception as e:  # noqa: BLE001 - every way it failed is named, never skipped
+                # #3120: a task handed the tree without this file reads the rest as the whole.
+                raise ContentsUnavailable(
                     task_type,
-                    exc_info=True,
-                )
-                continue
+                    art_id,
+                    getattr(selected_refs.get(art_id), "filename", "an unnamed file"),
+                    _unavailable_kind(e),
+                    e,
+                ) from e
             is_seeded = bool(ref.metadata.get("scaffold_seeded"))
             if is_seeded and ref.filename in contents and ref.filename not in seeded_holder:
                 continue
@@ -3397,7 +3447,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # The handler refuses the task with this reason, as a supplier it can't vouch for.
             return
         why = await unavailable(
-            tool, worker_registry=self._worker_registry, sandbox_client=self._sandbox
+            tool,
+            worker_registry=self._worker_registry,
+            sandbox_client=self._sandbox,
+            remote_execution=self._remote_execution,
         )
         if why is not None:
             raise _ExecutionError(
@@ -3458,6 +3511,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
         except ContentsOverLimit as e:
             raise _contents_refused(envelope, e) from e
+        except ContentsUnavailable as e:
+            raise _contents_unavailable(envelope, e) from e
 
     async def _enriched_envelope(
         self,
@@ -3875,6 +3930,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 + "; ".join(str(e) for e in refused),
                 terminal=RunTerminalDecision(
                     kind=TerminalKind.INPUT_REFUSED, task_id=envelope.task_id
+                ),
+            )
+        # SIP-0116 §17o: the task's model answered with a stop one of its skills declares. A
+        # retry asks for the refused thing again and a repair has no defect to mend, so the
+        # run ends here, carrying the stop for whoever continues from it.
+        stopped = (result.execution_evidence or {}).get(SKILL_STOP_EVIDENCE)
+        if stopped:
+            raise _ExecutionError(
+                f"Task {envelope.task_id} ({envelope.task_type}) was {describe_stop(stopped)}",
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.SKILL_STOPPED,
+                    task_id=envelope.task_id,
+                    skill_stop=dict(stopped),
                 ),
             )
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
@@ -5339,6 +5407,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         criteria = scenario_criteria_of(plan)
         if not criteria:
             return
+        # #3160: a run cancelled while it was preparing asks no provider for anything. The task
+        # loop reads the run's status before each task, and this step comes before the loop.
+        if await self._is_cancelled(run_id):
+            raise _CancellationError(run_id)
         try:
             judgements = await judge_scenario_baselines(
                 cycle,
@@ -5535,9 +5607,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
         # SIP-0112 H.4 (H.8): as at the promotion seam, no task writes where a blocking gap stops
         # the work.
+        derived = await self._derived_profile_for(cycle)
+        errors += classifier.collect("validate_blocking_gaps", plan.validate_blocking_gaps(derived))
+        # SIP-0112 H.35 (#3155): nor a path the product's owner reserves from a cycle's change.
         errors += classifier.collect(
-            "validate_blocking_gaps",
-            plan.validate_blocking_gaps(await self._derived_profile_for(cycle)),
+            "validate_reserved_paths", plan.validate_reserved_paths(derived)
         )
         if errors:
             raise _ExecutionError(

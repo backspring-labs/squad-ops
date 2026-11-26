@@ -12,7 +12,7 @@ updated_at: '2026-11-10T13:53:05.385598Z'
 **Status:** **Accepted (2026-11-10):** the owner, "accept 2405 then 2841", after the renewed review D9 called for; the companion was accepted first, as SIP-0117. Proposed 2026-10-31. **Building:** its phases may be built in a MacBook worktree during 2.7 (D6); nothing merges until 2.8 opens and its plan places them. **Revision 3 (2026-11-08):** the composition on an in-tree seam, after the game-dev-roblox plan's spikes and the owner's D1–D10 (§R3, which governs where the body differs). **Revision 4 (2026-11-09):** on SIP-0116, Agent Skillsets, accepted the same day. The composition is the `game_dev_roblox` development profile's requirements and the skillsets the selected squad's agents carry, compared at cycle preflight. This revision defines the engine-neutral game contracts once and the Roblox skillsets that specialize them (§R4, which governs where §R3 or the body differs). Its design calls and Q68 were ruled by the owner on 2026-11-09 (R4.2, R4.6)
 **Authors:** Jason Ladd (the owner's outside review, 2026-10-31); drafted by the Spark lane's supervisor
 **Created:** 2026-10-31
-**Targets:** unplaced. Release placement is the owner's, through the 2.8 plan.
+**Targets:** phases 2a, 2f, 2g and 3 shipped in 2.8.0. F6 (Unity) is unplaced, deliberately.
 **Companion:** SIP-0117, Game Development Platform Capability (`sips/accepted/SIP-0117-Game-Development-Platform.md`), accepted 2026-11-10 at revision 4:
 how an engine is integrated. This SIP is how a squad uses it.
 **Builds on:** SIP-0116 (Agent Skillsets, accepted 2026-11-09: the part of Capability-Backed Agents' §21 and §27 taken
@@ -73,10 +73,10 @@ Agent Skillsets, accepted 2026-11-09.
 - **One question, shared with the companion (Q68), ruled 2026-11-09:** skillset ids keep SIP-0116's platform-first
   form, and the Roblox dev skillset is `roblox-luau-dev`.
 
-## Delivery ledger (current as of 2026-11-11)
+## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
 
-The rows follow the adopted plan's phases, as revision 4 orders them (R4.5). The 2.8 plan places them, so none is
-placed yet. SIP-0116's phases are in its own ledger.
+The rows follow the adopted plan's phases, as revision 4 orders them (R4.5). The 2.8 plan placed them, and 2.8.0
+shipped all but F6. SIP-0116's phases are in its own ledger.
 
 | part | status | where |
 |---|---|---|
@@ -85,10 +85,10 @@ placed yet. SIP-0116's phases are in its own ledger.
 | Phase 2a as revision 3 cut it: the specialty table and declaration, the digest pin, both preflights, the isolation test, the profile's `specialties` field | **dropped** by Revision 4 (R4.1): SIP-0116's phases 1, 2 and 5 carry the declarations, the checks, the record and the pin, in its own ledger | — |
 | Phase 2a: the game capability contracts, declared once in `squadops.capabilities` (`game.increment_design`, `game.gameplay_implementation`, `game.unit_tests`, `game.scenario_verification`; R4.2), proved with the companion's fixture provider | **shipped** | 2.8 (PR #3019) |
 | Phase 2f, the tolerant emission parser: S6's two broken formats read, every resolving response read as before (R3.4, R5.2) | **shipped** | 2.8 (PR #3091; #3041 tracks the rest) |
-| Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the squad profiles whose agents declare them (R4.1, R4.3, R5.2; replaces F2–F4). Its requirements are switched on only after SIP-0116's phases 2–6 | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3041 |
+| Phase 2f, the rest: the squad: the `game_dev_roblox` development profile with its `platform` and `requires`, the three Roblox skillsets and their skills with replay tests, the `game-dev-roblox` squad profile whose agents declare them (R4.1, R4.3, R5.2, R5.4; replaces F2–F4). The MacBook's `game-dev-roblox-lite-14b` profile is dropped by R5.4. Its requirements are switched on only after SIP-0116's phases 2–6 | **shipped**: the squad profile (PR #3131), the skills' stops (PR #3132), the replay and its cases (PR #3141), and the development profile, registered once the three skillsets passed the replay (SIP-0116 §17q) | 2.8 (PR #3145; the cycle through creation preflight and the plan gate was read on the Spark, R5.5, PR #3161, closing #3041) |
 | Phase 2g, its eligibility rules: the `roblox-studio` authority over the product's Script Sync layout and a change's footprint, with "no attributes or tags on scripts" checked at the worker (R5.3) | **shipped** | 2.8, PR #3111 |
-| Phase 2g: the product: `z_tower-ascension`'s registration, Development Configuration, baseline and goal set, and the copy compared with the live game; its copy, sweep and place file already exist | **placed** (the 2.8 plan, adopted 2026-11-11; the registration part handed to the Spark lane on 2026-11-15) | 2.8, #3042 |
-| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run (R3.5; replaces F5) | **placed** (the 2.8 plan, adopted 2026-11-11) | 2.8, #3043 |
+| Phase 2g: the product: `z_tower-ascension`'s registration, Development Configuration, baseline and goal set, and the copy compared with the live game; its copy, sweep and place file already exist | **shipped** | 2.8.0 (closing #3042: registered 2026-11-15, goal set revision 1 on 2026-11-17, the live-game comparison S1's of 2026-11-08; every 2.8 Campaign on it passed creation preflight) |
+| Phase 3: the demonstration: the full-path gate, the rehearsal, the repair diagnostic and the counted two-increment run, each on the Spark with the MacBook's worker serving play (R3.5, R5.4; replaces F5) | **shipped** | 2.8.0 (closing #3043: the counted run `cmp_7ec826c9ec22` succeeded on attempt 1, and the repair diagnostic passed D1–D4 on attempt 2; `2-8-0-demonstration-record.md`, `2-8-0-cut-record.md`) |
 | F6: Unity, as the check that the contracts generalize across engines: a second set of skillsets and a provider, with no new core task type | **unplaced**, deliberately: after phase 3 | — |
 
 **What closes this SIP:** phases 2a, 2f, 2g and 3 shipped, with §8's "the squad can build and improve a playable
@@ -174,6 +174,295 @@ three folders carrying attributes or CollectionService tags, and the transaction
 each script. The place's non-script instances are held unchanged by #3039's baseline digest.
 
 **Who ruled.** The split between creation and the worker was agreed with the MacBook lane on 2026-11-15.
+
+---
+
+### R5.4 Every cycle of the game line runs on the Spark (2026-11-16)
+
+**What changed.** R4.1's table names two squad profiles: `game-dev-roblox` for the Spark, and
+`game-dev-roblox-lite-14b` for a machinery check on the MacBook. R3.5 puts the machinery rehearsal on the second. The
+owner ruled on 2026-11-16 that the game line's cycles run on the Spark. So:
+- **`game-dev-roblox-lite-14b` is dropped.** It was never built. Phase 2f builds one squad profile, `game-dev-roblox`.
+- **Phase 3's rehearsal runs on `game-dev-roblox`, on the Spark.** The full-path gate, the repair diagnostic and the
+  counted run are on the Spark too. R3.5's "then a machinery rehearsal on `game-dev-roblox-lite-14b`" reads as a
+  machinery rehearsal on `game-dev-roblox`.
+- **Phase 2f's replay tests and its cycle run on the Spark,** as the done-when already says (R5.2).
+
+**What stays on the MacBook:**
+- Studio, the place and the worker, which serves `play_scenario` for the Spark's cycles (the companion's R5.19 to
+  R5.24);
+- the building: the development profile, the squad profile, the skills' replay cases and the goal set's draft;
+- a plumbing cycle on the MacBook's own deploy before a runtime change merges (the `smoke` squad's self-test). It
+  loads no Roblox skillset and runs no operation.
+
+**Evidence.**
+- The MacBook is the less powerful machine, and it already carries Studio and the worker during a cycle. A click
+  acts only while Studio is the front window (the companion's R5.18), so a squad's models running beside it compete
+  with the one thing only this machine can do.
+- The machinery the dropped profile would have checked is read elsewhere: the machinery Campaign runs the
+  engine-neutral path with a scripted squad and a fixture worker in CI (the companion's ledger, #3050), and the
+  rehearsal on the Spark reads the rest on the real squad.
+
+**What this costs.** A defect in the Roblox profile's wiring is first seen on the Spark, in the rehearsal or in
+phase 2f's cycle, where a MacBook check would have found it earlier.
+
+**Who ruled.** The owner, 2026-11-16: "yes, cycles on the spark. go." Of the plumbing cycles: "small plumbing cycles
+are fine here".
+
+### R5.5 Phase 2f's done-when, read: the first cycle under `game_dev_roblox` (2026-11-17; #3041; SIP-0116 §17t, §17v; SIP-0109 §24ed)
+
+**What this records.** R5.2 restated #3041's done-when in four parts. Each has now been read, and phase 2f is
+shipped whole.
+
+| done-when | read |
+|---|---|
+| the skills pass replay on the Spark's models | `roblox-skills-v3`: all three skillsets pass by the rule stated before the first run (SIP-0116 §17t) |
+| a cycle on `game-dev-roblox` passes creation preflight | Campaign `cmp_d1463eb2d31b`, cycle `cyc_33b04e40d806`, on the Spark's deploy `dep_665a81b900e8` at `9609a0a0`: accepted. Its skillset record assigns `roblox-increment-design` to strategy, `roblox-luau-dev` to development and `roblox-studio-qa` to QA, and its pin is `game_dev_roblox` with the operator as its origin |
+| the plan's tasks load the skills with no contract named, plan expansion appends `game.scenario_verification` in `play` mode for each scenario criterion, and the plan passes the plan gate | the authored plan holds one development task and names no contract. The expanded plan is `governance.define_done`, `development.develop`, `qa.test`, `qa.run_remote_operation`, the last offered as `game.scenario_verification` in `play` mode. The plan gate approved it (`system:plan_review_tier`) |
+| a cycle on any other stack is offered exactly the base set, and its prompts are byte-identical | a self-test cycle on `full-38-tf` (`cyc_129b51efa8ce`) is offered `base@1`'s three plannable types and nothing else, with no requirement, assignment or skill content. A validity pass of the replay's eight cases on a deploy holding the profile reconstructs every baseline prompt at the size it had before the profile was registered |
+
+**What the proposal wrote.** Handed the strategy skill, the proposal for "the HUD's lives label says how many
+lives are left" wrote one `scenario` criterion on `@player.PlayerGui.TA_HUD.LivesLabel`, read by
+`roblox-studio/1`: wait for Play, click it, wait for the HUD, and read the label's text as "5 lives left". Its
+footprint is the client UI and the scenario's own document. The Spark lane approved it under the owner's grant
+for uncounted runs, and the Campaign was stopped after the plan gate, uncounted.
+
+**How the Campaign named the profile.** A Campaign could not name a development profile until SIP-0109 §24ed
+(#3157), which this reading found and waited for.
+
+**What the reading found beyond the done-when,** each tracked on its own:
+- **The Spark's runtime binds no remote execution** (`remote_execution.provider none`), so the scenario's
+  baseline read was blocked. The MacBook's worker was registered and online. The setting is the Spark lane's,
+  made when a cycle that plays is scheduled (phase 3).
+- **Creation's tool check read the worker registry alone,** so it accepted a cycle that runtime could not
+  play (#3159).
+- **A run cancelled while preparing still started and asked the scenario port** (#3160).
+- **The proposal's prompt still lists the gap `stack_unmatched`** under the named profile (SIP-0116 §17v).
+
+**Not shown.** Nothing was played, and nothing past the plan gate was read. That is phase 3's.
+
+**Who ruled.** The MacBook lane wrote the six readings before the run (#3041, run plan part 5). The Spark lane
+ran and read it.
+
+### R5.6 The repair diagnostic's seeded defect, and its place after the counted run (2026-11-17; R3.5; #3170, #3043)
+
+**What this records.** R3.5's repair diagnostic needs "a pre-registered, seeded behavioural defect". Until now
+none could be seeded on a played product, and the owner has ruled where the diagnostic runs.
+
+**The evidence.** Drafting the demonstration's pre-registration, in its window, the Spark lane found that no
+declared fault is a behavioural defect in a Luau development emission: the development faults are a web join
+route's response, a hold, and two for the Next.js stack alone.
+
+**The fault, as built:** `luau_player_text_drops_a_word`, on `development.develop`, first attempt only.
+- **What it does:** the first player-facing text a client script sets loses its last word ("%d lives left"
+  becomes "%d lives"). A client script is a file in a `Client` folder or a `.client.luau` or `.local.luau`
+  file. With no such text in one, the first other Luau source is cut. A spec, a comment and a one-word name are
+  left alone.
+- **Why this shape:** a play scenario reads the text a player sees, so the wrong text is an executed assertion
+  failure with the expected and the observed side by side, which is what a repair is shown. A headless spec
+  loads no client script, so the scenario is the verifier that meets it. Where the text was cut in a shared
+  module instead, a spec may meet it first, and the diagnostic's record says which verifier failed.
+- **Where it applies:** development profiles that name a platform. A declaration on any other cycle is refused,
+  as a fault that could not bite.
+- **Its provenance:** no roll produced it. It is modelled on the second skills replay's HUD-text case (SIP-0116
+  §17s), and its `found_in` says so.
+- **How a Campaign declares it:** the request profile `campaign-increment-source-wrong-text`, which is
+  `campaign-increment-source` with the one declaration. A test holds that as the only difference.
+
+**The order.** The 2.8 plan and #3043 list the diagnostic before the counted run. On 2026-11-17 the owner ruled
+"Counted run first": the full-path gate, the rehearsal and the counted run run on one deploy in the window, and
+the diagnostic follows once the fault is merged and deployed. R3.5 holds as written: the diagnostic is labelled
+apart, proves the correction route, and is no evidence about the models. The counted claim does not rest on it.
+
+**The evidence it works** (`tests/unit/capabilities/test_fault_injection.py`): the transform on an emission
+holding a shared module, a client script with a comment and a spec; each file shape cut or left alone; the
+fallback and an emission with nothing to cut; the declaration refused off a played profile; and, entered at
+the real develop handler's emission seam, the first attempt cut, a re-dispatch clean and an undeclared cycle
+unchanged.
+
+**Not shown.** The diagnostic itself. It is the Spark lane's, after the counted run.
+
+**Who ruled.** The Spark lane found the gap and proposed the shape. The fault is the MacBook lane's. The order
+is the owner's, 2026-11-17.
+
+### R5.7 The seeded defect cuts a text the change adds (2026-11-18; R5.6; #3208, #3043)
+
+**What changed.** R5.6's fault cut "the first player-facing text a client script sets". It now cuts the first
+such text **on a line the product doesn't already hold**, and a pass of the task's own self-evaluation is held
+to that one line.
+
+**The evidence.** The repair diagnostic ran on 2026-11-18 as `cmp_31ca1eef7424`. Its increment added a lobby
+hint to z_tower-ascension's `src/Client/UI/Screens/HUD.luau`, and its frozen scenario read the hint's text.
+- The squad emitted the script whole. Its first text of two words is the level label's, `Text = "LV 1"`, at
+  line 106. The hint was at line 252.
+- The fault logged APPLIED, and the candidate read `Text = "LV"` at line 106 with the hint whole.
+- So the scenario would have passed on the first candidate and no repair been asked for. The Spark lane read
+  the candidate before any play of it and stopped the Campaign. It is recorded as a diagnostic that didn't
+  exercise the scenario.
+- The MacBook lane had predicted it minutes earlier by running the fault's transform on the baseline script.
+  R5.6's tests ran it only on scripts whose first text was the criterion's.
+
+**As built:**
+- **What "already holds" is read from:** the develop task's own inputs. `source_repository.existing_files` is
+  the current content of the files the task names, and `acceptance_workspace_files` the accepted tree. The
+  first wins for a path in both. A path in neither is a new file, and each of its lines is the change's.
+- **An emission that adds no such text reads DID NOT BITE,** as an emission with nothing to cut already did.
+- **The log names the line:** APPLIED ends with the first line changed, as it was and as it is.
+- **The hold through a self-evaluation pass** (#1716) no longer re-runs a per-file cut, which would have taken
+  a further word at every pass and cut each other script's text too. The line the emission's fault changed is
+  kept by task, in the handler's process, and a pass that delivers that line whole has the cut put back. A file
+  that carries the cut is left as it is.
+- **Not done: reading the criterion's own expected text.** The scenario's expectations reach the runtime and
+  the operation's envelope, never the develop task's. Threading them there would change what a developer is
+  shown, for a diagnostic's sake.
+
+**Its limit.** The change's first added text of two words may not be the one a scenario reads: an error message
+added above it would take the cut. The log's line shows it, and the diagnostic's record reads it before any
+candidate play, as the Spark lane did here.
+
+**The evidence it works** (`tests/unit/capabilities/test_fault_injection.py`): a script the product holds with
+a text added below its own, cut on the added one; the same script as a new file, cut on its first; the
+product's script handed back unchanged, DID NOT BITE; entered at the real develop handler's emission seam
+with each input that carries the product's text; and a pass that restored the text or carried the cut, each
+handing on the one cut and leaving another script's text alone. The fault's transform was also run on
+z_tower-ascension's `HUD.luau` at `0beaac09` with a hint added at line 252: with the product's text it cuts
+the hint, and without it the level label.
+
+**Who ruled.** The MacBook lane found the defect and built the change. The Spark lane confirmed the reading on
+the candidate and stopped the run under the owner's 2026-11-16 grant for uncounted runs. A rerun needs this
+merged, a deploy, and an amendment to the demonstration's pre-registration (§8).
+
+### R5.8 The scenario-writing skill carries the rules the increment gate applies (2026-11-18; R4.3; SIP-0116 §7, §17p; #3199; the 2.8.1 plan's item 4)
+
+**What changed.** `roblox-increment-design`'s `play-scenario-authoring` skill gains six rules, each with a worked
+example, and a self-review its author answers in each criterion's own text. The scenario vocabulary, the change
+request's schema and the skill's stop are unchanged.
+
+**The evidence.** Across the 2.8 demonstration's rehearsal 3 and its counted run, 7 of 11 proposal versions were
+returned at the increment gate (the demonstration's record, §3 and §4). The return reasons name defects only, by
+design, so the shape of a sound criterion had to come from the skill. It had one worked example, a label read once.
+- **Checks that passed on broken work:** a clock read by its format alone; a counter attribute read in place of
+  the text; a result's reachable half with nothing on the half no play reaches.
+- **Checks that failed on working work:** a wait on a value nothing sets; an exact match on a value that changes
+  each second.
+
+**The rules.**
+
+| rule | what it asks | the return it answers |
+|---|---|---|
+| **Coverage** | every sentence of the item, taken word for word from the objective, is read by a criterion that quotes it | the half left out |
+| **Reachability** | every action, wait and observation names something today's game sets or the footprint adds | the wait on a value nothing sets |
+| **The broken build** | the named check fails on the obvious broken build and on a partial one, and passes on any correct one | the format-only check, the counter read for the text, the exact match |
+| **Timing** | a changing value is read as the first band a stuck value can't show, from a start the criterion states, inside one wait with at least 10 s to spare | the one-second window, and a band read at its edge |
+| **Preservation** | what must still work is read on its own, before any long step | a check tied to where a long walk took the player |
+| **The kind of evidence** | each criterion says played or headless, and a headless one says what no play reached | a weaker played check standing in for an unreachable state |
+
+**As built.**
+- **A state no action reaches is told apart from an effect nothing observes.** The stop stands for a sound, an
+  effect, a colour and the rest (`no scenario:`). Where the effect is one the reader observes but part of it holds
+  only in a state the four actions can't bring about, the skill plays the reachable half, proves the rule headless
+  with a `package` criterion on a module that only computes, and declares the gap. That is the 2.8 demonstration's
+  pre-registered shape for its first item (§7.1).
+- **Time passes by a `wait_until` on the band, not a held key.** The wait is on the element the footprint adds,
+  so on today's game and on a stuck value it times out and the named check fails. A working value reaches the band
+  from any start, and the read at its opening has the band's length before it closes. A held key walks the
+  player, which is the preservation rule's case.
+- **The self-review is answered in `observable`,** the criterion's own text, which the supervisor reads as the
+  review aid's "Claims" (`scenario_review.md`): `Played.` or `Headless.`, `Reads:`, `Fails on:`, `Band:` and
+  `Not played:`. Every example in the skill answers it in those words.
+- **Coverage is worked from the item's own sentences** (revised 2026-11-19, after the first replay). The first
+  text asked that every sentence of the item be read, and left "the item" undefined. In the replay's revised arm,
+  one generation of three for the lobby-hint case restated the item in its `prd_delta` without the sentence about
+  the state no play reaches, then covered that restatement completely: two played checks, nothing headless
+  (`var/replays/roblox-skills-v4-revised`, the table on #3199). The request template tells an author to leave out
+  of `prd_delta` what nothing else in the request delivers, and the author applied it to a sentence of the item.
+  The rule now:
+  - names the item as the request's objective, copied out sentence by sentence before anything is written;
+  - says a criterion reads a sentence when its check fails on a build where that sentence is false, and has the
+    criterion quote the sentence after `Reads:`;
+  - says the `prd_delta` carries every copied sentence, and that the template's "leave it out" is for something
+    the author thought of adding;
+  - counts a sentence an earlier increment's frozen criterion reads as covered there.
+- **The band opens early in one wait** (revised 2026-11-19, after the second replay). On the coverage revision
+  the lobby-hint case met its rules in all three generations. One session-clock generation then waited 60 s, the
+  most a wait allows (`MAX_DEADLINE_SECONDS`), for a band that opens 60 s after the count starts, and counted
+  setup's two or three seconds as its margin; the step's wait starts after setup. It chose the minute's rollover to
+  prove the format and the rate (`var/replays/roblox-skills-v4-revised-2`, the write-up on #3199). The two
+  generations that met the rules read a band opening at 50 s under the same 60 s wait. The rule now:
+  - reads the first band a stuck value can't show, which already shows the format and that the value moved;
+  - says a wait's time runs from its own step's start, with none of setup's time coming off it;
+  - asks for a band that opens within 30 s of the count's start and a wait with at least 10 s more than that, in a
+    table of three cases (sound, fragile, failing on correct work);
+  - says an example value in the item shows the format and is never a time to wait for, and that a later value
+    with a sentence of its own is proved headless;
+  - has `Band:` state the arithmetic: the opening, what the wait allows, the seconds to spare.
+- **The examples are invented:** a shield label that counts down and a low-health warning. Neither is in the
+  game's goal set, and the replay's cases stay unseen by the skill.
+- **The skill grows from 10,018 to 23,275 characters.** The size preflight counts it for a proposal
+  (SIP-0116 §17m).
+
+**What isn't built.** A deterministic check of reachability at the proposal seam. It needs a map of the place,
+which is the 2.10 plan's.
+
+**What ships it.** The skills replay under `roblox-skills-v4` (SIP-0116 §17p), which the Spark lane runs: the
+returned shapes as authoring cases beside every `v3` case, today's skill and this one as two arms, judged by rule
+and by play on fixed broken and correct candidates. The 2.8.1 plan states the predictions. If one fails, the skill
+doesn't ship on this text. The first text failed two on 2026-11-19 and didn't ship: the coverage omission above,
+and one development case whose input was byte-identical in both arms. The coverage revision held predictions 2,
+3 and 5 the same day and failed the first in one generation, the late band above. The Spark lane replays each text
+the same way.
+
+**The third text shipped (2026-11-20).** Its replay (`roblox-skills-v4-revised-3`) held predictions 1 to 3 in
+every generation. Each session-clock generation read the band "0:1", which opens 10 s after the count starts,
+inside a 25 s wait. Each lobby-hint generation played the lobby half and carried the floor sentence as a headless
+criterion with its `Not played:` line. Two predictions are read as the owner ruled on 2026-11-20 ("I agree with
+your recommendations go", to the MacBook lane's two recommendations):
+
+- **Prediction 5** (no `v3` case the current skill meets goes unmet) failed as written: one development case
+  scored 2 of 3. Its input is byte-identical in every arm, and four arms on that input scored 3 of 3, 1 of 3,
+  3 of 3 and 2 of 3. **Ruled:** a case whose input is byte-identical in both arms is reported as run-to-run
+  variance and doesn't count against the skill.
+- **Prediction 4** (every named check fails on the broken candidates and passes on the correct one) can't hold
+  check by check: on a result with a half no action reaches, no played check fails on the build that holds the
+  reachable half alone, which the skill itself says. **Ruled:** each named check passes on the correct build and
+  fails on today's game; each broken build is failed by at least one criterion of its proposal, played or
+  headless; and the lobby half alone is reported as the gap the proposal declares as not played.
+
+**The plays** (the MacBook, 2026-11-20, Studio 0.748.0.7481526 on channel `production`, requalified that
+morning). The ten named checks the six generations authored, nine of them distinct, were played on the counted
+run's accepted tree, on each broken tree and on today's game: 32 plays, each completed, each as predicted before
+any play.
+
+| build | what read it |
+|---|---|
+| the correct tree | every named check passed |
+| today's game | every named check failed, its element absent |
+| the stuck timer | failed by the counting check of every clock generation: "0:00" observed, where correct work read "0:10" |
+| a rule that never hides the hint | failed by the headless criterion of every lobby-hint generation |
+| the lobby half alone | failed by no criterion: the gap each proposal declares as not played |
+
+**How the plays were made comparable,** agreed between the lanes and frozen with the trees' hashes before any
+play:
+- **One path per generation is mapped.** Each generation names the element it would add in its own words. Its
+  checks were played with that one path replaced by the accepted tree's element in the same role, and every other
+  word of the scenario as authored. Nothing went unmapped.
+- **A headless criterion became a spec written from its `observable` alone:** the function mapped to the accepted
+  module's, a word that names a place mapped to that module's word for it, numbers and expected values as written.
+  The specs ran on the Spark in a container from the sandbox image with no network, and on today's game on the
+  MacBook.
+- **A third broken candidate was added** to the plan's two: a rule that never hides the hint, which the headless
+  half exists to catch.
+
+**The tests.** `tests/unit/capabilities/test_roblox_skillsets.py`: every whole example in the skill is read by the
+rails under `roblox-studio/1`, with its scenario id its criterion's and its surface its named assertion's path;
+every example answers the self-review in the words the skill asks for; the changing value's example waits for its
+band and reads the same band; the coverage table's sentences are the example item's, word for word, each quoted
+after `Reads:` by the criterion the table names; the band example's stated wait and margin are its scenario's
+(the deadline it sets, at least 10 s past a band that opens within 30 s); and the stop stands before the new case.
+
+**Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 4 names the six rules, the self-review
+and the replay. The owner's three rules and two timing notes are on #3199. The MacBook lane wrote the text, under
+the owner's 2026-11-15 word on Roblox skill drafts (Q47).
 
 ## R4. Revision 4 (2026-11-09): the composition as requirements and supply
 

@@ -1,7 +1,8 @@
 ---
 template_id: request.development_propose_plan_tasks
-version: "11"
+version: "12"
 required_variables:
+  - brief_conflicts_shape
   - brief_content
   - planning_content
   - proposal_id
@@ -71,7 +72,7 @@ tasks:
         fields: [id, email]
         severity: error
     depends_on_focus: []
-brief_conflicts: []  # Raise structured disagreements here if needed (see SIP-0093 §5.5).
+{{brief_conflicts_shape}}
 # Optional Rev 1 fields — include only if you have substantive content.
 source_artifact_refs: []
 assumptions: []

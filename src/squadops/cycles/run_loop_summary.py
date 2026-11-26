@@ -319,9 +319,13 @@ class RunTerminalDecision:
     #: SIP-0096 §17a: the checks a ``contested_check`` termination names — each confirmed
     #: dispute's check, file and criterion, so the run's end says which check is the defect.
     contested_checks: tuple[str, ...] = ()
+    #: SIP-0116 §17o: the stop a ``skill_stopped`` run ended on: the skillset, the skill, the
+    #: declared opening words and the model's line, so whoever continues from the run (a
+    #: Campaign's next proposal) reads the line from the decision, never from the reason's text.
+    skill_stop: dict[str, str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "kind": str(self.kind),
             "termination_reason": self.termination_reason,
             "failure_classification": self.failure_classification,
@@ -329,6 +333,11 @@ class RunTerminalDecision:
             "refused_validators": list(self.refused_validators),
             "contested_checks": list(self.contested_checks),
         }
+        if self.skill_stop is not None:
+            # Written only by the kind that has one, so every other decision's stored form is
+            # what it was before the field existed.
+            data["skill_stop"] = dict(self.skill_stop)
+        return data
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> RunTerminalDecision:
@@ -344,11 +353,25 @@ class RunTerminalDecision:
             task_id=_optional_str(data.get("task_id")),
             refused_validators=tuple(str(v) for v in data.get("refused_validators") or ()),
             contested_checks=tuple(str(c) for c in data.get("contested_checks") or ()),
+            skill_stop=_skill_stop(data.get("skill_stop")),
         )
 
 
 def _optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _skill_stop(value: Any) -> dict[str, str] | None:
+    """A stored decision's stop, or ``None`` where it has none. One missing a part is refused:
+    read as no stop, a ``skill_stopped`` run would continue with no line to show."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"a terminal decision's skill_stop is a mapping, not {value!r}")
+    missing = [k for k in ("skillset", "skill", "opening", "line") if not value.get(k)]
+    if missing:
+        raise ValueError(f"a terminal decision's skill_stop lacks {', '.join(missing)}")
+    return {k: str(value[k]) for k in ("skillset", "skill", "opening", "line")}
 
 
 @dataclass(frozen=True)
