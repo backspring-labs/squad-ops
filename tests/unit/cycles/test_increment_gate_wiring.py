@@ -438,6 +438,10 @@ async def test_the_plan_gate_judges_an_increments_plan_in_bind_mode(executor):
     executor._reject_invalid_plan_before_workload_gate = plan_check
     framing = dataclasses.replace(_PROPOSAL_RUN, run_id="run_frame", workload_type="framing")
     forwarded = {"plan_artifact_refs": ["art_seed", "art_cr"], "contract_ref": "art_contract"}
+    # What forwarding names, the vault holds (#3128: a forwarded ref it can't return is a fault).
+    executor._artifact_vault.stored["art_seed"] = _ref(
+        "art_seed", "interface_manifest", "interface_manifest.yaml", _QUESTION_FREE_MANIFEST
+    )
 
     await executor._workload_gate.decide(
         cycle=_cycle(CID),

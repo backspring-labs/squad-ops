@@ -64,7 +64,7 @@ from squadops.cycles.contract_derivation import (
     derive_and_store_contract,
     find_interface_manifest,
     is_interface_manifest,
-    load_seeded_manifest_content,
+    load_recorded_manifest_content,
 )
 from squadops.cycles.correction_signature import (
     REPAIR_DROPPED_MARKER,
@@ -142,7 +142,6 @@ from squadops.cycles.task_outcome import (
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES, inject_contract_inputs
 from squadops.cycles.vault_reads import (
     ArtifactUnavailable,
-    retrieve_or_absent,
     retrieve_recorded,
     unavailable_kind,
 )
@@ -1516,6 +1515,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # #1507 step 3: every way the loop ends names why, and meets CycleCompletion after it.
         run = None
         stopped_because = CycleStopReason.SEQUENCE_COMPLETED
+        ending_detail: str | None = None
         while i < len(workload_sequence):
             workload_entry = workload_sequence[i]
             # #1922: the first gate of a re-entry reads the decision already recorded on it.
@@ -1602,6 +1602,24 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     run = await self._cycle_registry.get_run(run.run_id)  # type: ignore[union-attr]
                     stopped_because = CycleStopReason.RUN_CANCELLED
                     break
+                except ArtifactUnavailable as unread:
+                    # #3128 (SIP-0109 §24ei): the gate couldn't read an artifact the run's record
+                    # names. That is the vault's fault and says nothing about the plan, so the
+                    # cycle ends as the environment's, naming the artifact, and never as a plan
+                    # rejected for want of what was never read.
+                    logger.error(
+                        "inter_workload_gate_input_unavailable",
+                        extra={
+                            "cycle_id": cycle_id,
+                            "run_id": current_run_id,
+                            "gate": gate_name,
+                            "artifact_id": unread.artifact_id,
+                            "kind": unread.kind,
+                        },
+                    )
+                    stopped_because = CycleStopReason.GATE_INPUT_UNAVAILABLE
+                    ending_detail = str(unread)
+                    break
                 except Exception:
                     # #2213: every raise in the gate is a defect, and one here used to escape a
                     # task nothing awaits, leaving the campaign waiting with no row. The cycle
@@ -1662,7 +1680,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # #1507 step 3: the completion boundary — one CycleEnd for every way the cycle ended.
         if run is not None:
-            await self._cycle_completion.end(cycle_id, run, stopped_because)
+            await self._cycle_completion.end(cycle_id, run, stopped_because, detail=ending_detail)
 
     @staticmethod
     def _typed_workload_position(run, workload_sequence, non_cancelled) -> int | None:
@@ -2027,10 +2045,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     async def _run_artifact_text(self, run: Run, matches: Callable[[Any], bool]) -> str | None:
         """The text of the first of ``run``'s artifacts ``matches`` holds for, or None."""
         for ref_id in tuple(run.artifact_refs or ()):
-            got = await retrieve_or_absent(self._artifact_vault, ref_id)
-            if got is None:
-                continue
-            ref, content_bytes = got
+            # #3128: a ref the vault can't return is never read as "not the one asked for".
+            ref, content_bytes = await retrieve_recorded(
+                self._artifact_vault, ref_id, what="an artifact of the run its gate reads"
+            )
             if matches(ref):
                 return content_bytes.decode(errors="replace")
         return None
@@ -3217,14 +3235,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # The completed run the caller already fetched — re-reading it here would add a
         # registry round-trip per gate for a value the loop is holding.
         for ref_id in tuple(run.artifact_refs or ()):
-            got = await retrieve_or_absent(self._artifact_vault, ref_id)
-            if got is None:
-                continue
-            ref, content_bytes = got
+            # #3128: as ``_run_artifact_text``. Read as absent, an unreadable manifest sent the
+            # reader to the seeded one, or to "no manifest".
+            ref, content_bytes = await retrieve_recorded(
+                self._artifact_vault, ref_id, what="an artifact of the run its gate reads"
+            )
             if is_interface_manifest(ref):
                 return content_bytes.decode(errors="replace")
 
-        return await load_seeded_manifest_content(
+        return await load_recorded_manifest_content(
             self._artifact_vault, cycle.execution_overrides.get("plan_artifact_refs")
         )
 
@@ -3373,7 +3392,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ``ref`` overrides that lookup with a contract the run itself derived from an
         authored manifest (#796) — the same artifact, arriving on a different rail.
         Returns the contract, or ``None`` when no ref is seeded (author mode) or the
-        seeded ref is unreadable/unparseable. A seeded-but-broken ref is NOT silently
+        seeded ref doesn't parse. A seeded-but-broken ref is NOT silently
         treated as author mode — ``_is_bind_mode`` stays true, so the plan-validation
         net records a rejection rather than letting the run fall through unverified
         (the stale-binding class, SIP §10)."""
@@ -3384,8 +3403,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ref_id = ref[0] if isinstance(ref, (list, tuple)) and ref else ref
         if not isinstance(ref_id, str):
             return None
+        # #3128: a contract the vault can't return is the vault's fault and ends the run, or the
+        # gate's cycle, by name. One that is read and doesn't parse is still rejected by
+        # bind-mode validation.
+        _, content_bytes = await retrieve_recorded(
+            self._artifact_vault, ref_id, what="the verification contract the cycle is bound to"
+        )
         try:
-            _, content_bytes = await self._artifact_vault.retrieve(ref_id)
             contract = VerificationContract.from_yaml(content_bytes.decode(errors="replace"))
         except Exception:
             logger.warning(
@@ -5482,9 +5506,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         The selection rule itself lives in ``cycles.contract_derivation`` (#779) so the
         create path, which derives a contract from this same artifact, cannot disagree
-        with the executor about which ref is the manifest."""
+        with the executor about which ref is the manifest. The executor's read fails closed
+        (#3128): a seeded ref the vault can't return raises, where the create path's reads it
+        as absent and rejects."""
 
-        return await load_seeded_manifest_content(
+        return await load_recorded_manifest_content(
             self._artifact_vault, cycle.execution_overrides.get("plan_artifact_refs")
         )
 

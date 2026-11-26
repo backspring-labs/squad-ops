@@ -87,6 +87,22 @@ async def test_every_stop_reason_round_trips(registry, reason):
     assert await reg.get_cycle_end("cyc_ce1") == end
 
 
+async def test_an_endings_detail_round_trips_and_reads_none_where_the_stop_names_nothing(registry):
+    """#3128 (migration 2203): the artifact a gate couldn't read is on the cycle's ending, by
+    the single read and the batch read alike. Bug caught: the column written and never selected,
+    so the ending a Campaign re-hears from names no artifact."""
+    reg, _ = registry
+    unread = "the run's plan (artifact art_9) couldn't be read from the vault (artifact_missing)"
+    named = RecordedEnd("cyc_ce1", "run_1", CycleStopReason.GATE_INPUT_UNAVAILABLE, unread)
+
+    await reg.record_cycle_end(RecordedEnd("cyc_ce1", "run_1", CycleStopReason.RUN_PAUSED))
+    assert (await reg.get_cycle_end("cyc_ce1")).detail is None
+    await reg.record_cycle_end(named)
+
+    assert await reg.get_cycle_end("cyc_ce1") == named
+    assert await reg.get_cycle_ends(["cyc_ce1"]) == {"cyc_ce1": named}
+
+
 async def test_the_latest_is_the_cycles_and_an_unknown_cycle_is_refused(registry):
     reg, _ = registry
     assert await reg.get_cycle_end("cyc_ce1") is None

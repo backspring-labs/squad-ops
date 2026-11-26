@@ -160,6 +160,25 @@ async def _plan_at_the_gate(executor, tmp_path, monkeypatch):
     await executor._reject_unsatisfiable_plan_at_gate(stored, object(), ["plan-review"], cycle)
 
 
+async def _bound_contract(executor, tmp_path, monkeypatch):
+    cycle = SimpleNamespace(execution_overrides={"contract_ref": LOST})
+    await executor._load_contract_for_run(cycle, SimpleNamespace(run_id="run_1"))
+
+
+async def _merge_decisions_at_the_gate(executor, tmp_path, monkeypatch):
+    await executor._load_run_merge_decisions(SimpleNamespace(artifact_refs=("art_kept", LOST)))
+
+
+async def _run_manifest_at_the_gate(executor, tmp_path, monkeypatch):
+    run = SimpleNamespace(artifact_refs=(LOST,))
+    await executor._run_manifest_content(run, SimpleNamespace(execution_overrides={}))
+
+
+async def _seeded_manifest_at_the_gate(executor, tmp_path, monkeypatch):
+    cycle = SimpleNamespace(execution_overrides={"plan_artifact_refs": ["art_kept", LOST]})
+    await executor._run_manifest_content(SimpleNamespace(artifact_refs=()), cycle)
+
+
 async def _checkout_manifest(executor, tmp_path, monkeypatch):
     stored = [(LOST, _ref(".checkout", CHECKOUT_MANIFEST_TYPE))]
     await task_source_repository(executor._artifact_vault, stored, ())
@@ -183,6 +202,20 @@ _READS = [
     pytest.param(_prd_text, "the cycle's PRD", id="prd-text"),
     pytest.param(_prd_on_disk, "the cycle's PRD", id="prd-on-disk"),
     pytest.param(_plan_at_the_gate, "the run's implementation plan", id="plan-at-the-gate"),
+    pytest.param(
+        _bound_contract, "the verification contract the cycle is bound to", id="bound-contract"
+    ),
+    pytest.param(
+        _merge_decisions_at_the_gate, "an artifact of the run its gate reads", id="gate-merge"
+    ),
+    pytest.param(
+        _run_manifest_at_the_gate, "an artifact of the run its gate reads", id="gate-manifest"
+    ),
+    pytest.param(
+        _seeded_manifest_at_the_gate,
+        "a planning artifact forwarded to the run",
+        id="gate-seeded-manifest",
+    ),
     pytest.param(_checkout_manifest, "the manifest of the product's checkout", id="checkout"),
     pytest.param(_checkout_file, "the current content of src/app.py", id="checkout-file"),
 ]
