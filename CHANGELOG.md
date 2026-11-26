@@ -5,6 +5,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **A new loaded check goes in a file of its own** (#3268): `scripts/dev/loaded_checks.d/<issue>.yaml`, read
+  with `loaded_checks.yaml` as one set by `verify_loaded.py`, the verification-set driver and the test that
+  runs each row on the source (`scripts/dev/loaded_check_rows.py`). While every row was appended to the one
+  file's end, any two open pull requests conflicted there, and each merge put every other one in conflict:
+  on 2026-11-26 one pull request was resolved three times, each a push and a full CI run. An id held in two
+  files is refused, and a test refuses a row appended to the old file.
+
 ### Fixed
 - **A candidate's own setup failure gets one correction in the run** (#3200, the core; SIP-0117 R5.32; the 2.9
   plan's item 7): a candidate whose client raised as it started read `setup_failed` on every play, which is
