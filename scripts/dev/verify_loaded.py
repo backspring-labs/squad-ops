@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Read, in each running container, what a rebuild must have loaded (#1956).
 
-The rows are data, ``scripts/dev/loaded_checks.yaml``: a container, a snippet that prints what only
-the new code prints, and that output. Each snippet runs as ``python -`` inside its container
+The rows are data, ``scripts/dev/loaded_checks.yaml`` and each file under ``loaded_checks.d/``
+(``loaded_check_rows``, #3268): a container, a snippet that prints what only the new code prints,
+and that output. Each snippet runs as ``python -`` inside its container
 (``docker exec -i``), so this reads the deployed code, never the checkout. A deploy carrying an
 older image, or a container a rebuild skipped, fails by row.
 
@@ -21,6 +22,9 @@ import sys
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # the rows' reader sits beside this script
+from loaded_check_rows import rows_at, rows_directory  # noqa: E402
 
 CHECKS = Path(__file__).with_name("loaded_checks.yaml")
 RECORD_CHECK = Path(__file__).parent / "ops" / "record_deploy.sh"
@@ -79,12 +83,16 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--only", help="run one row by its id")
     a = p.parse_args(argv)
-    rows = yaml.safe_load(CHECKS.read_text())["checks"]
+    rows = rows_at(CHECKS)
     if a.only:
         rows = [row for row in rows if row["id"] == a.only]
         if not rows:
             # A misspelt or unmerged id ran nothing; reporting "1 loaded" would credit it.
-            print(f"no loaded check has id {a.only!r} in {CHECKS}", file=sys.stderr)
+            print(
+                f"no loaded check has id {a.only!r} in {CHECKS} or a file under "
+                f"{rows_directory(CHECKS)}",
+                file=sys.stderr,
+            )
             return 2
     opt_in = opt_in_containers()
     failed = skipped = 0
