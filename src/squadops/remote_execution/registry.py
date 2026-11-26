@@ -180,6 +180,7 @@ class WorkerRegistry:
             refusal = leasing.fence_refusal(operation, fence, now)
             if refusal is None:
                 held = _held(operation)
+                result = await self._served(tx, fence, result)
                 if held.cancel_requested and result.status is not OperationStatus.INTERRUPTED:
                     # #3236: the cancel was recorded first, so it wins. The worker's result is
                     # received and kept, and is no evidence. A worker that saw the cancel
@@ -195,16 +196,7 @@ class WorkerRegistry:
                         },
                     )
                     return ResultReading(None)
-                # #3200: who served it is the registry's fact, written over a worker's own.
-                session = await tx.session(fence.session_id)
-                served = replace(
-                    result,
-                    ran_with={
-                        **result.ran_with,
-                        **({RAN_WITH_SERVED_BY: session.worker_id} if session else {}),
-                    },
-                )
-                await tx.save_operation(leasing.settled(held, served, now))
+                await tx.save_operation(leasing.settled(held, result, now))
                 await self._close_attempt(tx, fence, AttemptOutcome.ACCEPTED, now)
                 return ResultReading(None)
             if refusal is FenceRefusal.ALREADY_SETTLED and await self._was_received(tx, fence):
@@ -213,6 +205,22 @@ class WorkerRegistry:
                 await self._end_attempt(tx, _held(operation), now)
             await tx.record_refusal(RecordedRefusal(fence, refusal, now))
             return ResultReading(refusal)
+
+    async def _served(self, tx, fence: Fence, result: RemoteOperationResult):
+        """``result`` with who served it written by the registry (#3200, R5.32): the worker
+        whose session submitted it under the accepted ``fence``. A worker's own word under that
+        key is dropped first, whatever follows, so it never stands as the registry's. A session
+        the store doesn't hold is a defect, since the fence was just accepted under it: raised,
+        never settled without the name."""
+        ran_with = {k: v for k, v in result.ran_with.items() if k != RAN_WITH_SERVED_BY}
+        session = await tx.session(fence.session_id)
+        if session is None:
+            raise RuntimeError(
+                f"operation {fence.operation_id}: its result was accepted under session "
+                f"{fence.session_id}, which the store doesn't hold, so who served it can't be "
+                "written"
+            )
+        return replace(result, ran_with={**ran_with, RAN_WITH_SERVED_BY: session.worker_id})
 
     # ------------------------------------------------------------------ the requester's calls
 

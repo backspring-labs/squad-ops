@@ -126,17 +126,21 @@ def attribute(
     the candidate and the accepted baseline, and ``in_footprint`` says whether a path is inside
     the approved change's footprint."""
     scenario = candidate.get("scenario") or {}
+    # A record that can't be read attributes nothing, on either side: an unreadable list is
+    # ``None`` here, and fails the condition that reads it, by name.
     named = _script_errors(candidate)
-    admitted = tuple(e for e in named if e.path in changed and in_footprint(e.path))
+    admitted = tuple(e for e in named or () if e.path in changed and in_footprint(e.path))
     baseline_errors = _script_errors(baseline) if baseline is not None else ()
-    on_baseline = {(e.path, e.message) for e in baseline_errors}
+    on_baseline = {(e.path, e.message) for e in baseline_errors or ()}
     absent = tuple(e for e in admitted if (e.path, e.message) not in on_baseline)
     readings = (
         _baseline_setup_met(scenario, baseline),
         _same_environment(candidate, baseline),
         _error_in_changed_footprint_file(named, admitted, changed, in_footprint),
         _error_before_setup_stopped(candidate),
-        _error_absent_from_baseline(admitted, absent, baseline),
+        _error_absent_from_baseline(
+            admitted, absent, baseline, readable=baseline_errors is not None
+        ),
         _no_environment_refusal(candidate, baseline),
     )
     attributed = all(r.holds for r in readings)
@@ -203,12 +207,14 @@ def _same_environment(
 
 
 def _error_in_changed_footprint_file(
-    named: tuple[ScriptError, ...],
+    named: tuple[ScriptError, ...] | None,
     admitted: tuple[ScriptError, ...],
     changed: Collection[str],
     in_footprint: Callable[[str], bool],
 ) -> ConditionReading:
     condition = Condition.ERROR_IN_CHANGED_FOOTPRINT_FILE
+    if named is None:
+        return ConditionReading(condition, False, "the candidate's script errors can't be read")
     if not named:
         return ConditionReading(condition, False, "the candidate's provider named no script error")
     if not admitted:
@@ -249,10 +255,14 @@ def _error_absent_from_baseline(
     admitted: tuple[ScriptError, ...],
     absent: tuple[ScriptError, ...],
     baseline: Mapping[str, Any] | None,
+    *,
+    readable: bool,
 ) -> ConditionReading:
     condition = Condition.ERROR_ABSENT_FROM_BASELINE
     if baseline is None:
         return ConditionReading(condition, False, "no baseline reading to compare with")
+    if not readable:
+        return ConditionReading(condition, False, "the baseline's script errors can't be read")
     if "script_errors" not in baseline:
         return ConditionReading(
             condition,
@@ -276,9 +286,9 @@ def _no_environment_refusal(
     candidate: Mapping[str, Any], baseline: Mapping[str, Any] | None
 ) -> ConditionReading:
     condition = Condition.NO_ENVIRONMENT_REFUSAL
+    if baseline is None:
+        return ConditionReading(condition, False, "no baseline reading to read it from")
     for side, reading in (("candidate", candidate), ("baseline", baseline)):
-        if reading is None:
-            continue
         for flag in ("tool_unready", "unavailable"):
             if reading.get(flag) is not False:
                 return ConditionReading(
@@ -299,12 +309,18 @@ def _outcomes(reading: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def _script_errors(reading: Mapping[str, Any]) -> tuple[ScriptError, ...]:
-    """A reading's script errors. One that isn't a path, a line and a message is dropped: a
-    record this can't read attributes nothing."""
+def _script_errors(reading: Mapping[str, Any]) -> tuple[ScriptError, ...] | None:
+    """A reading's script errors, or ``None`` when they can't be read: a value that isn't a
+    list, or any entry that isn't a path, a line and a message. Nothing is dropped and read
+    around: on the baseline's side a dropped entry would read as an error it never named. A
+    reading with no key reads as naming none (``()``); the condition that needs the key says
+    so itself."""
+    listed = reading.get("script_errors", [])
+    if not isinstance(listed, list):
+        return None
     errors = []
-    for raw in reading.get("script_errors") or ():
-        if (
+    for raw in listed:
+        if not (
             isinstance(raw, Mapping)
             and isinstance(raw.get("path"), str)
             and raw["path"]
@@ -312,5 +328,6 @@ def _script_errors(reading: Mapping[str, Any]) -> tuple[ScriptError, ...]:
             and not isinstance(raw.get("line"), bool)
             and isinstance(raw.get("message"), str)
         ):
-            errors.append(ScriptError(raw["path"], raw["line"], raw["message"]))
+            return None
+        errors.append(ScriptError(raw["path"], raw["line"], raw["message"]))
     return tuple(errors)

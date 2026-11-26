@@ -237,16 +237,43 @@ def test_a_reading_that_cant_say_is_not_read_as_saying_no(strip, condition, evid
     assert failing[condition].startswith(evidence)
 
 
-def test_a_script_error_that_isnt_one_attributes_nothing():
-    """Evidence contradictory. A record with no line is dropped, never guessed at."""
-    candidate = _candidate()
-    candidate["script_errors"] = [{"path": SCREEN, "message": "no line"}, "prose", None]
+@pytest.mark.parametrize(
+    "listed",
+    [[{"path": SCREEN, "message": "no line"}], "prose", [None], {"path": SCREEN}],
+    ids=["an entry with no line", "a string", "a null entry", "an object where a list goes"],
+)
+def test_script_errors_that_cant_be_read_attribute_nothing_on_either_side(listed):
+    """Evidence contradictory, from the MacBook lane's review. Nothing is dropped and read
+    around. Bug caught: a baseline whose list holds an entry that doesn't parse (or is a string,
+    which iterates as characters) read as naming no such error, so condition 5 holds on a
+    record nobody could read."""
+    candidate, baseline = _candidate(), _baseline()
+    candidate["script_errors"] = listed
+    baseline["script_errors"] = listed
 
-    attribution = _attribute(candidate=candidate)
+    as_candidate = _failing(_attribute(candidate=candidate))
+    as_baseline = _failing(_attribute(baseline=baseline))
 
-    assert _failing(attribution)[Condition.ERROR_IN_CHANGED_FOOTPRINT_FILE] == (
-        "the candidate's provider named no script error"
+    assert as_candidate[Condition.ERROR_IN_CHANGED_FOOTPRINT_FILE] == (
+        "the candidate's script errors can't be read"
     )
+    assert as_baseline == {
+        Condition.ERROR_ABSENT_FROM_BASELINE: "the baseline's script errors can't be read"
+    }
+
+
+def test_with_no_baseline_no_condition_claims_to_have_read_one():
+    """The kept evidence says only what was read. Bug caught: "both plays completed" written
+    for a cycle that holds no baseline reading at all."""
+    failing = _failing(_attribute(no_baseline=True))
+
+    assert failing[Condition.NO_ENVIRONMENT_REFUSAL] == "no baseline reading to read it from"
+    assert set(failing) == {
+        Condition.BASELINE_SETUP_MET,
+        Condition.SAME_ENVIRONMENT,
+        Condition.ERROR_ABSENT_FROM_BASELINE,
+        Condition.NO_ENVIRONMENT_REFUSAL,
+    }
 
 
 @pytest.mark.parametrize(
