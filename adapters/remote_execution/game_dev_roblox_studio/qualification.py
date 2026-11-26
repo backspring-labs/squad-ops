@@ -11,15 +11,20 @@ a re-qualification on the Studio as it is now, and its record is the pin:
   quit, the place restored, Studio reopened), and the scenario played again. It passes when both
   plays complete with every assertion passed, and the reset succeeds;
 - **the record:** one JSON document per run, passed or failed, in the worker's qualifications
-  directory. It names the Studio version, channel and tool list it ran on, the tools added and
-  removed since the pin it replaces, the scenario and source it played, and each step's
-  outcome;
+  directory. It names the Studio version, channel and tool list it ran on, each tool's own
+  definition digest, the tools added, removed and changed since the pin it replaces, the
+  scenario and source it played, and each step's outcome;
 - **the pin:** the newest passing record for this provider version. A failed run leaves the pin
   where it was, and names the step that failed.
 
 **A record made before the channel was recorded** (schema ``/1``) is still read, as the run it
 was, and names no channel. When it is the newest passing record the worker runs nothing, and
 says so (R5.29): an older record is never used in its place, and no channel is assumed for it.
+
+**A record made before each tool's digest was recorded** (schema ``/2``, or ``/1``) is still
+read too, and still pins: the list's digest holds Studio to it as before. What it can't do is
+say which tools differ from it. A refusal against it, and the record that replaces it, read the
+comparison as unavailable (R5.31, #3230). They never read it as "nothing changed".
 
 Each record carries the digest of its own body, and a record whose digest doesn't match is
 refused by name, as is any record that can't be read. A pin isn't moved by editing a file.
@@ -52,12 +57,17 @@ from adapters.remote_execution.game_dev_roblox_studio.runner import (
     RobloxStudioRunner,
     StudioBusy,
 )
-from adapters.remote_execution.game_dev_roblox_studio.session import StudioSessionError
+from adapters.remote_execution.game_dev_roblox_studio.session import (
+    StudioSessionError,
+    tool_changes,
+)
 from squadops.remote_execution.models import OperationStatus, RemoteOperationRequest
 
-#: A record names Studio's channel from ``/2`` (#3206).
-SCHEMA = "squadops.studio-qualification/2"
-#: The schema before it: the same record with no channel.
+#: A record holds each tool's definition digest, and the tools changed, from ``/3`` (#3230).
+SCHEMA = "squadops.studio-qualification/3"
+#: The schema before it: the same record with the list's digest alone (#3206 added the channel).
+SCHEMA_WITHOUT_TOOL_DIGESTS = "squadops.studio-qualification/2"
+#: The schema before that: the same record with no channel.
 SCHEMA_WITHOUT_CHANNEL = "squadops.studio-qualification/1"
 LOCK_NAME = "studio.lock"
 _KEYS_WITHOUT_CHANNEL = frozenset(
@@ -69,7 +79,8 @@ _KEYS_WITHOUT_CHANNEL = frozenset(
 )  # fmt: skip
 #: Each schema's keys. A record is read under the schema it names, with exactly its keys.
 _KEYS = {
-    SCHEMA: _KEYS_WITHOUT_CHANNEL | {"studio_channel"},
+    SCHEMA: _KEYS_WITHOUT_CHANNEL | {"studio_channel", "tool_digests", "tools_changed"},
+    SCHEMA_WITHOUT_TOOL_DIGESTS: _KEYS_WITHOUT_CHANNEL | {"studio_channel"},
     SCHEMA_WITHOUT_CHANNEL: _KEYS_WITHOUT_CHANNEL,
 }
 
@@ -128,11 +139,24 @@ class QualificationRecord:
     #: The schema the record was written under, so a record read back has the body, and the
     #: digest, it was written with.
     schema: str = SCHEMA
+    #: Each tool's definition digest, ``(name, digest)`` sorted by name (#3230). ``None`` for a
+    #: record written before they were recorded.
+    tool_digests: tuple[tuple[str, str], ...] | None = None
+    #: The tools in both lists whose definition differs from the replaced pin's (#3230). ``None``
+    #: when that can't be said: this record or the one it replaces holds no per-tool digests.
+    #: Never empty for "unknown": an empty tuple says the comparison was made and found none.
+    tools_changed: tuple[str, ...] | None = None
 
     def body(self) -> dict[str, Any]:
         channel = {} if self.schema == SCHEMA_WITHOUT_CHANNEL else {
             "studio_channel": self.studio_channel
         }  # fmt: skip
+        by_tool = {}
+        if self.schema == SCHEMA:
+            by_tool = {
+                "tool_digests": dict(self.tool_digests or ()),
+                "tools_changed": None if self.tools_changed is None else list(self.tools_changed),
+            }
         return {
             "schema": self.schema,
             "provider": PROVIDER,
@@ -147,6 +171,7 @@ class QualificationRecord:
             "replaces": self.replaces,
             "tools_added": list(self.tools_added),
             "tools_removed": list(self.tools_removed),
+            **by_tool,
             "scenario_digest": self.scenario_digest,
             "source_revision": self.source_revision,
             "steps": [
@@ -161,7 +186,11 @@ class QualificationRecord:
 
     def pins(self) -> ProvedOn:
         return ProvedOn(
-            self.studio_version, self.studio_tools, self.studio_channel, record=self.digest
+            self.studio_version,
+            self.studio_tools,
+            self.studio_channel,
+            record=self.digest,
+            tool_digests=self.tool_digests,
         )
 
     def to_document(self) -> dict[str, Any]:
@@ -221,8 +250,18 @@ def record_from_document(document: Any, where: str) -> QualificationRecord:
             steps=steps,
             provider_version=document["provider_version"],
             schema=schema,
+            tool_digests=(
+                tuple(sorted((str(n), str(d)) for n, d in document["tool_digests"].items()))
+                if "tool_digests" in keys
+                else None
+            ),
+            tools_changed=(
+                None
+                if "tools_changed" not in keys or document["tools_changed"] is None
+                else tuple(document["tools_changed"])
+            ),
         )
-    except (KeyError, TypeError) as e:
+    except (KeyError, TypeError, AttributeError) as e:
         raise NotProved(f"the qualification record {where} can't be read: {e!r}") from e
 
 
@@ -294,6 +333,19 @@ class Qualifications:
         return path
 
 
+def _changed_since(
+    previous: QualificationRecord | None, digests: tuple[tuple[str, str], ...]
+) -> tuple[str, ...] | None:
+    """The tools whose definition differs from the replaced pin's, or ``None`` when that pin
+    holds no per-tool digests (#3230). The first qualification replaces nothing, so nothing
+    changed."""
+    if previous is None:
+        return ()
+    if previous.tool_digests is None:
+        return None
+    return tool_changes(previous.tool_digests, digests).changed
+
+
 async def requalify(
     qualifications: Qualifications,
     runner_for: Callable[[ProvedOn], RobloxStudioRunner],
@@ -310,6 +362,7 @@ async def requalify(
         previous = qualifications.pinned()
         steps: list[Step] = []
         names: tuple[str, ...] = ()
+        digests: tuple[tuple[str, str], ...] = ()
         try:
             probe = runner_for(ProvedOn("", "", ""))
             live, check = await probe.live_studio()
@@ -320,7 +373,7 @@ async def requalify(
             steps.append(Step("tool check", "failed", f"{type(e).__name__}: {e}"))
         else:
             version, tools, channel = live.studio_version, live.studio_tools, live.studio_channel
-            names = check.names
+            names, digests = check.names, check.digests
             runner = runner_for(ProvedOn(version, tools, channel))
             for name in ("play 1", "reset", "play 2"):
                 if steps and not steps[-1].passed:
@@ -342,6 +395,8 @@ async def requalify(
             scenario_digest=request.scenario.digest,
             source_revision=request.source_revision,
             steps=tuple(steps),
+            tool_digests=digests,
+            tools_changed=_changed_since(previous, digests),
         )
         return record, qualifications.write(record)
 
