@@ -185,27 +185,25 @@ class Path:
             return await tx.unsettled_operations_of(TASK)
 
 
-async def _until(check, *args, seconds: float = 30.0, poll: float = 0.01, turns: int = 100) -> None:
-    """Wait for ``check(*args)``: first in event-loop turns, then by the clock. A failure names
-    the check.
+async def _until(check, *args, seconds: float = 30.0) -> None:
+    """Wait for ``check(*args)``, asking again after every turn of the event loop. A failure
+    names the check.
 
-    - **By the clock** (#3096): a bound in turns alone ran out on Postgres, where each check is
-      a network round trip that ``asyncio.sleep(0)`` doesn't wait for, so a slower database
-      failed a correct path.
-    - **In turns first** (#3194): the path's own clock runs on while the test sleeps in real
-      time, since every worker's and requester's sleep advances it. A ten-millisecond sleep let
-      a fast box spend the requester's whole 300 s wait before the next worker was up, and a
-      correct path read ``interrupted``. A check that holds within a few turns never sleeps."""
-    for _ in range(turns):
-        if await check(*args):
-            return
-        await asyncio.sleep(0)
+    - **It never sleeps in real time** (#3194, #3110). The path's actors pass the test's clock
+      on every round they take, so a real-time sleep let them take as many rounds as the
+      machine's speed allowed: a worker cut off mid-lease had spent about 220 s of its
+      requester's 300 s wait by the time the test saw it running, and on a fast or loaded box
+      a correct path read ``interrupted``. Asked at every turn, a check is seen at the first
+      round where it holds, whatever the machine's speed.
+    - **The bound is in real seconds, not turns** (#3096): on Postgres each check is a network
+      round trip that a turn doesn't wait for, so a bound in turns failed a correct path on a
+      slower database."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + seconds
     while not await check(*args):
         if loop.time() >= deadline:
             raise AssertionError(f"{check.__name__} not reached within {seconds:g}s")
-        await asyncio.sleep(poll)
+        await asyncio.sleep(0)
 
 
 class RemotePathContract:
@@ -268,6 +266,9 @@ class RemotePathContract:
         async with path.serving(path.worker(stuck, worker_id="first", line=first_line), "first"):
             waiting = asyncio.ensure_future(path.requester().run_operation(asked))
             await _until(_running, stuck)
+            # Most of the requester's wait is still left: whether the case holds is decided by
+            # the lease running out, never by how fast the machine took the path's rounds (#3110).
+            assert path.clock.now - T0 < timedelta(seconds=leasing.LEASE_SECONDS)
             first_line.down = True  # gone mid-run: nothing it does reaches the runtime again
         async with path.serving(path.worker(worker_id="second"), "second"):
             result = await waiting
