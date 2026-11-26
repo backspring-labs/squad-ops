@@ -2887,3 +2887,14 @@ checks:
       whole = [d for d in map(yaml.safe_load, re.findall(r"```yaml\n(.*?)```", md, re.S)) if isinstance(d, dict)]
       print(len(re.findall(r"^### [1-6]\. ", md, re.M)), "## Before you submit" in md, [c["id"] for d in whole for c in d["criteria"]], sum('Reads: "' in c["observable"] for d in whole for c in d["criteria"]), 'stops: ["no scenario:"]' in md)
     expect: "6 True ['S1', 'S2', 'S3', 'P1'] 4 True"
+  - id: "3128-run-level-reads"
+    what: a recorded artifact the vault can't return ends the run infrastructure_failed, classified by how the read failed and naming the artifact
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.models import ArtifactNotFoundError
+      from squadops.cycles.vault_reads import ArtifactUnavailable, unavailable_kind
+      from squadops.execution.run_completion import resolve_terminal_outcome
+      lost = ArtifactNotFoundError("art_1")
+      o = resolve_terminal_outcome(ArtifactUnavailable("art_1", "the cycle's PRD", unavailable_kind(lost), lost), "run_1")
+      print(o.terminal.kind.value, o.terminal.failure_classification, o.failure_reason.startswith("the cycle's PRD (artifact art_1)"))
+    expect: "infrastructure_failed artifact_missing True"

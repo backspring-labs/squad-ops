@@ -5,6 +5,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
+  executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
+  its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every
+  handler as its own artifact id.
+  - Eleven reads now go through `retrieve_recorded` (`cycles/vault_reads.py`): the builder's notes, the forwarded
+    plan and interface manifest, the manifest a run authors and its derived contract, a checkpoint's artifacts,
+    a run's seeds, the PRD (as text and on disk), the plan at the gate, and a source-backed task's checkout
+    manifest and current files.
+  - The run ends `infrastructure_failed`, classified `artifact_missing`, `artifact_unreadable` or
+    `artifact_unretrieved`, and its reason names the artifact and what it was to the run.
+  - An input is optional when the run's record holds none of it, which is decided before any read. A plan or
+    manifest that is read and doesn't parse is decided as before.
+  - Still to come under #3128: the reads at the gates between workloads, at delivery and in the proposal's
+    evidence, and a guard that refuses an undeclared read in `squadops.execution`.
+
 ## [2.8.1] — 2026-11-20
 
 The 2.8 line's first patch (`docs/plans/2-8-1-plan.md`; the cut record is `docs/plans/verification-sets/2-8-1-cut-record.md`): what the 2.8 windows met, fixed.

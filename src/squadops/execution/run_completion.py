@@ -35,6 +35,7 @@ from squadops.cycles.naming import flow_run_name
 from squadops.cycles.replay import REPLAY_COMPATIBILITY_ELEMENTS, parse_replay_declaration
 from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
 from squadops.cycles.run_report_builder import build_run_report
+from squadops.cycles.vault_reads import ArtifactUnavailable
 from squadops.cycles.verification_integrity import (
     ReplayProvenance,
     RunVerificationSummary,
@@ -133,6 +134,22 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
             log_message=f"Run {run_id} failed: {exc}",
             failure_reason=failure_reason_text(exc, include_type=False),
             terminal=exc.terminal or RunTerminalDecision(kind=TerminalKind.OTHER),
+        )
+    if isinstance(exc, ArtifactUnavailable):
+        # #3128: an artifact the run's record names, and the vault didn't return. A fault outside
+        # the work, classified by how the retrieval failed, with the artifact named.
+        return TerminalOutcome(
+            run_status=RunStatus.FAILED,
+            event_type=EventType.RUN_FAILED,
+            event_payload={"error": str(exc)},
+            log_kind="error",
+            log_message=f"Run {run_id} failed: {exc}",
+            failure_reason=failure_reason_text(exc, include_type=False),
+            terminal=RunTerminalDecision(
+                kind=TerminalKind.INFRASTRUCTURE_FAILED,
+                termination_reason=str(exc),
+                failure_classification=exc.kind,
+            ),
         )
     return TerminalOutcome(
         run_status=RunStatus.FAILED,

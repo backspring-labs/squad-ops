@@ -79,9 +79,6 @@ from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.deletions import DELETIONS_KEY, deleted_paths, deletion_record
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EmissionStatus, banked_as
 from squadops.cycles.failure_attribution import (
-    ARTIFACT_MISSING,
-    ARTIFACT_UNREADABLE,
-    ARTIFACT_UNRETRIEVED,
     CONTENTS_OVER_LIMIT,
     WORKER_UNAVAILABLE,
     TerminalKind,
@@ -98,9 +95,7 @@ from squadops.cycles.manifest_authoring import (
 )
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
-    ArtifactNotFoundError,
     ArtifactRef,
-    ArtifactUnreadableError,
     Cycle,
     DerivedProfileNotFoundError,
     FlowMode,
@@ -145,7 +140,12 @@ from squadops.cycles.task_outcome import (
     TaskOutcome,
 )
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES, inject_contract_inputs
-from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.cycles.vault_reads import (
+    ArtifactUnavailable,
+    retrieve_or_absent,
+    retrieve_recorded,
+    unavailable_kind,
+)
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_normalize import has_blocking_failure, normalize_task_checks
 from squadops.cycles.wrapup_models import verification_evidence_summary
@@ -873,16 +873,6 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
         kind=cycle.kind,
         replay_of=replay.source_run_id if replay else None,
     )
-
-
-def _unavailable_kind(error: Exception) -> str:
-    """How a retrieval failed (#3120): a missing artifact and a damaged one are facts about the
-    vault's contents, and anything else is the vault not answering, or failing otherwise."""
-    if isinstance(error, ArtifactNotFoundError):
-        return ARTIFACT_MISSING
-    if isinstance(error, ArtifactUnreadableError):
-        return ARTIFACT_UNREADABLE
-    return ARTIFACT_UNRETRIEVED
 
 
 def _contents_unavailable(envelope: TaskEnvelope, missing: ContentsUnavailable) -> _ExecutionError:
@@ -2158,7 +2148,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     task_type,
                     art_id,
                     getattr(selected_refs.get(art_id), "filename", "an unnamed file"),
-                    _unavailable_kind(e),
+                    unavailable_kind(e),
                     e,
                 ) from e
             is_seeded = bool(ref.metadata.get("scaffold_seeded"))
@@ -2221,11 +2211,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if latest is None:
             return None
         art_id, ref = latest
-        try:
-            _ref, content_bytes = await self._artifact_vault.retrieve(art_id)
-        except Exception:
-            logger.warning("assembly notes %s could not be retrieved", art_id, exc_info=True)
-            return None
+        # #3128: optional means the builder may write none, which the record above settles.
+        # Notes it did write and the vault can't return are a fault outside the work: the test
+        # author is never handed "there were none" for notes that exist.
+        _ref, content_bytes = await retrieve_recorded(
+            self._artifact_vault, art_id, what=f"the builder's {ASSEMBLY_NOTES_DOCUMENT}"
+        )
         text = content_bytes.decode(errors="replace").strip()
         if not text:
             # An empty file is not context. Rendering the heading over nothing would tell
@@ -2704,8 +2695,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return None
 
         for ref_id in plan_refs:
+            # #3128: a forwarded ref the vault can't return ends the run by name. Read as
+            # "not the plan", the run would go on to static task steps without it.
+            ref, content_bytes = await retrieve_recorded(
+                self._artifact_vault, ref_id, what="a planning artifact forwarded to the run"
+            )
             try:
-                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
                 if ref.filename == "implementation_plan.yaml" or (
                     hasattr(ref, "artifact_type")
                     and ref.artifact_type == "control_implementation_plan"
@@ -2755,8 +2750,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return None
 
         for ref_id in plan_refs:
+            # #3128: as the plan's loader. Read as "no manifest", the run would skip its skeleton.
+            ref, content_bytes = await retrieve_recorded(
+                self._artifact_vault, ref_id, what="a planning artifact forwarded to the run"
+            )
             try:
-                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
                 if ref.filename == SEEDED_MANIFEST_FILENAME or (
                     getattr(ref, "artifact_type", None) == MANIFEST_ARTIFACT_TYPE
                 ):
@@ -3303,9 +3301,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         is fixed" needs no mid-run invalidation rule — and a second derivation inside one run
         would be a moving target, which is the #494 stale-binding class by construction.
 
-        Never raises. A manifest that cannot derive is already a winnability finding, so the
-        gate rejects it with the deriver's own reason (``contract_derives``, attributed to
-        infrastructure by M6) rather than this seam inventing a second verdict.
+        A manifest that cannot derive is already a winnability finding, so the gate rejects it
+        with the deriver's own reason (``contract_derives``, attributed to infrastructure by M6)
+        rather than this seam inventing a second verdict. It raises for one thing only (#3128):
+        the manifest, or the contract just stored, can't be read from the vault. That says
+        nothing about the manifest, and the run ends by name.
         """
 
         contract, _manifest = current
@@ -3318,7 +3318,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return current
 
         try:
-            _, manifest_bytes = await self._artifact_vault.retrieve(manifest_id)
+            _, manifest_bytes = await retrieve_recorded(
+                self._artifact_vault, manifest_id, what="the interface manifest the run authored"
+            )
             manifest_content = manifest_bytes.decode(errors="replace")
             contract_ref = await derive_and_store_contract(
                 self._artifact_vault,
@@ -3327,7 +3329,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 cycle_id=cycle.cycle_id,
                 run_id=run_id,
             )
-            _, contract_bytes = await self._artifact_vault.retrieve(contract_ref)
+            _, contract_bytes = await retrieve_recorded(
+                self._artifact_vault,
+                contract_ref,
+                what="the contract derived from the run's manifest",
+            )
             derived = VerificationContract.from_yaml(contract_bytes.decode(errors="replace"))
             manifest = InterfaceManifest.from_yaml(manifest_content)
             # On the run's own ref list, like any other output: it is then visible in
@@ -3336,6 +3342,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # workload. A contract only this loop knew about would bind the plan and then
             # vanish at the gate.
             await self._cycle_registry.append_artifact_refs(run_id, (contract_ref,))
+        except ArtifactUnavailable:
+            # #3128: the vault's fault is no finding about the manifest. The gate's "cannot
+            # derive" would send the squad to re-roll a design that was never read.
+            raise
         except Exception:
             logger.warning(
                 "Could not derive a contract from the manifest authored by run %s; the "
@@ -3803,13 +3813,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for art_id in checkpoint.artifact_refs:
             if art_id not in all_artifact_refs:
                 all_artifact_refs.append(art_id)
-            try:
-                ref, _ = await self._artifact_vault.retrieve(art_id)
-                stored_artifacts.append((art_id, ref))
-            except Exception:
-                logger.warning(
-                    "Failed to restore artifact %s from checkpoint", art_id, exc_info=True
-                )
+            # #3128: a resumed run that drops one of its checkpoint's files hands later tasks
+            # a tree without it, which they read as the whole.
+            ref, _ = await retrieve_recorded(
+                self._artifact_vault, art_id, what="an artifact the run's checkpoint names"
+            )
+            stored_artifacts.append((art_id, ref))
         self._cycle_event_bus.emit(
             EventType.CHECKPOINT_RESTORED,
             entity_type="run",
@@ -3843,16 +3852,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for art_id in seed_artifact_refs:
             if art_id in all_artifact_refs:
                 continue
-            try:
-                ref, _ = await self._artifact_vault.retrieve(art_id)
-                stored_artifacts.append((art_id, ref))
-                all_artifact_refs.append(art_id)
-            except Exception:
-                logger.warning(
-                    "Failed to seed artifact %s for build-only run",
-                    art_id,
-                    exc_info=True,
-                )
+            # #3128: a seed the vault can't return is never left out of the run's tree.
+            ref, _ = await retrieve_recorded(
+                self._artifact_vault, art_id, what="an artifact the run is seeded with"
+            )
+            stored_artifacts.append((art_id, ref))
+            all_artifact_refs.append(art_id)
 
     async def _handle_task_outcome(
         self,
@@ -4897,16 +4902,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Resolve PRD content — if prd_ref is an artifact ID, fetch the
         # actual content so handlers receive the PRD text, not just the ID.
         prd_content = cycle.prd_ref
-        if prd_content and prd_content.startswith("art_") and self._artifact_vault:
-            try:
-                _, raw = await self._artifact_vault.retrieve(prd_content)
-                prd_content = raw.decode("utf-8", errors="replace")
-            except Exception:
-                logger.warning(
-                    "Failed to resolve PRD artifact %s, falling back to ID",
-                    prd_content,
-                    exc_info=True,
-                )
+        if prd_content and prd_content.startswith("art_"):
+            # #3128: handlers were handed the artifact's id as the PRD's text when this failed.
+            _, raw = await retrieve_recorded(
+                self._artifact_vault, prd_content, what="the cycle's PRD"
+            )
+            prd_content = raw.decode("utf-8", errors="replace")
         if not prd_content:
             prd_content = await self._resolve_prd_from_project(cycle.project_id)
         if prd_content and prd_content != cycle.prd_ref:
@@ -5549,12 +5550,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             if ref.filename == "implementation_plan.yaml" or (
                 hasattr(ref, "artifact_type") and ref.artifact_type == "control_implementation_plan"
             ):
+                # #3128: a plan the vault can't return is never a gate passed unread.
+                _, content_bytes = await retrieve_recorded(
+                    self._artifact_vault, artifact_id, what="the run's implementation plan"
+                )
                 try:
-                    _, content_bytes = await self._artifact_vault.retrieve(artifact_id)
                     plan = ImplementationPlan.from_yaml(content_bytes.decode(errors="replace"))
                 except Exception:
                     logger.warning(
-                        "Plan artifact %s unreadable at gate(s) %s — deferring to the "
+                        "Plan artifact %s doesn't parse at gate(s) %s — deferring to the "
                         "dispatch-time validation net",
                         artifact_id,
                         gate_names,
@@ -5874,14 +5878,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         prd_ref = cycle.prd_ref
         if prd_ref:
             prd_path = run_root / "prd.md"
-            if prd_ref.startswith("art_") and self._artifact_vault:
-                # Artifact ID — fetch content from vault
-                try:
-                    _, content = await self._artifact_vault.retrieve(prd_ref)
-                    prd_path.write_bytes(content)
-                    logger.info("Materialized PRD %s to %s", prd_ref, prd_path)
-                except Exception:
-                    logger.warning("Failed to materialize PRD %s", prd_ref, exc_info=True)
+            if prd_ref.startswith("art_"):
+                # Artifact ID — fetch content from vault. #3128: a failure ends the run by
+                # name, never a run root without its PRD (or with the id written as its text).
+                _, content = await retrieve_recorded(
+                    self._artifact_vault, prd_ref, what="the cycle's PRD"
+                )
+                prd_path.write_bytes(content)
+                logger.info("Materialized PRD %s to %s", prd_ref, prd_path)
             else:
                 # Inline PRD content
                 prd_path.write_text(prd_ref, encoding="utf-8")
