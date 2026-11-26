@@ -288,16 +288,25 @@ class Worker:
                 return None, expires
             expires = _expiry(lease)
             if lease.cancel_requested:
-                failure = await self._abandon(task, f"operation {fence.operation_id} was cancelled")
-                reason = REASON_CANCELLED
-                if failure is not None:
-                    reason += f"; the worker's tool was not reset: {failure}"
-                interrupted = RemoteOperationResult(
-                    status=OperationStatus.INTERRUPTED,
-                    reason=reason,
-                    dispatch_id=claim.request.dispatch_id,
-                )
-                return interrupted, expires
+                return await self._cancelled(task, claim), expires
+
+    async def _cancelled(self, task: asyncio.Future, claim: Claim) -> RemoteOperationResult:
+        """Stop a run whose operation was cancelled (R5.30), reset the tool, and answer
+        ``interrupted`` with what the run had established when it was stopped (#3236)."""
+        failure, ran, unread = await self._abandon(
+            task, f"operation {claim.fence.operation_id} was cancelled"
+        )
+        reason = REASON_CANCELLED
+        if unread is not None:
+            reason += f"; what it ran with couldn't be read: {unread}"
+        if failure is not None:
+            reason += f"; the worker's tool was not reset: {failure}"
+        return RemoteOperationResult(
+            status=OperationStatus.INTERRUPTED,
+            reason=reason,
+            ran_with=ran,
+            dispatch_id=claim.request.dispatch_id,
+        )
 
     async def _result_of(self, task: asyncio.Future, dispatch_id: str) -> RemoteOperationResult:
         """The ended operation's result. What the tool raised becomes ``interrupted``."""
@@ -328,13 +337,20 @@ class Worker:
                 )
             return result
         logger.error("the tool raised while the operation ran", exc_info=raised)
+        ran, unread = self._ran_so_far()
         self._unknown_state = f"the tool raised {type(raised).__name__}"
         reason = f"the tool raised while the operation ran: {type(raised).__name__}: {raised}"
+        if unread is not None:
+            reason += f"; what it ran with couldn't be read: {unread}"
         failure = await self._reset()
         if failure is not None:
             reason += f"; the worker's tool was not reset: {failure}"
         return RemoteOperationResult(
-            status=OperationStatus.INTERRUPTED, reason=reason, dispatch_id=dispatch_id
+            status=OperationStatus.INTERRUPTED,
+            reason=reason,
+            # #3236: what the run had established before it raised.
+            ran_with=ran,
+            dispatch_id=dispatch_id,
         )
 
     def _unreachable(self, error: Exception) -> None:
@@ -362,12 +378,27 @@ class Worker:
             )
         return self._health
 
-    async def _abandon(self, task: asyncio.Future, why: str) -> str | None:
-        """Stop the operation and reset the tool. Returns why the reset failed, or ``None``."""
+    async def _abandon(
+        self, task: asyncio.Future, why: str
+    ) -> tuple[str | None, dict[str, str], str | None]:
+        """Stop the operation and reset the tool. Returns why the reset failed (``None`` when
+        it didn't), and what the run had established when it was stopped, read before the reset
+        (#3236), with why that couldn't be read."""
         logger.warning("stopping the operation: %s", why)
         await _stop(task)
+        ran, unread = self._ran_so_far()
         self._unknown_state = why
-        return await self._reset()
+        return await self._reset(), ran, unread
+
+    def _ran_so_far(self) -> tuple[dict[str, str], str | None]:
+        """What the stopped or failed run had established (``running_with``), and ``None``, or
+        nothing and why it couldn't be read. A runner that can't say never stops the answer the
+        worker owes: the result is built without it, and its reason says so."""
+        try:
+            return dict(self._runner.running_with()), None
+        except Exception as e:  # noqa: BLE001 - whatever the tool raised is the reason given
+            logger.error("what the run had established couldn't be read", exc_info=e)
+            return {}, f"{type(e).__name__}: {e}"
 
     async def _reset(self) -> str | None:
         """Reset the tool. Returns why it couldn't be, or ``None`` once its state is known.
