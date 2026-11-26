@@ -5,6 +5,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **A new loaded check goes in a file of its own** (#3268): `scripts/dev/loaded_checks.d/<issue>.yaml`, read
+  with `loaded_checks.yaml` as one set by `verify_loaded.py`, the verification-set driver and the test that
+  runs each row on the source (`scripts/dev/loaded_check_rows.py`). While every row was appended to the one
+  file's end, any two open pull requests conflicted there, and each merge put every other one in conflict:
+  on 2026-11-26 one pull request was resolved three times, each a push and a full CI run. An id held in two
+  files is refused, and a test refuses a row appended to the old file.
+
 ### Fixed
 - **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's
   item 9): the skills section ranked every part of a skill below the task's requirements, so a task asked for
