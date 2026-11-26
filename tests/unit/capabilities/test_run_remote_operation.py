@@ -34,6 +34,7 @@ from squadops.remote_execution.models import (
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
+    reading_for_want_of_a_worker,
 )
 from squadops.remote_execution.scenario import staged_revision
 from squadops.tasks.models import TaskEnvelope
@@ -313,6 +314,15 @@ async def test_an_agent_with_no_port_bound_reports_the_operation_as_not_executed
     assert verdict is RunVerdict.BLOCKED_UNVERIFIED
     assert set(unverified.values()) == {"evaluator_gap:no_remote_execution_port"}
     assert result.success
+    # #3235: the reading says no worker could be asked, which is the deploy's and never the
+    # candidate's. Bug caught: the Campaign reading the gap as work to repair.
+    [document] = [
+        json.loads(a["content"])
+        for a in result.outputs["artifacts"]
+        if a["name"] == "operation_assertions.json"
+    ]
+    assert (document["status"], document["unavailable"]) == ("not_executed", True)
+    assert reading_for_want_of_a_worker(document) is True
 
 
 @pytest.mark.parametrize(
