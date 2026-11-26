@@ -1826,6 +1826,45 @@ manifest; the rule that a skills arm is held to its case and the baseline to not
 **Who ruled.** The owner adopted the 2.8.1 plan, whose item 4 names these rules ("Approve the 2.8.1 plan, merge
 it", 2026-11-18). The Spark lane wrote the rules and the cases.
 
+### 17aa. A stop a skill declares outranks the task's own requirements (2026-11-26, §7, §17o, §17u; the 2.9 plan's item 9 and ruling D4; #3240)
+
+**What changed.** §7 ranks a task's skills below its own requirements: where they disagree, the model follows
+the requirements and says what it couldn't follow. §17o lets a skill declare a stop, and reads one as the task's
+answer. The two met in one sentence. A task that asks for exactly one file and a skill that says to write none
+disagree, and the section told the model to settle that for the task. Now a declared stop is named as the one
+part of a skill that comes before the task's requirements.
+
+**The evidence** (#3240, from #3199's replay, `var/replays/roblox-skills-v4-revised-2`, case
+`strategy-unobservable`, skills arm). Generation 0 opens "Skill conflict noted", quotes the stop rule, and
+says the task's requirements "take priority over the skill (per the stated ordering…)". It then wrote the
+headless proposal the stop exists to prevent. Generations 1 and 2, on the same input, stopped. Across the four
+experiments that case read 3 of 3, 1 of 3, 3 of 3 and 2 of 3 on a byte-identical input. The reply that missed
+cites the ordering sentence, so the sentence is the cause it names.
+
+**As built.**
+
+| Point | As built | Why |
+|---|---|---|
+| **Said twice, in the skills section** | Beside the ordering it is the exception to, one sentence (`request.skills_stop_exception`). And where the section ends, a short part of its own (`request.skills_declared_stops`): the stops the handed skills declare, that a stop is the whole answer when its condition holds, that the requirement to emit a file or a block doesn't apply to a task that stops, and that it is read as a valid result | The reply that missed reasoned from the ordering, so the exception sits in that sentence. The section's end is next to what the task is asked to emit, in every template that carries the slot |
+| **The skills section owns the wording** | No task's own "emit exactly one" line is changed | #3240 allows either seam, with both texts agreeing. The task templates are the existing stacks' too, which load no skills and must render as they did. The section's part says in so many words that the emit requirement doesn't apply to a stop, so the two no longer disagree |
+| **Only for a task whose skills declare one** | The sentence and the part are rendered when a handed skill's front matter has `stops`. A task whose skills declare none renders the section it rendered before, byte for byte | A rule about stops is noise to a task that has none to make |
+| **The stops are listed by their openings** | Each alone on its line, under the declaring skill's name (`skillsets.declared_stop_list`) | Show, don't tell (the prompt standard): the model sees the lines it may answer with. An opening with nothing after it is never read as a stop (§17o), so a model that quotes the list back hasn't stopped (§17u, #3154) |
+| **The prompt budget counts it** | `skills_framing_tokens` adds the two assets' prose and the list, for a task whose skills declare a stop | §7: skills are counted before lessons are given room |
+| **Core still holds no skill's words** | The list is read from the handed skills' own front matter | §17o's rule, unchanged |
+
+**The tests** (`tests/unit/capabilities/test_skills_section.py`): the exception beside the ordering and the part
+after every skill; skills that declare none rendering as before; the section's own text, and its list quoted
+back, never read as a stop while a real stop line still is; the two packaged skills that declare a stop listed
+under their own names; the budget counting the text. The existing tests hold every slotted template unchanged
+with no skills.
+
+**Not shown here: that the model now stops.** That is a replay under a new experiment id, on the deploy that
+carries this text, with its pass rule and its number of generations stated before it runs (the plan's item 9).
+Its record is added to this section when it has run.
+
+**Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 9 and ruling D4 state the rule. The Spark
+lane built it.
+
 ## Appendix A. A paper compatibility matrix
 
 Paper only: it commits nothing for Unity, Minecraft or The Sandbox, and changes no 2.7 scope. It checks one claim: each

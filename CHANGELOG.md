@@ -6,6 +6,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's
+  item 9): the skills section ranked every part of a skill below the task's requirements, so a task asked for
+  exactly one file could settle a skill's stop against itself and write the artifact the stop exists to
+  prevent. One replay generation in three did, and cited that sentence.
+  - The section now names a declared stop as the exception, beside the ordering and again where it ends, with
+    the stops the task's skills declare listed by their opening lines.
+  - A task whose skills declare none, and every task with no skills, renders the prompt it rendered before.
+  - Still to come under #3240: the replay that shows the model stops.
 - **An accepted QA hand-off reads accepted everywhere** (#3000; SIP-0077 §24a; the 2.9 plan's item 5): a
   product's `qa.test` whose suite the qa image leaves to the product's own runner replied as a failed task, and
   three signals were set from that reply before the runner was asked: the Prefect task run read `Failed`, the

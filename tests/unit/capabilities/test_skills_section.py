@@ -192,3 +192,114 @@ async def test_the_prompt_budget_counts_a_tasks_skills_at_least_as_they_render(r
     with_skills = prompt_without_memory_tokens(_envelope(**{SKILLS_INPUT: [LOADER, CONVENTIONS]}))
 
     assert with_skills - without >= _tokens(shown)
+
+
+# --- #3240 (SIP-0116 §17aa): a declared stop outranks the task's own requirements -----------------
+
+STOPPING = {
+    "skillset": "luau-design",
+    "version": 1,
+    "skill": "scenario-authoring",
+    "digest": "d3",
+    "files": {
+        "SKILL.md": (
+            '---\nname: Authoring a scenario\ndescription: x\nstops: ["no scenario:"]\n---\n'
+            "If the effect can't be observed, stop, and say in one line:\n"
+            "`no scenario: <criterion> shows itself as <effect>, which can't be observed`.\n"
+        )
+    },
+}
+ORDERING = (
+    "Where a skill disagrees with those, follow them, and say in your output which part of the\n"
+    "skill you could not follow and why."
+)
+STOP_HEADING = "### When a skill above tells you to stop"
+
+
+async def test_a_declared_stop_is_said_to_outrank_the_tasks_requirements(renderer):
+    """Bug caught (#3240): the section ranking every part of a skill below the task's own
+    requirements, so a model told to emit exactly one file resolves the skill's stop against
+    the task and writes the artifact the stop exists to prevent."""
+    section = await skills_section(renderer, {SKILLS_INPUT: [CONVENTIONS, STOPPING]})
+
+    # Beside the ordering it is the exception to.
+    flat = " ".join(section.split())
+    assert (
+        "you could not follow and why. The one exception is a stop a skill declares: it comes "
+        "before this task's own requirements, as the end of this section says. They come before "
+        "the general guidance"
+    ) in flat
+    # And where the section ends, after every skill, next to what the task is asked to emit.
+    stops = section.split(f"{STOP_HEADING}\n\n", 1)[1]
+    assert section.index("### Skill: Authoring a scenario") < section.index(STOP_HEADING)
+    assert "From the skill Authoring a scenario:\n- `no scenario:`\n\n" in stops
+    assert "A stop comes before this task's own requirements." in stops
+    assert "does not apply to a task that stops: emit none" in stops
+    assert stops.rstrip().endswith(
+        "When no stop's condition holds, emit what this task asks for, exactly as it says."
+    )
+    # Only the skill that declares one is listed.
+    assert "From the skill Naming" not in section
+
+
+async def test_skills_that_declare_no_stop_render_the_section_they_rendered_before(renderer):
+    """The unchanged half. Bug caught: every skill-carrying prompt told about stops none of
+    its skills declares, and its bytes moved for nothing."""
+    section = await skills_section(renderer, {SKILLS_INPUT: [LOADER, CONVENTIONS]})
+
+    assert STOP_HEADING not in section and "one exception" not in section
+    assert f"{ORDERING} They come before the general guidance for this stack" in section
+
+
+async def test_the_sections_own_words_about_a_stop_are_never_read_as_one(renderer):
+    """SIP-0116 §17u (#3154) holds for the new text. A model that quotes the section back, the
+    list of openings included, hasn't stopped. Bug caught: an opening listed with words after
+    it on its line, so the quote is read as the model's own stop and the task ends."""
+    from squadops.capabilities.skill_stops import read_stop
+
+    section = await skills_section(renderer, {SKILLS_INPUT: [STOPPING]})
+
+    assert read_stop([STOPPING], section) is None
+    assert read_stop([STOPPING], "- `no scenario:`") is None
+    stopped = read_stop([STOPPING], "no scenario: the door's sound, which can't be observed")
+    assert stopped is not None and stopped.opening == "no scenario:"
+
+
+async def test_the_packaged_skills_stops_are_listed_under_their_own_names(renderer):
+    """Entered with the skills the deployment ships. Bug caught: the list built from a field
+    the packaged skills don't carry, so the two skills that declare a stop are told nothing."""
+    from squadops.capabilities.skill_stops import read_stop
+    from squadops.capabilities.skillsets import load_skillsets
+
+    packaged = load_skillsets()
+    handed = [
+        {
+            "skillset": skillset,
+            "version": 1,
+            "skill": skill,
+            "digest": "d",
+            "files": dict(packaged[skillset].skill_files[skill]),
+        }
+        for skillset, skill in (
+            ("roblox-increment-design", "play-scenario-authoring"),
+            ("roblox-luau-dev", "luau-gameplay"),
+        )
+    ]
+
+    section = await skills_section(renderer, {SKILLS_INPUT: handed})
+
+    stops = section.split(f"{STOP_HEADING}\n\n", 1)[1]
+    assert "- `no scenario:`\n" in stops and "- `saved data:`\n" in stops
+    assert stops.count("From the skill ") == 2
+    assert read_stop(handed, section) is None
+
+
+async def test_the_prompt_budget_counts_the_stops_text_at_least_as_it_renders(renderer):
+    """Bug caught: the stop rule's text left out of the measured prompt, so a task near its
+    window is given lesson room the section already took."""
+    shown = await skills_section(renderer, {SKILLS_INPUT: [STOPPING]})
+
+    without = prompt_without_memory_tokens(_envelope())
+    with_skills = prompt_without_memory_tokens(_envelope(**{SKILLS_INPUT: [STOPPING]}))
+
+    assert with_skills - without >= _tokens(shown)
