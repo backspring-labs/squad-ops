@@ -4051,3 +4051,43 @@ Five mutations each fail a test, among them the task type's fragment edited and 
 
 **Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 7 states the condition. The MacBook
 lane read that it holds and built it.
+
+## H.38 On a product, a `qa.test` task names a file one of its runners collects (2026-11-26; H.4 point 3, H.8, H.35; SIP-0109 §7.3; #3182, the plan-gate half; the Spark lane)
+
+**What changed.** H.4 point 3 records each of a product's test runners with where it discovers tests and the
+file names it takes. A plan's `qa.test` task is now held to that: every file it lists in `expected_artifacts`
+is one a runner of the product collects, or the plan is refused, naming the file and what each runner
+collects.
+
+**The evidence** (#3182, measured on a repository-backed product of 234 text files and 2.9 million
+characters): a `qa.test` whose expected file was a source file was shown 137 files, 1.7 million characters;
+one whose file matched no directory was shown the whole tree. Nothing at the plan gate refused either.
+`validate_qa_suite_namespace` reads the stack's test namespace, and a product declares no stack. Run on main
+at `096ba9db` over the shared fixture's product: a `qa.test` naming a source file, and one naming a note,
+passed every plan validator.
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **The rule** | `ImplementationPlan.validate_qa_suite_collected(profile)`: for each `qa.test` task, each expected artifact must satisfy `DerivedProfile.runner_for`, which is `Runner.holds`: under one of the runner's roots, with a name its `file_pattern` matches |
+| **Read from the collection contract, never the extension** | A source file is refused, and so are a test-named file outside every root and a file under a root whose name the runner doesn't take |
+| **Where it is read** | The three seams H.35's rule is read at: the framing's promotion gate, the in-run plan gate, and an operator's plan at create |
+| **Taught first** (#686) | Each plan author's inputs carry what each runner collects (`test_runners_index`), rendered by `request.plan_test_runners_appendix` on both authoring paths |
+| **What it leaves alone** | A development task, whatever it writes. A Project with no profile, and a product whose profile names no runner: that is `test_files_unclassed`'s to report, and no `qa.test` is refused for it |
+| **A scaffolded application** | Unchanged: its rule is `validate_qa_suite_namespace`, read from its stack |
+
+**It refuses no plan that was planned.** Replayed over the stored plans of the deploy's four products, each
+against the product's current profile: 128 plans holding 265 `qa.test` files, none refused. The tests refuse
+the two measured cases.
+
+**Not in this amendment:** what a `qa.test` is shown. The cap on its prompt, and the record of what it was
+shown, are #3182's other half and get their own amendment with the replay that judges them.
+
+**The tests** (`tests/unit/cycles/test_qa_suite_collected.py`) enter at each seam: the promotion gate, the
+in-run gate (the refusal names its validator), `prepare_cycle` for an operator's plan, the plan step that
+shows the authors, and both authoring paths' rendering. Five mutations each fail one: each seam's call
+removed, the rule read from the extension, and the authors not shown.
+
+**Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 8 and ruling D3 state both rules. The
+Spark lane built this half.

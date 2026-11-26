@@ -2931,3 +2931,18 @@ checks:
       sig = inspect.signature(TaskDispatcher.dispatch_with_retry)
       print(EventType.TASK_HANDED_OFF, len(EventType.all()), sig.parameters["hand_off"].default is inspect.Parameter.empty, sorted(f.name for f in __import__("dataclasses").fields(HandOff)), hasattr(e._TaskOutcomeRouter, "hand_off_accepted"))
     expect: "task.handed_off 32 True ['accepted', 'left'] True"
+  - id: "3182-qa-suite-collected"
+    what: on a product, a plan whose qa.test names a file no runner of the product collects is refused by name, and a collected test file is accepted (SIP-0112 H.38)
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace
+      import yaml
+      from squadops.cycles.implementation_plan import ImplementationPlan
+      from squadops.projects.derived_profile import Runner
+      r = Runner("unittest", (), (), ("checks",), "check_*.py", (), None, None, ())
+      profile = SimpleNamespace(runners=(r,), runner_for=lambda path: r if r.holds(path) else None)
+      task = lambda i, f: {"task_index": i, "task_type": "qa.test", "role": "qa", "focus": f, "description": "d", "expected_artifacts": [f], "acceptance_criteria": []}
+      plan = ImplementationPlan.from_yaml(yaml.safe_dump({"version": 1, "project_id": "p", "cycle_id": "c", "prd_hash": "h", "summary": {"total_dev_tasks": 0, "total_qa_tasks": 2}, "tasks": [task(0, "checks/check_totals.py"), task(1, "tally/count.py")]}))
+      errors = plan.validate_qa_suite_collected(profile)
+      print(len(errors), errors[0].startswith("qa_suite_not_collected: Task 1"))
+    expect: "1 True"
