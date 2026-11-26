@@ -33,6 +33,10 @@ ERROR_OPERATION_NOT_FOUND = "REMOTE_OPERATION_NOT_FOUND"
 #: The send named isn't its task's current one (R5.6): the task was sent again, or the runtime
 #: restarted and waits on no send of it.
 ERROR_SEND_NOT_CURRENT = "REMOTE_OPERATION_SEND_NOT_CURRENT"
+#: The operation's owner was cancelled (R5.30): nothing is queued for it.
+ERROR_OWNER_CANCELLED = "REMOTE_OPERATION_OWNER_CANCELLED"
+#: The request's origin names no owner (R5.30). A defect of the caller, never a reading.
+ERROR_OWNER_MISSING = "REMOTE_OPERATION_OWNER_MISSING"
 
 _REQUEST_KEYS = frozenset(
     {

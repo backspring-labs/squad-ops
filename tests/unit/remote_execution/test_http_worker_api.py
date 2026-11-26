@@ -168,7 +168,11 @@ async def test_each_call_reads_the_routes_answer_into_the_registrys_own_words():
     again = await api.submit_result(claim.fence, passing())
     assert (accepted.refusal, accepted.replayed) == (None, False)
     assert (again.refusal, again.replayed) == (None, True)
-    assert (await world.registry.operation(queued.operation_id)).result == passing()
+    # #3236: the cancel was recorded before the result arrived, so the cancel wins. The worker's
+    # result is taken in and kept as the late one, and the operation reads interrupted.
+    stored = await world.registry.operation(queued.operation_id)
+    assert stored.result.status is OperationStatus.INTERRUPTED
+    assert stored.late_result == passing()
     await api.close()
 
 

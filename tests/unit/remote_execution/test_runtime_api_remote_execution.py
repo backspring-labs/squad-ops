@@ -42,6 +42,7 @@ from squadops.remote_execution.scenario import staged_revision
 from squadops.remote_execution.serving import REASON_CANCELLED, Worker
 from squadops.remote_execution.wire import result_to_wire
 from squadops.remote_execution.workers import (
+    OperationOwner,
     OperationState,
     RequestRefused,
     RuntimeAnswerUnreadable,
@@ -55,6 +56,9 @@ from tests.unit.remote_execution.worker_harness import (
     Serving,
     sleeping_on,
 )
+
+#: Whose operations these are (#3236): every request names its owner.
+OWNER = OperationOwner("cyc_1")
 
 pytestmark = pytest.mark.auth
 
@@ -280,7 +284,8 @@ async def test_the_handlers_operation_reaches_a_worker_and_its_assertions_come_b
     assert document["scenario"]["digest"] == scenario.digest
     stored = await world.registry.operation(recording.operation_id)
     assert stored.state is OperationState.SETTLED
-    assert stored.origin == {"agent_id": "eve", "requested_by": Role.AGENT}
+    # #3236: the port's owner rides in the origin beside who asked, so the cycle's cancel finds it.
+    assert stored.origin == {"agent_id": "eve", "cycle_id": "cyc_1", "requested_by": Role.AGENT}
     assert (stored.request.task_id, stored.request.dispatch_id) == ("task-7", "send-7")
     assert (stored.attempt, stored.max_attempts) == (1, 2)
     assert stored.request.source_revision == staged_revision(staged)
@@ -295,7 +300,7 @@ async def test_with_no_worker_the_operation_is_not_executed_and_nothing_is_queue
     world = _world()
     port, recording = _port(world)
 
-    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")), OWNER)
     session = await world.registry.register(registration())
 
     assert (result.status, result.reason, result.dispatch_id) == (
@@ -316,7 +321,7 @@ async def test_an_operation_nobody_claims_within_the_wait_is_stopped_and_reads_n
     port, recording = _port(world)
     session = await world.registry.register(registration())
 
-    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")), OWNER)
 
     assert (result.status, result.dispatch_id, result.unavailable) == (
         OperationStatus.NOT_EXECUTED, "task-7", True
@@ -352,7 +357,7 @@ async def test_a_running_operation_past_the_wait_is_cancelled_and_its_worker_ans
 
     async with Serving(worker) as serving:
         await serving.until(registered)
-        result = await port.run_operation(world.current(request(dispatch_id="task-7")))
+        result = await port.run_operation(world.current(request(dispatch_id="task-7")), OWNER)
 
     assert (result.status, result.dispatch_id) == (OperationStatus.INTERRUPTED, "task-7")
     assert result.reason == (
@@ -376,7 +381,7 @@ async def test_a_claimed_operation_whose_worker_went_silent_ends_interrupted_wit
             await asyncio.sleep(0)
 
     silent = asyncio.ensure_future(claim_then_go_silent())
-    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")), OWNER)
     await silent
 
     assert result.status is OperationStatus.INTERRUPTED
@@ -407,7 +412,7 @@ async def test_a_result_at_the_waits_last_read_is_returned_and_nothing_is_cancel
         await world.registry.submit_result(claim.fence, passing("task-7"))
 
     finishing = asyncio.ensure_future(claim_and_finish_late())
-    result = await port.run_operation(world.current(request(dispatch_id="task-7")))
+    result = await port.run_operation(world.current(request(dispatch_id="task-7")), OWNER)
     await finishing
 
     assert result == passing("task-7")
@@ -424,7 +429,7 @@ async def test_a_requester_that_is_stopped_asks_for_its_operation_to_stop_too():
     await world.registry.register(registration())
 
     waiting = asyncio.ensure_future(
-        port.run_operation(world.current(request(dispatch_id="task-7")))
+        port.run_operation(world.current(request(dispatch_id="task-7")), OWNER)
     )
     while not recording.calls:
         await asyncio.sleep(0)
@@ -464,7 +469,7 @@ async def test_a_parting_cancel_that_fails_is_named_and_the_stop_still_happens(c
         transport=httpx.MockTransport(handler),
         sleep=sleep,
     )
-    waiting = asyncio.ensure_future(port.run_operation(request()))
+    waiting = asyncio.ensure_future(port.run_operation(request(), OWNER))
     await parked.wait()
     waiting.cancel()
 
@@ -485,7 +490,7 @@ async def test_an_agent_whose_role_may_not_ask_is_a_refusal_and_never_a_result()
     await world.registry.register(registration())
 
     with pytest.raises(RequestRefused, match="HTTP 403 from /api/v1/remote-operations"):
-        await port.run_operation(world.current(request()))
+        await port.run_operation(world.current(request()), OWNER)
 
 
 # ------------------------------------------------------------------ answers one at a time
@@ -498,7 +503,7 @@ async def test_no_answer_to_any_request_to_queue_within_the_wait_is_interrupted(
     port, asked = _answering(httpx.ConnectError("connection refused"))
 
     with caplog.at_level("WARNING"):
-        result = await port.run_operation(request(dispatch_id="task-7"))
+        result = await port.run_operation(request(dispatch_id="task-7"), OWNER)
 
     assert (result.status, result.dispatch_id) == (OperationStatus.INTERRUPTED, "task-7")
     assert result.reason == (
@@ -539,7 +544,7 @@ async def test_a_create_whose_answer_was_lost_asks_again_and_reads_the_one_opera
 
     passing_it = asyncio.ensure_future(claim_and_pass())
     asked = world.current(request(task_id="task_7", dispatch_id="send-1"))
-    result = await port.run_operation(asked)
+    result = await port.run_operation(asked, OWNER)
     await passing_it
 
     assert result == passing("send-1")
@@ -558,7 +563,7 @@ async def test_a_send_the_runtime_no_longer_waits_on_is_interrupted_and_never_a_
     await world.registry.register(registration())
     world.sends.waiting["task_7"] = "send-2"
 
-    result = await port.run_operation(request(task_id="task_7", dispatch_id="send-1"))
+    result = await port.run_operation(request(task_id="task_7", dispatch_id="send-1"), OWNER)
 
     assert (result.status, result.dispatch_id) == (OperationStatus.INTERRUPTED, "send-1")
     assert result.reason == (
@@ -585,7 +590,7 @@ async def test_a_runtime_restart_during_the_wait_ends_it_interrupted_and_the_nex
         world.app.state.reply_router = ReplyRouter(MagicMock())
 
     restarting = asyncio.ensure_future(restart_once_queued())
-    result = await port.run_operation(asked)
+    result = await port.run_operation(asked, OWNER)
     await restarting
     orphan = recording.operation_id
 
@@ -596,7 +601,7 @@ async def test_a_runtime_restart_during_the_wait_ends_it_interrupted_and_the_nex
 
     world.app.state.reply_router.register("task_7", "send-2")  # the resumed run's send
     resend = asyncio.ensure_future(
-        port.run_operation(request(task_id="task_7", dispatch_id="send-2"))
+        port.run_operation(request(task_id="task_7", dispatch_id="send-2"), OWNER)
     )
     while len(recording.calls) < 3:
         await asyncio.sleep(0)
@@ -623,7 +628,7 @@ async def test_a_read_that_gets_no_answer_is_read_again_and_the_result_returned(
     )
 
     with caplog.at_level("WARNING"):
-        result = await port.run_operation(request(dispatch_id="task-7"))
+        result = await port.run_operation(request(dispatch_id="task-7"), OWNER)
 
     assert result == passing("task-7")
     assert (
@@ -644,7 +649,7 @@ async def test_a_runtime_unreachable_to_the_end_of_the_wait_is_interrupted_and_s
     """Bug caught: an operation that was queued, and may have run, read as not executed."""
     port, asked = _answering((201, _operation()), httpx.ConnectError("connection refused"))
 
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(request(dispatch_id="task-7"), OWNER)
 
     assert result.status is OperationStatus.INTERRUPTED
     assert result.reason == (
@@ -661,7 +666,7 @@ async def test_an_operation_still_held_a_lease_after_its_cancel_is_interrupted_n
     answers the cancel."""
     port, asked = _answering((201, _operation()), (200, _operation("claimed", attempt=1)))
 
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(request(dispatch_id="task-7"), OWNER)
 
     assert result.status is OperationStatus.INTERRUPTED
     assert result.reason == (
@@ -681,7 +686,7 @@ async def test_a_result_that_crosses_the_cancel_stands_as_it_was_submitted():
         (200, _operation("settled", result_to_wire(passing("task-7")), cancel_requested=False)),
     )
 
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(request(dispatch_id="task-7"), OWNER)
 
     assert result == passing("task-7")
     assert asked[-1] == ("POST", "/api/v1/remote-operations/rop_1/cancel")
@@ -696,7 +701,7 @@ async def test_an_operation_the_runtime_no_longer_knows_is_interrupted():
         (404, _envelope("REMOTE_OPERATION_NOT_FOUND", operation_id="rop_1")),
     )
 
-    result = await port.run_operation(request(dispatch_id="task-7"))
+    result = await port.run_operation(request(dispatch_id="task-7"), OWNER)
 
     assert (result.status, result.dispatch_id) == (OperationStatus.INTERRUPTED, "task-7")
     assert result.reason == (
@@ -783,7 +788,7 @@ async def test_a_refusal_or_an_unreadable_answer_raises_and_is_never_a_result(
     port, _ = _answering(*answers)
 
     with pytest.raises(error, match=match):
-        await port.run_operation(request())
+        await port.run_operation(request(), OWNER)
 
 
 async def test_with_no_identity_configured_a_call_carries_no_token():
@@ -804,7 +809,7 @@ async def test_with_no_identity_configured_a_call_carries_no_token():
         transport=httpx.MockTransport(handler),
     )
 
-    assert await port.run_operation(request()) == passing()
+    assert await port.run_operation(request(), OWNER) == passing()
     assert seen == [None]
 
 
@@ -845,7 +850,7 @@ async def test_the_attempts_the_port_was_given_are_the_operations():
     port, recording = _port(world, max_attempts=4)
     await world.registry.register(registration())
 
-    waiting = asyncio.ensure_future(port.run_operation(world.current(request())))
+    waiting = asyncio.ensure_future(port.run_operation(world.current(request()), OWNER))
     while not recording.calls:
         await asyncio.sleep(0)
     waiting.cancel()
@@ -866,7 +871,7 @@ async def test_a_request_past_the_limit_is_refused_by_name_and_nothing_is_sent()
     small = request(dispatch_id="task-7")
     big = replace(small, source_files={"src/Big.luau": "é" * (REQUEST_TREE_LIMIT_BYTES // 2 + 1)})
 
-    result = await port.run_operation(big)
+    result = await port.run_operation(big, OWNER)
 
     assert (result.status, result.dispatch_id, result.unavailable) == (
         OperationStatus.NOT_EXECUTED,

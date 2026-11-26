@@ -24,6 +24,7 @@ exists (the failure is logged).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from fastapi import Request
 
@@ -35,6 +36,7 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_focus_lease_port,
     get_runtime_coordinator,
+    get_worker_registry,
     get_workflow_tracker,
 )
 from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
@@ -43,6 +45,8 @@ from squadops.cycles.lifecycle import TERMINAL_STATES
 from squadops.cycles.models import RunStatus
 from squadops.cycles.naming import flow_run_name
 from squadops.events.types import EventType
+from squadops.remote_execution.leasing import owner_ended
+from squadops.remote_execution.workers import ORIGIN_CYCLE
 from squadops.runtime import reasons
 from squadops.runtime.activity_reaper import abort_cycle_activities
 from squadops.runtime.focus_reaper import release_owner_leases
@@ -200,6 +204,48 @@ async def abort_cancelled_cycle_activities(request: Request, cycle_id: str) -> i
     return aborted
 
 
+@dataclass(frozen=True)
+class OwnedCancel:
+    """What asking an owner's remote operations to stop came to (#3236). ``reached`` is how many
+    were asked, and 0 says none were out. ``None`` says they couldn't be asked, with ``failure``
+    naming why: the two are never the same answer, since after a failure a play may still be
+    with a worker."""
+
+    reached: int | None
+    failure: str | None = None
+
+
+async def cancel_owned_remote_operations(
+    request: Request, key: str, value: str, *, because: str, final: bool
+) -> OwnedCancel:
+    """Ask every remote operation the owner still has out to stop (SIP-0117 R5.30, #3236).
+
+    ``key`` is the origin key the owner is named by: a cycle's, or a Campaign's. A queued
+    operation is settled with ``because``, and a claimed one's worker is told at its next
+    renewal. ``final`` says the owner itself has ended, and nothing new is queued for it.
+
+    A deploy that runs no worker registry has none out. A failure never blocks the cancel it
+    serves, and is never read as "none were out": it is returned by name, for the cancel's
+    answer to carry. Each operation's lease and its requester's wait still end it.
+    """
+    registry = get_worker_registry(request)
+    if registry is None:
+        return OwnedCancel(0)
+    try:
+        reached = await registry.cancel_owned(key, value, because=because, final=final)
+    except Exception as e:  # noqa: BLE001 - the cancel this serves must go through
+        logger.warning(
+            "#3236: the cancel of %s=%s didn't reach its remote operations",
+            key,
+            value,
+            exc_info=True,
+        )
+        return OwnedCancel(
+            None, f"the worker registry couldn't be asked ({type(e).__name__}): see the log"
+        )
+    return OwnedCancel(len(reached))
+
+
 async def cancel_run_by_the_existing_path(
     request, project_id: str, cycle_id: str, run_id: str
 ) -> RunCancelResponse:
@@ -209,6 +255,15 @@ async def cancel_run_by_the_existing_path(
     §A.3.8, T13), so a halt stops a run exactly as a cancel does."""
 
     await get_cycle_registry(request).cancel_run(run_id)
+    # #3236: by the cycle, as the activities are owned (a cycle runs one workload at a time).
+    # Not final: the cycle may go on to another run, and a play for that one is run.
+    operations_cancelled = await cancel_owned_remote_operations(
+        request,
+        ORIGIN_CYCLE,
+        cycle_id,
+        because=f"run {run_id} of cycle {cycle_id} was cancelled",
+        final=False,
+    )
     # #1648: first, while the activities and leases still say who holds the run's tasks.
     agents_notified = await notify_agents_of_cancel(request, cycle_id, [run_id])
     cancelled = await cancel_orphaned_flow_runs(request, project_id, cycle_id, [run_id])
@@ -221,6 +276,8 @@ async def cancel_run_by_the_existing_path(
         focus_leases_released=leases_released,
         activities_ended=activities_ended,
         agents_notified=agents_notified,
+        remote_operations_cancelled=operations_cancelled.reached,
+        remote_operations_cancel_failure=operations_cancelled.failure,
     )
 
 
@@ -236,6 +293,16 @@ async def cancel_cycle_by_the_existing_path(
 
     registry = get_cycle_registry(request)
     await registry.cancel_cycle(cycle_id)
+
+    # #3236: the cycle's remote operations are asked to stop, and nothing new is queued for it.
+    # An abort left a claimed play to run to its end, and its result was taken as any other's.
+    operations_cancelled = await cancel_owned_remote_operations(
+        request,
+        ORIGIN_CYCLE,
+        cycle_id,
+        because=owner_ended(ORIGIN_CYCLE, cycle_id),
+        final=True,
+    )
 
     # SIP-0077: cycle.cancelled
 
@@ -284,4 +351,6 @@ async def cancel_cycle_by_the_existing_path(
         focus_leases_released=leases_released,
         activities_ended=activities_ended,
         agents_notified=agents_notified,
+        remote_operations_cancelled=operations_cancelled.reached,
+        remote_operations_cancel_failure=operations_cancelled.failure,
     )

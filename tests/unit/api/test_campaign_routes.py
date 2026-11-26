@@ -21,6 +21,7 @@ from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from adapters.cycles.factory import create_project_registry
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.campaigns import campaigns_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
@@ -33,8 +34,11 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.llm.script import script_version
+from squadops.remote_execution.registry import WorkerRegistry
+from squadops.remote_execution.workers import OperationState, OwnerCancelled
 from tests.fixtures.merge_decisions import merge_decisions_yaml
 from tests.unit.campaigns.builders import cycle_for, move, quiet_box
+from tests.unit.remote_execution.registry_contract import Clock, owned, request
 
 pytestmark = pytest.mark.auth
 
@@ -466,6 +470,79 @@ async def test_abort_cancels_the_launched_cycle_by_the_existing_path(world):
     assert resp["cancelled_cycles"] == [launched.cycle_id]
     assert (await world.cycles.get_cycle(launched.cycle_id)).cancelled
     assert (resp["campaign"]["state"], resp["campaign"]["outcome"]) == ("completed", "aborted")
+
+
+async def test_abort_stops_the_campaigns_remote_operations_whatever_cycle_asked(world):
+    """SIP-0117 R5.30 (#3236), entered at the abort route. Bug caught (2026-11-19): the aborted
+    Campaign's play stayed with the worker and ran to its end. Two ways it happens: the running
+    cycle's cancel didn't reach its operations, and a cycle that had already ended is cancelled
+    by nothing, so a play it left out runs on."""
+    _create(world)
+    await world.campaigns.transition(
+        "cmp_api000000001",
+        move(CampaignState.CALIBRATING, "k-start", launch=LaunchRequest(CycleKind.CALIBRATION)),
+    )
+
+    async def build(intent):
+        return cycle_for(intent)
+
+    [launched] = await CampaignLauncher(
+        world.campaigns, world.cycles, build, actor="l1", box_verdict=quiet_box
+    ).drain()
+    registry = WorkerRegistry(MemoryWorkerRegistryStore(), clock=Clock())
+    world.client.app.state.worker_registry = registry
+    running_cycles = await owned(registry, launched.cycle_id, "cmp_api000000001")
+    ended_cycles = await owned(registry, "cyc_ended_before", "cmp_api000000001")
+    another_campaigns = await owned(registry, "cyc_elsewhere", "cmp_other")
+
+    resp = _control(world, "abort", "k-abort").json()
+
+    async def read(operation):
+        stored = await registry.operation(operation.operation_id)
+        return stored.state, stored.result.reason if stored.result else None
+
+    unclaimed = "cancelled before a worker claimed it"
+    # The running cycle's own cancel stopped its play, so the Campaign's pass found one left.
+    assert (resp["cancelled_cycles"], resp["remote_operations_cancelled"]) == (
+        [launched.cycle_id],
+        1,
+    )
+    assert await read(running_cycles) == (
+        OperationState.SETTLED,
+        f"{unclaimed}: cycle {launched.cycle_id} was cancelled",
+    )
+    assert await read(ended_cycles) == (
+        OperationState.SETTLED,
+        f"{unclaimed}: Campaign cmp_api000000001 was aborted",
+    )
+    assert await read(another_campaigns) == (OperationState.QUEUED, None)
+    asked_after = await registry.enqueue(
+        request(),
+        {"cycle_id": "cyc_new", "campaign_id": "cmp_api000000001"},
+        max_attempts=1,
+        only_with_worker=False,
+    )
+    assert isinstance(asked_after, OwnerCancelled)
+
+
+async def test_abort_goes_through_and_says_so_when_its_operations_couldnt_be_asked(world):
+    """The MacBook lane's review finding on #3256. Bug caught: an abort whose registry couldn't
+    be asked answering 0, as if no play were out."""
+
+    class Unreachable:
+        async def cancel_owned(self, *args, **kwargs):
+            raise ConnectionError("the pool is closed")
+
+    _create(world)
+    world.client.app.state.worker_registry = Unreachable()
+
+    resp = _control(world, "abort", "k-abort").json()
+
+    assert (resp["campaign"]["state"], resp["campaign"]["outcome"]) == ("completed", "aborted")
+    assert resp["remote_operations_cancelled"] is None
+    assert resp["remote_operations_cancel_failure"] == (
+        "the worker registry couldn't be asked (ConnectionError): see the log"
+    )
 
 
 async def test_abort_leaves_a_cycle_the_campaign_ended_at_the_gate(world):

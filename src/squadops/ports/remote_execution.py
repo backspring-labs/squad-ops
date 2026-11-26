@@ -23,6 +23,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from squadops.remote_execution.models import RemoteOperationRequest, RemoteOperationResult
@@ -32,6 +33,7 @@ from squadops.remote_execution.workers import (
     Enrolment,
     Fence,
     LeaseReading,
+    OperationOwner,
     QueuedOperation,
     RecordedRefusal,
     ResultReading,
@@ -46,8 +48,13 @@ if TYPE_CHECKING:
 
 class RemoteExecutionPort(ABC):
     @abstractmethod
-    async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
-        """Run ``request``'s operation and return what the provider reported."""
+    async def run_operation(
+        self, request: RemoteOperationRequest, owner: OperationOwner
+    ) -> RemoteOperationResult:
+        """Run ``request``'s operation for ``owner`` and return what the provider reported.
+
+        ``owner`` is whose operation it is (#3236). A cancel of the owner stops the operation,
+        and one asked for after the owner was cancelled isn't run: it reads ``not_executed``."""
 
 
 class WorkerRegistryTransaction(ABC):
@@ -89,6 +96,19 @@ class WorkerRegistryTransaction(ABC):
     async def unsettled_operations_of(self, task_id: str) -> list[QueuedOperation]:
         """Every operation asked for by any send of the task that has no result yet, oldest
         first."""
+
+    @abstractmethod
+    async def unsettled_operations_owned(self, key: str, value: str) -> list[QueuedOperation]:
+        """Every operation with no result yet whose origin's ``key`` reads ``value``, oldest
+        first (#3236). ``key`` is one of ``workers.OWNER_KEYS``."""
+
+    @abstractmethod
+    async def owner_cancelled_at(self, key: str, value: str) -> datetime | None:
+        """When the owner was cancelled, or ``None`` when it never was (#3236)."""
+
+    @abstractmethod
+    async def record_owner_cancelled(self, key: str, value: str, at: datetime) -> None:
+        """Record the owner's cancel. The first one is kept: a repeated cancel changes nothing."""
 
     @abstractmethod
     async def save_operation(self, operation: QueuedOperation) -> None:
