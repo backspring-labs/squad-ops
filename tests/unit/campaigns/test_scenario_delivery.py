@@ -44,6 +44,7 @@ from squadops.campaigns.scenario_runs import ScenarioRuns, scenario_bundle
 from squadops.capabilities.operation_supply import SuppliedOperation
 from squadops.capabilities.skillsets import ToolRequest
 from squadops.remote_execution.models import ReadingSide, RemoteOperationRequest
+from squadops.remote_execution.workers import OperationOwner
 from tests.unit.campaigns.test_runner_acceptance_sandbox import _profile
 from tests.unit.remote_execution.scenario_fixture import (
     OPEN,
@@ -71,9 +72,11 @@ class _Port:
 
     def __init__(self) -> None:
         self.asked: list[RemoteOperationRequest] = []
+        self.owners: list[OperationOwner] = []
 
-    async def run_operation(self, request):
+    async def run_operation(self, request, owner):
         self.asked.append(request)
+        self.owners.append(owner)
         return await FixtureOperationRunner().run(request)
 
 
@@ -85,6 +88,10 @@ def _tree(world: dict, *, scenario: bool) -> dict[str, bytes]:
     }
 
 
+#: Whose plays these are (#3236): the increment's cycle, and its Campaign.
+OWNER = OperationOwner("cyc_2", "cmp_1")
+
+
 def _scenarios(port=None, **overrides) -> ScenarioRuns:
     settings = {
         "operation": OPERATION_SUPPLIED,
@@ -92,6 +99,7 @@ def _scenarios(port=None, **overrides) -> ScenarioRuns:
         "campaign_id": "cmp_1",
         "increment_id": "inc_2",
         "dispatch_id": "run_2:eval",
+        "owner": OWNER,
         **overrides,
     }
     return ScenarioRuns(port, **settings)

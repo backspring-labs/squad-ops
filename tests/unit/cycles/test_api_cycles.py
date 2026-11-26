@@ -2,6 +2,7 @@
 Tests for SIP-0064 cycle API routes.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -11,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
+from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.cycles import router
 from squadops.cycles.deploy_record import DeployRecord, ModelWeights, ServiceImage
@@ -24,7 +26,11 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
+from squadops.remote_execution.models import OperationStatus
+from squadops.remote_execution.registry import WorkerRegistry
+from squadops.remote_execution.workers import OperationState, OwnerCancelled
 from tests.unit.campaigns.builders import QuietBox
+from tests.unit.remote_execution.registry_contract import Clock, owned, request
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -487,6 +493,47 @@ class TestGetCycle:
 
 
 class TestCancelCycle:
+    def test_cancel_stops_the_cycles_remote_operations_and_shuts_it_to_new_ones(
+        self, client, mock_cycle_registry
+    ):
+        """SIP-0117 R5.30 (#3236), entered at the cycle's cancel route, which a Campaign's abort
+        calls too. Bug caught (2026-11-19): the cancel ended the cycle's flag, its flow runs,
+        its leases and its activities, and left its play with the worker: it ran to its end,
+        and its result was accepted."""
+        registry = WorkerRegistry(MemoryWorkerRegistryStore(), clock=Clock())
+        client.app.state.worker_registry = registry
+        mock_cycle_registry.cancel_cycle.return_value = None
+        mine = asyncio.run(owned(registry, "cyc_001"))
+        another_cycles = asyncio.run(owned(registry, "cyc_other"))
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        stopped = asyncio.run(registry.operation(mine.operation_id))
+        asked_after = asyncio.run(
+            registry.enqueue(
+                request(), {"cycle_id": "cyc_001"}, max_attempts=1, only_with_worker=False
+            )
+        )
+        assert (resp.status_code, resp.json()["remote_operations_cancelled"]) == (200, 1)
+        assert (stopped.state, stopped.result.status, stopped.result.reason) == (
+            OperationState.SETTLED,
+            OperationStatus.NOT_EXECUTED,
+            "cancelled before a worker claimed it: cycle cyc_001 was cancelled",
+        )
+        assert asyncio.run(registry.operation(another_cycles.operation_id)).state is (
+            OperationState.QUEUED
+        )
+        assert isinstance(asked_after, OwnerCancelled)
+
+    def test_cancel_with_no_worker_registry_reports_none_stopped(self, client, mock_cycle_registry):
+        """A deploy that runs no remote execution has no registry. Bug caught: the cancel
+        failing, or its other teardown skipped, because there was nothing to ask."""
+        mock_cycle_registry.cancel_cycle.return_value = None
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        assert (resp.status_code, resp.json()["remote_operations_cancelled"]) == (200, 0)
+
     def test_cancel_success(self, client, mock_cycle_registry):
         mock_cycle_registry.cancel_cycle.return_value = None
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")

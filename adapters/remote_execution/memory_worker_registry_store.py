@@ -7,6 +7,7 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from squadops.ports.remote_execution import WorkerRegistryStorePort, WorkerRegistryTransaction
 from squadops.remote_execution.workers import (
@@ -25,10 +26,15 @@ class _Rows:
     operations: dict[str, QueuedOperation] = field(default_factory=dict)
     attempts: dict[tuple[str, int], Attempt] = field(default_factory=dict)
     refusals: list[RecordedRefusal] = field(default_factory=list)
+    cancelled_owners: dict[tuple[str, str], datetime] = field(default_factory=dict)
 
     def copy(self) -> _Rows:
         return _Rows(
-            dict(self.sessions), dict(self.operations), dict(self.attempts), list(self.refusals)
+            dict(self.sessions),
+            dict(self.operations),
+            dict(self.attempts),
+            list(self.refusals),
+            dict(self.cancelled_owners),
         )
 
 
@@ -90,6 +96,20 @@ class _MemoryTransaction(WorkerRegistryTransaction):
             if o.request.task_id == task_id and o.state is not OperationState.SETTLED
         ]
         return sorted(unsettled, key=lambda o: (o.created_at, o.operation_id))
+
+    async def unsettled_operations_owned(self, key: str, value: str) -> list[QueuedOperation]:
+        owned = [
+            o
+            for o in self._rows.operations.values()
+            if o.origin.get(key) == value and o.state is not OperationState.SETTLED
+        ]
+        return sorted(owned, key=lambda o: (o.created_at, o.operation_id))
+
+    async def owner_cancelled_at(self, key: str, value: str) -> datetime | None:
+        return self._rows.cancelled_owners.get((key, value))
+
+    async def record_owner_cancelled(self, key: str, value: str, at: datetime) -> None:
+        self._rows.cancelled_owners.setdefault((key, value), at)
 
     async def save_operation(self, operation: QueuedOperation) -> None:
         self._rows.operations[operation.operation_id] = operation

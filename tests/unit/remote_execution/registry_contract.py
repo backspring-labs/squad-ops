@@ -24,11 +24,16 @@ from squadops.remote_execution.models import (
 )
 from squadops.remote_execution.registry import WorkerRegistry
 from squadops.remote_execution.workers import (
+    ORIGIN_CAMPAIGN,
+    ORIGIN_CYCLE,
+    AttemptOutcome,
+    CancelEffect,
     Enqueued,
     Fence,
     FenceRefusal,
     NoWorker,
     OperationState,
+    OwnerCancelled,
     SendConflict,
     ServedOperation,
     UnknownOperation,
@@ -87,6 +92,24 @@ async def queue(registry: WorkerRegistry, asked=None, *, max_attempts: int = 2):
     )
     assert isinstance(enqueued, Enqueued), enqueued
     return enqueued.operation
+
+
+async def owned(
+    registry: WorkerRegistry, cycle: str, campaign: str | None = None, *, max_attempts: int = 2
+):
+    """Queue a request for the cycle (and its Campaign), and return its operation (#3236)."""
+    origin = {"cycle_id": cycle, **({"campaign_id": campaign} if campaign else {})}
+    enqueued = await registry.enqueue(
+        request(), origin, max_attempts=max_attempts, only_with_worker=False
+    )
+    assert isinstance(enqueued, Enqueued), enqueued
+    return enqueued.operation
+
+
+def cycle_cancel(registry: WorkerRegistry, cycle: str):
+    return registry.cancel_owned(
+        ORIGIN_CYCLE, cycle, because=f"cycle {cycle} was cancelled", final=True
+    )
 
 
 def passing(dispatch_id: str = "dispatch-1", by: str = "worker") -> RemoteOperationResult:
@@ -615,3 +638,190 @@ class WorkerRegistryContract:
         assert (macbook.held, mini.held) == ((), ())
         assert (await registry.operation(queued.operation_id)).state is OperationState.QUEUED
         assert [r.fence for r in newest[0].refusals] == [early.fence]
+
+    # ------------------------------------------------------------------ an owner's cancel (#3236)
+
+    async def test_an_owners_cancel_stops_what_it_has_out_and_nothing_else(self, registry, clock):
+        """SIP-0117 R5.30. Bug caught (2026-11-19): an aborted Campaign's repair cycle left its
+        claimed play with the worker. The play ran to its end and its result was taken as any
+        other's, because nothing could ask for "this cycle's operations"."""
+        session = await registry.register(registration())
+        held = await owned(registry, "cyc_9")
+        claim = await registry.claim(session.session_id)
+        clock.advance(1)
+        waiting = await owned(registry, "cyc_9")
+        elsewhere = await owned(registry, "cyc_other")
+
+        reached = await cycle_cancel(registry, "cyc_9")
+
+        assert [(c.operation_id, c.task_id, c.effect) for c in reached] == [
+            (held.operation_id, held.request.task_id, CancelEffect.STOP_REQUESTED),
+            (waiting.operation_id, waiting.request.task_id, CancelEffect.SETTLED),
+        ]
+        told = await registry.heartbeat(session.session_id, "online", claim.fence)
+        assert (told.refusal, told.cancel_requested) == (None, True)
+        settled = await registry.operation(waiting.operation_id)
+        assert (settled.state, settled.result.status, settled.result.reason) == (
+            OperationState.SETTLED,
+            OperationStatus.NOT_EXECUTED,
+            f"{leasing.REASON_CANCELLED_UNCLAIMED}: cycle cyc_9 was cancelled",
+        )
+        untouched = await registry.operation(elsewhere.operation_id)
+        assert (untouched.state, untouched.cancel_requested) == (OperationState.QUEUED, False)
+
+    async def test_a_result_that_arrives_after_the_cancel_is_kept_and_is_no_evidence(
+        self, registry, store
+    ):
+        """The play that finished before its worker's next renewal. Bug caught: the same
+        incident's other half. The cancel was recorded first, so it wins: every reader of the
+        operation sees ``interrupted``, and what the worker ran stays on the record."""
+        session = await registry.register(registration())
+        operation = await owned(registry, "cyc_9", max_attempts=1)
+        claim = await registry.claim(session.session_id)
+        await cycle_cancel(registry, "cyc_9")
+
+        answered = await registry.submit_result(claim.fence, passing())
+        again = await registry.submit_result(claim.fence, passing(by="retry"))
+
+        stored = await registry.operation(operation.operation_id)
+        assert (answered.refusal, answered.replayed) == (None, False)
+        assert (again.refusal, again.replayed) == (None, True)
+        assert (stored.state, stored.result.status, stored.result.records) == (
+            OperationState.SETTLED,
+            OperationStatus.INTERRUPTED,
+            (),
+        )
+        assert stored.result.reason == (
+            "cancelled while attempt 1 held it. Its worker's result (completed) arrived after "
+            "the cancel: it is kept as the late result, and is no evidence"
+        )
+        assert stored.late_result == passing()
+        async with store.exclusive() as tx:
+            assert (await tx.attempt(operation.operation_id, 1)).outcome is AttemptOutcome.CANCELLED
+        assert await registry.refusals(operation.operation_id) == []
+
+    async def test_a_result_settled_before_the_cancel_stands(self, registry):
+        """The registry's order decides a race, and the rows say which came first. Bug caught:
+        a cancel that rewrites a result already taken in, so a reading its cycle acted on
+        changes under it."""
+        session = await registry.register(registration())
+        operation = await owned(registry, "cyc_9")
+        claim = await registry.claim(session.session_id)
+        await registry.submit_result(claim.fence, passing())
+
+        reached = await cycle_cancel(registry, "cyc_9")
+
+        stored = await registry.operation(operation.operation_id)
+        assert reached == []
+        assert (stored.result, stored.late_result, stored.cancel_requested) == (
+            passing(),
+            None,
+            False,
+        )
+
+    @pytest.mark.parametrize("lapsed_first", [False, True], ids=["cancel-then-silence", "silence"])
+    async def test_a_cancelled_operation_whose_worker_never_answers_is_never_run_again(
+        self, registry, clock, lapsed_first
+    ):
+        """A worker that disconnects during the cancel, or was gone before it. Bug caught: the
+        lease runs out, an attempt is left, and the operation goes to the next worker: a
+        cancelled play runs after all."""
+        first = await registry.register(registration())
+        second = await registry.register(registration("mac-mini"))
+        operation = await owned(registry, "cyc_9", max_attempts=3)
+        await registry.claim(first.session_id)
+
+        if lapsed_first:
+            clock.advance(leasing.LEASE_SECONDS + 1)
+        reached = await cycle_cancel(registry, "cyc_9")
+        clock.advance(leasing.LEASE_SECONDS + 1)
+
+        after = await registry.operation(operation.operation_id)
+        assert [c.effect for c in reached] == [
+            CancelEffect.SETTLED if lapsed_first else CancelEffect.STOP_REQUESTED
+        ]
+        assert (after.state, after.result.status) == (
+            OperationState.SETTLED,
+            OperationStatus.INTERRUPTED,
+        )
+        assert await registry.claim(second.session_id) is None
+
+    async def test_a_cancelled_owner_is_asked_nothing_new_and_a_runs_cancel_isnt_final(
+        self, registry
+    ):
+        """Bug caught: a delivery that reads its cancelled play as interrupted and asks for the
+        next criterion's, which then runs for a cycle that has ended. And the opposite: a run's
+        cancel that shuts its cycle to the plays of the run that follows."""
+        await registry.register(registration())
+        await registry.cancel_owned(
+            ORIGIN_CYCLE, "cyc_run", because="run run_1 of cycle cyc_run was cancelled", final=False
+        )
+        await cycle_cancel(registry, "cyc_9")
+        await registry.cancel_owned(
+            ORIGIN_CAMPAIGN, "cmp_3", because="Campaign cmp_3 was aborted", final=True
+        )
+
+        async def ask(origin):
+            return await registry.enqueue(request(), origin, max_attempts=1, only_with_worker=True)
+
+        after_run = await ask({"cycle_id": "cyc_run"})
+        after_cycle = await ask({"cycle_id": "cyc_9"})
+        after_abort = await ask({"cycle_id": "cyc_new", "campaign_id": "cmp_3"})
+
+        at = "2026-11-10T15:00:00+00:00"
+        assert isinstance(after_run, Enqueued)
+        assert after_cycle == OwnerCancelled(
+            f"cycle cyc_9 was cancelled at {at}, so nothing is run for it"
+        )
+        assert after_abort == OwnerCancelled(
+            f"Campaign cmp_3 was aborted at {at}, so nothing is run for it"
+        )
+
+    async def test_a_campaigns_abort_reaches_a_play_whose_cycle_had_ended(self, registry):
+        """Bug caught: an abort that cancels only the cycles still running, so a play asked for
+        by a cycle that has ended runs on with nobody waiting."""
+        await registry.register(registration())
+        play = await owned(registry, "cyc_ended", "cmp_3")
+        other = await owned(registry, "cyc_x", "cmp_4")
+
+        reached = await registry.cancel_owned(
+            ORIGIN_CAMPAIGN, "cmp_3", because="Campaign cmp_3 was aborted", final=True
+        )
+
+        assert [c.operation_id for c in reached] == [play.operation_id]
+        assert (await registry.operation(other.operation_id)).state is OperationState.QUEUED
+
+    async def test_an_owners_cancel_asked_again_changes_nothing(self, registry, clock):
+        """A repeated abort. Bug caught: the second cancel settling what the first only marked,
+        or moving the time the owner was cancelled at."""
+        session = await registry.register(registration())
+        held = await owned(registry, "cyc_9")
+        await registry.claim(session.session_id)
+        clock.advance(1)
+        waiting = await owned(registry, "cyc_9")
+        first = await cycle_cancel(registry, "cyc_9")
+        settled_once = await registry.operation(waiting.operation_id)
+        clock.advance(5)
+
+        second = await cycle_cancel(registry, "cyc_9")
+
+        marked = await registry.operation(held.operation_id)
+        assert [c.effect for c in first] == [CancelEffect.STOP_REQUESTED, CancelEffect.SETTLED]
+        assert [(c.operation_id, c.effect) for c in second] == [
+            (held.operation_id, CancelEffect.STOP_REQUESTED)
+        ]
+        assert (marked.state, marked.cancel_requested) == (OperationState.CLAIMED, True)
+        assert await registry.operation(waiting.operation_id) == settled_once
+        refused = await registry.enqueue(
+            request(), {"cycle_id": "cyc_9"}, max_attempts=1, only_with_worker=False
+        )
+        assert "was cancelled at 2026-11-10T15:00:01+00:00" in refused.reason
+
+    async def test_an_operation_nobody_owns_is_the_callers_defect(self, registry):
+        """Bug caught: an operation queued with no owner, which no cancel can ever reach."""
+        with pytest.raises(ValueError, match="names no cycle_id"):
+            await registry.enqueue(
+                request(), {"agent_id": "eve"}, max_attempts=1, only_with_worker=False
+            )
+        with pytest.raises(ValueError, match="named by one of cycle_id, campaign_id"):
+            await registry.cancel_owned("task_id", "task_1", because="anything", final=True)

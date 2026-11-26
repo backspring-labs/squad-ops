@@ -39,6 +39,8 @@ class AttemptOutcome(StrEnum):
     ACCEPTED = "accepted"
     #: Its lease ran out, or its worker registered again while holding it.
     EXPIRED = "expired"
+    #: Its result arrived after the operation was asked to stop, and is kept as the late result.
+    CANCELLED = "cancelled"
 
 
 class FenceRefusal(StrEnum):
@@ -106,6 +108,72 @@ class Fence:
     lease_id: str
 
 
+#: The origin keys that say whose operation it is (#3236).
+ORIGIN_CYCLE = "cycle_id"
+ORIGIN_CAMPAIGN = "campaign_id"
+#: The keys a cancel may be asked by: a cycle's cancel and a Campaign's abort.
+OWNER_KEYS = (ORIGIN_CYCLE, ORIGIN_CAMPAIGN)
+
+
+@dataclass(frozen=True)
+class OperationOwner:
+    """Whose operation it is (#3236): the cycle it verifies for, and the Campaign when the cycle
+    is one's and the asker knows it. A cycle's cancel and a Campaign's abort ask every operation
+    they own to stop, so no operation is asked for without an owner.
+
+    A task's handler knows its cycle and not its Campaign. That is enough: a Campaign's abort
+    cancels each cycle it launched by the cycle's own path."""
+
+    cycle_id: str
+    campaign_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.cycle_id.strip():
+            raise ValueError("an operation's owner names its cycle, and this one is empty")
+        if self.campaign_id is not None and not self.campaign_id.strip():
+            raise ValueError("an operation's owner names its Campaign or leaves it out: empty")
+
+    def as_origin(self) -> dict[str, str]:
+        origin = {ORIGIN_CYCLE: self.cycle_id}
+        if self.campaign_id is not None:
+            origin[ORIGIN_CAMPAIGN] = self.campaign_id
+        return origin
+
+    @classmethod
+    def from_origin(cls, origin: Mapping[str, str]) -> OperationOwner:
+        """The owner ``origin`` names, or ``ValueError`` when it names none."""
+        if not str(origin.get(ORIGIN_CYCLE, "")).strip():
+            raise ValueError(
+                f"the origin names no {ORIGIN_CYCLE}, so whose operation it is can't be read"
+            )
+        return cls(origin[ORIGIN_CYCLE], origin.get(ORIGIN_CAMPAIGN))
+
+
+class CancelEffect(StrEnum):
+    """What an owner's cancel did to one of its operations (#3236)."""
+
+    #: No worker held it, so the cancel gave it its result.
+    SETTLED = "settled_by_cancel"
+    #: A worker holds it. It is asked to stop, and is told at its next renewal.
+    STOP_REQUESTED = "stop_requested"
+
+
+@dataclass(frozen=True)
+class CancelledOperation:
+    """One operation an owner's cancel reached, and what the cancel did to it."""
+
+    operation_id: str
+    task_id: str
+    effect: CancelEffect
+
+
+@dataclass(frozen=True)
+class OwnerCancelled:
+    """Why nothing was queued: the operation's owner was cancelled, so nothing new runs for it."""
+
+    reason: str
+
+
 @dataclass(frozen=True)
 class QueuedOperation:
     """One operation, from the request for it to its result."""
@@ -128,6 +196,9 @@ class QueuedOperation:
     cancel_requested: bool = False
     result: RemoteOperationResult | None = None
     settled_at: datetime | None = None
+    #: A worker's result that arrived after the operation was asked to stop (#3236): kept for
+    #: the record, and no evidence. ``result`` then reads ``interrupted``.
+    late_result: RemoteOperationResult | None = None
 
     @property
     def fence(self) -> Fence | None:

@@ -1,4 +1,4 @@
-"""Migration 2300's CHECK lists are the vocabularies in code (D3; SIP-0117 R5.4).
+"""The worker registry's CHECK lists are the vocabularies in code (D3; SIP-0117 R5.4).
 
 Bug caught: a value added to an enum and not to its column's CHECK. The memory store takes it,
 every unit test passes, and the first deployed write of it is refused by Postgres.
@@ -14,15 +14,20 @@ import pytest
 from squadops.remote_execution import leasing
 from squadops.remote_execution.workers import AttemptOutcome, FenceRefusal, OperationState
 
-_SQL = (
-    Path(__file__).resolve().parents[3] / "infra" / "migrations" / "2300_remote_execution.sql"
-).read_text()
+_MIGRATIONS = Path(__file__).resolve().parents[3] / "infra" / "migrations"
+#: The registry's migrations, in the order they are applied. A later one that declares a
+#: column's list again replaces it (2302 re-declares ``outcome``, #3236).
+_SQL = [path.read_text() for path in sorted(_MIGRATIONS.glob("23??_remote_*.sql"))]
 
 
 def _check_values(column: str) -> set[str]:
-    found = re.findall(rf"CHECK \({column} IN \(([^)]*)\)\)", _SQL)
-    assert len(found) == 1, f"{column}: {len(found)} CHECK lists, and exactly one is expected"
-    return set(re.findall(r"'([^']*)'", found[0]))
+    declared = []
+    for sql in _SQL:
+        found = re.findall(rf"CHECK \({column} IN \(([^)]*)\)\)", sql)
+        assert len(found) <= 1, f"{column}: {len(found)} CHECK lists in one migration"
+        declared.extend(found)
+    assert declared, f"{column}: 0 CHECK lists, and a migration declares each column's"
+    return set(re.findall(r"'([^']*)'", declared[-1]))
 
 
 @pytest.mark.parametrize(

@@ -1082,6 +1082,9 @@ class CancellationResponse(BaseModel):
     focus_leases_released: int
     activities_ended: int
     agents_notified: int
+    #: The remote operations still without a result that the cancel reached (SIP-0117 R5.30,
+    #: #3236): a queued one settled, a claimed one asked to stop.
+    remote_operations_cancelled: int = 0
 
 
 class RunCancelResponse(CancellationResponse):

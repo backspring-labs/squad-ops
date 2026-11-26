@@ -79,6 +79,7 @@ from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.product_proposal import kept_scenario_vocabulary
 from squadops.remote_execution.models import ASSERTION_RECORDS_ARTIFACT_TYPE, ReadingSide
+from squadops.remote_execution.workers import OperationOwner
 
 #: What ``evaluated_on`` names on a document this evaluator writes.
 PRODUCT_RUNNER = "product_runner"
@@ -321,6 +322,7 @@ async def scenario_runs_for(
         increment_id=increment_id,
         # A re-evaluation of the run is a new send of each ask, and stops the older one's.
         dispatch_id=f"{run_id}:{uuid4().hex[:12]}",
+        owner=OperationOwner(cycle.cycle_id, cycle.campaign_id or None),
         unavailable="; ".join(reasons),
         stored_baselines=await _stored_baselines(cycle, vault),
     )

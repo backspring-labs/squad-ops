@@ -8,10 +8,13 @@ roll-up reads from them."""
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from unittest.mock import MagicMock
 
 import pytest
 
+from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
+from adapters.remote_execution.registry_remote_execution import RegistryRemoteExecution
 from squadops.bootstrap.handlers import HANDLER_CONFIGS, create_handler_registry
 from squadops.capabilities.capability_contracts import VerificationMode
 from squadops.capabilities.handlers.context import ExecutionContext
@@ -35,7 +38,14 @@ from squadops.remote_execution.models import (
     RemoteOperationRequest,
     RemoteOperationResult,
 )
+from squadops.remote_execution.registry import WorkerRegistry
 from squadops.remote_execution.scenario import staged_revision
+from squadops.remote_execution.workers import (
+    ORIGIN_CYCLE,
+    OperationOwner,
+    OperationState,
+    ServedOperation,
+)
 from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import (
     TaskType,
@@ -43,6 +53,7 @@ from squadops.tasks.task_types import (
     fails_without_correction,
     runs_an_operation,
 )
+from tests.unit.remote_execution.registry_contract import Clock, registration
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -75,9 +86,13 @@ class FixtureProvider(RemoteExecutionPort):
     def __init__(self, answer) -> None:
         self.answer = answer
         self.requests: list[RemoteOperationRequest] = []
+        self.owners: list[OperationOwner] = []
 
-    async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+    async def run_operation(
+        self, request: RemoteOperationRequest, owner: OperationOwner
+    ) -> RemoteOperationResult:
         self.requests.append(request)
+        self.owners.append(owner)
         return self.answer(request)
 
 
@@ -184,6 +199,57 @@ async def test_the_provider_is_asked_for_the_contract_by_the_skillsets_tool_on_t
     )
     assert (request.task_id, request.dispatch_id) == ("task-7", "send-7")
     assert result.success
+
+
+async def test_the_operation_is_asked_for_as_the_tasks_own_cycles(held):
+    """SIP-0117 R5.30 (#3236). Bug caught: an operation asked for with no owner, or another
+    cycle's, which its own cycle's cancel then never reaches."""
+    _, provider = await _run(_completed(PASSED, SHOWN, CLOSES))
+
+    assert provider.owners == [OperationOwner("cyc_1")]
+
+
+async def test_a_tasks_operation_is_stopped_by_its_cycles_cancel(held):
+    """The wiring, entered at the handler and read at the registry (#3236): the handler's own
+    port queues into a registry, the cycle is cancelled while the operation is out, and the
+    cancel finds it by the cycle the handler named. Bug caught: the owner dropped between the
+    handler and the row, so a cancelled cycle's play is left for the worker."""
+    clock = Clock()
+    store = MemoryWorkerRegistryStore()
+    registry = WorkerRegistry(store, clock=clock)
+    await registry.register(registration("macbook", ServedOperation(TOOL.provider, TOOL.id)))
+    waited = [0.0]
+
+    async def cancelled_while_waiting(seconds: float) -> None:
+        waited[0] += seconds
+        clock.advance(seconds)
+        await registry.cancel_owned(
+            ORIGIN_CYCLE, "cyc_1", because="cycle cyc_1 was cancelled", final=True
+        )
+
+    port = RegistryRemoteExecution(
+        registry,
+        origin={"agent_id": "eve"},
+        wait=timedelta(seconds=30),
+        max_attempts=1,
+        clock=lambda: waited[0],
+        sleep=cancelled_while_waiting,
+    )
+
+    result = await QARunRemoteOperationHandler().handle(_context(port), _inputs())
+
+    async with store.exclusive() as tx:
+        stored = await tx.operation_for_send("task-7", "send-7")
+    assert stored.origin == {"agent_id": "eve", "cycle_id": "cyc_1"}
+    assert (stored.state, stored.result.status, stored.result.reason) == (
+        OperationState.SETTLED,
+        OperationStatus.NOT_EXECUTED,
+        "cancelled before a worker claimed it: cycle cyc_1 was cancelled",
+    )
+    # Nothing ran, so nothing is credited: the task's checks read unverified, never passed.
+    verdict, unverified = _verdict(result)
+    assert verdict is RunVerdict.BLOCKED_UNVERIFIED
+    assert set(unverified) == {"map_opens", "marker_shown", "closes_on_escape"}
 
 
 async def test_a_task_that_came_in_no_named_send_asks_for_nothing_and_fails(held):

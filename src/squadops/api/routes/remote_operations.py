@@ -37,12 +37,16 @@ from squadops.remote_execution.registry import WorkerRegistry, cadence
 from squadops.remote_execution.wire import (
     ERROR_NO_WORKER,
     ERROR_OPERATION_NOT_FOUND,
+    ERROR_OWNER_CANCELLED,
+    ERROR_OWNER_MISSING,
     ERROR_SEND_NOT_CURRENT,
     request_from_wire,
     result_to_wire,
 )
 from squadops.remote_execution.workers import (
     NoWorker,
+    OperationOwner,
+    OwnerCancelled,
     QueuedOperation,
     SendConflict,
     UnknownOperation,
@@ -121,6 +125,9 @@ def _response(operation: QueuedOperation) -> RemoteOperationResponse:
         created_at=operation.created_at,
         settled_at=operation.settled_at,
         result=result_to_wire(operation.result) if operation.result is not None else None,
+        late_result=(
+            result_to_wire(operation.late_result) if operation.late_result is not None else None
+        ),
         lease_seconds=lease.total_seconds(),
     )
 
@@ -145,6 +152,15 @@ async def create(
             "of it is text",
             {"blank": blank},
         )
+    try:
+        OperationOwner.from_origin(body.origin)
+    except ValueError as e:
+        raise http_error(
+            422,
+            ERROR_OWNER_MISSING,
+            "origin names whose operation it is: a cancel of its cycle has to reach it",
+            {"defect": str(e)},
+        ) from None
     _require_current(request, operation_request)
     origin = dict(body.origin)
     identity = getattr(request.state, "identity", None)
@@ -168,6 +184,13 @@ async def create(
             ERROR_NO_WORKER,
             "no worker can run the operation now; nothing was queued",
             {"reason": queued.reason, "unreachable": list(queued.unreachable)},
+        )
+    if isinstance(queued, OwnerCancelled):
+        raise http_error(
+            409,
+            ERROR_OWNER_CANCELLED,
+            "the operation's owner was cancelled; nothing was queued",
+            {"reason": queued.reason},
         )
     if queued.repeated:
         response.status_code = 200
