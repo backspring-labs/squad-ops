@@ -65,15 +65,22 @@ async def with_blocked_paths(
 
 
 def runner_collection_index(profile: DerivedProfile | None) -> str | None:
-    """What each of the product's test runners collects, as one line, or ``None`` for a product
+    """What each of the product's test runners collects, one line per runner, with the support
+    files on record after them, or ``None`` for a product
     whose profile names none. The lines ``validate_qa_suite_collected`` is read against."""
     if profile is None or not profile.runners:
         return None
-    return "\n".join(
+    lines = [
         f"- `{r.runner}`: a file named `{r.file_pattern}` under "
         + ", ".join(f"`{root}`" for root in r.roots)
         for r in profile.runners
-    )
+    ]
+    if profile.test_support_files:
+        lines.append(
+            "- support files the suites already share, which a `qa.test` may also change: "
+            + ", ".join(f"`{path}`" for path in profile.test_support_files)
+        )
+    return "\n".join(lines)
 
 
 def reserved_paths_index(profile: DerivedProfile | None) -> str | None:

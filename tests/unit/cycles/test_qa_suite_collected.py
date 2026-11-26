@@ -65,7 +65,8 @@ def _refusal(index: int, artifact: str) -> str:
         f"qa_suite_not_collected: Task {index} (write {artifact}): qa.test declares "
         f"{artifact!r}, which no test runner of this product collects, so nothing would run it. "
         f"This product's runners collect: {COLLECTS}. Name a test file one of them collects, and "
-        "leave product source to a development task."
+        "put what the tests share in a test file or in a support file the product already has. "
+        "Product source is a development task's."
     )
 
 
@@ -114,6 +115,18 @@ def test_only_a_qa_test_is_held_and_each_of_its_files_is_named():
         "'tally/count.py'",
         "'docs/notes.md'",
     ]
+
+
+def test_a_support_file_on_record_is_the_suites_own_and_a_new_helper_is_not():
+    """H.38's ruling on a suite's own files. Bugs caught: a ``qa.test`` refused for changing the
+    ``conftest.py`` its runner already loads, and sent to a developer for it; or any file beside
+    a test admitted as a helper, so a source file under a runner's root passes."""
+    profile = dataclasses.replace(_profile(), test_support_files=("checks/conftest.py",))
+    plan = ImplementationPlan.from_yaml(
+        _plan(("qa.test", "checks/conftest.py"), ("qa.test", "checks/helpers.py"))
+    )
+
+    assert plan.validate_qa_suite_collected(profile) == [_refusal(1, "checks/helpers.py")]
 
 
 @pytest.mark.parametrize(
@@ -226,6 +239,22 @@ async def test_the_plan_authors_are_shown_what_each_runner_collects_before_a_gat
         assert author.inputs[TEST_RUNNERS_INPUT] == (
             "- `unittest`: a file named `check_*.py` under `checks`"
         )
+
+
+def test_the_authors_are_shown_the_support_files_on_record_too():
+    """Bug caught: the gate admitting a recorded support file its authors were never told is
+    theirs to change, so they plan a new helper and are refused."""
+    from squadops.execution.blocked_paths import runner_collection_index
+
+    profile = dataclasses.replace(
+        _profile(), test_support_files=("checks/conftest.py", "checks/setup.py")
+    )
+
+    assert runner_collection_index(profile) == (
+        "- `unittest`: a file named `check_*.py` under `checks`\n"
+        "- support files the suites already share, which a `qa.test` may also change: "
+        "`checks/conftest.py`, `checks/setup.py`"
+    )
 
 
 @pytest.mark.parametrize("author", ["merger", "proposer"])
