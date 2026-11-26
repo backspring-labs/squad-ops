@@ -894,6 +894,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         worker_registry=worker_registry,
         sandbox_client=sandbox_client,
         remote_execution=remote_execution,
+        # #3235: a Campaign's launch reads each agent's own report, as the create route does.
+        agent_report=_agent_report,
         source_repository=state.source_repository,
     )
     branch_rebase = _branch_rebase(
