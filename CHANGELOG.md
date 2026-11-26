@@ -6,6 +6,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- **An accepted QA hand-off reads accepted everywhere** (#3000; SIP-0077 §24a; the 2.9 plan's item 5): a
+  product's `qa.test` whose suite the qa image leaves to the product's own runner replied as a failed task, and
+  three signals were set from that reply before the runner was asked: the Prefect task run read `Failed`, the
+  agent's activity failed with "left to the product's runner", and `task.failed` was emitted and counted in
+  `tasks_failed_total`. An accepted run showed a red QA bar.
+  - A hand-off's reply now ends nothing. A new event, `task.handed_off`, records the attempt, and the task run is
+    named `HandedOff` while the product's runner reads the suite.
+  - The task then ends on the verdict, in all four places alike: `Completed`, a completed activity and
+    `task.succeeded` for an accepted pass; `Failed`, a failed activity and `task.failed` for anything else.
+  - The verdict is read before the attempt is routed, so a rejected hand-off's task run is failed before its
+    correction starts.
+  - A suite the image ran and failed, which the runner may overrule (#2818), is still a failed attempt.
+    `dispatch_with_retry` takes a required `hand_off`; `dispatch_task` is unchanged.
 - **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
   executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
   its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every

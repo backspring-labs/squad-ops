@@ -197,7 +197,7 @@ from squadops.execution.source_delivery import (
     regression_failure,
     regression_subject,
 )
-from squadops.execution.task_dispatcher import TaskDispatcher
+from squadops.execution.task_dispatcher import HandOff, TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
 from squadops.memory.emergency import EMERGENCY_RESTART_OVERRIDE, restart_checkpoint
@@ -628,6 +628,10 @@ class RunState:
     authored: tuple[Any, Any] = (None, None)
 
 
+#: Where a router keeps a hand-off's admission between its verdict and its routing (#3000).
+_ADMITTED = "admitted_hand_off"
+
+
 @dataclasses.dataclass
 class _RunnerReading:
     """The product runner's reading of one failed attempt (#2818), taken while it is admitted."""
@@ -702,12 +706,9 @@ class _TaskOutcomeRouter:
             ledger=ledger,
         )
 
-    async def route(self, result):
-        """The dispatcher's ``handle_task_outcome``: route one failed attempt."""
-        _envelope, _enriched, _holder = self.envelope, self.enriched, self.held
-        _next_action, _record_task_evidence = self.next_action, self.record_evidence
-        executor, state, cycle, run_id = self.executor, self.state, self.cycle, self.run_id
-        interface_manifest, ledger = self.interface_manifest, self.ledger
+    async def admit(self, result) -> tuple[TaskResult, _RunnerReading]:
+        """One failed attempt, admitted and read on the product's runner: the first step of its
+        routing. Returns the admitted result and the runner's reading of it."""
         # #1323: authorize BEFORE holding. The held result is the base the repair
         # overlay is built from (``_try_accept_patch``) and the source the triage
         # bank stores (#971) — both must see the same authorized set, or a path
@@ -716,16 +717,42 @@ class _TaskOutcomeRouter:
         # #2949: the product runner reads the admitted result before it is banked, so the bank's
         # marker says what the attempt was: handed off when the runner's pass is accepted.
         reading = _RunnerReading()
-        result = await executor._admit_failed_emission(
+        admitted = await self.executor._admit_failed_emission(
             result,
-            _envelope,
-            cycle,
-            run_id,
-            state.produced.all_artifact_refs,
-            bound_record=state.ownership.bound_record,
-            compliance_counter=state.ownership.compliance_counter,
-            read_hand_off=lambda admitted: self.read_on_product_runner(admitted, reading),
+            self.envelope,
+            self.cycle,
+            self.run_id,
+            self.state.produced.all_artifact_refs,
+            bound_record=self.state.ownership.bound_record,
+            compliance_counter=self.state.ownership.compliance_counter,
+            read_hand_off=lambda taken: self.read_on_product_runner(taken, reading),
         )
+        return admitted, reading
+
+    async def hand_off_accepted(self, result) -> bool:
+        """The dispatcher's ``HandOff.accepted`` (#3000): whether the product's runner passed the
+        suite the qa image left to it, and the pass was accepted on the head.
+
+        The dispatcher asks before it routes the attempt, so the task's signals end on this
+        verdict. The admission and the reading are the routing's own first step: they are kept
+        for ``route``, which is called next with the same reply and takes them from here, so
+        nothing is admitted or run twice."""
+        admitted = await self.admit(result)
+        self.held[_ADMITTED] = (result, admitted)
+        return admitted[1].accepted is not None
+
+    async def route(self, result):
+        """The dispatcher's ``handle_task_outcome``: route one failed attempt."""
+        _envelope, _enriched, _holder = self.envelope, self.enriched, self.held
+        _next_action, _record_task_evidence = self.next_action, self.record_evidence
+        executor, state, cycle, run_id = self.executor, self.state, self.cycle, self.run_id
+        interface_manifest, ledger = self.interface_manifest, self.ledger
+        kept = _holder.pop(_ADMITTED, None)
+        if kept is not None and kept[0] is result:
+            # #3000: a hand-off's verdict was read before routing (``hand_off_accepted``).
+            result, reading = kept[1]
+        else:
+            result, reading = await self.admit(result)
         _holder["result"] = result
         if ledger is not None:
             record_absent_emission(ledger, result, _envelope)
@@ -2504,6 +2531,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 flow_run_id=flow_run_id,
                 task_run_id=task_run_id,
                 handle_task_outcome=router.route,
+                hand_off=HandOff(
+                    left=left_to_the_product_runner, accepted=router.hand_off_accepted
+                ),
                 screen_success=router.screen,
             )
         except Exception:

@@ -661,6 +661,7 @@ class TestAcceptPatchToken:
                 "run_001",
                 handle_task_outcome=handle_outcome,
                 screen_success=_unscreened,
+                hand_off=None,
             )
 
         assert task_succeeded is True
@@ -702,6 +703,7 @@ class TestAcceptPatchToken:
                 "run_001",
                 handle_task_outcome=handle_outcome,
                 screen_success=screen,
+                hand_off=None,
             )
 
         assert (task_succeeded, result.status) == (True, "SUCCEEDED")
@@ -940,6 +942,7 @@ class TestCancellationProbe:
                 "run_001",
                 handle_task_outcome=handle_outcome,
                 screen_success=_unscreened,
+                hand_off=None,
             )
 
         # One dispatch happened (the in-flight task); the retry never published.

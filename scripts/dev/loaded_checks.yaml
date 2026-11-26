@@ -2920,3 +2920,14 @@ checks:
       stop = CycleStopReason.GATE_INPUT_UNAVAILABLE
       print(_ENDING_DECLARED_BY_STOP[stop] in ENVIRONMENT_ENDINGS, sorted(e.value for e in ENVIRONMENT_ENDINGS), STATUS_OF_ENDING[stop].value, RecordedEnd("c", "r", stop, "art_1").detail)
     expect: "True ['gate_input_unavailable', 'held_store'] failed art_1"
+  - id: "3000-hand-off-ends-on-the-verdict"
+    what: a qa hand-off's reply is task.handed_off, and the dispatcher ends the task on the product runner's verdict (SIP-0077 §24a)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.events.types import EventType
+      from squadops.execution import dispatched_flow_executor as e
+      from squadops.execution.task_dispatcher import HandOff, TaskDispatcher
+      sig = inspect.signature(TaskDispatcher.dispatch_with_retry)
+      print(EventType.TASK_HANDED_OFF, len(EventType.all()), sig.parameters["hand_off"].default is inspect.Parameter.empty, sorted(f.name for f in __import__("dataclasses").fields(HandOff)), hasattr(e._TaskOutcomeRouter, "hand_off_accepted"))
+    expect: "task.handed_off 32 True ['accepted', 'left'] True"
