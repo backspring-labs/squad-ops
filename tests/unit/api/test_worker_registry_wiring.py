@@ -13,6 +13,7 @@ import pytest
 from fastapi import FastAPI
 
 from squadops.api.runtime import main as runtime_main
+from tests.unit.api.served_routes import served
 from tests.unit.remote_execution.registry_contract import queue, registration, request
 
 pytestmark = [pytest.mark.domain_api]
@@ -44,14 +45,14 @@ def test_the_runtime_serves_the_worker_routes_and_the_operators_reads():
     app = FastAPI()
     runtime_main._include_routers(app)
 
-    served = {
+    worker_routes = {
         (method, route.path)
-        for route in app.routes
-        if getattr(route, "path", "").startswith("/api/v1/workers")
+        for route in served(app)
+        if route.path.startswith("/api/v1/workers")
         for method in route.methods
     }
 
-    assert served == {
+    assert worker_routes == {
         ("POST", "/api/v1/workers/sessions"),
         ("POST", "/api/v1/workers/sessions/{session_id}/heartbeats"),
         ("POST", "/api/v1/workers/sessions/{session_id}/claims"),
