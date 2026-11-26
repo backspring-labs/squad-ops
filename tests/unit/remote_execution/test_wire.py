@@ -4,11 +4,16 @@ isn't one is refused by name (SIP-0117 R3.3, R5.4)."""
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 
 import pytest
 
-from squadops.remote_execution.models import OperationStatus, RemoteOperationResult
+from squadops.remote_execution.models import (
+    OperationStatus,
+    RemoteOperationResult,
+    ScriptError,
+)
 from squadops.remote_execution.wire import (
     request_from_wire,
     request_to_wire,
@@ -39,6 +44,7 @@ def test_a_request_and_a_result_read_back_as_they_were_sent():
         "ran_with": {},
         "dispatch_id": "d-1",
         "tool_unready": False,
+        "script_errors": [],
     }
 
 
@@ -57,6 +63,24 @@ def test_a_tool_not_ready_crosses_the_wire_and_a_result_stored_before_the_key_re
     before_the_key = result_to_wire(passing())
     del before_the_key["tool_unready"]
     assert result_from_wire(before_the_key).tool_unready is False
+
+
+def test_a_script_error_crosses_the_wire_and_a_worker_built_before_the_key_names_none():
+    """#3200. Bugs caught: the error dropped between the worker and the store, so a candidate's
+    own setup failure is never attributed; or a result from a worker built before the key (or
+    a row stored before it) refused for lacking it."""
+    named = dataclasses.replace(
+        passing(), script_errors=(ScriptError("src/Client/Screen.luau", 12, "no such member"),)
+    )
+    sent = json.loads(json.dumps(result_to_wire(named)))
+    assert sent["script_errors"] == [
+        {"path": "src/Client/Screen.luau", "line": 12, "message": "no such member"}
+    ]
+    assert result_from_wire(sent) == named
+
+    before_the_key = result_to_wire(passing())
+    del before_the_key["script_errors"]
+    assert result_from_wire(before_the_key).script_errors == ()
 
 
 def _result(**changes):
@@ -93,6 +117,23 @@ _ABSENT = object()
         (_result(reason=None), "result.reason is NoneType, and text is needed"),
         (_result(tool_unready="yes"), "result.tool_unready is str, and a bool is needed"),
         (_result(tool_unready=True), "result.tool_unready is set on a completed result"),
+        (
+            _result(script_errors=[{"path": "a.luau", "line": "12", "message": "m"}]),
+            r"result.script_errors\[0\].line is '12', and a line number, or 0, is needed",
+        ),
+        (
+            _result(script_errors=[{"path": "a.luau", "line": 1}]),
+            r"result.script_errors\[0\] lacks message",
+        ),
+        (
+            _result(
+                status="not_executed",
+                reason="nothing ran",
+                records=[],
+                script_errors=[{"path": "a.luau", "line": 1, "message": "m"}],
+            ),
+            "result.script_errors is set on a not_executed result",
+        ),
         ("completed", "result is str, and an object is needed"),
     ],
     ids=[
@@ -107,6 +148,9 @@ _ABSENT = object()
         "a null reason",
         "a flag that isn't a bool",
         "a tool not ready that ran",
+        "a line that isn't a number",
+        "a script error missing a field",
+        "a script error on a play that didn't run",
         "not an object",
     ],
 )

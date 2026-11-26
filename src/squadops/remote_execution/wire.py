@@ -21,6 +21,8 @@ from squadops.remote_execution.models import (
     RemoteOperationRequest,
     RemoteOperationResult,
     Scenario,
+    ScriptError,
+    script_error_document,
 )
 
 #: The error codes of ``/api/v1/workers`` that a worker acts on. The route writes them and the
@@ -57,8 +59,11 @@ _RESULT_KEYS = frozenset(
     {"status", "reason", "records", "evidence", "provider_version", "ran_with", "dispatch_id"}
 )
 #: Keys a result may lack. ``tool_unready`` (#3192) is absent from a result stored before it was
-#: written, and that reads as not flagged: the routing the result had then.
-_RESULT_OPTIONAL_KEYS = frozenset({"tool_unready"})
+#: written, and that reads as not flagged: the routing the result had then. ``script_errors``
+#: (#3200) is absent from a result stored before it, or sent by a worker built before it, and
+#: that reads as naming none.
+_RESULT_OPTIONAL_KEYS = frozenset({"tool_unready", "script_errors"})
+_SCRIPT_ERROR_KEYS = frozenset({"path", "line", "message"})
 _RECORD_KEYS = frozenset({"assertion_id", "outcome", "observed", "expected", "context"})
 _EVIDENCE_KEYS = frozenset({"name", "content", "media_type"})
 
@@ -129,6 +134,7 @@ def result_to_wire(result: RemoteOperationResult) -> dict[str, Any]:
         "ran_with": dict(result.ran_with),
         "dispatch_id": result.dispatch_id,
         "tool_unready": result.tool_unready,
+        "script_errors": [script_error_document(error) for error in result.script_errors],
     }
 
 
@@ -143,6 +149,21 @@ def result_from_wire(document: Any) -> RemoteOperationResult:
     if tool_unready and status is not OperationStatus.NOT_EXECUTED:
         # #3192: a tool that wasn't ready ran nothing, so only ``not_executed`` can say so.
         raise ValueError(f"result.tool_unready is set on a {status.value} result")
+    script_errors = []
+    for index, raw in enumerate(_list(body.get("script_errors", []), "result.script_errors")):
+        where = f"result.script_errors[{index}]"
+        error = _object(raw, where, _SCRIPT_ERROR_KEYS)
+        line = error["line"]
+        if isinstance(line, bool) or not isinstance(line, int) or line < 0:
+            raise ValueError(f"{where}.line is {line!r}, and a line number, or 0, is needed")
+        script_errors.append(
+            ScriptError(
+                path=_named(error, "path", where), line=line, message=_text(error, "message", where)
+            )
+        )
+    if script_errors and status is not OperationStatus.COMPLETED:
+        # #3200: a play that didn't run read no log, so only ``completed`` can name one.
+        raise ValueError(f"result.script_errors is set on a {status.value} result")
     records = []
     for index, raw in enumerate(_list(body["records"], "result.records")):
         where = f"result.records[{index}]"
@@ -176,6 +197,7 @@ def result_from_wire(document: Any) -> RemoteOperationResult:
         ran_with=_text_map(body["ran_with"], "result.ran_with"),
         dispatch_id=_text(body, "dispatch_id", "result"),
         tool_unready=tool_unready,
+        script_errors=tuple(script_errors),
     )
 
 
