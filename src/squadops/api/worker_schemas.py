@@ -119,6 +119,9 @@ class RemoteOperationResponse(BaseModel):
     settled_at: datetime | None
     #: The result as ``wire.result_to_wire`` writes it, once the operation is settled.
     result: dict[str, Any] | None
+    #: A worker's result that arrived after the operation was asked to stop (R5.30): kept for
+    #: the record, and no evidence. ``result`` then reads ``interrupted``.
+    late_result: dict[str, Any] | None = None
     #: How long a lease lasts. A claimed operation asked to stop is settled within it: by its
     #: worker, or by its lease running out. So a requester carries no such number itself.
     lease_seconds: float

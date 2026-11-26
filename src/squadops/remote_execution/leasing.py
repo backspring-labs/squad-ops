@@ -49,6 +49,8 @@ SESSION_SILENT_SECONDS = 45
 RUNTIME_STATUSES: tuple[str, ...] = get_args(RuntimeStatus)
 
 REASON_CANCELLED_UNCLAIMED = "cancelled before a worker claimed it"
+#: What ended an operation's owner, by the origin key the cancel was asked by (#3236).
+_OWNER_ENDED = {"cycle_id": "cycle {} was cancelled", "campaign_id": "Campaign {} was aborted"}
 
 
 def runtime_status(value: str) -> RuntimeStatus:
@@ -221,6 +223,39 @@ def after_expiry(operation: QueuedOperation, now: datetime) -> QueuedOperation:
         ),
         now,
     )
+
+
+def owner_ended(key: str, value: str) -> str:
+    """What ended the owner a cancel was asked by: a cycle's cancel, or a Campaign's abort."""
+    if key not in _OWNER_ENDED:
+        raise ValueError(f"an owner is cancelled by one of {', '.join(_OWNER_ENDED)}, not {key!r}")
+    return _OWNER_ENDED[key].format(value)
+
+
+def settled_after_cancel(
+    operation: QueuedOperation, late: RemoteOperationResult, now: datetime
+) -> QueuedOperation:
+    """``operation`` when its worker's result arrives after it was asked to stop (#3236).
+
+    The cancel was recorded first, so it wins: the operation reads ``interrupted``, and that is
+    what every reader of its result sees. What the worker did run stays on the record as
+    ``late_result``, and is no evidence for the owner that stopped it."""
+    if not operation.cancel_requested:
+        raise ValueError(f"operation {operation.operation_id} was not asked to stop")
+    stopped = settled(
+        operation,
+        RemoteOperationResult(
+            status=OperationStatus.INTERRUPTED,
+            reason=(
+                f"cancelled while attempt {operation.attempt} held it. Its worker's result "
+                f"({late.status.value}) arrived after the cancel: it is kept as the late "
+                "result, and is no evidence"
+            ),
+            dispatch_id=operation.request.dispatch_id,
+        ),
+        now,
+    )
+    return replace(stopped, late_result=late)
 
 
 def superseded_reason(dispatch_id: str) -> str:

@@ -37,7 +37,13 @@ from squadops.remote_execution.models import (
 )
 from squadops.remote_execution.registry import WorkerRegistry, cadence
 from squadops.remote_execution.waiting import OperationReading, await_result, ended
-from squadops.remote_execution.workers import NoWorker, QueuedOperation, UnknownOperation
+from squadops.remote_execution.workers import (
+    NoWorker,
+    OperationOwner,
+    OwnerCancelled,
+    QueuedOperation,
+    UnknownOperation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +74,23 @@ class RegistryRemoteExecution(RemoteExecutionPort):
         self._sleep = sleep
         self._lease_seconds = cadence()[1].total_seconds()
 
-    async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+    async def run_operation(
+        self, request: RemoteOperationRequest, owner: OperationOwner
+    ) -> RemoteOperationResult:
         too_large = request_size_defect(request)
         if too_large is not None:
             return ended(request, OperationStatus.NOT_EXECUTED, too_large)
         deadline = self._clock() + self._wait.total_seconds()
         queued = await self._registry.enqueue(
-            request, self._origin, max_attempts=self._max_attempts, only_with_worker=True
+            request,
+            {**self._origin, **owner.as_origin()},
+            max_attempts=self._max_attempts,
+            only_with_worker=True,
         )
         if isinstance(queued, NoWorker):
             return ended(request, OperationStatus.NOT_EXECUTED, queued.reason, unavailable=True)
+        if isinstance(queued, OwnerCancelled):
+            return ended(request, OperationStatus.NOT_EXECUTED, queued.reason)
         operation_id = queued.operation.operation_id
         try:
             return await await_result(

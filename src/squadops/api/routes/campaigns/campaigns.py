@@ -66,7 +66,11 @@ from squadops.api.cycle_schemas import (
 from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
-from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
+from squadops.api.routes.cycles.cancellation import (
+    OwnedCancel,
+    cancel_cycle_by_the_existing_path,
+    cancel_owned_remote_operations,
+)
 from squadops.api.routes.cycles.goal_sets import assessment_response
 from squadops.api.routes.cycles.mapping import read_status_of
 from squadops.api.runtime.deps import (
@@ -169,6 +173,8 @@ from squadops.projects.contribution import ContributionRefused
 from squadops.projects.goal_set import surface_document
 from squadops.projects.goal_set_assessments import CampaignHasNoGoalSet, campaign_assessments
 from squadops.projects.models import SourceUnavailable
+from squadops.remote_execution.leasing import owner_ended
+from squadops.remote_execution.workers import ORIGIN_CAMPAIGN
 from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
 
 logger = logging.getLogger(__name__)
@@ -1476,9 +1482,18 @@ async def abort_campaign(
     )
     result = await apply_control(request, campaign_id, transition, identity)
     cancelled = await _cancel_launched_cycles(request, campaign_id)
+    # #3236 (SIP-0117 R5.30): and the Campaign's own remote operations, whatever cycle asked for
+    # them. A cycle that had ended is cancelled by nothing above, and a play it left out ran on.
+    operations_cancelled = await cancel_owned_remote_operations(
+        request,
+        ORIGIN_CAMPAIGN,
+        campaign_id,
+        because=owner_ended(ORIGIN_CAMPAIGN, campaign_id),
+        final=True,
+    )
     if not result.replayed:
         await _materialize_after_close(request, campaign_id)
-    return _result(result, cancelled_cycles=cancelled)
+    return _result(result, cancelled_cycles=cancelled, operations_cancelled=operations_cancelled)
 
 
 async def _repository_backed(request: Request, campaign_id: str) -> bool:
@@ -1698,13 +1713,17 @@ def _result(
     result: TransitionResult,
     cancelled_cycles: list[str] | None = None,
     launched_cycles: list[str] | None = None,
+    operations_cancelled: OwnedCancel | None = None,
 ):
+    operations_cancelled = operations_cancelled or OwnedCancel(0)
     return ControlResultResponse(
         campaign=_campaign(result.campaign),
         entry=_entry(result.entry),
         replayed=result.replayed,
         cancelled_cycles=cancelled_cycles or [],
         launched_cycles=launched_cycles or [],
+        remote_operations_cancelled=operations_cancelled.reached,
+        remote_operations_cancel_failure=operations_cancelled.failure,
     )
 
 

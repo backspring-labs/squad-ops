@@ -13,8 +13,12 @@ import pytest
 from fastapi import FastAPI
 
 from squadops.api.runtime import main as runtime_main
+from squadops.remote_execution.workers import OperationOwner
 from tests.unit.api.served_routes import served
 from tests.unit.remote_execution.registry_contract import queue, registration, request
+
+#: Whose operations these are (#3236): every request names its owner.
+OWNER = OperationOwner("cyc_1")
 
 pytestmark = [pytest.mark.domain_api]
 
@@ -77,7 +81,7 @@ async def test_the_runtimes_own_remote_execution_queues_into_the_registry_the_ro
     )
     asked = request()
 
-    waiting = asyncio.create_task(on.run_operation(asked))
+    waiting = asyncio.create_task(on.run_operation(asked, OWNER))
     await asyncio.sleep(0)
     claim = await registry.claim(session.session_id)
     waiting.cancel()

@@ -2,6 +2,7 @@
 Tests for SIP-0064 run API routes.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -10,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.runs import router
 from squadops.cycles.models import (
@@ -22,8 +24,12 @@ from squadops.cycles.models import (
     RunTerminalError,
     TaskFlowPolicy,
 )
+from squadops.remote_execution.models import OperationStatus
+from squadops.remote_execution.registry import WorkerRegistry
+from squadops.remote_execution.workers import Enqueued
 from squadops.runtime import reasons
 from squadops.runtime.models import FocusLease
+from tests.unit.remote_execution.registry_contract import Clock, owned, request
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -151,6 +157,29 @@ class TestCancelRun:
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
         assert resp.status_code == 200
         assert resp.json()["status"] == "cancelled"
+
+    def test_cancel_stops_the_cycles_remote_operations_and_leaves_the_cycle_open(self, client):
+        """SIP-0117 R5.30 (#3236), entered at the run's cancel route. Bug caught: a cancelled
+        run's play left with the worker. And the opposite: the run's cancel shutting its cycle
+        to the plays of the run that follows it."""
+        registry = WorkerRegistry(MemoryWorkerRegistryStore(), clock=Clock())
+        client.app.state.worker_registry = registry
+        mine = asyncio.run(owned(registry, "cyc_001"))
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        stopped = asyncio.run(registry.operation(mine.operation_id))
+        next_runs = asyncio.run(
+            registry.enqueue(
+                request(), {"cycle_id": "cyc_001"}, max_attempts=1, only_with_worker=False
+            )
+        )
+        assert (resp.status_code, resp.json()["remote_operations_cancelled"]) == (200, 1)
+        assert (stopped.result.status, stopped.result.reason) == (
+            OperationStatus.NOT_EXECUTED,
+            "cancelled before a worker claimed it: run run_001 of cycle cyc_001 was cancelled",
+        )
+        assert isinstance(next_runs, Enqueued)
 
     def test_cancel_propagates_to_prefect(self, client, monkeypatch):
         """#77: cancelling a single run transitions its still-running Prefect

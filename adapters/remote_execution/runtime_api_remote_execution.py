@@ -68,11 +68,13 @@ from squadops.remote_execution.waiting import (
 from squadops.remote_execution.wire import (
     ERROR_NO_WORKER,
     ERROR_OPERATION_NOT_FOUND,
+    ERROR_OWNER_CANCELLED,
     ERROR_SEND_NOT_CURRENT,
     request_to_wire,
     result_from_wire,
 )
 from squadops.remote_execution.workers import (
+    OperationOwner,
     OperationState,
     RequestRefused,
     RuntimeAnswerUnreadable,
@@ -123,12 +125,14 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
         self._clock = clock
         self._sleep = sleep
 
-    async def run_operation(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+    async def run_operation(
+        self, request: RemoteOperationRequest, owner: OperationOwner
+    ) -> RemoteOperationResult:
         too_large = request_size_defect(request)
         if too_large is not None:
             return ended(request, OperationStatus.NOT_EXECUTED, too_large)
         try:
-            return await self._run(request)
+            return await self._run(request, owner)
         except _SendNotCurrent:
             return ended(
                 request,
@@ -138,9 +142,11 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
                 "An operation may be queued under this send, and whether it ran is unknown",
             )
 
-    async def _run(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+    async def _run(
+        self, request: RemoteOperationRequest, owner: OperationOwner
+    ) -> RemoteOperationResult:
         deadline = self._clock() + self._wait.total_seconds()
-        queued = await self._queue_within(request, deadline)
+        queued = await self._queue_within(request, owner, deadline)
         if isinstance(queued, RemoteOperationResult):
             return queued
         operation_id, first = queued
@@ -165,13 +171,13 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
     # ------------------------------------------------------------------ the wait
 
     async def _queue_within(
-        self, request: RemoteOperationRequest, deadline: float
+        self, request: RemoteOperationRequest, owner: OperationOwner, deadline: float
     ) -> tuple[str, OperationReading] | RemoteOperationResult:
         """Ask for the operation until the runtime answers or the wait ends. Asking again is
         safe: the runtime keeps one operation per send."""
         while True:
             try:
-                return await self._queue(request)
+                return await self._queue(request, owner)
             except RuntimeUnreachable as e:
                 if self._clock() >= deadline:
                     return ended(
@@ -242,7 +248,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
     # ------------------------------------------------------------------ one call each
 
     async def _queue(
-        self, request: RemoteOperationRequest
+        self, request: RemoteOperationRequest, owner: OperationOwner
     ) -> tuple[str, OperationReading] | RemoteOperationResult:
         """The queued operation's id and first reading, or the result when no worker can run
         it. A send that already asked is answered 200 with the operation it asked for."""
@@ -250,7 +256,7 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
             _OPERATIONS,
             {
                 "request": request_to_wire(request),
-                "origin": dict(self._origin),
+                "origin": {**self._origin, **owner.as_origin()},
                 "max_attempts": self._max_attempts,
             },
         )
@@ -261,6 +267,9 @@ class RuntimeApiRemoteExecution(RemoteExecutionPort):
             return ended(
                 request, OperationStatus.NOT_EXECUTED, text(details, "reason"), unavailable=True
             )
+        if status == 409 and error_code(body) == ERROR_OWNER_CANCELLED:
+            details = as_object(field(error(body), "details"), "error.details")
+            return ended(request, OperationStatus.NOT_EXECUTED, text(details, "reason"))
         if status not in (200, 201):
             raise self._calls.refusal(status, body, _OPERATIONS)
         return text(body, "operation_id"), _reading(body)

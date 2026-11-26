@@ -24,7 +24,7 @@ from tests.unit.remote_execution.registry_contract import passing, request
 pytestmark = pytest.mark.auth
 
 OPERATIONS = "/api/v1/remote-operations"
-ORIGIN = {"agent_id": "eve"}
+ORIGIN = {"agent_id": "eve", "cycle_id": "cyc_1"}
 
 
 def _body(w: World, asked=None, **over) -> dict:
@@ -75,6 +75,7 @@ def test_an_operation_is_queued_claimed_and_read_with_its_result():
         "created_at": "2026-11-10T15:00:00Z",
         "settled_at": None,
         "result": None,
+        "late_result": None,
         "lease_seconds": leasing.LEASE_SECONDS,
     }
     assert claim["operation_id"] == operation_id
@@ -139,6 +140,12 @@ def test_with_no_worker_being_heard_from_nothing_is_queued_and_the_answer_says_w
         ),
         ({"origin": {}}, "OPERATION_ORIGIN_INVALID", {"blank": []}),
         (
+            # #3236: who asked is named, and whose operation it is isn't. No cancel could reach it.
+            {"origin": {"agent_id": "eve"}},
+            "REMOTE_OPERATION_OWNER_MISSING",
+            {"defect": "the origin names no cycle_id, so whose operation it is can't be read"},
+        ),
+        (
             {"origin": {"agent_id": " "}},
             "OPERATION_ORIGIN_INVALID",
             {"blank": ["agent_id"]},
@@ -153,6 +160,7 @@ def test_with_no_worker_being_heard_from_nothing_is_queued_and_the_answer_says_w
         "a-value-of-the-wrong-kind",
         "keys-missing",
         "no-origin",
+        "an-origin-that-names-no-owner",
         "a-blank-origin-value",
         "a-blank-send",
     ],
@@ -242,6 +250,26 @@ def test_a_runtime_with_no_registry_says_so():
     reply = w.as_(Role.AGENT).post(OPERATIONS, json=_body(w))
 
     assert (reply.status_code, _error(reply)["code"]) == (503, "WORKER_REGISTRY_UNAVAILABLE")
+
+
+def test_a_request_for_a_cancelled_cycle_is_refused_and_queues_nothing():
+    """SIP-0117 R5.30 (#3236). Bug caught: an agent that asks for a play after its cycle was
+    cancelled, and the worker runs it for nobody."""
+    w, session = _served_world()
+    asyncio.run(
+        w.registry.cancel_owned(
+            "cycle_id", "cyc_1", because="cycle cyc_1 was cancelled", final=True
+        )
+    )
+
+    reply = w.client.post(OPERATIONS, json=_body(w))
+    nothing = w.as_(Role.WORKER).post(f"/api/v1/workers/sessions/{session}/claims")
+
+    assert (reply.status_code, _error(reply)["code"]) == (409, "REMOTE_OPERATION_OWNER_CANCELLED")
+    assert _error(reply)["details"] == {
+        "reason": "cycle cyc_1 was cancelled at 2026-11-10T15:00:00+00:00, so nothing is run for it"
+    }
+    assert nothing.json() == {"claim": None}
 
 
 def test_a_runtime_with_no_reply_router_says_so_and_queues_nothing():

@@ -1,6 +1,12 @@
 # What a rebuild must have loaded, read in each running container (#1956; #1908 §6's "loaded
 # checks"). One row per change: the container that runs it, a snippet that prints what only the new
-# code prints, and that output. A release adds its rows here rather than copying a script.
+# code prints, and that output.
+#
+# NEW ROWS DO NOT GO IN THIS FILE (#3268; a test refuses one for issue 3268 or later). A row
+# goes in a file of its own under
+# `loaded_checks.d/`, named for its issue (`3268.yaml`), with the same top-level `checks:` list.
+# Every reader takes this file and those as one set (`loaded_check_rows.py`). While rows were
+# appended here, any two open pull requests conflicted at this file's last line.
 #
 #   python scripts/dev/verify_loaded.py [--only ISSUE]
 #
@@ -2931,3 +2937,23 @@ checks:
       sig = inspect.signature(TaskDispatcher.dispatch_with_retry)
       print(EventType.TASK_HANDED_OFF, len(EventType.all()), sig.parameters["hand_off"].default is inspect.Parameter.empty, sorted(f.name for f in __import__("dataclasses").fields(HandOff)), hasattr(e._TaskOutcomeRouter, "hand_off_accepted"))
     expect: "task.handed_off 32 True ['accepted', 'left'] True"
+  - id: "3236-owner-cancel"
+    what: a cycle's cancel, a run's and a Campaign's abort ask the remote operations they own to stop; a result after the cancel is kept as the late one; a failed ask is never answered as none out (SIP-0117 R5.30)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.routes.cycles import cancellation as c
+      from squadops.api.routes.campaigns import campaigns
+      from squadops.remote_execution.registry import WorkerRegistry
+      from squadops.remote_execution.workers import AttemptOutcome, OperationOwner
+      print(OperationOwner("cyc_1", "cmp_1").as_origin(), AttemptOutcome.CANCELLED.value, "settled_after_cancel" in inspect.getsource(WorkerRegistry.submit_result), "cancel_owned_remote_operations" in inspect.getsource(c.cancel_cycle_by_the_existing_path), "ORIGIN_CAMPAIGN" in inspect.getsource(campaigns.abort_campaign), c.OwnedCancel(None, "x").reached)
+    expect: "{'cycle_id': 'cyc_1', 'campaign_id': 'cmp_1'} cancelled True True True None"
+  - id: "3236-handler-names-its-cycle"
+    what: the QA agent asks for a remote operation as its task's cycle's, so that cycle's cancel stops it (SIP-0117 R5.30)
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.capabilities.handlers.cycle import run_remote_operation as h
+      from squadops.ports.remote_execution import RemoteExecutionPort
+      print("OperationOwner(context.cycle_id)" in inspect.getsource(h), list(inspect.signature(RemoteExecutionPort.run_operation).parameters))
+    expect: "True ['self', 'request', 'owner']"

@@ -123,6 +123,8 @@ DEVELOPMENT_INCREMENT_SURFACES = tuple(
 SOURCE_SURFACES = (
     ("request.plan_blocking_gaps_appendix", "blocked_index", "blocked_paths_index"),
     ("request.plan_reserved_paths_appendix", "reserved_index", "reserved_paths_index"),
+    # #3182: what each of the product's test runners collects, which a qa.test's file must be.
+    ("request.plan_test_runners_appendix", "runners_index", "test_runners_index"),
 )
 
 
