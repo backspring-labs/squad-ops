@@ -19,7 +19,7 @@ from squadops.execution.reply_router import ReplyRouter
 from squadops.remote_execution import leasing
 from squadops.remote_execution.wire import request_to_wire, result_to_wire
 from tests.unit.api.worker_world import World
-from tests.unit.remote_execution.registry_contract import passing, request
+from tests.unit.remote_execution.registry_contract import as_served, passing, request
 
 pytestmark = pytest.mark.auth
 
@@ -89,7 +89,7 @@ def test_an_operation_is_queued_claimed_and_read_with_its_result():
         "state": "settled",
         "attempt": 1,
         "settled_at": "2026-11-10T15:00:00Z",
-        "result": result_to_wire(passing()),
+        "result": result_to_wire(as_served(passing())),
     }
     # The route's own word on who asked replaces what the body said under that key.
     assert w.operation(operation_id).origin == {**ORIGIN, "requested_by": Role.AGENT}

@@ -48,7 +48,13 @@ from squadops.remote_execution.workers import (
     RuntimeAnswerUnreadable,
 )
 from tests.unit.api.worker_world import World, identity
-from tests.unit.remote_execution.registry_contract import T0, passing, registration, request
+from tests.unit.remote_execution.registry_contract import (
+    T0,
+    as_served,
+    passing,
+    registration,
+    request,
+)
 from tests.unit.remote_execution.scenario_fixture import SCENARIO_PATH, SHUT, door_opens, tree
 from tests.unit.remote_execution.worker_harness import (
     RegistryWorkerApi,
@@ -415,7 +421,7 @@ async def test_a_result_at_the_waits_last_read_is_returned_and_nothing_is_cancel
     result = await port.run_operation(world.current(request(dispatch_id="task-7")), OWNER)
     await finishing
 
-    assert result == passing("task-7")
+    assert result == as_served(passing("task-7"))
     assert world.clock.now - T0 == timedelta(seconds=30)
     assert (await world.registry.operation(recording.operation_id)).cancel_requested is False
     assert [call[0] for call in recording.calls].count("POST") == 1
@@ -547,7 +553,7 @@ async def test_a_create_whose_answer_was_lost_asks_again_and_reads_the_one_opera
     result = await port.run_operation(asked, OWNER)
     await passing_it
 
-    assert result == passing("send-1")
+    assert result == as_served(passing("send-1"))
     creates = [(path, status) for method, path, status, _ in recording.calls if method == "POST"]
     assert dropped == [201]
     assert creates == [("/api/v1/remote-operations", 201), ("/api/v1/remote-operations", 200)]

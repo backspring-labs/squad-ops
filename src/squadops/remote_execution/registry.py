@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from squadops.core.lineage import new_id
 from squadops.remote_execution import leasing
 from squadops.remote_execution.models import (
+    RAN_WITH_SERVED_BY,
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
@@ -194,7 +195,16 @@ class WorkerRegistry:
                         },
                     )
                     return ResultReading(None)
-                await tx.save_operation(leasing.settled(held, result, now))
+                # #3200: who served it is the registry's fact, written over a worker's own.
+                session = await tx.session(fence.session_id)
+                served = replace(
+                    result,
+                    ran_with={
+                        **result.ran_with,
+                        **({RAN_WITH_SERVED_BY: session.worker_id} if session else {}),
+                    },
+                )
+                await tx.save_operation(leasing.settled(held, served, now))
                 await self._close_attempt(tx, fence, AttemptOutcome.ACCEPTED, now)
                 return ResultReading(None)
             if refusal is FenceRefusal.ALREADY_SETTLED and await self._was_received(tx, fence):

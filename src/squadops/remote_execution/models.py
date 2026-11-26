@@ -41,6 +41,17 @@ REQUEST_TREE_LIMIT_BYTES = 4 * 1024 * 1024
 EVIDENCE_ITEM_LIMIT_BYTES = 256 * 1024
 
 
+#: #3200: who served a result, as the registry knows it: the worker whose session returned it.
+#: The registry writes it on every result it accepts, over anything a worker put there, so two
+#: readings can be told to share a worker without believing either one's own word for it.
+RAN_WITH_SERVED_BY = "served_by"
+#: #3200: the environment a play ran in, as its provider names it: one value that two plays
+#: share only when everything the provider holds fixed between them is the same (for an editor
+#: on a worker: the pinned place, the editor's qualified identity, and its harness). A provider
+#: that can't say leaves it out, and no two of its readings are then read as comparable.
+RAN_WITH_ENVIRONMENT = "environment"
+
+
 class AssertionOutcome(StrEnum):
     """One assertion's result (R3.7)."""
 
