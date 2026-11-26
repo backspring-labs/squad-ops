@@ -17,6 +17,8 @@ import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from adapters.remote_execution.game_dev_roblox_studio.front import SETTINGS as FRONT_SETTINGS
+from adapters.remote_execution.game_dev_roblox_studio.front import FrontPolicy
 from adapters.remote_execution.game_dev_roblox_studio.qualification import Qualifications
 from adapters.remote_execution.game_dev_roblox_studio.runner import (
     PROVIDER,
@@ -51,7 +53,13 @@ def create_runner(settings: Mapping[str, str]) -> RobloxStudioRunner:
     worker that started on a wrong path would register as serving and fail every claim."""
     files, mcp = _place(settings)
     qualifications = Qualifications(Path(settings["roblox_studio_qualifications"]).expanduser())
-    return RobloxStudioRunner(mcp, place_files=files, proved_on=qualifications)
+    return RobloxStudioRunner(
+        mcp,
+        place_files=files,
+        proved_on=qualifications,
+        # R5.33: the owner's declaration, as written. None written is not dedicated.
+        front_policy=FrontPolicy.from_settings(settings),
+    )
 
 
 def create_qualifier(
@@ -66,7 +74,7 @@ def create_qualifier(
 
 def _place(settings: Mapping[str, str]) -> tuple[PlaceFiles, Path]:
     missing = [name for name in SETTINGS if not settings.get(name)]
-    unknown = sorted(set(settings) - set(SETTINGS))
+    unknown = sorted(set(settings) - set(SETTINGS) - set(FRONT_SETTINGS))
     if missing or unknown:
         raise ValueError(f"{PROVIDER}'s settings: missing {missing}, unknown {unknown}")
     paths = {

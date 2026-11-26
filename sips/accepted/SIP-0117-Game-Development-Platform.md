@@ -202,7 +202,7 @@ phases are in its own ledger.
 | A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
 | A result the worker builds itself names what its run had established: the cancel's and a raise's `interrupted` carry the runner's `running_with()`, read before the reset (R5.34) | **shipped** | 2.9 (PR #3277; #3236 tracks the live cancel round on real Studio) |
 | A candidate's own setup failure repaired in the run: attributed to the candidate only when the six conditions of the 2.9 plan's item 7 hold, each with its evidence kept, then one bounded in-run correction with the console's error in its evidence; anything else keeps today's routing, not executed (a numbered amendment beside R5.28, made in the PR that builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
-| A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (a numbered amendment to R5.18, made in the PR that builds it; the Spark lane writes the rule and the MacBook lane builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3193 |
+| A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (R5.33; the Spark lane wrote the rule and the MacBook lane built it) | **shipped** | 2.9 (PR #3269, closing #3193) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1756,6 +1756,58 @@ replaces. The worker's refusal of a Studio whose tool list differs names the too
 - a `/3` record missing its per-tool keys is refused by name, as any record with the wrong keys is.
 
 The live runs on the Mac's Studio are in the PR.
+## R5.33 A dedicated worker brings Studio to the front, inside its declared window (#3193, 2026-11-26; R5.18, R5.28, R5.29; the 2.9 plan's item 12, D1, D7, D12)
+
+**What changes.** R5.18 refuses a scenario that acts through Studio's input unless Studio is the app in front, and R5.28 reads that refusal as the worker's own. Both stand. This adds one thing: on a worker its owner has declared dedicated, inside the window its owner has declared, the runner may bring Studio to the front itself, once per operation, before R5.18's refusal. It does so only when every condition below holds at the moment it is read. Anything else, and anything it can't read, is R5.18's refusal as before.
+
+**The conditions.** All of them, each read by the runner, none assumed.
+
+| # | Condition | How it is read | When it doesn't hold |
+|
+
+**As built.**
+
+| Point | As built |
+|---|---|
+| **The check** | `game_dev_roblox_studio/front.py`: `bring_studio_forward`, a pure function of the app, the declaration, the lease record and the clock. It never raises: every way a read fails is `read_failed` |
+| **Where it sits** | `RobloxStudioRunner._transaction`, after the session opens and R2.4 and R5.29 hold the running Studio to its proof, and before anything is synced or played. R5.18's check used to come first; condition 6 needs the proof to come before it. A Studio that isn't running, or isn't the proved one, is refused as before, and no condition is read |
+| **The lease** | `squadops.remote_execution.held_lease`: the serving loop's record, set for the one run it starts and kept at every renewal. The claim accepts it, a renewal that doesn't reach the runtime leaves it unaccepted, and a refused one or an expiry ends it. Outside a serving loop there is none, which reads not held |
+| **The readings** | `StudioApp.idle_seconds`, `locked` and `session_available`, from `ioreg`, which needs no macOS permission. Measured live on 2026-11-26: `open -a` on a running app leaves the idle counter rising |
+| **The activation** | `open -a`, which starts an app that isn't running: Studio's process is read immediately before, and a Studio that quit is `activation_failed` |
+| **The third read** | Compared with the time since condition 5's read, measured after it, so an untouched counter can't read low |
+| **The settings** | Four optional worker settings, `SQUADOPS__WORKER__ROBLOX_STUDIO_DEDICATED`, `_WINDOW_START`, `_WINDOW_END`, `_IDLE_THRESHOLD_S`, read as written and checked at each activation, so a value that can't be read refuses that activation and never stops the worker from serving |
+| **A threshold not written, or not a whole number** | Not written is `not_dedicated`, as a missing start or end is. One that isn't a whole number of seconds is `threshold_too_low`, with the reason saying it isn't a whole number of at least 60. The closed list has no reason for an unreadable threshold, and this is the nearest; the Spark lane may rule a fourteenth |
+| **The runbook** | `docs/ops/STUDIO_WORKER_RUNBOOK.md`: how the worker starts and stops, and how its owner declares the window |
+
+**The tests the rule requires**, as the Spark lane wrote them, and where each is:
+
+Entered at the runner's transaction, where R5.18's check sits, with the app, the clock, the idle counter, the lock and the activation as fakes. Each asserts the result's status, `tool_unready`, the `front.*` keys, and **whether the activation was called**. None may end as a failed criterion.
+
+1. **The front lost and recovered:** every condition holds, the activation is called exactly once, Studio reads in front, the scenario plays, and `front.activated` is `true` with `front.was` `other`.
+2. **Each condition failing alone,** parametrized, the activation never called, each with its own `front.refused`:
+   - no dedicated flag; a flag with no start, and with no end;
+   - a start or end with no offset, one that doesn't parse, and an end at or before its start;
+   - the time before the start, exactly at the end, and after it;
+   - the lease's last renewal refused, and its expiry passed;
+   - the idle counter under the threshold; a threshold of 59 with the counter far over it;
+   - a locked screen; a session that isn't available.
+3. **Each read failing:** the clock, the idle counter (first, second and third read), the lock and the front, each raising in turn. Each is `read_failed`, and nothing is played.
+4. **Input between the two reads:** the second idle reading is lower than the first. No activation.
+5. **The window closing between the two reads:** inside at condition 1, past the end at condition 5. No activation.
+6. **Input during the activation:** the third idle reading is lower than the time since the second. The activation was called once, nothing is played, no input is sent, and the front is not moved again.
+7. **An activation that fails:** the call raises, and separately it returns with Studio still behind. Both read `tool_unready` with `activation_failed`, and the call was made once.
+8. **Studio not running, and a Studio that isn't the proved one:** refused as today, with no activation. The second is run twice: after a Studio restart and after a worker restart, so the qualification checks are shown to come first each time.
+9. **A scenario with no input action** never reads a condition and never activates: R5.18's scope is unchanged.
+10. **`front.was` carries no name:** with a named app in front, the whole result (its `ran_with`, its reason, its evidence) holds neither the app's name nor a window title.
+11. **Wiring, from the serving loop:** an operation claimed and then run after its renewal was refused reaches the runner with a lease that reads not held, and no activation is made. This is the test that shows condition 2 is read and not assumed.
+12. **A worker with no dedicated setting at all** behaves exactly as today, byte for byte in its refusal's status and flag, with `front.refused` `not_dedicated`.
+
+Mutation checks for the PR's evidence: each condition's check removed in turn must fail a test in 2 or 3 to 6.
+
+**Where each test is:** `tests/unit/remote_execution/test_roblox_studio_front.py`. Tests 1 to 10 and 12 enter at
+`RobloxStudioRunner.run` over the stand-in `StudioMCP`; test 11 enters at `Worker.serve()` with the registry in
+process. Each condition's check removed in turn fails a test (eleven mutations), and so does removing either of
+the serving loop's updates to the lease record.
 
 ## R5.34 A result the worker builds itself names what its run had established (#3236, 2026-11-26; R5.30, R5.5, R5.29)
 

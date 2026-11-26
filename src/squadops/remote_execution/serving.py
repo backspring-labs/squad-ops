@@ -46,6 +46,8 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from squadops.remote_execution import held_lease
+from squadops.remote_execution.held_lease import HeldLease
 from squadops.remote_execution.models import (
     OperationStatus,
     RemoteOperationResult,
@@ -201,9 +203,16 @@ class Worker:
             return
         self._fresh = False
         self._returned = False
-        task = asyncio.ensure_future(self._runner.run(request))
+        # #3193: the run's task carries this loop's record of the lease, which ``_watch`` keeps
+        # as the runtime answers. A runner that acts on the Mac reads it there (held_lease).
+        lease = HeldLease(claim.lease_expires_at, self._clock)
+        token = held_lease.holding(lease)
         try:
-            result, expires = await self._watch(enrolment, claim, task)
+            task = asyncio.ensure_future(self._runner.run(request))
+        finally:
+            held_lease.released(token)
+        try:
+            result, expires = await self._watch(enrolment, claim, task, lease)
         finally:
             if not task.done():
                 # The worker is being stopped, or something above raised: nothing is left
@@ -235,10 +244,11 @@ class Worker:
         )
 
     async def _watch(
-        self, enrolment: Enrolment, claim: Claim, task: asyncio.Future
+        self, enrolment: Enrolment, claim: Claim, task: asyncio.Future, held: HeldLease
     ) -> tuple[RemoteOperationResult | None, datetime]:
         """Renew the lease until the operation ends. Returns the result to submit, or ``None``
-        when the claim is no longer held, with the lease's last known expiry."""
+        when the claim is no longer held, with the lease's last known expiry. ``held`` is the
+        record the run reads (#3193), kept as each renewal is answered."""
         fence = claim.fence
         expires = claim.lease_expires_at
         while True:
@@ -249,12 +259,14 @@ class Worker:
                 lease = await self._api.renew(enrolment.session_id, self._health_held(), fence)
                 self._record(last_answer_at=self._clock())
             except RuntimeUnreachable as e:
+                held.accepted = False
                 self._unreachable(e)
                 if task.done():
                     return await self._result_of(task, claim.request.dispatch_id), expires
                 if self._clock() < expires:
                     logger.warning("the lease was not renewed, and will be tried again: %s", e)
                     continue
+                held.refused = "expired"
                 await self._abandon(
                     task,
                     f"the lease on operation {fence.operation_id} ran out at "
@@ -262,8 +274,10 @@ class Worker:
                 )
                 return None, expires
             except UnknownSession:
+                held.refused = "the runtime ended this worker's session"
                 await self._abandon(task, "the runtime ended this worker's session")
                 raise
+            _kept(held, lease)
             if task.done():
                 # The operation ended while the renewal was out. Its result is what there is
                 # to say, whatever the renewal answered: a refused claim refuses the result
@@ -496,6 +510,16 @@ async def _stop(task: asyncio.Future) -> None:
     await asyncio.wait({task})
     if not task.cancelled() and task.exception() is not None:
         logger.warning("the operation raised as it was stopped", exc_info=task.exception())
+
+
+def _kept(held: HeldLease, lease: LeaseReading) -> None:
+    """The run's record of the lease, as a renewal was answered (#3193)."""
+    if lease.refusal is not None:
+        held.refused = lease.refusal.value
+        return
+    held.accepted = True
+    if lease.expires_at is not None:
+        held.expires_at = lease.expires_at
 
 
 def _expiry(lease: LeaseReading) -> datetime:

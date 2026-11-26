@@ -25,6 +25,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   file's end, any two open pull requests conflicted there, and each merge put every other one in conflict:
   on 2026-11-26 one pull request was resolved three times, each a push and a full CI run. An id held in two
   files is refused, and a test refuses a row appended to the old file.
+### Added
+- **A dedicated worker brings Studio to the front, inside its declared window** (#3193; SIP-0117 R5.33; the 2.9
+  plan's item 12): a scenario that clicks acts only on a Studio in front, and a worker that found another app in
+  front refused the play. On a worker its owner declares dedicated, inside the window its owner declares, the
+  runner may now bring the running Studio forward itself, once per operation.
+  - Only when every condition holds: the window, the operation's lease by the serving loop's own record, no
+    keyboard or mouse input for the threshold (at least 60 s), the screen unlocked and the session available,
+    the idle counter and the clock read again immediately before, and a proved Studio running.
+  - After it, Studio must read in front and the idle counter must show nobody arrived. Anything else, or anything
+    unread, is R5.18's refusal as before, flagged `tool_unready`.
+  - Each result records `front.activated`, `front.was`, `front.idle_s` and `front.refused`, never which app was in
+    front. The four settings are the owner's; the code ships with none, and without them nothing changes.
+  - R5.18's check now runs after the session opens and the running Studio is held to its proof.
+  - The runbook is `docs/ops/STUDIO_WORKER_RUNBOOK.md`.
 
 ### Fixed
 - **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;

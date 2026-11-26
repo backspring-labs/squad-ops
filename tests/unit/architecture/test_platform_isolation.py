@@ -47,6 +47,9 @@ ADAPTER_IMPORTS = (
     "squadops.ports.remote_execution",
     # SIP-0116 §17n (#3042): eligibility.py's port, the authority the root registers.
     "squadops.ports.tool_authority",
+    # SIP-0117 R5.33 (#3193): the serving loop's record of the lease, which a runner that acts on
+    # the person's Mac reads before it does; never assumed from running under a claim.
+    "squadops.remote_execution.held_lease",
     "squadops.remote_execution.models",
     # #3040: the frozen scenario's schema and the vocabulary type the provider ships its own as.
     "squadops.remote_execution.scenario",
