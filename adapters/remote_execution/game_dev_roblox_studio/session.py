@@ -15,7 +15,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -73,6 +73,41 @@ class ToolCheck:
     count: int
     schema_digest: str
     names: tuple[str, ...]
+    #: Each tool's own definition digest, ``(name, digest)`` sorted by name (#3230). The list's
+    #: digest says that something changed; these say which tool, when its name stayed the same.
+    digests: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class ToolChanges:
+    """How one tool list differs from another, by name (#3230): tools only the later one has,
+    tools only the earlier one has, and tools in both whose definition differs."""
+
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+    changed: tuple[str, ...]
+
+    def named(self) -> str:
+        parts = [
+            f"{label} {', '.join(names)}"
+            for label, names in (
+                ("added", self.added),
+                ("removed", self.removed),
+                ("changed", self.changed),
+            )
+            if names
+        ]
+        return "; ".join(parts) or "no tool was added, removed or changed"
+
+
+def tool_changes(before: Iterable[tuple[str, str]], now: Iterable[tuple[str, str]]) -> ToolChanges:
+    """What changed from ``before`` to ``now``, each a tool list's ``(name, digest)`` pairs."""
+    was, is_ = dict(before), dict(now)
+    return ToolChanges(
+        added=tuple(sorted(set(is_) - set(was))),
+        removed=tuple(sorted(set(was) - set(is_))),
+        changed=tuple(sorted(name for name in set(was) & set(is_) if was[name] != is_[name])),
+    )
 
 
 def tool_check(
@@ -98,7 +133,13 @@ def tool_check(
         raise StudioSessionError("Studio's tool list fails the allow-list: " + "; ".join(problems))
     canonical = json.dumps(sorted(tools, key=lambda t: str(t.get("name"))), sort_keys=True)
     return ToolCheck(
-        len(tools), hashlib.sha256(canonical.encode()).hexdigest(), tuple(sorted(by_name))
+        len(tools),
+        hashlib.sha256(canonical.encode()).hexdigest(),
+        tuple(sorted(by_name)),
+        tuple(
+            (name, hashlib.sha256(json.dumps(tool, sort_keys=True).encode()).hexdigest())
+            for name, tool in sorted(by_name.items())
+        ),
     )
 
 

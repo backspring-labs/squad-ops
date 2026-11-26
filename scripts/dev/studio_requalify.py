@@ -64,7 +64,15 @@ async def _main(repo: Path, scenario_file: Path) -> int:
     record, path = await requalify(records, runner_for, request_for)
     print(f"{'passed' if record.passed else 'FAILED'}: Studio {_studio(record)}, "
           f"tools {record.studio_tools[:24]}…")  # fmt: skip
-    print(f"  tools added {list(record.tools_added)}, removed {list(record.tools_removed)}")
+    changed = (
+        "can't be said (the replaced record holds no per-tool digests)"
+        if record.tools_changed is None
+        else str(list(record.tools_changed))
+    )
+    print(
+        f"  tools added {list(record.tools_added)}, removed {list(record.tools_removed)}, "
+        f"changed {changed}"
+    )
     for step in record.steps:
         print(f"  {step.name}: {step.status} {step.reason}".rstrip())
         for line in step.records:
