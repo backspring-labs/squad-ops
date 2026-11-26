@@ -1124,6 +1124,39 @@ class ImplementationPlan:
                 )
         return errors
 
+    def validate_qa_suite_collected(self, profile: DerivedProfile | None) -> list[str]:
+        """SIP-0112 H.4 point 3 (#3182): on a product, a ``qa.test`` task's expected artifacts
+        are files one of the product's test runners collects (its roots and its file-name
+        pattern, ``Runner.holds``). A suite no runner collects is run by nothing, so it verifies
+        nothing whatever it asserts. Read from the runner's collection contract and the path,
+        never from the file's extension: a source file is refused, and so is a test-named file
+        outside every root. ``None``, a Project with no profile, checks nothing, and so does a
+        product whose profile names no runner (that is its own gap, ``test_files_unclassed``).
+
+        A runner's support file the profile records (``test_support_files``: a ``conftest.py``,
+        a setup module) is the suite's own, and a ``qa.test`` may list it. A helper the profile
+        doesn't record is refused: nothing on record says a runner loads it.
+
+        ``validate_qa_suite_namespace`` is the same rule for a scaffolded application, read
+        from the stack; a product declares no stack namespace, so this is what holds it."""
+        if profile is None or not profile.runners:
+            return []
+        collected = "; ".join(
+            f"{r.runner}: a file named {r.file_pattern} under {', '.join(r.roots)}"
+            for r in profile.runners
+        )
+        return [
+            f"qa_suite_not_collected: Task {task.task_index} ({task.focus}): qa.test declares "
+            f"{artifact!r}, which no test runner of this product collects, so nothing would run "
+            f"it. This product's runners collect: {collected}. Name a test file one of them "
+            "collects, and put what the tests share in a test file or in a support file the "
+            "product already has. Product source is a development task's."
+            for task in self.tasks
+            if authors_qa_suite(task.task_type)
+            for artifact in task.expected_artifacts
+            if profile.runner_for(artifact) is None and artifact not in profile.test_support_files
+        ]
+
     def validate_increment_footprint(self, footprint: tuple[str, ...] | None) -> list[str]:
         """SIP-0109 §7.3 (#1705): an increment's plan covers only its approved change.
 

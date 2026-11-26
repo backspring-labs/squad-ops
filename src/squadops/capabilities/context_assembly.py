@@ -370,6 +370,8 @@ _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_blocking_gaps_appendix",
     # #3155: the paths the product's owner reserves, shown beside where its checks can't run.
     "request.plan_reserved_paths_appendix",
+    # #3182: what each of the product's test runners collects.
+    "request.plan_test_runners_appendix",
     "request.plan_frozen_surface_appendix",
     # #2795: the qa proposer's, and the development proposer's, which tells it the files are qa's.
     (
