@@ -4092,3 +4092,56 @@ removed, the rule read from the extension, and the authors not shown.
 
 **Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 8 and ruling D3 state both rules. The
 Spark lane built this half.
+
+## H.39 On a product, a `qa.test` is shown what is beside its suite, and never the tree (2026-11-26; H.4 point 3, H.13, H.38; SIP-0073; #3182, the prompt half; the Spark lane)
+
+**What changed.** A `qa.test` task's prompt showed the top-level directories its expected files live in, and
+the whole tree when none matched: a rule made for sample applications, whose top-level directories are a
+backend and a frontend. On a repository-backed product it now shows what is beside the suite, the test
+infrastructure, and the code its text names or imports, held to a cap.
+
+**The evidence** (#3182; measured on a product of 201 text files, 2.36 million characters, with the 2.8 counted
+run's own `qa.test` inputs):
+
+| The task's expected file | Shown before | Shown now |
+|---|---|---|
+| A spec under the runner's root, as every plan so far has had it | 4 files, 18,478 characters | the same 4 files, in the same order |
+| A spec in the product's largest source folder | 141 files, 1,737,969 characters | 23 files, 89,796 characters, with 8 more named and not shown |
+| A file in a folder the product doesn't have | 201 files, 2,357,662 characters | 4 files, 18,478 characters |
+| A file at the repository's root | 201 files, 2,357,662 characters | 8 files, 21,309 characters |
+
+**As built** (`capabilities/qa_prompt_contents.py`, for a task that carries the product's repository; a sample
+application's task takes the path it always took).
+
+| Point | As built | Why |
+|---|---|---|
+| **Beside its suite** | Every file in the same directory as one of the task's expected artifacts, that directory alone (`product_scoped`) | A product's tests can live beside its source, where the top-level directory is the source tree |
+| **The test infrastructure** | Every file directly under one of the product's runners' roots (the task's `source_repository.runners`). A root of `.` adds nothing | That is where a runner's own script and its shared setup sit |
+| **The code under test** | Unchanged: what the task's text names, and what the suite imports (`code_under_test`) | #3139, #3146 |
+| **Never the whole tree** | The fallback that showed everything when no directory matched is the sample applications' alone | The plan's item 8 |
+| **The cap, and what is essential** | `PRODUCT_CONTENTS_MAX_CHARS`, 96,000 characters: five times what the counted run's prompts showed. The suite's own files and the code under test are always shown. The files beside the suite come after, smallest first, while they fit. One that doesn't is named with its size and not shown | Nothing is left out silently, and the task is never written without what it tests |
+| **The hold** | When the essential files alone overrun the model's window, the prompt guard refuses the prompt by name, as it did (SIP-0073). No second refusal is added | D3; the composer counts the prompt through the same function, so the two agree |
+| **What was shown is recorded** | By the task's authoring envelope, which holds the prompt as sent (SIP-0110 §0.11). A file named and not shown is in that prompt by name | No second record is kept of what the first already holds |
+
+**The replay the plan's done-when asks for.** The 2.8 counted run's two `qa.test` envelopes
+(`cyc_de850f1b65a6`, `cyc_e26c45c7747c`) were read through the new rule: each is shown exactly the files it
+was shown then, in the same order (4 files, 18,478 characters; 5 files, 19,330), under the cap. So their
+prompts are the ones the counted run sent, and the suites those prompts produced ran and were accepted in
+that run. No model was called for this: an identical prompt adds no reading a second generation would not
+repeat.
+
+**The existing stacks are unchanged.** A task with no product repository is scoped by `package_scoped` as
+before, and a test holds it. The existing stacks' shakeout pair on the final deploy (the plan's §6, case 14)
+is still the live read.
+
+**The tests** (`tests/unit/capabilities/test_qa_prompt_contents.py`) enter at `qa_test_prompt_contents`, at
+the handler's own prompt step, and at the composer's count: five shapes of a product's suite; the sample
+application's scoping unchanged; the cap, with the essential files shown over it and the order kept; and the
+handler showing, and the composer counting, the bounded files. Four mutations each fail one.
+
+**Not shown:** a model writing a suite from a prompt this rule changed. H.38 refuses the plans that would
+reach the changed cases on a product whose profile names a runner rooted apart from its source, which is
+every product so far.
+
+**Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 8 and ruling D3 state both rules. The
+Spark lane built it, and chose the cap from the counted run's measurement.

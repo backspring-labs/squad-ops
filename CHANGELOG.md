@@ -14,6 +14,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   files is refused, and a test refuses a row appended to the old file.
 
 ### Fixed
+- **On a product, a `qa.test` is shown what is beside its suite, and never the tree** (#3182, the prompt half;
+  SIP-0112 H.39; the 2.9 plan's item 8): a suite whose file sat in a source folder was shown that whole
+  top-level directory, and one whose folder matched nothing was shown the whole tree: 141 files and 201 files
+  on the product measured.
+  - It is now shown the files in its own folder, the files directly under the product runners' roots, and the
+    code its text names or imports, held to 96,000 characters. A file beside the suite that doesn't fit is
+    named with its size and not shown.
+  - The 2.8 counted run's two `qa.test` prompts are shown exactly what they were shown then.
+  - A sample application's suite is scoped as before.
 - **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
   SIP-0112 H.38; the 2.9 plan's item 8): a `qa.test` naming a source file or a note passed every plan gate,
   and its task was then shown most or all of the product to write a suite nothing runs.
