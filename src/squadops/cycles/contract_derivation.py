@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from squadops.cycles.models import ArtifactRef
-from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.cycles.vault_reads import retrieve_or_absent, retrieve_recorded
 from squadops.stacks.scaffold import InterfaceManifest
 from squadops.stacks.scaffold_contract import emit_contract_yaml
 
@@ -101,6 +101,25 @@ async def load_seeded_manifest_content(
         if got is None:
             continue
         ref, content_bytes = got
+        if is_interface_manifest(ref):
+            return content_bytes.decode(errors="replace")
+    return None
+
+
+async def load_recorded_manifest_content(
+    vault: ArtifactVaultPort | None, refs: Iterable[str] | None
+) -> str | None:
+    """As :func:`load_seeded_manifest_content`, for a reader inside a cycle's execution (#3128).
+
+    The refs are the cycle's own record, so one the vault can't return raises
+    ``ArtifactUnavailable``: read as "not the manifest", a vault fault became "no manifest
+    seeded", and the gate rejected the plan for it. ``None`` only when every ref was read and
+    none is the manifest.
+    """
+    for ref_id in refs or []:
+        ref, content_bytes = await retrieve_recorded(
+            vault, ref_id, what="a planning artifact forwarded to the run"
+        )
         if is_interface_manifest(ref):
             return content_bytes.decode(errors="replace")
     return None

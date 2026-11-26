@@ -57,7 +57,7 @@ from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
-from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.cycles.vault_reads import retrieve_recorded
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.execution.product_suite import PRODUCT_RUNNER
 from squadops.projects.baseline import FAIL, InheritedBaseline
@@ -353,8 +353,10 @@ async def deliver_source_change(
             "checks of the tree it changed (SIP-0109 §24bv point 3)"
         )
     contents = {}
-    for art_id, _ref in stored_artifacts:
-        _stored, contents[art_id] = await vault.retrieve(art_id)
+    for art_id, ref in stored_artifacts:
+        _stored, contents[art_id] = await retrieve_recorded(
+            vault, art_id, what=f"the run's {ref.filename}"
+        )
     changes, left_out = squad_changes(stored_artifacts, contents, checkout.files)
     if not changes:
         named = f"; it left out what isn't the product's: {', '.join(left_out)}" if left_out else ""
@@ -531,8 +533,12 @@ async def regression_baseline(
             )
         return baseline, None
     # Contract 1's reader holds a verification to a campaign branch's pin (``parse_source_context``).
-    got = await retrieve_or_absent(vault, ref)
-    if got is None or getattr(got[0], "artifact_type", None) != SOURCE_VERIFICATION_TYPE:
+    # #3128: a verification the vault can't return is the vault's fault, and ends the run by
+    # name. "No regression baseline" is said only of an artifact that was read and is another kind.
+    got = await retrieve_recorded(
+        vault, ref, what=f"the verification the campaign branch's head {commit[:12]} names"
+    )
+    if getattr(got[0], "artifact_type", None) != SOURCE_VERIFICATION_TYPE:
         raise SourceDeliveryRefused(
             f"the campaign branch's head {commit[:12]} names verification {ref}, and the vault "
             "holds no source verification there: the increment has no regression baseline "

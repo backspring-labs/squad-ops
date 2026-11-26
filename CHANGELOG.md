@@ -6,6 +6,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- **An accepted QA hand-off reads accepted everywhere** (#3000; SIP-0077 §24a; the 2.9 plan's item 5): a
+  product's `qa.test` whose suite the qa image leaves to the product's own runner replied as a failed task, and
+  three signals were set from that reply before the runner was asked: the Prefect task run read `Failed`, the
+  agent's activity failed with "left to the product's runner", and `task.failed` was emitted and counted in
+  `tasks_failed_total`. An accepted run showed a red QA bar.
+  - A hand-off's reply now ends nothing. A new event, `task.handed_off`, records the attempt, and the task run is
+    named `HandedOff` while the product's runner reads the suite.
+  - The task then ends on the verdict, in all four places alike: `Completed`, a completed activity and
+    `task.succeeded` for an accepted pass; `Failed`, a failed activity and `task.failed` for anything else.
+  - The verdict is read before the attempt is routed, so a rejected hand-off's task run is failed before its
+    correction starts.
+  - A suite the image ran and failed, which the runner may overrule (#2818), is still a failed attempt.
+    `dispatch_with_retry` takes a required `hand_off`; `dispatch_task` is unchanged.
 - **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
   executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
   its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every
@@ -18,8 +31,29 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     `artifact_unretrieved`, and its reason names the artifact and what it was to the run.
   - An input is optional when the run's record holds none of it, which is decided before any read. A plan or
     manifest that is read and doesn't parse is decided as before.
-  - Still to come under #3128: the reads at the gates between workloads, at delivery and in the proposal's
-    evidence, and a guard that refuses an undeclared read in `squadops.execution`.
+  - The same rule at delivery and proposal: the run's files and the verification a campaign branch's head names
+    (`source_delivery`), the requirements source a Campaign names by artifact (`product_proposal`), the head
+    check's criterion files, and an increment's stored baseline readings. An unreadable verification read as
+    "the vault holds no source verification there", and an unreadable requirements artifact as "no artifact the
+    vault holds"; both now end the run naming the artifact. Each is still said of an artifact that was read and
+    is another kind.
+  - The vault's own `ArtifactNotFoundError` and `ArtifactUnreadableError`, raised by a read in another package
+    that a run reaches, end the run `infrastructure_failed` with the same classifications. They ended it `other`.
+  - A guard, `tests/unit/architecture/test_executor_vault_reads_are_declared.py`, refuses a bare
+    `vault.retrieve` or a `retrieve_or_absent` in `squadops.execution`.
+- **A gate that can't read its recorded input ends the cycle as the environment's** (#3128; SIP-0109 §24ei;
+  the 2.9 plan's item 4): five reads at the gate between workloads read an artifact the vault couldn't return as
+  one that wasn't there. The gate then found "no plan" or "no manifest", rejected the plan, and the squad re-rolled
+  its framing for the vault's fault.
+  - The cycle now ends `gate_input_unavailable`, status `failed`, and its recorded ending names the artifact
+    (`cycle_ends.detail`, migration 2203). Any other raise at the gate still ends `gate_failed`.
+  - A Campaign reads it on §10's rows 10 and 11, as it reads a cycle held on the store: retried while retry
+    cycles remain, then escalated, and counted toward no limit. The decision's row carries `ending_detail`.
+  - The five reads: the framing gate's scan of the run's artifacts, the manifest a run authored, the seeded
+    manifest, the run's merge decisions, and the contract the cycle is bound to. One that is read and doesn't
+    parse is decided as before. The gate's error for a seeded contract now says it "doesn't parse".
+  - Nine plan-gate tests had fixtures naming artifacts their fake vault never held, the bound contract among
+    them, so they ran in bind mode without one. Each fixture now holds what its refs name.
 
 ## [2.8.1] — 2026-11-20
 

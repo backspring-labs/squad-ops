@@ -76,6 +76,7 @@ from squadops.capabilities.operation_supply import OperationSupplyError, scenari
 from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.capabilities.tool_checks import NO_REMOTE_EXECUTION
 from squadops.cycles.models import ArtifactRef, Cycle
+from squadops.cycles.vault_reads import retrieve_recorded
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.product_proposal import kept_scenario_vocabulary
 from squadops.remote_execution.models import ASSERTION_RECORDS_ARTIFACT_TYPE, ReadingSide
@@ -329,8 +330,9 @@ async def scenario_runs_for(
 async def _stored_baselines(cycle: Cycle, vault: Any) -> dict[str, list[dict[str, Any]]]:
     """#3044 2b: each scenario criterion's baseline readings the baseline step stored on this
     increment cycle, newest first. Delivery credits one only for its own overlay's revision
-    (``ScenarioRuns.credited_baseline``); one it can't read is passed over, and the baseline is
-    then played."""
+    (``ScenarioRuns.credited_baseline``); one that doesn't parse is passed over, and the baseline
+    is then played. One the vault can't return ends the run by name (#3128): the listing is the
+    record that it exists."""
     if vault is None:
         return {}
     refs = await vault.list_artifacts(
@@ -341,8 +343,12 @@ async def _stored_baselines(cycle: Cycle, vault: Any) -> dict[str, list[dict[str
         metadata = ref.metadata or {}
         if metadata.get("side") != ReadingSide.BASELINE.value or not metadata.get("criterion_id"):
             continue
+        _, content = await retrieve_recorded(
+            vault,
+            ref.artifact_id,
+            what=f"the stored baseline reading of {metadata['criterion_id']}",
+        )
         try:
-            _, content = await vault.retrieve(ref.artifact_id)
             document = json.loads(content)
         except (ValueError, KeyError) as e:
             logger.warning(

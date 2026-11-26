@@ -224,7 +224,7 @@ async def test_net_b_rejects_when_contract_ref_unparseable():
 
     errors = await executor._reject_invalid_plan_before_workload_gate(run, cycle, "plan-review")
 
-    assert any("contract_ref is seeded but the contract is" in e for e in errors)
+    assert any("contract_ref is seeded but the contract doesn't parse" in e for e in errors)
 
 
 async def test_net_b_auto_binds_missing_coverage_instead_of_rejecting():

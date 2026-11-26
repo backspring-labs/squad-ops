@@ -48,6 +48,11 @@ class CycleEnding(StrEnum):
     #: §24bw: the run was held on its instruction bindings and the bound passed with the store
     #: still not answering. An infrastructure ending (rows 10 and 11), counted nowhere.
     HELD_STORE = "held_store"
+    #: §24ei (#3128): the gate between workloads couldn't read an artifact the run's record
+    #: names, so it decided nothing. An infrastructure ending (rows 10 and 11), counted nowhere:
+    #: never ``stopped_at_plan_gate`` or ``proposal_failed``, which would charge the vault's
+    #: fault to the squad's plan or its proposal. The decision's row names the artifact.
+    GATE_INPUT_UNAVAILABLE = "gate_input_unavailable"
     #: §24bw: held on an operator's input that can't be bound (a required reference at the
     #: cycle's commit, an instruction withdrawn or narrowed to nothing). Row 17 escalates.
     HELD_INPUT = "held_input"
@@ -227,6 +232,13 @@ def latest_primary(latest: CycleAssessment) -> AttributionClass | None:
 #: - §24cb, row 18 (#2704): stopped at its plan gate, its plan refused or the gate failed.
 #: - §24cz, row 19 (#2890): ended at its qa task, a criterion's test already passing on the head.
 #: - §24dz, row 20 (SIP-0116 §17o): ended when a task's skill stopped it, naming why.
+#: The endings that are the environment's, read by rows 10 and 11: the cycle is retried while
+#: retries remain and then escalated, counted toward no unaccepted limit. Neither says anything
+#: about the squad's work.
+#: - §24bw: held on its instruction bindings until the bound passed, the store not answering.
+#: - §24ei (#3128): its gate couldn't read an artifact the run's record names.
+ENVIRONMENT_ENDINGS = frozenset({CycleEnding.HELD_STORE, CycleEnding.GATE_INPUT_UNAVAILABLE})
+
 _ABANDONED_BEFORE_VERDICT: dict[CycleEnding, int] = {
     CycleEnding.PARKED: 15,
     CycleEnding.STOPPED_AT_PLAN_GATE: 18,
@@ -370,8 +382,9 @@ def _pending(
         return _ABANDONED_BEFORE_VERDICT[cycle.ending], PendingAction.ABANDON_AND_PROPOSE
     # §24bw, asked before row 6: a hold that expired said nothing about the squad's work. The
     # store's reads as the environment's (rows 10 and 11); an operator's input escalates (row 17),
-    # so the owner re-binds or withdraws it and resumes. Neither is an abandonment.
-    if cycle.ending is CycleEnding.HELD_STORE:
+    # so the owner re-binds or withdraws it and resumes. Neither is an abandonment. §24ei: a gate
+    # that couldn't read its recorded input is the environment's the same way.
+    if cycle.ending in ENVIRONMENT_ENDINGS:
         return (10, PendingAction.RETRY) if retries_remain else (11, PendingAction.ESCALATE)
     if cycle.ending is CycleEnding.HELD_INPUT:
         return 17, PendingAction.ESCALATE

@@ -2898,23 +2898,36 @@ checks:
       o = resolve_terminal_outcome(ArtifactUnavailable("art_1", "the cycle's PRD", unavailable_kind(lost), lost), "run_1")
       print(o.terminal.kind.value, o.terminal.failure_classification, o.failure_reason.startswith("the cycle's PRD (artifact art_1)"))
     expect: "infrastructure_failed artifact_missing True"
-  - id: "3235-agent-reports-remote-execution"
-    what: a worker's tool is refused when the agent that runs it reports no remote execution, naming the agent, its revision and when it said so (SIP-0116 §17z)
+  - id: "3128-delivery-and-proposal-reads"
+    what: delivery, the proposal and the head check read recorded artifacts through the declared read, and the vault's own error ends a run infrastructure_failed
     container: squadops-runtime-api
     code: |
-      from datetime import datetime
-      from squadops.capabilities.tool_checks import AgentRemoteExecution, agent_cant_ask
-      at = datetime(2026, 11, 26, 15, 0)
-      none = agent_cant_ask("eve", AgentRemoteExecution("none", "3f2a91c", at, True), heard_from_now=True)
-      late = AgentRemoteExecution("runtime_api", None, at, False)
-      print("binds no remote execution" in none, "revision 3f2a91c" in none, agent_cant_ask("eve", late, heard_from_now=False), agent_cant_ask("eve", late, heard_from_now=True) is not None, agent_cant_ask("eve", None, heard_from_now=False) is not None)
-    expect: "True True None True True"
-  - id: "3235-agent-says-what-it-binds"
-    what: the QA agent's heartbeat carries the remote-execution provider its own port binds, and its handler flags a reading it had no port for (SIP-0116 §17z)
-    container: squadops-eve
+      import inspect
+      from squadops.cycles.models import ArtifactUnreadableError
+      from squadops.execution import criterion_head_check, product_acceptance, product_proposal, source_delivery
+      from squadops.execution.run_completion import resolve_terminal_outcome
+      o = resolve_terminal_outcome(ArtifactUnreadableError("art_1: bad hash"), "run_1")
+      print(sum("retrieve_recorded(" in inspect.getsource(m) for m in (criterion_head_check, product_acceptance, product_proposal, source_delivery)), o.terminal.kind.value, o.terminal.failure_classification)
+    expect: "4 infrastructure_failed artifact_unreadable"
+  - id: "3128-gate-input-unavailable"
+    what: a gate that can't read a recorded artifact ends the cycle gate_input_unavailable, which a Campaign reads on rows 10 and 11, and the ending carries its detail (SIP-0109 §24ei)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.continuation import ENVIRONMENT_ENDINGS, CycleEnding
+      from squadops.campaigns.progress import _ENDING_DECLARED_BY_STOP
+      from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+      from squadops.cycles.lifecycle import STATUS_OF_ENDING
+      stop = CycleStopReason.GATE_INPUT_UNAVAILABLE
+      print(_ENDING_DECLARED_BY_STOP[stop] in ENVIRONMENT_ENDINGS, sorted(e.value for e in ENVIRONMENT_ENDINGS), STATUS_OF_ENDING[stop].value, RecordedEnd("c", "r", stop, "art_1").detail)
+    expect: "True ['gate_input_unavailable', 'held_store'] failed art_1"
+  - id: "3000-hand-off-ends-on-the-verdict"
+    what: a qa hand-off's reply is task.handed_off, and the dispatcher ends the task on the product runner's verdict (SIP-0077 §24a)
+    container: squadops-runtime-api
     code: |
       import inspect
-      from squadops.agents.entrypoint import AgentRunner
-      from squadops.capabilities.handlers.cycle import run_remote_operation as h
-      print("remote_execution=self._bound_remote_execution()" in inspect.getsource(AgentRunner._send_heartbeat), "unavailable=True" in inspect.getsource(h))
-    expect: "True True"
+      from squadops.events.types import EventType
+      from squadops.execution import dispatched_flow_executor as e
+      from squadops.execution.task_dispatcher import HandOff, TaskDispatcher
+      sig = inspect.signature(TaskDispatcher.dispatch_with_retry)
+      print(EventType.TASK_HANDED_OFF, len(EventType.all()), sig.parameters["hand_off"].default is inspect.Parameter.empty, sorted(f.name for f in __import__("dataclasses").fields(HandOff)), hasattr(e._TaskOutcomeRouter, "hand_off_accepted"))
+    expect: "task.handed_off 32 True ['accepted', 'left'] True"

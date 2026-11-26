@@ -783,7 +783,7 @@ class TestInterWorkloadGates:
         await executor.execute_cycle("cyc_001", "run_001")
 
         executor._cycle_completion.end.assert_awaited_once_with(
-            "cyc_001", proposal, CycleStopReason.GATE_FAILED
+            "cyc_001", proposal, CycleStopReason.GATE_FAILED, detail=None
         )
         mock_registry.create_run.assert_not_called()
 
@@ -831,6 +831,58 @@ class TestInterWorkloadGates:
         heard = executor._campaign_progress.cycle_ended.await_args.args
         assert (heard[1].status, heard[2]) == ("cancelled", CycleStopReason.RUN_CANCELLED)
         assert not [r for r in caplog.records if r.levelname == "ERROR"]
+        mock_registry.create_run.assert_not_called()
+
+    async def test_a_gate_that_cant_read_a_recorded_artifact_ends_the_cycle_as_the_environments(
+        self, executor, mock_registry, caplog
+    ):
+        """#3128 (SIP-0109 §24ei): enters at ``execute_cycle`` with the real gate and the real
+        completion boundary. The framing run completed, and the gate's read of one of its
+        artifacts fails. Bugs caught: the ref skipped, so the gate found "no plan" and rejected
+        it for the squad to re-roll; the raise recorded as ``gate_failed``, which a Campaign
+        reads as its plan stopped at the gate; and the artifact named only in a log line, so
+        the ending the Campaign re-hears from can't say which one it was."""
+        import dataclasses
+        import logging
+
+        from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+
+        cycle = dataclasses.replace(
+            _make_cycle(
+                workload_sequence=[
+                    {"type": "framing", "gate": "progress_plan_review"},
+                    {"type": "implementation"},
+                ]
+            ),
+            campaign_id="cmp_001",
+        )
+        mock_registry.get_cycle.return_value = cycle
+        framing = dataclasses.replace(
+            _make_run("run_001", 1, "completed", "framing"), artifact_refs=("art_lost",)
+        )
+        mock_registry.get_run.return_value = framing
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=ConnectionError("the vault didn't answer")
+        )
+        executor._campaign_progress = AsyncMock()
+
+        with caplog.at_level(logging.ERROR):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        [recorded] = [c.args[0] for c in mock_registry.record_cycle_end.await_args_list]
+        assert recorded == RecordedEnd(
+            "cyc_001",
+            "run_001",
+            CycleStopReason.GATE_INPUT_UNAVAILABLE,
+            "an artifact of the run its gate reads (artifact art_lost) couldn't be read from "
+            "the vault (artifact_unretrieved): ConnectionError: the vault didn't answer. The "
+            "run's record names it, so it is never treated as absent",
+        )
+        heard = executor._campaign_progress.cycle_ended.await_args.args
+        assert (heard[1].run_id, heard[2]) == ("run_001", CycleStopReason.GATE_INPUT_UNAVAILABLE)
+        messages = [r.getMessage() for r in caplog.records]
+        assert "inter_workload_gate_input_unavailable" in messages
+        assert "inter_workload_gate_failed" not in messages
         mock_registry.create_run.assert_not_called()
 
     async def test_no_gate_skips_polling(self, executor, mock_registry, mock_event_bus):

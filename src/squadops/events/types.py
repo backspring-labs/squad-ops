@@ -30,10 +30,13 @@ class EventType:
     # --- Gate (1) ---
     GATE_DECIDED = "gate.decided"
 
-    # --- Task (3) ---
+    # --- Task (4) ---
     TASK_DISPATCHED = "task.dispatched"
     TASK_SUCCEEDED = "task.succeeded"
     TASK_FAILED = "task.failed"
+    #: SIP-0077 §24a (#3000): the agent's reply left the task's verdict to the product's own
+    #: runner. The attempt, on the record; the task's ending follows it, as succeeded or failed.
+    TASK_HANDED_OFF = "task.handed_off"
 
     # --- Pulse (5) ---
     PULSE_BOUNDARY_REACHED = "pulse.boundary_reached"

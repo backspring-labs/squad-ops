@@ -198,6 +198,9 @@ _RUNNING_STATES = frozenset(
 _ENDING_DECLARED_BY_STOP: dict[CycleStopReason, CycleEnding] = {
     CycleStopReason.CRITERIA_NOT_CHECKABLE: CycleEnding.CRITERIA_NOT_CHECKABLE,
     CycleStopReason.SKILL_STOPPED: CycleEnding.SKILL_STOPPED,
+    # §24ei (#3128): asked before the proposal's and the framing run's endings, so a gate that
+    # couldn't read its recorded input is never ``proposal_failed`` or ``stopped_at_plan_gate``.
+    CycleStopReason.GATE_INPUT_UNAVAILABLE: CycleEnding.GATE_INPUT_UNAVAILABLE,
 }
 
 
@@ -255,6 +258,7 @@ def decision_transition(
     unbuilt: str | None = None,
     promotion_refused: str | None = None,
     goals_revision: int | None = None,
+    ending_detail: str | None = None,
 ) -> CampaignTransition:
     """The decision's one control-log row (§10). Its binding records the decision whole — the
     row, the ending and verdict it read, and the outcome or the action with its guard — so the
@@ -274,6 +278,10 @@ def decision_transition(
     ``promotion_refused`` names why an accepted cycle's tree wasn't promoted (§24ce), whatever
     the decision. Only a row that has one carries the key, so every other row hashes as before.
 
+    ``ending_detail`` is what the cycle's recorded ending names beyond its reason (§24ei: the
+    artifact a gate couldn't read), so an escalation on row 11 says which artifact it was. Only
+    a row that has one carries the key.
+
     A terminal decision asks the registry to record the Campaign's contribution (§24dc): it is
     derived under the Campaign's lock, from the log as the row commits on it, so a promotion
     committing meanwhile is on the record. Only a repository-backed Campaign's row carries it.
@@ -288,6 +296,8 @@ def decision_transition(
         binding["promotion_refused"] = promotion_refused
     if goals_revision is not None:
         binding["goals_revision"] = goals_revision
+    if ending_detail is not None:
+        binding["ending_detail"] = ending_detail
     decided, next_state, outcome = _decided(decision, unbuilt)
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
@@ -866,6 +876,7 @@ class CampaignProgress:
                     unbuilt=unbuilt,
                     promotion_refused=not_promoted,
                     goals_revision=goals_revision,
+                    ending_detail=await self._ending_detail(cycle.cycle_id, ending),
                 ),
             )
         except ControlOperationRefused as refused:
@@ -1103,6 +1114,15 @@ class CampaignProgress:
         )
         await self._campaign_branch.follow(result.campaign, previous=promotion.parent)
         return result.campaign
+
+    async def _ending_detail(self, cycle_id: str, ending: CycleEnding) -> str | None:
+        """What the cycle's recorded ending names beyond its reason (§24ei), for the endings
+        that name something. Read from the record the completion boundary wrote before this
+        campaign was told (§12a)."""
+        if ending is not CycleEnding.GATE_INPUT_UNAVAILABLE:
+            return None
+        end = await self._cycles.get_cycle_end(cycle_id)
+        return end.detail if end is not None else None
 
     async def rehear_ended(self, cycle_ids: Iterable[str]) -> list[str]:
         """§12a (#1803): re-hear each campaign cycle that ended with no decision recorded — its
