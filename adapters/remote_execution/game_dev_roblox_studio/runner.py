@@ -41,7 +41,6 @@ import os
 import plistlib
 import re
 import shutil
-import time
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -217,14 +216,12 @@ class RobloxStudioRunner(OperationRunnerPort):
         reopen_seconds: float = 120.0,
         front_policy: FrontPolicy | None = None,
         clock: Callable[[], datetime] | None = None,
-        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._studio_mcp = studio_mcp
         # R5.33 (#3193): the worker's declaration of a dedicated window, as its owner wrote it.
         # None declared reads as not dedicated, and R5.18's refusal stands as before.
         self._front_policy = front_policy or FrontPolicy()
         self._clock = clock or (lambda: datetime.now(UTC))
-        self._monotonic = monotonic
         self._files = place_files
         self._proved = proved_on
         # ``StudioMCP`` sits at ``…/RobloxStudio.app/Contents/MacOS/StudioMCP``.
@@ -510,7 +507,6 @@ class RobloxStudioRunner(OperationRunnerPort):
             lease=current_lease(),
             was=front_was(self._app),
             clock=self._clock,
-            monotonic=self._monotonic,
         )
         if front.activated:
             return front, None

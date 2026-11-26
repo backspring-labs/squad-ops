@@ -28,7 +28,6 @@ Release.
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -136,20 +135,18 @@ def bring_studio_forward(
     lease: HeldLease | None,
     was: str,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-    monotonic: Callable[[], float] = time.monotonic,
 ) -> FrontRecord:
     """R5.33's check and its one activation. Returns the record; never raises."""
     reading = _Reading()
     try:
         start, end, threshold = _declared(policy)
         _conditions(app, reading, start, end, threshold, lease=lease, clock=clock)
-        reading.since = monotonic()
         reading.step = "the clock, again"
         if not start <= clock() < end:
             raise _Refused(
                 "outside_window_at_activation", "the worker's window closed before the activation"
             )
-        _activate(app, reading, monotonic)
+        _activate(app, reading)
     except _Refused as r:
         return FrontRecord(False, was, reading.idle_s, r.refused, r.reason)
     except Exception as e:  # noqa: BLE001 - an unread condition never counts as held
@@ -169,7 +166,8 @@ class _Reading:
 
     step: str = "the worker's declaration"
     idle_s: int | None = None
-    since: float = 0.0
+    #: The idle counter at condition 5's read, which the read after the activation is held to.
+    second: float = 0.0
 
 
 def _conditions(
@@ -205,7 +203,7 @@ def _conditions(
         raise _Refused("session_unavailable", "the console session isn't available")
     reading.step = "the idle counter, again"
     second = app.idle_seconds()
-    reading.idle_s = int(second)
+    reading.idle_s, reading.second = int(second), second
     if second < threshold or second < first:
         raise _Refused(
             "input_before_activation",
@@ -213,10 +211,11 @@ def _conditions(
         )
 
 
-def _activate(app: StudioApp, reading: _Reading, monotonic: Callable[[], float]) -> None:
+def _activate(app: StudioApp, reading: _Reading) -> None:
     """The one activation, and the two reads after it. Raises the refusal when it didn't take."""
     reading.step = "Studio's process"
-    if not app.pids():
+    studios = set(app.pids())
+    if not studios:
         raise _Refused(
             "activation_failed", "no Studio is running, and the activation never starts one"
         )
@@ -225,6 +224,14 @@ def _activate(app: StudioApp, reading: _Reading, monotonic: Callable[[], float])
         app.activate()
     except Exception as e:  # noqa: BLE001 - every way it failed is the refusal, named
         raise _Refused("activation_failed", f"the activation failed: {type(e).__name__}") from e
+    reading.step = "Studio's process, after"
+    if set(app.pids()) != studios:
+        # ``open -a`` starts an app that isn't running: a Studio that quit between the read
+        # above and the call came back as another process, which nothing proved.
+        raise _Refused(
+            "activation_failed",
+            "Studio's process changed across the activation, so it may have started one",
+        )
     reading.step = "the front"
     now_was = front_was(app)
     if now_was == "unread":
@@ -233,9 +240,9 @@ def _activate(app: StudioApp, reading: _Reading, monotonic: Callable[[], float])
         raise _Refused("activation_failed", "Studio isn't in front after the activation")
     reading.step = "the idle counter, after"
     third = app.idle_seconds()
-    # Measured after the read: an untouched counter is then at least the time since condition
-    # 5's read, and any input in that span leaves it lower.
-    if third < monotonic() - reading.since:
+    # An untouched counter only rises, so a reading lower than condition 5's is input since it,
+    # with no gap and no clock between the two reads.
+    if third < reading.second:
         raise _Refused(
             "input_during_activation",
             "the Mac was used during the activation, so nothing is played and the front isn't "

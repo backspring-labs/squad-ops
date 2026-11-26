@@ -135,8 +135,7 @@ def _clock(*readings):
 
 
 def _runner(world: Path, mac: _FrontMac, *, policy: FrontPolicy | None = DEDICATED, clock=None,
-            proved_on: ProvedOn = PROVED, monotonic=None) -> RobloxStudioRunner:  # fmt: skip
-    ticks = iter(range(10_000))
+            proved_on: ProvedOn = PROVED) -> RobloxStudioRunner:  # fmt: skip
     return RobloxStudioRunner(
         Path("/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP"),
         session_factory=lambda **kw: StudioMcpSession([sys.executable, str(STANDIN), str(world)], **kw),
@@ -148,7 +147,6 @@ def _runner(world: Path, mac: _FrontMac, *, policy: FrontPolicy | None = DEDICAT
         app=mac,
         front_policy=policy,
         clock=clock or _clock(NOON),
-        monotonic=monotonic or (lambda: float(next(ticks)) * 0.001),
     )  # fmt: skip
 
 
@@ -302,12 +300,11 @@ async def test_the_window_closing_between_the_two_reads_refuses(tmp_path):
 
 
 async def test_input_during_the_activation_plays_nothing_and_moves_the_front_no_more(tmp_path):
-    """The third reading is lower than the time since the second: a person arrived."""
+    """The third reading is lower than the second: a person arrived during the activation."""
     world = _played(tmp_path)
     mac = _FrontMac(world, idle=(300.0, 301.0, 0.2))
-    seconds = iter([100.0, 101.5])  # condition 5's read, then the read after the activation
 
-    result = await _run(world, mac, monotonic=lambda: next(seconds))
+    result = await _run(world, mac)
 
     _refused(result, "input_during_activation")
     assert mac.activations == 1
@@ -326,6 +323,43 @@ async def test_an_activation_that_fails_is_tried_once(tmp_path, activation):
 
     _refused(result, "activation_failed")
     assert mac.activations == 1
+
+
+@pytest.mark.parametrize("third", [301.0, 300.9], ids=["equal-to-the-second", "just-under-it"])
+async def test_the_read_after_the_activation_is_held_to_the_second_read(tmp_path, third):
+    """No gap between the two reads: an untouched counter can't read lower than the second, and
+    a reading equal to it is a counter that didn't move, which nobody touched."""
+    world = _played(tmp_path)
+    mac = _FrontMac(world, idle=(300.0, 301.0, third))
+
+    result = await _run(world, mac)
+
+    if third < 301.0:
+        _refused(result, "input_during_activation")
+    else:
+        assert result.status is OperationStatus.COMPLETED, result.reason
+
+
+async def test_a_studio_restarted_by_the_activation_is_refused(tmp_path):
+    """The reviewer's change 1: ``open -a`` starts an app that isn't running, so a Studio that quit
+    just before the call comes back as another process. Bug caught: a play on a Studio the
+    activation started, which nothing proved."""
+    world = _played(tmp_path)
+    mac = _FrontMac(world)
+    original = mac.activate
+
+    def restarts_studio():
+        original()
+        mac.pid = 5151  # another process: the one ``open -a`` started
+
+    mac.activate = restarts_studio
+
+    result = await _run(world, mac)
+
+    _refused(result, "activation_failed")
+    assert mac.activations == 1
+    assert "process changed across the activation" in result.reason
+    assert _inputs(tmp_path) == []
 
 
 async def test_a_studio_that_quit_before_the_activation_is_never_started(tmp_path):
