@@ -1,7 +1,13 @@
 # 2.9 plan — stabilization: execution evidence a supervised Roblox Campaign can trust, an unattended worker that is safe, and faster plays
 
-**Status: DRAFT, revision 3 (2026-11-26), for the owner's adoption. Not adopted.** It places nothing: SIP ledgers and
-issue labels move when the owner adopts it.
+**Status: ADOPTED 2026-11-26, revision 3.** The owner, in the Spark session: "You can have full access to run both
+lanes for as long as possible to get to the 2.9 cut. THis is your approval to start to execute the plan when ready and
+use your recommendaiotns and best jusdgement. Ping me with any critical issues."
+- **What the adoption is:** the rulings D1–D16 as this revision states them, which were recommendations until then.
+- **What it leaves to the MacBook lane's session:** that lane's approval, D12's takeover hours and the dedicated
+  window's values. Each is taken there, from the owner's own words.
+- **Placement follows in the adoption PR:** the lanes' labels, SIP-0117's ledger rows for the two amendments (items 7
+  and 12), the portfolio and the ROADMAP row.
 - **Revision 3** answers the owner's ask of 2026-11-26, made once the Spark was back from its move onto a UPS:
   re-assess the plan so the two lanes are coordinated, and so the line runs as far as it can to the cut without the
   owner.
@@ -362,7 +368,7 @@ the publisher's return handling, which is stabilization work (the 2.8 plan §7).
   - a rollback to the previous set is shown to restore it;
   - any change to how earlier evaluations compare is recorded.
 
-## 5. The rulings (D1–D16), for adoption
+## 5. The rulings (D1–D16), adopted 2026-11-26
 
 **D1–D10** are the outside reviewer's recommendations, with the Spark's changes (§7). Adoption makes them the owner's.
 
@@ -488,7 +494,7 @@ The cut record says what one window does not show: reliability across machines, 
    in a release whose claim includes their being unchanged, and it owes its own replay. It stays open and unplaced
    (SIP-0112 H.37), a 2.10 candidate with that replay.
 
-## 8. The open issues, each placed (proposed, D10)
+## 8. The open issues, each placed (D10)
 
 The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed for item 13. #3251 was filed on
 2026-11-26, which makes 40.
