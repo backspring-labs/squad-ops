@@ -51,7 +51,7 @@ from squadops.cycles.skillset_content import (
     kept_document_of,
     scenario_vocabulary_for,
 )
-from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.cycles.vault_reads import retrieve_recorded
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.source_delivery import SourceDeliveryRefused, regression_baseline
 from squadops.projects.derived_profile import DISCLOSED, DerivedProfile
@@ -355,7 +355,9 @@ async def _requirements(cycle: Cycle, named: Any, repository: Any, vault: Any) -
             "ref": f"repo:file:{source.path}@{context.pinned_commit}",
             "content": content.decode("utf-8", errors="replace"),
         }
-    got = await retrieve_or_absent(vault, str(source.artifact_id))
-    if got is None:
-        raise _ExecutionError(f"the requirements source {named} is no artifact the vault holds")
-    return {"ref": str(source.artifact_id), "content": got[1].decode("utf-8", errors="replace")}
+    # #3128: a missing artifact and a vault that didn't answer were both "no artifact the vault
+    # holds", in a run that ended as ``other``.
+    _ref, content = await retrieve_recorded(
+        vault, str(source.artifact_id), what=f"the requirements source {named}"
+    )
+    return {"ref": str(source.artifact_id), "content": content.decode("utf-8", errors="replace")}

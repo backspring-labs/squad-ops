@@ -66,6 +66,7 @@ from squadops.campaigns.runner_acceptance import RunnerSetup
 from squadops.cycles.failure_evidence import CRITERIA_PASS_ON_HEAD_KEY
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+from squadops.cycles.vault_reads import retrieve_recorded
 from squadops.execution.product_suite import (
     SuiteRun,
     product_tree_at_pin,
@@ -369,8 +370,10 @@ async def _criterion_tests(
     file whose latest entry is a removal is no test to run."""
     candidates = [(art_id, ref) for art_id, ref in stored_artifacts if ref.filename in placed]
     contents: dict[str, bytes] = {}
-    for art_id, _ref in candidates:
-        _stored, contents[art_id] = await vault.retrieve(art_id)
+    for art_id, ref in candidates:
+        _stored, contents[art_id] = await retrieve_recorded(
+            vault, art_id, what=f"the criterion file {ref.filename}"
+        )
     changes, _left_out = squad_changes(candidates, contents, head)
     return {path: content.decode("utf-8") for path, content in changes.items() if content}
 
