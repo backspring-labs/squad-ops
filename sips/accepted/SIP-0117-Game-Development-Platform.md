@@ -1756,6 +1756,7 @@ replaces. The worker's refusal of a Studio whose tool list differs names the too
 - a `/3` record missing its per-tool keys is refused by name, as any record with the wrong keys is.
 
 The live runs on the Mac's Studio are in the PR.
+
 ## R5.33 A dedicated worker brings Studio to the front, inside its declared window (#3193, 2026-11-26; R5.18, R5.28, R5.29; the 2.9 plan's item 12, D1, D7, D12)
 
 **What changes.** R5.18 refuses a scenario that acts through Studio's input unless Studio is the app in front, and R5.28 reads that refusal as the worker's own. Both stand. This adds one thing: on a worker its owner has declared dedicated, inside the window its owner has declared, the runner may bring Studio to the front itself, once per operation, before R5.18's refusal. It does so only when every condition below holds at the moment it is read. Anything else, and anything it can't read, is R5.18's refusal as before.
