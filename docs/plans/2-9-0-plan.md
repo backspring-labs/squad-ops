@@ -8,7 +8,8 @@ issue labels move when the owner adopts it.
   - **Unchanged:** every item's rule and done-when, the rulings D1–D10, and §8's placement.
   - **Changed:** who builds what, the order, how the lanes work together (§11), and the authority the run needs, as
     rulings for adoption (D11–D16, §5). §12 lists each change.
-  - The lanes agreed the split by message on 2026-11-26. No outside reviewer has read revision 3.
+  - The lanes agreed the split by message on 2026-11-26, and the MacBook lane's read of the text is applied (its
+    seven points, on PR #3249). No outside reviewer has read revision 3.
 - **Revision 2** (2026-11-20) takes the owner's outside review of revision 1, posted on PR #3249, whose disposition was "request
   revision before adoption". It takes the review's recommended rulings, with six changes and one deferral the Spark
   recommended and the owner accepted ("Create revision 2 as you recommend"). §7 lists each.
@@ -386,11 +387,11 @@ the publisher's return handling, which is stabilization work (the 2.8 plan §7).
 | | ruling |
 |---|---|
 | D11 | **The grant.** For 2.9's work each lane builds, merges its own PRs on green, and makes and records the calls this plan leaves open. The Spark lane deploys when no Campaign is running, switches the provider for a window, and runs the line's cycles. A PR that fixes a red main may merge over that red when its own checks are green. The owner is told afterwards, and is called only for a major problem, a security risk, or what D16 keeps. |
-| D12 | **The takeover hours.** The owner names the hours in which the Mac may be taken over: for a requalification, a worker proof, a measured play, a rehearsal or the certification window. Inside them the MacBook lane runs those without asking each time. Outside them nothing takes the Mac over. The owner writes the dedicated window's values in the worker's settings (D7). |
-| D13 | **A window's gates.** In 2.9's rehearsals and its certification window the Spark lane rules the Campaign's gates signed in as `squadops-supervisor`, the least-privilege identity D8 asks for. It rules an increment's gate and starts, pauses and aborts a Campaign, and it can't resume an escalation or a limit's pause. The gate rules are pre-registered. The MacBook lane reads each change request first where it answers inside the ruling's bound, and a ruling made without that read says so. An escalation, a limit's pause and the owner's pause wait for the owner. |
+| D12 | **The takeover hours.** The owner names the hours in which the Mac may be taken over: for a requalification, a worker proof, a measured play, a rehearsal or the certification window. Inside them the MacBook lane runs those without asking each time. Outside them nothing takes the Mac over. The owner writes the dedicated window's values in the worker's settings (D7), inside those hours, so the runner refuses outside them. The hours permit a run and don't override a person: before any takeover run the MacBook lane's session reads what the runner will read, the idle counter against its threshold and the lock. Recent input holds the run, and a locked Mac waits for the owner. |
+| D13 | **A window's gates.** In 2.9's rehearsals and its certification window the Spark lane rules the Campaign's gates signed in as `squadops-supervisor`, the least-privilege identity D8 asks for. It rules an increment's gate and starts, pauses and aborts a Campaign, and it can't resume an escalation or a limit's pause. The bar is written into the pre-registration, so every ruling applies the same one; it is the bar of the 2.8 demonstration's amendment 12e. The MacBook lane reads each change request first where it answers inside the ruling's bound, a number the pre-registration states. Its read is advisory: the Spark lane rules, the notes carry both readings where they differ, and a ruling made without the read says so. An escalation, a limit's pause and the owner's pause wait for the owner. |
 | D14 | **Amendments, and the outside review.** Adoption covers each numbered amendment that implements a ruling of this table as written (items 5, 7 and 12). One that departs from its ruling comes back to the owner. The owner's outside review reads two things, once, before the certification window opens: item 12's activation rule, and the window's pre-registration. Neither holds the build. |
-| D15 | **The tag.** The Spark lane takes the cut to a green release PR with the cut record. The owner gives the word for the tag, since the Release publishes itself on the push. |
-| D16 | **What waits for the owner, whatever the grant:** the tag (D15); the takeover hours and the window's values (D12); an escalation or a limit's pause (D13); a change to the claim or to a done-when; the disposition of a missed done-when, except item 13's target, whose miss the claim already allows on the record; branch protection, secrets and anything that touches a held-out suite; an action a permission check refuses. |
+| D15 | **The tag.** The Spark lane takes the cut to a green release PR with the cut record. The owner gives the word for that PR's merge and the tag, since the Release publishes itself on the push. |
+| D16 | **What waits for the owner, whatever the grant:** the tag (D15); the takeover hours and the window's values (D12); an escalation or a limit's pause (D13); a change to the claim or to a done-when; the disposition of a missed done-when, except item 13's target, whose miss the claim already allows on the record; branch protection, secrets and anything that touches a held-out suite; an action a permission check refuses. The owner's standing rulings on hosts, products, credentials and SIP status stand too: nothing is published from Studio and only the local test place is opened; no real product is written; no host setting changes beyond the worker's own; no credential is created or rotated, and `docker-compose.yml` is unchanged; no lane accepts a SIP, or promotes one outside the release PR's sweep. |
 
 ## 6. The certification window, pre-registered
 
@@ -405,10 +406,13 @@ The shakeout's exit rule (CLAUDE.md) applies, and the cut record reports the rou
 **One final deploy.** Every live case below runs on the final deploy, which carries the dependency move (item 14).
 The rehearsals before it are uncounted, and the exit rule is theirs: a full pass with no new seam finding.
 
-**A quiet host.** Through the window, and during any measured play, the Mac runs no tests, no Docker and no model.
+**A quiet host.** Through the window, through a rehearsal's plays, and during any measured play, the Mac runs no
+tests, no Docker and no model.
 - It is a recorded check, with the readings item 13 lists, and no promise.
 - Two things keep running there: the MacBook lane's session, and the worker. The worker's checkout isn't pulled or
   switched until the window closes.
+- The front guard doesn't run. With it running, case 2 would show the guard and not the runner, and case 3 couldn't
+  pass.
 - The pre-registration says whether the owner's own apps are closed for the measured sets, or only recorded.
 
 **The cases a person shows.** Cases 3 and 4 need a person at the Mac: real input that prevents an activation, and a
@@ -546,8 +550,8 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 **What each machine is for.**
 - **The Spark** is always on, with 20 cores, 121 GB and the GPU. It runs the deploy, every cycle and Campaign, the
   replays, the shakeout and the cut, and it holds the evidence.
-- **The MacBook** is a 24 GB laptop and the only Studio host. It runs none of the line's cycles (SIP-0118 R5.4) and no
-  replay.
+- **The MacBook** is a 24 GB laptop and the only Studio host. It runs none of the line's rehearsal or counted cycles
+  (SIP-0118 R5.4) and no replay. Its only cycle is the smoke self-test below.
   - Its limit isn't compute. It is one serial session, the owner's takeover hours, and a host a person also uses.
   - Its Studio items are the line's critical path, and no other lane can pick them up.
 
@@ -566,7 +570,8 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 
 **Merges and reviews.**
 - Each lane merges its own PRs on green, through one merge check kept in `scripts/dev/`. The check reads main's `CI`
-  run at main's current tip in the same command, because the other lane can merge at any moment.
+  run at main's current tip in the same command, because the other lane can merge at any moment. The Spark lane
+  writes it first. Until it exists, each lane reads main's newest `CI` run by hand.
 - A PR that changes a shared contract names the contract, and carries the other lane's review and a wiring test
   (SIP-0112 §8.2's rule). In 2.9 the shared contracts are the worker's cancel protocol, its seam with the runner, and
   the request templates every stack reads.
@@ -576,8 +581,12 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 - Only the MacBook lane touches the worker, its checkout and Studio. A change to the runner or the worker is followed
   by a requalification inside the takeover hours, and the window's pre-registration carries the qualification's
   identity.
-- For a window the Spark lane switches the provider on, and off again at the window's end. Until item 12 ships, the
-  MacBook lane's guard keeps Studio in front.
+  - **Item 14's landing is such a change.** The worker runs from the main checkout's environment, so its dependencies
+    move with the pull. The MacBook lane rebuilds its environments, runs the worker proof and requalifies.
+- For a window the Spark lane switches the provider on, and off again at the window's end.
+- **The front guard.** Until item 12 ships, the MacBook lane's guard keeps Studio in front for that lane's own
+  takeover runs. It takes the front from a person, and D12's hours are what permit that. Once item 12 ships the guard
+  runs in no rehearsal and no window.
 
 **Messages.**
 - The lanes talk by session message, and a message's first line says what it is.
@@ -620,6 +629,10 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 7. **Item 13 records the host at each measured set, and the window holds the Mac quiet.** These are the MacBook
    lane's conditions. No memory figure exists today for Studio, the worker, the Mac's own stack or its local model.
 8. **§6 names the cases a person shows, and says what a lane's pause is.**
+9. **The MacBook lane's read of this text is applied** (PR #3249, its comment of 2026-11-26). It relates D12's hours to
+   D7's window, has the session look for a person before a takeover run, stops the guard once item 12 ships, states
+   D13's bar and bound, keeps the owner's standing rulings in D16, counts item 14's landing as a change to the worker,
+   and holds the quiet host through a rehearsal.
 
 **Not changed:** any item's rule or done-when, D1–D10, and §8. The 39 issues open on 2026-11-26 are the 39 that §8
 places.
