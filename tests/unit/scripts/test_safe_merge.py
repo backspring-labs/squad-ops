@@ -49,7 +49,8 @@ case "$*" in
   "pr merge "*) exit "${FAKE_MERGE_RC:-0}" ;;
   "pr view "*"state,mergeCommit"*) printf '%s\\n' "$FAKE_AFTER" ;;
   "api -X POST "*"/git/refs "*)
-    [ -e "$FAKE_LOCK" ] && exit 1
+    if [ -n "${FAKE_LOCK_REFUSED:-}" ]; then echo "$FAKE_LOCK_REFUSED" >&2; exit 1; fi
+    if [ -e "$FAKE_LOCK" ]; then echo "gh: Reference already exists (HTTP 422)" >&2; exit 1; fi
     printf '%s' "${*##*sha=}" > "$FAKE_LOCK"
     ;;
   "api -X DELETE "*"/git/refs/heads/safe-merge-lock") rm "$FAKE_LOCK" 2>/dev/null || exit 1 ;;
@@ -351,6 +352,21 @@ def test_main_moving_between_the_check_and_the_lock_gives_the_lock_back_and_merg
     assert "a merge now would cancel it" in result.stderr
     assert MERGE not in calls
     assert not (tmp_path / "lock").exists()
+
+
+def test_a_lock_github_wont_create_is_refused_in_githubs_own_words(tmp_path):
+    """No lock is out, so no other merge is to blame. Bug caught: a 403 or a dropped connection
+    reported as "the lock was held a moment ago", which sends a lane looking at the other."""
+    result, calls = _run(
+        tmp_path, "3249", HEAD, FAKE_LOCK_REFUSED="gh: Resource not accessible (HTTP 403)"
+    )
+
+    assert result.returncode == 1
+    assert (
+        "the merge lock couldn't be taken, and no lock is out: "
+        "gh: Resource not accessible (HTTP 403)"
+    ) in result.stderr
+    assert MERGE not in calls
 
 
 def test_a_dry_run_takes_no_lock(tmp_path):

@@ -259,15 +259,17 @@ trap release_lock EXIT
 
 # Take the lock at main's tip. 0 held; 3 another merge holds it, and waiting may change that.
 take_lock() {
-    local held
-    if gh api -X POST "repos/{owner}/{repo}/git/refs" -f "ref=refs/$LOCK" -f "sha=$MAIN_TIP" \
-        >/dev/null 2>&1; then
+    local held refused
+    if refused=$(gh api -X POST "repos/{owner}/{repo}/git/refs" -f "ref=refs/$LOCK" \
+        -f "sha=$MAIN_TIP" 2>&1 >/dev/null); then
         HOLDS_LOCK=1
         return 0
     fi
     if ! held=$(lock_commit); then
-        # Gone between the two calls: its holder finished. The next round takes it.
-        REASON="the merge lock was held a moment ago"
+        # No lock is out, so it wasn't another merge that refused this one. Either its holder
+        # finished between the two calls, or GitHub refused the creation for a reason of its
+        # own (a 403, the network). The creation's own words say which.
+        REASON="the merge lock couldn't be taken, and no lock is out: $refused"
         return 3
     fi
     if [ "$held" != "$MAIN_TIP" ]; then
