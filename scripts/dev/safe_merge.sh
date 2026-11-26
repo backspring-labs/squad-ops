@@ -10,10 +10,23 @@
 #   2. the head's own `CI` run has completed with success, and no check on the PR is pending
 #      or failed;
 #   3. main's newest `CI` run is on main's current tip, and has completed with success;
-#   4. then: gh pr merge --squash --delete-branch --match-head-commit <sha>.
+#   4. it holds the merge lock, and 3 still holds under it;
+#   5. then: gh pr merge --squash --delete-branch --match-head-commit <sha>.
+#
+# The lock is the branch `safe-merge-lock`, created at main's tip through the API. GitHub creates
+# a ref atomically and refuses one that exists, so of two waiters released by the same run on
+# main, one merges and the other waits for the run that merge starts. Without it both merged
+# within seconds of each other, and the second cancelled the first's run (found 2026-11-26).
+# No workflow runs on a push to that branch. It is held only for the last reading of main and the
+# merge, and released on any exit. A lock left behind by a process that was killed:
+#   - whose commit is no longer main's tip is cleared by the next waiter: its holder merged;
+#   - at main's tip is never cleared by a waiter, which can't tell it from a merge in flight. The
+#     waiter refuses at its deadline, naming it. A lane clears it with --clear-lock once the other
+#     lane confirms it has no merge out.
 #
 # Usage:
 #   scripts/dev/safe_merge.sh <pr-number> <full-head-sha> [--wait] [--fixes-red-main] [--dry-run]
+#   scripts/dev/safe_merge.sh --clear-lock
 #
 #   --wait            poll until 2 and 3 settle: every SAFE_MERGE_POLL_SECONDS (default 30),
 #                     for up to SAFE_MERGE_WAIT_SECONDS (default 3600). A failure still refuses
@@ -21,6 +34,7 @@
 #   --fixes-red-main  this PR is the fix for main's red. Main's newest CI run may have failed.
 #                     It must still be on main's tip and completed (the 2.9 plan's D11).
 #   --dry-run         run every check, and print the merge command without running it.
+#   --clear-lock      delete the merge lock, and do nothing else.
 #
 # Exit: 0 merged (or would merge); 1 refused, with the reason on stderr; 2 usage.
 #
@@ -29,7 +43,7 @@
 set -euo pipefail
 
 usage() {
-    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -38,11 +52,14 @@ sha=""
 wait_mode=0
 fixes_red=0
 dry_run=0
+clear_lock=0
+LOCK="heads/safe-merge-lock"
 while [ $# -gt 0 ]; do
     case "$1" in
         --wait) wait_mode=1 ;;
         --fixes-red-main) fixes_red=1 ;;
         --dry-run) dry_run=1 ;;
+        --clear-lock) clear_lock=1 ;;
         -h | --help) usage ;;
         -*)
             echo "safe_merge: unknown option '$1'" >&2
@@ -61,6 +78,22 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+if [ "$clear_lock" -eq 1 ]; then
+    if [ -n "$pr" ] || [ "$wait_mode" -eq 1 ] || [ "$fixes_red" -eq 1 ] || [ "$dry_run" -eq 1 ]; then
+        echo "safe_merge: --clear-lock is given alone" >&2
+        exit 2
+    fi
+    if ! left=$(gh api "repos/{owner}/{repo}/git/ref/$LOCK" --jq '.object.sha' 2>/dev/null); then
+        echo "safe_merge: there is no merge lock to clear"
+        exit 0
+    fi
+    if ! gh api -X DELETE "repos/{owner}/{repo}/git/refs/$LOCK" >/dev/null 2>&1; then
+        echo "safe_merge: the merge lock at $left couldn't be deleted" >&2
+        exit 1
+    fi
+    echo "safe_merge: cleared the merge lock left at $left"
+    exit 0
+fi
 if [ -z "$pr" ] || [ -z "$sha" ]; then
     usage
 fi
@@ -154,6 +187,8 @@ check_head() {
     return 0
 }
 
+MAIN_TIP=""
+
 check_main() {
     local tip run run_sha status conclusion
     if ! git fetch -q origin main; then
@@ -161,6 +196,7 @@ check_main() {
         return 1
     fi
     tip=$(git rev-parse origin/main)
+    MAIN_TIP="$tip"
     if ! run=$(gh run list --branch main --workflow CI --limit 1 --json headSha,status,conclusion \
         --jq '.[0] | [(.headSha // "none"), (.status // "none"), (.conclusion // "")] | @tsv'); then
         REASON="main's CI run couldn't be read"
@@ -202,10 +238,64 @@ check_all() {
     return "$rc"
 }
 
+HOLDS_LOCK=0
+
+lock_commit() {
+    gh api "repos/{owner}/{repo}/git/ref/$LOCK" --jq '.object.sha' 2>/dev/null
+}
+
+release_lock() {
+    if [ "$HOLDS_LOCK" -eq 1 ]; then
+        HOLDS_LOCK=0
+        if ! gh api -X DELETE "repos/{owner}/{repo}/git/refs/$LOCK" >/dev/null 2>&1; then
+            # Gone already is fine: a waiter cleared it once main's tip had moved past it.
+            if left=$(lock_commit); then
+                echo "safe_merge: the merge lock at $left couldn't be deleted. Clear it with --clear-lock" >&2
+            fi
+        fi
+    fi
+}
+trap release_lock EXIT
+
+# Take the lock at main's tip. 0 held; 3 another merge holds it, and waiting may change that.
+take_lock() {
+    local held
+    if gh api -X POST "repos/{owner}/{repo}/git/refs" -f "ref=refs/$LOCK" -f "sha=$MAIN_TIP" \
+        >/dev/null 2>&1; then
+        HOLDS_LOCK=1
+        return 0
+    fi
+    if ! held=$(lock_commit); then
+        # Gone between the two calls: its holder finished. The next round takes it.
+        REASON="the merge lock was held a moment ago"
+        return 3
+    fi
+    if [ "$held" != "$MAIN_TIP" ]; then
+        # Its holder merged, since main's tip moved past it, and didn't delete it.
+        echo "safe_merge: clearing a merge lock left at $held, which main has moved past" >&2
+        gh api -X DELETE "repos/{owner}/{repo}/git/refs/$LOCK" >/dev/null 2>&1 || true
+        REASON="a merge lock left behind was cleared"
+        return 3
+    fi
+    REASON="another merge holds the lock: the branch safe-merge-lock is at main's tip, $held. If neither lane has a merge out, a stopped one left it: clear it with --clear-lock"
+    return 3
+}
+
 deadline=$(($(date +%s) + ${SAFE_MERGE_WAIT_SECONDS:-3600}))
 while :; do
     rc=0
     check_all || rc=$?
+    if [ "$rc" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
+        # The checks hold. Take the lock, and read main again under it: another waiter may have
+        # merged between that reading and this one.
+        take_lock || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            check_main || rc=$?
+            if [ "$rc" -ne 0 ]; then
+                release_lock
+            fi
+        fi
+    fi
     if [ "$rc" -eq 0 ]; then
         break
     fi
@@ -229,6 +319,7 @@ fi
 # The merge itself is what counts, so read the PR's state afterwards.
 merge_rc=0
 gh pr merge "$pr" --squash --delete-branch --match-head-commit "$sha" || merge_rc=$?
+release_lock
 if ! merged=$(gh pr view "$pr" --json state,mergeCommit \
     --jq '[.state, (.mergeCommit.oid // "")] | @tsv'); then
     echo "safe_merge: the merge was asked for (gh exit $merge_rc), and PR #$pr's state couldn't be read after it" >&2
