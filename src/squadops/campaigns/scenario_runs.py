@@ -51,6 +51,7 @@ from squadops.remote_execution.scenario import (
     scenario_digest,
     staged_revision,
 )
+from squadops.remote_execution.workers import OperationOwner
 
 if TYPE_CHECKING:
     from squadops.capabilities.operation_supply import SuppliedOperation
@@ -111,6 +112,7 @@ class ScenarioRuns:
         campaign_id: str,
         increment_id: str,
         dispatch_id: str,
+        owner: OperationOwner,
         unavailable: str = "",
         stored_baselines: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     ) -> None:
@@ -120,6 +122,8 @@ class ScenarioRuns:
         self._campaign_id = campaign_id
         self._increment_id = increment_id
         self._dispatch_id = dispatch_id
+        #: Whose plays these are (#3236): the cycle's cancel, and its Campaign's abort, stop them.
+        self._owner = owner
         self._unavailable = unavailable
         self._stored_baselines = stored_baselines or {}
 
@@ -183,7 +187,7 @@ class ScenarioRuns:
             task_id=acceptance_task_id(self._campaign_id, self._increment_id, criterion_id, side),
             dispatch_id=self._dispatch_id,
         )
-        result = await self._port.run_operation(request)
+        result = await self._port.run_operation(request, self._owner)
         document = records_document(
             request,
             result,

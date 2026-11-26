@@ -44,9 +44,12 @@ from squadops.remote_execution.models import (
 )
 from squadops.remote_execution.registry import WorkerRegistry
 from squadops.remote_execution.scenario import staged_revision
-from squadops.remote_execution.serving import Worker
+from squadops.remote_execution.serving import REASON_CANCELLED, Worker
 from squadops.remote_execution.workers import (
+    ORIGIN_CYCLE,
+    CancelEffect,
     FenceRefusal,
+    OperationOwner,
     OperationState,
     ServedOperation,
     WorkerRegistration,
@@ -55,6 +58,9 @@ from tests.unit.api.worker_world import World, identity
 from tests.unit.remote_execution.registry_contract import T0
 from tests.unit.remote_execution.scenario_fixture import OPEN, door_opens, tree
 from tests.unit.remote_execution.worker_harness import ScriptedRunner, Serving, sleeping_on
+
+#: Whose operations these are (#3236): every request names its owner.
+OWNER = OperationOwner("cyc_path")
 
 BASE_URL = "http://runtime-api"
 DECLARED = ServedOperation(PROVIDER, OPERATION)
@@ -218,7 +224,7 @@ class RemotePathContract:
         text on the wire, the fence on the result, the result on the requester's read."""
         asked = path.ask()
         async with path.serving(path.worker()):
-            result = await path.requester().run_operation(asked)
+            result = await path.requester().run_operation(asked, OWNER)
 
         assert result.status is OperationStatus.COMPLETED
         assert result.dispatch_id == asked.dispatch_id
@@ -231,7 +237,7 @@ class RemotePathContract:
 
     async def test_with_no_worker_at_dispatch_nothing_is_queued_and_it_is_not_executed(self, path):
         """Bug caught: an operation queued for nobody, so the task waits out its whole wait."""
-        result = await path.requester().run_operation(path.ask())
+        result = await path.requester().run_operation(path.ask(), OWNER)
 
         assert result.status is OperationStatus.NOT_EXECUTED
         assert result.reason == f"no registered worker serves {PROVIDER}/{OPERATION}"
@@ -243,7 +249,7 @@ class RemotePathContract:
         asked = path.ask()
         runner = path.hanging()
         async with path.serving(path.worker(runner)):
-            result = await path.requester(wait=10).run_operation(asked)
+            result = await path.requester(wait=10).run_operation(asked, OWNER)
 
         assert result.status is OperationStatus.INTERRUPTED
         assert result.reason == (
@@ -264,7 +270,7 @@ class RemotePathContract:
         stuck = path.hanging()
         waiting = None
         async with path.serving(path.worker(stuck, worker_id="first", line=first_line), "first"):
-            waiting = asyncio.ensure_future(path.requester().run_operation(asked))
+            waiting = asyncio.ensure_future(path.requester().run_operation(asked, OWNER))
             await _until(_running, stuck)
             # Most of the requester's wait is still left: whether the case holds is decided by
             # the lease running out, never by how fast the machine took the path's rounds (#3110).
@@ -282,7 +288,7 @@ class RemotePathContract:
         was claimed again, read as the operation's result."""
         asked = path.ask()
         early_session = await path.registry.register(_registration("first"))
-        waiting = asyncio.ensure_future(path.requester().run_operation(asked))
+        waiting = asyncio.ensure_future(path.requester().run_operation(asked, OWNER))
         await _until(_queued, path, asked)
         early = await path.registry.claim(early_session.session_id)
         path.clock.advance(leasing.LEASE_SECONDS + 1)
@@ -307,7 +313,7 @@ class RemotePathContract:
         asked = path.ask()
         first_line = path.line()
         first_line.drop_answer_to = ("POST", "/api/v1/remote-operations")
-        stored = asyncio.ensure_future(path.requester(first_line).run_operation(asked))
+        stored = asyncio.ensure_future(path.requester(first_line).run_operation(asked, OWNER))
         await _until(_answer_lost, first_line)
         first_line.down = True  # the process is gone: nothing it says reaches the runtime
         stored.cancel()
@@ -323,7 +329,7 @@ class RemotePathContract:
 
         runner.run = counted
         async with path.serving(path.worker(runner)):
-            result = await path.requester().run_operation(asked)
+            result = await path.requester().run_operation(asked, OWNER)
 
         assert first_line.dropped == 1
         assert result.status is OperationStatus.COMPLETED
@@ -335,12 +341,41 @@ class RemotePathContract:
             result,
         )
 
+    async def test_a_cycle_cancelled_during_a_play_stops_the_worker_and_runs_nothing_more(
+        self, path
+    ):
+        """SIP-0117 R5.30 (#3236), from the agent's port to the worker's tool. Bug caught
+        (2026-11-19): an aborted Campaign's claimed play ran to its end and its result was
+        accepted, since nothing asked the cycle's operations to stop. And the play after it:
+        a requester that reads ``interrupted`` and asks for its next one."""
+        asked = path.ask()
+        playing = path.hanging()
+        async with path.serving(path.worker(playing)):
+            waiting = asyncio.ensure_future(path.requester().run_operation(asked, OWNER))
+            await _until(_running, playing)
+            resets_before = playing.resets
+
+            reached = await path.registry.cancel_owned(
+                ORIGIN_CYCLE, "cyc_path", because="cycle cyc_path was cancelled", final=True
+            )
+            result = await waiting
+            after = await path.requester().run_operation(path.ask("send-2"), OWNER)
+
+        stored = await path.operation_of(asked)
+        assert [c.effect for c in reached] == [CancelEffect.STOP_REQUESTED]
+        assert (result.status, result.reason) == (OperationStatus.INTERRUPTED, REASON_CANCELLED)
+        assert (stored.state, stored.late_result) == (OperationState.SETTLED, None)
+        # The worker stopped its tool and reset it, with nobody there, and ran nothing else.
+        assert (len(playing.stopped_at), playing.resets - resets_before) == (1, 1)
+        assert (after.status, len(playing.runs)) == (OperationStatus.NOT_EXECUTED, 1)
+        assert "cycle cyc_path was cancelled" in after.reason
+
     async def test_a_superseded_send_is_stopped_and_never_runs_beside_the_current_one(self, path):
         """Bug caught: the task's older send still queued after a newer one asked, so a worker
         runs both and the older result lands for nobody, or is read as the newer's."""
         await path.registry.register(_registration("idle"))  # a worker is there, not claiming
         older = path.ask("send-1")
-        waiting = asyncio.ensure_future(path.requester().run_operation(older))
+        waiting = asyncio.ensure_future(path.requester().run_operation(older, OWNER))
         await _until(_queued, path, older)
         newer = path.ask("send-2")  # the runtime now waits on send-2
         runner = FixtureOperationRunner(sleep=path.sleep)
@@ -353,7 +388,7 @@ class RemotePathContract:
 
         runner.run = counted
         async with path.serving(path.worker(runner)):
-            current = await path.requester().run_operation(newer)
+            current = await path.requester().run_operation(newer, OWNER)
             stale = await waiting
 
         assert current.status is OperationStatus.COMPLETED

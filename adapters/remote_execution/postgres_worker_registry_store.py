@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import asyncpg
 
@@ -44,7 +45,8 @@ _SESSION_COLUMNS = (
 )
 _OPERATION_COLUMNS = (
     "operation_id, provider, operation, request, origin, max_attempts, state, created_at, "
-    "attempt, lease_id, session_id, lease_expires_at, cancel_requested, result, settled_at"
+    "attempt, lease_id, session_id, lease_expires_at, cancel_requested, result, settled_at, "
+    "late_result"
 )
 _ATTEMPT_COLUMNS = (
     "operation_id, attempt, session_id, worker_id, lease_id, claimed_at, ended_at, outcome"
@@ -142,15 +144,42 @@ class _PostgresTransaction(WorkerRegistryTransaction):
         )
         return [_operation(row) for row in rows]
 
+    async def unsettled_operations_owned(self, key: str, value: str) -> list[QueuedOperation]:
+        rows = await self._conn.fetch(
+            f"SELECT {_OPERATION_COLUMNS} FROM remote_operations "
+            "WHERE origin ->> $1 = $2 AND state <> $3 ORDER BY created_at, operation_id",
+            key,
+            value,
+            OperationState.SETTLED.value,
+        )
+        return [_operation(row) for row in rows]
+
+    async def owner_cancelled_at(self, key: str, value: str) -> datetime | None:
+        return await self._conn.fetchval(
+            "SELECT cancelled_at FROM remote_operation_cancelled_owners "
+            "WHERE owner_key = $1 AND owner_value = $2",
+            key,
+            value,
+        )
+
+    async def record_owner_cancelled(self, key: str, value: str, at: datetime) -> None:
+        await self._conn.execute(
+            "INSERT INTO remote_operation_cancelled_owners (owner_key, owner_value, cancelled_at) "
+            "VALUES ($1,$2,$3) ON CONFLICT (owner_key, owner_value) DO NOTHING",
+            key,
+            value,
+            at,
+        )
+
     async def save_operation(self, operation: QueuedOperation) -> None:
         await self._conn.execute(
             f"INSERT INTO remote_operations ({_OPERATION_COLUMNS}) "
-            "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) "
+            "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) "
             "ON CONFLICT (operation_id) DO UPDATE SET state = EXCLUDED.state, "
             "attempt = EXCLUDED.attempt, lease_id = EXCLUDED.lease_id, "
             "session_id = EXCLUDED.session_id, lease_expires_at = EXCLUDED.lease_expires_at, "
             "cancel_requested = EXCLUDED.cancel_requested, result = EXCLUDED.result, "
-            "settled_at = EXCLUDED.settled_at",
+            "settled_at = EXCLUDED.settled_at, late_result = EXCLUDED.late_result",
             operation.operation_id,
             operation.request.provider,
             operation.request.operation,
@@ -166,6 +195,7 @@ class _PostgresTransaction(WorkerRegistryTransaction):
             operation.cancel_requested,
             result_to_wire(operation.result) if operation.result is not None else None,
             operation.settled_at,
+            result_to_wire(operation.late_result) if operation.late_result is not None else None,
         )
 
     async def attempt(self, operation_id: str, attempt: int) -> Attempt | None:
@@ -265,6 +295,9 @@ def _operation(row: asyncpg.Record) -> QueuedOperation:
         cancel_requested=row["cancel_requested"],
         result=result_from_wire(row["result"]) if row["result"] is not None else None,
         settled_at=row["settled_at"],
+        late_result=(
+            result_from_wire(row["late_result"]) if row["late_result"] is not None else None
+        ),
     )
 
 

@@ -22,17 +22,28 @@ from typing import TYPE_CHECKING
 
 from squadops.core.lineage import new_id
 from squadops.remote_execution import leasing
-from squadops.remote_execution.models import RemoteOperationRequest, RemoteOperationResult
+from squadops.remote_execution.models import (
+    OperationStatus,
+    RemoteOperationRequest,
+    RemoteOperationResult,
+)
 from squadops.remote_execution.workers import (
+    ORIGIN_CAMPAIGN,
+    ORIGIN_CYCLE,
+    OWNER_KEYS,
     Attempt,
     AttemptOutcome,
+    CancelEffect,
+    CancelledOperation,
     Claim,
     Enqueued,
     Fence,
     FenceRefusal,
     LeaseReading,
     NoWorker,
+    OperationOwner,
     OperationState,
+    OwnerCancelled,
     QueuedOperation,
     RecordedRefusal,
     ResultReading,
@@ -167,10 +178,26 @@ class WorkerRegistry:
             operation = await tx.operation(fence.operation_id)
             refusal = leasing.fence_refusal(operation, fence, now)
             if refusal is None:
-                await tx.save_operation(leasing.settled(_held(operation), result, now))
+                held = _held(operation)
+                if held.cancel_requested and result.status is not OperationStatus.INTERRUPTED:
+                    # #3236: the cancel was recorded first, so it wins. The worker's result is
+                    # received and kept, and is no evidence. A worker that saw the cancel
+                    # answers ``interrupted`` itself, and that is the operation's result.
+                    await tx.save_operation(leasing.settled_after_cancel(held, result, now))
+                    await self._close_attempt(tx, fence, AttemptOutcome.CANCELLED, now)
+                    logger.info(
+                        "remote_operation_result_after_cancel",
+                        extra={
+                            "operation_id": fence.operation_id,
+                            "attempt": fence.attempt,
+                            "late_status": result.status.value,
+                        },
+                    )
+                    return ResultReading(None)
+                await tx.save_operation(leasing.settled(held, result, now))
                 await self._close_attempt(tx, fence, AttemptOutcome.ACCEPTED, now)
                 return ResultReading(None)
-            if refusal is FenceRefusal.ALREADY_SETTLED and await self._was_accepted(tx, fence):
+            if refusal is FenceRefusal.ALREADY_SETTLED and await self._was_received(tx, fence):
                 return ResultReading(None, replayed=True)
             if refusal is FenceRefusal.LEASE_EXPIRED:
                 await self._end_attempt(tx, _held(operation), now)
@@ -186,8 +213,11 @@ class WorkerRegistry:
         *,
         max_attempts: int,
         only_with_worker: bool,
-    ) -> Enqueued | NoWorker:
+    ) -> Enqueued | NoWorker | OwnerCancelled:
         """Queue ``request`` for a worker that serves it: once per send of its task (R5.6).
+
+        ``origin`` names whose operation it is (``OperationOwner``), or the call is a defect and
+        raises: an operation nobody owns is one no cancel reaches (#3236).
 
         - **The send already asked:** the operation it asked for then, as it stands now, so a
           requester that lost the answer or restarted reads the one it has. The same send with
@@ -198,9 +228,12 @@ class WorkerRegistry:
         - **No worker can run it now,** when ``only_with_worker``: nothing is queued, and the
           reason is returned. A requester always asks this way. Without it, the operation
           waits in the queue for a worker to register.
+        - **Its owner was cancelled:** nothing is queued, and the reason is returned. A send
+          that had already asked still reads the operation it asked for.
         """
         if max_attempts < 1:
             raise ValueError(f"max_attempts is {max_attempts}; an operation needs at least one")
+        owner = OperationOwner.from_origin(origin)
         now = self._clock()
         async with self._store.exclusive() as tx:
             earlier = await tx.operation_for_send(request.task_id, request.dispatch_id)
@@ -213,6 +246,13 @@ class WorkerRegistry:
                 if leasing.lease_ran_out(earlier, now):
                     earlier = await self._end_attempt(tx, earlier, now)
                 return Enqueued(earlier, repeated=True)
+            for key, value in _owner_keys(owner):
+                cancelled_at = await tx.owner_cancelled_at(key, value)
+                if cancelled_at is not None:
+                    return OwnerCancelled(
+                        f"{leasing.owner_ended(key, value)} at "
+                        f"{cancelled_at.isoformat(timespec='seconds')}, so nothing is run for it"
+                    )
             superseded = []
             reason = leasing.superseded_reason(request.dispatch_id)
             for older in await tx.unsettled_operations_of(request.task_id):
@@ -275,6 +315,59 @@ class WorkerRegistry:
             cancelled = leasing.cancelled(operation, now, reason=leasing.REASON_CANCELLED_UNCLAIMED)
             await tx.save_operation(cancelled)
             return cancelled
+
+    async def cancel_owned(
+        self, key: str, value: str, *, because: str, final: bool
+    ) -> list[CancelledOperation]:
+        """Ask every operation the owner has that is still without a result to stop (#3236).
+        ``key`` is the cycle's or the Campaign's origin key, and ``because`` says what ended.
+
+        - **Queued:** settled now, as ``leasing.cancelled`` settles it.
+        - **Claimed:** marked. Its worker is told at its next renewal, and a result it sends
+          before then is kept as the late result (``submit_result``).
+        - **Already with its result:** not touched. The result came first, and stands.
+
+        ``final`` says the owner itself has ended: a cycle's cancel, a Campaign's abort. It is
+        recorded, and nothing new is queued for the owner afterwards (``enqueue``). A run's
+        cancel isn't final, since its cycle may go on to another run.
+
+        The answer names each operation reached and what was done to it. Asking again is safe:
+        nothing settled changes, and a marked operation stays marked.
+        """
+        if key not in OWNER_KEYS:
+            raise ValueError(f"an owner is named by one of {', '.join(OWNER_KEYS)}, not {key!r}")
+        now = self._clock()
+        reached: list[CancelledOperation] = []
+        async with self._store.exclusive() as tx:
+            if final:
+                await tx.record_owner_cancelled(key, value, now)
+            for operation in await tx.unsettled_operations_owned(key, value):
+                if leasing.lease_ran_out(operation, now):
+                    operation = await self._end_attempt(tx, operation, now)
+                    if operation.state is OperationState.SETTLED:
+                        continue
+                cancelled = leasing.cancelled(
+                    operation, now, reason=f"{leasing.REASON_CANCELLED_UNCLAIMED}: {because}"
+                )
+                await tx.save_operation(cancelled)
+                effect = (
+                    CancelEffect.SETTLED
+                    if cancelled.state is OperationState.SETTLED
+                    else CancelEffect.STOP_REQUESTED
+                )
+                reached.append(
+                    CancelledOperation(operation.operation_id, operation.request.task_id, effect)
+                )
+        if reached:
+            logger.info(
+                "remote_operations_cancelled_with_owner",
+                extra={
+                    "owner": f"{key}={value}",
+                    "because": because,
+                    "operations": [f"{c.operation_id}:{c.effect.value}" for c in reached],
+                },
+            )
+        return reached
 
     async def no_worker_for(self, provider: str, operation: str) -> NoWorker | None:
         """Why no registered worker can run the operation now, or ``None`` when one can."""
@@ -357,13 +450,23 @@ class WorkerRegistry:
             )
         await tx.save_attempt(replace(attempt, ended_at=now, outcome=outcome))
 
-    async def _was_accepted(self, tx: WorkerRegistryTransaction, fence: Fence) -> bool:
+    async def _was_received(self, tx: WorkerRegistryTransaction, fence: Fence) -> bool:
+        """Whether this fence's result was already taken in: as the operation's result, or as
+        its late one (#3236). A worker that sends it again is answered as before."""
         attempt = await tx.attempt(fence.operation_id, fence.attempt)
         return (
             attempt is not None
             and attempt.fence == fence
-            and attempt.outcome is AttemptOutcome.ACCEPTED
+            and attempt.outcome in (AttemptOutcome.ACCEPTED, AttemptOutcome.CANCELLED)
         )
+
+
+def _owner_keys(owner: OperationOwner) -> list[tuple[str, str]]:
+    """The owner as the keys a cancel is asked by: its cycle, and its Campaign when it has one."""
+    keys = [(ORIGIN_CYCLE, owner.cycle_id)]
+    if owner.campaign_id is not None:
+        keys.append((ORIGIN_CAMPAIGN, owner.campaign_id))
+    return keys
 
 
 def _held(operation: QueuedOperation | None) -> QueuedOperation:

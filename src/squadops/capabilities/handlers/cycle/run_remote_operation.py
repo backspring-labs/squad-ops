@@ -58,6 +58,7 @@ from squadops.remote_execution.models import (
     result_defects,
 )
 from squadops.remote_execution.scenario import staged_revision
+from squadops.remote_execution.workers import OperationOwner
 from squadops.tasks.task_types import TaskType
 
 ASSERTION_RECORDS_FILENAME = "operation_assertions.json"
@@ -180,7 +181,8 @@ class QARunRemoteOperationHandler(CapabilityHandler):
             )
             operation_reason = REASON_NO_PORT
         else:
-            result = await port.run_operation(request)
+            # #3236: the operation is this task's cycle's, so the cycle's cancel stops it.
+            result = await port.run_operation(request, OperationOwner(context.cycle_id))
             operation_reason = ""
 
         defects = result_defects(request, result)

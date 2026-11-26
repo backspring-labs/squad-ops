@@ -23,10 +23,12 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-ROWS = yaml.safe_load((ROOT / "scripts" / "dev" / "loaded_checks.yaml").read_text())["checks"]
+sys.path.insert(0, str(ROOT / "scripts" / "dev"))
+from loaded_check_rows import rows_at  # noqa: E402
+
+ROWS = rows_at(ROOT / "scripts" / "dev" / "loaded_checks.yaml")
 
 #: The rows whose answer needs their container, by id, and what it needs.
 CONTAINER_ONLY = {

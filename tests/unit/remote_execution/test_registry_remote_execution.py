@@ -42,9 +42,12 @@ from squadops.remote_execution.models import (
 )
 from squadops.remote_execution.registry import WorkerRegistry
 from squadops.remote_execution.scenario import staged_revision
-from squadops.remote_execution.workers import OperationState, ServedOperation
+from squadops.remote_execution.workers import OperationOwner, OperationState, ServedOperation
 from tests.unit.remote_execution.registry_contract import Clock, registration
 from tests.unit.remote_execution.scenario_fixture import OPEN, SHUT, door_opens, tree
+
+#: Whose operations these are (#3236): every request names its owner.
+OWNER = OperationOwner("cyc_1")
 
 DECLARED = ServedOperation(PROVIDER, OPERATION)
 WAIT = timedelta(seconds=30)
@@ -108,7 +111,7 @@ def test_a_scenario_run_at_delivery_comes_back_as_the_workers_reading_and_is_cre
     h = Harness()
     request = ask(OPEN)
 
-    result = asyncio.run(h.adapter.run_operation(request))
+    result = asyncio.run(h.adapter.run_operation(request, OWNER))
     reading = records_document(request, result, ReadingSide.CANDIDATE, not_staged=())
 
     assert result.status is OperationStatus.COMPLETED
@@ -119,7 +122,7 @@ def test_a_scenario_run_at_delivery_comes_back_as_the_workers_reading_and_is_cre
 def test_with_no_worker_nothing_is_queued_and_the_reading_is_not_executed():
     h = Harness(worker=False)
 
-    result = asyncio.run(h.adapter.run_operation(ask(OPEN)))
+    result = asyncio.run(h.adapter.run_operation(ask(OPEN), OWNER))
 
     assert result.status is OperationStatus.NOT_EXECUTED
     assert result.reason == "no registered worker serves fixture/declared_scenario"
@@ -131,7 +134,7 @@ def test_a_worker_that_claims_and_goes_silent_reads_interrupted_within_a_lease_a
     h = Harness()
     h.worker_does = "hold"
 
-    result = asyncio.run(h.adapter.run_operation(ask(OPEN)))
+    result = asyncio.run(h.adapter.run_operation(ask(OPEN), OWNER))
 
     assert result.status is OperationStatus.INTERRUPTED
     assert result.records == ()
@@ -147,7 +150,9 @@ def test_two_criteria_asked_at_once_are_two_operations_and_neither_stops_the_oth
 
     async def both():
         return await asyncio.gather(
-            h.adapter.run_operation(first), h.adapter.run_operation(second), _then_play(h)
+            h.adapter.run_operation(first, OWNER),
+            h.adapter.run_operation(second, OWNER),
+            _then_play(h),
         )
 
     one, two, _ = asyncio.run(both())
@@ -187,7 +192,7 @@ def test_a_reading_is_flagged_unavailable_only_when_no_worker_took_it(
     h.worker_does = does
     request = ask(OPEN)
 
-    result = asyncio.run(h.adapter.run_operation(request))
+    result = asyncio.run(h.adapter.run_operation(request, OWNER))
     document = records_document(request, result, ReadingSide.CANDIDATE, not_staged=())
 
     assert (result.status, result.unavailable) == (status, unavailable)
@@ -198,7 +203,7 @@ def test_a_reading_is_flagged_unavailable_only_when_no_worker_took_it(
 def test_a_reading_kept_before_the_flag_reads_as_taken_by_a_worker():
     """#3045: a stored reading with no ``unavailable`` key keeps the routing it had then."""
     request = ask(OPEN)
-    result = asyncio.run(Harness(worker=False).adapter.run_operation(request))
+    result = asyncio.run(Harness(worker=False).adapter.run_operation(request, OWNER))
     document = records_document(request, result, ReadingSide.CANDIDATE, not_staged=())
     del document["unavailable"]
 
@@ -222,7 +227,7 @@ def test_a_silent_workers_operation_is_settled_not_left_held_when_the_wait_ends(
     h.worker_does = "hold"
     request = ask(OPEN)
 
-    asyncio.run(h.adapter.run_operation(request))
+    asyncio.run(h.adapter.run_operation(request, OWNER))
 
     assert [o.state for o in asyncio.run(_operations(h))] == [OperationState.SETTLED]
 
@@ -247,7 +252,7 @@ def test_a_request_past_the_limit_is_refused_by_name_and_nothing_is_queued():
         source_files={**request.source_files, "src/Big.luau": "x" * REQUEST_TREE_LIMIT_BYTES},
     )
 
-    result = asyncio.run(h.adapter.run_operation(big))
+    result = asyncio.run(h.adapter.run_operation(big, OWNER))
 
     assert (result.status, result.records, result.unavailable) == (
         OperationStatus.NOT_EXECUTED,

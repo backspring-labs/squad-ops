@@ -66,6 +66,9 @@ from typing import Any
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # the rows' reader sits beside this script
+from loaded_check_rows import rows_at  # noqa: E402
+
 REPO = Path(__file__).resolve().parents[2]
 #: Where a set's records go, relative to the main checkout (``main_checkout``). A config's
 #: ``records_dir`` must sit under it.
@@ -790,7 +793,7 @@ def tracked_loaded_checks(path: Path, ids: Sequence[str]) -> list[LoadedCheck]:
     """The tracked rows a set names, keyed ``#<id>`` and asked in the row's own container."""
     if not ids:
         return []
-    rows = {str(r["id"]): r for r in yaml.safe_load(TRACKED_LOADED_CHECKS.read_text())["checks"]}
+    rows = {str(r["id"]): r for r in rows_at(TRACKED_LOADED_CHECKS)}
     unknown = sorted({str(i) for i in ids} - set(rows))
     if unknown:
         raise SystemExit(

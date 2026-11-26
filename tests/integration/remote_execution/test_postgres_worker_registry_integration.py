@@ -55,7 +55,7 @@ async def pool():
     async with pool.acquire() as conn:
         await conn.execute(
             "TRUNCATE TABLE remote_operation_refusals, remote_operation_attempts, "
-            "remote_operations, remote_worker_sessions"
+            "remote_operations, remote_worker_sessions, remote_operation_cancelled_owners"
         )
     yield pool
     await pool.close()
