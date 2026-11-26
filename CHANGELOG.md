@@ -33,8 +33,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     `artifact_unretrieved`, and its reason names the artifact and what it was to the run.
   - An input is optional when the run's record holds none of it, which is decided before any read. A plan or
     manifest that is read and doesn't parse is decided as before.
-  - Still to come under #3128: the reads at the gates between workloads, at delivery and in the proposal's
-    evidence, and a guard that refuses an undeclared read in `squadops.execution`.
+  - The same rule at delivery and proposal: the run's files and the verification a campaign branch's head names
+    (`source_delivery`), the requirements source a Campaign names by artifact (`product_proposal`), the head
+    check's criterion files, and an increment's stored baseline readings. An unreadable verification read as
+    "the vault holds no source verification there", and an unreadable requirements artifact as "no artifact the
+    vault holds"; both now end the run naming the artifact. Each is still said of an artifact that was read and
+    is another kind.
+  - The vault's own `ArtifactNotFoundError` and `ArtifactUnreadableError`, raised by a read in another package
+    that a run reaches, end the run `infrastructure_failed` with the same classifications. They ended it `other`.
+  - A guard, `tests/unit/architecture/test_executor_vault_reads_are_declared.py`, refuses a bare
+    `vault.retrieve` or a `retrieve_or_absent` in `squadops.execution`. It names five reads still pending: the
+    four at the gate between workloads and the bound contract's loader, which the gate shares. They close #3128
+    with the cycle's ending.
 
 ## [2.8.1] — 2026-11-20
 

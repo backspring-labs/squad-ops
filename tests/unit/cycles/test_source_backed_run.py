@@ -1054,14 +1054,13 @@ async def test_an_increment_on_a_head_is_compared_with_the_verification_that_mad
 @pytest.mark.parametrize(
     ("stored", "refused"),
     [
-        (None, "the vault holds no source verification there"),
         ({"verdict": "regressed"}, "only an accepted one made a head"),
         ({"development_configuration_revision": 2}, "ran at Development Configuration revision 2"),
         ({"candidate_tree_identity": "f" * 64}, "verified tree ffffffffffff"),
         ({"project_id": "prj-other"}, "is Project prj-other's"),
         ({"schema": "source-verification/v2"}, "is no source-verification/v1"),
     ],
-    ids=["missing", "not-accepted", "another-revision", "another-tree", "another-project",
+    ids=["not-accepted", "another-revision", "another-tree", "another-project",
          "unknown-schema"],
 )  # fmt: skip
 async def test_a_head_whose_verification_cant_be_its_baseline_is_refused_before_anything_runs(
@@ -1083,14 +1082,13 @@ async def test_a_head_whose_verification_cant_be_its_baseline_is_refused_before_
         "candidate_tree_identity": FileTree.of(first).identity,
         "checks": [{"id": "build", "result": "PASS", "attribution": "inherited"}],
     }
-    if stored is not None:
-        ref = ArtifactRef(
-            artifact_id="art_madethehead", project_id="prj-tally", cycle_id="cyc_x",
-            run_id="run_x", artifact_type=SOURCE_VERIFICATION_TYPE,
-            filename="source_verification.json", content_hash="h", size_bytes=1,
-            media_type="application/json", created_at=NOW,
-        )  # fmt: skip
-        vault.stored[ref.artifact_id] = (ref, json.dumps({**document, **stored}).encode())
+    ref = ArtifactRef(
+        artifact_id="art_madethehead", project_id="prj-tally", cycle_id="cyc_x",
+        run_id="run_x", artifact_type=SOURCE_VERIFICATION_TYPE,
+        filename="source_verification.json", content_hash="h", size_bytes=1,
+        media_type="application/json", created_at=NOW,
+    )  # fmt: skip
+    vault.stored[ref.artifact_id] = (ref, json.dumps({**document, **stored}).encode())
     pinned, _run = _second(world, repo.first_commit, "art_madethehead")
 
     with pytest.raises(SourceDeliveryRefused, match=refused):
@@ -1099,6 +1097,54 @@ async def test_a_head_whose_verification_cant_be_its_baseline_is_refused_before_
             repository=executor._source_repository, sandbox=executor._sandbox,
         )  # fmt: skip
     executor._project_registry.get_inherited_baseline.assert_not_awaited()
+
+
+async def test_a_verification_the_vault_cant_return_is_the_vaults_fault_and_never_no_baseline(
+    world,
+):
+    """#3128. Bug caught: the verification a head names, unreadable, reported as "the vault holds
+    no source verification there", which reads as the increment having no baseline. An artifact
+    that is read and is another kind still reads that way; one that can't be read ends the run
+    naming it, and nothing falls back to the Project's baseline."""
+    from squadops.cycles.vault_reads import ArtifactUnavailable
+    from squadops.execution.source_delivery import deliver_source_change
+
+    repo, vault, executor, cycle, run = world
+    pinned, _run = _second(world, repo.first_commit, "art_madethehead")
+
+    with pytest.raises(ArtifactUnavailable) as failed:
+        await deliver_source_change(
+            pinned, run.run_id, [], vault=vault, registry=executor._project_registry,
+            repository=executor._source_repository, sandbox=executor._sandbox,
+        )  # fmt: skip
+
+    assert (failed.value.artifact_id, failed.value.kind) == (
+        "art_madethehead",
+        "artifact_unretrieved",
+    )
+    assert "the verification the campaign branch's head" in failed.value.what
+    executor._project_registry.get_inherited_baseline.assert_not_awaited()
+
+
+async def test_a_file_of_the_run_the_vault_cant_return_ends_delivery_naming_the_file(world):
+    """#3128. Bug caught: delivery's own read of the run's files raising the vault's raw error,
+    so the run ended as ``other`` and the candidate's file went unnamed."""
+    from squadops.cycles.vault_reads import ArtifactUnavailable
+    from squadops.execution.source_delivery import deliver_source_change
+
+    repo, vault, executor, cycle, run = world
+    lost = _stored("art_gone", "src/tally/core.py", "source")
+
+    with pytest.raises(ArtifactUnavailable) as failed:
+        await deliver_source_change(
+            cycle, run.run_id, [lost], vault=vault, registry=executor._project_registry,
+            repository=executor._source_repository, sandbox=executor._sandbox,
+        )  # fmt: skip
+
+    assert (failed.value.artifact_id, failed.value.what) == (
+        "art_gone",
+        "the run's src/tally/core.py",
+    )
     executor._project_registry.record_source_mapping.assert_not_awaited()  # nothing was seeded
 
 

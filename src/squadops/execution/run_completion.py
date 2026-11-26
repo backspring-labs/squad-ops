@@ -30,12 +30,17 @@ from squadops.cycles.check_registry import checks_a_run_can_subject
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.flow_runs import end_open_flow_runs
 from squadops.cycles.llm_usage import RunUsage
-from squadops.cycles.models import ArtifactRef, RunStatus
+from squadops.cycles.models import (
+    ArtifactNotFoundError,
+    ArtifactRef,
+    ArtifactUnreadableError,
+    RunStatus,
+)
 from squadops.cycles.naming import flow_run_name
 from squadops.cycles.replay import REPLAY_COMPATIBILITY_ELEMENTS, parse_replay_declaration
 from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
 from squadops.cycles.run_report_builder import build_run_report
-from squadops.cycles.vault_reads import ArtifactUnavailable
+from squadops.cycles.vault_reads import ArtifactUnavailable, unavailable_kind
 from squadops.cycles.verification_integrity import (
     ReplayProvenance,
     RunVerificationSummary,
@@ -149,6 +154,23 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
                 kind=TerminalKind.INFRASTRUCTURE_FAILED,
                 termination_reason=str(exc),
                 failure_classification=exc.kind,
+            ),
+        )
+    if isinstance(exc, (ArtifactNotFoundError, ArtifactUnreadableError)):
+        # #3128: the vault's own error, from a read outside ``squadops.execution`` that a run
+        # reaches (the increment's tree, a skillset's content, a scenario's files). It is the
+        # same fault, so it is attributed the same way; the error's own text names the artifact.
+        return TerminalOutcome(
+            run_status=RunStatus.FAILED,
+            event_type=EventType.RUN_FAILED,
+            event_payload={"error": str(exc)},
+            log_kind="error",
+            log_message=f"Run {run_id} failed: {type(exc).__name__}: {exc}",
+            failure_reason=failure_reason_text(exc),
+            terminal=RunTerminalDecision(
+                kind=TerminalKind.INFRASTRUCTURE_FAILED,
+                termination_reason=f"{type(exc).__name__}: {exc}",
+                failure_classification=unavailable_kind(exc),
             ),
         )
     return TerminalOutcome(

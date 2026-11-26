@@ -208,6 +208,57 @@ async def test_each_read_of_a_recorded_artifact_fails_by_name(read, what, tmp_pa
     )
 
 
+async def test_a_criterion_file_the_head_check_cant_read_fails_by_name():
+    """The head check reads the criterion files the run stored, as delivery would deliver them."""
+    from squadops.execution.criterion_head_check import _criterion_tests
+
+    stored = [(LOST, _ref("tests/test_tally.py", "test"))]
+
+    with pytest.raises(ArtifactUnavailable) as failed:
+        await _criterion_tests(_Vault(), stored, {"tests/test_tally.py": "C1"}, {})
+
+    assert (failed.value.artifact_id, failed.value.what) == (
+        LOST,
+        "the criterion file tests/test_tally.py",
+    )
+
+
+async def test_a_stored_baseline_the_vault_cant_return_fails_by_name_and_one_that_doesnt_parse_is_passed_over():
+    """Two different facts at one read (#3128). A baseline reading the listing names and the
+    vault can't return is the vault's fault. One that is read and isn't JSON is passed over, and
+    the baseline is then played, as before."""
+    from squadops.execution.product_acceptance import _stored_baselines
+    from squadops.remote_execution.models import ASSERTION_RECORDS_ARTIFACT_TYPE
+
+    def listed(art_id):
+        return SimpleNamespace(
+            artifact_id=art_id,
+            created_at=NOW,
+            metadata={"side": "baseline", "criterion_id": "S1"},
+        )
+
+    class _Listing(_Vault):
+        def __init__(self, ids, held):
+            super().__init__(held)
+            self.ids = ids
+
+        async def list_artifacts(self, *, cycle_id, artifact_type):
+            assert artifact_type == ASSERTION_RECORDS_ARTIFACT_TYPE
+            return [listed(i) for i in self.ids]
+
+    cycle = SimpleNamespace(cycle_id="cyc_1")
+
+    with pytest.raises(ArtifactUnavailable) as failed:
+        await _stored_baselines(cycle, _Listing([LOST], {}))
+    assert (failed.value.artifact_id, failed.value.what) == (
+        LOST,
+        "the stored baseline reading of S1",
+    )
+
+    unparsed = _Listing(["art_bad"], {"art_bad": (listed("art_bad"), b"{ not json")})
+    assert await _stored_baselines(cycle, unparsed) == {}
+
+
 async def test_a_plan_that_is_read_and_doesnt_parse_still_defers_to_the_dispatch_net():
     """What #3128 leaves alone: a plan the vault returned whose text doesn't parse is a finding
     about the plan, decided by the validation nets. Only the retrieval moved out of the catch."""
@@ -241,6 +292,38 @@ def test_the_run_ends_as_a_fault_outside_the_work_classified_by_how_the_read_fai
     )
     assert f"the cycle's PRD (artifact {LOST})" in outcome.terminal.termination_reason
     assert outcome.failure_reason.startswith(f"the cycle's PRD (artifact {LOST})")
+
+
+@pytest.mark.parametrize(
+    ("raw", "kind"),
+    [
+        (ArtifactNotFoundError("art_tree_9"), "artifact_missing"),
+        (
+            ArtifactUnreadableError("art_tree_9: content doesn't match its hash"),
+            "artifact_unreadable",
+        ),
+    ],
+)
+def test_the_vaults_own_error_from_a_read_outside_the_executor_is_attributed_the_same_way(
+    raw, kind
+):
+    """A run reaches reads in other packages (the increment's tree, a skillset's content) that
+    raise the vault's error as it is. Bug caught: that run ending as ``other``."""
+    outcome = resolve_terminal_outcome(raw, "run_1")
+
+    assert (outcome.terminal.kind, outcome.terminal.failure_classification) == (
+        TerminalKind.INFRASTRUCTURE_FAILED,
+        kind,
+    )
+    assert "art_tree_9" in outcome.terminal.termination_reason
+
+
+def test_an_unexpected_error_that_isnt_the_vaults_still_ends_the_run_as_other():
+    """The edge the mapping must not widen past: a defect is not an infrastructure fault."""
+    outcome = resolve_terminal_outcome(KeyError("producing_task_type"), "run_1")
+
+    assert outcome.terminal.kind == TerminalKind.OTHER
+    assert outcome.terminal.failure_classification is None
 
 
 async def test_a_run_whose_prd_the_vault_cant_return_fails_before_any_task_is_dispatched(
