@@ -1083,8 +1083,11 @@ class CancellationResponse(BaseModel):
     activities_ended: int
     agents_notified: int
     #: The remote operations still without a result that the cancel reached (SIP-0117 R5.30,
-    #: #3236): a queued one settled, a claimed one asked to stop.
-    remote_operations_cancelled: int = 0
+    #: #3236): a queued one settled, a claimed one asked to stop. 0 says none were out. ``None``
+    #: says they couldn't be asked, and ``remote_operations_cancel_failure`` names why: the
+    #: cancel went through, and a play may still be with a worker.
+    remote_operations_cancelled: int | None = 0
+    remote_operations_cancel_failure: str | None = None
 
 
 class RunCancelResponse(CancellationResponse):

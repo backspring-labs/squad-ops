@@ -1,8 +1,8 @@
 -- 2302_remote_operation_owner_cancel.sql
 -- SIP-0117 R5.30 (#3236): an abort governs its remote operations.
 --
--- An operation's origin names whose it is: the cycle and run it verifies for, and the Campaign
--- when the cycle is one's. A cycle's cancel and a Campaign's abort ask every operation they own
+-- An operation's origin names whose it is: the cycle it verifies for, and the Campaign when the
+-- cycle is one's and the asker knows it. A cycle's cancel and a Campaign's abort ask every operation they own
 -- that has no result yet to stop. The origin stays the one record of the owner: the two indexes
 -- read it, and nothing copies it.
 --

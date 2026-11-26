@@ -456,9 +456,12 @@ class ControlResultResponse(BaseModel):
     cancelled_cycles: list[str] = Field(default_factory=list)
     #: Cycles the operation's launch intent started (a start's calibration cycle, §12b).
     launched_cycles: list[str] = Field(default_factory=list)
-    #: The Campaign's own remote operations still without a result that an abort reached (SIP-0117
-    #: R5.30, #3236), beyond those its cancelled cycles' cancels reached.
-    remote_operations_cancelled: int = 0
+    #: The remote operations naming this Campaign that were still without a result after its
+    #: cycles' cancels, each asked to stop by the abort (SIP-0117 R5.30, #3236). 0 says none were
+    #: out. ``None`` says they couldn't be asked, and ``remote_operations_cancel_failure`` names
+    #: why: the abort went through, and a play may still be with a worker.
+    remote_operations_cancelled: int | None = 0
+    remote_operations_cancel_failure: str | None = None
     #: #2621: the row of the launch this operation's own drain refused, which escalated the
     #: campaign. ``campaign`` is read after that drain, so it reads escalated with it. ``None``
     #: when nothing was refused.

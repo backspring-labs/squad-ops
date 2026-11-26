@@ -525,6 +525,26 @@ async def test_abort_stops_the_campaigns_remote_operations_whatever_cycle_asked(
     assert isinstance(asked_after, OwnerCancelled)
 
 
+async def test_abort_goes_through_and_says_so_when_its_operations_couldnt_be_asked(world):
+    """The MacBook lane's review finding on #3256. Bug caught: an abort whose registry couldn't
+    be asked answering 0, as if no play were out."""
+
+    class Unreachable:
+        async def cancel_owned(self, *args, **kwargs):
+            raise ConnectionError("the pool is closed")
+
+    _create(world)
+    world.client.app.state.worker_registry = Unreachable()
+
+    resp = _control(world, "abort", "k-abort").json()
+
+    assert (resp["campaign"]["state"], resp["campaign"]["outcome"]) == ("completed", "aborted")
+    assert resp["remote_operations_cancelled"] is None
+    assert resp["remote_operations_cancel_failure"] == (
+        "the worker registry couldn't be asked (ConnectionError): see the log"
+    )
+
+
 async def test_abort_leaves_a_cycle_the_campaign_ended_at_the_gate(world):
     """#3201: entered at the abort route. The campaign's increment cycle ended at the gate
     (``revision_unavailable``: its proposal returned with no revision left), so its framing and

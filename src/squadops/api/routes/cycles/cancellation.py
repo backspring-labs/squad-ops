@@ -24,6 +24,7 @@ exists (the failure is logged).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from fastapi import Request
 
@@ -203,33 +204,46 @@ async def abort_cancelled_cycle_activities(request: Request, cycle_id: str) -> i
     return aborted
 
 
+@dataclass(frozen=True)
+class OwnedCancel:
+    """What asking an owner's remote operations to stop came to (#3236). ``reached`` is how many
+    were asked, and 0 says none were out. ``None`` says they couldn't be asked, with ``failure``
+    naming why: the two are never the same answer, since after a failure a play may still be
+    with a worker."""
+
+    reached: int | None
+    failure: str | None = None
+
+
 async def cancel_owned_remote_operations(
     request: Request, key: str, value: str, *, because: str, final: bool
-) -> int:
+) -> OwnedCancel:
     """Ask every remote operation the owner still has out to stop (SIP-0117 R5.30, #3236).
-    Returns how many the cancel reached.
 
     ``key`` is the origin key the owner is named by: a cycle's, or a Campaign's. A queued
     operation is settled with ``because``, and a claimed one's worker is told at its next
     renewal. ``final`` says the owner itself has ended, and nothing new is queued for it.
 
-    Returns 0 when the deploy runs no worker registry. A failure is named and never blocks the
-    cancel it serves: each operation's lease and its requester's wait still end it.
+    A deploy that runs no worker registry has none out. A failure never blocks the cancel it
+    serves, and is never read as "none were out": it is returned by name, for the cancel's
+    answer to carry. Each operation's lease and its requester's wait still end it.
     """
     registry = get_worker_registry(request)
     if registry is None:
-        return 0
+        return OwnedCancel(0)
     try:
         reached = await registry.cancel_owned(key, value, because=because, final=final)
-    except Exception:
+    except Exception as e:  # noqa: BLE001 - the cancel this serves must go through
         logger.warning(
             "#3236: the cancel of %s=%s didn't reach its remote operations",
             key,
             value,
             exc_info=True,
         )
-        return 0
-    return len(reached)
+        return OwnedCancel(
+            None, f"the worker registry couldn't be asked ({type(e).__name__}): see the log"
+        )
+    return OwnedCancel(len(reached))
 
 
 async def cancel_run_by_the_existing_path(
@@ -262,7 +276,8 @@ async def cancel_run_by_the_existing_path(
         focus_leases_released=leases_released,
         activities_ended=activities_ended,
         agents_notified=agents_notified,
-        remote_operations_cancelled=operations_cancelled,
+        remote_operations_cancelled=operations_cancelled.reached,
+        remote_operations_cancel_failure=operations_cancelled.failure,
     )
 
 
@@ -336,5 +351,6 @@ async def cancel_cycle_by_the_existing_path(
         focus_leases_released=leases_released,
         activities_ended=activities_ended,
         agents_notified=agents_notified,
-        remote_operations_cancelled=operations_cancelled,
+        remote_operations_cancelled=operations_cancelled.reached,
+        remote_operations_cancel_failure=operations_cancelled.failure,
     )

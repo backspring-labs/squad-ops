@@ -1644,7 +1644,7 @@ abort of that cycle's Campaign.
 | **A result that arrives after the cancel** | Taken in and kept as the operation's `late_result`. The operation's own result reads `interrupted`, with a reason that says a result arrived after the cancel. The attempt closes `cancelled`. The worker is answered as for any accepted result, and a repeat is answered as a repeat |
 | **A result that came first** | Stands. The operation had its result when the cancel arrived, and the cancel doesn't touch it |
 | **Nothing new for a cancelled owner** | A request for an operation whose cycle was cancelled, or whose Campaign was aborted, queues nothing and reads `not_executed` with the reason (`REMOTE_OPERATION_OWNER_CANCELLED` at the route). A send that had already asked still reads the operation it asked for |
-| **The answers** | A cycle's and a run's cancel answer `remote_operations_cancelled`. An abort's answer counts the operations that named the Campaign and were still out after its cycles' cancels |
+| **The answers** | A cycle's and a run's cancel answer `remote_operations_cancelled`. An abort's answer counts the operations that named the Campaign and were still out after its cycles' cancels. A count of 0 says none were out; a null count, with `remote_operations_cancel_failure`, says they couldn't be asked |
 | **The store** | Migration 2302: `late_result`, two partial indexes that read the owner from `origin`, the cancelled owners, and `cancelled` among an attempt's outcomes |
 
 **The evidence** (#3236). In the 2.8.1 row-8 window, on 2026-11-19, Campaign `cmp_ab3a75290809` was aborted at
@@ -1670,8 +1670,9 @@ abort of that cycle's Campaign.
     through the cycle's cancel.
 - **A cancel is safe to repeat.** Nothing settled changes, a marked operation stays marked, and the time an owner
   was cancelled at is the first.
-- **A failure to reach the registry never blocks the cancel it serves.** It is named in the log, and each
-  operation's lease and its requester's wait still end it.
+- **A failure to reach the registry never blocks the cancel it serves, and is never read as "none were out".** The
+  cancel's answer then carries a null count and names the failure, where 0 says none were out. Each operation's
+  lease and its requester's wait still end it, and its result is then an ordinary one.
 
 **What isn't changed.** The worker, its serve loop and the Studio runner (R5.5, R5.26). What a worker does at a
 cancel was already built. It wasn't reached, because nothing asked.

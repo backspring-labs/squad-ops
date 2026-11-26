@@ -532,7 +532,38 @@ class TestCancelCycle:
 
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
 
-        assert (resp.status_code, resp.json()["remote_operations_cancelled"]) == (200, 0)
+        body = resp.json()
+        assert resp.status_code == 200
+        assert (
+            body["remote_operations_cancelled"],
+            body["remote_operations_cancel_failure"],
+        ) == (0, None)
+
+    def test_cancel_goes_through_and_says_so_when_its_operations_couldnt_be_asked(
+        self, client, mock_cycle_registry
+    ):
+        """The MacBook lane's review finding on #3256. Bug caught: a registry that can't be
+        asked answered as "none were out". The play stays with its worker, runs to its end and
+        is taken as any result, which is the 2026-11-19 defect, and the answer hides it."""
+
+        class Unreachable:
+            async def cancel_owned(self, *args, **kwargs):
+                raise ConnectionError("the pool is closed")
+
+        client.app.state.worker_registry = Unreachable()
+        mock_cycle_registry.cancel_cycle.return_value = None
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        body = resp.json()
+        assert (resp.status_code, body["status"]) == (200, "cancelled")
+        assert body["remote_operations_cancelled"] is None
+        assert body["remote_operations_cancel_failure"] == (
+            "the worker registry couldn't be asked (ConnectionError): see the log"
+        )
+        # The rest of the cancel still ran: its flag, and the teardown the answer counts.
+        mock_cycle_registry.cancel_cycle.assert_awaited_once_with("cyc_001")
+        assert body["activities_ended"] == 0
 
     def test_cancel_success(self, client, mock_cycle_registry):
         mock_cycle_registry.cancel_cycle.return_value = None

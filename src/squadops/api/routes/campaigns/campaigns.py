@@ -67,6 +67,7 @@ from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.cancellation import (
+    OwnedCancel,
     cancel_cycle_by_the_existing_path,
     cancel_owned_remote_operations,
 )
@@ -1492,9 +1493,7 @@ async def abort_campaign(
     )
     if not result.replayed:
         await _materialize_after_close(request, campaign_id)
-    return _result(
-        result, cancelled_cycles=cancelled, remote_operations_cancelled=operations_cancelled
-    )
+    return _result(result, cancelled_cycles=cancelled, operations_cancelled=operations_cancelled)
 
 
 async def _repository_backed(request: Request, campaign_id: str) -> bool:
@@ -1714,15 +1713,17 @@ def _result(
     result: TransitionResult,
     cancelled_cycles: list[str] | None = None,
     launched_cycles: list[str] | None = None,
-    remote_operations_cancelled: int = 0,
+    operations_cancelled: OwnedCancel | None = None,
 ):
+    operations_cancelled = operations_cancelled or OwnedCancel(0)
     return ControlResultResponse(
         campaign=_campaign(result.campaign),
         entry=_entry(result.entry),
         replayed=result.replayed,
         cancelled_cycles=cancelled_cycles or [],
         launched_cycles=launched_cycles or [],
-        remote_operations_cancelled=remote_operations_cancelled,
+        remote_operations_cancelled=operations_cancelled.reached,
+        remote_operations_cancel_failure=operations_cancelled.failure,
     )
 
 
