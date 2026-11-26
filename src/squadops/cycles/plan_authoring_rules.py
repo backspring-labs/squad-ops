@@ -82,6 +82,9 @@ COVERED_ELSEWHERE: dict[str, str] = {
     "validate_blocking_gaps": "request.plan_blocking_gaps_appendix",
     # SIP-0112 H.35: rendered per source-backed cycle with the paths the product's owner reserves.
     "validate_reserved_paths": "request.plan_reserved_paths_appendix",
+    # SIP-0112 H.4 point 3 (#3182): rendered per source-backed cycle with what each of the
+    # product's test runners collects.
+    "validate_qa_suite_collected": "request.plan_test_runners_appendix",
 }
 
 # Validators with no author-facing rule: nothing the author writes can trip them, or the
