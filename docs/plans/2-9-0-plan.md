@@ -1,8 +1,15 @@
 # 2.9 plan — stabilization: execution evidence a supervised Roblox Campaign can trust, an unattended worker that is safe, and faster plays
 
-**Status: DRAFT, revision 2 (2026-11-20), for the owner's adoption. Not adopted.** It places nothing: SIP ledgers and
+**Status: DRAFT, revision 3 (2026-11-26), for the owner's adoption. Not adopted.** It places nothing: SIP ledgers and
 issue labels move when the owner adopts it.
-- **Revision 2** takes the owner's outside review of revision 1, posted on PR #3249, whose disposition was "request
+- **Revision 3** answers the owner's ask of 2026-11-26, made once the Spark was back from its move onto a UPS:
+  re-assess the plan so the two lanes are coordinated, and so the line runs as far as it can to the cut without the
+  owner.
+  - **Unchanged:** every item's rule and done-when, the rulings D1–D10, and §8's placement.
+  - **Changed:** who builds what, the order, how the lanes work together (§11), and the authority the run needs, as
+    rulings for adoption (D11–D16, §5). §12 lists each change.
+  - The lanes agreed the split by message on 2026-11-26. No outside reviewer has read revision 3.
+- **Revision 2** (2026-11-20) takes the owner's outside review of revision 1, posted on PR #3249, whose disposition was "request
   revision before adoption". It takes the review's recommended rulings, with six changes and one deferral the Spark
   recommended and the owner accepted ("Create revision 2 as you recommend"). §7 lists each.
   - The rulings in §5 are the outside reviewer's recommendations, as changed. They become the owner's only by
@@ -71,7 +78,7 @@ required context, or give contradictory terminal outcomes. Stage C's unattended 
 - **Done when:** a missing QA capability is refused at creation, or attributed to the environment during the run. In no
   test is it recorded as a candidate's defect.
 
-### 2. An abort governs its remote operations (#3236) — the Spark lane
+### 2. An abort governs its remote operations (#3236) — both lanes, split by host
 
 - **What happened:** the same window's aborted Campaign left its repair cycle's baseline play claimed.
   - The worker played it, and it settled `completed, accepted` after the abort.
@@ -94,8 +101,17 @@ required context, or give contradictory terminal outcomes. Stage C's unattended 
   - a repeated abort.
 - **Done when:** no operation of an aborted Campaign changes its outcome, triggers a promotion or resumes. Everything that
   actually ran stays on the record.
+- **The split:**
+  - **the Spark lane** holds the protocol end to end: the cancel request, the runtime's half (a result for an ended
+    cycle contributes no evidence), and the serve loop's check at lease renewal or heartbeat. It is built against fakes
+    and merges first;
+  - **the MacBook lane** builds whatever that check needs from the Studio runner and lacks, and the live proof: a
+    wiring test that enters at `Worker.serve` with the real runner, and a live cancel round. Only its host can stop a
+    live play;
+  - **the seam is agreed before either builds:** what the serve loop calls on the runner, and what a cancelled play's
+    result reads.
 
-### 3. Every view of a cycle reads the same ending and status (#3224, #3244) — the Spark lane
+### 3. Every view of a cycle reads the same ending and status (#3224, #3244) — the MacBook lane; the Spark lane reviews
 
 - **#3244:** a one-workload cycle (a Campaign's repair or retry) ends `single_workload_ended`.
   - The route reads its status from its one run, which is right, and names no ending.
@@ -107,6 +123,13 @@ required context, or give contradictory terminal outcomes. Stage C's unattended 
   between-workload and recorded-ending-conflict cycles, with a wiring test at the list route.
 - **Done when:** for every Roblox cycle, the route, `cycles show`, the Campaign's ledger, the control log and the
   status-filtered list agree. That includes the two repair cycles 2.8.1 item 1 couldn't read.
+- **The lanes:**
+  - **the MacBook lane builds it,** outside its takeover hours (§11). It is machine-neutral code;
+  - **the Spark lane reviews it,** since it wrote #3223, whose design #3244 turns on. It also writes the four-view read
+    of the 2.8.1 cut record (§2.1) as a script in `scripts/dev/`, so the test enters where that read did, and runs it
+    on the Spark's cycles after the deploy;
+  - **the fallback:** if the MacBook lane's no-Studio queue is behind when its Studio items are done, this item goes
+    back to the Spark lane. The Studio items never wait on it.
 
 ### 4. A required artifact that can't be retrieved stops the task (#3128) — the MacBook lane
 
@@ -172,7 +195,7 @@ traceable.
   - every negative case keeps today's routing;
   - §10 row 8 still works with in-run correction off (§6, case 11).
 
-### 8. A product's `qa.test` is bounded, and names files its runner collects (#3182) — the MacBook lane
+### 8. A product's `qa.test` is bounded, and names files its runner collects (#3182) — the Spark lane; the MacBook lane reviews
 
 - **The gap:** on z_tower-ascension, a `qa.test` whose expected file is under `src/` is shown 137 files, 1.7 million characters. One whose file matches no directory is shown the whole tree, 2.9 million characters.
 - **Both rules (D3):**
@@ -186,8 +209,15 @@ traceable.
 - **Done when:** a plan whose `qa.test` names a source file or a note is refused, and a valid new test is accepted. A
   replay of the 2.8 counted run's `qa.test` envelope shows the prompt under the cap with the files the suite needs. The
   suite it writes runs, and tells the correct build from a broken one.
+- **Why the Spark lane:** the done-when is a replay, and the prompt half is text only a replay can judge, so the loop
+  closes on one box.
+- **What the PR names:**
+  - a change to what a `qa.test` is shown changes every stack's prompt, and the existing stacks' shakeout pair (§6,
+    case 14) is the read on that;
+  - the hold is the prompt guard's own refusal of a prompt over the window (SIP-0073), with the composer's count kept
+    in agreement with it. No second refusal is added.
 
-### 9. A skill's declared stop outranks the task's own requirements (#3240) — the MacBook lane
+### 9. A skill's declared stop outranks the task's own requirements (#3240) — the Spark lane; the MacBook lane reviews
 
 - **Today:** the skills section ranks a declared stop below the task's requirements. In #3199's replay, the one miss
   the owner ruled run-to-run variance came on an input byte-identical in all four arms (3/3, 1/3, 3/3, 2/3), and the
@@ -196,6 +226,10 @@ traceable.
   requirement to produce artifacts. The prompt's requirements say so consistently.
 - **Done when:** a skills replay, under a new experiment id, shows the conflicting case resolved for the stop, and every
   previously valid case still valid. The replay tests the cause.
+- **Why the Spark lane:** as item 8. The replay's pass rule and its number of generations are stated before it runs,
+  because the case it reads varied from run to run on identical input.
+- **The existing stacks:** the template is one every skill-carrying task reads. The existing stacks load no skills, and
+  a test holds their prompts byte-identical.
 
 ### 10. A hand play's log carries `ran_with` (#3243) — the MacBook lane
 
@@ -219,7 +253,7 @@ traceable.
 Its exit gate: a dedicated worker runs unattended and safely, keeps evidence and isolation, and meets the throughput
 target or records why not.
 
-### 12. A dedicated worker brings Studio to the front, safely (#3193) — the Spark lane
+### 12. A dedicated worker brings Studio to the front, safely (#3193) — the MacBook lane builds; the Spark lane writes the rule
 
 - **Today:** SIP-0117 R5.18 refuses a scenario that acts through Studio's input when another app is in front. R5.28
   retries the refusal and never repairs it. In attended windows the MacBook lane's guard procedure keeps Studio in front.
@@ -244,8 +278,21 @@ target or records why not.
 
   None ends as a failed criterion.
 - **Done when:** the certification window (§6) shows each case recovered safely or refused explicitly.
+- **The lanes:**
+  - **the MacBook lane builds it.** The change runs on the Mac and acts on a Mac a person also uses, and only that
+    host can test it;
+  - **the Spark lane writes the amendment's text and the tests it requires, and reviews the PR.** The lane that takes
+    the front from a person doesn't write its own safety rule;
+  - **the owner writes the window's values** (D12). The MacBook lane builds the setting and its reader, and never sets
+    them.
+- **Two bounds on the build:**
+  - the idle read is the system's own idle counter, which needs no macOS permission. An approach that would raise a
+    permission prompt isn't taken, since only the owner can answer one;
+  - the window is read against the system clock in the runner.
+- **The runbook says how the worker starts and stops.** Today it starts when the owner logs in, outside any window.
+  The owner keeps that or changes it.
 
-### 13. Studio play throughput, measured, then cut (#3250) — the lane that owns the Studio runner
+### 13. Studio play throughput, measured, then cut (#3250) — the MacBook lane; the Spark lane freezes the matched set
 
 - **Revision 1's premise was wrong:** one Studio launch already serves many plays (every play of the 2.8.1 closing window, and all 32 of #3199's hand plays). Keeping Studio open saves nothing new.
 - **What's known:** a play takes about 100 s from claim to completion (98.3 s, 98.2 s and 99.8 s in that window). Where
@@ -276,8 +323,22 @@ target or records why not.
   - no new false success or false failure.
 
   A miss is recorded as unsuccessful, even when the instrument and the change work.
+- **The lanes:**
+  - **the MacBook lane** builds the per-stage instrument and takes the measurements. A hand-play measurement needs the
+    Mac alone;
+  - **the Spark lane** freezes the matched set in the pre-registration before the first measured play. Claim-to-completion
+    and delivery are read on its runtime, with the provider on;
+  - **item 2's change merges before this item's,** since this done-when reads cancellation as item 2 says.
+- **The host, recorded at each measured set's start and end:**
+  - the load average, the free memory, the models loaded, whether Docker runs, and the top processes;
+  - the memory Studio holds during a play, and the worker's. Neither has ever been recorded.
+
+  The before and after sets are matched only when those readings are comparable, and both run on one Studio
+  qualification.
 
 ## 4. Stage D — dependencies and the existing stacks
+
+Built beside the other stages, and landed before the first live window (§9).
 
 ### 14. The dependency move (#3101) — the Spark lane; placed by the owner, 2026-11-15
 
@@ -300,9 +361,9 @@ the publisher's return handling, which is stabilization work (the 2.8 plan §7).
   - a rollback to the previous set is shown to restore it;
   - any change to how earlier evaluations compare is recorded.
 
-## 5. The rulings (D1–D10), for adoption
+## 5. The rulings (D1–D16), for adoption
 
-The outside reviewer's recommendations, with the Spark's changes (§7). Adoption makes them the owner's.
+**D1–D10** are the outside reviewer's recommendations, with the Spark's changes (§7). Adoption makes them the owner's.
 
 | | ruling |
 |---|---|
@@ -317,6 +378,20 @@ The outside reviewer's recommendations, with the Spark's changes (§7). Adoption
 | D9 | The dependency move is checked path by path, with evaluator requalification where it's affected, versions on the record and a rollback shown (item 14). |
 | D10 | The issue matrix (§8) is the placement proposal. It's applied through adoption, and no earlier owner ruling is overwritten silently. |
 
+**D11–D16 are revision 3's.** They say what each lane may do without the owner.
+- They are the Spark lane's recommendations, agreed with the MacBook lane. No outside reviewer has read them.
+- Adoption makes them the owner's. Each lane takes them only from the owner's own words in its own session, never
+  relayed by the other.
+
+| | ruling |
+|---|---|
+| D11 | **The grant.** For 2.9's work each lane builds, merges its own PRs on green, and makes and records the calls this plan leaves open. The Spark lane deploys when no Campaign is running, switches the provider for a window, and runs the line's cycles. A PR that fixes a red main may merge over that red when its own checks are green. The owner is told afterwards, and is called only for a major problem, a security risk, or what D16 keeps. |
+| D12 | **The takeover hours.** The owner names the hours in which the Mac may be taken over: for a requalification, a worker proof, a measured play, a rehearsal or the certification window. Inside them the MacBook lane runs those without asking each time. Outside them nothing takes the Mac over. The owner writes the dedicated window's values in the worker's settings (D7). |
+| D13 | **A window's gates.** In 2.9's rehearsals and its certification window the Spark lane rules the Campaign's gates signed in as `squadops-supervisor`, the least-privilege identity D8 asks for. It rules an increment's gate and starts, pauses and aborts a Campaign, and it can't resume an escalation or a limit's pause. The gate rules are pre-registered. The MacBook lane reads each change request first where it answers inside the ruling's bound, and a ruling made without that read says so. An escalation, a limit's pause and the owner's pause wait for the owner. |
+| D14 | **Amendments, and the outside review.** Adoption covers each numbered amendment that implements a ruling of this table as written (items 5, 7 and 12). One that departs from its ruling comes back to the owner. The owner's outside review reads two things, once, before the certification window opens: item 12's activation rule, and the window's pre-registration. Neither holds the build. |
+| D15 | **The tag.** The Spark lane takes the cut to a green release PR with the cut record. The owner gives the word for the tag, since the Release publishes itself on the push. |
+| D16 | **What waits for the owner, whatever the grant:** the tag (D15); the takeover hours and the window's values (D12); an escalation or a limit's pause (D13); a change to the claim or to a done-when; the disposition of a missed done-when, except item 13's target, whose miss the claim already allows on the record; branch protection, secrets and anything that touches a held-out suite; an action a permission check refuses. |
+
 ## 6. The certification window, pre-registered
 
 A test suite alone doesn't show the claim. Before the window opens, an amendment states for each live case:
@@ -326,6 +401,22 @@ A test suite alone doesn't show the claim. Before the window opens, an amendment
 - the attribution rule and the recovery expected.
 
 The shakeout's exit rule (CLAUDE.md) applies, and the cut record reports the rounds.
+
+**One final deploy.** Every live case below runs on the final deploy, which carries the dependency move (item 14).
+The rehearsals before it are uncounted, and the exit rule is theirs: a full pass with no new seam finding.
+
+**A quiet host.** Through the window, and during any measured play, the Mac runs no tests, no Docker and no model.
+- It is a recorded check, with the readings item 13 lists, and no promise.
+- Two things keep running there: the MacBook lane's session, and the worker. The worker's checkout isn't pulled or
+  switched until the window closes.
+- The pre-registration says whether the owner's own apps are closed for the measured sets, or only recorded.
+
+**The cases a person shows.** Cases 3 and 4 need a person at the Mac: real input that prevents an activation, and a
+locked screen, which only the owner can unlock. The owner is present for those two, and case 4 is the last of its
+sitting.
+
+**A lane's pause.** A session stopped by its usage limit leaves a Campaign waiting at its gate, which is safe. The gap
+is recorded as the operator's delay. It is never read as the candidate's failure, or the worker's.
 
 **Live, on the dedicated worker** (cases only Studio and the worker can show):
 1. a normal Campaign, unattended;
@@ -421,10 +512,17 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 
 ## 9. The order, and the cut
 
-**Order:** Stage A, then B, then C, then D.
+**Order of building:** Stage A, then B, then C. Stage D's dependency move is built beside them and lands early.
+- **The dependency move (item 14) lands before the first live window.** Revision 2 landed it last, before the final
+  deploy. The tag would then have shipped new FastAPI and aio-pika versions on the worker routes the window certified
+  on the old ones. A shakeout pair is run on it when it lands and read against 2.8.1's, so a regression the move
+  causes is found there and not in the window.
 - Work in a later stage may be built in parallel where its lane is free.
-- Certification follows the order. Stage C's window isn't run before Stage A's exit gate holds.
-- The dependency move (Stage D) lands before the final deploy, so the shakeout pair reads it.
+- **In `remote_execution/`, the cross-lane changes go one at a time:** #3110 (PR #3127), the Spark lane's half of
+  item 2, the MacBook lane's half, then item 13's change. The Spark lane sends item 2's file list before it opens the
+  branch, so the MacBook lane's items 11 and 12 proceed beside it where the files don't overlap.
+- **Certification follows the stage order, on one final deploy.** Stage C's cases aren't read before Stage A's exit
+  gate holds, and every live case of §6 runs on the final deploy.
 
 **The cut**, when each holds:
 - every 2.9 item has its done-when, read, or the owner's disposition;
@@ -442,3 +540,90 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 - **The game-development capabilities, #3205 and the certification Campaign:** all 2.10's.
 - **An external supervisor's authority (#2760),** and any new permission, tool access or delegation.
 - **#3147's per-stack move,** and the other issues §8 lists for 2.10's intake.
+
+## 11. How the two lanes work together
+
+**What each machine is for.**
+- **The Spark** is always on, with 20 cores, 121 GB and the GPU. It runs the deploy, every cycle and Campaign, the
+  replays, the shakeout and the cut, and it holds the evidence.
+- **The MacBook** is a 24 GB laptop and the only Studio host. It runs none of the line's cycles (SIP-0118 R5.4) and no
+  replay.
+  - Its limit isn't compute. It is one serial session, the owner's takeover hours, and a host a person also uses.
+  - Its Studio items are the line's critical path, and no other lane can pick them up.
+
+**Who builds what.**
+
+| lane | builds | and for the other lane |
+|---|---|---|
+| the Spark | items 1, 6, 7, 8, 9 and 14; item 2's protocol, runtime half and serve loop | writes item 12's amendment and the pre-registration; reviews items 3, 12 and 13; runs every replay and live read |
+| the MacBook | items 3, 4, 5, 10, 11, 12 and 13; item 2's Studio half | reviews items 8 and 9 and item 2's seam; runs every requalification and measured play |
+
+**The MacBook lane's two queues,** so its session never waits on the hours:
+- **outside the takeover hours:** items 4, 5 and 3, with the Mac's own smoke self-test before a runtime change merges;
+- **inside them:** items 11, 10 and 12, its half of item 2, then item 13. Each needs at least one takeover run before
+  it merges;
+- the two queues are worked from separate worktrees.
+
+**Merges and reviews.**
+- Each lane merges its own PRs on green, through one merge check kept in `scripts/dev/`. The check reads main's `CI`
+  run at main's current tip in the same command, because the other lane can merge at any moment.
+- A PR that changes a shared contract names the contract, and carries the other lane's review and a wiring test
+  (SIP-0112 §8.2's rule). In 2.9 the shared contracts are the worker's cancel protocol, its seam with the runner, and
+  the request templates every stack reads.
+
+**Deploys and the worker.**
+- Only the Spark lane deploys, when no Campaign is running, and it reads the loaded checks after each deploy.
+- Only the MacBook lane touches the worker, its checkout and Studio. A change to the runner or the worker is followed
+  by a requalification inside the takeover hours, and the window's pre-registration carries the qualification's
+  identity.
+- For a window the Spark lane switches the provider on, and off again at the window's end. Until item 12 ships, the
+  MacBook lane's guard keeps Studio in front.
+
+**Messages.**
+- The lanes talk by session message, and a message's first line says what it is.
+- A fact is read on the box that holds it, in the turn that reports it. A time comes from the clock, in ET.
+- An approval is taken only from the owner's own words in that lane's session.
+
+**Recovery** (the owner, 2026-11-26: loops that recover when a usage window fills, and restart when it reopens).
+- Each lane's session keeps a recovery tick: a prompt on a fixed half-hour schedule that reads the lane's run-state
+  note and picks the current step back up. A session stopped by its usage limit resumes at the first tick after the
+  limit resets.
+- The schedule is fixed, since a turn the limit cut off can't schedule its own successor.
+- The tick is armed while its lane has queued work that needs no decision from the owner, and removed while only the
+  owner's answer is pending. It approves nothing.
+- **What it can't recover:** a session that has exited, or a machine that restarted. Those wait for the owner to
+  resume the session.
+- A lane that can't reach the other during a window tells the owner at once.
+
+**What the owner sets on the hosts, before the first takeover run:**
+- the Mac on mains power with its lid open, and no automatic update that restarts it during the run;
+- the MacBook lane's session able to work without a permission prompt nobody is there to answer;
+- on the Spark, the GPU's device description regenerated at every boot. Without that a restart leaves the squad with
+  no model, as it did on 2026-11-23;
+- both sessions open, and able to message each other.
+
+## 12. What revision 3 changes, and why
+
+1. **Items 12 and 13 go to the MacBook lane.** Revision 2 gave item 12 to the Spark lane and left item 13 to "the lane
+   that owns the Studio runner". Both are the Studio runner and the worker's settings, which the MacBook lane wrote,
+   and every iteration needs its host. The Spark lane writes item 12's amendment, so the rule isn't written by the
+   lane that builds the activation.
+2. **Items 8 and 9 go to the Spark lane.** Their done-whens are replays, which run only on the Spark. #3199 took three
+   texts with a Spark replay between each. With the build in the same lane, that loop closes on one box.
+3. **Item 3 goes to the MacBook lane, and item 2 is split by host.** The MacBook lane's no-Studio queue is worked
+   outside the takeover hours, so machine-neutral code goes there, with a fallback. Item 2's Studio half can be proved
+   only on the Mac.
+4. **The dependency move lands before the first live window, and every live case runs on one final deploy** (§9, §6).
+5. **D11–D16 are added** (§5). Revision 2 said what to build. It didn't say what each lane may do without the owner,
+   and in 2.8.1 each run that took over the Mac was asked of the owner one at a time.
+6. **§11 is added,** with the recovery tick the owner asked for.
+7. **Item 13 records the host at each measured set, and the window holds the Mac quiet.** These are the MacBook
+   lane's conditions. No memory figure exists today for Studio, the worker, the Mac's own stack or its local model.
+8. **§6 names the cases a person shows, and says what a lane's pause is.**
+
+**Not changed:** any item's rule or done-when, D1–D10, and §8. The 39 issues open on 2026-11-26 are the 39 that §8
+places.
+
+**What no ruling removes.** An unattended run still stops for a usage limit, until it resets; for a restart of either
+machine, until the owner resumes its session; for a Studio update or sign-in at a relaunch; and for everything D16
+keeps.
