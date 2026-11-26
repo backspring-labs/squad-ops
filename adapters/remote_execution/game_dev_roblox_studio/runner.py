@@ -52,6 +52,7 @@ from adapters.remote_execution.game_dev_roblox_studio.session import (
     StudioMcpSession,
     StudioSessionError,
     ToolCheck,
+    tool_changes,
 )
 from adapters.remote_execution.game_dev_roblox_studio.studio_app import (
     MacStudioApp,
@@ -131,6 +132,20 @@ class ProvedOn(StudioIdentity):
     #: The digest of the qualification record these pins came from (#3048), recorded with
     #: every result. Empty only for pins handed in directly: a qualification's own runs.
     record: str = ""
+    #: Each proved tool's definition digest, ``(name, digest)`` (#3230), so a refusal names the
+    #: tools that differ. ``None`` when the record holds none: one made before they were
+    #: recorded, for which the comparison is unavailable and is said to be.
+    tool_digests: tuple[tuple[str, str], ...] | None = None
+
+
+def _tool_difference(check: ToolCheck, proved: ProvedOn) -> str:
+    """Which tools differ from the proved list, by name (#3230), or that it can't be said."""
+    if proved.tool_digests is None:
+        return (
+            "which tools differ can't be named: the qualification record holds no per-tool "
+            "digests, so the comparison is unavailable"
+        )
+    return tool_changes(proved.tool_digests, check.digests).named()
 
 
 class NotProved(RuntimeError):
@@ -414,7 +429,7 @@ class RobloxStudioRunner(OperationRunnerPort):
                            f"{proved.studio_version}")  # fmt: skip
         if tools != proved.studio_tools:
             differs.append(f"Studio's tools read {tools[:24]}…, and the operation was proved on "
-                           f"{proved.studio_tools[:24]}…")  # fmt: skip
+                           f"{proved.studio_tools[:24]}… ({_tool_difference(check, proved)})")  # fmt: skip
         channel = ""
         try:
             channel = self._app.channel()
