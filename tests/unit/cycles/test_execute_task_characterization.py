@@ -167,6 +167,7 @@ class _ScriptedDispatcher:
         task_run_id,
         handle_task_outcome,
         screen_success,
+        hand_off,
     ):
         self._trace.add(
             "dispatch_with_retry",
