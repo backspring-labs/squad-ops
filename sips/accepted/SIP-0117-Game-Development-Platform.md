@@ -199,6 +199,7 @@ phases are in its own ledger.
 | A worker whose tool isn't ready is read as an absent one: `tool_unready` on a `not_executed` the worker returns for its own environment, so an increment blocked only by it is retried, never repaired (R5.28) | **shipped** | 2.8 (PR #3195, closing #3192) |
 | Studio's qualification identity includes its release channel: read from the running Studio's startup log, held to the proof at every claim and across every reset, recorded in the qualification record and in each result's `ran_with` beside the proof's (R5.29) | **shipped** | 2.8.1 (PR #3220, closing #3206) |
 | An owner's cancel: a cycle's cancel and a Campaign's abort stop the remote operations they own, a result that arrives after the cancel is kept as the late result and is no evidence, and nothing new is queued for a cancelled owner (R5.30) | **shipped** | 2.9 (PR #3256; #3236 tracks the MacBook lane's half) |
+| A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
 | A candidate's own setup failure repaired in the run: attributed to the candidate only when the six conditions of the 2.9 plan's item 7 hold, each with its evidence kept, then one bounded in-run correction with the console's error in its evidence; anything else keeps today's routing, not executed (a numbered amendment beside R5.28, made in the PR that builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
 | A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (a numbered amendment to R5.18, made in the PR that builds it; the Spark lane writes the rule and the MacBook lane builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3193 |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
@@ -1761,6 +1762,43 @@ development-profile seams. SIP-0116 names this SIP as its first consumer and lea
 - the assertion protocol (R3.7);
 - the product and publishing (R3.8);
 - the owner's decisions D2–D5, D9 and D10. D7 and D8 are read as R4.4 and R4.8 say.
+
+## R5.31 A qualification names each tool whose definition changed (#3230, 2026-11-26; R2.4, R5.21, R5.29; the 2.9 plan's item 11, adopted by the owner)
+
+**What changed.** A qualification record held one digest for Studio's whole tool list, and the names (R5.21). It
+now also holds each tool's own definition digest, and names the tools whose definition changed since the pin it
+replaces. The worker's refusal of a Studio whose tool list differs names the tools too.
+
+| Point | As built |
+|---|---|
+| **Each tool's digest** | The sha256 of the tool's definition as Studio's `tools/list` gives it, with sorted keys (`session.tool_check`, `ToolCheck.digests`). The list's digest is unchanged, and is still what holds Studio to the proof |
+| **The record** | Schema `squadops.studio-qualification/3` adds `tool_digests` (name to digest) and `tools_changed` beside `tools_added` and `tools_removed`. A `/2` and a `/1` record are still read as the runs they were, with the digests they were written with |
+| **A `/2` record as the pin** | Still pins. The list's digest holds Studio to it as before, so no worker needs a re-qualification because this shipped |
+| **The comparison, when the replaced pin holds no per-tool digests** | `tools_changed` is `null`, and the summary says it can't be said. It is never an empty list, which would read as a comparison that found nothing |
+| **The first qualification** | Replaces nothing, so `tools_changed` is empty |
+| **The worker's refusal** | `Studio's tools read …, and the operation was proved on … (changed script_read)`, with `added` and `removed` beside it when there are any. Against a pin with no per-tool digests it says the tools that differ can't be named and the comparison is unavailable |
+| **What isn't narrowed** | The proof. The whole list stays the identity (R5.21): a change to a tool the adapter never calls still refuses the play, and is now named |
+
+**The evidence** (#3230).
+- **2026-11-19, the requalification for #3206:** play 1 completed on a Studio whose list read `38:1ba499d8…`. The
+  reset reopened Studio, and play 2 read `not_executed`: the list read `38:3d29f729…`. The version, the channel and
+  the 38 names were the same on both sides. Both records read `tools added [], removed []`.
+- **2026-11-20, a fresh launch before the #3199 plays:** the channel read `production` and the list `39:b7cd2a22…`,
+  with three tools added and two removed. Two changed descriptions among the tools that kept their names were
+  found only by diffing two dumps of the list by hand.
+
+**Who ruled it.** The 2.9 plan's item 11 and its D4, adopted by the owner on 2026-11-26. The MacBook lane built it.
+
+**The tests.** `tests/unit/remote_execution/test_roblox_studio_requalification.py` enters at `requalify` and at
+`RobloxStudioRunner.run` with the worker's pins read from its records, over the stand-in `StudioMCP`:
+- a tool redescribed under the same name, at one Studio version: the claim is refused naming it, the
+  re-qualification's record names it in `tools_changed` with nothing added or removed, and the next claim runs;
+- a pin written under `/2`: it still pins, a refusal against it says the comparison is unavailable, and the
+  record that replaces it holds `tools_changed: null` and every tool's digest;
+- a `/3` record missing its per-tool keys is refused by name, as any record with the wrong keys is.
+
+The live runs on the Mac's Studio are in the PR.
+
 
 ## R4.1 What takes the specialty's place
 

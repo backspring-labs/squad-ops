@@ -19,7 +19,9 @@ import pytest
 
 from adapters.remote_execution.game_dev_roblox_studio import worker as studio_worker
 from adapters.remote_execution.game_dev_roblox_studio.qualification import (
+    SCHEMA,
     SCHEMA_WITHOUT_CHANNEL,
+    SCHEMA_WITHOUT_TOOL_DIGESTS,
     Qualifications,
     requalify,
 )
@@ -30,7 +32,11 @@ from adapters.remote_execution.game_dev_roblox_studio.runner import (
     RobloxStudioRunner,
     StudioBusy,
 )
-from adapters.remote_execution.game_dev_roblox_studio.session import StudioMcpSession
+from adapters.remote_execution.game_dev_roblox_studio.session import (
+    StudioMcpSession,
+    ToolChanges,
+    tool_changes,
+)
 from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
 from squadops.remote_execution.models import OperationStatus
 from squadops.remote_execution.registry import WorkerRegistry
@@ -373,7 +379,14 @@ def _hand_edited(path: Path) -> None:
 
 def _under_another_schema(path: Path) -> None:
     document = json.loads(path.read_text())
-    document["schema"] = "squadops.studio-qualification/3"
+    document["schema"] = "squadops.studio-qualification/9"
+    path.write_text(json.dumps(document))
+
+
+def _without_its_tool_digests(path: Path) -> None:
+    """A record that names today's schema with the keys of the one before it (#3230)."""
+    document = json.loads(path.read_text())
+    del document["tool_digests"], document["tools_changed"]
     path.write_text(json.dumps(document))
 
 
@@ -391,8 +404,9 @@ def _without_its_channel(path: Path) -> None:
         (_hand_edited, "doesn't match its own digest"),
         (lambda path: path.write_text("{"), "can't be read"),
         (lambda path: path.write_text("[]"), "isn't one: it is a list"),
-        (_under_another_schema, "names the schema 'squadops.studio-qualification/3'"),
+        (_under_another_schema, "names the schema 'squadops.studio-qualification/9'"),
         (_without_its_channel, "isn't one: its keys are"),
+        (_without_its_tool_digests, "isn't one: its keys are"),
     ],
     ids=[
         "none-recorded",
@@ -401,6 +415,7 @@ def _without_its_channel(path: Path) -> None:
         "a-record-not-an-object",
         "a-record-under-a-schema-not-known",
         "a-record-missing-its-channel",
+        "a-record-missing-its-tool-digests",
     ],
 )
 async def test_a_worker_with_no_record_it_can_trust_runs_nothing(tmp_path, spoil, says):
@@ -486,3 +501,121 @@ async def test_doctor_fails_a_pin_that_names_no_channel(tmp_path):
 
     assert checks["qualified"].passed is False
     assert "names no channel" in checks["qualified"].message
+
+
+# ---------------------------------------------------------------------------
+# #3230 (SIP-0117 R5.31): a tool whose definition changed under the same name is named
+# ---------------------------------------------------------------------------
+
+#: ``script_read`` as Studio offered it on a later launch: the same name, still read-only, with
+#: one more annotation. The 2026-11-19 change was this shape: 38 names on both sides.
+_REDESCRIBED = {"readOnlyHint": True, "title": "Read a script's source"}
+
+
+async def test_a_tool_whose_definition_changed_under_the_same_name_is_named(tmp_path):
+    """The done-when, end to end, at one Studio version. Bugs caught:
+    - a refusal that says the tool list differs and can't say which tool, so a person diffs two
+      dumps by hand (2026-11-20);
+    - a re-qualification record reading ``tools added [], removed []`` for a changed list, which
+      reads as nothing having changed (both records of 2026-11-19 did);
+    - a Studio that changed one tool run under the qualification made before it."""
+    studio, records = _Studio(tmp_path), _records(tmp_path)
+    first, _ = await studio.requalify(records)
+    worker = studio.runner(records)
+    studio.update("0.747.0", script_read=_REDESCRIBED)
+
+    refused = await worker.run(_request(PASSING))
+    second, path = await studio.requalify(records)
+    ran = await worker.run(_request(PASSING))
+
+    assert first.schema == SCHEMA and first.tools_changed == ()
+    assert [name for name, _digest in first.tool_digests] == list(first.tool_names)
+    assert refused.status is OperationStatus.NOT_EXECUTED
+    assert "and the operation was proved on" in refused.reason
+    assert "(changed script_read)" in refused.reason
+    assert second.passed
+    assert (second.tools_added, second.tools_removed, second.tools_changed) == (
+        (),
+        (),
+        ("script_read",),
+    )
+    assert json.loads(path.read_text())["tools_changed"] == ["script_read"]
+    assert dict(second.tool_digests)["script_read"] != dict(first.tool_digests)["script_read"]
+    assert records.pinned() == second
+    assert ran.status is OperationStatus.COMPLETED, ran.reason
+
+
+def _as_the_2_8_1_worker_wrote_it(path: Path) -> None:
+    """The record under the schema before per-tool digests (``/2``), digested by its own body,
+    as the Mac's pin of 2026-11-20 is."""
+    document = json.loads(path.read_text())
+    del document["tool_digests"], document["tools_changed"], document["digest"]
+    document["schema"] = SCHEMA_WITHOUT_TOOL_DIGESTS
+    document["digest"] = hashlib.sha256(json.dumps(document, sort_keys=True).encode()).hexdigest()
+    path.write_text(json.dumps(document, indent=2) + "\n")
+
+
+async def test_against_a_record_with_no_per_tool_digests_the_comparison_reads_unavailable(
+    tmp_path,
+):
+    """The Mac's pin today is a ``/2`` record. Bugs caught:
+    - that record refused, so every worker needs a re-qualification the day this ships;
+    - the refusal against it, or the record that replaces it, reading "no tool changed" when
+      nothing was compared. An empty list would be read as a finding."""
+    studio, records = _Studio(tmp_path), _records(tmp_path)
+    _first, pinned_path = await studio.requalify(records)
+    _as_the_2_8_1_worker_wrote_it(pinned_path)
+    worker = studio.runner(records)
+
+    still_pins = await worker.run(_request(PASSING))
+    studio.update("0.747.0", script_read=_REDESCRIBED)
+    refused = await worker.run(_request(PASSING))
+    second, path = await studio.requalify(records)
+
+    [earlier, _] = records.records()
+    assert (earlier.schema, earlier.tool_digests, earlier.tools_changed) == (
+        SCHEMA_WITHOUT_TOOL_DIGESTS,
+        None,
+        None,
+    )
+    assert still_pins.status is OperationStatus.COMPLETED, still_pins.reason
+    assert refused.status is OperationStatus.NOT_EXECUTED
+    assert "which tools differ can't be named" in refused.reason
+    assert "the comparison is unavailable" in refused.reason
+    assert second.passed and second.tools_changed is None
+    assert json.loads(path.read_text())["tools_changed"] is None
+    # The names were compared, as before, and the next record can compare definitions.
+    assert (second.tools_added, second.tools_removed) == ((), ())
+    assert dict(second.tool_digests).keys() == set(second.tool_names)
+
+
+@pytest.mark.parametrize(
+    ("before", "now", "changes", "named"),
+    [
+        (
+            {"a": "1", "b": "1", "c": "1"},
+            {"a": "1", "b": "2", "d": "1"},
+            ToolChanges(added=("d",), removed=("c",), changed=("b",)),
+            "added d; removed c; changed b",
+        ),
+        (
+            {"a": "1", "b": "1"},
+            {"a": "2", "b": "2"},
+            ToolChanges(added=(), removed=(), changed=("a", "b")),
+            "changed a, b",
+        ),
+        (
+            {"a": "1"},
+            {"a": "1"},
+            ToolChanges(added=(), removed=(), changed=()),
+            "no tool was added, removed or changed",
+        ),
+        ({}, {"a": "1"}, ToolChanges(added=("a",), removed=(), changed=()), "added a"),
+    ],
+    ids=["all-three", "only-definitions", "nothing", "from-an-empty-list"],
+)
+def test_the_tools_that_differ_are_named_by_how_they_differ(before, now, changes, named):
+    found = tool_changes(before.items(), now.items())
+
+    assert found == changes
+    assert found.named() == named
