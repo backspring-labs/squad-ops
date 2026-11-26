@@ -26,6 +26,7 @@ from squadops.cycles.deletions import deleted_paths
 from squadops.cycles.emission_integrity import banked_as
 from squadops.cycles.models import ArtifactRef, Cycle, DerivedProfileNotFoundError
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+from squadops.cycles.vault_reads import retrieve_recorded
 from squadops.projects.checkout import (
     CHECKOUT_MANIFEST_FILENAME,
     CHECKOUT_MANIFEST_TYPE,
@@ -184,7 +185,9 @@ async def task_source_repository(
     )
     if manifest_id is None:
         return None
-    _ref, raw = await vault.retrieve(manifest_id)
+    _ref, raw = await retrieve_recorded(
+        vault, manifest_id, what="the manifest of the product's checkout"
+    )
     manifest = CheckoutManifest.from_json(raw)
     wanted = set(named) | set(manifest.instruction_paths)
     deleted = deleted_paths(stored_artifacts, skip_producers=REPAIR_TASK_TYPES)
@@ -203,6 +206,8 @@ async def task_source_repository(
         latest.pop(path, None)
     current = {}
     for path, art_id in latest.items():
-        _ref, content = await vault.retrieve(art_id)
+        _ref, content = await retrieve_recorded(
+            vault, art_id, what=f"the current content of {path}"
+        )
         current[path] = content.decode("utf-8", errors="replace")
     return source_repository_input(manifest, current, named, deleted=deleted)

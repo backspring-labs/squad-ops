@@ -172,7 +172,7 @@
 "src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"BaseException\" of \"TaskResult | BaseException\" has no attribute \"outputs\"": 1,
 "src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"BaseException\" of \"TaskResult | BaseException\" has no attribute \"status\"": 2,
 "src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"None\" of \"ArtifactVaultPort | None\" has no attribute \"list_artifacts\"": 1,
-"src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"None\" of \"ArtifactVaultPort | None\" has no attribute \"retrieve\"": 10,
+"src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"None\" of \"ArtifactVaultPort | None\" has no attribute \"retrieve\"": 2,
 "src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"None\" of \"ArtifactVaultPort | None\" has no attribute \"store\"": 4,
 "src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"None\" of \"Cycle | None\" has no attribute \"project_id\"": 1,
 "src/squadops/execution/dispatched_flow_executor.py\tunion-attr\tItem \"None\" of \"Cycle | None\" has no attribute \"task_flow_policy\"": 2,
