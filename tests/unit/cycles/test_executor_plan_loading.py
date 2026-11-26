@@ -86,11 +86,18 @@ class TestLoadManifestForRun:
         return executor
 
     def _make_cycle(self, **overrides) -> MagicMock:
+        from squadops.cycles.models import resolve_config
+
         cycle = MagicMock()
         cycle.applied_defaults = {"implementation_plan": True}
         cycle.execution_overrides = {}
         for k, v in overrides.items():
             setattr(cycle, k, v)
+        # The cycle's own merge. A bare mock answers every ``.get`` with a truthy mock, so
+        # "the plan is disabled" was never read (found by #3128).
+        cycle.resolved_config = lambda: resolve_config(
+            cycle.applied_defaults, cycle.execution_overrides
+        )
         return cycle
 
     def _make_run(self) -> MagicMock:
@@ -116,6 +123,9 @@ class TestLoadManifestForRun:
         result = await executor._load_plan_for_run(cycle, self._make_run())
 
         assert result is None
+        # The flag decided it: nothing was read. Before #3128 this test passed only because
+        # the loader swallowed the mock vault's unusable answer.
+        executor._artifact_vault.retrieve.assert_not_awaited()
 
     async def test_manifest_found_in_plan_refs(self):
         executor = self._make_executor()
@@ -149,16 +159,24 @@ class TestLoadManifestForRun:
 
         assert result is None
 
-    async def test_vault_failure_returns_none(self):
+    async def test_a_forwarded_ref_the_vault_cant_return_ends_the_run_by_name(self):
+        """#3128. Bug caught: a vault failure read as "this ref isn't the plan", so the run went
+        on to static task steps without the plan its framing wrote."""
+        from squadops.cycles.vault_reads import ArtifactUnavailable
+
         executor = self._make_executor()
-        executor._artifact_vault.retrieve.side_effect = Exception("vault down")
+        executor._artifact_vault.retrieve.side_effect = ConnectionError("vault down")
         cycle = self._make_cycle(
             execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        result = await executor._load_plan_for_run(cycle, self._make_run())
+        with pytest.raises(ArtifactUnavailable) as failed:
+            await executor._load_plan_for_run(cycle, self._make_run())
 
-        assert result is None
+        assert (failed.value.artifact_id, failed.value.kind) == (
+            "art_manifest",
+            "artifact_unretrieved",
+        )
 
     async def test_malformed_yaml_returns_none(self):
         executor = self._make_executor()

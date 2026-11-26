@@ -127,11 +127,19 @@ class TestWhichNotesAreChosen:
             is None
         )
 
-    async def test_a_retrieval_failure_degrades_to_no_notes(self, executor, mock_vault):
-        """The notes are optional context; an unreachable vault must not fail the task
-        that was going to be given them."""
+    async def test_notes_the_vault_cant_return_end_the_run_by_name(self, executor, mock_vault):
+        """#3128: optional means the builder may write none, which the run's record settles
+        before any read. Bug caught: notes the builder did write, and the vault failed to
+        return, handed to the test author as "there were none"."""
+        from squadops.cycles.vault_reads import ArtifactUnavailable
+
         mock_vault.retrieve = AsyncMock(side_effect=RuntimeError("vault down"))
-        assert await executor._resolve_assembly_notes([("art_x", _ref("art_x"))]) is None
+
+        with pytest.raises(ArtifactUnavailable) as failed:
+            await executor._resolve_assembly_notes([("art_x", _ref("art_x"))])
+
+        assert (failed.value.artifact_id, failed.value.kind) == ("art_x", "artifact_unretrieved")
+        assert "the builder's assembly_notes.md (artifact art_x)" in str(failed.value)
 
 
 class TestTheNotesReachTheEnvelopeTheQaAuthorIsDispatchedWith:
