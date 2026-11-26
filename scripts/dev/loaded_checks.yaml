@@ -1826,7 +1826,7 @@ checks:
       print(repair_not_applied_in_round([entry], 1), disposition_for(Vocabulary.FAILURE_CLASSIFICATION, "slot_subject_dropped").attribution.value)
     expect: "True producer_output_failure"
   - id: "2637"
-    what: the sandbox's scenario runner names the evaluator's tag (-8 since GHSA-g3hv-75wg-m249's minimatch pin) and refuses a scored page without -7's finer reading, rather than reading it as zero (SIP-0113 §10y)
+    what: the sandbox's scenario runner names the evaluator's tag (-9 since #3101's ruff 0.17) and refuses a scored page without -7's finer reading, rather than reading it as zero (SIP-0113 §10y)
     container: squadops-sandbox-service
     code: |
       from squadops.sandbox.environment import EVALUATOR_IMAGE
@@ -1839,7 +1839,7 @@ checks:
       except ValueError as e:
           refused = "refused" if "-7" in str(e) else f"refused otherwise: {e}"
       print(EVALUATOR_IMAGE.rsplit("-", 1)[-1], refused)
-    expect: "8 refused"
+    expect: "9 refused"
   - id: "2637-runtime"
     what: the runtime compares failing ids as introduced and resolved, and the proposal is shown only the measures it was shown before -7 (SIP-0113 §10y)
     container: squadops-runtime-api
@@ -2898,3 +2898,29 @@ checks:
       o = resolve_terminal_outcome(ArtifactUnavailable("art_1", "the cycle's PRD", unavailable_kind(lost), lost), "run_1")
       print(o.terminal.kind.value, o.terminal.failure_classification, o.failure_reason.startswith("the cycle's PRD (artifact art_1)"))
     expect: "infrastructure_failed artifact_missing True"
+  - id: "3101-runtime-moved"
+    what: the runtime API runs the FastAPI and Starlette the caps of 2026-11-15 held back, and serves its routes through the included-router table (#3101)
+    container: squadops-runtime-api
+    code: |
+      import importlib.metadata as m
+      from fastapi import APIRouter, FastAPI
+      from fastapi.routing import iter_route_contexts
+      v = lambda n: tuple(int(p) for p in m.version(n).split(".")[:2])
+      r = APIRouter(prefix="/api/v1/x")
+      r.add_api_route("/a", lambda: 1)
+      app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+      app.include_router(r)
+      print(v("fastapi") >= (0, 163), v("starlette") >= (1, 0), [c.path for c in iter_route_contexts(app.routes)])
+    expect: "True True ['/api/v1/x/a']"
+  - id: "3101-publisher-names-a-failure"
+    what: an agent publishes on aio-pika 10.2 or later, and a publish failure whose own text can't be built is still named by its type and arguments (#3101)
+    container: squadops-max
+    code: |
+      import importlib.metadata as m
+      from adapters.comms.rabbitmq import _said
+      class Unsayable(Exception):
+          def __str__(self):
+              raise AttributeError("no frame")
+      v = lambda n: tuple(int(p) for p in m.version(n).split(".")[:2])
+      print(v("aio-pika") >= (10, 2), _said(Unsayable("NO_ROUTE", "q")))
+    expect: "True Unsayable('NO_ROUTE', 'q')"
