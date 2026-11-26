@@ -6,8 +6,8 @@ use your recommendaiotns and best jusdgement. Ping me with any critical issues."
 - **What the adoption is:** the rulings D1–D16 as this revision states them, which were recommendations until then.
 - **What it leaves to the MacBook lane's session:** that lane's approval, D12's takeover hours and the dedicated
   window's values. Each is taken there, from the owner's own words.
-- **Placement follows in the adoption PR:** the lanes' labels, SIP-0117's ledger rows for the two amendments (items 7
-  and 12), the portfolio and the ROADMAP row.
+- **Placed 2026-11-26, in the adoption PR:** the lanes' labels on the sixteen issues, SIP-0117's two ledger rows for
+  the amendments of items 7 and 12 (#3200, #3193), the portfolio and the ROADMAP row.
 - **Revision 3** answers the owner's ask of 2026-11-26, made once the Spark was back from its move onto a UPS:
   re-assess the plan so the two lanes are coordinated, and so the line runs as far as it can to the cut without the
   owner.
@@ -168,6 +168,13 @@ required context, or give contradictory terminal outcomes. Stage C's unattended 
   a fix.
 - **Done when:** the failure is reproduced or instrumented, its cause is named, and repeated loaded runs no longer fail
   on it. The record says what nondeterminism remains.
+- **Corrected 2026-11-26:** the "Today" line was out of date when this plan was adopted. #3196 (2026-11-17, for
+  #3194) had already fixed the cause on main.
+  - Measured that day on main and on PR #3127's branch, idle and beside 20 CPU burners: the stuck run is seen at 19 s
+    of the path's clock and the result reads at 88 s, on every run.
+  - PR #3127 adds the assertion that holds the mechanism, and removes the wait's last real-time sleep.
+  - **From this miss:** each lane runs an item's failing case on main before it builds the item, and posts the
+    reading on the issue.
 
 ## 2. Stage B — candidate evaluation
 

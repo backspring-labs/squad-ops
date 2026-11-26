@@ -157,7 +157,7 @@ in the portfolio's §4).
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
   `docs/ideas/Doc traceability.txt`; the repository's SIP template, `sips/TEMPLATE.md`.
 
-## Delivery ledger (current as of 2026-11-20, the 2.8.1 cut)
+## Delivery ledger (current as of 2026-11-26, the 2.9 plan's adoption)
 
 One row per part that ships separately. Statuses: *shipped* (the release, the PR, and the issue it closed),
 *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once numbered), *unplaced* (said
@@ -199,12 +199,14 @@ phases are in its own ledger.
 | A worker whose tool isn't ready is read as an absent one: `tool_unready` on a `not_executed` the worker returns for its own environment, so an increment blocked only by it is retried, never repaired (R5.28) | **shipped** | 2.8 (PR #3195, closing #3192) |
 | Studio's qualification identity includes its release channel: read from the running Studio's startup log, held to the proof at every claim and across every reset, recorded in the qualification record and in each result's `ran_with` beside the proof's (R5.29) | **shipped** | 2.8.1 (PR #3220, closing #3206) |
 | An owner's cancel: a cycle's cancel and a Campaign's abort stop the remote operations they own, a result that arrives after the cancel is kept as the late result and is no evidence, and nothing new is queued for a cancelled owner (R5.30) | **shipped** | 2.9 (PR #3256; #3236 tracks the MacBook lane's half) |
+| A candidate's own setup failure repaired in the run: attributed to the candidate only when the six conditions of the 2.9 plan's item 7 hold, each with its evidence kept, then one bounded in-run correction with the console's error in its evidence; anything else keeps today's routing, not executed (a numbered amendment beside R5.28, made in the PR that builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
+| A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (a numbered amendment to R5.18, made in the PR that builds it; the Spark lane writes the rule and the MacBook lane builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3193 |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
 
-**What closes this SIP:** phases 2a–2e and R5.7's rows shipped (Roblox integration works), then G-1 and U-1 shipped or dropped by a
-numbered amendment. B-1 is optional. "The squad can build and improve a playable game" is the companion's to close
+**What closes this SIP:** phases 2a–2e and R5.7's rows shipped (Roblox integration works), the 2.9 plan's two rows
+shipped, then G-1 and U-1 shipped or dropped by a numbered amendment. B-1 is optional. "The squad can build and improve a playable game" is the companion's to close
 (R2.10).
 
 ---
