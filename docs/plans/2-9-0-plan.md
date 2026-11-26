@@ -490,7 +490,8 @@ The cut record says what one window does not show: reliability across machines, 
 
 ## 8. The open issues, each placed (proposed, D10)
 
-The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed for item 13.
+The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed for item 13. #3251 was filed on
+2026-11-26, which makes 40.
 
 **In 2.9 (15):** #3235, #3236, #3224, #3244, #3128, #3000, #3110 (Stage A); #3200, #3182, #3240, #3243, #3230 (Stage B); #3193, #3250 (Stage C); #3101 (Stage D).
 
@@ -499,7 +500,7 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 
 **Proposed for 2.10's intake (8),** not placed by this plan: #3137, #3138, #3181, #2997, #2782, #2723, #3169, and #3147's per-stack move.
 
-**Open outside 2.9 (11):**
+**Open outside 2.9 (12):**
 | issue | disposition |
 |---|---|
 | #3062 | CI network dependency: a patch or a later stabilization line. The 2.9 cut record names it, and tells a registry outage from a regression |
@@ -513,6 +514,7 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 | #1978 | its 2.6 placement kept; its status reconciled separately |
 | #1965 | a separately governed experiment, not a release dependency |
 | #1039 | the docs site's design pass, independent backlog |
+| #3251 | the Spark's GPU containers after a reboot: a patch, built by the Spark lane beside 2.9. The host fix is the owner's to install |
 
 ## 9. The order, and the cut
 
@@ -634,8 +636,8 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
    D13's bar and bound, keeps the owner's standing rulings in D16, counts item 14's landing as a change to the worker,
    and holds the quiet host through a rehearsal.
 
-**Not changed:** any item's rule or done-when, D1–D10, and §8. The 39 issues open on 2026-11-26 are the 39 that §8
-places.
+**Not changed:** any item's rule or done-when, D1–D10, and §8's placements. §8 gains one row: #3251, found on the
+Spark's first boot after its move and filed on 2026-11-26, is placed outside 2.9 as a patch.
 
 **What no ruling removes.** An unattended run still stops for a usage limit, until it resets; for a restart of either
 machine, until the owner resumes its session; for a Studio update or sign-in at a relaunch; and for everything D16
