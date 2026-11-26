@@ -125,8 +125,8 @@ class TestEmissionCoverage:
             f"in any emission source file"
         )
 
-    def test_all_31_types_defined(self, all_emitted_types: set[str]) -> None:
-        assert len(_ALL_EVENT_TYPE_ATTRS) == 31  # SIP-0109 added CAMPAIGN_TRANSITIONED
+    def test_all_32_types_defined(self, all_emitted_types: set[str]) -> None:
+        assert len(_ALL_EVENT_TYPE_ATTRS) == 32  # SIP-0077 §24a (#3000) added TASK_HANDED_OFF
 
     def test_wired_types_covered(self, all_emitted_types: set[str]) -> None:
         wired = set(_ALL_EVENT_TYPE_ATTRS) - _SIP_0083_PENDING_EMISSION
@@ -296,7 +296,7 @@ class TestTaskDispatcherEmissionPoints:
     def task_dispatcher_refs(self) -> set[str]:
         return _find_event_type_refs_in_file(_TASK_DISPATCHER_PATH)
 
-    @pytest.mark.parametrize("attr", ["TASK_SUCCEEDED", "TASK_FAILED"])
+    @pytest.mark.parametrize("attr", ["TASK_SUCCEEDED", "TASK_FAILED", "TASK_HANDED_OFF"])
     def test_task_dispatcher_emits(self, attr: str, task_dispatcher_refs: set[str]) -> None:
         assert attr in task_dispatcher_refs
 
@@ -435,8 +435,11 @@ class TestEmitCallSitePayloadFields:
         recorder's, 51 → 49. #1990 replaced the executor's and the correction runner's two
         ARTIFACT_OWNERSHIP_ENFORCED emits with the one emitter's, 49 → 48. #2178 added the
         binding hold's RUN_PAUSED and RUN_RESUMED (SIP-0110 §5ag), 48 → 50, and the emergency
-        withdrawal's restart WORKLOAD_ADVANCED (T13), 50 → 51."""
+        withdrawal's restart WORKLOAD_ADVANCED (T13), 50 → 51. #3000 (SIP-0077 §24a) added the
+        task dispatcher's four for a hand-off: TASK_HANDED_OFF for the attempt, the ending on the
+        verdict as TASK_SUCCEEDED or TASK_FAILED, and TASK_FAILED when the verdict can't be read,
+        51 → 55."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 51
+        assert total == 55
