@@ -3023,6 +3023,24 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         assert ids["#1971:loaded"] == "answered"
         assert "#1954:loaded" not in ids
 
+    def test_a_set_names_a_row_kept_in_a_file_of_its_own(self, driver, tmp_path, monkeypatch):
+        """#3268: a new row lives under ``loaded_checks.d/``. Bug caught: the driver reading the
+        one file alone, so a set that names a row added since is refused at load as unknown."""
+        import yaml
+
+        self._tracked(driver, tmp_path, monkeypatch, [self._ROW])
+        beside = tmp_path / "loaded_checks.d"
+        beside.mkdir()
+        (beside / "3268.yaml").write_text(
+            yaml.safe_dump({"checks": [{**self._ROW, "id": "3268", "code": "print('beside')"}]})
+        )
+        cfg = self._cfg(driver, tmp_path, {}, tracked_loaded_checks=["3268"])
+
+        seen, ids = self._execs(driver, monkeypatch, cfg)
+
+        assert seen[-1][-1] == "print('beside')"
+        assert ids["#3268:loaded"] == "answered"
+
     def test_a_tracked_row_the_file_does_not_hold_is_refused_at_load(
         self, driver, tmp_path, monkeypatch
     ):
