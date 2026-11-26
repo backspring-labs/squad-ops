@@ -164,6 +164,14 @@ ensure_docker_group() {
 # (the compose `gpu` profile's dcgm-exporter) only when /etc/cdi describes it. nvidia-ctk writes it
 # from the installed driver, so it is rewritten on every run: a driver upgrade changes the device
 # nodes, and a stale spec fails every GPU container.
+#
+# A boot can change them too (#3251): the spec names the GPU's /dev/dri card by number, and the
+# kernel may number it differently next time. So a docker.service drop-in is installed beside the
+# spec, which regenerates it each time the daemon starts, before any container does. Docker isn't
+# restarted here: the drop-in acts from the daemon's next start, and `squadops doctor` checks it.
+GPU_CDI_DROPIN_SOURCE="scripts/bootstrap/host/docker-nvidia-cdi.conf"
+GPU_CDI_DROPIN="/etc/systemd/system/docker.service.d/10-nvidia-cdi.conf"
+
 ensure_gpu_cdi_spec() {
     if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
         return 0
@@ -175,6 +183,14 @@ ensure_gpu_cdi_spec() {
     info "Writing the GPU's CDI spec (/etc/cdi/nvidia.yaml)..."
     run_or_dry sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
     success "GPU CDI spec written"
+    if [[ ! -f "$GPU_CDI_DROPIN_SOURCE" ]]; then
+        error "$GPU_CDI_DROPIN_SOURCE not found — run the bootstrap from the repository's root"
+        exit 1
+    fi
+    info "Installing the spec's refresh at Docker's start ($GPU_CDI_DROPIN)..."
+    run_or_dry sudo install -D -m 644 -o root -g root "$GPU_CDI_DROPIN_SOURCE" "$GPU_CDI_DROPIN"
+    run_or_dry sudo systemctl daemon-reload
+    success "GPU CDI spec is refreshed whenever Docker starts"
 }
 
 # Start Docker Compose services.

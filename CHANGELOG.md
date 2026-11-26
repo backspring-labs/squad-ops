@@ -14,6 +14,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   files is refused, and a test refuses a row appended to the old file.
 
 ### Fixed
+- **The Spark's GPU containers come back after a reboot that renumbers the GPU's card** (#3251): the
+  `local-spark` bootstrap wrote the CDI spec once, and the spec names the GPU's `/dev/dri` card by number. On
+  2026-11-23 the GPU came up under another number, and the squad's LLM server and the GPU exporter stayed down.
+  - The bootstrap now installs a `docker.service` drop-in that regenerates the spec whenever Docker starts
+    (`scripts/bootstrap/host/docker-nvidia-cdi.conf`). A failure keeps the old spec and never blocks Docker.
+  - `squadops doctor` checks that every device node the spec names exists, and that the drop-in is installed.
 - **An accepted QA hand-off reads accepted everywhere** (#3000; SIP-0077 §24a; the 2.9 plan's item 5): a
   product's `qa.test` whose suite the qa image leaves to the product's own runner replied as a failed task, and
   three signals were set from that reply before the runner was asked: the Prefect task run read `Failed`, the

@@ -1241,3 +1241,177 @@ class TestOllamaModelsOverHttp:
 
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
             assert checks_mod._ollama_api("/api/tags") is None
+
+
+# ---------------------------------------------------------------------------
+# The GPU's CDI spec (#3251)
+# ---------------------------------------------------------------------------
+
+
+class TestGpuCdi:
+    """A box that hands containers its GPU by CDI. Seen 2026-11-23: after a reboot the spec named
+    a card number the GPU no longer had, and every container that takes the GPU stayed down."""
+
+    SHIPPED = "[Service]\nExecStartPre=-/bin/sh -c 'regenerate the spec'\n"
+
+    def _world(self, tmp_path, *, nodes, dropin):
+        import yaml
+
+        present = tmp_path / "dev"
+        present.mkdir()
+        for name in ("gpu0", "card0"):
+            (present / name).write_text("")
+        spec = tmp_path / "nvidia.yaml"
+        spec.write_text(
+            yaml.safe_dump(
+                {
+                    "kind": "nvidia.com/gpu",
+                    "containerEdits": {"deviceNodes": [{"path": str(present / "gpu0")}]},
+                    "devices": [
+                        {
+                            "name": "all",
+                            "containerEdits": {
+                                "deviceNodes": [{"path": str(present / n)} for n in nodes]
+                            },
+                        }
+                    ],
+                }
+            )
+        )
+        shipped = tmp_path / "shipped.conf"
+        shipped.write_text(self.SHIPPED)
+        installed = tmp_path / "installed.conf"
+        if dropin is not None:
+            installed.write_text(dropin)
+        return spec, installed, shipped
+
+    def _read(self, tmp_path, **world):
+        from squadops.bootstrap.setup.checks import check_gpu_cdi
+
+        return {r.name: r for r in check_gpu_cdi(*self._world(tmp_path, **world))}
+
+    def test_a_spec_whose_nodes_exist_with_the_refresh_installed_passes_both(self, tmp_path):
+        read = self._read(tmp_path, nodes=["card0"], dropin=self.SHIPPED)
+
+        assert [(name, r.passed) for name, r in read.items()] == [
+            ("gpu:cdi-device-nodes", True),
+            ("gpu:cdi-refresh-at-docker-start", True),
+        ]
+        assert "names exists (2)" in read["gpu:cdi-device-nodes"].message
+
+    def test_a_card_the_boot_renumbered_is_named_with_what_it_costs(self, tmp_path):
+        """Bug caught: the doctor passing a box whose GPU containers can't start, which is how
+        it read on 2026-11-23 until the deploy record's check named the two services."""
+        read = self._read(tmp_path, nodes=["card0", "card1"], dropin=self.SHIPPED)
+
+        nodes = read["gpu:cdi-device-nodes"]
+        assert nodes.passed is False
+        assert nodes.message.endswith(f"names device nodes that don't exist: {tmp_path}/dev/card1")
+        assert "nvidia-ctk cdi generate" in nodes.detail
+        assert "bootstrap.sh local-spark" in nodes.fix_command
+
+    def test_a_copy_that_differs_only_in_its_comments_is_the_same_drop_in(self, tmp_path):
+        """Bug caught: a box told to reinstall with sudo because a comment was reworded since
+        its owner installed the file."""
+        earlier = "# an earlier wording\n\n" + self.SHIPPED
+        read = self._read(tmp_path, nodes=["card0"], dropin=earlier)
+
+        assert read["gpu:cdi-refresh-at-docker-start"].passed is True
+
+    @pytest.mark.parametrize(
+        ("dropin", "says"),
+        [
+            (None, "is not installed, so a boot that renumbers the GPU's card"),
+            ("[Service]\nExecStartPre=-/bin/true\n", "differs from the one this checkout ships"),
+        ],
+        ids=["not installed", "an older copy"],
+    )
+    def test_a_box_whose_spec_isnt_refreshed_at_dockers_start_fails_by_name(
+        self, tmp_path, dropin, says
+    ):
+        """Bug caught: a spec that is right today passing, on a box where the next boot can
+        leave it wrong with nothing to rewrite it."""
+        read = self._read(tmp_path, nodes=["card0"], dropin=dropin)
+
+        refresh = read["gpu:cdi-refresh-at-docker-start"]
+        assert (refresh.passed, read["gpu:cdi-device-nodes"].passed) == (False, True)
+        assert says in refresh.message
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "not: [yaml",
+            "kind: nvidia.com/gpu\n",
+            "devices:\n  - containerEdits:\n      deviceNodes:\n        - {}\n",
+        ],
+        ids=["not YAML", "no devices", "a node with no path"],
+    )
+    def test_a_spec_that_cant_be_read_is_never_read_as_naming_nothing(self, tmp_path, content):
+        """Bug caught: a damaged spec read as an empty one, whose every node "exists"."""
+        spec, installed, shipped = self._world(tmp_path, nodes=["card0"], dropin=self.SHIPPED)
+        spec.write_text(content)
+        from squadops.bootstrap.setup.checks import check_gpu_cdi
+
+        nodes = next(r for r in check_gpu_cdi(spec, installed, shipped) if "nodes" in r.name)
+
+        assert nodes.passed is False
+        assert nodes.message == f"{spec} can't be read as a CDI spec"
+
+    def test_a_box_with_no_cdi_spec_is_not_checked(self, tmp_path):
+        """A box that doesn't hand out its GPU this way: nothing to say."""
+        from squadops.bootstrap.setup.checks import check_gpu_cdi
+
+        assert check_gpu_cdi(tmp_path / "none.yaml", tmp_path / "d.conf", tmp_path / "s.conf") == []
+
+    def test_the_shipped_drop_in_regenerates_under_run_and_never_blocks_docker(self):
+        """The file the bootstrap installs. Bugs caught, each met while it was first written: a
+        temporary spec left in /etc/cdi, which Docker reads as a second spec; and a failure that
+        stops the daemon."""
+        from squadops.bootstrap.setup.checks import GPU_CDI_DROPIN_SOURCE
+
+        [start] = [
+            line
+            for line in GPU_CDI_DROPIN_SOURCE.read_text().splitlines()
+            if line.startswith("ExecStartPre=")
+        ]
+
+        assert start.startswith("ExecStartPre=-")
+        assert "--output=/run/nvidia-cdi-new.yaml" in start
+        assert "mv -f /run/nvidia-cdi-new.yaml /etc/cdi/nvidia.yaml" in start
+        assert "/usr/bin/timeout 60 " in start
+        assert "--output=/etc/cdi" not in start
+
+
+def test_the_bootstrap_installs_the_refresh_where_it_writes_the_spec():
+    """Wiring, entered at the function the local-spark profile calls, in dry-run. Bug caught:
+    the spec written once and the drop-in left for an operator to find out about, which is how
+    the box stood until 2026-11-26."""
+    import subprocess
+
+    from squadops.bootstrap.setup.checks import GPU_CDI_DROPIN, REPO
+
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            "set -e; source scripts/bootstrap/lib/common.sh; "
+            "source scripts/bootstrap/lib/docker_setup.sh; check_command() { return 0; }; "
+            "ensure_gpu_cdi_spec",
+        ],
+        cwd=REPO,
+        env={"DRY_RUN": "1", "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    said = [
+        line.split("[dry-run] ", 1)[1] for line in done.stdout.splitlines() if "[dry-run]" in line
+    ]
+    assert said == [
+        "sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml",
+        "sudo install -D -m 644 -o root -g root scripts/bootstrap/host/docker-nvidia-cdi.conf "
+        f"{GPU_CDI_DROPIN}",
+        "sudo systemctl daemon-reload",
+    ]
+    assert "ensure_gpu_cdi_spec" in (REPO / "scripts/bootstrap/profiles/local-spark.sh").read_text()
