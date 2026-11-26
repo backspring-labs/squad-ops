@@ -16,9 +16,21 @@ import yaml
 
 _DEV = Path(__file__).resolve().parents[3] / "scripts" / "dev"
 TRACKED = _DEV / "loaded_checks.yaml"
-#: The last row appended to the tracked file, on 2026-11-26. A row after it belongs in a file of
-#: its own under ``loaded_checks.d/`` (its README says why).
-LAST_APPENDED = "3000-hand-off-ends-on-the-verdict"
+#: The first issue whose rows go in a file of their own. A pull request for an earlier issue was
+#: already open when the directory came, and may still land a row in the tracked file.
+FIRST_ISSUE_IN_FILES = 3268
+#: The tracked file's rows whose id starts with no issue number: these seven, and no more.
+UNNUMBERED = frozenset(
+    {
+        "retake-after-patch",
+        "route-response-fields",
+        "nextjs-client-surface",
+        "scenario-entity-resolution",
+        "nextjs-page-suite-invokes",
+        "nextjs-page-suite-invokes-api",
+        "h10-vitest-reader",
+    }
+)
 
 
 def _load(name: str):
@@ -116,10 +128,20 @@ def test_verify_loaded_runs_a_row_kept_in_a_file_of_its_own(tmp_path, monkeypatc
 
 def test_the_tracked_file_takes_no_new_row():
     """A row appended to the tracked file conflicts with every other open pull request's. Bug
-    caught: the habit. Put the row in ``scripts/dev/loaded_checks.d/<issue>.yaml``."""
-    tracked = yaml.safe_load(TRACKED.read_text())["checks"]
+    caught: the habit. A row for an issue filed since the directory came, or one with no issue
+    number, goes in ``scripts/dev/loaded_checks.d/<issue>.yaml``."""
+    import re
 
-    assert tracked[-1]["id"] == LAST_APPENDED, (
-        "a row was appended to scripts/dev/loaded_checks.yaml: move it to a file of its own "
-        "under scripts/dev/loaded_checks.d/, named for its issue (see that directory's README)"
+    ids = [str(row["id"]) for row in yaml.safe_load(TRACKED.read_text())["checks"]]
+    numbered = {i: int(m.group()) for i in ids if (m := re.match(r"\d+", i))}
+
+    misplaced = sorted(
+        [i for i, issue in numbered.items() if issue >= FIRST_ISSUE_IN_FILES]
+        + [i for i in ids if i not in numbered and i not in UNNUMBERED]
+    )
+
+    assert misplaced == [], (
+        f"rows {misplaced} were added to scripts/dev/loaded_checks.yaml: move each to a file of "
+        "its own under scripts/dev/loaded_checks.d/, named for its issue (see that directory's "
+        "README)"
     )

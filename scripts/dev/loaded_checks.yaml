@@ -2,7 +2,8 @@
 # checks"). One row per change: the container that runs it, a snippet that prints what only the new
 # code prints, and that output.
 #
-# NEW ROWS DO NOT GO IN THIS FILE (#3268). A row goes in a file of its own under
+# NEW ROWS DO NOT GO IN THIS FILE (#3268; a test refuses one for issue 3268 or later). A row
+# goes in a file of its own under
 # `loaded_checks.d/`, named for its issue (`3268.yaml`), with the same top-level `checks:` list.
 # Every reader takes this file and those as one set (`loaded_check_rows.py`). While rows were
 # appended here, any two open pull requests conflicted at this file's last line.
