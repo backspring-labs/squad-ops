@@ -1851,8 +1851,10 @@ cites the ordering sentence, so the sentence is the cause it names.
 | **The stops are listed by their openings** | Each alone on its line, under the declaring skill's name (`skillsets.declared_stop_list`) | Show, don't tell (the prompt standard): the model sees the lines it may answer with. An opening with nothing after it is never read as a stop (§17o), so a model that quotes the list back hasn't stopped (§17u, #3154) |
 | **The prompt budget counts it** | `skills_framing_tokens` adds the two assets' prose and the list, for a task whose skills declare a stop | §7: skills are counted before lessons are given room |
 | **Core still holds no skill's words** | The list is read from the handed skills' own front matter | §17o's rule, unchanged |
+| **A line that names the opening without using it is no stop** | `read_stop` passes over a line where the opening stands alone in an inline-code span with words outside it: "`no scenario:` doesn't apply here". A stop the model writes in inline code carries its reason inside the span, and is read | The MacBook lane's review, measured on main with the packaged skill: such a line read as a stop. This amendment's text asks the model to weigh each stop's condition, which makes "it doesn't apply" a likely thing to write |
+| **An answer that also emits a file has not stopped** | `read_stop` reads no stop in an answer that holds a fenced block naming a file. The file is read as any other, and the line passed over is logged | The section says a stop is the whole answer. The wrong direction is a task that did its work read as one that refused it, with its artifact set aside |
 
-**The tests** (`tests/unit/capabilities/test_skills_section.py`): the exception beside the ordering and the part
+**The tests** (`tests/unit/capabilities/test_skills_section.py`, and `test_skill_stops.py` for the two readings above: four lines that name the opening without using it, an answer that stops and emits, and three real stops still read): the exception beside the ordering and the part
 after every skill; skills that declare none rendering as before; the section's own text, and its list quoted
 back, never read as a stop while a real stop line still is; the two packaged skills that declare a stop listed
 under their own names; the budget counting the text. The existing tests hold every slotted template unchanged

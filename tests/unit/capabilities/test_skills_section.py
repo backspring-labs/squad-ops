@@ -294,6 +294,16 @@ async def test_the_packaged_skills_stops_are_listed_under_their_own_names(render
     assert read_stop(handed, section) is None
 
 
+def test_the_budget_names_a_skill_whose_stops_it_cant_read():
+    """From the MacBook lane's review. The budget reaches the list before any rendering does.
+    Bug caught: a skill whose front matter can't be read skipped there, so the prompt is
+    measured short and nothing says which skill."""
+    broken = {**STOPPING, "files": {"SKILL.md": "no front matter at all\n"}}
+
+    with pytest.raises(ValueError, match="skill luau-design/scenario-authoring: SKILL.md"):
+        prompt_without_memory_tokens(_envelope(**{SKILLS_INPUT: [broken]}))
+
+
 async def test_the_prompt_budget_counts_the_stops_text_at_least_as_it_renders(renderer):
     """Bug caught: the stop rule's text left out of the measured prompt, so a task near its
     window is given lesson room the section already took."""

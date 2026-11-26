@@ -510,9 +510,12 @@ def declared_stop_list(handed: Any) -> str:
         try:
             openings = skill_stops(text)
             header, _ = parse_frontmatter(text)
-        except FrontmatterError:
-            # ``_skill_block`` raises for this skill, naming it; nothing is listed for it here.
-            continue
+        except FrontmatterError as exc:
+            # Raised here too, by name: the budget's count reaches this before any rendering
+            # does, and a skill skipped would be a prompt measured short.
+            raise ValueError(
+                f"skill {skill['skillset']}/{skill['skill']}: {SKILL_FILE} front matter: {exc}"
+            ) from exc
         if not openings:
             continue
         lines.append(f"From the skill {str(header.get('name') or skill['skill']).strip()}:")
