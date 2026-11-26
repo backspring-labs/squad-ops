@@ -22,6 +22,10 @@ sys.modules["read_cycle_views"] = views  # dataclasses resolve annotations via i
 _spec.loader.exec_module(views)
 
 PROJECT = "prj-game"
+LAST_RUN_CANCELLED = (
+    "its last run ended cancelled and the route names no ending. "
+    "From 2.9 the route names every recorded ending (#3244), so none is on record"
+)
 
 
 class Deploy:
@@ -146,7 +150,7 @@ def test_the_three_cases_the_live_read_named_are_each_named_in_a_sentence():
         "cyc_repair_accepted": [
             "the control log says it ended (assessed) and the route names no ending"
         ],
-        "cyc_repair_aborted": ["its last run ended cancelled and the route names no ending"],
+        "cyc_repair_aborted": [LAST_RUN_CANCELLED],
         "cyc_gate_ended": ["the list filtered by status failed doesn't return it"],
     }
 
@@ -192,9 +196,7 @@ def test_the_last_run_is_the_highest_numbered_whatever_order_the_route_gives():
     deploy.cycle("cyc_a", "cmp_1", status="cancelled", ending=None, runs=("completed", "cancelled"))
     deploy.cycles["cyc_a"]["runs"].reverse()
 
-    assert _read(deploy) == {
-        "cyc_a": ["its last run ended cancelled and the route names no ending"]
-    }
+    assert _read(deploy) == {"cyc_a": [LAST_RUN_CANCELLED]}
 
 
 def test_a_full_page_asks_for_the_next(monkeypatch):

@@ -148,7 +148,10 @@ def disagreements(seen: CycleViews) -> list[str]:
                 f"the control log says it ended ({seen.log_ending}) and the route names no ending"
             )
         elif seen.last_run_status == seen.route_status:
-            found.append(f"its last run ended {seen.last_run_status} and the route names no ending")
+            found.append(
+                f"its last run ended {seen.last_run_status} and the route names no ending. "
+                "From 2.9 the route names every recorded ending (#3244), so none is on record"
+            )
     return found
 
 
