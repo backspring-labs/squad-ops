@@ -2898,3 +2898,23 @@ checks:
       o = resolve_terminal_outcome(ArtifactUnavailable("art_1", "the cycle's PRD", unavailable_kind(lost), lost), "run_1")
       print(o.terminal.kind.value, o.terminal.failure_classification, o.failure_reason.startswith("the cycle's PRD (artifact art_1)"))
     expect: "infrastructure_failed artifact_missing True"
+  - id: "3236-owner-cancel"
+    what: a cycle's cancel, a run's and a Campaign's abort ask the remote operations they own to stop; a result after the cancel is kept as the late one; a failed ask is never answered as none out (SIP-0117 R5.30)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.routes.cycles import cancellation as c
+      from squadops.api.routes.campaigns import campaigns
+      from squadops.remote_execution.registry import WorkerRegistry
+      from squadops.remote_execution.workers import AttemptOutcome, OperationOwner
+      print(OperationOwner("cyc_1", "cmp_1").as_origin(), AttemptOutcome.CANCELLED.value, "settled_after_cancel" in inspect.getsource(WorkerRegistry.submit_result), "cancel_owned_remote_operations" in inspect.getsource(c.cancel_cycle_by_the_existing_path), "ORIGIN_CAMPAIGN" in inspect.getsource(campaigns.abort_campaign), c.OwnedCancel(None, "x").reached)
+    expect: "{'cycle_id': 'cyc_1', 'campaign_id': 'cmp_1'} cancelled True True True None"
+  - id: "3236-handler-names-its-cycle"
+    what: the QA agent asks for a remote operation as its task's cycle's, so that cycle's cancel stops it (SIP-0117 R5.30)
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.capabilities.handlers.cycle import run_remote_operation as h
+      from squadops.ports.remote_execution import RemoteExecutionPort
+      print("OperationOwner(context.cycle_id)" in inspect.getsource(h), list(inspect.signature(RemoteExecutionPort.run_operation).parameters))
+    expect: "True ['self', 'request', 'owner']"

@@ -1710,6 +1710,7 @@ cancel was already built. It wasn't reached, because nothing asked.
     (`tests/unit/api/test_campaign_routes.py`);
   - the task's handler, whose operation is read at the registry with its cycle and stopped by that cycle's cancel
     (`tests/unit/capabilities/test_run_remote_operation.py`).
+- Loaded-check rows `3236-owner-cancel` and `3236-handler-names-its-cycle`.
 - `test_migration_vocabularies.py` holds each column's CHECK list to its vocabulary across the registry's
   migrations. It failed on the new attempt outcome until migration 2302 declared it.
 
