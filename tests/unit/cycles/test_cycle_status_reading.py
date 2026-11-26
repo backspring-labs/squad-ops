@@ -72,12 +72,16 @@ def test_every_stop_reason_has_a_reading():
 @pytest.mark.parametrize("reason", list(CycleStopReason))
 def test_each_ending_reads_its_status_and_a_non_ending_defers_to_the_runs(reason):
     """Every ending, on a cycle whose runs have all stopped: an ending reads its own status and
-    names itself; a stop that isn't an ending (a paused run, a single workload) reads the runs."""
+    names itself; a stop that isn't an ending (a paused run, a run returned still going) reads
+    the runs and names nothing."""
     runs = [_run(1, "completed"), _run(2, "failed")]
     reading = read_cycle_status(runs, False, None, _end(reason, last=2))
 
     expected = STATUS_OF_ENDING[reason]
-    if expected is None:
+    if reason is CycleStopReason.SINGLE_WORKLOAD_ENDED:
+        # #3244: a one-workload cycle's ending is named, and its status is the run's it names.
+        assert (reading.status, reading.recorded_ending) == (CycleStatus.FAILED, reason)
+    elif expected is None:
         assert (reading.status, reading.recorded_ending) == (CycleStatus.FAILED, None)
     else:
         assert (reading.status, reading.recorded_ending) == (expected, reason)
@@ -143,3 +147,81 @@ def test_a_cancelled_cycle_whose_run_ended_cancelled_has_no_conflict():
     reading = read_cycle_status(runs, True, None, _end(CycleStopReason.RUN_CANCELLED, 2))
 
     assert (reading.status, reading.conflict) == (CycleStatus.CANCELLED, None)
+
+
+# ---------------------------------------------------------------------------
+# #3244: a one-workload cycle (a Campaign's repair or retry) names its ending
+# ---------------------------------------------------------------------------
+
+_ONE = CycleStopReason.SINGLE_WORKLOAD_ENDED
+
+
+@pytest.mark.parametrize(
+    ("run_status", "cycle_status"),
+    [
+        ("completed", CycleStatus.COMPLETED),
+        ("failed", CycleStatus.FAILED),
+        ("cancelled", CycleStatus.CANCELLED),
+    ],
+)
+def test_a_one_workload_cycle_names_its_ending_with_its_runs_status(run_status, cycle_status):
+    """The 2.8.1 cut's two repair cycles, ``cyc_aeb6c8e22b64`` (completed) and
+    ``cyc_bd5078b22c8e`` (cancelled). Bugs caught:
+    - ``recorded_ending: null`` on a cycle that has an end record, so an ended repair cycle
+      can't be told from one never ended;
+    - a cancelled run on a cycle not itself marked cancelled reading ``created``, because the
+      status was derived from "the latest run that isn't cancelled" and there is none."""
+    reading = read_cycle_status([_run(1, run_status)], False, None, _end(_ONE, last=1))
+
+    assert (reading.status, reading.recorded_ending, reading.conflict) == (
+        cycle_status,
+        _ONE,
+        None,
+    )
+
+
+def test_a_one_workload_cycle_cancelled_after_it_ended_keeps_its_ending():
+    """An abort that cancels a repair cycle after its run completed. The ending came first, so
+    it stands, and the cancellation is named: the same rule every other ending has (#3201)."""
+    reading = read_cycle_status([_run(1, "completed")], True, None, _end(_ONE, last=1))
+
+    assert (reading.status, reading.recorded_ending, reading.conflict) == (
+        CycleStatus.COMPLETED,
+        _ONE,
+        StatusConflict.CANCELLED_AFTER_ENDING,
+    )
+
+
+def test_a_one_workload_cycles_ending_hides_no_live_run_and_no_later_one():
+    """The plan's "hides no live-run conflict", and a cycle run again after it ended. Bugs
+    caught: the end record reading a cycle ended while a run of it is going; and a rerun's
+    status decided by the earlier run's ending."""
+    live = read_cycle_status(
+        [_run(1, "completed"), _run(2, "running")], False, None, _end(_ONE, last=2)
+    )
+    rerun = read_cycle_status(
+        [_run(1, "failed"), _run(2, "completed")], False, None, _end(_ONE, last=1)
+    )
+
+    assert (live.status, live.recorded_ending, live.conflict) == (
+        CycleStatus.ACTIVE,
+        _ONE,
+        StatusConflict.RUN_LIVE_AFTER_ENDING,
+    )
+    assert (rerun.status, rerun.recorded_ending, rerun.conflict) == (
+        CycleStatus.COMPLETED,
+        None,
+        None,
+    )
+
+
+def test_an_end_record_naming_a_run_the_registry_doesnt_hold_is_named_and_decides_nothing():
+    """The edge: the record can't say how the cycle ended, so the runs decide the status. It is
+    still the cycle's record, and the reading names it."""
+    reading = read_cycle_status([_run(1, "failed")], False, None, _end(_ONE, last=9))
+
+    assert (reading.status, reading.recorded_ending, reading.conflict) == (
+        CycleStatus.FAILED,
+        _ONE,
+        None,
+    )

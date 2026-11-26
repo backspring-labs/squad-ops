@@ -137,3 +137,41 @@ async def test_the_batch_read_names_each_cycle_s_latest_ending_and_omits_the_une
 
     assert ends == {"cyc_ce1": RecordedEnd("cyc_ce1", "run_1", CycleStopReason.RUN_FAILED)}
     assert await reg.get_cycle_ends([]) == {}
+
+
+async def test_the_status_filter_reads_the_recorded_ending_as_the_cycles_row_does(registry):
+    """#3224 against real Postgres: a cycle whose only run completed and whose gate then
+    rejected its plan. Bug caught: the filter's query reading the latest run alone, so the cycle
+    is listed as ``completed`` and never as ``failed``, which is what its row reads. Only this
+    proves the adapter's batch reads (runs, gate decisions, holds, halts, endings) agree with
+    the columns the migrations made."""
+    from squadops.cycles.lifecycle import CycleStatus, cycle_reading
+    from squadops.cycles.models import Run, RunStatus
+
+    reg, _ = registry
+    run = await reg.create_run(
+        Run(
+            run_id="run_ce_gate",
+            cycle_id="cyc_ce1",
+            run_number=1,
+            status="queued",
+            initiated_by="it",
+            resolved_config_hash="h",
+        )
+    )
+    await reg.update_run_status(run.run_id, RunStatus.RUNNING)
+    await reg.update_run_status(run.run_id, RunStatus.COMPLETED)
+
+    before = [c.cycle_id for c in await reg.list_cycles(PROJECT, status=CycleStatus.COMPLETED)]
+    await reg.record_cycle_end(RecordedEnd("cyc_ce1", run.run_id, CycleStopReason.PLAN_REJECTED))
+    failed = [c.cycle_id for c in await reg.list_cycles(PROJECT, status=CycleStatus.FAILED)]
+    completed = [c.cycle_id for c in await reg.list_cycles(PROJECT, status=CycleStatus.COMPLETED)]
+    row = cycle_reading(
+        await reg.get_cycle("cyc_ce1"),
+        await reg.list_runs("cyc_ce1"),
+        await reg.get_cycle_end("cyc_ce1"),
+    )
+
+    assert before == ["cyc_ce1"]  # the control: without an ending, its run decides
+    assert (failed, completed) == (["cyc_ce1"], [])
+    assert row.status is CycleStatus.FAILED

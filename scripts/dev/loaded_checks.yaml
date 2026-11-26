@@ -2967,3 +2967,16 @@ checks:
       check = ToolCheck(2, "d", ("a", "b"), (("a", "1"), ("b", "2")))
       print(q.SCHEMA[-2:], sorted(q._KEYS[q.SCHEMA] - q._KEYS[q.SCHEMA_WITHOUT_TOOL_DIGESTS]), tool_changes((("a", "1"), ("b", "1")), check.digests).named(), "unavailable" in _tool_difference(check, ProvedOn("v", "t", "c")))
     expect: "/3 ['tool_digests', 'tools_changed'] changed b True"
+  - id: "3224-3244-one-cycle-reading"
+    what: the list's status filter and a cycle's row share one reading, and a one-workload cycle names its ending with its run's status (the 2.9 plan's item 3)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles import memory_cycle_registry as m, postgres_cycle_registry as p
+      from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+      from squadops.cycles.lifecycle import read_cycle_status
+      from squadops.cycles.models import Run
+      run = Run(run_id="r", cycle_id="c", run_number=1, status="cancelled", initiated_by="x", resolved_config_hash="h")
+      got = read_cycle_status([run], False, None, RecordedEnd("c", "r", CycleStopReason.SINGLE_WORKLOAD_ENDED))
+      print(got.status.value, got.recorded_ending.value, "cycle_reading(" in inspect.getsource(p.PostgresCycleRegistry.list_cycles), "cycle_reading(" in inspect.getsource(m.MemoryCycleRegistry.list_cycles))
+    expect: "cancelled single_workload_ended True True"

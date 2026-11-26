@@ -105,7 +105,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         offset: int = 0,
         created_before: datetime | None = None,
     ) -> list[Cycle]:
-        from squadops.cycles.lifecycle import derive_cycle_status
+        from squadops.cycles.lifecycle import cycle_reading
 
         results = []
         for data in self._cycles.values():
@@ -118,8 +118,10 @@ class MemoryCycleRegistry(CycleRegistryPort):
                 runs = [
                     self._to_run(r) for r in self._runs.values() if r["cycle_id"] == cycle.cycle_id
                 ]
-                derived = derive_cycle_status(runs, cycle.cycle_id in self._cancelled_cycles)
-                if derived != status:
+                # #3224: the reading the cycle's own row has, so a filter never returns a cycle
+                # whose row reads another status.
+                ends = self._cycle_ends.get(cycle.cycle_id)
+                if cycle_reading(cycle, runs, ends[-1] if ends else None).status != status:
                     continue
             results.append(cycle)
         # Port ordering contract: newest first, so `limit` pages the most recent
