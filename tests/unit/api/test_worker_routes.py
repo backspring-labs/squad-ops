@@ -16,7 +16,7 @@ from squadops.remote_execution.wire import request_to_wire, result_to_wire
 from squadops.remote_execution.workers import OperationState
 from tests.unit.api.worker_world import REGISTRATION
 from tests.unit.api.worker_world import World as _World
-from tests.unit.remote_execution.registry_contract import passing
+from tests.unit.remote_execution.registry_contract import as_served, passing
 
 pytestmark = pytest.mark.auth
 
@@ -78,7 +78,7 @@ def test_a_worker_registers_claims_renews_and_submits_and_the_operation_has_its_
     assert plain.json() == {"lease": None}
     assert (submitted.status_code, submitted.json()) == (200, {"accepted": True, "replayed": False})
     settled = w.operation(queued.operation_id)
-    assert (settled.state, settled.result) == (OperationState.SETTLED, passing())
+    assert (settled.state, settled.result) == (OperationState.SETTLED, as_served(passing()))
 
 
 def test_a_late_result_is_a_409_with_its_reason_and_the_newer_attempt_keeps_the_operation():
