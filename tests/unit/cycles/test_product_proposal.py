@@ -229,10 +229,9 @@ async def test_a_greenfield_products_proposal_is_given_its_approved_manifest_bes
     ("requirements", "profile", "why"),
     [
         ("repo:file:docs/missing.md@current", True, "can't be read at the head"),
-        ("art_000000000000", True, "no artifact the vault holds"),
         ("repo:file:README.md@current", False, "has no derived profile at its pin"),
     ],
-    ids=["a requirements file the head lacks", "an artifact not stored", "no profile at the pin"],
+    ids=["a requirements file the head lacks", "no profile at the pin"],
 )
 async def test_a_proposal_whose_input_cant_be_read_fails_its_run_naming_why(
     tmp_path, requirements, profile, why
@@ -246,6 +245,24 @@ async def test_a_proposal_whose_input_cant_be_read_fails_its_run_naming_why(
 
     with pytest.raises(_ExecutionError, match=why):
         await _prepared(_cycle(repo, requirements), clones, _Projects(profile=profile))
+
+
+async def test_a_requirements_artifact_the_vault_cant_return_is_the_vaults_fault_by_name(tmp_path):
+    """#3128. Bug caught: a missing artifact and a vault that didn't answer both reported as "no
+    artifact the vault holds", in a run that ended as ``other``. The Campaign names the artifact
+    in its record, so the run ends ``infrastructure_failed`` and says which one."""
+    from squadops.cycles.vault_reads import ArtifactUnavailable
+
+    repo, clones = await _clone(tmp_path)
+
+    with pytest.raises(ArtifactUnavailable) as failed:
+        await _prepared(_cycle(repo, "art_000000000000"), clones, _Projects(profile=True))
+
+    assert (failed.value.artifact_id, failed.value.kind, failed.value.what) == (
+        "art_000000000000",
+        "artifact_unretrieved",
+        "the requirements source art_000000000000",
+    )
 
 
 class _VerificationVault(_EmptyVault):
