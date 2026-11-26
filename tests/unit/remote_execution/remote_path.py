@@ -104,6 +104,8 @@ class Path:
 
     def __init__(self, store=None) -> None:
         self.world = World()
+        # #3236: the runtime holds the cycle the path's operations are asked for.
+        self.world.cycles["cyc_path"] = None
         if store is not None:
             self.world.registry = WorkerRegistry(store, clock=self.world.clock)
             self.world.app.state.worker_registry = self.world.registry

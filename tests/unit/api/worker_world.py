@@ -5,6 +5,7 @@ adapters' tests all enter here, so each proves its side against the same app."""
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -17,6 +18,7 @@ from squadops.api.routes.remote_operations import router as remote_operations_ro
 from squadops.api.routes.worker_readings import router as readings_router
 from squadops.api.routes.workers import router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
+from squadops.cycles.models import CycleNotFoundError
 from squadops.remote_execution.registry import WorkerRegistry
 from tests.unit.remote_execution.registry_contract import Clock, queue, request
 
@@ -49,6 +51,18 @@ class CurrentSends:
         return self.waiting.get(task_id)
 
 
+class _Cycles:
+    """The one read the requester's routes make of the cycle registry: a cycle by id."""
+
+    def __init__(self, held: dict[str, str | None]) -> None:
+        self._held = held
+
+    async def get_cycle(self, cycle_id: str):
+        if cycle_id not in self._held:
+            raise CycleNotFoundError(f"Cycle not found: {cycle_id}")
+        return SimpleNamespace(cycle_id=cycle_id, campaign_id=self._held[cycle_id])
+
+
 class World:
     def __init__(self, *, registry: bool = True, reply_router: object = True) -> None:
         """``reply_router``: ``True`` for the stand-in the test sets sends on (``current``),
@@ -74,6 +88,10 @@ class World:
         app.include_router(readings_router)
         register_domain_error_handlers(app)
         app.state.worker_registry = self.registry if registry else None
+        #: The cycles the runtime holds, each with its Campaign or ``None`` (#3236): the create
+        #: route reads an operation's owner from here. ``cyc_1`` is every test's default owner.
+        self.cycles: dict[str, str | None] = {"cyc_1": None}
+        app.state.cycle_registry = _Cycles(self.cycles)
         self.sends = CurrentSends()
         app.state.reply_router = (
             self.sends if reply_router is True else None if reply_router is False else reply_router

@@ -14,6 +14,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   files is refused, and a test refuses a row appended to the old file.
 
 ### Fixed
+- **An agent's remote operation is owned by the cycle the runtime holds, and by that cycle's Campaign** (#3236;
+  SIP-0117 R5.35): the agent's create route took the owning cycle on the body's word. It now reads the cycle,
+  refuses one the runtime doesn't hold (`REMOTE_OPERATION_OWNER_UNKNOWN`), and writes the cycle's own Campaign
+  onto the operation, so a Campaign's abort reaches it directly.
 - **An accepted QA hand-off reads accepted everywhere** (#3000; SIP-0077 §24a; the 2.9 plan's item 5): a
   product's `qa.test` whose suite the qa image leaves to the product's own runner replied as a failed task, and
   three signals were set from that reply before the runner was asked: the Prefect task run read `Failed`, the

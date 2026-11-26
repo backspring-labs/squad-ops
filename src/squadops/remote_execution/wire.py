@@ -37,6 +37,9 @@ ERROR_SEND_NOT_CURRENT = "REMOTE_OPERATION_SEND_NOT_CURRENT"
 ERROR_OWNER_CANCELLED = "REMOTE_OPERATION_OWNER_CANCELLED"
 #: The request's origin names no owner (R5.30). A defect of the caller, never a reading.
 ERROR_OWNER_MISSING = "REMOTE_OPERATION_OWNER_MISSING"
+#: #3236's follow-up: the cycle an agent's request names as its owner is one the runtime doesn't
+#: hold, so no cancel could ever reach an operation queued for it.
+ERROR_OWNER_UNKNOWN = "REMOTE_OPERATION_OWNER_UNKNOWN"
 
 _REQUEST_KEYS = frozenset(
     {
