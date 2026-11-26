@@ -198,6 +198,7 @@ phases are in its own ledger.
 | The reset names a Studio update: Studio's version is read before the quit and after the reopening, a Studio that isn't the proved version is refused before anything is touched, and every reset's outcome goes on the worker's status (R5.27) | **shipped** | 2.8 (PR #3188, closing #3184) |
 | A worker whose tool isn't ready is read as an absent one: `tool_unready` on a `not_executed` the worker returns for its own environment, so an increment blocked only by it is retried, never repaired (R5.28) | **shipped** | 2.8 (PR #3195, closing #3192) |
 | Studio's qualification identity includes its release channel: read from the running Studio's startup log, held to the proof at every claim and across every reset, recorded in the qualification record and in each result's `ran_with` beside the proof's (R5.29) | **shipped** | 2.8.1 (PR #3220, closing #3206) |
+| An owner's cancel: a cycle's cancel and a Campaign's abort stop the remote operations they own, a result that arrives after the cancel is kept as the late result and is no evidence, and nothing new is queued for a cancelled owner (R5.30) | **shipped** | 2.9 (PR #PRNUM; #3236 tracks the MacBook lane's half) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
@@ -1625,6 +1626,94 @@ version. Nothing compared them. The rule doesn't rest on it.
 
 **Who ruled.** The owner adopted the 2.8.1 plan on 2026-11-18, whose item 3 states the identity, the comparisons,
 the refusal and the record. The MacBook lane built it and owns the Studio adapter.
+
+## R5.30 A cycle's cancel and a Campaign's abort stop the operations they own (#3236, 2026-11-26; R3.3, R5.4, R5.5, R5.6)
+
+**What changed.** A remote operation was stopped only by its own requester: at the end of its wait, or when the
+requester itself was stopped (R5.6). It is now also stopped by the cancel of the cycle it verifies for, and by the
+abort of that cycle's Campaign.
+
+| Point | As built |
+|---|---|
+| **Whose an operation is** | Every request for one names its owner: the cycle, and the Campaign when the cycle is one's and the asker knows it (`OperationOwner`). It is a required argument of the port's `run_operation`, and it is stored in the operation's `origin` beside who asked. The agent's route refuses a request whose origin names no cycle (`REMOTE_OPERATION_OWNER_MISSING`), and the registry raises for one |
+| **A cycle's cancel** | The one cancel path asks every operation the cycle owns that has no result yet to stop (`WorkerRegistry.cancel_owned`), and records the cycle as cancelled. A Campaign's abort reaches it through each cycle it cancels |
+| **A Campaign's abort** | After its cycles' cancels, it asks every operation that names the Campaign to stop, whatever cycle asked for it. A cycle that had ended is cancelled by nothing, and a play it left out is reached here |
+| **A run's cancel** | Asks the cycle's operations to stop, since a cycle runs one workload at a time. It doesn't record the cycle as cancelled: the cycle may go on to another run |
+| **A queued operation** | Settled at once: `not_executed`, or `interrupted` when an earlier attempt had begun. Its reason says what ended its owner |
+| **A claimed operation** | Marked, as a requester's cancel marks it. Its worker is told at its next renewal, stops its tool, resets it and answers `interrupted`. When its worker goes silent, its lease ends it as `interrupted` and it is never queued again. Both are unchanged (R5.5) |
+| **A result that arrives after the cancel** | Taken in and kept as the operation's `late_result`. The operation's own result reads `interrupted`, with a reason that says a result arrived after the cancel. The attempt closes `cancelled`. The worker is answered as for any accepted result, and a repeat is answered as a repeat |
+| **A result that came first** | Stands. The operation had its result when the cancel arrived, and the cancel doesn't touch it |
+| **Nothing new for a cancelled owner** | A request for an operation whose cycle was cancelled, or whose Campaign was aborted, queues nothing and reads `not_executed` with the reason (`REMOTE_OPERATION_OWNER_CANCELLED` at the route). A send that had already asked still reads the operation it asked for |
+| **The answers** | A cycle's and a run's cancel answer `remote_operations_cancelled`. An abort's answer counts the operations that named the Campaign and were still out after its cycles' cancels |
+| **The store** | Migration 2302: `late_result`, two partial indexes that read the owner from `origin`, the cancelled owners, and `cancelled` among an attempt's outcomes |
+
+**The evidence** (#3236). In the 2.8.1 row-8 window, on 2026-11-19, Campaign `cmp_ab3a75290809` was aborted at
+12:34:18 ET and its repair cycle `cyc_bd5078b22c8e` was cancelled.
+- The cycle's baseline play, `rop-dacb6e57…`, had been created at 12:33:42 and claimed at 12:33:44.
+- It was played to its end. It settled `completed`, its attempt `accepted`, at 12:35:23, and its
+  `cancel_requested` read `false`.
+- Read on main at `5c93b8ba`:
+  - nothing in the cycle's cancel path or the abort route called the registry;
+  - an operation recorded its task and send and no cycle, so the store couldn't be asked for a cycle's operations;
+  - a result under a valid fence was settled as the operation's result, whether or not a cancel had been asked.
+
+**The rules.**
+- **The registry's order decides a race, and the rows say which came first.** Each call is one exclusive
+  transaction (R5.4). A result settled before the cancel is the operation's result. A cancel recorded before the
+  result makes the result late.
+- **A late result is no evidence.** It is kept because it is what ran. No reader is asked to notice a flag: the
+  operation's own result reads `interrupted`, which every reader already treats as nothing verified.
+- **A worker's own `interrupted` is the operation's result,** cancel or not: the worker saw the cancel and stopped.
+- **The owner is the caller's to name, never inferred.**
+  - The runtime's own plays name the cycle and its Campaign.
+  - A task's handler names its cycle, which is all its context holds. A Campaign's abort reaches that operation
+    through the cycle's cancel.
+- **A cancel is safe to repeat.** Nothing settled changes, a marked operation stays marked, and the time an owner
+  was cancelled at is the first.
+- **A failure to reach the registry never blocks the cancel it serves.** It is named in the log, and each
+  operation's lease and its requester's wait still end it.
+
+**What isn't changed.** The worker, its serve loop and the Studio runner (R5.5, R5.26). What a worker does at a
+cancel was already built. It wasn't reached, because nothing asked.
+
+**Its limits.**
+- **A worker hears a cancel at its next renewal.** A claimed play runs for up to one heartbeat (15 s) after the
+  cancel, and then its tool is reset.
+- **An operation queued before this amendment names no owner.** No owner's cancel finds it, and it ends as it
+  always did.
+- **An agent's operation names no Campaign.** One still out after its cycle had ended without a cancel wouldn't be
+  found by the abort. A task's operation ends with its task, and none is known to outlive its cycle.
+- **`ran_with` on a result the worker builds itself,** such as an abandoned play's `interrupted`, isn't here. It is
+  the MacBook lane's half of #3236, with the live cancel round on the real runner.
+
+**The tests.**
+- `tests/unit/remote_execution/registry_contract.py`, run on the memory store and on Postgres:
+  - an owner's cancel settles its queued operation, marks its claimed one and touches no other cycle's;
+  - a result after the cancel is kept as the late one, and a repeat of it is answered as a repeat;
+  - a result settled first stands;
+  - a cancelled operation whose worker never answers is never run again, whether the worker went silent before the
+    cancel or after it;
+  - a cancelled cycle and an aborted Campaign are asked nothing new, and a run's cancel leaves its cycle open;
+  - an abort reaches a play whose cycle had ended;
+  - a repeated cancel changes nothing;
+  - an operation with no owner is refused.
+- `remote_path.py`, from the agent's port over HTTP to the worker's tool: a cycle cancelled during a play stops the
+  worker's tool, which is reset once, the requester reads `interrupted`, and its next request runs nothing.
+- `tests/unit/api/test_remote_operation_routes.py`: the route refuses an origin that names no owner, and a request
+  for a cancelled cycle.
+- **The wiring,** each entered where a live cancel enters:
+  - the cycle's cancel route and the run's (`tests/unit/cycles/test_api_cycles.py`, `test_api_runs.py`);
+  - the abort route, with a play of the running cycle and one of a cycle that had ended
+    (`tests/unit/api/test_campaign_routes.py`);
+  - the task's handler, whose operation is read at the registry with its cycle and stopped by that cycle's cancel
+    (`tests/unit/capabilities/test_run_remote_operation.py`).
+- `test_migration_vocabularies.py` holds each column's CHECK list to its vocabulary across the registry's
+  migrations. It failed on the new attempt outcome until migration 2302 declared it.
+
+**Who ruled.** The owner adopted the 2.9 plan on 2026-11-26. Its item 2 states the rule: an abort or a cancel asks
+every operation it owns to stop, a result after the cancel is kept and is no evidence, and a race has one stated
+precedence. The Spark lane built the runtime's half. The MacBook lane, which owns the worker and the Studio
+adapter, agreed the seam on 2026-11-26: the serve loop and the runner are unchanged.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 
