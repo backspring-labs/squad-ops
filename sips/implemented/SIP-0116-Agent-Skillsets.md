@@ -1848,14 +1848,17 @@ no port.
 - **`unavailable`** takes the agent that runs the tool and a reader of that report. For a worker's tool, after the
   runtime's own port, each of these is the refusal:
   - the agent has sent no heartbeat;
-  - it isn't being heard from, by the health checker's own freshness window;
+  - it isn't being heard from, by the health checker's own freshness window (asked at creation only);
   - its heartbeat doesn't say, because it was built before agents reported it;
   - it reports `none`.
 - **Every refusal names** the agent, what was expected of it and what it said, the revision it runs and when it
   last reported.
 - **At creation,** the reader is the health checker that keeps the heartbeats (`CreationPorts.agent_report`), for
   an operator's cycle and a Campaign's launch alike.
-- **At dispatch,** `_require_tool_available` reads it again for the agent the task goes to. An agent recreated
+- **At dispatch,** `_require_tool_available` reads it again for the agent the task goes to, without asking that the
+  report be fresh: an agent late with a heartbeat keeps what it last said, so a busy one is never refused. The
+  heartbeat is sent by a task of its own every 30 s against a 90 s window, and blocking work runs off the agent's
+  event loop, so a late one is not expected; the rule doesn't rest on that. An agent recreated
   without the provider after the cycle was created has its task ended there, `infrastructure_failed` and
   `worker_unavailable`, which the Campaign's relaunch budget already reads as the environment's (SIP-0117 R5.10).
 - **In the handler,** an agent with no port still reports the operation `not_executed`. That result is now flagged

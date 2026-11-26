@@ -3472,6 +3472,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             sandbox_client=self._sandbox,
             remote_execution=self._remote_execution,
             agent_report=self._agent_report,
+            # The agent has just finished a task or is about to take this one. A heartbeat it
+            # is late with says nothing of its port, so what it last said decides.
+            agent_heard_from_now=False,
         )
         if why is not None:
             raise _ExecutionError(

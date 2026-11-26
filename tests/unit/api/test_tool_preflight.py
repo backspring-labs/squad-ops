@@ -374,8 +374,17 @@ def _operation_task(skillset_digest: str):
         # #3235: the capability lost during the run. The agent was recreated without the
         # provider after the cycle was created, and its task isn't sent to it.
         (True, True, "none", "agent eve, which runs it, binds no remote execution"),
+        # And an agent that is only late with a heartbeat is sent its task: it keeps what it
+        # last said. Bug caught: a busy agent refused, and its increment retried for it.
+        (True, True, "late", None),
     ],
-    ids=["available", "a worker offline", "no remote execution bound", "its agent binds none"],
+    ids=[
+        "available",
+        "a worker offline",
+        "no remote execution bound",
+        "its agent binds none",
+        "its agent is late with a heartbeat",
+    ],
 )
 async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatched(
     monkeypatch, online, bound, agent_says, says
@@ -396,7 +405,11 @@ async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatch
         _worker_registry=await _registry(online=online),
         _sandbox=None,
         _remote_execution=BOUND if bound else None,
-        _agent_report=_agents_say(agent_says),
+        _agent_report=(
+            _agents_say("runtime_api", fresh=False)
+            if agent_says == "late"
+            else _agents_say(agent_says)
+        ),
     )
     method = executor_module.DispatchedFlowExecutor._require_tool_available
     task = _operation_task(catalog["fixture-qa"].digest)

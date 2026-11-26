@@ -2658,7 +2658,7 @@ checks:
       from squadops.capabilities.skillsets import ToolRequest
       from squadops.capabilities.tool_checks import unavailable
       tool = ToolRequest("play_scenario", "fixture-editor", "worker")
-      print(asyncio.run(unavailable(tool, agent_id="eve", worker_registry=object(), sandbox_client=None, remote_execution=None, agent_report=None)))
+      print(asyncio.run(unavailable(tool, agent_id="eve", worker_registry=object(), sandbox_client=None, remote_execution=None, agent_report=None, agent_heard_from_now=True)))
     expect: "this runtime binds no remote execution (remote_execution.provider none)"
   - id: "3160-cancelled-run-asks-nothing"
     what: the scenario baseline step reads the run's status before it asks a provider
@@ -2905,9 +2905,10 @@ checks:
       from datetime import datetime
       from squadops.capabilities.tool_checks import AgentRemoteExecution, agent_cant_ask
       at = datetime(2026, 11, 26, 15, 0)
-      none = agent_cant_ask("eve", AgentRemoteExecution("none", "3f2a91c", at, True))
-      print("binds no remote execution" in none, "revision 3f2a91c" in none, agent_cant_ask("eve", AgentRemoteExecution("runtime_api", None, at, True)), agent_cant_ask("eve", None) is not None)
-    expect: "True True None True"
+      none = agent_cant_ask("eve", AgentRemoteExecution("none", "3f2a91c", at, True), heard_from_now=True)
+      late = AgentRemoteExecution("runtime_api", None, at, False)
+      print("binds no remote execution" in none, "revision 3f2a91c" in none, agent_cant_ask("eve", late, heard_from_now=False), agent_cant_ask("eve", late, heard_from_now=True) is not None, agent_cant_ask("eve", None, heard_from_now=False) is not None)
+    expect: "True True None True True"
   - id: "3235-agent-says-what-it-binds"
     what: the QA agent's heartbeat carries the remote-execution provider its own port binds, and its handler flags a reading it had no port for (SIP-0116 §17z)
     container: squadops-eve

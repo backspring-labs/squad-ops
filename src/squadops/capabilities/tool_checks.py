@@ -143,10 +143,17 @@ class AgentRemoteExecution:
 AgentReport = Callable[[str], Awaitable["AgentRemoteExecution | None"]]
 
 
-def agent_cant_ask(agent_id: str, report: AgentRemoteExecution | None) -> str | None:
+def agent_cant_ask(
+    agent_id: str, report: AgentRemoteExecution | None, *, heard_from_now: bool
+) -> str | None:
     """Why ``agent_id`` can't ask a worker for an operation now, by its own report, or ``None``
     when it can (#3235). Every refusal names the component, what was expected of it and what it
-    said, the build it runs and when it said so."""
+    said, the build it runs and when it said so.
+
+    ``heard_from_now`` asks that the report be fresh as well. A cycle's creation asks it: an
+    agent not being heard from can't be vouched for. A task's dispatch doesn't: the question
+    there is whether the agent was recreated without the provider, and one that was says so in
+    its first heartbeat. An agent that is only late with a heartbeat keeps what it last said."""
     if report is None:
         return (
             f"agent {agent_id}, which runs it, has sent this runtime no heartbeat, so whether "
@@ -156,7 +163,7 @@ def agent_cant_ask(agent_id: str, report: AgentRemoteExecution | None) -> str | 
         f"at revision {report.revision or 'unrecorded'}, last heard at "
         f"{report.reported_at.isoformat(timespec='seconds')}"
     )
-    if not report.fresh:
+    if heard_from_now and not report.fresh:
         return f"agent {agent_id}, which runs it, isn't being heard from ({said})"
     if report.provider is None:
         return (
@@ -180,6 +187,8 @@ async def availability_findings(
     remote_execution: Any,
     agent_report: AgentReport | None,
 ) -> list[CoverageFinding]:
+    """Each required tool no provider can run now, as a cycle's creation asks: its agent is
+    being heard from as well (``agent_heard_from_now``)."""
     findings = []
     for required in tools:
         why = await unavailable(
@@ -189,6 +198,7 @@ async def availability_findings(
             sandbox_client=sandbox_client,
             remote_execution=remote_execution,
             agent_report=agent_report,
+            agent_heard_from_now=True,
         )
         if why is not None:
             findings.append(
@@ -209,6 +219,7 @@ async def unavailable(
     sandbox_client: Any,
     remote_execution: Any,
     agent_report: AgentReport | None,
+    agent_heard_from_now: bool,
 ) -> str | None:
     """Why no provider can run ``tool`` now, or ``None`` when one can.
 
@@ -230,7 +241,9 @@ async def unavailable(
         return "this runtime holds no worker registry"
     if agent_report is None:
         return "this runtime keeps no record of what its agents report, so none can be read"
-    cant_ask = agent_cant_ask(agent_id, await agent_report(agent_id))
+    cant_ask = agent_cant_ask(
+        agent_id, await agent_report(agent_id), heard_from_now=agent_heard_from_now
+    )
     if cant_ask is not None:
         return cant_ask
     no_worker = await worker_registry.no_worker_for(tool.provider, tool.id)
