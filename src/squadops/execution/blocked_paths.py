@@ -11,6 +11,11 @@ refused the Cycle at create, so only confined ones reach here.
 that writes one is refused by ``ImplementationPlan.validate_reserved_paths``, and its authors get
 the declared entries as ``request.plan_reserved_paths_appendix`` renders them.
 
+**What each of the product's test runners collects is shown the same way** (SIP-0112 H.4 point
+3, #3182): a plan whose ``qa.test`` names a file none collects is refused by
+``ImplementationPlan.validate_qa_suite_collected``, and its authors get each runner's roots and
+file-name pattern as ``request.plan_test_runners_appendix`` renders them.
+
 **A cycle with no source, or a pin whose baseline has no profile, adds no key,** so its authors'
 inputs are the ones they had before H.4. A product that reserves no path adds none for them.
 """
@@ -28,6 +33,7 @@ from squadops.tasks.task_types import authors_plan
 
 BLOCKED_PATHS_INPUT = "blocked_paths_index"
 RESERVED_PATHS_INPUT = "reserved_paths_index"
+TEST_RUNNERS_INPUT = "test_runners_index"
 
 
 async def with_blocked_paths(
@@ -46,6 +52,7 @@ async def with_blocked_paths(
         for key, index in (
             (BLOCKED_PATHS_INPUT, blocked_paths_index(profile)),
             (RESERVED_PATHS_INPUT, reserved_paths_index(profile)),
+            (TEST_RUNNERS_INPUT, runner_collection_index(profile)),
         )
         if index is not None
     }
@@ -55,6 +62,25 @@ async def with_blocked_paths(
     for i in authors:
         composed[i] = dataclasses.replace(envelopes[i], inputs={**envelopes[i].inputs, **shown})
     return composed
+
+
+def runner_collection_index(profile: DerivedProfile | None) -> str | None:
+    """What each of the product's test runners collects, one line per runner, with the support
+    files on record after them, or ``None`` for a product
+    whose profile names none. The lines ``validate_qa_suite_collected`` is read against."""
+    if profile is None or not profile.runners:
+        return None
+    lines = [
+        f"- `{r.runner}`: a file named `{r.file_pattern}` under "
+        + ", ".join(f"`{root}`" for root in r.roots)
+        for r in profile.runners
+    ]
+    if profile.test_support_files:
+        lines.append(
+            "- support files the suites already share, which a `qa.test` may also change: "
+            + ", ".join(f"`{path}`" for path in profile.test_support_files)
+        )
+    return "\n".join(lines)
 
 
 def reserved_paths_index(profile: DerivedProfile | None) -> str | None:

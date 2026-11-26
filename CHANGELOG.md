@@ -14,6 +14,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   files is refused, and a test refuses a row appended to the old file.
 
 ### Fixed
+- **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
+  SIP-0112 H.38; the 2.9 plan's item 8): a `qa.test` naming a source file or a note passed every plan gate,
+  and its task was then shown most or all of the product to write a suite nothing runs.
+  - `validate_qa_suite_collected` reads each `qa.test` file against the product runners' roots and file-name
+    patterns, never its extension, at the framing's gate, the in-run gate and an operator's plan at create.
+  - The plan's authors are shown what each runner collects first (`request.plan_test_runners_appendix`).
+  - Replayed over 128 stored plans of four products, it refuses none.
+  - Still to come under #3182: the cap on what a `qa.test` is shown, with its replay.
 - **An accepted QA hand-off reads accepted everywhere** (#3000; SIP-0077 §24a; the 2.9 plan's item 5): a
   product's `qa.test` whose suite the qa image leaves to the product's own runner replied as a failed task, and
   three signals were set from that reply before the runner was asked: the Prefect task run read `Failed`, the

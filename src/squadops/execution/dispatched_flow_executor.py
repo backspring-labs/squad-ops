@@ -5673,6 +5673,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         errors += classifier.collect(
             "validate_reserved_paths", plan.validate_reserved_paths(derived)
         )
+        # SIP-0112 H.4 point 3 (#3182): nor names a qa.test file no runner of the product collects.
+        errors += classifier.collect(
+            "validate_qa_suite_collected", plan.validate_qa_suite_collected(derived)
+        )
         if errors:
             raise _ExecutionError(
                 f"Plan rejected at gate(s) {gate_names}: the materialized implementation "
